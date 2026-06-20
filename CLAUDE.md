@@ -144,6 +144,11 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts) ──spawns──▶ 
 > `demo.job.ts` is gitignored. The public repo ships only the framework + the
 > demo. NEVER commit a real job file (no `git add -f`); that would leak what the
 > owner is doing. New jobs you create here stay untracked by design.
+>
+> For a **multi-file pipeline**, put everything in a gitignored subfolder (e.g.
+> `src/jobs/places/`, which is ignored wholesale). Jobs are discovered
+> **recursively**, so a `*.job.ts` inside that folder is picked up automatically
+> while its helper modules stay private too.
 
 ### Job conventions
 - Jobs must be **idempotent / safe to re-run** (they retry and can be run

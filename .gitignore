@@ -16,6 +16,11 @@ service-account*.json
 src/jobs/*.job.ts
 src/jobs/*.job.js
 !src/jobs/demo.job.ts
+# Job subfolders are private business logic (e.g. the places pipeline).
+src/jobs/places/
+
+# --- Private input/output datasets (never published) ---
+places-data/
 
 # --- Dependencies / build output ---
 node_modules/
