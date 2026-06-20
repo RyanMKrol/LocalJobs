@@ -1,0 +1,20 @@
+{
+  "name": "local-jobs-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 4788",
+    "build": "next build",
+    "start": "next start -p 4788"
+  },
+  "dependencies": {
+    "next": "^15.1.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.3"
+  }
+}

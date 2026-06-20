@@ -1,0 +1,74 @@
+'use client';
+
+import { use, useState } from 'react';
+import { api } from '../../lib/api';
+import { StatusBadge, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
+
+export default function JobDetail({ params }: { params: Promise<{ name: string }> }) {
+  const { name } = use(params);
+  const [busy, setBusy] = useState(false);
+
+  const { data: jobData } = usePoll(() => api.job(name), 3000, [name]);
+  const { data: runsData } = usePoll(() => api.jobRuns(name), 2000, [name]);
+  const job = jobData?.job;
+  const runs = runsData?.runs ?? [];
+
+  async function runNow() {
+    setBusy(true);
+    try { await api.runNow(name); } finally { setTimeout(() => setBusy(false), 1200); }
+  }
+
+  async function toggle() {
+    if (!job) return;
+    await api.toggle(name, job.enabled === 0);
+  }
+
+  return (
+    <>
+      <p className="muted"><a href="/jobs">← Jobs</a></p>
+      <div className="row">
+        <h1 style={{ margin: 0 }}>{name}</h1>
+        <div className="spacer" />
+        <button className="btn" onClick={runNow} disabled={busy}>{busy ? 'Started…' : '▶ Run now'}</button>
+      </div>
+      <p className="sub">{job?.description}</p>
+
+      <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
+        <div className="kv">
+          <div className="k">Schedule</div><div className="mono">{job?.schedule ?? 'manual-only'}</div>
+          <div className="k">Enabled</div>
+          <div>
+            <span className="toggle" onClick={toggle}>
+              <input type="checkbox" checked={!!job?.enabled} readOnly /> {job?.enabled ? 'enabled' : 'disabled'} (click to toggle)
+            </span>
+          </div>
+          <div className="k">Timeout</div><div>{job?.timeout_ms ? `${job.timeout_ms} ms` : 'none'}</div>
+          <div className="k">Max retries</div><div>{job?.max_retries ?? 0}</div>
+          <div className="k">Next run</div><div className="muted">{job?.next_run ? fmtTime(job.next_run) : '—'}</div>
+        </div>
+      </div>
+
+      <h2>Run history</h2>
+      <div className="panel">
+        <table>
+          <thead>
+            <tr><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th>Attempt</th><th></th></tr>
+          </thead>
+          <tbody>
+            {runs.length === 0 && <tr><td colSpan={6} className="muted">No runs yet.</td></tr>}
+            {runs.map((r) => (
+              <tr key={r.id}>
+                <td><StatusBadge status={r.status} /></td>
+                <td className="muted">{r.trigger}</td>
+                <td className="muted">{fmtRelative(r.started_at)}</td>
+                <td className="mono">{fmtDuration(r.duration_ms)}</td>
+                <td>{r.attempt}</td>
+                <td><a href={`/runs/${r.id}`}>details →</a></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
