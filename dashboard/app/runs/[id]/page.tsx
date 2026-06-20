@@ -1,14 +1,24 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState } from 'react';
 import { api } from '../../lib/api';
 import { ProgressBar, StatusBadge, fmtDuration, fmtTime, usePoll } from '../../ui';
 
+type LevelFilter = 'all' | 'info' | 'warn' | 'error';
+
 export default function RunDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const [filter, setFilter] = useState<LevelFilter>('all');
   const { data, error } = usePoll(() => api.run(id), 1000, [id]);
   const run = data?.run;
   const logs = data?.logs ?? [];
+
+  const counts = {
+    info: logs.filter((l) => l.level === 'info').length,
+    warn: logs.filter((l) => l.level === 'warn').length,
+    error: logs.filter((l) => l.level === 'error').length,
+  };
+  const shownLogs = logs.filter((l) => filter === 'all' || l.level === filter);
 
   return (
     <>
@@ -44,10 +54,31 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
             </div>
           </div>
 
-          <h2>Logs</h2>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <h2 style={{ margin: '28px 0 12px' }}>Logs</h2>
+            <div className="row" style={{ gap: 6, marginBottom: 12 }}>
+              {(['all', 'info', 'warn', 'error'] as LevelFilter[]).map((lvl) => {
+                const n = lvl === 'all' ? logs.length : counts[lvl];
+                return (
+                  <button
+                    key={lvl}
+                    className={`btn ${filter === lvl ? '' : 'secondary'}`}
+                    style={{ padding: '4px 11px', textTransform: 'capitalize' }}
+                    onClick={() => setFilter(lvl)}
+                  >
+                    {lvl} ({n})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="logs">
-            {logs.length === 0 && <span className="muted">No log output.</span>}
-            {logs.map((l) => (
+            {shownLogs.length === 0 && (
+              <span className="muted">
+                {logs.length === 0 ? 'No log output.' : `No ${filter} logs.`}
+              </span>
+            )}
+            {shownLogs.map((l) => (
               <div key={l.id} className={`lvl-${l.level}`}>
                 <span className="ts">{l.ts.split(' ')[1] ?? l.ts}</span>{l.message}
               </div>
