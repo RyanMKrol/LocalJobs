@@ -58,3 +58,14 @@ CREATE TABLE IF NOT EXISTS work_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(job_name, status);
+
+-- Spend/usage meter. One row per metered external action (e.g. one API call), so a
+-- job can enforce per-day and per-month caps by counting rows in the window. This
+-- counts ACTIONS (incl. retries), distinct from work_items which tracks items.
+CREATE TABLE IF NOT EXISTS job_usage (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_name TEXT NOT NULL,
+  ts       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_usage ON job_usage(job_name, ts);

@@ -183,13 +183,20 @@ doubt, log it.
 - TypeScript, ESM, **NodeNext** — always use `.js` extensions in relative
   imports (e.g. `import { x } from './foo.js'`), even for `.ts` files.
 - All SQL goes through `src/db/store.ts`. Don't scatter `db.prepare` calls.
-- **Idempotency — per-item work ledger.** For jobs that process many items (e.g.
-  one per `place_id`), record each item's outcome in the `work_items` SQLite
-  table via `src/db/store.ts` (`isWorkItemDone`, `markWorkItem`, `workItemCounts`),
-  keyed by `(jobName, itemKey)`. Re-runs skip items already done (success, or
-  failed past `maxAttempts`) so work is never reprocessed. Prefer this over
-  ad-hoc "skip if it's in the JSON file" checks. The actual rich output still
-  goes to the job's `data/` files; the ledger just tracks *what's done*.
+- **Idempotency — per-item work ledger (the standard).** For jobs that process
+  many items, record each item's outcome in the `work_items` SQLite table via
+  `src/db/store.ts` (`isWorkItemDone`, `markWorkItem`, `workItemCounts`), keyed by
+  `(jobName, itemKey)`. Re-runs skip items already done (success, or failed past
+  `maxAttempts`) so work is never reprocessed. The whole places pipeline uses this
+  (resolver by CID, enrich + LLM by place_id); the rich output still goes to the
+  job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
+  "skip if it's in the JSON file" checks.
+- **Spend / usage caps.** For jobs that make metered external calls (paid APIs),
+  enforce per-day AND per-month caps via the `job_usage` meter in `src/db/store.ts`
+  (`recordUsage`, `capStatus`). Call `recordUsage(jobName)` once per real action;
+  check `capStatus(jobName, dailyCap, monthlyCap)` in the loop and stop gracefully
+  when `!allowed`. Convention: daily cap = monthly cap / 10 (so manual re-runs
+  don't blow the month). Caps live in the job's config, env-overridable.
 - **Job resources are job-local.** A job's input/output data lives in its own
   `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.
