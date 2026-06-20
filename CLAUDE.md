@@ -165,6 +165,10 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts) ──spawns──▶ 
 - TypeScript, ESM, **NodeNext** — always use `.js` extensions in relative
   imports (e.g. `import { x } from './foo.js'`), even for `.ts` files.
 - All SQL goes through `src/db/store.ts`. Don't scatter `db.prepare` calls.
+- **Job resources are job-local.** A job's input/output data lives in its own
+  `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
+  referenced relative to the job's file — not in a far-off top-level folder.
+  These are gitignored via `src/jobs/**/data/`.
 - Run/verify with `npx tsc --noEmit` (daemon) and `npm run build` in
   `dashboard/` before declaring done.
 - After ANY change to `src/`, the daemon must be restarted to take effect.
