@@ -162,6 +162,23 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts) ──spawns──▶ 
 - Heavy external calls (Places API, headless browser): rate-limit inside the
   job, and make progress observable.
 
+## Logging — be verbose by default
+
+**Always prefer the most verbose logging you can get away with. Err on
+over-logging, never under-logging.** Storage is not a concern — kilobytes of
+logs per run is completely fine.
+
+Every job should narrate itself through `ctx.log()` so its run page tells the
+full story without anyone reading the code:
+- What it's about to do, and the config/paths/inputs it's using.
+- Each meaningful item as it's processed (per-list, per-record), not just totals.
+- Every decision: skips, merges, dedupes, retries, fallbacks — and *why*.
+- A detailed final summary: totals, per-category breakdowns, notable items
+  enumerated, where output was written, and the validation result.
+
+Use levels (`info` / `warn` / `error`) so the dashboard can colour them. When in
+doubt, log it.
+
 ## Conventions
 - TypeScript, ESM, **NodeNext** — always use `.js` extensions in relative
   imports (e.g. `import { x } from './foo.js'`), even for `.ts` files.

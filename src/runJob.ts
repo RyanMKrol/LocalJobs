@@ -12,12 +12,22 @@ function emit(event: JobEvent): void {
   process.stdout.write(JSON.stringify(event) + '\n');
 }
 
+/**
+ * Emit the final result, then exit only once stdout has flushed to the OS.
+ * Calling process.exit() immediately would truncate buffered stdout under a high
+ * volume of log events (losing tail logs and the result itself). The write
+ * callback fires after this — and therefore all prior ordered writes — flush.
+ */
+function emitResultAndExit(event: JobEvent, code: number): void {
+  process.stdout.write(JSON.stringify(event) + '\n', () => process.exit(code));
+}
+
 async function main(): Promise<void> {
   const jobName = process.argv[2];
   const def = getJobDefinition(jobName);
   if (!def) {
-    emit({ type: 'result', status: 'failed', error: `Unknown job: ${jobName}` });
-    process.exit(1);
+    emitResultAndExit({ type: 'result', status: 'failed', error: `Unknown job: ${jobName}` }, 1);
+    return;
   }
 
   const ctx: JobContext = {
@@ -27,12 +37,10 @@ async function main(): Promise<void> {
 
   try {
     await def.run(ctx);
-    emit({ type: 'result', status: 'success' });
-    process.exit(0);
+    emitResultAndExit({ type: 'result', status: 'success' }, 0);
   } catch (err) {
     const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
-    emit({ type: 'result', status: 'failed', error: message });
-    process.exit(1);
+    emitResultAndExit({ type: 'result', status: 'failed', error: message }, 1);
   }
 }
 
