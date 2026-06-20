@@ -124,6 +124,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts) ──spawns──▶ 
    const job: JobDefinition = {
      name: 'unique-name',           // stable; it's the DB primary key
      description: 'what it does',
+     instructions: 'optional setup steps shown on the dashboard job page',
      schedule: '0 3 * * *',         // croner cron, or null for manual-only
      timeoutMs: 600_000,            // 0 = no timeout
      maxRetries: 1,

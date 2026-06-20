@@ -35,10 +35,15 @@ async function readBody(req: IncomingMessage): Promise<any> {
   }
 }
 
-/** Decorate a job row with its last run and next scheduled time. */
+/** Decorate a job row with its last run, next scheduled time, and instructions. */
 function jobView(name: string) {
   const def = getJobDefinition(name);
-  return { last_run: lastRunForJob(name) ?? null, next_run: nextRun(name), has_def: !!def };
+  return {
+    last_run: lastRunForJob(name) ?? null,
+    next_run: nextRun(name),
+    has_def: !!def,
+    instructions: def?.instructions ?? null,
+  };
 }
 
 export function startApi(): void {

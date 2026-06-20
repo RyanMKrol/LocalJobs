@@ -33,6 +33,15 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
       </div>
       <p className="sub">{job?.description}</p>
 
+      {job?.instructions && (
+        <div className="panel" style={{ padding: 18, marginBottom: 8, borderColor: 'var(--accent)' }}>
+          <div className="k" style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: 8 }}>
+            ⓘ How to run this job
+          </div>
+          <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{job.instructions}</div>
+        </div>
+      )}
+
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
         <div className="kv">
           <div className="k">Schedule</div><div className="mono">{job?.schedule ?? 'manual-only'}</div>

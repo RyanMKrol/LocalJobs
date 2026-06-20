@@ -23,6 +23,11 @@ export interface JobDefinition {
   /** Unique, stable identifier (also the primary key in the DB). */
   name: string;
   description?: string;
+  /**
+   * Optional human instructions shown on the dashboard — e.g. any manual setup
+   * needed before a run (like placing input data). Plain text; newlines kept.
+   */
+  instructions?: string;
   /** Cron expression (croner syntax). Omit/null for manual-only jobs. */
   schedule?: string | null;
   /** Hard timeout in ms; the child process is killed if exceeded. 0 = none. */

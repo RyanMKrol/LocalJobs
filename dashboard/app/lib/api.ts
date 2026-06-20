@@ -29,6 +29,7 @@ export interface Job {
   created_at: string;
   last_run: Run | null;
   next_run: string | null;
+  instructions: string | null;
 }
 
 export interface LogLine {
