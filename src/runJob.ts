@@ -5,6 +5,7 @@
  * Runs the job in isolation and streams structured events as NDJSON on stdout.
  * The parent (executor) is the sole DB writer; this process only emits events.
  */
+import 'dotenv/config'; // load .env so jobs can read secrets (e.g. API keys)
 import { getJobDefinition } from './jobs/registry.js';
 import type { JobContext, JobEvent } from './core/types.js';
 

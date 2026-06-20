@@ -3,6 +3,7 @@
  * launchd. It syncs job definitions into the DB, reaps orphaned runs from any
  * prior crash, starts the scheduler, and serves the control/read API.
  */
+import 'dotenv/config'; // load .env for config (ports, paths) and jobs
 import { config } from './config.js';
 import { startApi } from './api/server.js';
 import { startScheduler, stopScheduler } from './core/scheduler.js';
