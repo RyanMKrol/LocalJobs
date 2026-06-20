@@ -124,3 +124,60 @@ export function reapOrphanRuns(): number {
   `).run();
   return res.changes;
 }
+
+// ---- work items (per-item idempotency ledger) ----
+
+export type WorkStatus = 'success' | 'failed' | 'skipped';
+
+export interface WorkItemRow {
+  job_name: string;
+  item_key: string;
+  status: WorkStatus;
+  attempts: number;
+  detail: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Fetch the ledger row for one work item, if it exists. */
+export function getWorkItem(jobName: string, itemKey: string): WorkItemRow | undefined {
+  return db.prepare('SELECT * FROM work_items WHERE job_name = ? AND item_key = ?')
+    .get(jobName, itemKey) as WorkItemRow | undefined;
+}
+
+/**
+ * Has this item been fully processed and so should NOT be reprocessed?
+ * True when it succeeded, or it failed but has exhausted its retry budget.
+ */
+export function isWorkItemDone(jobName: string, itemKey: string, maxAttempts: number): boolean {
+  const row = getWorkItem(jobName, itemKey);
+  if (!row) return false;
+  if (row.status === 'success') return true;
+  return row.status === 'failed' && row.attempts >= maxAttempts;
+}
+
+/** Record (upsert) the outcome of processing a work item. `detail` is JSON-serialized. */
+export function markWorkItem(
+  jobName: string,
+  itemKey: string,
+  status: WorkStatus,
+  opts: { attempts?: number; detail?: unknown } = {},
+): void {
+  const detail = opts.detail === undefined ? null : JSON.stringify(opts.detail);
+  db.prepare(`
+    INSERT INTO work_items (job_name, item_key, status, attempts, detail)
+    VALUES (@job, @key, @status, @attempts, @detail)
+    ON CONFLICT(job_name, item_key) DO UPDATE SET
+      status = excluded.status,
+      attempts = excluded.attempts,
+      detail = excluded.detail,
+      updated_at = datetime('now')
+  `).run({ job: jobName, key: itemKey, status, attempts: opts.attempts ?? 1, detail });
+}
+
+/** Count of work items per status for a job, e.g. { success: 1700, failed: 3 }. */
+export function workItemCounts(jobName: string): Record<string, number> {
+  const rows = db.prepare('SELECT status, COUNT(*) AS n FROM work_items WHERE job_name = ? GROUP BY status')
+    .all(jobName) as { status: string; n: number }[];
+  return Object.fromEntries(rows.map((r) => [r.status, r.n]));
+}

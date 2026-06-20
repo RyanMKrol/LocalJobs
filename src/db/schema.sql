@@ -41,3 +41,20 @@ CREATE TABLE IF NOT EXISTS run_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_logs_run ON run_logs(run_id, id);
+
+-- Per-item idempotency ledger. A "work item" is one unit of work a job processes
+-- (e.g. one place_id). Jobs record an outcome here so they never reprocess an
+-- item that's already done. Keyed by (job_name, item_key) — the item_key is the
+-- job's natural unit of work (place_id for the places pipeline).
+CREATE TABLE IF NOT EXISTS work_items (
+  job_name   TEXT NOT NULL,
+  item_key   TEXT NOT NULL,
+  status     TEXT NOT NULL,             -- success | failed | skipped
+  attempts   INTEGER NOT NULL DEFAULT 1,
+  detail     TEXT,                      -- optional JSON: error, output path, summary…
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (job_name, item_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(job_name, status);

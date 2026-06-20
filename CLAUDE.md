@@ -183,6 +183,13 @@ doubt, log it.
 - TypeScript, ESM, **NodeNext** — always use `.js` extensions in relative
   imports (e.g. `import { x } from './foo.js'`), even for `.ts` files.
 - All SQL goes through `src/db/store.ts`. Don't scatter `db.prepare` calls.
+- **Idempotency — per-item work ledger.** For jobs that process many items (e.g.
+  one per `place_id`), record each item's outcome in the `work_items` SQLite
+  table via `src/db/store.ts` (`isWorkItemDone`, `markWorkItem`, `workItemCounts`),
+  keyed by `(jobName, itemKey)`. Re-runs skip items already done (success, or
+  failed past `maxAttempts`) so work is never reprocessed. Prefer this over
+  ad-hoc "skip if it's in the JSON file" checks. The actual rich output still
+  goes to the job's `data/` files; the ledger just tracks *what's done*.
 - **Job resources are job-local.** A job's input/output data lives in its own
   `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.
