@@ -1,0 +1,173 @@
+# local-jobs
+
+A small, self-hosted **job orchestrator + dashboard** for an always-on Mac Mini.
+
+One long-lived daemon (kept alive by launchd) schedules and runs all jobs in
+isolated child processes, records every run to SQLite, and a Next.js dashboard
+shows live progress, history, durations, and pass/fail — plus push alerts on
+failure. Built to host long-running / headless local work (notably a Google
+Places enrichment pipeline) that doesn't fit serverless or a web request.
+
+```
+launchd ──keeps alive──▶ daemon ──spawns──▶ job (isolated child process)
+                            │  scheduler (croner)        │ emits NDJSON
+                            │  executor (timeout/retry)   ▼ progress + logs
+                            │  HTTP API on :4789     SQLite (jobs/runs/logs)
+                            ▼
+                  dashboard (Next.js, :4788) ◀── polls the API, read-only
+```
+
+## Mental model: two separate things
+
+- **The daemon** is the engine. It schedules and runs jobs and records results
+  **even with no dashboard open and no browser running.** This is the part that
+  must always be on for work to happen.
+- **The dashboard** is just a window onto the daemon. Jobs run whether it's up
+  or not; you keep it running only so you can glance at it anytime.
+
+## Ports
+
+| | URL |
+|---|---|
+| Daemon HTTP API | `http://127.0.0.1:4789` |
+| Dashboard | `http://localhost:4788` |
+
+(Both configurable — API via `LOCALJOBS_PORT`, dashboard via the `-p` flag in
+`dashboard/package.json`.)
+
+## Keep everything running all the time (the real setup)
+
+Two one-time installs register both as **launchd user agents** — they start at
+login and auto-restart if they ever crash. No `sudo` needed for these.
+
+```bash
+cd ~/Development/local-jobs
+
+# 1. the engine
+bash scripts/install-launchd.sh
+
+# 2. the always-on dashboard (build it first)
+cd dashboard && npm run build && cd ..
+bash scripts/install-dashboard-launchd.sh
+
+# 3. stop the Mini sleeping so schedules actually fire (needs sudo)
+sudo pmset -a sleep 0 disablesleep 1
+```
+
+After this you never manually start anything — reboot and both come back.
+
+**Manage them:**
+```bash
+launchctl list | grep localjobs                 # both should appear
+tail -f data/daemon.out.log                      # daemon activity
+tail -f data/dashboard.out.log                    # dashboard activity
+launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs            # restart daemon
+launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs-dashboard  # restart dashboard
+# uninstall:
+launchctl unload ~/Library/LaunchAgents/com.ryankrol.localjobs.plist
+launchctl unload ~/Library/LaunchAgents/com.ryankrol.localjobs-dashboard.plist
+```
+
+## Run it in dev (without installing services)
+
+```bash
+npm install
+npm run daemon            # scheduler + API on :4789
+
+cd dashboard
+npm install
+npm run dev               # dashboard on http://localhost:4788
+```
+
+## Triggering jobs — two ways
+
+- **Scheduled:** a job declares a cron `schedule` in its definition; the daemon
+  fires it automatically. Nothing for you to do.
+- **Manual:** dashboard → **Jobs → [job] → ▶ Run now**. Good for testing/one-offs.
+
+You can also **pause** a job (the enable toggle on its page) without deleting it.
+
+## Adding a job
+
+1. Create `src/jobs/<name>.job.ts` exporting a `JobDefinition`:
+   ```ts
+   import type { JobDefinition } from '../core/types.js';
+
+   const job: JobDefinition = {
+     name: 'cleanup-temp',
+     description: 'Deletes stale temp files',
+     schedule: '0 4 * * *',   // 4am daily (croner); null = manual-only
+     timeoutMs: 600_000,      // killed if it runs >10 min; 0 = no timeout
+     maxRetries: 1,
+     async run(ctx) {
+       ctx.log('starting');
+       ctx.progress(50, 'halfway');
+       // ...work... (throw to fail the run)
+       ctx.log('done');
+     },
+   };
+   export default job;
+   ```
+2. Restart the daemon — jobs are **auto-discovered** (no registry to edit):
+   ```bash
+   launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs
+   ```
+
+It then appears in the dashboard automatically with history tracked from run one.
+
+> **Your jobs stay private.** This repo is public but ships only the framework +
+> the `demo` job. Every other `src/jobs/*.job.ts` is gitignored, so the jobs you
+> add are local-only and never pushed. Secrets always go in `.env` (gitignored),
+> never in code — see `.env.example`.
+
+> **Gotcha:** the daemon loads job code at startup, so **any change to job/daemon
+> code needs a daemon restart** to take effect. The dashboard only needs a
+> rebuild + restart when you change the *UI*, not when you add jobs.
+
+## Layout
+
+```
+src/
+  config.ts            env-driven config (ports, db path, ntfy)
+  daemon.ts            long-lived orchestrator entrypoint
+  runJob.ts            child entrypoint: runs one job, emits NDJSON
+  db/
+    schema.sql         jobs / runs / run_logs (WAL)
+    index.ts           connection + schema bootstrap
+    store.ts           ALL queries
+  core/
+    types.ts           JobDefinition, JobContext, events
+    executor.ts        spawn child, capture events, timeout-kill, retries
+    scheduler.ts       croner triggers per scheduled job
+    notifier.ts        ntfy + macOS notification on failure
+  jobs/
+    registry.ts        auto-discovers *.job.ts files (no manual registration)
+    demo.job.ts        example job (the only tracked job; real jobs are gitignored)
+dashboard/             Next.js dashboard (client of the daemon's API)
+scripts/               launchd install scripts + start wrapper
+data/                  SQLite db + daemon/dashboard logs (gitignored)
+```
+
+## Dashboard pages
+
+- **Overview** — live status counts + recent runs across all jobs
+- **Jobs** — every job, schedule, enabled state, last/next run
+- **Job detail** — ▶ Run now, enable toggle, full run history
+- **Run detail** — live progress bar + streaming logs, duration, exit code, error
+
+## Configuration
+
+See `.env.example`:
+
+| Var | Purpose |
+|---|---|
+| `LOCALJOBS_PORT` | API port (default 4789) |
+| `LOCALJOBS_DB` | SQLite path (default `./data/jobs.db`) |
+| `LOCALJOBS_NTFY_TOPIC` | [ntfy.sh](https://ntfy.sh) topic for phone push alerts on failure; blank = off (failures still recorded + a macOS notification fires) |
+| `LOCALJOBS_NTFY_SERVER` | ntfy server (default `https://ntfy.sh`) |
+
+## Roadmap
+
+The Google Places "second brain" pipeline will be added as jobs here:
+`resolve-place-ids` (headless CID→place_id) and `enrich-places` (Places API →
+DynamoDB), reusing the same scheduling/visibility/alerting.
