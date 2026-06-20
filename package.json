@@ -11,6 +11,7 @@
     "db:reset": "tsx src/db/reset.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.9.0",
     "better-sqlite3": "^11.8.1",
     "croner": "^8.1.2",
     "csv-parse": "^5.6.0",
