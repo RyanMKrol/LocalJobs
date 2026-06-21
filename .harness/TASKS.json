@@ -15,7 +15,7 @@
     {
       "id": "T027",
       "title": "Validation gates: declare contracts on real jobs so gates fire",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
