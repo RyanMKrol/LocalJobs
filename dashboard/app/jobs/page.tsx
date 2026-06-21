@@ -23,6 +23,9 @@ export default function JobsList() {
               <tr key={j.name}>
                 <td>
                   <a href={`/jobs/${j.name}`}><strong>{j.name}</strong></a>
+                  {j.stuck > 0 && (
+                    <span style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}>⛔ {j.stuck} stuck</span>
+                  )}
                   <div className="muted" style={{ fontSize: 12 }}>{j.description}</div>
                 </td>
                 <td className="mono">{j.schedule ?? <span className="muted">manual</span>}</td>

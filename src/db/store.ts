@@ -182,6 +182,33 @@ export function workItemCounts(jobName: string): Record<string, number> {
   return Object.fromEntries(rows.map((r) => [r.status, r.n]));
 }
 
+export interface StuckItem {
+  job_name: string;
+  item_key: string;
+  attempts: number;
+  detail: unknown;
+  updated_at: string;
+}
+
+/**
+ * Items that have permanently given up: failed and out of retries. These won't
+ * be reprocessed, so they need surfacing (dashboard / alerts) rather than being
+ * silently swallowed. `minAttempts` is the give-up threshold (jobs default to 4).
+ */
+export function stuckItems(minAttempts = 4): StuckItem[] {
+  const rows = db.prepare(
+    "SELECT job_name, item_key, attempts, detail, updated_at FROM work_items WHERE status = 'failed' AND attempts >= ? ORDER BY job_name, updated_at DESC",
+  ).all(minAttempts) as { job_name: string; item_key: string; attempts: number; detail: string | null; updated_at: string }[];
+  return rows.map((r) => ({ ...r, detail: r.detail ? JSON.parse(r.detail) : null }));
+}
+
+/** How many items have given up for one job (failed, out of retries). */
+export function stuckCount(jobName: string, minAttempts = 4): number {
+  return (db.prepare(
+    "SELECT COUNT(*) AS n FROM work_items WHERE job_name = ? AND status = 'failed' AND attempts >= ?",
+  ).get(jobName, minAttempts) as { n: number }).n;
+}
+
 // ---- usage meter (per-day / per-month spend caps) ----
 
 /** Record one metered action (e.g. one external API call) against a job. */

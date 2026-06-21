@@ -5,7 +5,9 @@ import { StatusBadge, fmtDuration, fmtRelative, usePoll } from './ui';
 
 export default function Overview() {
   const { data, error } = usePoll(() => api.recentRuns(100), 2000);
+  const { data: stuckData } = usePoll(() => api.stuck(), 5000);
   const runs = data?.runs ?? [];
+  const stuck = stuckData?.stuck ?? [];
 
   const counts = {
     running: runs.filter((r) => r.status === 'running').length,
@@ -23,8 +25,31 @@ export default function Overview() {
       <div className="statcards">
         <div className="statcard"><div className="n">{counts.running}</div><div className="l">Running</div></div>
         <div className="statcard"><div className="n" style={{ color: 'var(--green)' }}>{counts.success}</div><div className="l">Succeeded</div></div>
-        <div className="statcard"><div className="n" style={{ color: 'var(--red)' }}>{counts.failed}</div><div className="l">Failed</div></div>
-        <div className="statcard"><div className="n">{counts.total}</div><div className="l">Recent runs</div></div>
+        <div className="statcard"><div className="n" style={{ color: 'var(--red)' }}>{counts.failed}</div><div className="l">Failed runs</div></div>
+        <div className="statcard"><div className="n" style={{ color: stuck.length ? 'var(--red)' : undefined }}>{stuck.length}</div><div className="l">Stuck items</div></div>
+      </div>
+
+      <h2>⛔ Stuck items <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>— gave up, will NOT retry</span></h2>
+      <div className="panel" style={stuck.length ? { borderColor: 'var(--red)' } : undefined}>
+        <table>
+          <thead>
+            <tr><th>Item</th><th>Job</th><th>Attempts</th><th>Reason</th><th>When</th></tr>
+          </thead>
+          <tbody>
+            {stuck.length === 0 && (
+              <tr><td colSpan={5} className="muted">Nothing stuck — every item either succeeded or is still retrying. ✓</td></tr>
+            )}
+            {stuck.map((s) => (
+              <tr key={`${s.job_name}:${s.item_key}`}>
+                <td>{s.detail?.name ?? <span className="mono">{s.item_key}</span>}</td>
+                <td><a href={`/jobs/${s.job_name}`}>{s.job_name}</a></td>
+                <td>{s.attempts}</td>
+                <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}</td>
+                <td className="muted">{fmtRelative(s.updated_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <h2>Recent runs</h2>

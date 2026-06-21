@@ -10,8 +10,10 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
 
   const { data: jobData } = usePoll(() => api.job(name), 3000, [name]);
   const { data: runsData } = usePoll(() => api.jobRuns(name), 2000, [name]);
+  const { data: stuckData } = usePoll(() => api.stuck(name), 5000, [name]);
   const job = jobData?.job;
   const runs = runsData?.runs ?? [];
+  const stuck = stuckData?.stuck ?? [];
 
   async function runNow() {
     setBusy(true);
@@ -56,6 +58,30 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
           <div className="k">Next run</div><div className="muted">{job?.next_run ? fmtTime(job.next_run) : '—'}</div>
         </div>
       </div>
+
+      {stuck.length > 0 && (
+        <>
+          <h2 style={{ color: 'var(--red)' }}>⛔ Stuck items ({stuck.length})</h2>
+          <p className="sub">These gave up after exhausting their retries and will NOT be reprocessed.</p>
+          <div className="panel" style={{ borderColor: 'var(--red)' }}>
+            <table>
+              <thead>
+                <tr><th>Item</th><th>Key</th><th>Attempts</th><th>Reason</th></tr>
+              </thead>
+              <tbody>
+                {stuck.map((s) => (
+                  <tr key={s.item_key}>
+                    <td>{s.detail?.name ?? '—'}</td>
+                    <td className="mono">{s.item_key}</td>
+                    <td>{s.attempts}</td>
+                    <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       <h2>Run history</h2>
       <div className="panel">

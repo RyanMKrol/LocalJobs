@@ -11,6 +11,8 @@ import {
   listRecentRuns,
   listRunsForJob,
   setJobEnabled,
+  stuckCount,
+  stuckItems,
 } from '../db/store.js';
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -43,6 +45,7 @@ function jobView(name: string) {
     next_run: nextRun(name),
     has_def: !!def,
     instructions: def?.instructions ?? null,
+    stuck: stuckCount(name),
   };
 }
 
@@ -72,6 +75,13 @@ export function startApi(): void {
         if (!run) return json(res, 404, { error: 'run not found' });
         const after = Number(url.searchParams.get('after') ?? 0);
         return json(res, 200, { run, logs: getLogs(parts[2], after) });
+      }
+
+      // GET /api/stuck  (optionally ?job=<name>) — items that gave up, won't retry
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'stuck' && parts.length === 2) {
+        const jobFilter = url.searchParams.get('job');
+        const items = stuckItems().filter((i) => !jobFilter || i.job_name === jobFilter);
+        return json(res, 200, { stuck: items });
       }
 
       // GET /api/jobs

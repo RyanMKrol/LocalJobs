@@ -30,6 +30,15 @@ export interface Job {
   last_run: Run | null;
   next_run: string | null;
   instructions: string | null;
+  stuck: number;
+}
+
+export interface StuckItem {
+  job_name: string;
+  item_key: string;
+  attempts: number;
+  detail: { name?: string; error?: string; status?: string } | null;
+  updated_at: string;
 }
 
 export interface LogLine {
@@ -63,4 +72,5 @@ export const api = {
   run: (id: string, after = 0) => get<{ run: Run; logs: LogLine[] }>(`/api/runs/${id}?after=${after}`),
   runNow: (name: string) => post<{ ok: boolean }>(`/api/jobs/${name}/run`),
   toggle: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/jobs/${name}/toggle`, { enabled }),
+  stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${job}` : ''}`),
 };
