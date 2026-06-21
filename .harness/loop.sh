@@ -132,7 +132,8 @@ select_task() {
 # --- Pre-push guard: refuse to push if anything sensitive is in the new commits ----
 guard_clean() {
   local bad
-  bad="$(git -C "$ROOT" diff --name-only "origin/$MAIN_BRANCH..HEAD" 2>/dev/null | grep -nE "$SENSITIVE_RE" || true)"
+  # .env.example is a tracked, placeholder-only template (intentionally committable) — never the real secret env.
+  bad="$(git -C "$ROOT" diff --name-only "origin/$MAIN_BRANCH..HEAD" 2>/dev/null | grep -nE "$SENSITIVE_RE" | grep -vE '(^|[/:])\.env\.example$' || true)"
   [ -z "$bad" ] && return 0
   log "PRE-PUSH GUARD TRIPPED — refusing to push. Sensitive paths in pending commits:"
   printf '   %s\n' $bad >&2
@@ -144,7 +145,7 @@ wait_ci_green() {   # 0=green 1=red 2=indeterminate
   local sha runid="" waited=0
   command -v gh >/dev/null 2>&1 || { log "gh not installed — cannot gate CI"; return 2; }
   sha="$(git -C "$ROOT" rev-parse HEAD)"
-  log "waiting for CI ($CI_WORKFLOW) on $sha…"
+  log "waiting for CI ($CI_WORKFLOW) on ${sha}…"
   while [ "$waited" -lt "$CI_TIMEOUT" ]; do
     runid="$(gh run list --limit 20 --json databaseId,headSha,workflowName \
                --jq ".[] | select(.headSha==\"$sha\" and .workflowName==\"$CI_WORKFLOW\") | .databaseId" \
