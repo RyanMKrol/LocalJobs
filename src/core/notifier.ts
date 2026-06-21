@@ -1,6 +1,8 @@
 import { config } from '../config.js';
-import { getRun, stuckCount } from '../db/store.js';
-import type { RunStatus } from './types.js';
+import { getPipelineRun, getRun, stuckCount, workItemCounts } from '../db/store.js';
+import type { LogLevel, PipelineRunStatus, RunStatus } from './types.js';
+
+type LogFn = (message: string, level?: LogLevel) => void;
 
 function fmtDur(ms: number | null | undefined): string {
   if (!ms) return '';
@@ -44,16 +46,63 @@ export async function notifyRun(jobName: string, runId: string, status: RunStatu
   ]);
 }
 
-/** Generic push a long-running job can call to send milestone updates to the phone. */
+/** Generic push a long-running job can call to send milestone updates to the phone.
+ *  Returns whether the ntfy push went out (so callers can log send failures). */
 export async function push(
   title: string,
   body: string,
   opts: { priority?: string; tags?: string; job?: string } = {},
-): Promise<void> {
-  await Promise.allSettled([
+): Promise<{ ok: boolean; error?: string }> {
+  const [ntfy] = await Promise.all([
     sendNtfy(title, body, opts.job ?? 'localjobs', opts.priority ?? 'default', opts.tags ?? 'bell'),
     sendMacNotification(title, body),
   ]);
+  return ntfy;
+}
+
+/** Notify on a single pipeline STAGE (member job) completing — status + the job's
+ *  work-item tally — and log the send outcome to the pipeline's framework log. */
+export async function notifyStage(
+  pipelineName: string,
+  _pipelineRunId: string,
+  jobName: string,
+  status: RunStatus,
+  log: LogFn,
+): Promise<void> {
+  const counts = workItemCounts(jobName);
+  const ok = counts.success ?? 0;
+  const failed = counts.failed ?? 0;
+  const stuck = stuckCount(jobName);
+  const emoji = status === 'success' ? '✓' : status === 'skipped' ? '⊘' : '✗';
+  const title = `${emoji} ${pipelineName}: ${jobName} ${status}`;
+  let body = `stage ${status}`;
+  if (ok || failed) body += ` · ${ok} ok, ${failed} failed`;
+  if (stuck) body += ` · ⚠ ${stuck} stuck`;
+  const res = await push(title, body, {
+    job: pipelineName,
+    priority: status === 'success' ? 'low' : 'default',
+    tags: status === 'success' ? 'white_check_mark' : status === 'skipped' ? 'fast_forward' : 'warning',
+  });
+  log(res.ok ? `notification sent — ${title}` : `notification FAILED (${res.error}) — ${title}`, res.ok ? 'info' : 'error');
+}
+
+/** Notify on the whole pipeline run finishing (aggregate), and log the outcome. */
+export async function notifyPipeline(
+  pipelineName: string,
+  pipelineRunId: string,
+  status: PipelineRunStatus,
+  log: LogFn,
+): Promise<void> {
+  const run = getPipelineRun(pipelineRunId);
+  const emoji = status === 'success' ? '✅' : status === 'partial' ? '⚠️' : status === 'cancelled' ? '🛑' : '❌';
+  const title = `${emoji} ${pipelineName} pipeline — ${status}`;
+  const body = (run?.progress_msg?.trim() || `pipeline ${status}`) + (run?.duration_ms ? ` · ${fmtDur(run.duration_ms)}` : '');
+  const res = await push(title, body, {
+    job: pipelineName,
+    priority: status === 'success' ? 'default' : 'high',
+    tags: status === 'success' ? 'tada' : 'rotating_light',
+  });
+  log(res.ok ? `notification sent — ${title}` : `notification FAILED (${res.error}) — ${title}`, res.ok ? 'info' : 'error');
 }
 
 async function sendNtfy(
@@ -62,16 +111,20 @@ async function sendNtfy(
   jobName: string,
   priority: string,
   tags: string,
-): Promise<void> {
-  if (!config.ntfyTopic) return;
+): Promise<{ ok: boolean; error?: string }> {
+  if (!config.ntfyTopic) return { ok: true }; // not configured — nothing to fail
   try {
-    await fetch(`${config.ntfyServer}/${config.ntfyTopic}`, {
+    // HTTP header values must be Latin-1; strip emoji/Unicode from header fields
+    // (the body keeps full Unicode, and Tags render emoji). Emoji belong in Tags.
+    const headerSafe = (s: string) => s.replace(/[^\x20-\x7E]/g, '').trim();
+    const res = await fetch(`${config.ntfyServer}/${config.ntfyTopic}`, {
       method: 'POST',
-      headers: { Title: title, Priority: priority, Tags: tags, 'X-Job': jobName },
+      headers: { Title: headerSafe(title) || 'localjobs', Priority: priority, Tags: tags, 'X-Job': headerSafe(jobName) },
       body,
     });
-  } catch {
-    // swallow — the dashboard still records the run
+    return res.ok ? { ok: true } : { ok: false, error: `ntfy HTTP ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
