@@ -509,7 +509,7 @@
     {
       "id": "T021",
       "title": "Dashboard: clickable overview stat tiles that filter",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T008"
       ],
