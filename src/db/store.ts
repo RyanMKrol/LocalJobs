@@ -1,6 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './index.js';
-import type { JobDefinition, LogLevel, RunRow, RunStatus, RunTrigger } from '../core/types.js';
+import type {
+  JobDefinition,
+  LogLevel,
+  PipelineDefinition,
+  PipelineRunRow,
+  PipelineRunStatus,
+  RunRow,
+  RunStatus,
+  RunTrigger,
+  ServiceDefinition,
+} from '../core/types.js';
 
 /**
  * Upsert a job definition. The user-owned `enabled` flag is preserved on
@@ -50,12 +60,28 @@ export function setJobEnabled(name: string, enabled: boolean): void {
 
 // ---- runs ----
 
-export function createRun(jobName: string, trigger: RunTrigger, attempt = 1): string {
+export function createRun(
+  jobName: string,
+  trigger: RunTrigger,
+  attempt = 1,
+  pipelineRunId: string | null = null,
+): string {
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at)
-    VALUES (?, ?, 'running', ?, ?, datetime('now'))
-  `).run(id, jobName, trigger, attempt);
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, pipeline_run_id)
+    VALUES (?, ?, 'running', ?, ?, datetime('now'), ?)
+  `).run(id, jobName, trigger, attempt, pipelineRunId);
+  return id;
+}
+
+/** Record a terminal run row without spawning a process — used for pipeline
+ *  members that are SKIPPED because an upstream dependency didn't succeed. */
+export function recordSkippedRun(jobName: string, pipelineRunId: string, reason: string): string {
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error, pipeline_run_id)
+    VALUES (?, ?, 'skipped', 'pipeline', 1, datetime('now'), datetime('now'), 0, ?, ?)
+  `).run(id, jobName, reason, pipelineRunId);
   return id;
 }
 
@@ -261,4 +287,219 @@ export function backfillMonthlyUsage(jobName: string, count: number): void {
   const insert = db.prepare('INSERT INTO job_usage (job_name) VALUES (?)');
   const tx = db.transaction((n: number) => { for (let i = 0; i < n; i++) insert.run(jobName); });
   tx(count);
+}
+
+// ════════════════════════════════ pipelines ════════════════════════════════
+
+const upsertPipelineStmt = db.prepare(`
+  INSERT INTO pipelines (name, description, schedule, enabled)
+  VALUES (@name, @description, @schedule, 1)
+  ON CONFLICT(name) DO UPDATE SET
+    description = excluded.description,
+    schedule    = excluded.schedule
+`);
+
+/** Upsert a pipeline + REPLACE its membership/edges. `enabled` is preserved. */
+export function syncPipeline(def: PipelineDefinition): void {
+  const tx = db.transaction(() => {
+    upsertPipelineStmt.run({
+      name: def.name,
+      description: def.description ?? '',
+      schedule: def.schedule ?? null,
+    });
+    db.prepare('DELETE FROM pipeline_jobs WHERE pipeline_name = ?').run(def.name);
+    const ins = db.prepare('INSERT INTO pipeline_jobs (pipeline_name, job_name, depends_on) VALUES (?, ?, ?)');
+    for (const ref of def.jobs) ins.run(def.name, ref.job, JSON.stringify(ref.dependsOn ?? []));
+  });
+  tx();
+}
+
+export interface PipelineRow {
+  name: string;
+  description: string;
+  schedule: string | null;
+  enabled: number;
+  created_at: string;
+}
+
+export function getPipeline(name: string): PipelineRow | undefined {
+  return db.prepare('SELECT * FROM pipelines WHERE name = ?').get(name) as PipelineRow | undefined;
+}
+
+export function listPipelines(): PipelineRow[] {
+  return db.prepare('SELECT * FROM pipelines ORDER BY name').all() as PipelineRow[];
+}
+
+export function setPipelineEnabled(name: string, enabled: boolean): void {
+  db.prepare('UPDATE pipelines SET enabled = ? WHERE name = ?').run(enabled ? 1 : 0, name);
+}
+
+export function getPipelineJobs(name: string): { job_name: string; depends_on: string[] }[] {
+  const rows = db.prepare('SELECT job_name, depends_on FROM pipeline_jobs WHERE pipeline_name = ?')
+    .all(name) as { job_name: string; depends_on: string }[];
+  return rows.map((r) => ({ job_name: r.job_name, depends_on: JSON.parse(r.depends_on) as string[] }));
+}
+
+export function createPipelineRun(pipelineName: string, trigger: RunTrigger): string {
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO pipeline_runs (id, pipeline_name, status, trigger, started_at)
+    VALUES (?, ?, 'running', ?, datetime('now'))
+  `).run(id, pipelineName, trigger);
+  return id;
+}
+
+export function setPipelineProgress(id: string, pct: number, message: string): void {
+  db.prepare('UPDATE pipeline_runs SET progress = ?, progress_msg = ? WHERE id = ?')
+    .run(Math.max(0, Math.min(100, Math.round(pct))), message, id);
+}
+
+export function finishPipelineRun(id: string, status: PipelineRunStatus): void {
+  db.prepare(`
+    UPDATE pipeline_runs SET
+      status = ?,
+      finished_at = datetime('now'),
+      duration_ms = CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER),
+      progress = CASE WHEN ? = 'success' THEN 100 ELSE progress END
+    WHERE id = ?
+  `).run(status, status, id);
+}
+
+export function getPipelineRun(id: string): PipelineRunRow | undefined {
+  return db.prepare('SELECT * FROM pipeline_runs WHERE id = ?').get(id) as PipelineRunRow | undefined;
+}
+
+export function listPipelineRunsForPipeline(name: string, limit = 50): PipelineRunRow[] {
+  return db.prepare('SELECT * FROM pipeline_runs WHERE pipeline_name = ? ORDER BY started_at DESC LIMIT ?')
+    .all(name, limit) as PipelineRunRow[];
+}
+
+export function lastPipelineRunForPipeline(name: string): PipelineRunRow | undefined {
+  return db.prepare('SELECT * FROM pipeline_runs WHERE pipeline_name = ? ORDER BY started_at DESC LIMIT 1')
+    .get(name) as PipelineRunRow | undefined;
+}
+
+/** Member job runs of a pipeline run, in start order (for drill-down). */
+export function listRunsForPipelineRun(pipelineRunId: string): RunRow[] {
+  return db.prepare('SELECT * FROM runs WHERE pipeline_run_id = ? ORDER BY started_at')
+    .all(pipelineRunId) as RunRow[];
+}
+
+export function hasActivePipelineRun(name: string): boolean {
+  return (db.prepare(`SELECT COUNT(*) AS n FROM pipeline_runs WHERE pipeline_name = ? AND status = 'running'`)
+    .get(name) as { n: number }).n > 0;
+}
+
+/** On daemon startup, close pipeline runs orphaned by a crash. */
+export function reapOrphanPipelineRuns(): number {
+  return db.prepare(`
+    UPDATE pipeline_runs SET status = 'cancelled', finished_at = datetime('now')
+    WHERE status = 'running'
+  `).run().changes;
+}
+
+/** Member-job work items still in the retry window = "retryable work left" (for repeatUntilStable). */
+export function pipelineRetryableCount(jobNames: string[], minAttempts: number): number {
+  if (jobNames.length === 0) return 0;
+  const ph = jobNames.map(() => '?').join(',');
+  return (db.prepare(
+    `SELECT COUNT(*) AS n FROM work_items WHERE job_name IN (${ph}) AND status = 'failed' AND attempts < ?`,
+  ).get(...jobNames, minAttempts) as { n: number }).n;
+}
+
+// ---- pipeline framework logs ----
+
+export function addPipelineLog(pipelineRunId: string, message: string, level: LogLevel = 'info'): void {
+  db.prepare('INSERT INTO pipeline_run_logs (pipeline_run_id, level, message) VALUES (?, ?, ?)')
+    .run(pipelineRunId, level, message);
+}
+
+export function getPipelineLogs(pipelineRunId: string, afterId = 0): { id: number; ts: string; level: LogLevel; message: string }[] {
+  return db.prepare('SELECT id, ts, level, message FROM pipeline_run_logs WHERE pipeline_run_id = ? AND id > ? ORDER BY id')
+    .all(pipelineRunId, afterId) as { id: number; ts: string; level: LogLevel; message: string }[];
+}
+
+// ════════════════════════ services (shared rate + quota) ════════════════════════
+
+const upsertServiceStmt = db.prepare(`
+  INSERT INTO services (name, description, rate_per_minute, daily_cap, monthly_cap, paid)
+  VALUES (@name, @description, @rate, @daily, @monthly, @paid)
+  ON CONFLICT(name) DO UPDATE SET
+    description     = excluded.description,
+    rate_per_minute = excluded.rate_per_minute,
+    daily_cap       = excluded.daily_cap,
+    monthly_cap     = excluded.monthly_cap,
+    paid            = excluded.paid
+`);
+
+export function syncService(def: ServiceDefinition): void {
+  upsertServiceStmt.run({
+    name: def.name,
+    description: def.description ?? '',
+    rate: def.ratePerMinute ?? null,
+    daily: def.dailyCap ?? null,
+    monthly: def.monthlyCap ?? null,
+    paid: def.paid ? 1 : 0,
+  });
+}
+
+export interface ServiceRow {
+  name: string;
+  description: string;
+  rate_per_minute: number | null;
+  daily_cap: number | null;
+  monthly_cap: number | null;
+  paid: number;
+  created_at: string;
+}
+
+export function getServiceRow(name: string): ServiceRow | undefined {
+  return db.prepare('SELECT * FROM services WHERE name = ?').get(name) as ServiceRow | undefined;
+}
+
+export function listServices(): ServiceRow[] {
+  return db.prepare('SELECT * FROM services ORDER BY name').all() as ServiceRow[];
+}
+
+export function recordServiceCall(service: string): void {
+  db.prepare('INSERT INTO service_usage (service) VALUES (?)').run(service);
+}
+
+export function serviceCallsToday(service: string): number {
+  return (db.prepare(
+    "SELECT COUNT(*) AS n FROM service_usage WHERE service = ? AND ts >= datetime('now','start of day')",
+  ).get(service) as { n: number }).n;
+}
+
+export function serviceCallsThisMonth(service: string): number {
+  return (db.prepare(
+    "SELECT COUNT(*) AS n FROM service_usage WHERE service = ? AND ts >= datetime('now','start of month')",
+  ).get(service) as { n: number }).n;
+}
+
+export function serviceCallsInLastSeconds(service: string, seconds: number): number {
+  return (db.prepare(
+    "SELECT COUNT(*) AS n FROM service_usage WHERE service = ? AND ts >= datetime('now', ?)",
+  ).get(service, `-${seconds} seconds`) as { n: number }).n;
+}
+
+const _countLast60 = db.prepare(
+  "SELECT COUNT(*) AS n FROM service_usage WHERE service = ? AND ts >= datetime('now','-60 seconds')",
+);
+const _insertServiceUsage = db.prepare('INSERT INTO service_usage (service) VALUES (?)');
+const _reserveSlotTx = db.transaction((service: string, ratePerMinute: number): boolean => {
+  const n = (_countLast60.get(service) as { n: number }).n;
+  if (n >= ratePerMinute) return false;
+  _insertServiceUsage.run(service);
+  return true;
+});
+
+/**
+ * Atomically try to reserve a per-minute rate slot for a service: counts calls in
+ * the trailing 60s and, if under the limit, records one — all in a single IMMEDIATE
+ * transaction so concurrent job processes can't both slip through. Returns true if
+ * the slot was acquired (caller proceeds), false if the caller should wait + retry.
+ */
+export function tryReserveServiceSlot(service: string, ratePerMinute: number): boolean {
+  return _reserveSlotTx.immediate(service, ratePerMinute) as boolean;
 }

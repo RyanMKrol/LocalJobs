@@ -17,6 +17,15 @@ export function openDb(): Database.Database {
   db.pragma('foreign_keys = ON');
   const schema = readFileSync(resolve(__dirname, 'schema.sql'), 'utf8');
   db.exec(schema);
+
+  // Additive column migration: CREATE TABLE IF NOT EXISTS won't add a new column
+  // to an already-existing `runs` table, so add it idempotently here.
+  const runCols = db.prepare('PRAGMA table_info(runs)').all() as { name: string }[];
+  if (!runCols.some((c) => c.name === 'pipeline_run_id')) {
+    db.exec('ALTER TABLE runs ADD COLUMN pipeline_run_id TEXT');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_runs_pipeline ON runs(pipeline_run_id)');
+
   return db;
 }
 
