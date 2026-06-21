@@ -58,9 +58,10 @@ export function Dag({
                   {statusByJob && <div className="dag-node-status">{status}</div>}
                 </div>
               );
+              const href = runId ? `/runs/${runId}` : `/jobs/${job}`;
               return (
                 <div key={job}>
-                  {runId ? <a href={`/runs/${runId}`} style={{ textDecoration: 'none' }}>{node}</a> : node}
+                  <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
                 </div>
               );
             })}

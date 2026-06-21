@@ -1,11 +1,13 @@
 'use client';
 
 import { api } from '../lib/api';
-import { fmtRelative, fmtTime, usePoll } from '../ui';
+import { StatusBadge, fmtRelative, fmtTime, usePoll } from '../ui';
 
 export default function Pipelines() {
   const { data, error } = usePoll(() => api.pipelines(), 3000);
+  const { data: jobsData } = usePoll(() => api.jobs(), 5000);
   const pipelines = data?.pipelines ?? [];
+  const standaloneJobs = (jobsData?.jobs ?? []).filter((j) => !j.pipeline);
 
   async function run(name: string) {
     try { await api.runPipeline(name); } catch { /* next poll reflects reality */ }
@@ -41,6 +43,37 @@ export default function Pipelines() {
                 </td>
                 <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
                 <td><button className="btn" onClick={() => run(p.name)}>▶ Run</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Standalone jobs</h2>
+      <p className="sub">Jobs not part of any pipeline. Click a job to view its run history.</p>
+      <div className="panel">
+        <table>
+          <thead>
+            <tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Next</th></tr>
+          </thead>
+          <tbody>
+            {standaloneJobs.length === 0 && (
+              <tr><td colSpan={4} className="muted">No standalone jobs — all jobs belong to a pipeline.</td></tr>
+            )}
+            {standaloneJobs.map((j) => (
+              <tr key={j.name}>
+                <td>
+                  <a href={`/jobs/${j.name}`}><strong>{j.name}</strong></a>
+                  {j.stuck > 0 && <span style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}>⛔ {j.stuck} stuck</span>}
+                  <div className="muted" style={{ fontSize: 12 }}>{j.description}</div>
+                </td>
+                <td className="mono">{j.schedule ?? <span className="muted">manual</span>}</td>
+                <td>
+                  {j.last_run
+                    ? <><StatusBadge status={j.last_run.status} /> <span className="muted">{fmtRelative(j.last_run.started_at)}</span></>
+                    : <span className="muted">never</span>}
+                </td>
+                <td className="muted">{j.next_run ? fmtTime(j.next_run) : '—'}</td>
               </tr>
             ))}
           </tbody>

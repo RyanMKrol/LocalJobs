@@ -34,7 +34,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
 
   return (
     <>
-      <p className="muted"><a href="/jobs">← Jobs</a></p>
+      <p className="muted"><a href="/pipelines">← Pipelines</a></p>
       <div className="row">
         <h1 style={{ margin: 0 }}>{name}</h1>
         <div className="spacer" />
