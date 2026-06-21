@@ -121,6 +121,12 @@ export interface ServiceDefinition {
   description?: string;
   /** Throttle: max calls per rolling 60s. Omit for no rate throttle. */
   ratePerMinute?: number;
+  /** Minimum gap between consecutive calls (ms) — fixed spacing for things that
+   *  must not burst (e.g. a scrape behind Cloudflare). Takes precedence over
+   *  ratePerMinute when set. */
+  minIntervalMs?: number;
+  /** Optional extra random delay (0..maxJitterMs) added after the min-interval. */
+  maxJitterMs?: number;
   /** Quota: max calls per calendar day. Omit for no daily cap. */
   dailyCap?: number;
   /** Quota: max calls per calendar month. Omit for no monthly cap. */

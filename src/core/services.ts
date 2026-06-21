@@ -2,6 +2,7 @@ import {
   recordServiceCall,
   serviceCallsThisMonth,
   serviceCallsToday,
+  tryReserveMinInterval,
   tryReserveServiceSlot,
 } from '../db/store.js';
 import { getServiceDefinition } from '../jobs/registry.js';
@@ -54,6 +55,23 @@ export async function callService<T>(
   if (def.dailyCap != null) {
     const d = serviceCallsToday(name);
     if (d >= def.dailyCap) throw new QuotaExceededError(name, 'daily', d, def.dailyCap);
+  }
+
+  // ── fixed spacing (min-interval) → throttle; takes precedence over rate ──
+  if (def.minIntervalMs != null && def.minIntervalMs > 0) {
+    const start = Date.now();
+    const maxWait = opts.maxWaitMs ?? 300_000;
+    let waited = false;
+    while (!tryReserveMinInterval(name, def.minIntervalMs)) {
+      if (Date.now() - start > maxWait) {
+        throw new Error(`service "${name}" min-interval: no slot after ${Math.round(maxWait / 1000)}s`);
+      }
+      waited = true;
+      await sleep(1000);
+    }
+    if (def.maxJitterMs && def.maxJitterMs > 0) await sleep(Math.floor(Math.random() * def.maxJitterMs));
+    if (waited) opts.onThrottle?.(Date.now() - start);
+    return fn();
   }
 
   // ── per-minute rate → throttle (the reservation records the usage row) ──

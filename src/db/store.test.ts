@@ -5,7 +5,7 @@ import {
   addPipelineLog, createPipelineRun, createRun, finishPipelineRun, finishRun, getPipeline,
   getPipelineJobs, getPipelineLogs, getPipelineRun, hasActivePipelineRun, listRunsForPipelineRun,
   listServices, pipelineRetryableCount, reapOrphanPipelineRuns, recordServiceCall, recordSkippedRun,
-  serviceCallsToday, syncJob, syncPipeline, syncService, tryReserveServiceSlot,
+  serviceCallsToday, syncJob, syncPipeline, syncService, tryReserveMinInterval, tryReserveServiceSlot,
 } from './store.js';
 
 // member jobs must exist (runs.job_name FK → jobs.name)
@@ -50,5 +50,9 @@ assert.equal(serviceCallsToday('t-svc'), 1);
 assert.equal(tryReserveServiceSlot('t-rate', 2), true);
 assert.equal(tryReserveServiceSlot('t-rate', 2), true);
 assert.equal(tryReserveServiceSlot('t-rate', 2), false); // rate of 2/min exhausted
+
+// min-interval (fixed spacing) reservation
+assert.equal(tryReserveMinInterval('t-mi', 10_000), true); // no prior call
+assert.equal(tryReserveMinInterval('t-mi', 10_000), false); // <10s since last call
 
 console.log('  ✓ store pipeline + service helpers');

@@ -503,3 +503,24 @@ const _reserveSlotTx = db.transaction((service: string, ratePerMinute: number): 
 export function tryReserveServiceSlot(service: string, ratePerMinute: number): boolean {
   return _reserveSlotTx.immediate(service, ratePerMinute) as boolean;
 }
+
+const _maxGapMs = db.prepare(
+  "SELECT (julianday('now') - julianday(MAX(ts))) * 86400000 AS gap FROM service_usage WHERE service = ?",
+);
+const _reserveIntervalTx = db.transaction((service: string, minIntervalMs: number): boolean => {
+  const row = _maxGapMs.get(service) as { gap: number | null };
+  if (row.gap !== null && row.gap < minIntervalMs) return false;
+  _insertServiceUsage.run(service);
+  return true;
+});
+
+/**
+ * Atomically reserve a slot that enforces a MINIMUM GAP since the service's last
+ * call (fixed spacing, not a burst-y rate). Returns true if at least
+ * `minIntervalMs` has elapsed since the last recorded call (and records this one),
+ * false if the caller should wait + retry. Single IMMEDIATE transaction so
+ * concurrent job processes can't both slip through.
+ */
+export function tryReserveMinInterval(service: string, minIntervalMs: number): boolean {
+  return _reserveIntervalTx.immediate(service, minIntervalMs) as boolean;
+}
