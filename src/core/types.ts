@@ -73,6 +73,14 @@ export interface JobDefinition {
    * `key` (the consumer side of the stage gate).
    */
   consumes?: ArtifactContract[];
+  /**
+   * Optional: the set of item keys (the `itemKey`s used with the work_items
+   * ledger) currently present in this job's input. Used ONLY by the MANUAL
+   * prune feature to find orphaned ledger rows — work_items whose key is no
+   * longer in the input (e.g. after source ids are corrected). Nothing in the
+   * run/schedule path ever calls this; pruning is never automatic.
+   */
+  inputKeys?(): string[] | Promise<string[]>;
   run(ctx: JobContext): Promise<void>;
 }
 

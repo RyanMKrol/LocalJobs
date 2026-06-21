@@ -207,6 +207,17 @@ doubt, log it.
   (resolver by CID, enrich + LLM by place_id); the rich output still goes to the
   job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
   "skip if it's in the JSON file" checks.
+  - **Pruning orphaned ledger rows (manual only).** When a job's input keys
+    change (e.g. a source id is corrected), the old keys leave orphaned
+    `work_items` behind. A job can expose its current input key-set via an
+    optional `inputKeys()` on its `JobDefinition`; a **manual** prune
+    (`POST /api/jobs/:name/prune`, or `pruneOrphanedWorkItems`/`orphanedWorkItems`
+    in `store.ts`) then removes ledger rows whose key is no longer in that set and
+    reports exactly what it removed. This is **never automatic** — nothing in the
+    run/schedule path calls it. The API accepts an explicit `{ keys: [...] }`
+    (used when a job has no `inputKeys()`), a `{ dryRun: true }` preview, and
+    refuses an empty current set unless `{ force: true }` (an empty set would
+    orphan every row — a guard against a misbehaving `inputKeys()`).
 - **Spend / usage caps.** For jobs that make metered external calls (paid APIs),
   enforce per-day AND per-month caps via the `job_usage` meter in `src/db/store.ts`
   (`recordUsage`, `capStatus`). Call `recordUsage(jobName)` once per real action;

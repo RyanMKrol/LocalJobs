@@ -3,10 +3,11 @@
 import assert from 'node:assert/strict';
 import {
   addPipelineLog, backfillServiceUsage, createPipelineRun, createRun, finishPipelineRun, finishRun,
-  getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, hasActivePipelineRun,
-  listRunsForPipelineRun, listServices, pipelineRetryableCount, reapOrphanPipelineRuns,
-  recordServiceCall, recordSkippedRun, recordUsage, serviceCallsThisMonth, serviceCallsToday,
-  syncJob, syncPipeline, syncService, tryReserveMinInterval, tryReserveServiceSlot, usageThisMonth,
+  getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, getWorkItem, hasActivePipelineRun,
+  listRunsForPipelineRun, listServices, markWorkItem, orphanedWorkItems, pipelineRetryableCount,
+  pruneOrphanedWorkItems, reapOrphanPipelineRuns, recordServiceCall, recordSkippedRun, recordUsage,
+  serviceCallsThisMonth, serviceCallsToday, syncJob, syncPipeline, syncService, tryReserveMinInterval,
+  tryReserveServiceSlot, usageThisMonth,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 
@@ -107,3 +108,41 @@ console.log('  ✓ backfillServiceUsage idempotent top-up (no double-count)');
   assert.equal(serviceCallsThisMonth('t-quota'), 2, 'no usage recorded past the cap');
 }
 console.log('  ✓ QuotaExceededError soft-fail stops the loop (service quota is sole governor)');
+
+// ── pruneOrphanedWorkItems: manual prune of orphaned ledger rows (T014) ──
+// The case that orphaned the old-id perfume rows: ledger keys that are no
+// longer in the job's current input must be removable manually, while keys
+// still in the input are kept.
+{
+  syncJob({ name: 't-prune', run: async () => {} });
+  markWorkItem('t-prune', 'keep-1', 'success');
+  markWorkItem('t-prune', 'keep-2', 'failed', { attempts: 4 });
+  markWorkItem('t-prune', 'orphan-1', 'success');
+  markWorkItem('t-prune', 'orphan-2', 'failed', { attempts: 2 });
+  const current = ['keep-1', 'keep-2'];
+
+  // preview surfaces only the orphans and modifies nothing
+  const preview = orphanedWorkItems('t-prune', current);
+  assert.deepEqual(preview.map((r) => r.item_key), ['orphan-1', 'orphan-2']);
+  assert.ok(getWorkItem('t-prune', 'orphan-1'), 'preview did not delete');
+
+  // prune removes the orphans, returns exactly what it removed, keeps current
+  const removed = pruneOrphanedWorkItems('t-prune', current);
+  assert.deepEqual(removed.map((r) => r.item_key), ['orphan-1', 'orphan-2']);
+  assert.equal(getWorkItem('t-prune', 'orphan-1'), undefined, 'orphan removed');
+  assert.equal(getWorkItem('t-prune', 'orphan-2'), undefined, 'orphan removed');
+  assert.ok(getWorkItem('t-prune', 'keep-1'), 'current item kept');
+  assert.ok(getWorkItem('t-prune', 'keep-2'), 'current item kept');
+
+  // idempotent: a second prune with the same current set is a no-op
+  assert.deepEqual(pruneOrphanedWorkItems('t-prune', current), []);
+
+  // a Set works as the current-input set, and a key not in the ledger is harmless
+  assert.deepEqual(orphanedWorkItems('t-prune', new Set(['keep-1', 'keep-2', 'never-existed'])), []);
+
+  // an empty current set orphans everything (the API guards this; the store obeys)
+  const wiped = pruneOrphanedWorkItems('t-prune', []);
+  assert.deepEqual(wiped.map((r) => r.item_key), ['keep-1', 'keep-2']);
+  assert.equal(getWorkItem('t-prune', 'keep-1'), undefined, 'empty set pruned all');
+}
+console.log('  ✓ pruneOrphanedWorkItems removes orphaned keys, keeps current (manual prune)');

@@ -137,4 +137,18 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Revisit:* if cross-month accuracy ever matters, extend the backfill to walk
   per-month buckets instead of just the current month.
 
+- **Orphaned ledger prune is manual and full-scan, not incremental.** T014 added
+  a manual prune (`POST /api/jobs/:name/prune`, `pruneOrphanedWorkItems` in
+  `store.ts`) that removes `work_items` whose `item_key` is no longer in a job's
+  current input set. It is deliberately **never automatic** — a scheduled run that
+  transiently sees a truncated/empty input could otherwise wipe a valid ledger, so
+  the human pulls the trigger. Trade-offs: (a) the job must expose `inputKeys()`
+  *or* the caller passes an explicit `{ keys: [...] }`; jobs without either can't
+  be pruned through `inputKeys()`. (b) An empty current set would orphan every row,
+  so the API refuses it unless `{ force: true }`. (c) It scans the job's full
+  `work_items` set in memory to diff against the key set — fine at the current
+  scale (thousands of rows), not built for millions.
+  *Revisit:* if a job legitimately needs auto-prune, add an opt-in guard (min-size
+  / change-ratio sanity check) rather than running it on every schedule.
+
 > Add further project trade-offs below as they arise.

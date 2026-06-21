@@ -248,6 +248,41 @@ export function unstickWorkItem(jobName: string, itemKey: string): number {
     .run(jobName, itemKey).changes;
 }
 
+/** A ledger row identified for / removed by a manual prune. */
+export interface PrunedWorkItem {
+  item_key: string;
+  status: WorkStatus;
+  attempts: number;
+}
+
+/**
+ * Ledger rows for a job whose `item_key` is NOT in the given current-input set
+ * — i.e. orphans left behind when the input changed (e.g. a source id was
+ * corrected). Read-only preview for the manual prune; modifies nothing.
+ */
+export function orphanedWorkItems(jobName: string, currentKeys: Iterable<string>): PrunedWorkItem[] {
+  const keep = new Set(currentKeys);
+  const rows = db.prepare('SELECT item_key, status, attempts FROM work_items WHERE job_name = ? ORDER BY item_key')
+    .all(jobName) as PrunedWorkItem[];
+  return rows.filter((r) => !keep.has(r.item_key));
+}
+
+/**
+ * Delete the job's ledger rows whose `item_key` is absent from the current
+ * input set, keeping the current ones untouched. Returns the removed rows so
+ * the caller can surface exactly what was pruned. MANUAL ONLY — never invoked
+ * from the run/schedule path. An empty `currentKeys` would orphan everything;
+ * the caller is responsible for that being intentional (the API guards it).
+ */
+export function pruneOrphanedWorkItems(jobName: string, currentKeys: Iterable<string>): PrunedWorkItem[] {
+  const orphans = orphanedWorkItems(jobName, currentKeys);
+  if (orphans.length === 0) return [];
+  const del = db.prepare('DELETE FROM work_items WHERE job_name = ? AND item_key = ?');
+  const tx = db.transaction((rows: PrunedWorkItem[]) => { for (const r of rows) del.run(jobName, r.item_key); });
+  tx(orphans);
+  return orphans;
+}
+
 /** How many items have given up for one job (failed, out of retries). */
 export function stuckCount(jobName: string, minAttempts = 4): number {
   return (db.prepare(

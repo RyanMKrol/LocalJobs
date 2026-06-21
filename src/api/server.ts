@@ -21,6 +21,8 @@ import {
   listRunsForJob,
   listRunsForPipelineRun,
   listServices,
+  orphanedWorkItems,
+  pruneOrphanedWorkItems,
   serviceCallsInLastSeconds,
   serviceCallsThisMonth,
   serviceCallsToday,
@@ -152,6 +154,38 @@ export function startApi(): void {
         // Fire-and-forget: respond immediately, run happens in the daemon.
         runJob(def, 'manual').catch((e) => console.error('[api] run error', e));
         return json(res, 202, { ok: true, message: 'run started' });
+      }
+
+      // POST /api/jobs/:name/prune  { keys?: string[], dryRun?: boolean, force?: boolean }
+      // MANUAL-ONLY: remove work_items whose item_key is no longer in the job's
+      // current input set (orphans from a corrected id). The current set comes
+      // from the request `keys`, else the job's inputKeys(). `dryRun` previews
+      // what WOULD be removed. An empty current set (which would orphan EVERY
+      // ledger row) is refused unless `force` is set, to defend against a
+      // misbehaving inputKeys(). Never triggered automatically.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'jobs' && parts[3] === 'prune') {
+        const jobName = parts[2];
+        const def = getJobDefinition(jobName);
+        const body = await readBody(req);
+        let keys: string[] | undefined;
+        if (Array.isArray(body.keys)) keys = body.keys.map(String);
+        else if (def?.inputKeys) keys = await def.inputKeys();
+        if (!keys) {
+          return json(res, 400, {
+            error: 'no current input key-set: provide { keys: [...] } or define inputKeys() on the job',
+          });
+        }
+        if (keys.length === 0 && !body.force) {
+          return json(res, 400, {
+            error: 'current input set is empty — this would prune ALL work_items for the job; pass { force: true } if intended',
+          });
+        }
+        if (body.dryRun) {
+          return json(res, 200, { ok: true, dryRun: true, job: jobName, orphaned: orphanedWorkItems(jobName, keys) });
+        }
+        const removed = pruneOrphanedWorkItems(jobName, keys);
+        console.log(`[api] prune ${jobName}: removed ${removed.length} orphaned work_item(s)`);
+        return json(res, 200, { ok: true, job: jobName, removed });
       }
 
       // POST /api/jobs/:name/toggle  { enabled: boolean }
