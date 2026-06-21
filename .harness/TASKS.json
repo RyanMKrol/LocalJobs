@@ -67,7 +67,7 @@
     {
       "id": "T003",
       "title": "Publish the places job code",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T001"
       ],
