@@ -121,7 +121,7 @@
     {
       "id": "T005",
       "title": "Unit tests for the framework core",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T001"
       ],
