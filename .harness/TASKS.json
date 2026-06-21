@@ -639,7 +639,7 @@
     {
       "id": "T026",
       "title": "Docs audit — end-state sweep of README + CLAUDE.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T001",
         "T002",
