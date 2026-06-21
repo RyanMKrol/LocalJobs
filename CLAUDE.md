@@ -201,6 +201,13 @@ doubt, log it.
   `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.
   These are gitignored via `src/jobs/**/data/`.
+- **The repo is self-contained — no absolute paths to other folders on the
+  machine.** A job's config/template/resource files live in-project and are
+  resolved relative to the job dir (`resolve(here, '…')`), never hardcoded to an
+  external repo. Make them env-overridable where a path might legitimately vary
+  (e.g. `PERFUMES_TEMPLATE_PATH` defaults to the in-project
+  `src/jobs/perfumes/profile.template.md`). A bare `/Users/...` in tracked job
+  code is a bug — it leaks the machine's topology and breaks on any other host.
 - **Run the checks on every change** — `npm test` (the unit suite) AND
   `npx tsc --noEmit` (daemon typecheck), plus `npm run build` in `dashboard/` for UI
   changes — before declaring done. Keep the suite green; **add unit tests for new
