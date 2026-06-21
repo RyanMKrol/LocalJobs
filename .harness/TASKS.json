@@ -432,7 +432,7 @@
     {
       "id": "T018",
       "title": "Dashboard: edit service rate limits",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T008"
       ],
