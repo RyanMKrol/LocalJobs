@@ -25,6 +25,13 @@ export const perfumesConfig = {
   modelBuild: process.env.PERFUMES_MODEL_BUILD ?? 'claude-opus-4-8',
   claudeTimeoutMs: Number(process.env.PERFUMES_CLAUDE_TIMEOUT_MS ?? 300_000), // 5 min/call
 
+  // ── Fragrantica vs LLM confidence blend (sample-size weighting) ──
+  // The build stage down-weights low-vote-count Fragrantica community signal
+  // against the LLM's own web research via a continuous weight votes/(votes+k).
+  // By default k is calibrated to the scraped corpus's MEDIAN vote count (so the
+  // median perfume sits at weight 0.5); set this to pin k to a fixed value.
+  confidenceK: process.env.PERFUMES_CONFIDENCE_K ? Number(process.env.PERFUMES_CONFIDENCE_K) : null,
+
   // ── per-item retry budget (mirrors the other pipelines) ──
   maxAttempts: Number(process.env.PERFUMES_MAX_ATTEMPTS ?? 4),
   /** Per-run cap for a single stage (0 = no cap). */

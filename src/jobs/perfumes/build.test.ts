@@ -4,7 +4,14 @@
 // parse-side normalization (empty stays explicitly empty arrays) and the
 // build-prompt clause that branches empty vs. populated.
 import assert from 'node:assert/strict';
-import { notesMappingClause } from './build.js';
+import {
+  confidenceClause,
+  confidenceWeight,
+  DEFAULT_CONFIDENCE_K,
+  notesMappingClause,
+  voteDistribution,
+  votesFromFragJson,
+} from './build.js';
 import { normalizeNotes, notesEmpty } from './parse.js';
 
 // ── normalizeNotes: canonical shape; entries trimmed; empty stays empty. ──
@@ -56,3 +63,88 @@ import { normalizeNotes, notesEmpty } from './parse.js';
 }
 
 console.log('  ✓ perfumes empty notes-pyramid handled honestly (normalize + build clause)');
+
+// ───────────── Fragrantica vs LLM confidence blend (sample-size weighting) ─────────────
+
+// ── voteDistribution: k is calibrated to the corpus MEDIAN, percentiles sane. ──
+{
+  // Mirrors the real corpus spread: niche houses cluster low, designers high.
+  const corpus = [18, 20, 48, 144, 339, 1080, 1934, 3753, 11965, 21809];
+  const dist = voteDistribution(corpus);
+  assert.equal(dist.count, 10, 'every usable vote count contributes to the corpus');
+  assert.equal(dist.min, 18);
+  assert.equal(dist.max, 21809);
+  // median of the 10-element set = mean of the two middle values (339, 1080) = 709.5 → 710
+  assert.equal(dist.median, 710, 'median is the interpolated middle of the corpus');
+  assert.equal(dist.k, dist.median, 'with no override, k is calibrated to the corpus median');
+  assert.ok(dist.p25 < dist.median && dist.median < dist.p75, 'quartiles bracket the median');
+}
+
+// ── An explicit override pins k; an empty corpus falls back to the default. ──
+{
+  assert.equal(voteDistribution([18, 20, 48], 100).k, 100, 'positive override pins k');
+  assert.equal(voteDistribution([]).k, DEFAULT_CONFIDENCE_K, 'empty corpus → default k');
+  assert.equal(voteDistribution([], 0).k, DEFAULT_CONFIDENCE_K, 'non-positive override ignored');
+}
+
+// ── confidenceWeight: continuous, 0.5 at k, monotonic, 0 with no votes. ──
+{
+  assert.equal(confidenceWeight(100, 100), 0.5, 'weight is exactly 0.5 at votes == k');
+  assert.equal(confidenceWeight(null, 100), 0, 'no votes → zero confidence');
+  assert.equal(confidenceWeight(0, 100), 0, 'zero votes → zero confidence');
+  assert.ok(
+    confidenceWeight(20, 100) < confidenceWeight(2000, 100),
+    'more votes → strictly higher confidence (continuous, sample-size driven)',
+  );
+  assert.ok(confidenceWeight(20, 100) > 0 && confidenceWeight(2000, 100) < 1, 'weight stays in (0,1)');
+}
+
+// ── votesFromFragJson: reads the vote count; null on absent/unparseable. ──
+{
+  assert.equal(votesFromFragJson(JSON.stringify({ votes: 1080 })), 1080);
+  assert.equal(votesFromFragJson(JSON.stringify({ votes: 0 })), null, 'zero votes → null');
+  assert.equal(votesFromFragJson('not-json{'), null, 'unparseable → null');
+}
+
+// ── LOW-SAMPLE vs HIGH-SAMPLE fixtures: assert the RELATIVE weighting. ──
+{
+  const dist = voteDistribution([18, 20, 48, 144, 339, 1080, 1934, 3753, 11965, 21809]);
+
+  // A niche, barely-reviewed perfume (kingdom-scotland-portal had 18 votes).
+  const low = votesFromFragJson(JSON.stringify({ votes: 18 }));
+  // A designer blockbuster (chanel-bleu-de-chanel had 21809 votes).
+  const high = votesFromFragJson(JSON.stringify({ votes: 21809 }));
+
+  const wLow = confidenceWeight(low, dist.k);
+  const wHigh = confidenceWeight(high, dist.k);
+  assert.ok(wLow < wHigh, 'low-sample perfume gets a strictly lower Fragrantica confidence weight');
+  assert.ok(wLow < 0.5 && wHigh > 0.5, 'low sits below half-confidence, high above it');
+
+  const lowClause = confidenceClause(low, dist);
+  const highClause = confidenceClause(high, dist);
+
+  // Both clauses make the weighting explicit and route it into the profile.
+  assert.match(lowClause, /CONFIDENCE IN FRAGRANTICA/, 'clause is labelled');
+  assert.match(lowClause, /Community Sentiment/, 'requires the weighting be stated in the profile');
+  assert.match(highClause, /Community Sentiment/, 'high-sample clause also states it in the profile');
+
+  // Low sample → lean on research; high sample → lean on Fragrantica.
+  assert.match(lowClause, /LOW \(bottom quartile/, 'low-sample perfume flagged LOW vs corpus');
+  assert.match(lowClause, /WEAK low-sample prior/, 'low-sample clause down-weights Fragrantica');
+  assert.match(highClause, /HIGH \(top quartile/, 'high-sample perfume flagged HIGH vs corpus');
+  assert.match(highClause, /Lean ON the Fragrantica community data/, 'high-sample clause trusts Fragrantica');
+
+  // The numeric blend in the prose reflects the relative weighting.
+  const blendPct = (clause: string): number => {
+    const m = clause.match(/≈ (\d+)% Fragrantica/);
+    assert.ok(m, 'clause states a Fragrantica blend percentage');
+    return Number(m[1]);
+  };
+  assert.ok(
+    blendPct(lowClause) < blendPct(highClause),
+    'the low-sample blend leans less on Fragrantica than the high-sample blend',
+  );
+  assert.ok(blendPct(lowClause) < 50 && blendPct(highClause) > 50, 'blend crosses 50% across the samples');
+}
+
+console.log('  ✓ perfumes Fragrantica-vs-LLM confidence blend weights by corpus-calibrated sample size');

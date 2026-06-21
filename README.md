@@ -211,7 +211,13 @@ is lifted from the cached page HTML's coloured-bar width when an `<id>.html` is
 present; an empty notes pyramid is normalized to explicitly-empty tiers, never
 guessed) → `perfumes-build` (research + write a markdown profile from the
 in-project `profile.template.md` — when Fragrantica gave no notes, the build
-prompt keeps the notes empty and says so rather than fabricating a pyramid). It shares the
+prompt keeps the notes empty and says so rather than fabricating a pyramid; and
+the subjective community fields are blended against the LLM's own web research by
+a **continuous sample-size confidence weight** `votes/(votes+k)`, where `k` is
+calibrated to the scraped corpus's median vote count, so a niche house's
+low-vote signal is down-weighted while a designer blockbuster's is trusted — the
+chosen weighting is stated explicitly in the built profile, override `k` with
+`PERFUMES_CONFIDENCE_K`). It shares the
 same scheduling/visibility/alerting, the per-item work ledger, and `repeatUntilStable`
 cycling. Its `data/` (the scraped inputs, generated markdown, and the Chrome
 profile) stays gitignored — only the code is published. It drives the local

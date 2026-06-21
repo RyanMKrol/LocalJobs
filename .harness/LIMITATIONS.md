@@ -100,4 +100,26 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   alongside `<id>.txt` so the whole library carries accord strengths (out of T009's
   scope — `fetch.ts` was not in scope).
 
+- **Fragrantica-vs-LLM confidence weighting is prompt-enforced, not post-checked.**
+  `perfumes-build` computes a continuous sample-size confidence weight
+  `votes/(votes+k)` (k = corpus-median votes) and feeds the blend + an explicit
+  "state this in the profile" directive into the build prompt
+  (`confidenceClause` in `src/jobs/perfumes/build.ts`). The math, calibration,
+  and clause wording are unit-tested against low- and high-sample fixtures, but
+  the *actual* blend in the written markdown depends on the LLM honouring the
+  directive — there's no post-build validator that re-reads the profile and
+  asserts the stated confidence matches the votes (that would need either a live
+  build or a parser over the generated prose).
+  *Revisit:* add a cheap post-build check that the Community Sentiment section
+  contains the expected "Community-signal confidence: NN%" line and that NN
+  tracks the vote count, failing the run loud if the LLM dropped it.
+
+- **Confidence calibration is a snapshot of the currently-scraped corpus.** `k`
+  is the median vote count over whatever `data/out/fragrantica/*.json` exists at
+  build time, so the same perfume can get a slightly different weight as the
+  library grows and the median shifts. This is intended (high vs low is relative
+  to *this* ecosystem), but it means a profile's stated confidence isn't stable
+  across re-runs spanning corpus changes. Pin `PERFUMES_CONFIDENCE_K` for a fixed
+  reference point if that matters.
+
 > Add further project trade-offs below as they arise.
