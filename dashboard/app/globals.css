@@ -73,7 +73,9 @@ tbody tr:hover { background: var(--panel-2); }
 .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
 
 .statcards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 8px; }
-.statcard { padding: 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+.statcard { padding: 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); text-align: left; cursor: pointer; font: inherit; color: inherit; transition: border-color .15s, box-shadow .15s; }
+.statcard:hover { border-color: var(--accent); }
+.statcard.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
 .statcard .n { font-size: 28px; font-weight: 700; }
 .statcard .l { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 

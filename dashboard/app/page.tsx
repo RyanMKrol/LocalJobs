@@ -1,7 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { api } from './lib/api';
 import { ProgressBar, StatusBadge, fmtDuration, fmtRelative, usePoll } from './ui';
+
+type Filter = 'running' | 'success' | 'failed' | 'stuck' | null;
 
 export default function Overview() {
   const { data, error } = usePoll(() => api.recentRuns(100), 2000);
@@ -12,6 +15,12 @@ export default function Overview() {
   const stuck = stuckData?.stuck ?? [];
   const pipelines = pipeData?.pipelines ?? [];
   const pipelineRuns = pipeRunData?.runs ?? [];
+
+  const [activeFilter, setActiveFilter] = useState<Filter>(null);
+
+  function toggleFilter(f: Filter) {
+    setActiveFilter((prev) => (prev === f ? null : f));
+  }
 
   async function unstick(job: string, key: string) {
     try { await api.unstick(job, key); } catch { /* next poll reflects reality */ }
@@ -31,25 +40,83 @@ export default function Overview() {
     total: runs.length,
   };
 
+  // Apply filter to pipeline cards and pipeline runs table
+  const visiblePipelines = activeFilter == null ? pipelines : pipelines.filter((p) => {
+    if (activeFilter === 'running') return p.last_run?.status === 'running';
+    if (activeFilter === 'success') return p.last_run?.status === 'success';
+    if (activeFilter === 'failed') return ['failed', 'partial', 'cancelled'].includes(p.last_run?.status ?? '');
+    if (activeFilter === 'stuck') return p.stuck > 0;
+    return true;
+  });
+
+  const visiblePipelineRuns = activeFilter == null || activeFilter === 'stuck' ? pipelineRuns : pipelineRuns.filter((r) => {
+    if (activeFilter === 'running') return r.status === 'running';
+    if (activeFilter === 'success') return r.status === 'success';
+    if (activeFilter === 'failed') return ['failed', 'partial', 'cancelled'].includes(r.status);
+    return true;
+  });
+
+  const visibleStuck = activeFilter == null || activeFilter === 'stuck' ? stuck : [];
+
+  const filterLabels: Record<NonNullable<Filter>, string> = {
+    running: 'Running',
+    success: 'Succeeded',
+    failed: 'Failed',
+    stuck: 'Stuck items',
+  };
+
   return (
     <>
       <h1>Overview</h1>
       <p className="sub">Recent activity across all jobs. Auto-refreshes every 2s.</p>
       {error && <p className="muted">⚠ Cannot reach daemon at the API ({error}). Is it running?</p>}
 
+      {activeFilter && (
+        <p className="muted" style={{ marginBottom: 8 }}>
+          Filtering: <strong>{filterLabels[activeFilter]}</strong>{' '}
+          <button className="btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setActiveFilter(null)}>× clear</button>
+        </p>
+      )}
+
       <div className="statcards">
-        <div className="statcard"><div className="n">{counts.running}</div><div className="l">Running</div></div>
-        <div className="statcard"><div className="n" style={{ color: 'var(--green)' }}>{counts.success}</div><div className="l">Succeeded</div></div>
-        <div className="statcard"><div className="n" style={{ color: 'var(--red)' }}>{counts.failed}</div><div className="l">Failed runs</div></div>
-        <div className="statcard"><div className="n" style={{ color: stuck.length ? 'var(--red)' : undefined }}>{stuck.length}</div><div className="l">Stuck items</div></div>
+        <button
+          className={`statcard${activeFilter === 'running' ? ' active' : ''}`}
+          onClick={() => toggleFilter('running')}
+          title="Click to filter by running"
+        >
+          <div className="n">{counts.running}</div><div className="l">Running</div>
+        </button>
+        <button
+          className={`statcard${activeFilter === 'success' ? ' active' : ''}`}
+          onClick={() => toggleFilter('success')}
+          title="Click to filter by succeeded"
+        >
+          <div className="n" style={{ color: 'var(--green)' }}>{counts.success}</div><div className="l">Succeeded</div>
+        </button>
+        <button
+          className={`statcard${activeFilter === 'failed' ? ' active' : ''}`}
+          onClick={() => toggleFilter('failed')}
+          title="Click to filter by failed"
+        >
+          <div className="n" style={{ color: 'var(--red)' }}>{counts.failed}</div><div className="l">Failed runs</div>
+        </button>
+        <button
+          className={`statcard${activeFilter === 'stuck' ? ' active' : ''}`}
+          onClick={() => toggleFilter('stuck')}
+          title="Click to filter by stuck"
+        >
+          <div className="n" style={{ color: stuck.length ? 'var(--red)' : undefined }}>{stuck.length}</div><div className="l">Stuck items</div>
+        </button>
       </div>
 
       <h2>Pipelines</h2>
       <div className="grid cards" style={{ marginBottom: 8 }}>
-        {pipelines.length === 0 && (
-          <div className="panel" style={{ padding: 16 }}><span className="muted">No pipelines yet.</span></div>
+        {visiblePipelines.length === 0 && (
+          <div className="panel" style={{ padding: 16 }}>
+            <span className="muted">{activeFilter ? 'No pipelines match the current filter.' : 'No pipelines yet.'}</span>
+          </div>
         )}
-        {pipelines.map((p) => (
+        {visiblePipelines.map((p) => (
           <div key={p.name} className="panel" style={{ padding: 16 }}>
             <div className="row">
               <a href={`/pipelines/${p.name}`}><strong>{p.name}</strong></a>
@@ -74,10 +141,14 @@ export default function Overview() {
             <tr><th>Item</th><th>Job</th><th>Attempts</th><th>Reason</th><th>When</th><th></th></tr>
           </thead>
           <tbody>
-            {stuck.length === 0 && (
-              <tr><td colSpan={6} className="muted">Nothing stuck — every item either succeeded or is still retrying. ✓</td></tr>
+            {visibleStuck.length === 0 && (
+              <tr><td colSpan={6} className="muted">
+                {activeFilter && activeFilter !== 'stuck' && stuck.length > 0
+                  ? 'Stuck items hidden by current filter.'
+                  : 'Nothing stuck — every item either succeeded or is still retrying. ✓'}
+              </td></tr>
             )}
-            {stuck.map((s) => (
+            {visibleStuck.map((s) => (
               <tr key={`${s.job_name}:${s.item_key}`}>
                 <td>{s.detail?.name ?? <span className="mono">{s.item_key}</span>}</td>
                 <td><a href={`/jobs/${s.job_name}`}>{s.job_name}</a></td>
@@ -101,10 +172,14 @@ export default function Overview() {
             <tr><th>Pipeline</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th></th></tr>
           </thead>
           <tbody>
-            {pipelineRuns.length === 0 && (
-              <tr><td colSpan={6} className="muted">No pipeline runs yet — trigger one from a pipeline card above.</td></tr>
+            {visiblePipelineRuns.length === 0 && (
+              <tr><td colSpan={6} className="muted">
+                {activeFilter && pipelineRuns.length > 0
+                  ? 'No pipeline runs match the current filter.'
+                  : 'No pipeline runs yet — trigger one from a pipeline card above.'}
+              </td></tr>
             )}
-            {pipelineRuns.map((r) => (
+            {visiblePipelineRuns.map((r) => (
               <tr key={r.id}>
                 <td><a href={`/pipelines/${r.pipeline_name}`}>{r.pipeline_name}</a></td>
                 <td><span className={`badge ${r.status}`}>{r.status}</span></td>
