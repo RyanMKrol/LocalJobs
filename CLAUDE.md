@@ -212,7 +212,10 @@ doubt, log it.
   (`recordUsage`, `capStatus`). Call `recordUsage(jobName)` once per real action;
   check `capStatus(jobName, dailyCap, monthlyCap)` in the loop and stop gracefully
   when `!allowed`. Convention: daily cap = monthly cap / 10 (so manual re-runs
-  don't blow the month). Caps live in the job's config, env-overridable.
+  don't blow the month) — but a **daily-scheduled** job/pipeline must use daily =
+  monthly / 30, so a full month of daily runs exactly fits the monthly ceiling and
+  a single day's run can never blow it (see the places pipeline's
+  `DAILY_SPEND_DIVISOR`). Caps live in the job's config, env-overridable.
 - **Services (cross-job shared APIs).** For an external dependency called from
   multiple jobs (e.g. Gemini, Google Places, Fragrantica, Claude CLI), define a
   `ServiceDefinition` in a `*.service.ts` file and call the API through

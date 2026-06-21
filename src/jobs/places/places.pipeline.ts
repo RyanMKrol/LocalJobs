@@ -8,17 +8,18 @@ import type { PipelineDefinition } from '../../core/types.js';
  * Serial (maxConcurrency 1): the resolver uses a headless browser and the last
  * two stages hit PAID APIs (Google Places, Gemini) — they must not overlap, and
  * their per-day/month caps gate progress. Single pass (no repeatUntilStable):
- * a scheduled/manual run processes whatever's ready; capped or transiently-failed
+ * a scheduled run processes whatever's ready; capped or transiently-failed
  * items are picked up on the next run (idempotent via the ledger).
  *
- * NOTE: schedule is null (manual) on purpose — the last two stages cost money, so
- * the cadence is a deliberate choice. Set a schedule when ready (the old per-job
- * crons are suppressed now that these jobs are pipeline members).
+ * Runs DAILY at 03:00 (the old per-job crons are suppressed now that these jobs
+ * are pipeline members). The cost of the paid stages is bounded by the per-stage
+ * daily spend cap (= monthly free allowance / 30, see config.ts DAILY_SPEND_DIVISOR),
+ * so a daily run drains the backlog steadily and can never blow the month.
  */
 const pipeline: PipelineDefinition = {
   name: 'places',
   description: 'Ingest Takeout → resolve CID→place_id → enrich (Places API) → enrich with LLM (Gemini).',
-  schedule: null,
+  schedule: '0 3 * * *',
   maxConcurrency: 1,
   repeatUntilStable: false,
   jobs: [

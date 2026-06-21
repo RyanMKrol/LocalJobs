@@ -189,7 +189,10 @@ under `src/jobs/places/`, chaining four jobs (the `places` pipeline runs them in
 order): `places-ingest` (parse saved-place CSVs) → `cid-to-place-id-resolver`
 (headless CID→place_id) → `places-enrich` (Google Places API) → `enrich-with-llm`
 (Gemini summaries → markdown). It reuses the same scheduling/visibility/alerting,
-the per-item work ledger, and the spend caps. Its `data/` (inputs + outputs)
+the per-item work ledger, and the spend caps. It runs **daily at 03:00**; because
+both paid stages are metered, each one's daily cap defaults to its monthly free
+allowance / 30 (`DAILY_SPEND_DIVISOR` in `config.ts`) so a daily run drains the
+backlog steadily and can never blow the month. Its `data/` (inputs + outputs)
 stays gitignored — only the code is published. It needs `GOOGLE_MAPS_API_KEY`
 and `GEMINI_API_KEY` in `.env`; see the job's `config.ts` for the full env list
 (rate limits, spend caps, dry-run toggles).
