@@ -589,7 +589,7 @@
     {
       "id": "T024",
       "title": "Remote-accessible dashboard via Tailscale",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T023"
       ],
