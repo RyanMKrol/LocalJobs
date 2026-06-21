@@ -1,16 +1,30 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { config } from '../config.js';
 import { runJob } from '../core/executor.js';
-import { nextRun } from '../core/scheduler.js';
-import { getJobDefinition } from '../jobs/registry.js';
+import { runPipeline } from '../core/pipeline-executor.js';
+import { nextPipelineRun, nextRun } from '../core/scheduler.js';
+import { getJobDefinition, getPipelineDefinition } from '../jobs/registry.js';
 import {
   getLogs,
+  getPipeline,
+  getPipelineJobs,
+  getPipelineLogs,
+  getPipelineRun,
   getRun,
+  lastPipelineRunForPipeline,
   lastRunForJob,
   listJobs,
+  listPipelineRunsForPipeline,
+  listPipelines,
   listRecentRuns,
   listRunsForJob,
+  listRunsForPipelineRun,
+  listServices,
+  serviceCallsInLastSeconds,
+  serviceCallsThisMonth,
+  serviceCallsToday,
   setJobEnabled,
+  setPipelineEnabled,
   stuckCount,
   stuckItems,
   unstickWorkItem,
@@ -48,6 +62,24 @@ function jobView(name: string) {
     instructions: def?.instructions ?? null,
     stuck: stuckCount(name),
   };
+}
+
+/** Decorate a pipeline with its last/next run, member jobs+edges, and total stuck. */
+function pipelineView(name: string) {
+  const members = getPipelineJobs(name);
+  return {
+    last_run: lastPipelineRunForPipeline(name) ?? null,
+    next_run: nextPipelineRun(name),
+    jobs: members,
+    stuck: members.reduce((sum, m) => sum + stuckCount(m.job_name), 0),
+  };
+}
+
+/** Map each pipeline member job → its pipeline name (for grouping the jobs list). */
+function memberPipelineMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const p of listPipelines()) for (const m of getPipelineJobs(p.name)) map.set(m.job_name, p.name);
+  return map;
 }
 
 export function startApi(): void {
@@ -93,9 +125,10 @@ export function startApi(): void {
         return json(res, 200, { ok: true, unstuck });
       }
 
-      // GET /api/jobs
+      // GET /api/jobs  (each flagged with its pipeline, if it's a member)
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'jobs' && parts.length === 2) {
-        const rows = listJobs().map((j) => ({ ...j, ...jobView(j.name) }));
+        const memberOf = memberPipelineMap();
+        const rows = listJobs().map((j) => ({ ...j, ...jobView(j.name), pipeline: memberOf.get(j.name) ?? null }));
         return json(res, 200, { jobs: rows });
       }
 
@@ -125,6 +158,58 @@ export function startApi(): void {
         const body = await readBody(req);
         setJobEnabled(parts[2], !!body.enabled);
         return json(res, 200, { ok: true, enabled: !!body.enabled });
+      }
+
+      // GET /api/pipelines
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipelines' && parts.length === 2) {
+        const rows = listPipelines().map((p) => ({ ...p, ...pipelineView(p.name) }));
+        return json(res, 200, { pipelines: rows });
+      }
+
+      // GET /api/pipelines/:name/runs
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipelines' && parts[3] === 'runs') {
+        return json(res, 200, { runs: listPipelineRunsForPipeline(parts[2]) });
+      }
+
+      // GET /api/pipelines/:name
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipelines' && parts.length === 3) {
+        const p = getPipeline(parts[2]);
+        if (!p) return json(res, 404, { error: 'pipeline not found' });
+        return json(res, 200, { pipeline: { ...p, ...pipelineView(p.name), runs: listPipelineRunsForPipeline(p.name, 20) } });
+      }
+
+      // POST /api/pipelines/:name/run
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'pipelines' && parts[3] === 'run') {
+        const def = getPipelineDefinition(parts[2]);
+        if (!def) return json(res, 404, { error: 'pipeline not found' });
+        runPipeline(def, 'manual').catch((e) => console.error('[api] pipeline run error', e));
+        return json(res, 202, { ok: true, message: 'pipeline run started' });
+      }
+
+      // POST /api/pipelines/:name/toggle  { enabled }
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'pipelines' && parts[3] === 'toggle') {
+        const body = await readBody(req);
+        setPipelineEnabled(parts[2], !!body.enabled);
+        return json(res, 200, { ok: true, enabled: !!body.enabled });
+      }
+
+      // GET /api/pipeline-runs/:id  (+ ?after= for incremental framework logs)
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipeline-runs' && parts.length === 3) {
+        const run = getPipelineRun(parts[2]);
+        if (!run) return json(res, 404, { error: 'pipeline run not found' });
+        const after = Number(url.searchParams.get('after') ?? 0);
+        return json(res, 200, { run, jobs: listRunsForPipelineRun(parts[2]), logs: getPipelineLogs(parts[2], after) });
+      }
+
+      // GET /api/services  (usage vs caps + current per-minute rate)
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'services' && parts.length === 2) {
+        const rows = listServices().map((s) => ({
+          ...s,
+          used_today: serviceCallsToday(s.name),
+          used_month: serviceCallsThisMonth(s.name),
+          rate_last_min: serviceCallsInLastSeconds(s.name, 60),
+        }));
+        return json(res, 200, { services: rows });
       }
 
       return json(res, 404, { error: 'not found' });
