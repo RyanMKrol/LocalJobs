@@ -243,7 +243,7 @@
     {
       "id": "T010",
       "title": "Perfumes: handle empty Fragrantica notes sections in markdown",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T004"
       ],
