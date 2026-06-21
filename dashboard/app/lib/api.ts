@@ -113,6 +113,15 @@ export interface LogLine {
   message: string;
 }
 
+export interface TablePage {
+  table: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -151,4 +160,9 @@ export const api = {
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
+
+  // Read-only DB browser
+  dbTables: () => get<{ tables: string[] }>('/api/db/tables'),
+  dbTable: (name: string, limit = 50, offset = 0) =>
+    get<TablePage>(`/api/db/tables/${name}?limit=${limit}&offset=${offset}`),
 };

@@ -697,3 +697,54 @@ const _reserveIntervalTx = db.transaction((service: string, minIntervalMs: numbe
 export function tryReserveMinInterval(service: string, minIntervalMs: number): boolean {
   return _reserveIntervalTx.immediate(service, minIntervalMs) as boolean;
 }
+
+// ─────────────────── Read-only DB browser (dashboard) ───────────────────
+// A generic, strictly READ-ONLY view of the SQLite tables for ad-hoc browsing
+// from the dashboard, so the local DB can be inspected without building a
+// bespoke query/endpoint per question. There is NO write path here: only SELECT
+// + PRAGMA table_info run, and the table name (which can't be parameterized) is
+// whitelisted against the live schema before it's ever interpolated — so an
+// arbitrary or malicious name can't reach the query.
+
+/** All user-defined table names (excludes SQLite-internal `sqlite_*` tables). */
+export function listDbTables(): string[] {
+  return (
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+      .all() as { name: string }[]
+  ).map((r) => r.name);
+}
+
+/** True iff `name` is a real user table — the guard for every dynamic-table query. */
+function isKnownTable(name: string): boolean {
+  return listDbTables().includes(name);
+}
+
+export interface TablePage {
+  table: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Read one page of rows from a table. READ-ONLY by construction: the table name
+ * is rejected (→ null) unless it's a known table, `limit` is clamped to [1,500],
+ * `offset` is non-negative, and only a plain `SELECT *` runs. Rows are ordered by
+ * `rowid` for stable paging (all tables here are rowid tables).
+ */
+export function browseTable(table: string, limit = 50, offset = 0): TablePage | null {
+  if (!isKnownTable(table)) return null;
+  const lim = Math.max(1, Math.min(500, Math.floor(limit) || 50));
+  const off = Math.max(0, Math.floor(offset) || 0);
+  // Safe to interpolate: `table` is whitelisted above; double-quoted as an identifier.
+  const columns = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map((c) => c.name);
+  const total = (db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number }).n;
+  const rows = db.prepare(`SELECT * FROM "${table}" ORDER BY rowid LIMIT ? OFFSET ?`).all(lim, off) as Record<
+    string,
+    unknown
+  >[];
+  return { table, columns, rows, total, limit: lim, offset: off };
+}

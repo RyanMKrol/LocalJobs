@@ -183,4 +183,19 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Revisit:* if reverting becomes common, add a `DELETE /api/services/:name/limits`
   that clears the flag and re-seeds from the registered def.
 
+- **The read-only DB browser is intentionally minimal.** T019 added a generic
+  table viewer (`/db` page → `GET /api/db/tables[/:name]` → `browseTable` in
+  `store.ts`). It is strictly read-only by construction: only `SELECT`/`PRAGMA`
+  run, the table name is whitelisted against the live schema before any
+  interpolation (so injection / unknown names are rejected → 404), and no
+  write/mutation endpoint exists. Trade-offs: (a) **no arbitrary SQL** and **no
+  per-column filtering/sorting** — you page through whole tables only (ordered by
+  `rowid`, 50 rows/page, `limit` clamped to ≤500). (b) Rows are returned verbatim,
+  so wide JSON `detail` columns are truncated with an ellipsis in the UI (full
+  value in the cell `title`). (c) It reads the daemon's single shared connection
+  in WAL mode, so it's a point-in-time snapshot, not a streaming/transactional
+  view. *Revisit:* if ad-hoc filtering becomes common, add a constrained
+  `WHERE`/`ORDER BY` builder (still parameterized, column names whitelisted) rather
+  than exposing raw SQL.
+
 > Add further project trade-offs below as they arise.

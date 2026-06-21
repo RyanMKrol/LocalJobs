@@ -2,6 +2,7 @@
 // by `npm test` (LOCALJOBS_DB). Self-asserting: throws on failure.
 import assert from 'node:assert/strict';
 import {
+  browseTable, listDbTables,
   addPipelineLog, backfillServiceUsage, createPipelineRun, createRun, finishPipelineRun, finishRun,
   getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, getServiceRow, getWorkItem, hasActivePipelineRun,
   dismissWorkItem, isWorkItemDone,
@@ -254,3 +255,34 @@ console.log('  ✓ service limit override persists + survives code-sync (reconci
   assert.equal(calls, 1, 'the over-quota call never ran fn');
 }
 console.log('  ✓ callService enforces a user limit override over the code default');
+
+// ── read-only DB browser (T019) ──
+// Tables are discovered from the live schema; rows page; unknown/dangerous names
+// are rejected (no write path is reachable).
+{
+  const tables = listDbTables();
+  assert.ok(tables.includes('jobs') && tables.includes('runs') && tables.includes('services'), 'lists real tables');
+  assert.ok(!tables.some((t) => t.startsWith('sqlite_')), 'excludes sqlite-internal tables');
+
+  const page = browseTable('jobs', 2, 0);
+  assert.ok(page, 'browseTable returns a page for a known table');
+  assert.ok(page!.columns.includes('name') && page!.columns.includes('enabled'), 'reports columns');
+  assert.ok(page!.rows.length <= 2 && page!.rows.length <= page!.total, 'respects the limit');
+  assert.equal(page!.limit, 2);
+  assert.equal(page!.offset, 0);
+
+  // paging: a second page starts after the first (no overlap when >1 row exists)
+  const p2 = browseTable('jobs', 1, 1);
+  assert.equal(p2!.offset, 1, 'offset honoured');
+
+  // limit clamped into [1,500]; bad values fall back / clamp
+  assert.equal(browseTable('jobs', 0, 0)!.limit, 50, 'limit 0 → default 50');
+  assert.equal(browseTable('jobs', 9999, 0)!.limit, 500, 'limit clamped to 500');
+  assert.equal(browseTable('jobs', 50, -5)!.offset, 0, 'negative offset clamped to 0');
+
+  // unknown / injection-y names are rejected outright (whitelist guard)
+  assert.equal(browseTable('no_such_table', 10, 0), null, 'unknown table → null');
+  assert.equal(browseTable('jobs; DROP TABLE jobs', 10, 0), null, 'injection attempt → null');
+  assert.equal(browseTable('sqlite_master', 10, 0), null, 'sqlite-internal table not browsable');
+}
+console.log('  ✓ read-only DB browser lists tables + pages rows, rejects unknown/unsafe names');

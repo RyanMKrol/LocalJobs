@@ -176,6 +176,7 @@ data/                  SQLite db + daemon/dashboard logs (gitignored)
 - **Pipeline detail** — ▶ Run now, enable toggle, full run history
 - **Pipeline run detail** — live framework logs, per-stage job outcomes and statuses, overall progress bar (rolled up in real time from member-job progress)
 - **Services** — per-service usage counts vs caps, current per-minute call rate, and **editable rate/quota limits** (override the code default; the override is persisted and preserved across daemon restarts / code-sync — same reconcile as the enabled toggle)
+- **Database** — a strictly **read-only** SQLite table browser: pick a table, page through its rows. Backed by a read-only API path (table names whitelisted against the live schema, only `SELECT` runs) so the local DB can be inspected without building a bespoke query per question. No write/mutation path is exposed.
 
 ## Configuration
 

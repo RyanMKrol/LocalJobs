@@ -5,6 +5,7 @@ import { runPipeline } from '../core/pipeline-executor.js';
 import { nextPipelineRun, nextRun } from '../core/scheduler.js';
 import { getJobDefinition, getPipelineDefinition } from '../jobs/registry.js';
 import {
+  browseTable,
   getLogs,
   getPipeline,
   getPipelineJobs,
@@ -20,6 +21,7 @@ import {
   listRecentRuns,
   listRunsForJob,
   listRunsForPipelineRun,
+  listDbTables,
   listServices,
   orphanedWorkItems,
   pruneOrphanedWorkItems,
@@ -287,6 +289,21 @@ export function startApi(): void {
         if (!updated) return json(res, 404, { error: 'service not found' });
         console.log(`[api] service ${parts[2]} limits updated:`, limits);
         return json(res, 200, { ok: true, service: updated });
+      }
+
+      // GET /api/db/tables — list the SQLite tables (read-only DB browser)
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'db' && parts[2] === 'tables' && parts.length === 3) {
+        return json(res, 200, { tables: listDbTables() });
+      }
+
+      // GET /api/db/tables/:name?limit=&offset= — one page of rows, strictly
+      // read-only (browseTable rejects unknown tables and runs only SELECT).
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'db' && parts[2] === 'tables' && parts.length === 4) {
+        const limit = Number(url.searchParams.get('limit') ?? 50);
+        const offset = Number(url.searchParams.get('offset') ?? 0);
+        const page = browseTable(parts[3], limit, offset);
+        if (!page) return json(res, 404, { error: 'table not found' });
+        return json(res, 200, page);
       }
 
       return json(res, 404, { error: 'not found' });
