@@ -66,15 +66,15 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
           <div className="panel" style={{ borderColor: 'var(--red)' }}>
             <table>
               <thead>
-                <tr><th>Item</th><th>Key</th><th>Attempts</th><th>Reason</th></tr>
+                <tr><th>Item</th><th>Attempts</th><th>Reason</th><th>ID</th></tr>
               </thead>
               <tbody>
                 {stuck.map((s) => (
                   <tr key={s.item_key}>
-                    <td>{s.detail?.name ?? '—'}</td>
-                    <td className="mono">{s.item_key}</td>
+                    <td><strong>{s.detail?.name ?? s.item_key}</strong></td>
                     <td>{s.attempts}</td>
                     <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}</td>
+                    <td className="mono muted" style={{ fontSize: 11 }}>{s.item_key}</td>
                   </tr>
                 ))}
               </tbody>

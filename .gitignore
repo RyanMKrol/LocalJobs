@@ -18,6 +18,7 @@ src/jobs/*.job.js
 !src/jobs/demo.job.ts
 # Job subfolders are private business logic (e.g. the places pipeline).
 src/jobs/places/
+src/jobs/perfumes/
 # Per-job resources/datasets live in the job's own data/ folder — never published.
 src/jobs/**/data/
 
