@@ -60,7 +60,7 @@
     {
       "id": "T029",
       "title": "Per-item progress: emit ctx.progress(i/N) + per-item logs across all jobs",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
