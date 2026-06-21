@@ -337,7 +337,7 @@
     {
       "id": "T014",
       "title": "Framework: manual prune of orphaned ledger rows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T005"
       ],
