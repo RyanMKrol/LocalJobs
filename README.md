@@ -35,6 +35,14 @@ launchd ──keeps alive──▶ daemon ──spawns──▶ job (isolated ch
 (Both configurable — API via `LOCALJOBS_PORT`, dashboard via the `-p` flag in
 `dashboard/package.json`.)
 
+The API **binds to loopback (`127.0.0.1`) only** by default, so it isn't
+reachable off the machine. CORS is an **allowlist** (the local dashboard
+origins), never `*`, and the mutating endpoints (run/toggle/prune/…) accept
+loopback callers only — a non-loopback caller must present a shared token. If
+you expose the API beyond the box (e.g. over Tailscale), set `LOCALJOBS_HOST`
+to the interface address **and** set `LOCALJOBS_TOKEN`; add the remote
+dashboard origin to `LOCALJOBS_ALLOWED_ORIGINS`.
+
 ## Keep everything running all the time (the real setup)
 
 Two one-time installs register both as **launchd user agents** — they start at
@@ -185,6 +193,9 @@ See `.env.example`:
 | Var | Purpose |
 |---|---|
 | `LOCALJOBS_PORT` | API port (default 4789) |
+| `LOCALJOBS_HOST` | API bind address (default `127.0.0.1`, loopback-only). Set to an interface address (e.g. Tailscale) only for remote access — pair with `LOCALJOBS_TOKEN` |
+| `LOCALJOBS_ALLOWED_ORIGINS` | Comma-separated CORS allowlist (default the local dashboard origins). Never `*` |
+| `LOCALJOBS_TOKEN` | Shared secret that non-loopback callers must send (`X-LocalJobs-Token` / `Authorization: Bearer`) to use mutating endpoints. Blank = loopback-only mutations |
 | `LOCALJOBS_DB` | SQLite path (default `./data/jobs.db`) |
 | `LOCALJOBS_NTFY_TOPIC` | [ntfy.sh](https://ntfy.sh) topic for phone push alerts on failure; blank = off (failures still recorded + a macOS notification fires) |
 | `LOCALJOBS_NTFY_SERVER` | ntfy server (default `https://ntfy.sh`) |

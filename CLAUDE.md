@@ -108,7 +108,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 
 | Path | Responsibility |
 |---|---|
-| `src/config.ts` | Env-driven config: ports, db path, ntfy |
+| `src/config.ts` | Env-driven config: ports, bind host, CORS allowlist, auth token, db path, ntfy |
 | `src/daemon.ts` | Long-lived entrypoint: sync jobs + pipelines, reap orphans, start scheduler + API |
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
 | `src/core/types.ts` | `JobDefinition`, `PipelineDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |

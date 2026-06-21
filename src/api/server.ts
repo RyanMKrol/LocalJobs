@@ -39,13 +39,57 @@ import {
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
-  res.writeHead(status, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  });
+  // CORS headers are applied per-request by applyCors() via res.setHeader before
+  // routing, so we only set the content type here (writeHead merges with those).
+  res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(payload);
+}
+
+/** True if `origin` is one of the configured allowlist entries. */
+export function originAllowed(origin: string | undefined, allowlist: readonly string[]): boolean {
+  return !!origin && allowlist.includes(origin);
+}
+
+/**
+ * Set CORS headers for this request. Reflects the request `Origin` ONLY when it's
+ * in the allowlist (never `*`); a disallowed origin gets no
+ * `Access-Control-Allow-Origin`, so a browser blocks the response. `Vary: Origin`
+ * keeps caches from leaking one origin's decision to another.
+ */
+function applyCors(req: IncomingMessage, res: ServerResponse): void {
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-LocalJobs-Token, Authorization');
+  const origin = req.headers.origin;
+  if (originAllowed(origin, config.allowedOrigins)) {
+    res.setHeader('Access-Control-Allow-Origin', origin as string);
+  }
+}
+
+/** True for the loopback addresses Node reports for local connections. */
+export function isLoopbackAddress(addr: string | undefined): boolean {
+  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
+/**
+ * Whether a mutating (POST) request may proceed. Loopback callers (the local
+ * dashboard, curl on the box) are always allowed. A non-loopback caller — e.g.
+ * over Tailscale — must present the shared token (via `X-LocalJobs-Token` or
+ * `Authorization: Bearer`), and only when a token is configured at all.
+ */
+export function authoriseMutation(args: {
+  remoteAddress: string | undefined;
+  headers: IncomingMessage['headers'];
+  token: string;
+  isLoopback?: (addr: string | undefined) => boolean;
+}): boolean {
+  if ((args.isLoopback ?? isLoopbackAddress)(args.remoteAddress)) return true;
+  if (!args.token) return false;
+  const header = args.headers['x-localjobs-token'];
+  const supplied = Array.isArray(header) ? header[0] : header;
+  const auth = args.headers['authorization'];
+  const bearer = (Array.isArray(auth) ? auth[0] : auth ?? '').replace(/^Bearer\s+/i, '');
+  return supplied === args.token || bearer === args.token;
 }
 
 async function readBody(req: IncomingMessage): Promise<any> {
@@ -89,13 +133,28 @@ function memberPipelineMap(): Map<string, string> {
   return map;
 }
 
-export function startApi(): void {
-  const server = createServer(async (req, res) => {
+/**
+ * Build the API HTTP server (not yet listening). Split out from `startApi` so
+ * tests can drive it on an ephemeral port. `opts.isLoopback` lets a test
+ * simulate a non-loopback (remote) caller to exercise the mutation guard.
+ */
+export function createApiServer(opts: { isLoopback?: (addr: string | undefined) => boolean } = {}) {
+  const isLoopback = opts.isLoopback ?? isLoopbackAddress;
+  return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${config.apiPort}`);
     const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','jobs','demo','runs']
     const method = req.method ?? 'GET';
 
+    applyCors(req, res);
+
     if (method === 'OPTIONS') return json(res, 204, {});
+
+    // Guard every mutating (POST) endpoint: loopback is trusted; a remote caller
+    // needs the shared token. Reads (GET) stay open so the dashboard works.
+    if (method === 'POST' &&
+        !authoriseMutation({ remoteAddress: req.socket.remoteAddress, headers: req.headers, token: config.authToken, isLoopback })) {
+      return json(res, 401, { error: 'unauthorised' });
+    }
 
     try {
       // GET /api/health
@@ -312,8 +371,11 @@ export function startApi(): void {
       return json(res, 500, { error: err instanceof Error ? err.message : 'internal error' });
     }
   });
+}
 
-  server.listen(config.apiPort, '127.0.0.1', () => {
-    console.log(`[api] listening on http://127.0.0.1:${config.apiPort}`);
+export function startApi(): void {
+  const server = createApiServer();
+  server.listen(config.apiPort, config.apiHost, () => {
+    console.log(`[api] listening on http://${config.apiHost}:${config.apiPort}`);
   });
 }

@@ -14,6 +14,36 @@ export const config = {
   apiPort: Number(process.env.LOCALJOBS_PORT ?? 4789),
 
   /**
+   * Address the HTTP API binds to. Defaults to loopback (`127.0.0.1`) so the
+   * API is NOT reachable off the machine. Override (e.g. to a Tailscale
+   * interface address or `0.0.0.0`) only when you intend remote access — and
+   * then set `LOCALJOBS_TOKEN` so mutating endpoints require it.
+   */
+  apiHost: process.env.LOCALJOBS_HOST ?? '127.0.0.1',
+
+  /**
+   * Browser origins allowed to call the API (CORS allowlist). Comma-separated.
+   * Defaults to the local dashboard on both loopback spellings. A request whose
+   * `Origin` is not in this list gets no `Access-Control-Allow-Origin`, so a
+   * browser blocks the cross-origin response. Non-browser callers (no `Origin`)
+   * are unaffected.
+   */
+  allowedOrigins: (process.env.LOCALJOBS_ALLOWED_ORIGINS ??
+    'http://localhost:4788,http://127.0.0.1:4788')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+
+  /**
+   * Shared secret guarding mutating endpoints (run/toggle/prune/…) for NON-loopback
+   * callers. Empty = no token: mutations are then accepted ONLY from loopback
+   * (the local dashboard). When set, a remote caller must send it as
+   * `X-LocalJobs-Token: <token>` or `Authorization: Bearer <token>`. Required
+   * once the API is exposed over Tailscale.
+   */
+  authToken: process.env.LOCALJOBS_TOKEN ?? '',
+
+  /**
    * ntfy.sh topic for failure alerts. Leave unset to disable push alerts
    * (runs are still always recorded in the dashboard either way).
    */
