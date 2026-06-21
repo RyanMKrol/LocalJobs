@@ -3,12 +3,12 @@
 import assert from 'node:assert/strict';
 import {
   addPipelineLog, backfillServiceUsage, createPipelineRun, createRun, finishPipelineRun, finishRun,
-  getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, getWorkItem, hasActivePipelineRun,
+  getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, getServiceRow, getWorkItem, hasActivePipelineRun,
   dismissWorkItem, isWorkItemDone,
   listRunsForPipelineRun, listServices, markWorkItem, orphanedWorkItems, pipelineRetryableCount,
   pruneOrphanedWorkItems, reapOrphanPipelineRuns, recordServiceCall, recordSkippedRun, recordUsage,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncPipeline, syncService,
-  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, usageThisMonth,
+  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, usageThisMonth,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 
@@ -188,3 +188,69 @@ console.log('  ✓ pruneOrphanedWorkItems removes orphaned keys, keeps current (
   assert.equal(getWorkItem('t-dismiss', 'bad-2'), undefined, 'unstick removed the stuck row');
 }
 console.log('  ✓ dismissWorkItem parks a stuck item (manual, distinct from unstick, stays off stuck list)');
+
+// ── service limit overrides: persistence + reconcile across code-sync (T018) ──
+// The Services page can override a service's rate/quota. The override must persist
+// AND survive a later code-sync (same reconcile as the user-owned `enabled` flag),
+// while a service the user hasn't touched still tracks the code default.
+{
+  // seed from code
+  syncService({ name: 't-lim', description: 'orig', ratePerMinute: 10, dailyCap: 100, monthlyCap: 1000, paid: true });
+  let row = getServiceRow('t-lim');
+  assert.equal(row?.rate_per_minute, 10);
+  assert.equal(row?.limits_overridden, 0, 'fresh sync is not an override');
+
+  // user override → persisted + flag flips
+  const updated = updateServiceLimits('t-lim', { rate_per_minute: 3, daily_cap: 30, monthly_cap: 300 });
+  assert.equal(updated?.rate_per_minute, 3);
+  assert.equal(updated?.daily_cap, 30);
+  assert.equal(updated?.monthly_cap, 300);
+  assert.equal(updated?.limits_overridden, 1, 'override sets the flag');
+
+  // a later code-sync with DIFFERENT code defaults must NOT clobber the override,
+  // but description/paid (code-owned) still refresh.
+  syncService({ name: 't-lim', description: 'changed', ratePerMinute: 99, dailyCap: 999, monthlyCap: 9999, paid: false });
+  row = getServiceRow('t-lim');
+  assert.equal(row?.rate_per_minute, 3, 'code-sync preserves user rate override');
+  assert.equal(row?.daily_cap, 30, 'code-sync preserves user daily override');
+  assert.equal(row?.monthly_cap, 300, 'code-sync preserves user monthly override');
+  assert.equal(row?.description, 'changed', 'description is code-owned, refreshed');
+  assert.equal(row?.paid, 0, 'paid is code-owned, refreshed');
+
+  // null clears a limit (no throttle / no cap)
+  updateServiceLimits('t-lim', { rate_per_minute: null, daily_cap: null, monthly_cap: 50 });
+  row = getServiceRow('t-lim');
+  assert.equal(row?.rate_per_minute, null);
+  assert.equal(row?.daily_cap, null);
+  assert.equal(row?.monthly_cap, 50);
+
+  // a non-overridden service keeps tracking the code default across re-sync
+  syncService({ name: 't-noov', ratePerMinute: 5 });
+  syncService({ name: 't-noov', ratePerMinute: 7 });
+  assert.equal(getServiceRow('t-noov')?.rate_per_minute, 7, 'untouched service follows code default');
+
+  // updating a service that doesn't exist is a no-op (no row created)
+  assert.equal(updateServiceLimits('t-nope', { rate_per_minute: 1, daily_cap: null, monthly_cap: null }), undefined);
+  assert.equal(getServiceRow('t-nope'), undefined);
+}
+console.log('  ✓ service limit override persists + survives code-sync (reconciled like enabled)');
+
+// ── callService enforces the OVERRIDE, not just the code default (T018) ──
+// A tighter user override must take effect: lowering the monthly quota below the
+// code default makes callService soft-fail earlier.
+{
+  registerService({ name: 't-lim-enf', monthlyCap: 100, paid: true });
+  syncService({ name: 't-lim-enf', monthlyCap: 100, paid: true });
+  updateServiceLimits('t-lim-enf', { rate_per_minute: null, daily_cap: null, monthly_cap: 1 });
+
+  let calls = 0;
+  await callService('t-lim-enf', async () => { calls++; }); // 1st call → recorded
+  assert.equal(calls, 1);
+  await assert.rejects(
+    () => callService('t-lim-enf', async () => { calls++; }),
+    (e) => e instanceof QuotaExceededError && e.window === 'monthly' && e.cap === 1,
+    'override monthly cap of 1 enforced (code default was 100)',
+  );
+  assert.equal(calls, 1, 'the over-quota call never ran fn');
+}
+console.log('  ✓ callService enforces a user limit override over the code default');

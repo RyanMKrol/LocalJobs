@@ -260,6 +260,16 @@ doubt, log it.
   metering when cross-job coordination isn't needed. (When migrating an existing
   job onto a service, top up `service_usage` from its historical `job_usage` once
   with `scripts/backfill-service-usage.ts` so the month's count carries over.)
+  - **Limits are code-seeded but user-overridable.** `ratePerMinute` / `dailyCap`
+    / `monthlyCap` from the `ServiceDefinition` seed the `services` row on sync,
+    but the Services dashboard page can edit them
+    (`POST /api/services/:name/limits` → `updateServiceLimits` in `store.ts`).
+    An edit flips `limits_overridden = 1`; from then on a code-sync PRESERVES the
+    user's values (description/paid stay code-owned and refresh) — the same
+    reconcile the user-owned `enabled` flag gets. `callService` enforces the
+    EFFECTIVE limit (`effectiveLimits` in `core/services.ts`): the override when
+    set, else the code default — so an edit takes effect for the next call without
+    a code change. `minIntervalMs`/`maxJitterMs` are NOT editable (code-only).
 - **Headless-browser scrapes (shared launch helper).** Any job that drives a
   real browser to scrape a reputation-gated site (Cloudflare et al.) should launch
   via `launchPersistentBrowser` from `src/core/browser.ts` rather than calling

@@ -1,4 +1,5 @@
 import {
+  getServiceRow,
   recordServiceCall,
   serviceCallsThisMonth,
   serviceCallsToday,
@@ -20,6 +21,32 @@ export function getServiceDef(name: string): ServiceDefinition | undefined {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Resolve the limits to ENFORCE for a service. When the user has overridden them
+ * from the dashboard (`limits_overridden` on the DB row), those win; otherwise the
+ * code default from the ServiceDefinition is used. Falls back to the def alone if
+ * no row exists yet (e.g. sync hasn't run).
+ */
+function effectiveLimits(def: ServiceDefinition): {
+  ratePerMinute: number | null;
+  dailyCap: number | null;
+  monthlyCap: number | null;
+} {
+  const row = getServiceRow(def.name);
+  if (row && row.limits_overridden) {
+    return {
+      ratePerMinute: row.rate_per_minute,
+      dailyCap: row.daily_cap,
+      monthlyCap: row.monthly_cap,
+    };
+  }
+  return {
+    ratePerMinute: def.ratePerMinute ?? null,
+    dailyCap: def.dailyCap ?? null,
+    monthlyCap: def.monthlyCap ?? null,
+  };
+}
 
 /** Thrown when a service's day/month quota is exhausted. A retryable soft-fail:
  *  the caller leaves the item un-done and the next run resumes when it resets. */
@@ -59,14 +86,19 @@ export async function callService<T>(
   const def = getServiceDef(name);
   if (!def) return fn();
 
+  // Effective limits: a dashboard override (limits_overridden) wins over the code
+  // default; otherwise the code default is the source of truth. minIntervalMs /
+  // maxJitterMs are code-only (not editable) and always come from the def.
+  const { ratePerMinute, dailyCap, monthlyCap } = effectiveLimits(def);
+
   // ── quota (long window) → soft-fail ──
-  if (def.monthlyCap != null) {
+  if (monthlyCap != null) {
     const m = serviceCallsThisMonth(name);
-    if (m >= def.monthlyCap) throw new QuotaExceededError(name, 'monthly', m, def.monthlyCap);
+    if (m >= monthlyCap) throw new QuotaExceededError(name, 'monthly', m, monthlyCap);
   }
-  if (def.dailyCap != null) {
+  if (dailyCap != null) {
     const d = serviceCallsToday(name);
-    if (d >= def.dailyCap) throw new QuotaExceededError(name, 'daily', d, def.dailyCap);
+    if (d >= dailyCap) throw new QuotaExceededError(name, 'daily', d, dailyCap);
   }
 
   // ── fixed spacing (min-interval) → throttle; takes precedence over rate ──
@@ -87,11 +119,11 @@ export async function callService<T>(
   }
 
   // ── per-minute rate → throttle (the reservation records the usage row) ──
-  if (def.ratePerMinute != null && def.ratePerMinute > 0) {
+  if (ratePerMinute != null && ratePerMinute > 0) {
     const start = Date.now();
     const maxWait = opts.maxWaitMs ?? 300_000;
     let waited = false;
-    while (!tryReserveServiceSlot(name, def.ratePerMinute)) {
+    while (!tryReserveServiceSlot(name, ratePerMinute)) {
       if (Date.now() - start > maxWait) {
         throw new Error(`service "${name}" rate limit: no slot after ${Math.round(maxWait / 1000)}s`);
       }

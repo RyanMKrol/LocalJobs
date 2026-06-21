@@ -124,14 +124,19 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_run_logs ON pipeline_run_logs(pipeline_r
 -- ─────────────────── Services (shared rate limits + quotas) ───────────────────
 -- An external dependency whose limits are enforced ACROSS all jobs — a per-job
 -- cap can't protect an API called from several jobs.
+-- The limit columns (rate_per_minute/daily_cap/monthly_cap) are seeded from code
+-- on sync, but a dashboard edit takes ownership: `limits_overridden` flips to 1
+-- and a subsequent code-sync then PRESERVES the user's values (same reconcile as
+-- the user-owned `enabled` flag on jobs/pipelines).
 CREATE TABLE IF NOT EXISTS services (
-  name            TEXT PRIMARY KEY,
-  description     TEXT NOT NULL DEFAULT '',
-  rate_per_minute INTEGER,                 -- NULL = no throttle
-  daily_cap       INTEGER,                 -- NULL = no daily quota
-  monthly_cap     INTEGER,                 -- NULL = no monthly quota
-  paid            INTEGER NOT NULL DEFAULT 0,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  name              TEXT PRIMARY KEY,
+  description       TEXT NOT NULL DEFAULT '',
+  rate_per_minute   INTEGER,                 -- NULL = no throttle
+  daily_cap         INTEGER,                 -- NULL = no daily quota
+  monthly_cap       INTEGER,                 -- NULL = no monthly quota
+  paid              INTEGER NOT NULL DEFAULT 0,
+  limits_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited limits; code-sync preserves them
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- One row per service call (incl. retries); rate/quota enforced by counting rows

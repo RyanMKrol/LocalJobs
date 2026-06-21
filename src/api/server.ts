@@ -26,6 +26,7 @@ import {
   serviceCallsInLastSeconds,
   serviceCallsThisMonth,
   serviceCallsToday,
+  updateServiceLimits,
   setJobEnabled,
   setPipelineEnabled,
   stuckCount,
@@ -261,6 +262,31 @@ export function startApi(): void {
           rate_last_min: serviceCallsInLastSeconds(s.name, 60),
         }));
         return json(res, 200, { services: rows });
+      }
+
+      // POST /api/services/:name/limits  { rate_per_minute, daily_cap, monthly_cap }
+      // Each value: a non-negative integer, or null (no throttle / no cap). User
+      // override — persisted and preserved across code-sync.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'services' && parts[3] === 'limits') {
+        const body = await readBody(req);
+        const fields = ['rate_per_minute', 'daily_cap', 'monthly_cap'] as const;
+        const limits: Record<string, number | null> = {};
+        for (const f of fields) {
+          const v = body[f];
+          if (v === null || v === undefined || v === '') {
+            limits[f] = null;
+          } else if (typeof v === 'number' && Number.isInteger(v) && v >= 0) {
+            limits[f] = v;
+          } else {
+            return json(res, 400, { error: `${f} must be a non-negative integer or null` });
+          }
+        }
+        const updated = updateServiceLimits(parts[2], limits as unknown as {
+          rate_per_minute: number | null; daily_cap: number | null; monthly_cap: number | null;
+        });
+        if (!updated) return json(res, 404, { error: 'service not found' });
+        console.log(`[api] service ${parts[2]} limits updated:`, limits);
+        return json(res, 200, { ok: true, service: updated });
       }
 
       return json(res, 404, { error: 'not found' });

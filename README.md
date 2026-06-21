@@ -175,7 +175,7 @@ data/                  SQLite db + daemon/dashboard logs (gitignored)
 - **Pipelines** — every pipeline, schedule, enabled state, member jobs, last/next run
 - **Pipeline detail** — ▶ Run now, enable toggle, full run history
 - **Pipeline run detail** — live framework logs, per-stage job outcomes and statuses, overall progress bar (rolled up in real time from member-job progress)
-- **Services** — per-service usage counts vs caps, current per-minute call rate
+- **Services** — per-service usage counts vs caps, current per-minute call rate, and **editable rate/quota limits** (override the code default; the override is persisted and preserved across daemon restarts / code-sync — same reconcile as the enabled toggle)
 
 ## Configuration
 

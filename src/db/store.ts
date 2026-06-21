@@ -546,15 +546,20 @@ export function getPipelineLogs(pipelineRunId: string, afterId = 0): { id: numbe
 
 // ════════════════════════ services (shared rate + quota) ════════════════════════
 
+// On re-sync, code re-seeds the limits ONLY while the user hasn't taken them over.
+// Once `limits_overridden = 1` (a dashboard edit, below), the three limit columns
+// are preserved from the existing row so code-sync never clobbers a user override
+// — the same reconcile the user-owned `enabled` flag gets. description/paid are
+// code-owned and always refreshed.
 const upsertServiceStmt = db.prepare(`
   INSERT INTO services (name, description, rate_per_minute, daily_cap, monthly_cap, paid)
   VALUES (@name, @description, @rate, @daily, @monthly, @paid)
   ON CONFLICT(name) DO UPDATE SET
     description     = excluded.description,
-    rate_per_minute = excluded.rate_per_minute,
-    daily_cap       = excluded.daily_cap,
-    monthly_cap     = excluded.monthly_cap,
-    paid            = excluded.paid
+    paid            = excluded.paid,
+    rate_per_minute = CASE WHEN limits_overridden = 1 THEN rate_per_minute ELSE excluded.rate_per_minute END,
+    daily_cap       = CASE WHEN limits_overridden = 1 THEN daily_cap       ELSE excluded.daily_cap       END,
+    monthly_cap     = CASE WHEN limits_overridden = 1 THEN monthly_cap     ELSE excluded.monthly_cap     END
 `);
 
 export function syncService(def: ServiceDefinition): void {
@@ -575,6 +580,7 @@ export interface ServiceRow {
   daily_cap: number | null;
   monthly_cap: number | null;
   paid: number;
+  limits_overridden: number;
   created_at: string;
 }
 
@@ -584,6 +590,35 @@ export function getServiceRow(name: string): ServiceRow | undefined {
 
 export function listServices(): ServiceRow[] {
   return db.prepare('SELECT * FROM services ORDER BY name').all() as ServiceRow[];
+}
+
+export interface ServiceLimits {
+  rate_per_minute: number | null;
+  daily_cap: number | null;
+  monthly_cap: number | null;
+}
+
+const updateServiceLimitsStmt = db.prepare(`
+  UPDATE services
+     SET rate_per_minute = @rate, daily_cap = @daily, monthly_cap = @monthly, limits_overridden = 1
+   WHERE name = @name
+`);
+
+/**
+ * Persist a USER override of a service's limits (from the dashboard). Sets the
+ * three limit columns and flips `limits_overridden` so a later code-sync keeps
+ * them. A `null` means "no throttle / no cap". Returns the updated row, or
+ * undefined if the service doesn't exist (no row touched).
+ */
+export function updateServiceLimits(name: string, limits: ServiceLimits): ServiceRow | undefined {
+  const info = updateServiceLimitsStmt.run({
+    name,
+    rate: limits.rate_per_minute,
+    daily: limits.daily_cap,
+    monthly: limits.monthly_cap,
+  });
+  if (info.changes === 0) return undefined;
+  return getServiceRow(name);
 }
 
 export function recordServiceCall(service: string): void {

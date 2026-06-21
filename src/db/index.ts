@@ -26,6 +26,12 @@ export function openDb(): Database.Database {
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_runs_pipeline ON runs(pipeline_run_id)');
 
+  // Additive migration: user-owned limit override flag on services (T018).
+  const svcCols = db.prepare('PRAGMA table_info(services)').all() as { name: string }[];
+  if (!svcCols.some((c) => c.name === 'limits_overridden')) {
+    db.exec('ALTER TABLE services ADD COLUMN limits_overridden INTEGER NOT NULL DEFAULT 0');
+  }
+
   return db;
 }
 

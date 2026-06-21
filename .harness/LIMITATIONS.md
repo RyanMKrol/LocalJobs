@@ -169,4 +169,18 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   if membership can change mid-run, persist a `total_stages` snapshot on the
   pipeline run instead of counting `pipeline_jobs`.
 
+- **Editable service limits are all-or-nothing per service, with no one-click
+  reset.** T018 made `rate_per_minute`/`daily_cap`/`monthly_cap` editable from the
+  Services page; the first edit flips `limits_overridden = 1` and a later code-sync
+  then preserves the user's values for ALL THREE (mirrors the `enabled` reconcile).
+  Trade-offs: (a) **no "revert to code default" control** — once overridden, the
+  row no longer tracks code changes to any of the three limits; to go back you edit
+  the values manually (or clear `limits_overridden` in the DB). (b) Only the three
+  numeric limits are editable; `minIntervalMs`/`maxJitterMs` remain code-only.
+  (c) The override is keyed by service name in the shared `services` table, so it's
+  a single global value — there's no per-job override of a shared service's limit
+  (by design: the whole point of a service is one cross-job governor).
+  *Revisit:* if reverting becomes common, add a `DELETE /api/services/:name/limits`
+  that clears the flag and re-seeds from the registered def.
+
 > Add further project trade-offs below as they arise.

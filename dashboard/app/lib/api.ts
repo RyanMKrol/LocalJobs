@@ -74,9 +74,16 @@ export interface Service {
   daily_cap: number | null;
   monthly_cap: number | null;
   paid: number;
+  limits_overridden: number;
   used_today: number;
   used_month: number;
   rate_last_min: number;
+}
+
+export interface ServiceLimits {
+  rate_per_minute: number | null;
+  daily_cap: number | null;
+  monthly_cap: number | null;
 }
 
 export interface StuckItem {
@@ -142,4 +149,6 @@ export const api = {
   runPipeline: (name: string) => post<{ ok: boolean }>(`/api/pipelines/${name}/run`),
   togglePipeline: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/pipelines/${name}/toggle`, { enabled }),
   services: () => get<{ services: Service[] }>('/api/services'),
+  updateServiceLimits: (name: string, limits: ServiceLimits) =>
+    post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
 };
