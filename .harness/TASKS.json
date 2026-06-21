@@ -383,7 +383,7 @@
     {
       "id": "T016",
       "title": "Framework: first-class pipeline progress percentages",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T005"
       ],
