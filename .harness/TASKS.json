@@ -1,0 +1,125 @@
+{
+  "_doc": "LOCAL-ONLY backlog for the in-place Ralph loop (gitignored; the shell owns task status — the agent must NOT edit this file). Schema: docs/HARNESS.md §8. All tasks are verifiable with NO live paid-API calls.",
+  "version": 1,
+  "defaults": {
+    "model": "claude-opus-4-8",
+    "effort": "high",
+    "escalation": [
+      { "model": "claude-opus-4-8", "effort": "xhigh" }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Green CI baseline on the public checkout",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": ["scaffold", "ci"],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": ["src/jobs/registry.test.ts", "src/**/*.test.ts", ".github/workflows/ci.yml"],
+      "verify": ["npx tsc --noEmit", "npm test"],
+      "do": "Make the test suite + typecheck pass on a CLEAN PUBLIC checkout (only public files present — most jobs are still gitignored at this point, so the CI runner sees only the framework + demo job). registry.test.ts currently asserts hardcoded counts (9 jobs / 4 services / 2 pipelines) that only hold when the private jobs are present locally — make it robust to whatever public fileset exists (assert the demo job loads + the registry validates without throwing, not exact private counts). Fix any module that does real work / needs data/ at import time so importing it in CI doesn't fail.",
+      "doneWhen": "On a checkout containing only tracked files, `npx tsc --noEmit` and `npm test` both pass; GitHub Actions 'CI' is green on the pushed commit."
+    },
+    {
+      "id": "T002",
+      "title": "Self-contain the perfume profile template",
+      "status": "pending",
+      "dependsOn": ["T001"],
+      "gate": null,
+      "tags": ["coding", "privacy"],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": ["src/jobs/perfumes/config.ts", "src/jobs/perfumes/profile.template.md", "src/jobs/perfumes/build.ts", ".env.example", "CLAUDE.md"],
+      "verify": ["npx tsc --noEmit", "npm test"],
+      "do": "The repo must be self-contained — it must NOT reference other folders on the machine. perfumes/config.ts hardcodes templatePath='/Users/ryankrol/Development/perfume-markdown/research/_TEMPLATE.md' (leaks the machine's topography). Copy that template's CONTENT into a tracked in-project file src/jobs/perfumes/profile.template.md, change config.ts to resolve it RELATIVE to the perfumes job dir (no absolute path, no external repo), with an optional PERFUMES_TEMPLATE_PATH env override defaulting to the in-project file. Keep build.ts's FALLBACK_TEMPLATE. Document PERFUMES_TEMPLATE_PATH in .env.example. NOTE: the perfumes folder is still gitignored at this point — make the edits in place; the actual publish happens in T004.",
+      "doneWhen": "No absolute/external-repo path remains in any job code (`grep -rn '/Users/' src/jobs` is clean except inside data/); perfumes build still loads a template; typecheck + tests pass."
+    },
+    {
+      "id": "T003",
+      "title": "Publish the places job code",
+      "status": "pending",
+      "dependsOn": ["T001"],
+      "gate": null,
+      "tags": ["publish", "privacy"],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": [".gitignore", "src/jobs/places/", "README.md"],
+      "verify": ["npx tsc --noEmit", "npm test"],
+      "do": "Make the places job CODE public. Remove ONLY the 'src/jobs/places/' line from .gitignore (keep 'src/jobs/**/data/' and all secret rules). `git add` the places .ts files EXPLICITLY by path (NEVER `git add -A`); confirm via `git status` that nothing under src/jobs/places/data/ is staged. Verify a clean checkout still builds: the newly-public code must typecheck and the suite must stay green with no data/ present (use fixtures, no live API). Update README's note that 'jobs stay private' to reflect that places is now public.",
+      "doneWhen": "src/jobs/places/*.ts is tracked; src/jobs/places/data/** remains ignored (verify with `git check-ignore src/jobs/places/data/out`); typecheck + tests green; the pre-push guard would pass (no sensitive path staged)."
+    },
+    {
+      "id": "T004",
+      "title": "Publish the perfumes job code",
+      "status": "pending",
+      "dependsOn": ["T002", "T003"],
+      "gate": null,
+      "tags": ["publish", "privacy"],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": [".gitignore", "src/jobs/perfumes/", "README.md", "docs/LIMITATIONS.md"],
+      "verify": ["npx tsc --noEmit", "npm test"],
+      "do": "Make the perfumes job CODE public (depends on T002 having removed the external template path). Remove ONLY the 'src/jobs/perfumes/' line from .gitignore (keep data/ + secret rules). `git add` the perfumes .ts files + profile.template.md EXPLICITLY; confirm nothing under src/jobs/perfumes/data/ (especially chrome-profile/) is staged. Note in docs/LIMITATIONS.md that publishing exposes Fragrantica-scraping technique (accepted).",
+      "doneWhen": "src/jobs/perfumes/*.ts + profile.template.md tracked; src/jobs/perfumes/data/** (incl. chrome-profile) still ignored; typecheck + tests green; no sensitive path staged."
+    },
+    {
+      "id": "T005",
+      "title": "Unit tests for the framework core",
+      "status": "pending",
+      "dependsOn": ["T001"],
+      "gate": null,
+      "tags": ["testing"],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": ["src/core/executor.test.ts", "src/core/pipeline-executor.test.ts", "src/core/scheduler.test.ts", "src/core/services.test.ts", "src/core/notifier.test.ts"],
+      "verify": ["npm test"],
+      "do": "Build out unit-test coverage for the framework core (currently only dag.ts + store helpers are tested). Cover: the executor (timeout-kill, retries, event parsing), the pipeline-executor (skip/aggregation/repeat-until-stable paths), the scheduler (croner triggers respect `enabled`), the service limiter callService (quota + throttle + min-interval spacing), and the notifier's header sanitiser. Use fake timers / injected clocks and stub child processes / network — NO live external calls. Keep tests against the scratch DB only.",
+      "doneWhen": "New *.test.ts files exercise the above paths; `npm test` is green; the new suites meaningfully assert behaviour (not just smoke imports)."
+    },
+    {
+      "id": "T006",
+      "title": "Validation gates between pipeline stages",
+      "status": "pending",
+      "dependsOn": ["T005"],
+      "gate": null,
+      "tags": ["coding", "framework"],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": ["src/core/types.ts", "src/core/pipeline-executor.ts", "src/core/dag.ts", "src/core/*.test.ts"],
+      "verify": ["npx tsc --noEmit", "npm test"],
+      "do": "Add typed-artifact validation gates between dependent pipeline stages: let a job declare what it `produces`/`consumes`, and have the DAG/pipeline executor validate the contract at each boundary so an external-format drift (Takeout CSV layout, Fragrantica page structure) fails LOUD at the exact gate instead of passing bad data downstream. Make a failed gate a first-class, surfaced failure (run status + notification). Unit-test both a passing contract and a drifted/failing one.",
+      "doneWhen": "Contracts are declarable + enforced between stages; a violation produces a clear surfaced failure; tests cover pass + fail; typecheck + tests green; docs updated."
+    },
+    {
+      "id": "T007",
+      "title": "Docs audit — README + CLAUDE.md vs current repo",
+      "status": "pending",
+      "dependsOn": ["T004"],
+      "gate": null,
+      "tags": ["docs"],
+      "model": "claude-sonnet-4-6",
+      "effort": "high",
+      "scope": ["README.md", "CLAUDE.md"],
+      "verify": ["npx tsc --noEmit"],
+      "do": "Audit README.md + CLAUDE.md against the current repo state and fix drift: the pipelines + services model, the ntfy notify topic/config, the work-ledger / usage-meter / stuck-items / notifier features, the dashboard pages list, the file map, and the now-PUBLIC places/perfumes jobs (the old 'all real jobs are gitignored' framing is no longer fully true — correct it honestly). Keep claims matched to code.",
+      "doneWhen": "Both docs accurately describe the current architecture, jobs, features, and public/private split; no stale claims remain."
+    },
+    {
+      "id": "T008",
+      "title": "Dashboard quick fixes",
+      "status": "pending",
+      "dependsOn": ["T001"],
+      "gate": null,
+      "tags": ["dashboard", "ui"],
+      "model": "claude-sonnet-4-6",
+      "effort": "high",
+      "scope": ["dashboard/"],
+      "verify": ["npm --prefix dashboard run build"],
+      "do": "Four small, self-contained dashboard fixes: (1) the pipeline detail graph (/pipelines/[name]) should show STRUCTURE only — omit the node status label when no `statusByJob` is provided (Dag.tsx); (2) when viewing a stage's logs from a pipeline run (/runs/[id] with a pipeline_run_id), the top-left back-link should return to /pipeline-runs/[pipeline_run_id], not the standalone job; (3) make the top-left 'Local Jobs' wordmark a link to the overview; (4) the overview 'Recent runs' list should show recent PIPELINE runs (link to /pipeline-runs/[id]).",
+      "doneWhen": "All four behaviours implemented; `npm --prefix dashboard run build` passes; typecheck clean."
+    }
+  ]
+}

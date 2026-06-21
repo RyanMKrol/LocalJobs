@@ -226,3 +226,26 @@ doubt, log it.
 - Changing job code without restarting the daemon = no effect.
 - SQLite datetimes are UTC strings without `Z`; the dashboard appends `Z` when
   parsing (see `app/ui.tsx`). Preserve that.
+
+## Autonomous build harness (Ralph loop)
+
+An autonomous builder (`.harness/loop.sh`, design in `.harness/HARNESS.md`) can grind through a
+curated backlog one fully-verified task at a time. The whole harness lives under the hidden
+`.harness/` folder, separate from project source. **When you are invoked by the loop**, obey
+this in addition to everything above:
+
+- **You work directly on `main` in this checkout** — NO worktree, NO new branches, NO push,
+  NO merge. Build ONE task, commit it, and stop. The loop pushes and gates on CI.
+- **The backlog is shell-owned.** `.harness/TASKS.json` is committed; the loop sets a task's
+  `status` to `done` — **never edit `.harness/TASKS.json` yourself.** Write your attempt notes
+  to `.harness/worklog/<TASK>.md` and the result line to `.harness/worklog/.result`.
+- **Definition of Done mirrors CI** (`.harness/HARNESS.md` §5): `npx tsc --noEmit`, `npm test`, and
+  `npm --prefix dashboard run build` for any `dashboard/` change — all green before you commit.
+- **Never make live paid-API calls (Google Places, Gemini) in verification** — that spends the
+  monthly cap. Use the existing fetched data under each job's `data/` folder, or synthetic
+  fixtures, plus the scratch DB. If a check truly needs a paid call, record `failed:blocked`.
+- **Privacy guard (non-negotiable):** never `git add` anything under a `data/` folder, a
+  `chrome-profile/`, `.env*`, or a credential file; never `git add -A`/`git add .` — stage
+  files explicitly. To publish job code, remove only the relevant code-folder line from
+  `.gitignore` and `git add` the `.ts` files by name. The loop's pre-push guard HALTS the run if
+  any sensitive path is staged.
