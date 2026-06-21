@@ -67,10 +67,12 @@ and tell the user.
 
 `local-jobs` is a self-hosted job orchestrator + dashboard that runs on an
 always-on **Mac Mini**. Its purpose is to host **long-running / headless local
-work** that doesn't fit serverless or a web request — most importantly the
-owner's "places second brain" pipeline (headless CID→place_id resolution, then
-Google Places API enrichment, writing to DynamoDB). Those will be added here as
-jobs. Until then there is a `demo` job for testing.
+work** that doesn't fit serverless or a web request. The repo ships two
+worked-example pipelines: **places** (headless CID→place_id resolution → Google
+Places API enrichment → Gemini LLM summaries, writing enriched JSON + markdown
+profiles to local files) and **perfumes** (Fragrantica scrape → headless Chrome
+fetch → parse → Claude CLI profile build). Private pipelines are added as
+gitignored subfolders. A `demo` job is included for testing.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
 distributed system. Do not introduce Docker, external databases, message

@@ -1,6 +1,7 @@
 # local-jobs
 
 A small, self-hosted **job orchestrator + dashboard** for an always-on Mac Mini.
+**v1.0.0.**
 
 One long-lived daemon (kept alive by launchd) schedules and runs all jobs in
 isolated child processes, records every run to SQLite, and a Next.js dashboard
@@ -206,19 +207,32 @@ data/                  SQLite db + daemon/dashboard logs (gitignored)
 
 ## Dashboard pages
 
-- **Overview** — live status counts + recent runs across all jobs, plus the
-  **stuck items** list (items that gave up). Each has two manual controls:
-  **↻ Unstick** (delete the ledger row so it retries fresh) and **✕ Dismiss**
-  (permanently park genuinely-bad-data items so they drop off the list and never
-  reprocess)
-- **Jobs** — every job, schedule, enabled state, last/next run
-- **Job detail** — ▶ Run now, enable toggle, full run history
-- **Run detail** — live progress bar + streaming logs, duration, exit code, error
-- **Pipelines** — every pipeline, schedule, enabled state, member jobs, last/next run
+Nav: **Overview · Pipelines · Services · Database**
+
+- **Overview** — four **clickable stat tiles** (Running / Succeeded / Failed /
+  Stuck); clicking a tile filters the pipeline cards and run table below to that
+  category. Also shows the **stuck items** list (items that gave up, won't retry),
+  each with two manual controls: **↻ Unstick** (delete the ledger row so it
+  retries fresh next run) and **✕ Dismiss** (permanently park genuinely-bad-data
+  items so they drop off the list and are never reprocessed).
+- **Pipelines** — every pipeline with schedule, enabled state, member-job count,
+  last/next run; plus a **Standalone jobs** section for jobs not part of any pipeline.
 - **Pipeline detail** — ▶ Run now, enable toggle, full run history
-- **Pipeline run detail** — live framework logs, per-stage job outcomes and statuses, overall progress bar (rolled up in real time from member-job progress)
-- **Services** — per-service usage counts vs caps, current per-minute call rate, and **editable rate/quota limits** (override the code default; the override is persisted and preserved across daemon restarts / code-sync — same reconcile as the enabled toggle)
-- **Database** — a strictly **read-only** SQLite table browser: pick a table, page through its rows. Backed by a read-only API path (table names whitelisted against the live schema, only `SELECT` runs) so the local DB can be inspected without building a bespoke query per question. No write/mutation path is exposed.
+- **Pipeline run detail** — live framework logs, per-stage job outcomes and
+  statuses, **grouped by stage with older cycles collapsed** (click to expand),
+  overall progress bar (rolled up in real time from member-job progress)
+- **Job detail** — ▶ Run now, enable toggle, full run history, per-job stuck
+  items; reached via links from the Pipelines page or stuck-items list (no
+  top-level nav entry — use `/jobs/<name>`)
+- **Run detail** — live progress bar + streaming logs, duration, exit code, error
+- **Services** — per-service usage counts vs caps, current per-minute call rate,
+  and **editable rate/quota limits** (override the code default; the override is
+  persisted and preserved across daemon restarts / code-sync — same reconcile as
+  the enabled toggle)
+- **Database** — a strictly **read-only** SQLite table browser: pick a table,
+  page through its rows. Backed by a read-only API path (table names whitelisted
+  against the live schema, only `SELECT` runs) so the local DB can be inspected
+  without building a bespoke query per question. No write/mutation path is exposed.
 
 ## Configuration
 
