@@ -206,7 +206,9 @@ The perfume-profile pipeline ships in-repo as a second worked example under
 `src/jobs/perfumes/`, chaining four jobs (the `perfumes` pipeline runs them in
 order, serially): `perfumes-find-url` (locate the Fragrantica page via the Claude
 CLI) → `perfumes-fetch` (headless Chrome fetch through Cloudflare clearance) →
-`perfumes-parse` (extract structured notes/accords) → `perfumes-build` (research +
+`perfumes-parse` (extract structured notes/accords — each accord's strength `pct`
+is lifted from the cached page HTML's coloured-bar width when an `<id>.html` is
+present) → `perfumes-build` (research +
 write a markdown profile from the in-project `profile.template.md`). It shares the
 same scheduling/visibility/alerting, the per-item work ledger, and `repeatUntilStable`
 cycling. Its `data/` (the scraped inputs, generated markdown, and the Chrome

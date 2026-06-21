@@ -86,4 +86,18 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Revisit:* add a registry-time warning when a job `consumes` a key that no
   pipeline upstream `produces`.
 
+- **Perfume accord percentages depend on cached page HTML.** `perfumes-parse`
+  fills each accord's `pct` from the Fragrantica page's coloured-bar `width: NN%`
+  (`parseAccordPercents` in `src/jobs/perfumes/parse.ts`) — but `perfumes-fetch`
+  currently persists only the page *text* (`<id>.txt`) on success; the page HTML is
+  saved only for pages it diagnoses as failed (`pages-failed/<id>.html`).
+  *Impact:* `pct` populates only when an `<id>.html` is present next to the page; on
+  the normal text-only success path accords keep `pct: null`. The parser + merge are
+  empirically correct against real cached HTML (verified: green→100, woody→83,
+  coconut→51, an accord absent from the page→null), so the slice activates the moment
+  HTML is cached.
+  *Revisit:* a follow-up should have `perfumes-fetch` also write `<id>.html`
+  alongside `<id>.txt` so the whole library carries accord strengths (out of T009's
+  scope — `fetch.ts` was not in scope).
+
 > Add further project trade-offs below as they arise.

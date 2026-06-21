@@ -5,7 +5,7 @@ import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import { extractJson, runClaude } from './claude.js';
 import { perfumesConfig } from './config.js';
 import { ensureDirs, label, loadPerfumes } from './lib.js';
-import type { PerfumeInput, StageResult } from './types.js';
+import type { Accord, PerfumeInput, StageResult } from './types.js';
 
 export const PARSE_JOB = 'perfumes-parse';
 
@@ -36,6 +36,7 @@ export async function runParse(ctx: JobContext): Promise<StageResult> {
     try {
       if (!res.ok) throw new Error(res.error ?? 'claude error');
       const data = extractJson(res.text);
+      applyAccordPercents(data, p.id, ctx);
       writeFileSync(join(perfumesConfig.fragranticaDir, `${p.id}.json`), JSON.stringify(data, null, 2));
       markWorkItem(PARSE_JOB, p.id, 'success', { attempts, detail: { name: label(p) } });
       ok++;
@@ -76,4 +77,80 @@ function parsePrompt(p: PerfumeInput, pageText: string): string {
     '--- FRAGRANTICA PAGE TEXT ---',
     pageText.slice(0, 24000),
   ].join('\n');
+}
+
+/**
+ * Pull the "main accords" bar strengths out of a cached Fragrantica page's HTML.
+ *
+ * Fragrantica renders each accord as a coloured bar — a `<div>` whose inline
+ * `width: NN%` style IS the accord's relative strength (the strongest accord is
+ * 100%) — wrapping a `<span class="truncate">NAME</span>`. The captured page
+ * *text* drops these widths (innerText keeps only the names), so the percentages
+ * have to come from the HTML. Returns the accords in page order (strongest first),
+ * deduped by name. Returns `[]` when the page shows no accords block at all.
+ */
+export function parseAccordPercents(html: string): Accord[] {
+  const headingIdx = html.search(/main accords/i);
+  if (headingIdx === -1) return [];
+  // Bound the search to the accords block right after the heading so unrelated
+  // width-styled elements elsewhere on the page can't leak in.
+  const region = html.slice(headingIdx, headingIdx + 8000);
+  const bar = /style="[^"]*\bwidth:\s*([\d.]+)%[^"]*"[^>]*>\s*<span[^>]*class="[^"]*\btruncate\b[^"]*"[^>]*>([^<]+)<\/span>/gi;
+  const out: Accord[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = bar.exec(region)) !== null) {
+    const pct = Math.round(Number(m[1]));
+    const name = m[2].replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!name || seen.has(name) || !Number.isFinite(pct)) continue;
+    seen.add(name);
+    out.push({ name, pct });
+  }
+  return out;
+}
+
+/** Locate the cached HTML for a page, if any was kept (the success path saves
+ *  only `.txt`; a `.html` shows up for pages the fetch stage diagnosed). */
+function readPageHtml(id: string): string | null {
+  for (const path of [
+    join(perfumesConfig.pagesDir, `${id}.html`),
+    join(perfumesConfig.pagesFailedDir, `${id}.html`),
+  ]) {
+    if (existsSync(path)) return readFileSync(path, 'utf8');
+  }
+  return null;
+}
+
+/**
+ * Fill in each accord's `pct` from the cached page HTML's bar widths, matching by
+ * (lowercased) accord name. Claude gives us the accord *names* (and everything
+ * else) from the page text; this adds the *weight* the text can't carry. An
+ * accord with no matching bar — or a page with no cached HTML — keeps `pct: null`
+ * so a genuine absence is never papered over with a fake number.
+ */
+function applyAccordPercents(data: unknown, id: string, ctx: JobContext): void {
+  if (!data || typeof data !== 'object') return;
+  const accords = (data as { accords?: unknown }).accords;
+  if (!Array.isArray(accords) || accords.length === 0) return;
+
+  const html = readPageHtml(id);
+  if (!html) {
+    ctx.log(`[parse]   no cached HTML for ${id} — accord percentages left null`, 'warn');
+    return;
+  }
+  const bars = parseAccordPercents(html);
+  if (bars.length === 0) {
+    ctx.log(`[parse]   no accord bars found in cached HTML for ${id} — percentages left null`, 'warn');
+    return;
+  }
+  const byName = new Map(bars.map((b) => [b.name, b.pct]));
+
+  let filled = 0;
+  for (const a of accords) {
+    if (!a || typeof a !== 'object' || typeof (a as Accord).name !== 'string') continue;
+    const pct = byName.get((a as Accord).name.replace(/\s+/g, ' ').trim().toLowerCase());
+    (a as Accord).pct = pct ?? null;
+    if (pct != null) filled++;
+  }
+  ctx.log(`[parse]   accord percentages: filled ${filled}/${accords.length} from bar widths (${bars.length} bar${bars.length === 1 ? '' : 's'} parsed)`);
 }

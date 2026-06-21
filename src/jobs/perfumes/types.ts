@@ -5,6 +5,14 @@ export interface PerfumeInput {
   brand: string;         // "Amouage"
 }
 
+/** One "main accord" with its relative strength. `pct` is the coloured bar's
+ *  width on the Fragrantica page (strongest accord = 100); null when the page
+ *  shows the accord but no measurable bar, or no HTML was cached to read. */
+export interface Accord {
+  name: string;
+  pct: number | null;
+}
+
 /** What each stage reports back to the orchestrator. */
 export interface StageResult {
   ok: number;          // items completed this run
