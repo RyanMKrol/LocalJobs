@@ -7,10 +7,11 @@ import {
   finishRun,
   getJob,
   hasActiveRun,
+  recordSkippedRun,
   setProgress,
 } from '../db/store.js';
 import { notifyRun } from './notifier.js';
-import type { JobDefinition, JobEvent, RunTrigger } from './types.js';
+import type { JobDefinition, JobEvent, RunStatus, RunTrigger } from './types.js';
 
 export interface RunResult {
   runId: string | null;
@@ -19,45 +20,70 @@ export interface RunResult {
 }
 
 /**
- * Run a job once in an isolated child process. Captures NDJSON events,
- * enforces the job's timeout (hard-kills the child), and records the full
- * lifecycle to the DB. Handles retries up to the job's maxRetries.
+ * The attempt+retry loop, shared by the standalone and pipeline paths. Creates a
+ * run row per attempt (optionally linked to a pipeline run), spawns the child,
+ * retries up to the job's maxRetries, and returns the final run id + status.
+ * Does NOT notify or check overlap — the callers own those policies.
  */
-export async function runJob(def: JobDefinition, trigger: RunTrigger): Promise<RunResult> {
-  // Overlap prevention: never run two instances of the same job at once.
-  if (hasActiveRun(def.name)) {
-    return { runId: null, skipped: true, reason: 'already running' };
-  }
-
+async function runAttempts(
+  def: JobDefinition,
+  trigger: RunTrigger,
+  pipelineRunId: string | null,
+): Promise<{ runId: string | null; status: RunStatus }> {
   const jobRow = getJob(def.name);
   const timeoutMs = jobRow?.timeout_ms ?? def.timeoutMs ?? 0;
   const maxRetries = jobRow?.max_retries ?? def.maxRetries ?? 0;
 
   let lastRunId: string | null = null;
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-    const runId = createRun(def.name, trigger, attempt);
+    const runId = createRun(def.name, trigger, attempt, pipelineRunId);
     lastRunId = runId;
     const outcome = await executeAttempt(def.name, runId, timeoutMs);
 
     if (outcome.status === 'success') {
       finishRun(runId, 'success', { exitCode: 0 });
-      await notifyRun(def.name, runId, 'success');
-      return { runId };
+      return { runId, status: 'success' };
     }
 
-    // failed | timeout
     finishRun(runId, outcome.status, { exitCode: outcome.exitCode, error: outcome.error });
-
-    const willRetry = attempt <= maxRetries;
-    if (willRetry) {
+    if (attempt <= maxRetries) {
       addLog(runId, `Attempt ${attempt} ${outcome.status}; retrying...`, 'warn');
       continue;
     }
-    await notifyRun(def.name, runId, outcome.status);
-    return { runId };
+    return { runId, status: outcome.status };
   }
+  return { runId: lastRunId, status: 'failed' };
+}
 
-  return { runId: lastRunId };
+/**
+ * Run a standalone job: overlap-guarded, retried, and notified on the final
+ * outcome. Unchanged public behaviour.
+ */
+export async function runJob(def: JobDefinition, trigger: RunTrigger): Promise<RunResult> {
+  if (hasActiveRun(def.name)) {
+    return { runId: null, skipped: true, reason: 'already running' };
+  }
+  const { runId, status } = await runAttempts(def, trigger, null);
+  if (runId) await notifyRun(def.name, runId, status);
+  return { runId };
+}
+
+/**
+ * Run a job as a member of a pipeline: its run row links to the pipeline run and
+ * the per-job notification is SUPPRESSED (the pipeline sends stage notifications
+ * instead). Returns the final status. If a standalone run of this job is already
+ * active, it is recorded as 'skipped' (idempotency means the standalone run will
+ * cover the work, and the next pipeline run resumes anything outstanding).
+ */
+export async function runJobForPipeline(
+  def: JobDefinition,
+  pipelineRunId: string,
+): Promise<{ runId: string | null; status: RunStatus }> {
+  if (hasActiveRun(def.name)) {
+    const runId = recordSkippedRun(def.name, pipelineRunId, 'skipped: a standalone run of this job is already active');
+    return { runId, status: 'skipped' };
+  }
+  return runAttempts(def, 'pipeline', pipelineRunId);
 }
 
 interface AttemptOutcome {
