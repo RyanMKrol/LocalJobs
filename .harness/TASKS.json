@@ -538,7 +538,7 @@
     {
       "id": "T022",
       "title": "Dashboard: collapse the pipeline-run member-runs list",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T008"
       ],
