@@ -96,3 +96,32 @@ tbody tr:hover { background: var(--panel-2); }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .spacer { flex: 1; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); }
+
+/* extra run/pipeline statuses */
+.badge.skipped { color: var(--grey); background: rgba(110,118,129,.12); border-color: rgba(110,118,129,.3); }
+.badge.partial { color: var(--yellow); background: rgba(210,153,34,.12); border-color: rgba(210,153,34,.3); }
+.badge.pending { color: var(--grey); background: rgba(110,118,129,.10); border-color: rgba(110,118,129,.25); }
+
+/* pipeline DAG */
+.dag { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 18px; }
+.dag-wave { display: flex; flex-direction: column; gap: 10px; }
+.dag-node { min-width: 156px; padding: 10px 12px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--border); }
+.dag-node-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.dag-node-status { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
+.dag-node.success { border-color: rgba(63,185,80,.5); }
+.dag-node.running { border-color: rgba(88,166,255,.6); box-shadow: 0 0 0 1px rgba(88,166,255,.3); }
+.dag-node.failed, .dag-node.timeout { border-color: rgba(248,81,73,.5); }
+.dag-node.skipped { opacity: .55; }
+.dag-node.success .dag-node-status { color: var(--green); }
+.dag-node.running .dag-node-status { color: var(--accent); }
+.dag-node.failed .dag-node-status, .dag-node.timeout .dag-node-status { color: var(--red); }
+.dag-arrow { color: var(--grey); font-size: 22px; }
+a:hover .dag-node { border-color: var(--accent); }
+
+/* service usage bars */
+.ubar { height: 7px; background: var(--panel-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); margin-top: 5px; max-width: 220px; }
+.ubar > span { display: block; height: 100%; background: var(--green); }
+.ubar > span.warn { background: var(--yellow); }
+.ubar > span.full { background: var(--red); }
+.pill { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; background: var(--panel-2); border:1px solid var(--border); color: var(--muted); }
+.pill.paid { color: var(--yellow); border-color: rgba(210,153,34,.4); }

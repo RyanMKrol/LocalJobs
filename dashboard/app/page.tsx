@@ -1,16 +1,21 @@
 'use client';
 
 import { api } from './lib/api';
-import { StatusBadge, fmtDuration, fmtRelative, usePoll } from './ui';
+import { ProgressBar, StatusBadge, fmtDuration, fmtRelative, usePoll } from './ui';
 
 export default function Overview() {
   const { data, error } = usePoll(() => api.recentRuns(100), 2000);
   const { data: stuckData } = usePoll(() => api.stuck(), 5000);
+  const { data: pipeData } = usePoll(() => api.pipelines(), 3000);
   const runs = data?.runs ?? [];
   const stuck = stuckData?.stuck ?? [];
+  const pipelines = pipeData?.pipelines ?? [];
 
   async function unstick(job: string, key: string) {
     try { await api.unstick(job, key); } catch { /* next poll reflects reality */ }
+  }
+  async function runPipeline(name: string) {
+    try { await api.runPipeline(name); } catch { /* next poll reflects reality */ }
   }
 
   const counts = {
@@ -31,6 +36,29 @@ export default function Overview() {
         <div className="statcard"><div className="n" style={{ color: 'var(--green)' }}>{counts.success}</div><div className="l">Succeeded</div></div>
         <div className="statcard"><div className="n" style={{ color: 'var(--red)' }}>{counts.failed}</div><div className="l">Failed runs</div></div>
         <div className="statcard"><div className="n" style={{ color: stuck.length ? 'var(--red)' : undefined }}>{stuck.length}</div><div className="l">Stuck items</div></div>
+      </div>
+
+      <h2>Pipelines</h2>
+      <div className="grid cards" style={{ marginBottom: 8 }}>
+        {pipelines.length === 0 && (
+          <div className="panel" style={{ padding: 16 }}><span className="muted">No pipelines yet.</span></div>
+        )}
+        {pipelines.map((p) => (
+          <div key={p.name} className="panel" style={{ padding: 16 }}>
+            <div className="row">
+              <a href={`/pipelines/${p.name}`}><strong>{p.name}</strong></a>
+              <div className="spacer" />
+              {p.last_run && <span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span>}
+            </div>
+            <div className="muted" style={{ fontSize: 12, margin: '6px 0' }}>
+              {p.jobs.length} stages · {p.schedule ?? 'manual'}{p.stuck > 0 ? ` · ⛔ ${p.stuck} stuck` : ''}
+            </div>
+            {p.last_run?.status === 'running' && <ProgressBar pct={p.last_run.progress} />}
+            <div style={{ marginTop: 10 }}>
+              <button className="btn secondary" onClick={() => runPipeline(p.name)}>▶ Run</button>
+            </div>
+          </div>
+        ))}
       </div>
 
       <h2>⛔ Stuck items <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>— gave up, will NOT retry</span></h2>

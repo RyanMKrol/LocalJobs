@@ -2,7 +2,9 @@ export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:4789';
 
 export type RunStatus =
-  | 'queued' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled';
+  | 'queued' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped';
+
+export type PipelineRunStatus = 'running' | 'success' | 'partial' | 'failed' | 'cancelled';
 
 export interface Run {
   id: string;
@@ -17,6 +19,7 @@ export interface Run {
   duration_ms: number | null;
   exit_code: number | null;
   error: string | null;
+  pipeline_run_id?: string | null;
 }
 
 export interface Job {
@@ -31,6 +34,49 @@ export interface Job {
   next_run: string | null;
   instructions: string | null;
   stuck: number;
+  pipeline?: string | null; // set if this job is a pipeline member
+}
+
+export interface PipelineMember {
+  job_name: string;
+  depends_on: string[];
+}
+
+export interface PipelineRun {
+  id: string;
+  pipeline_name: string;
+  status: PipelineRunStatus;
+  trigger: string;
+  progress: number;
+  progress_msg: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface Pipeline {
+  name: string;
+  description: string;
+  schedule: string | null;
+  enabled: number;
+  created_at: string;
+  last_run: PipelineRun | null;
+  next_run: string | null;
+  jobs: PipelineMember[];
+  stuck: number;
+  runs?: PipelineRun[];
+}
+
+export interface Service {
+  name: string;
+  description: string;
+  rate_per_minute: number | null;
+  daily_cap: number | null;
+  monthly_cap: number | null;
+  paid: number;
+  used_today: number;
+  used_month: number;
+  rate_last_min: number;
 }
 
 export interface StuckItem {
@@ -86,4 +132,12 @@ export const api = {
   toggle: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/jobs/${name}/toggle`, { enabled }),
   stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${job}` : ''}`),
   unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),
+
+  pipelines: () => get<{ pipelines: Pipeline[] }>('/api/pipelines'),
+  pipeline: (name: string) => get<{ pipeline: Pipeline }>(`/api/pipelines/${name}`),
+  pipelineRun: (id: string, after = 0) =>
+    get<{ run: PipelineRun; jobs: Run[]; logs: LogLine[] }>(`/api/pipeline-runs/${id}?after=${after}`),
+  runPipeline: (name: string) => post<{ ok: boolean }>(`/api/pipelines/${name}/run`),
+  togglePipeline: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/pipelines/${name}/toggle`, { enabled }),
+  services: () => get<{ services: Service[] }>('/api/services'),
 };
