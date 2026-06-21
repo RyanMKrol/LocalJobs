@@ -567,7 +567,7 @@
     {
       "id": "T023",
       "title": "Security hardening of dashboard + API",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T001"
       ],
