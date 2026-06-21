@@ -135,7 +135,7 @@
     {
       "id": "T032",
       "title": "Don't count cancelled runs as failed",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
