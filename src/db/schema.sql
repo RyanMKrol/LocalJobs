@@ -50,7 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_run ON run_logs(run_id, id);
 CREATE TABLE IF NOT EXISTS work_items (
   job_name   TEXT NOT NULL,
   item_key   TEXT NOT NULL,
-  status     TEXT NOT NULL,             -- success | failed | skipped | dismissed (manual park: stuck item given up on)
+  status     TEXT NOT NULL,             -- success | failed | skipped | ignored (manual park: stuck item given up on; the ONE manual-park concept)
   attempts   INTEGER NOT NULL DEFAULT 1,
   detail     TEXT,                      -- optional JSON: error, output path, summary…
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

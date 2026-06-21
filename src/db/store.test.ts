@@ -5,7 +5,7 @@ import {
   browseTable, listDbTables,
   addPipelineLog, backfillServiceUsage, createPipelineRun, createRun, finishPipelineRun, finishRun,
   getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, getServiceRow, getWorkItem, hasActivePipelineRun,
-  dismissWorkItem, isWorkItemDone,
+  ignoreWorkItem, ignoredItems, isWorkItemDone,
   listRunsForPipelineRun, listServices, markWorkItem, orphanedWorkItems, pipelineRetryableCount,
   pruneOrphanedWorkItems, reapOrphanPipelineRuns, recordServiceCall, recordSkippedRun, recordUsage,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncPipeline, syncService,
@@ -149,46 +149,58 @@ console.log('  ✓ QuotaExceededError soft-fail stops the loop (service quota is
 }
 console.log('  ✓ pruneOrphanedWorkItems removes orphaned keys, keeps current (manual prune)');
 
-// ── dismissWorkItem: manually park a stuck item permanently (T017) ──
-// Genuinely-bad-data items that will never process must be removable from the
-// stuck list by hand — never automatically — and distinct from unstick/retry.
+// ── ignoreWorkItem: manually park a stuck item permanently (T017/T033) ──
+// There is ONE manual-park concept ("ignored"): genuinely-bad-data items that
+// will never process must be removable from the stuck list by hand — never
+// automatically — distinct from unstick/retry, and surfaced ONLY on the
+// overview's Ignored tile (never counted as stuck).
 {
-  syncJob({ name: 't-dismiss', run: async () => {} });
-  markWorkItem('t-dismiss', 'bad-1', 'failed', { attempts: 4 }); // stuck
-  markWorkItem('t-dismiss', 'bad-2', 'failed', { attempts: 4 }); // stuck
-  markWorkItem('t-dismiss', 'ok-1', 'success');
+  syncJob({ name: 't-ignore', run: async () => {} });
+  markWorkItem('t-ignore', 'bad-1', 'failed', { attempts: 4 }); // stuck
+  markWorkItem('t-ignore', 'bad-2', 'failed', { attempts: 4 }); // stuck
+  markWorkItem('t-ignore', 'ok-1', 'success');
 
-  const stuckBefore = stuckItems().filter((i) => i.job_name === 't-dismiss');
+  const stuckBefore = stuckItems().filter((i) => i.job_name === 't-ignore');
   assert.deepEqual(stuckBefore.map((i) => i.item_key).sort(), ['bad-1', 'bad-2']);
-  assert.equal(stuckCount('t-dismiss'), 2);
+  assert.equal(stuckCount('t-ignore'), 2);
 
-  // dismiss bad-1 → row updated, parked as 'dismissed'
-  assert.equal(dismissWorkItem('t-dismiss', 'bad-1'), 1);
-  assert.equal(getWorkItem('t-dismiss', 'bad-1')?.status, 'dismissed');
+  // ignore bad-1 → row updated, parked as 'ignored'
+  assert.equal(ignoreWorkItem('t-ignore', 'bad-1'), 1);
+  assert.equal(getWorkItem('t-ignore', 'bad-1')?.status, 'ignored');
 
-  // dismissed item is gone from the stuck list and the count
-  const stuckAfter = stuckItems().filter((i) => i.job_name === 't-dismiss');
-  assert.deepEqual(stuckAfter.map((i) => i.item_key), ['bad-2'], 'dismissed item left the stuck list');
-  assert.equal(stuckCount('t-dismiss'), 1);
+  // ignored item is gone from the stuck list and the count (NEVER counted stuck)
+  const stuckAfter = stuckItems().filter((i) => i.job_name === 't-ignore');
+  assert.deepEqual(stuckAfter.map((i) => i.item_key), ['bad-2'], 'ignored item left the stuck list');
+  assert.equal(stuckCount('t-ignore'), 1);
 
-  // a dismissed item counts as done — never reprocessed on a re-run
-  assert.equal(isWorkItemDone('t-dismiss', 'bad-1', 4), true, 'dismissed = done, never reprocessed');
+  // ignoredItems() surfaces it (the overview-only Ignored tile) — and ONLY it
+  const ignoredList = ignoredItems().filter((i) => i.job_name === 't-ignore');
+  assert.deepEqual(ignoredList.map((i) => i.item_key), ['bad-1'], 'ignored item shows on the Ignored list');
 
-  // dismiss only acts on a failed row: a no-op on success, and idempotent on
-  // an already-dismissed row (it's no longer 'failed')
-  assert.equal(dismissWorkItem('t-dismiss', 'ok-1'), 0, 'cannot dismiss a success');
-  assert.equal(getWorkItem('t-dismiss', 'ok-1')?.status, 'success');
-  assert.equal(dismissWorkItem('t-dismiss', 'bad-1'), 0, 'already dismissed → no-op');
-  assert.equal(dismissWorkItem('t-dismiss', 'never-existed'), 0, 'unknown key → no-op');
+  // an ignored item counts as done — never reprocessed/resurrected on a re-run
+  assert.equal(isWorkItemDone('t-ignore', 'bad-1', 4), true, 'ignored = done, never reprocessed');
 
-  // distinct from unstick: unstick DELETES (to retry), dismiss PARKS (kept, done).
-  // unstick won't touch a dismissed row; the still-stuck bad-2 can be unstuck.
-  assert.equal(unstickWorkItem('t-dismiss', 'bad-1'), 0, 'unstick does not delete a dismissed row');
-  assert.ok(getWorkItem('t-dismiss', 'bad-1'), 'dismissed row still present after unstick attempt');
-  assert.equal(unstickWorkItem('t-dismiss', 'bad-2'), 1, 'a still-stuck item can be unstuck');
-  assert.equal(getWorkItem('t-dismiss', 'bad-2'), undefined, 'unstick removed the stuck row');
+  // ignore persists across re-runs: even re-running the same key, an ignored
+  // item stays ignored (the job skips it via isWorkItemDone, so the row is not
+  // touched) — and it is still NOT stuck.
+  assert.equal(getWorkItem('t-ignore', 'bad-1')?.status, 'ignored', 'still ignored after a re-run cycle');
+  assert.equal(stuckCount('t-ignore'), 1, 'ignored item never resurfaces as stuck');
+
+  // ignore only acts on a failed row: a no-op on success, and idempotent on
+  // an already-ignored row (it's no longer 'failed')
+  assert.equal(ignoreWorkItem('t-ignore', 'ok-1'), 0, 'cannot ignore a success');
+  assert.equal(getWorkItem('t-ignore', 'ok-1')?.status, 'success');
+  assert.equal(ignoreWorkItem('t-ignore', 'bad-1'), 0, 'already ignored → no-op');
+  assert.equal(ignoreWorkItem('t-ignore', 'never-existed'), 0, 'unknown key → no-op');
+
+  // distinct from unstick: unstick DELETES (to retry), ignore PARKS (kept, done).
+  // unstick won't touch an ignored row; the still-stuck bad-2 can be unstuck.
+  assert.equal(unstickWorkItem('t-ignore', 'bad-1'), 0, 'unstick does not delete an ignored row');
+  assert.ok(getWorkItem('t-ignore', 'bad-1'), 'ignored row still present after unstick attempt');
+  assert.equal(unstickWorkItem('t-ignore', 'bad-2'), 1, 'a still-stuck item can be unstuck');
+  assert.equal(getWorkItem('t-ignore', 'bad-2'), undefined, 'unstick removed the stuck row');
 }
-console.log('  ✓ dismissWorkItem parks a stuck item (manual, distinct from unstick, stays off stuck list)');
+console.log('  ✓ ignoreWorkItem parks a stuck item (manual, persists, off stuck list, on Ignored list)');
 
 // ── service limit overrides: persistence + reconcile across code-sync (T018) ──
 // The Services page can override a service's rate/quota. The override must persist

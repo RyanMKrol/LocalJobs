@@ -32,6 +32,11 @@ export function openDb(): Database.Database {
     db.exec('ALTER TABLE services ADD COLUMN limits_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Data migration: unify the manual-park concept on a single name (T033).
+  // The old `dismissed` status is renamed to `ignored` — same semantics
+  // (parked, never reprocessed, off the stuck list). Idempotent.
+  db.exec("UPDATE work_items SET status = 'ignored' WHERE status = 'dismissed'");
+
   return db;
 }
 

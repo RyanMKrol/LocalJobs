@@ -174,12 +174,15 @@ It then appears in the dashboard automatically with history tracked from run one
 
 Nav: **Overview · Pipelines · Services · Database · Backlog**
 
-- **Overview** — four **clickable stat tiles** (Running / Succeeded / Failed /
-  Stuck); clicking a tile filters the pipeline cards and run table below to that
-  category. Also shows the **stuck items** list (items that gave up, won't retry),
-  each with two manual controls: **↻ Unstick** (delete the ledger row so it
-  retries fresh next run) and **✕ Ignore** (permanently park genuinely-bad-data
-  items so they drop off the list and are never reprocessed).
+- **Overview** — six **clickable stat tiles** (Running / Succeeded / Failed /
+  Cancelled / Stuck / Ignored); clicking a tile filters the pipeline cards and
+  run table below to that category. Also shows the **stuck items** list (items
+  that gave up, won't retry), each with two manual controls: **↻ Unstick**
+  (delete the ledger row so it retries fresh next run) and **✕ Ignore**
+  (permanently park genuinely-bad-data items). Ignored items are the ONE
+  manual-park concept: they drop off the stuck list, are **never counted as
+  stuck**, are never reprocessed, and appear ONLY here — under the **Ignored**
+  tile (click it to list them).
 - **Pipelines** — every pipeline with schedule, enabled state, member-job count,
   last/next run; plus a **Standalone jobs** section for jobs not part of any pipeline.
 - **Pipeline detail** — ▶ Run now, enable toggle, full run history

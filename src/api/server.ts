@@ -37,7 +37,8 @@ import {
   stuckCount,
   stuckItems,
   unstickWorkItem,
-  dismissWorkItem,
+  ignoreWorkItem,
+  ignoredItems,
 } from '../db/store.js';
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -230,13 +231,22 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, { ok: true, unstuck });
       }
 
-      // POST /api/stuck/dismiss  { job, key } — permanently park a stuck item
-      // (manual only; never retries, drops off the stuck list)
-      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'stuck' && parts[2] === 'dismiss') {
+      // POST /api/stuck/ignore  { job, key } — permanently park a stuck item
+      // (manual only; never retries, drops off the stuck list, shows on the
+      // overview's Ignored tile)
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'stuck' && parts[2] === 'ignore') {
         const body = await readBody(req);
         if (!body.job || !body.key) return json(res, 400, { error: 'job and key are required' });
-        const dismissed = dismissWorkItem(String(body.job), String(body.key));
-        return json(res, 200, { ok: true, dismissed });
+        const ignored = ignoreWorkItem(String(body.job), String(body.key));
+        return json(res, 200, { ok: true, ignored });
+      }
+
+      // GET /api/ignored  (optionally ?job=<name>) — manually-parked items
+      // (overview-only; never counted as stuck)
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'ignored' && parts.length === 2) {
+        const jobFilter = url.searchParams.get('job');
+        const items = ignoredItems().filter((i) => !jobFilter || i.job_name === jobFilter);
+        return json(res, 200, { ignored: items });
       }
 
       // GET /api/jobs  (each flagged with its pipeline, if it's a member)

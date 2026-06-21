@@ -4,13 +4,15 @@ import { useState } from 'react';
 import { api } from './lib/api';
 import { ProgressBar, StatusBadge, fmtDuration, fmtRelative, usePoll } from './ui';
 
-type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | null;
+type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | 'ignored' | null;
 
 export default function Overview() {
   const { data: stuckData } = usePoll(() => api.stuck(), 5000);
+  const { data: ignoredData } = usePoll(() => api.ignored(), 5000);
   const { data: pipeData } = usePoll(() => api.pipelines(), 3000);
   const { data: pipeRunData, error } = usePoll(() => api.recentPipelineRuns(50), 2000);
   const stuck = stuckData?.stuck ?? [];
+  const ignored = ignoredData?.ignored ?? [];
   const pipelines = pipeData?.pipelines ?? [];
   const pipelineRuns = pipeRunData?.runs ?? [];
 
@@ -24,8 +26,8 @@ export default function Overview() {
     try { await api.unstick(job, key); } catch { /* next poll reflects reality */ }
   }
   async function ignoreItem(job: string, key: string) {
-    if (!window.confirm(`Permanently ignore "${key}"?\n\nIt will never be retried and drops off the stuck list. Manual-only — use Unstick instead if you want it retried.`)) return;
-    try { await api.dismiss(job, key); } catch { /* next poll reflects reality */ }
+    if (!window.confirm(`Permanently ignore "${key}"?\n\nIt will never be retried and drops off the stuck list (it moves to the Ignored tile). Manual-only — use Unstick instead if you want it retried.`)) return;
+    try { await api.ignore(job, key); } catch { /* next poll reflects reality */ }
   }
   async function runPipeline(name: string) {
     try { await api.runPipeline(name); } catch { /* next poll reflects reality */ }
@@ -40,14 +42,16 @@ export default function Overview() {
     cancelled: pipelineRuns.filter((r) => r.status === 'cancelled').length,
   };
 
-  // Apply filter to pipeline cards and pipeline runs table
+  // Apply filter to pipeline cards and pipeline runs table. The item-level
+  // filters (stuck/ignored) don't map to a pipeline status; 'ignored' is an
+  // overview-only view, so it hides the pipeline/run/stuck sections entirely.
   const visiblePipelines = activeFilter == null ? pipelines : pipelines.filter((p) => {
     if (activeFilter === 'running') return p.last_run?.status === 'running';
     if (activeFilter === 'success') return p.last_run?.status === 'success';
     if (activeFilter === 'failed') return ['failed', 'partial'].includes(p.last_run?.status ?? '');
     if (activeFilter === 'cancelled') return p.last_run?.status === 'cancelled';
     if (activeFilter === 'stuck') return p.stuck > 0;
-    return true;
+    return false; // 'ignored' — no pipeline-level concept
   });
 
   const visiblePipelineRuns = activeFilter == null || activeFilter === 'stuck' ? pipelineRuns : pipelineRuns.filter((r) => {
@@ -55,10 +59,12 @@ export default function Overview() {
     if (activeFilter === 'success') return r.status === 'success';
     if (activeFilter === 'failed') return ['failed', 'partial'].includes(r.status);
     if (activeFilter === 'cancelled') return r.status === 'cancelled';
-    return true;
+    return false; // 'ignored' — overview-only view, hide runs
   });
 
   const visibleStuck = activeFilter == null || activeFilter === 'stuck' ? stuck : [];
+  // Ignored items live ONLY here, and ONLY when the Ignored tile is active.
+  const visibleIgnored = activeFilter === 'ignored' ? ignored : [];
 
   const filterLabels: Record<NonNullable<Filter>, string> = {
     running: 'Running',
@@ -66,6 +72,7 @@ export default function Overview() {
     failed: 'Failed',
     cancelled: 'Cancelled',
     stuck: 'Stuck items',
+    ignored: 'Ignored items',
   };
 
   return (
@@ -117,8 +124,43 @@ export default function Overview() {
         >
           <div className="n" style={{ color: stuck.length ? 'var(--red)' : undefined }}>{stuck.length}</div><div className="l">Stuck items</div>
         </button>
+        <button
+          className={`statcard${activeFilter === 'ignored' ? ' active' : ''}`}
+          onClick={() => toggleFilter('ignored')}
+          title="Click to show manually-ignored items"
+        >
+          <div className="n" style={{ color: ignored.length ? 'var(--muted)' : undefined }}>{ignored.length}</div><div className="l">Ignored</div>
+        </button>
       </div>
 
+      {activeFilter === 'ignored' && (
+        <>
+          <h2>🚫 Ignored items <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>— manually parked, never retried, not counted as stuck</span></h2>
+          <div className="panel">
+            <table>
+              <thead>
+                <tr><th>Item</th><th>Job</th><th>Attempts</th><th>Reason</th><th>When</th></tr>
+              </thead>
+              <tbody>
+                {visibleIgnored.length === 0 && (
+                  <tr><td colSpan={5} className="muted">Nothing ignored — no items have been manually parked. ✓</td></tr>
+                )}
+                {visibleIgnored.map((s) => (
+                  <tr key={`${s.job_name}:${s.item_key}`}>
+                    <td>{s.detail?.name ?? <span className="mono">{s.item_key}</span>}</td>
+                    <td><a href={`/jobs/${s.job_name}`}>{s.job_name}</a></td>
+                    <td>{s.attempts}</td>
+                    <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}{s.detail?.pageTitle ? ` · title="${s.detail.pageTitle}"` : ''}</td>
+                    <td className="muted">{fmtRelative(s.updated_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {activeFilter !== 'ignored' && (<>
       <h2>Pipelines</h2>
       <div className="grid cards" style={{ marginBottom: 8 }}>
         {visiblePipelines.length === 0 && (
@@ -202,6 +244,7 @@ export default function Overview() {
           </tbody>
         </table>
       </div>
+      </>)}
     </>
   );
 }
