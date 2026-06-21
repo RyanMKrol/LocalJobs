@@ -161,7 +161,7 @@
     {
       "id": "T033",
       "title": "Dismissed vs ignored: park ignored items, show only on overview",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
