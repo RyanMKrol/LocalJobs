@@ -478,7 +478,7 @@
     {
       "id": "T020",
       "title": "Dashboard: remove the Jobs tab",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T008"
       ],
