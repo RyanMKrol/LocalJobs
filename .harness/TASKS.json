@@ -288,7 +288,7 @@
     {
       "id": "T012",
       "title": "Places: daily schedule + daily spend cap",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T003"
       ],
