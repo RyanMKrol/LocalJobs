@@ -360,7 +360,7 @@
     {
       "id": "T015",
       "title": "Framework: shared headless-browser helper (src/core/browser.ts)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T004"
       ],
