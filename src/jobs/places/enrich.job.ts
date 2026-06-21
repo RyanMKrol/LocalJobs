@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../core/types.js';
+import { enrichedPlacesContract, resolvedPlacesContract } from './contracts.js';
 import { runEnrich } from './enrich.js';
 
 /**
@@ -34,6 +35,8 @@ const job: JobDefinition = {
   schedule: '0 3 * * *', // 03:00 every day
   timeoutMs: 0, // budget-capped + each call bounded; no job-level timeout
   maxRetries: 0,
+  consumes: [resolvedPlacesContract()],
+  produces: [enrichedPlacesContract()],
   async run(ctx) {
     await runEnrich(ctx);
   },

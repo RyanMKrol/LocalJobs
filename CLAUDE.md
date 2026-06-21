@@ -301,7 +301,14 @@ doubt, log it.
   page) and return precise per-drift `violations`. Gate derivation
   (`deriveGates`) lives in `src/core/dag.ts` (pure, edge-scoped — a consumed key
   with no producing upstream is an external input, not a gate); enforcement lives
-  in `src/core/pipeline-executor.ts`.
+  in `src/core/pipeline-executor.ts`. Both example pipelines declare these: the
+  contracts live in `src/jobs/places/contracts.ts` and
+  `src/jobs/perfumes/contracts.ts` as small **factory functions** (each takes an
+  optional path defaulting to the job's real `data/` artifact, so the jobs wire
+  `produces:[…()]`/`consumes:[…()]` while unit tests point them at synthetic
+  fixtures). The checks are deliberately SHAPE + NON-EMPTY (exists · non-empty ·
+  expected fields/columns) — enough to catch real drift without brittle
+  full-schema validation. Each pipeline derives 3 gates (one per stage boundary).
 - **Pipeline progress is rolled up from member jobs (don't set it by hand).** A
   pipeline run's `progress` is a first-class roll-up: each member stage
   contributes a fraction in [0,1] of the pipeline's total stage count — a

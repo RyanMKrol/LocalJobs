@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../core/types.js';
+import { normalizedPlacesContract } from './contracts.js';
 import { runIngest } from './ingest.js';
 
 /**
@@ -24,6 +25,7 @@ const job: JobDefinition = {
   schedule: '0 0 1 * *', // 00:00 on the 1st of every month
   timeoutMs: 120_000,
   maxRetries: 0,
+  produces: [normalizedPlacesContract()],
   async run(ctx) {
     const report = await runIngest(ctx);
     if (!report.ok) {

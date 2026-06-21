@@ -274,7 +274,12 @@ Stages can also declare **typed-artifact contracts** (`produces`/`consumes` on a
 job): the pipeline validates them at each dependency boundary, so an upstream
 external-format drift (a changed Google Takeout CSV layout, a reshaped
 Fragrantica page) fails LOUD at the exact gate — recording a failed run and
-firing an alert — instead of silently feeding bad data downstream.
+firing an alert — instead of silently feeding bad data downstream. Both worked
+pipelines declare them: each stage boundary checks the produced artifact is
+present, non-empty, and has its expected shape (the places CSV normalized to a
+non-empty `google-takeout` `places[]`, a `resolved.json` with real `place_id`s,
+a parsed perfume with a `name` + `notes`, …), so a pipeline's start log reports
+3 gates per pipeline. The contracts live in each pipeline's `contracts.ts`.
 
 ## Example pipeline: perfumes
 

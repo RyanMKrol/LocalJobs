@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../core/types.js';
+import { normalizedPlacesContract, resolvedPlacesContract } from './contracts.js';
 import { runResolve } from './resolve.js';
 
 /**
@@ -25,6 +26,8 @@ const job: JobDefinition = {
   schedule: '0 4 * * 0', // 04:00 every Sunday
   timeoutMs: 0, // no job-level timeout; each place is internally bounded + resumable
   maxRetries: 0,
+  consumes: [normalizedPlacesContract()],
+  produces: [resolvedPlacesContract()],
   async run(ctx) {
     await runResolve(ctx);
   },

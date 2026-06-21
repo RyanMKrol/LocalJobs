@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../core/types.js';
+import { enrichedPlacesContract } from './contracts.js';
 import { runLlmEnrich } from './llm-enrich.js';
 
 /**
@@ -34,6 +35,7 @@ const job: JobDefinition = {
   schedule: '0 5 * * *', // 05:00 daily — after resolve (Sun 04:00) and enrich (03:00)
   timeoutMs: 0,
   maxRetries: 0,
+  consumes: [enrichedPlacesContract()],
   async run(ctx) {
     await runLlmEnrich(ctx);
   },

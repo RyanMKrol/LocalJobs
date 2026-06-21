@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../core/types.js';
+import { fragranticaDataContract, fragranticaPagesContract } from './contracts.js';
 import { runParse } from './parse.js';
 
 const job: JobDefinition = {
@@ -8,6 +9,8 @@ const job: JobDefinition = {
   schedule: null,
   timeoutMs: 0,
   maxRetries: 0,
+  consumes: [fragranticaPagesContract()],
+  produces: [fragranticaDataContract()],
   async run(ctx) { await runParse(ctx); },
 };
 

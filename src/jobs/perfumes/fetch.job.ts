@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../core/types.js';
+import { fragranticaPagesContract, fragranticaUrlsContract } from './contracts.js';
 import { runFetch } from './fetch.js';
 
 const job: JobDefinition = {
@@ -8,6 +9,8 @@ const job: JobDefinition = {
   schedule: null,
   timeoutMs: 0,
   maxRetries: 0,
+  consumes: [fragranticaUrlsContract()],
+  produces: [fragranticaPagesContract()],
   async run(ctx) { await runFetch(ctx); },
 };
 

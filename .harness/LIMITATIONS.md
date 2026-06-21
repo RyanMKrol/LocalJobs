@@ -218,4 +218,25 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   via `tailscale serve`, or a dashboard-level token) rather than relying on tailnet
   membership alone.
 
+- **Real-job stage-gate contracts check SHAPE + NON-EMPTY of a representative
+  artifact, not every item.** T027 declared `produces`/`consumes` contracts on the
+  perfumes + places pipeline stages (`src/jobs/{perfumes,places}/contracts.ts`), so
+  each pipeline now derives **3 gates** that fire at every boundary (previously the
+  mechanism existed but zero real jobs declared contracts, so no gate ever fired).
+  *Why:* the goal is catching real external-format drift (a reshaped Fragrantica
+  page, a changed Takeout CSV layout) cheaply. So the per-item directory contracts
+  (`fragrantica-pages`, `fragrantica-data`) pass when **at least one** captured
+  page / parsed record has the expected shape rather than validating all N, and the
+  resolve/enrich contracts require **≥1** entry with a real `place_id`, not all.
+  Contracts are **factory functions** taking an optional path (defaulting to the
+  job's real `data/` artifact) so the jobs wire the defaults while unit tests point
+  them at synthetic fixtures — the real gitignored `data/` is never needed to test.
+  *Impact:* a corpus where most items are well-formed but a minority drifted still
+  passes the gate (those bad items are handled per-item by the work_items ledger /
+  retries, not the gate). The gate is a coarse "the upstream format didn't break
+  and produced *something* usable" check, deliberately not a full-schema every-row
+  validation (brittle, and would block the whole consumer on one bad item).
+  *Revisit:* if silent per-item drift becomes a problem, add a stricter opt-in
+  contract variant that samples N records or asserts a minimum well-formed fraction.
+
 > Add further project trade-offs below as they arise.
