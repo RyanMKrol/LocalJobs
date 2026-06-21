@@ -455,7 +455,7 @@
     {
       "id": "T019",
       "title": "Dashboard: read-only DB browser",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T008"
       ],
