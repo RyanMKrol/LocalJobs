@@ -13,404 +13,156 @@
   },
   "tasks": [
     {
-      "id": "T001",
-      "title": "Green CI baseline on the public checkout",
-      "status": "done",
+      "id": "T027",
+      "title": "Validation gates: declare contracts on real jobs so gates fire",
+      "status": "pending",
       "dependsOn": [],
-      "gate": null,
-      "tags": [
-        "scaffold",
-        "ci"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "scope": [
-        "src/jobs/registry.test.ts",
-        "src/**/*.test.ts",
-        ".github/workflows/ci.yml"
-      ],
-      "verify": [
-        "npx tsc --noEmit",
-        "npm test"
-      ],
-      "do": "Make the test suite + typecheck pass on a CLEAN PUBLIC checkout (only public files present — most jobs are still gitignored at this point, so the CI runner sees only the framework + demo job). registry.test.ts currently asserts hardcoded counts (9 jobs / 4 services / 2 pipelines) that only hold when the private jobs are present locally — make it robust to whatever public fileset exists (assert the demo job loads + the registry validates without throwing, not exact private counts). Fix any module that does real work / needs data/ at import time so importing it in CI doesn't fail.",
-      "doneWhen": "On a checkout containing only tracked files, `npx tsc --noEmit` and `npm test` both pass; GitHub Actions 'CI' is green on the pushed commit."
-    },
-    {
-      "id": "T002",
-      "title": "Self-contain the perfume profile template",
-      "status": "done",
-      "dependsOn": [
-        "T001"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "privacy"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "scope": [
-        "src/jobs/perfumes/config.ts",
-        "src/jobs/perfumes/profile.template.md",
-        "src/jobs/perfumes/build.ts",
-        ".env.example",
-        "CLAUDE.md"
-      ],
-      "verify": [
-        "npx tsc --noEmit",
-        "npm test"
-      ],
-      "do": "The repo must be self-contained — it must NOT reference other folders on the machine. perfumes/config.ts hardcodes templatePath='/Users/ryankrol/Development/perfume-markdown/research/_TEMPLATE.md' (leaks the machine's topography). Copy that template's CONTENT into a tracked in-project file src/jobs/perfumes/profile.template.md, change config.ts to resolve it RELATIVE to the perfumes job dir (no absolute path, no external repo), with an optional PERFUMES_TEMPLATE_PATH env override defaulting to the in-project file. Keep build.ts's FALLBACK_TEMPLATE. Document PERFUMES_TEMPLATE_PATH in .env.example. NOTE: the perfumes folder is still gitignored at this point — make the edits in place; the actual publish happens in T004.",
-      "doneWhen": "No absolute/external-repo path remains in any job code (`grep -rn '/Users/' src/jobs` is clean except inside data/); perfumes build still loads a template; typecheck + tests pass."
-    },
-    {
-      "id": "T003",
-      "title": "Publish the places job code",
-      "status": "done",
-      "dependsOn": [
-        "T001"
-      ],
-      "gate": null,
-      "tags": [
-        "publish",
-        "privacy"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "scope": [
-        ".gitignore",
-        "src/jobs/places/",
-        "README.md"
-      ],
-      "verify": [
-        "npx tsc --noEmit",
-        "npm test"
-      ],
-      "do": "Make the places job CODE public. Remove ONLY the 'src/jobs/places/' line from .gitignore (keep 'src/jobs/**/data/' and all secret rules). `git add` the places .ts files EXPLICITLY by path (NEVER `git add -A`); confirm via `git status` that nothing under src/jobs/places/data/ is staged. Verify a clean checkout still builds: the newly-public code must typecheck and the suite must stay green with no data/ present (use fixtures, no live API). Update README's note that 'jobs stay private' to reflect that places is now public.",
-      "doneWhen": "src/jobs/places/*.ts is tracked; src/jobs/places/data/** remains ignored (verify with `git check-ignore src/jobs/places/data/out`); typecheck + tests green; the pre-push guard would pass (no sensitive path staged)."
-    },
-    {
-      "id": "T004",
-      "title": "Publish the perfumes job code",
-      "status": "done",
-      "dependsOn": [
-        "T002",
-        "T003"
-      ],
-      "gate": null,
-      "tags": [
-        "publish",
-        "privacy"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "scope": [
-        ".gitignore",
-        "src/jobs/perfumes/",
-        "README.md",
-        "docs/LIMITATIONS.md"
-      ],
-      "verify": [
-        "npx tsc --noEmit",
-        "npm test"
-      ],
-      "do": "Make the perfumes job CODE public (depends on T002 having removed the external template path). Remove ONLY the 'src/jobs/perfumes/' line from .gitignore (keep data/ + secret rules). `git add` the perfumes .ts files + profile.template.md EXPLICITLY; confirm nothing under src/jobs/perfumes/data/ (especially chrome-profile/) is staged. Note in docs/LIMITATIONS.md that publishing exposes Fragrantica-scraping technique (accepted).",
-      "doneWhen": "src/jobs/perfumes/*.ts + profile.template.md tracked; src/jobs/perfumes/data/** (incl. chrome-profile) still ignored; typecheck + tests green; no sensitive path staged."
-    },
-    {
-      "id": "T005",
-      "title": "Unit tests for the framework core",
-      "status": "done",
-      "dependsOn": [
-        "T001"
-      ],
-      "gate": null,
-      "tags": [
-        "testing"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "scope": [
-        "src/core/executor.test.ts",
-        "src/core/pipeline-executor.test.ts",
-        "src/core/scheduler.test.ts",
-        "src/core/services.test.ts",
-        "src/core/notifier.test.ts"
-      ],
-      "verify": [
-        "npm test"
-      ],
-      "do": "Build out unit-test coverage for the framework core (currently only dag.ts + store helpers are tested). Cover: the executor (timeout-kill, retries, event parsing), the pipeline-executor (skip/aggregation/repeat-until-stable paths), the scheduler (croner triggers respect `enabled`), the service limiter callService (quota + throttle + min-interval spacing), and the notifier's header sanitiser. Use fake timers / injected clocks and stub child processes / network — NO live external calls. Keep tests against the scratch DB only.",
-      "doneWhen": "New *.test.ts files exercise the above paths; `npm test` is green; the new suites meaningfully assert behaviour (not just smoke imports)."
-    },
-    {
-      "id": "T006",
-      "title": "Validation gates between pipeline stages",
-      "status": "done",
-      "dependsOn": [
-        "T005"
-      ],
       "gate": null,
       "tags": [
         "coding",
         "framework"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
+        "src/jobs/perfumes/*.ts",
+        "src/jobs/places/*.ts",
         "src/core/types.ts",
-        "src/core/pipeline-executor.ts",
-        "src/core/dag.ts",
         "src/core/*.test.ts"
       ],
-      "verify": [
-        "npx tsc --noEmit",
-        "npm test"
-      ],
-      "do": "Add typed-artifact validation gates between dependent pipeline stages: let a job declare what it `produces`/`consumes`, and have the DAG/pipeline executor validate the contract at each boundary so an external-format drift (Takeout CSV layout, Fragrantica page structure) fails LOUD at the exact gate instead of passing bad data downstream. Make a failed gate a first-class, surfaced failure (run status + notification). Unit-test both a passing contract and a drifted/failing one.",
-      "doneWhen": "Contracts are declarable + enforced between stages; a violation produces a clear surfaced failure; tests cover pass + fail; typecheck + tests green; docs updated."
+      "design": null,
+      "verify": [],
+      "do": "T006 built the gate MECHANISM but no real job declares contracts, so zero gates fire. Declare `produces`/`consumes` ArtifactContracts on the perfumes + places pipeline stages (e.g. fetch produces raw pages, parse consumes them; ingest produces CSV rows, resolver consumes them) so the executor enforces a gate on each DAG edge and fails LOUD on format drift. Verify against cached data/ fixtures — NO live calls.",
+      "doneWhen": "Perfumes + places stages declare produces/consumes contracts; gates derive and fire between stages (pipeline start-log gate count > 0); a unit test proves a satisfied contract passes and a drifted one fails the consumer; no live API/scrape used in verification."
     },
     {
-      "id": "T007",
-      "title": "Docs audit — README + CLAUDE.md vs current repo",
-      "status": "done",
+      "id": "T028",
+      "title": "Validation gates: surface on the DAG graph + failure logs",
+      "status": "pending",
       "dependsOn": [
-        "T004"
+        "T027"
       ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "framework"
+      ],
+      "scope": [
+        "src/core/dag.ts",
+        "src/api/server.ts",
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/pipeline-runs/[id]/page.tsx",
+        "dashboard/app/lib/api.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Represent validation gates on the pipeline DAG graph: show a gate marker on the producer→consumer edge in a pipeline run, make a failed gate visually distinct, and make the gate-failure run/logs reachable from the graph. Expose gate info via the API so the dashboard can render it.",
+      "doneWhen": "Gates appear on the pipeline-run DAG between producer→consumer; a failed gate is visually distinct and links to its failure logs; dashboard build passes."
+    },
+    {
+      "id": "T029",
+      "title": "Per-item progress: emit ctx.progress(i/N) + per-item logs across all jobs",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "coding",
+        "framework"
+      ],
+      "scope": [
+        "src/jobs/perfumes/*.ts",
+        "src/jobs/places/*.ts",
+        "src/core/types.ts",
+        "src/core/*.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Jobs that process N items don't report progress as they go — e.g. perfumes-find-url works 41 items but never logs `1/41 …` and the run % doesn't advance. Make every item-processing job emit `ctx.progress(i/N*100)` and a per-item log line as it works (sensible denominators), not just a final summary. Apply across ALL such jobs, not just find-url.",
+      "doneWhen": "Item-processing jobs emit per-item progress + a per-item log line; the run % advances during the run (verified against cached fixtures / scratch DB, no live calls); covers every item-loop job."
+    },
+    {
+      "id": "T030",
+      "title": "Move the Chrome profile to a shared framework location",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "coding",
+        "framework"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/core/browser.ts",
+        "src/jobs/perfumes/fetch.ts",
+        "src/config.ts",
+        ".gitignore"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The persistent Chrome profile lives inside the perfumes job (`src/jobs/perfumes/data/chrome-profile`). Now that `src/core/browser.ts` is the shared helper, move it to a framework-level, configurable path so it isn't perfumes-specific and other scrapers (e.g. the places resolver) can reuse the warmed, trusted profile. Keep it gitignored.",
+      "doneWhen": "The Chrome profile path is framework-level + configurable (not under src/jobs/perfumes/data); the new location is gitignored; perfumes fetch still uses it; typecheck + tests green."
+    },
+    {
+      "id": "T031",
+      "title": "Trim the README — it's a wall of text",
+      "status": "pending",
+      "dependsOn": [],
       "gate": null,
       "tags": [
         "docs"
       ],
       "model": "claude-sonnet-4-6",
-      "effort": "high",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
       "scope": [
-        "README.md",
-        "CLAUDE.md"
+        "README.md"
       ],
-      "verify": [
-        "npx tsc --noEmit"
-      ],
-      "do": "Audit README.md + CLAUDE.md against the current repo state and fix drift: the pipelines + services model, the ntfy notify topic/config, the work-ledger / usage-meter / stuck-items / notifier features, the dashboard pages list, the file map, and the now-PUBLIC places/perfumes jobs (the old 'all real jobs are gitignored' framing is no longer fully true — correct it honestly). Keep claims matched to code.",
-      "doneWhen": "Both docs accurately describe the current architecture, jobs, features, and public/private split; no stale claims remain."
+      "design": null,
+      "verify": [],
+      "do": "The README is too verbose. Trim it: drop or shrink the `## Layout` file-tree, and present the worked-example pipelines compactly/scannably instead of long prose. Keep the essential 'what it is / how to run it'.",
+      "doneWhen": "README is noticeably shorter + scannable; the Layout file-tree is gone or minimal; example pipelines are compact; the core run/install instructions remain accurate."
     },
     {
-      "id": "T008",
-      "title": "Dashboard quick fixes",
-      "status": "done",
-      "dependsOn": [
-        "T001"
-      ],
+      "id": "T032",
+      "title": "Don't count cancelled runs as failed",
+      "status": "pending",
+      "dependsOn": [],
       "gate": null,
       "tags": [
-        "dashboard",
-        "ui"
+        "dashboard"
       ],
       "model": "claude-sonnet-4-6",
-      "effort": "high",
-      "scope": [
-        "dashboard/"
-      ],
-      "verify": [
-        "npm --prefix dashboard run build"
-      ],
-      "do": "Four small, self-contained dashboard fixes: (1) the pipeline detail graph (/pipelines/[name]) should show STRUCTURE only — omit the node status label when no `statusByJob` is provided (Dag.tsx); (2) when viewing a stage's logs from a pipeline run (/runs/[id] with a pipeline_run_id), the top-left back-link should return to /pipeline-runs/[pipeline_run_id], not the standalone job; (3) make the top-left 'Local Jobs' wordmark a link to the overview; (4) the overview 'Recent runs' list should show recent PIPELINE runs (link to /pipeline-runs/[id]).",
-      "doneWhen": "All four behaviours implemented; `npm --prefix dashboard run build` passes; typecheck clean."
-    },
-    {
-      "id": "T009",
-      "title": "Perfumes: populate accord percentages",
-      "status": "done",
-      "dependsOn": [
-        "T004"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "perfumes"
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
       ],
       "scope": [
-        "src/jobs/perfumes/parse.ts",
-        "src/jobs/perfumes/parse.job.ts",
-        "src/jobs/perfumes/types.ts",
-        "src/jobs/perfumes/parse.test.ts"
+        "dashboard/app/page.tsx",
+        "dashboard/app/ui.tsx"
       ],
       "design": null,
       "verify": [],
-      "do": "The parse stage emits accords: [{name, pct}] but pct is always null. Pull each accord's strength (the coloured bar's width %) off the cached Fragrantica page so accords carry weight. Parse against the already-fetched HTML under src/jobs/perfumes/data — NO live scrape.",
-      "doneWhen": "Accords carry a numeric pct parsed from the bar width on a cached fixture; pct is null only when genuinely absent on the page; a unit test asserts the parsed percentages against a committed/synthetic HTML fixture."
+      "do": "The overview 'Failed' tile (and other status rollups) lump `cancelled` in with failed/partial. A cancelled run is a deliberate stop, not a failure. Give `cancelled` its own treatment — not counted as failed — on the overview tiles and any other status aggregation.",
+      "doneWhen": "Cancelled runs are no longer counted as failed on the overview (and any other rollup); dashboard build passes."
     },
     {
-      "id": "T010",
-      "title": "Perfumes: handle empty Fragrantica notes sections in markdown",
-      "status": "done",
-      "dependsOn": [
-        "T004"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "perfumes"
-      ],
-      "scope": [
-        "src/jobs/perfumes/parse.ts",
-        "src/jobs/perfumes/build.ts",
-        "src/jobs/perfumes/build.test.ts"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "Some Fragrantica notes-pyramid sections come back empty. Decide and implement how that is reflected in the built markdown — handle honestly: don't fabricate notes, don't silently drop the section. Verify against cached/synthetic fixtures, no live scrape.",
-      "doneWhen": "An empty notes-pyramid section produces a clear, honest markdown result (section omitted or explicitly marked empty — never fabricated); a unit test covers an empty-section fixture and a populated one."
-    },
-    {
-      "id": "T011",
-      "title": "Perfumes: weight Fragrantica vs LLM research by confidence",
-      "status": "done",
-      "dependsOn": [
-        "T004"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "perfumes"
-      ],
-      "scope": [
-        "src/jobs/perfumes/build.ts",
-        "src/jobs/perfumes/config.ts",
-        "src/jobs/perfumes/lib.ts",
-        "src/jobs/perfumes/build.test.ts"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "Niche houses have low vote counts = low-confidence community data. In the build step, down-weight low-sample Fragrantica signal against the LLM's own web research using a CONTINUOUS confidence weight (e.g. votes/(votes+k)). ALSO compute the ecosystem-wide vote/weight distribution across the scraped Fragrantica corpus to calibrate what counts as high vs low weight, and feed that distribution in as an input. Make the weighting explicit in the output. Verify against cached fixtures, no live calls.",
-      "doneWhen": "Build blends Fragrantica vs LLM via a continuous sample-size confidence weight calibrated against the corpus-wide distribution; the chosen weighting is explicit in the built profile; unit tests cover a low-sample and a high-sample fixture and assert the relative weighting."
-    },
-    {
-      "id": "T012",
-      "title": "Places: daily schedule + daily spend cap",
-      "status": "done",
-      "dependsOn": [
-        "T003"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "places"
-      ],
-      "scope": [
-        "src/jobs/places/places.pipeline.ts",
-        "src/jobs/places/config.ts",
-        "src/jobs/places/enrich.ts",
-        "src/jobs/places/llm-enrich.ts"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "The places pipeline is schedule:null (manual-only). Give it a real DAILY cron schedule ('0 3 * * *') so no pipeline is manual-only, and ensure a daily spend cap derived from the monthly free Places allowance (~ monthly/30) is enforced so a daily run can't blow the month. Env-overridable per the caps convention. No live API calls in verification.",
-      "doneWhen": "Places pipeline schedule is a daily cron (not null); a daily cap (≈ monthly free allowance / 30) is configured and enforced in the enrich loops; a unit test asserts the cap arithmetic / that the loop stops at the daily cap; config is env-overridable."
-    },
-    {
-      "id": "T013",
-      "title": "Finish service migration: drop per-job caps + backfill service_usage",
-      "status": "done",
-      "dependsOn": [
-        "T003",
-        "T012"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "framework"
-      ],
-      "scope": [
-        "src/jobs/places/enrich.ts",
-        "src/jobs/places/llm-enrich.ts",
-        "src/core/services.ts",
-        "src/db/store.ts",
-        "scripts/backfill-service-usage.ts",
-        "src/db/store.test.ts"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "Remove the redundant per-job capStatus/recordUsage from places-enrich (google-places) and enrich-with-llm (gemini) so the service-level quota is the SINGLE source of truth and the QuotaExceededError soft-fail path is genuinely live (currently shadowed by the job cap). THEN write a backfill script that tops up THIS MONTH's service_usage from job_usage (google-places←places-enrich, gemini←enrich-with-llm) WITHOUT double-counting calls already recorded to service_usage (idempotent), run it in-place against the live data/jobs.db, and self-verify. NO live paid API calls — this only reads/writes the local meter tables.",
-      "doneWhen": "Per-job capStatus/recordUsage removed from both jobs; service quota is the sole governor and the QuotaExceededError path is exercised by a unit test; the backfill script is committed, was run in-place, and before/after service_usage vs job_usage counts (reconciled, no double-count) are logged to .harness/worklog/T013.md."
-    },
-    {
-      "id": "T014",
-      "title": "Framework: manual prune of orphaned ledger rows",
-      "status": "done",
-      "dependsOn": [
-        "T005"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "framework"
-      ],
-      "scope": [
-        "src/db/store.ts",
-        "src/core/types.ts",
-        "src/api/server.ts",
-        "src/db/store.test.ts"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "Build a framework feature to prune work_items whose item_key is no longer in a job's current input (the case that orphaned the 3 old-id perfume rows after their ids were corrected). A job exposes its current input key-set; a MANUAL-triggered prune (API/CLI, never automatic) removes work_items not in that set and surfaces what it removed. The user clears the 3 orphaned perfume rows via this feature.",
-      "doneWhen": "A manual prune removes work_items whose item_key is absent from the job's current input set and keeps current ones; it is never triggered automatically; the removal is surfaced (API/log); unit tests cover keeps-current + removes-orphaned."
-    },
-    {
-      "id": "T015",
-      "title": "Framework: shared headless-browser helper (src/core/browser.ts)",
-      "status": "done",
-      "dependsOn": [
-        "T004"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "framework"
-      ],
-      "scope": [
-        "src/core/browser.ts",
-        "src/jobs/perfumes/fetch.ts",
-        "src/jobs/perfumes/fragrantica.service.ts",
-        "src/core/browser.test.ts"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "Promote the Chrome-profile learnings from the perfumes fetch (persistent profile keeps Cloudflare clearance, real-Chrome channel, jittered pacing, rate=reputation-not-detection) into a shared src/core/browser.ts helper, and refactor the perfumes fetch to use it. Behaviour-preserving extraction. NO live fetch in verification.",
-      "doneWhen": "A reusable src/core/browser.ts encapsulates persistent-profile + real-Chrome-channel + jittered-pacing launch; perfumes fetch is refactored onto it with no behaviour change; typecheck + tests green without any live browser/network call."
-    },
-    {
-      "id": "T016",
-      "title": "Framework: first-class pipeline progress percentages",
-      "status": "done",
-      "dependsOn": [
-        "T005"
-      ],
-      "gate": null,
-      "tags": [
-        "coding",
-        "framework"
-      ],
-      "scope": [
-        "src/core/pipeline-executor.ts",
-        "src/core/types.ts",
-        "src/db/store.ts",
-        "src/core/pipeline-executor.test.ts"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "Make progress percentage a first-class citizen of the pipeline (today the perfumes pipeline just shows 0%). Give progress sensible denominators and a real-time roll-up from member jobs, so a pipeline run reports meaningful overall progress instead of a flat 0%.",
-      "doneWhen": "Pipeline progress is computed from member-job progress with sensible denominators and rolls up in real time; a unit test asserts the roll-up across member stages; the value is persisted/surfaced for the dashboard."
-    },
-    {
-      "id": "T017",
-      "title": "Manually dismiss stuck items",
-      "status": "done",
-      "dependsOn": [
-        "T005",
-        "T008"
-      ],
+      "id": "T033",
+      "title": "Dismissed vs ignored: park ignored items, show only on overview",
+      "status": "pending",
+      "dependsOn": [],
       "gate": null,
       "tags": [
         "coding",
@@ -422,181 +174,212 @@
         "src/db/store.ts",
         "src/api/server.ts",
         "dashboard/app/page.tsx",
+        "dashboard/app/pipelines/page.tsx",
+        "dashboard/app/pipelines/[name]/page.tsx",
+        "dashboard/app/jobs/[name]/page.tsx",
         "src/db/store.test.ts"
       ],
       "design": null,
       "verify": [],
-      "do": "Some items will never process (genuinely bad data). Add a way to MANUALLY mark a stuck item as permanently dismissed so it drops off the dashboard front page. MUST be manual-only, never automatic, and distinct from 'unstick' (which retries). Likely a new dismissed status on work_items plus an API + dashboard control.",
-      "doneWhen": "A stuck item can be manually dismissed and then no longer appears in the stuck list/front page; dismissal is never automatic and is distinct from unstick/retry; unit tests cover dismiss + that a dismissed item stays off the stuck list."
+      "do": "Manually-ignored items currently reappear as 'stuck' and inflate stuck counts on the pipelines tab + pipeline/job detail. Fix the root cause (ignore must persist; the stuck query must exclude ignored; a re-run must not resurrect an ignored item) AND split the concepts: ignored items are parked and shown ONLY on the overview via a new fifth 'Ignored' tile (which filters to them) — never counted as stuck, and not shown on the pipelines tab, pipeline detail, or job detail.",
+      "doneWhen": "Ignored items never count as stuck and don't appear outside the overview; a 5th 'Ignored' overview tile shows + filters them; an ignored item stays ignored across re-runs; unit tests cover persistence + exclusion-from-stuck."
     },
     {
-      "id": "T018",
-      "title": "Dashboard: edit service rate limits",
-      "status": "done",
-      "dependsOn": [
-        "T008"
-      ],
+      "id": "T034",
+      "title": "Services: explicit 'remove cap' control",
+      "status": "pending",
+      "dependsOn": [],
       "gate": null,
       "tags": [
-        "coding",
         "dashboard"
       ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
       "scope": [
-        "src/db/store.ts",
-        "src/api/server.ts",
+        "dashboard/app/services/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Services edit-limits form it's unclear how to clear a cap back to 'no cap' (inputs just show placeholder text). Add an explicit control (e.g. a 'No cap' / clear button per field) that sets the value to no-cap (null) unambiguously, instead of relying on typing/blanking.",
+      "doneWhen": "Each limit field has a clear UI way to set it back to no-cap (null); saving persists null; dashboard build passes."
+    },
+    {
+      "id": "T035",
+      "title": "Services: colour free services green",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
         "dashboard/app/services/page.tsx",
-        "src/db/store.test.ts"
+        "dashboard/app/globals.css"
       ],
       "design": null,
       "verify": [],
-      "do": "The Services page is read-only. Add the ability to adjust a service's rate_per_minute / daily_cap / monthly_cap from the UI, persisted to the services table (overriding the code default). Reconcile code-sync vs user-edits the same way the job enabled-toggle does (user override wins / is preserved across code sync).",
-      "doneWhen": "Service rate_per_minute / daily_cap / monthly_cap are editable from the Services page and persisted; a code-sync does not clobber a user override (reconciled like the enabled toggle); unit tests cover persistence + the reconcile rule."
+      "do": "On the Services page, colour the 'free' service pill green (paid stays as-is) so free vs paid reads at a glance.",
+      "doneWhen": "Free-service pills render green; paid unchanged; dashboard build passes."
     },
     {
-      "id": "T019",
-      "title": "Dashboard: read-only DB browser",
-      "status": "done",
-      "dependsOn": [
-        "T008"
-      ],
+      "id": "T036",
+      "title": "Keep cron schedule expressions on one line",
+      "status": "pending",
+      "dependsOn": [],
       "gate": null,
       "tags": [
-        "coding",
         "dashboard"
       ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
       "scope": [
-        "src/api/server.ts",
+        "dashboard/app/globals.css",
+        "dashboard/app/pipelines/[name]/page.tsx",
+        "dashboard/app/jobs/[name]/page.tsx",
+        "dashboard/app/services/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Cron schedule expressions (e.g. perfumes `0 2 * * *`) wrap onto two lines even on a wide desktop. Keep the schedule on one line where possible (e.g. white-space:nowrap on the schedule cell/mono span). Keep this in mind for the mobile styling pass too.",
+      "doneWhen": "Schedule cron expressions render on a single line on desktop; dashboard build passes."
+    },
+    {
+      "id": "T037",
+      "title": "Drop standalone jobs — everything is a pipeline",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "coding",
+        "framework"
+      ],
+      "scope": [
+        "src/jobs/registry.ts",
+        "src/core/scheduler.ts",
         "src/db/store.ts",
-        "dashboard/app/db/page.tsx",
-        "dashboard/app/lib/api.ts"
+        "src/api/server.ts",
+        "dashboard/app/pipelines/page.tsx",
+        "src/core/*.test.ts",
+        "CLAUDE.md",
+        "README.md"
       ],
       "design": null,
       "verify": [],
-      "do": "Add a read-only SQLite table viewer page to the dashboard so the local DB can be browsed without building a feature per query. List tables and page through rows via a strictly read-only API path (no arbitrary mutation, no write SQL). Respect the existing read-only-client model.",
-      "doneWhen": "A dashboard page lists the DB tables and shows paged rows via a read-only API; there is no write/mutation path exposed; the dashboard build passes."
+      "do": "Remove the concept of standalone (non-pipeline) jobs: model every unit of work as a pipeline (a single job = a one-stage pipeline). Drop the dashboard 'Standalone jobs' section, the job-level standalone schedule/enable path (pipelines own scheduling), and the registry/scheduler handling for non-member jobs. Decide how a lone job is declared (implicit one-job pipeline). Now that demo is gone there are no standalone jobs to migrate.",
+      "doneWhen": "No standalone-job code path remains; every job belongs to a pipeline; the dashboard has no Standalone section; scheduler/registry handle only pipeline-driven jobs; typecheck + tests green; docs updated."
     },
     {
-      "id": "T020",
-      "title": "Dashboard: remove the Jobs tab",
-      "status": "done",
+      "id": "T038",
+      "title": "Rename 'pipeline' → 'workflow' everywhere",
+      "status": "pending",
       "dependsOn": [
-        "T008"
-      ],
-      "gate": null,
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
-      "scope": [
-        "dashboard/app/jobs/",
-        "dashboard/app/layout.tsx",
-        "dashboard/app/page.tsx",
-        "dashboard/app/components/Dag.tsx"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "Pipelines are the unit of work; jobs should only be viewed via their pipeline. Drop the /jobs tab + flat top-level job list, but keep per-job run/log drill-down reachable from the pipeline DAG nodes (standalone jobs as a section there).",
-      "doneWhen": "The /jobs flat tab + list is removed; per-job run/log drill-down is still reachable from pipeline DAG nodes; the dashboard build passes with no dangling links to the removed tab."
-    },
-    {
-      "id": "T021",
-      "title": "Dashboard: clickable overview stat tiles that filter",
-      "status": "done",
-      "dependsOn": [
-        "T008"
-      ],
-      "gate": null,
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
-      "scope": [
-        "dashboard/app/page.tsx",
-        "dashboard/app/ui.tsx"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "The four overview tiles (Running / Succeeded / Failed runs / Stuck items) should be clickable and filter the lists below to just that category.",
-      "doneWhen": "Each of the four tiles is clickable and filters the lists below to its category (with a way to clear the filter); the dashboard build passes."
-    },
-    {
-      "id": "T022",
-      "title": "Dashboard: collapse the pipeline-run member-runs list",
-      "status": "done",
-      "dependsOn": [
-        "T008"
-      ],
-      "gate": null,
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
-      "scope": [
-        "dashboard/app/pipeline-runs/[id]/",
-        "dashboard/app/ui.tsx"
-      ],
-      "design": null,
-      "verify": [],
-      "do": "For a repeat-until-stable pipeline (perfumes), each cycle re-runs all stages, so one pipeline run accumulates ~one row per stage per cycle (can be ~100). It is accurate but overwhelming — group/collapse the member-runs list (e.g. latest per stage, or grouped by cycle/stage) rather than a flat 100-row list.",
-      "doneWhen": "The pipeline-run member-runs list is grouped/collapsed (e.g. latest per stage per cycle) instead of a flat long list, while still letting you reach each member run; the dashboard build passes."
-    },
-    {
-      "id": "T023",
-      "title": "Security hardening of dashboard + API",
-      "status": "done",
-      "dependsOn": [
-        "T001"
+        "T037"
       ],
       "gate": null,
       "tags": [
         "coding",
-        "security"
+        "refactor"
+      ],
+      "scope": [
+        "src/",
+        "dashboard/",
+        "src/db/schema.sql",
+        "README.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Rename the 'pipeline' concept to 'workflow' everywhere: types (PipelineDefinition→WorkflowDefinition), DB tables (pipelines, pipeline_jobs, pipeline_runs, pipeline_run_logs → workflow*) WITH a migration that preserves existing rows, store functions, the `*.pipeline.ts` discovery convention (→ `*.workflow.ts`), pipeline-executor.ts, API routes (/api/pipelines, /pipeline-runs), dashboard routes/pages (/pipelines, /pipeline-runs) + labels, the `pipeline` field on jobs, and all docs. Mechanical but wide.",
+      "doneWhen": "No 'pipeline' naming remains for the concept (code, DB, routes, UI, docs); a DB migration moves existing pipeline_* data to workflow_* without loss; typecheck + tests + dashboard build green; docs updated."
+    },
+    {
+      "id": "T039",
+      "title": "Programmatic input ingestion into a pipeline's data/raw",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "coding",
+        "framework"
       ],
       "scope": [
         "src/api/server.ts",
-        "src/config.ts",
-        "src/api/server.test.ts"
+        "src/core/types.ts",
+        "src/jobs/places/*.ts",
+        "src/jobs/perfumes/*.ts",
+        "CLAUDE.md"
       ],
       "design": null,
       "verify": [],
-      "do": "Harden the dashboard + API so remote actors can't abuse the run/toggle endpoints. Tighten CORS (currently '*') to an allowlist/same-origin, confirm the API binds to 127.0.0.1, and guard the mutating run/toggle endpoints (loopback/token check). Keep the read-only dashboard client working. Pairs with the Tailscale remote-access task.",
-      "doneWhen": "CORS is no longer '*' (allowlist/same-origin), the API bind address is confirmed loopback (configurable), and the run/toggle endpoints reject unauthorised callers; unit tests cover a disallowed origin and an unauthorised mutation being rejected."
+      "do": "Add a way to push fresh input into a pipeline's data/raw without manual file copying — e.g. a daemon API endpoint (POST upload) and/or an `npm run ingest` CLI that writes into the right pipeline's data/raw — so a run can process the latest data programmatically.",
+      "doneWhen": "Fresh input can be pushed into a pipeline's data/raw via an API endpoint or CLI (no manual copy); covered by a test against a scratch dir; documented."
     },
     {
-      "id": "T024",
-      "title": "Remote-accessible dashboard via Tailscale",
-      "status": "done",
-      "dependsOn": [
-        "T023"
-      ],
-      "gate": null,
+      "id": "T040",
+      "title": "Mobile dashboard styling pass",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
       "tags": [
-        "coding",
-        "infra"
+        "dashboard",
+        "ui",
+        "needs-human"
+      ],
+      "scope": [
+        "dashboard/"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Review + fix the dashboard's styling on mobile — it currently looks bad on a phone. Responsive pass over tables, stat cards, nav, the DAG graph, and schedule cells. Needs a human eye: 'looks good on mobile' isn't machine-verifiable.",
+      "doneWhen": "A human reviews the dashboard on a phone and confirms it looks good (responsive, no overflow/wrapping issues)."
+    },
+    {
+      "id": "T041",
+      "title": "Decide + wire up where pipeline output goes",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "framework",
+        "needs-human"
+      ],
+      "scope": [
+        "src/jobs/"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Decide where pipeline output ultimately lands (Obsidian vault / static site / cloud sync) and build the step that delivers it there, instead of leaving output in data/out. The destination is a human decision first.",
+      "doneWhen": "Destination decided with the human; the delivery step is built and writes output there."
+    },
+    {
+      "id": "T042",
+      "title": "More intuitive remote dashboard access (alias)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "infra",
+        "needs-human"
       ],
       "scope": [
         "dashboard/",
@@ -605,90 +388,63 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Make the dashboard reachable over a Tailscale tailnet (not the open internet) via `tailscale serve`. Keep the dashboard bound to localhost and keep the API on loopback (127.0.0.1) — NEVER expose the API. Add API-proxying so the dashboard serves its data through its OWN origin (e.g. Next.js rewrites / route handlers): a remote browser talks only to the dashboard, and the dashboard server (on the Mini) talks to 127.0.0.1:4789. Document the one-time `tailscale serve` setup (and that Funnel must stay OFF) in the README. The machine-side tailscale up / tailscale serve is operational; this task delivers the code + docs.",
-      "doneWhen": "Dashboard data loads end-to-end when the browser can reach ONLY the dashboard origin (API proxied through the dashboard; API still bound to 127.0.0.1 and never exposed); README documents the `tailscale serve` setup with Funnel off and the T023 guards in front; dashboard build + typecheck pass. (Live tailnet reachability is verified operationally, not in CI.)"
+      "do": "Make remote dashboard access friendlier than typing the tailnet IP:port on mobile — a Tailscale MagicDNS hostname, a `tailscale serve` nice URL, or a phone home-screen shortcut. Partly operational (Tailscale admin / the machine), not CI-verifiable.",
+      "doneWhen": "The dashboard is reachable from the phone via a friendly alias/shortcut (human confirms)."
     },
     {
-      "id": "T025",
-      "title": "Set package versions to 1.0.0",
-      "status": "done",
-      "dependsOn": [
-        "T001"
-      ],
-      "gate": null,
+      "id": "T043",
+      "title": "Joint review of the perfumes pipeline",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
       "tags": [
-        "chore"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
+        "review",
+        "needs-human"
       ],
       "scope": [
-        "package.json",
-        "dashboard/package.json"
+        "src/jobs/perfumes/"
       ],
       "design": null,
       "verify": [],
-      "do": "Both packages are pinned at 0.1. Bump the root and dashboard package.json version fields to 1.0.0.",
-      "doneWhen": "Both package.json version fields read 1.0.0; typecheck and the dashboard build pass."
+      "do": "Walk through how the (overnight-built) perfumes pipeline actually works, together — it hasn't been reviewed jointly. A conversation, not a build.",
+      "doneWhen": "The perfumes pipeline has been walked through together and any follow-ups captured."
     },
     {
-      "id": "T026",
-      "title": "Docs audit — end-state sweep of README + CLAUDE.md",
-      "status": "done",
-      "dependsOn": [
-        "T001",
-        "T002",
-        "T003",
-        "T004",
-        "T005",
-        "T006",
-        "T007",
-        "T008",
-        "T009",
-        "T010",
-        "T011",
-        "T012",
-        "T013",
-        "T014",
-        "T015",
-        "T016",
-        "T017",
-        "T018",
-        "T019",
-        "T020",
-        "T021",
-        "T022",
-        "T023",
-        "T024",
-        "T025"
-      ],
-      "gate": null,
+      "id": "T044",
+      "title": "Folder-hierarchy check-in",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
       "tags": [
-        "docs"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
+        "review",
+        "needs-human"
       ],
       "scope": [
-        "README.md",
-        "CLAUDE.md"
+        "."
       ],
       "design": null,
-      "verify": [
-        "npx tsc --noEmit"
+      "verify": [],
+      "do": "Review the repo's file/folder organisation together and confirm it's laid out the way the owner wants. Subjective, no pass/fail.",
+      "doneWhen": "Repo layout reviewed together and confirmed / adjustments captured."
+    },
+    {
+      "id": "T045",
+      "title": "Dashboard styling — make it more joyful",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "dashboard",
+        "ui",
+        "needs-human"
       ],
-      "do": "Final end-state documentation sweep after all feature work has landed. Re-audit README.md + CLAUDE.md against the SHIPPED repo and fix any drift the per-task lockstep updates missed: the daily places schedule, the consolidated service-level caps (per-job caps gone), the manual ledger-prune + dismiss-stuck-items features, first-class pipeline progress, the shared headless-browser helper, the dashboard changes (no Jobs tab, filtering tiles, collapsed member-runs, read-only DB browser, editable service limits), the Tailscale remote-access + security-hardening model, and the 1.0.0 version. Keep every claim matched to code.",
-      "doneWhen": "README.md + CLAUDE.md accurately describe the final shipped architecture, jobs, schedules, caps, dashboard pages, remote-access/security posture, and version; no stale claim from any earlier task remains; typecheck clean."
+      "scope": [
+        "dashboard/"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Check in on the dashboard's overall look & feel and make it more joyful. Subjective design work needing the owner's eye.",
+      "doneWhen": "Look & feel reviewed with the owner and agreed changes applied."
     }
   ]
 }
