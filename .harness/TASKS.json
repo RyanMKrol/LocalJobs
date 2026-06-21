@@ -81,7 +81,7 @@
     {
       "id": "T030",
       "title": "Move the Chrome profile to a shared framework location",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
