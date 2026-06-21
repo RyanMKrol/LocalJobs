@@ -208,8 +208,10 @@ order, serially): `perfumes-find-url` (locate the Fragrantica page via the Claud
 CLI) → `perfumes-fetch` (headless Chrome fetch through Cloudflare clearance) →
 `perfumes-parse` (extract structured notes/accords — each accord's strength `pct`
 is lifted from the cached page HTML's coloured-bar width when an `<id>.html` is
-present) → `perfumes-build` (research +
-write a markdown profile from the in-project `profile.template.md`). It shares the
+present; an empty notes pyramid is normalized to explicitly-empty tiers, never
+guessed) → `perfumes-build` (research + write a markdown profile from the
+in-project `profile.template.md` — when Fragrantica gave no notes, the build
+prompt keeps the notes empty and says so rather than fabricating a pyramid). It shares the
 same scheduling/visibility/alerting, the per-item work ledger, and `repeatUntilStable`
 cycling. Its `data/` (the scraped inputs, generated markdown, and the Chrome
 profile) stays gitignored — only the code is published. It drives the local

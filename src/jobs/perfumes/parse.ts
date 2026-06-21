@@ -37,6 +37,7 @@ export async function runParse(ctx: JobContext): Promise<StageResult> {
       if (!res.ok) throw new Error(res.error ?? 'claude error');
       const data = extractJson(res.text);
       applyAccordPercents(data, p.id, ctx);
+      applyNormalizedNotes(data, label(p), ctx);
       writeFileSync(join(perfumesConfig.fragranticaDir, `${p.id}.json`), JSON.stringify(data, null, 2));
       markWorkItem(PARSE_JOB, p.id, 'success', { attempts, detail: { name: label(p) } });
       ok++;
@@ -107,6 +108,53 @@ export function parseAccordPercents(html: string): Accord[] {
     out.push({ name, pct });
   }
   return out;
+}
+
+/** The Fragrantica notes pyramid: one `string[]` per tier. An empty tier means
+ *  the page simply showed no notes for it — recorded as `[]`, never as a guess. */
+export interface NotesPyramid {
+  top: string[];
+  heart: string[];
+  base: string[];
+}
+
+/**
+ * Coerce a parsed `notes` value into a canonical pyramid. Every tier is always
+ * present as an array (a missing / null / non-array tier becomes `[]`); each
+ * entry is a whitespace-collapsed, non-empty string. A pyramid that came back
+ * empty stays *explicitly* empty — Fragrantica genuinely showed no notes
+ * breakdown — so downstream can mark it honestly rather than fabricate one.
+ */
+export function normalizeNotes(raw: unknown): NotesPyramid {
+  const tier = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v
+          .map((x) => (typeof x === 'string' ? x.replace(/\s+/g, ' ').trim() : ''))
+          .filter((s) => s.length > 0)
+      : [];
+  const n = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return { top: tier(n.top), heart: tier(n.heart), base: tier(n.base) };
+}
+
+/** True when the notes pyramid has nothing in any tier — i.e. the page showed
+ *  no notes breakdown at all for this perfume. */
+export function notesEmpty(n: NotesPyramid): boolean {
+  return n.top.length === 0 && n.heart.length === 0 && n.base.length === 0;
+}
+
+/** Replace the parsed `notes` with its canonical pyramid in place, and log
+ *  whether the page actually carried a notes breakdown. An empty pyramid is
+ *  written back as `{ top: [], heart: [], base: [] }` — present but explicitly
+ *  empty — so the build stage never silently drops it or invents notes. */
+function applyNormalizedNotes(data: unknown, name: string, ctx: JobContext): void {
+  if (!data || typeof data !== 'object') return;
+  const notes = normalizeNotes((data as { notes?: unknown }).notes);
+  (data as { notes: NotesPyramid }).notes = notes;
+  if (notesEmpty(notes)) {
+    ctx.log(`[parse]   ${name}: Fragrantica notes pyramid empty — recorded as empty (not fabricated)`, 'warn');
+  } else {
+    ctx.log(`[parse]   ${name}: notes ${notes.top.length}/${notes.heart.length}/${notes.base.length} (top/heart/base)`);
+  }
 }
 
 /** Locate the cached HTML for a page, if any was kept (the success path saves

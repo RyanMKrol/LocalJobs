@@ -5,6 +5,7 @@ import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import { runClaude, unfenceMarkdown } from './claude.js';
 import { perfumesConfig } from './config.js';
 import { ensureDirs, label, loadPerfumes, readJsonFile } from './lib.js';
+import { normalizeNotes, notesEmpty } from './parse.js';
 import type { PerfumeInput, StageResult } from './types.js';
 
 export const BUILD_JOB = 'perfumes-build';
@@ -77,7 +78,8 @@ function buildPrompt(p: PerfumeInput, fragJson: string, url: string | null, temp
     '- longevity: from the longevity votes → one of weak | moderate | long | very long (long lasting/eternal → "long"/"very long").',
     '- sillage: from the sillage votes → one of intimate | moderate | strong | enormous.',
     '- season / time: from whenToWear (note Fragrantica uses "fall" = autumn). occasion/mood: your judgement from the data + reviews.',
-    '- accords: the dominant accords (3–6, lowercase). notes.top/heart/base: from the notes pyramid.',
+    '- accords: the dominant accords (3–6, lowercase).',
+    notesMappingClause(fragJson),
     '- community_rating: "<rating> / 5 (<votes> votes)" from the rating + votes (null if absent).',
     '',
     'RESEARCH THE REST (web search): perfumer, release year, olfactory family, the house/story, and a few',
@@ -96,6 +98,35 @@ function buildPrompt(p: PerfumeInput, fragJson: string, url: string | null, temp
     '--- TEMPLATE ---',
     template,
   ].join('\n');
+}
+
+/**
+ * The build-prompt clause for mapping the notes pyramid into the profile.
+ *
+ * Some Fragrantica pages come back with an empty notes pyramid. When that
+ * happens we tell Claude EXPLICITLY to keep `notes.top/heart/base` as empty
+ * arrays (present but explicitly empty — never dropped from the frontmatter)
+ * and to say plainly that the notes breakdown was unavailable — rather than
+ * fabricating or web-researching a substitute pyramid. A populated pyramid gets
+ * the normal "map it through" instruction. Never throws on malformed JSON: an
+ * unparseable blob is treated as an empty pyramid (the honest fallback).
+ */
+export function notesMappingClause(fragJson: string): string {
+  let notes;
+  try {
+    notes = normalizeNotes((JSON.parse(fragJson) as { notes?: unknown }).notes);
+  } catch {
+    notes = normalizeNotes(undefined);
+  }
+  if (notesEmpty(notes)) {
+    return [
+      '- notes.top/heart/base: the Fragrantica notes pyramid is EMPTY for this perfume.',
+      '  Keep notes.top, notes.heart and notes.base as empty arrays ([]) — do NOT fabricate',
+      '  a pyramid or substitute web-researched notes — and state plainly in the Olfactory',
+      '  Profile that a notes breakdown was unavailable for this fragrance.',
+    ].join('\n');
+  }
+  return '- notes.top/heart/base: from the notes pyramid in the Fragrantica data above (do not invent extra notes).';
 }
 
 const FALLBACK_TEMPLATE = '---\nname: ""\nbrand: ""\nyear: null\nperfumer: ""\nconcentration: ""\nfamily: ""\naccords: []\nnotes:\n  top: []\n  heart: []\n  base: []\nseason: []\ntime: []\noccasion: []\nmood: []\ngender: ""\nlongevity: ""\nsillage: ""\ncommunity_rating: null\nfragrantica_status: "ok"\nfragrantica_url: null\nrating: null\nstatus: "owned"\nsources: []\n---\n\n# Name — Brand\n\n## Overview\n\n## Olfactory Profile\n\n## Community Sentiment\n\n## Recommended Settings\n\n## Similar Fragrances\n\n## History & Background\n\n## Personal Notes\n\n## Application\n\n## Sources\n';
