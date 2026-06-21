@@ -145,7 +145,7 @@ src/
     executor.ts        spawn child, capture events, timeout-kill, retries
     scheduler.ts       croner triggers per scheduled job + pipeline
     dag.ts             pipeline DAG: topo sort + cycle detection
-    pipeline-executor.ts  orchestrate pipeline runs; stage gates; member jobs
+    pipeline-executor.ts  orchestrate pipeline runs; stage gates; member jobs; progress roll-up
     notifier.ts        ntfy + macOS notification on failure (+ stuck-items heads-up)
     services.ts        callService: cross-job rate-limit + quota middleware
     browser.ts         shared headless-browser launch (persistent profile +
@@ -170,7 +170,7 @@ data/                  SQLite db + daemon/dashboard logs (gitignored)
 - **Run detail** — live progress bar + streaming logs, duration, exit code, error
 - **Pipelines** — every pipeline, schedule, enabled state, member jobs, last/next run
 - **Pipeline detail** — ▶ Run now, enable toggle, full run history
-- **Pipeline run detail** — live framework logs, per-stage job outcomes and statuses
+- **Pipeline run detail** — live framework logs, per-stage job outcomes and statuses, overall progress bar (rolled up in real time from member-job progress)
 - **Services** — per-service usage counts vs caps, current per-minute call rate
 
 ## Configuration

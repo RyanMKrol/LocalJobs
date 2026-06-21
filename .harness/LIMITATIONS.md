@@ -151,4 +151,22 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Revisit:* if a job legitimately needs auto-prune, add an opt-in guard (min-size
   / change-ratio sanity check) rather than running it on every schedule.
 
+- **Pipeline progress roll-up is point-in-time, not monotonic, and its denominator
+  trusts `pipeline_jobs`.** T016 made pipeline `progress` a first-class roll-up:
+  `rollUpPipelineProgress` (in `store.ts`) sums each member stage's fraction
+  (terminal = 1, running = its `progress`/100, not-started = 0) over the member
+  count from the `pipeline_jobs` table, and `setProgress` calls it live whenever a
+  member emits progress. Trade-offs: (a) **non-monotonic under `repeatUntilStable`**
+  — each cycle creates fresh member runs starting at 0, so the bar sawtooths down at
+  cycle boundaries (acceptable: it's honestly redoing work). (b) The denominator is
+  the **current** `pipeline_jobs` count; if a pipeline is re-synced with a different
+  member set mid-run the percentage would shift — a non-issue in the single-process
+  daemon where syncs happen at startup, not during a run. (c) It recomputes the full
+  per-member latest-run query on **every** member progress event (one extra
+  correlated subquery per `setProgress`) — negligible at this scale, not built for
+  pipelines with hundreds of high-frequency-progress members.
+  *Revisit:* if non-monotonic display ever bothers, clamp to a max-so-far per cycle;
+  if membership can change mid-run, persist a `total_stages` snapshot on the
+  pipeline run instead of counting `pipeline_jobs`.
+
 > Add further project trade-offs below as they arise.

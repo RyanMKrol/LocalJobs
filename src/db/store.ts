@@ -101,6 +101,12 @@ export function recordGateFailure(jobName: string, pipelineRunId: string, error:
 export function setProgress(runId: string, pct: number, message: string): void {
   db.prepare('UPDATE runs SET progress = ?, progress_msg = ? WHERE id = ?')
     .run(Math.max(0, Math.min(100, Math.round(pct))), message, runId);
+  // If this run is a pipeline member, roll its progress up into the parent
+  // pipeline run in real time, so the pipeline reflects in-flight member
+  // progress rather than only whole settled stages.
+  const row = db.prepare('SELECT pipeline_run_id FROM runs WHERE id = ?')
+    .get(runId) as { pipeline_run_id: string | null } | undefined;
+  if (row?.pipeline_run_id) rollUpPipelineProgress(row.pipeline_run_id);
 }
 
 export function finishRun(
@@ -400,6 +406,56 @@ export function createPipelineRun(pipelineName: string, trigger: RunTrigger): st
 export function setPipelineProgress(id: string, pct: number, message: string): void {
   db.prepare('UPDATE pipeline_runs SET progress = ?, progress_msg = ? WHERE id = ?')
     .run(Math.max(0, Math.min(100, Math.round(pct))), message, id);
+}
+
+/** Member-run statuses that are terminal — a stage in any of these counts as a
+ *  fully-completed stage for the pipeline progress roll-up (regardless of
+ *  success/failure), since no further progress will come from it. */
+const TERMINAL_RUN_STATUSES = new Set<RunStatus>(['success', 'failed', 'timeout', 'cancelled', 'skipped']);
+
+/**
+ * Roll up a pipeline run's overall progress (0..100) from its member-job runs.
+ * The denominator is the pipeline's total stage count (its member jobs); each
+ * stage contributes a completion fraction in [0,1] — a terminal run counts as a
+ * full stage, a still-running run contributes its own `progress`/100, and a
+ * stage with no run yet contributes 0. This is the first-class roll-up: it makes
+ * a pipeline report meaningful overall progress (e.g. mid-stage) instead of a
+ * flat 0% or coarse whole-stage steps. Called in real time whenever a member
+ * emits progress (via `setProgress`) or a stage settles.
+ *
+ * Pass `message` to also update `progress_msg`; omit it to refresh only the
+ * percentage (keeps the last stage message intact). Returns the percentage
+ * written.
+ */
+export function rollUpPipelineProgress(pipelineRunId: string, message?: string): number {
+  const pr = db.prepare('SELECT pipeline_name FROM pipeline_runs WHERE id = ?')
+    .get(pipelineRunId) as { pipeline_name: string } | undefined;
+  if (!pr) return 0;
+  const total = (db.prepare('SELECT COUNT(*) AS n FROM pipeline_jobs WHERE pipeline_name = ?')
+    .get(pr.pipeline_name) as { n: number }).n;
+  if (total <= 0) return 0;
+  // Latest run per member job in this pipeline run. UUID ids aren't ordered, so
+  // pick by rowid; across repeatUntilStable cycles this naturally tracks the
+  // current cycle's run for each job.
+  const rows = db.prepare(`
+    SELECT status, progress FROM runs r
+    WHERE pipeline_run_id = ?
+      AND rowid = (SELECT MAX(rowid) FROM runs
+                   WHERE pipeline_run_id = r.pipeline_run_id AND job_name = r.job_name)
+  `).all(pipelineRunId) as { status: RunStatus; progress: number }[];
+  let fraction = 0;
+  for (const r of rows) {
+    fraction += TERMINAL_RUN_STATUSES.has(r.status)
+      ? 1
+      : Math.max(0, Math.min(100, r.progress)) / 100;
+  }
+  const pct = Math.max(0, Math.min(100, (fraction / total) * 100));
+  if (message === undefined) {
+    db.prepare('UPDATE pipeline_runs SET progress = ? WHERE id = ?').run(Math.round(pct), pipelineRunId);
+  } else {
+    setPipelineProgress(pipelineRunId, pct, message);
+  }
+  return pct;
 }
 
 export function finishPipelineRun(id: string, status: PipelineRunStatus): void {

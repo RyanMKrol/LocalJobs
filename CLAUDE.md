@@ -115,7 +115,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention |
 | `src/core/scheduler.ts` | croner triggers for scheduled jobs + pipelines; respects `enabled` |
 | `src/core/dag.ts` | Pipeline DAG: build + validate topological order, cycle detection |
-| `src/core/pipeline-executor.ts` | Orchestrate a pipeline run: member jobs in DAG order, stage gates, retries |
+| `src/core/pipeline-executor.ts` | Orchestrate a pipeline run: member jobs in DAG order, stage gates, retries, real-time progress roll-up |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
@@ -279,6 +279,17 @@ doubt, log it.
   (`deriveGates`) lives in `src/core/dag.ts` (pure, edge-scoped — a consumed key
   with no producing upstream is an external input, not a gate); enforcement lives
   in `src/core/pipeline-executor.ts`.
+- **Pipeline progress is rolled up from member jobs (don't set it by hand).** A
+  pipeline run's `progress` is a first-class roll-up: each member stage
+  contributes a fraction in [0,1] of the pipeline's total stage count — a
+  terminal run counts as a full stage, a still-running member contributes its own
+  `progress`/100, a not-yet-started stage contributes 0. It updates in **real
+  time**: `setProgress` (the executor's per-member progress writer) calls
+  `rollUpPipelineProgress` in `src/db/store.ts` whenever a pipeline member emits
+  progress, so the pipeline reflects in-flight work instead of a flat 0% or
+  coarse whole-stage steps. The denominator comes from the `pipeline_jobs` table
+  (member count), so no new column is needed. Use `rollUpPipelineProgress`, not
+  ad-hoc `setPipelineProgress(settled/total)`, when surfacing pipeline progress.
 - **Job resources are job-local.** A job's input/output data lives in its own
   `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.

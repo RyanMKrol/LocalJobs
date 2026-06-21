@@ -7,7 +7,7 @@ import {
   pipelineRetryableCount,
   recordGateFailure,
   recordSkippedRun,
-  setPipelineProgress,
+  rollUpPipelineProgress,
 } from '../db/store.js';
 import { type Dag, type Gate, buildDag, deriveGates, executeDag } from './dag.js';
 import { runJobForPipeline } from './executor.js';
@@ -129,14 +129,14 @@ export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' |
       onStart: (job) => log(`▶ ${job} started`),
       onSettle: async (job, s) => {
         settled++;
-        setPipelineProgress(pipelineRunId, (settled / total) * 100, `${settled}/${total} stages (${job} ${s})`);
+        rollUpPipelineProgress(pipelineRunId, `${settled}/${total} stages (${job} ${s})`);
         log(`${s === 'success' ? '✓' : '✗'} ${job} → ${s}`, s === 'success' ? 'info' : 'warn');
         await notifyStage(def.name, pipelineRunId, job, s, log);
       },
       onSkip: async (job, reason) => {
         settled++;
         recordSkippedRun(job, pipelineRunId, `skipped: ${reason}`);
-        setPipelineProgress(pipelineRunId, (settled / total) * 100, `${settled}/${total} stages (${job} skipped)`);
+        rollUpPipelineProgress(pipelineRunId, `${settled}/${total} stages (${job} skipped)`);
         log(`⊘ ${job} skipped — ${reason}`, 'warn');
         await notifyStage(def.name, pipelineRunId, job, 'skipped', log);
       },

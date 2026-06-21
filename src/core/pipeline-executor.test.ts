@@ -11,7 +11,9 @@ import { join } from 'node:path';
 import { config } from '../config.js';
 import { jobs } from '../jobs/registry.js';
 import {
-  getPipelineLogs, getPipelineRun, listRunsForPipelineRun, markWorkItem, syncJob, syncPipeline,
+  createPipelineRun, createRun, finishRun, getPipelineLogs, getPipelineRun,
+  listRunsForPipelineRun, markWorkItem, rollUpPipelineProgress, setProgress,
+  syncJob, syncPipeline,
 } from '../db/store.js';
 import { runPipeline } from './pipeline-executor.js';
 import type { JobDefinition, PipelineDefinition } from './types.js';
@@ -46,7 +48,7 @@ config.runJobScript = fakePath;
 config.ntfyTopic = ''; // never POST to ntfy during tests
 
 // Member jobs must be discoverable (getJobDefinition) AND exist in the jobs table (FK).
-const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a'];
+const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d'];
 const pushed: JobDefinition[] = [];
 for (const name of members) {
   const d: JobDefinition = { name, run: async () => {} };
@@ -80,9 +82,40 @@ try {
     const { pipelineRunId } = await runPipeline(def, 'manual');
     assert.ok(pipelineRunId);
     assert.equal(getPipelineRun(pipelineRunId!)?.status, 'success');
+    assert.equal(getPipelineRun(pipelineRunId!)?.progress, 100, 'all stages done → 100%');
     const memberRuns = listRunsForPipelineRun(pipelineRunId!);
     assert.equal(memberRuns.length, 2);
     assert.ok(memberRuns.every((r) => r.status === 'success'));
+  });
+
+  await test('progress roll-up: pipeline % is computed from member progress over the total stage count, in real time', async () => {
+    // Four independent stages → denominator 4. We drive member runs directly
+    // (no spawn) to assert the roll-up math across mixed stage states.
+    const def: PipelineDefinition = {
+      name: 'pp-rollup', jobs: [{ job: 'ru-a' }, { job: 'ru-b' }, { job: 'ru-c' }, { job: 'ru-d' }],
+    };
+    syncPipeline(def);
+    const prid = createPipelineRun('pp-rollup', 'manual');
+
+    // No member runs yet → 0%.
+    assert.equal(rollUpPipelineProgress(prid), 0);
+
+    // Stage ru-a completes (terminal) → counts as a full stage: 1/4 = 25%.
+    const aRun = createRun('ru-a', 'pipeline', 1, prid);
+    finishRun(aRun, 'success', { exitCode: 0 });
+    assert.equal(rollUpPipelineProgress(prid), 25);
+
+    // Stage ru-b starts and reports 50% — setProgress rolls it up in real time:
+    // (1 + 0.5) / 4 = 37.5% → 38 (no explicit rollUp call needed).
+    const bRun = createRun('ru-b', 'pipeline', 1, prid);
+    createRun('ru-c', 'pipeline', 1, prid); // ru-c running at 0% contributes nothing
+    setProgress(bRun, 50, 'halfway');
+    assert.equal(getPipelineRun(prid)?.progress, 38, 'mid-stage member progress rolled up live');
+
+    // ru-b finishes its work (100%) → (1 + 1) / 4 = 50%; ru-d never started (0).
+    setProgress(bRun, 100, 'done');
+    assert.equal(getPipelineRun(prid)?.progress, 50);
+    assert.equal(rollUpPipelineProgress(prid), 50);
   });
 
   await test('a failed upstream skips its dependent → status partial, dependent recorded skipped', async () => {

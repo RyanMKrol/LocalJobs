@@ -151,6 +151,8 @@ export interface PipelineRunRow {
   pipeline_name: string;
   status: PipelineRunStatus;
   trigger: RunTrigger;
+  /** Overall 0..100, rolled up in real time from member-job progress over the
+   *  pipeline's total stage count (see `rollUpPipelineProgress` in the store). */
   progress: number;
   progress_msg: string;
   started_at: string | null;
