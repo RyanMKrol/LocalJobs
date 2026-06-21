@@ -198,4 +198,24 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   `WHERE`/`ORDER BY` builder (still parameterized, column names whitelisted) rather
   than exposing raw SQL.
 
+- **Remote dashboard proxies the API as a loopback caller → tailnet membership
+  IS the auth.** T024 made the dashboard reachable over a Tailscale tailnet via
+  `tailscale serve`, with the browser talking only to the dashboard origin and the
+  dashboard server proxying `/api/*` to the loopback daemon API
+  (`dashboard/next.config.js` `beforeFiles` rewrite → `127.0.0.1:4789`). *Why:* it
+  keeps the API bound to `127.0.0.1` and never exposed — the only thing on the
+  tailnet is the dashboard. *Impact:* because the proxy hop originates from
+  loopback, the daemon sees a loopback caller, so the T023 **mutation token guard
+  does not apply to requests that arrive via the dashboard proxy** — anyone who can
+  reach the dashboard (i.e. any device on the tailnet, or anyone local) can trigger
+  runs/toggles. The security boundary is therefore the **tailnet ACL**, not a
+  per-request token. This is acceptable only while (a) `tailscale serve` is used,
+  **never `tailscale funnel`** (Funnel = public internet), and (b) the tailnet is
+  trusted. The T023 guards (loopback bind, CORS allowlist, token-for-non-loopback)
+  still protect the API against any *directly*-exposed path; they just don't gate
+  the proxied path. *Revisit:* if the tailnet is shared with untrusted devices, add
+  an auth layer in front of the dashboard itself (e.g. Tailscale identity headers
+  via `tailscale serve`, or a dashboard-level token) rather than relying on tailnet
+  membership alone.
+
 > Add further project trade-offs below as they arise.

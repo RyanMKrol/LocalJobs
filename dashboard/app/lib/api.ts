@@ -1,5 +1,10 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:4789';
+// Same-origin by default: the browser fetches `/api/*` from the dashboard's own
+// origin, which Next.js rewrites (server-side, in next.config.js) to the loopback
+// daemon API. This is what makes the dashboard reachable over a Tailscale tailnet
+// without ever exposing the API — a remote browser talks ONLY to the dashboard.
+// Override with an absolute base only if you intentionally point the browser at a
+// directly-exposed API (then you also need LOCALJOBS_TOKEN + a CORS origin).
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
 export type RunStatus =
   | 'queued' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped';

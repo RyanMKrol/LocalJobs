@@ -38,10 +38,44 @@ launchd ──keeps alive──▶ daemon ──spawns──▶ job (isolated ch
 The API **binds to loopback (`127.0.0.1`) only** by default, so it isn't
 reachable off the machine. CORS is an **allowlist** (the local dashboard
 origins), never `*`, and the mutating endpoints (run/toggle/prune/…) accept
-loopback callers only — a non-loopback caller must present a shared token. If
-you expose the API beyond the box (e.g. over Tailscale), set `LOCALJOBS_HOST`
-to the interface address **and** set `LOCALJOBS_TOKEN`; add the remote
-dashboard origin to `LOCALJOBS_ALLOWED_ORIGINS`.
+loopback callers only — a non-loopback caller must present a shared token.
+
+**To reach the dashboard remotely, don't expose the API — proxy it.** The
+dashboard browser fetches `/api/*` from its *own* origin, and the dashboard
+server (running on the Mini) rewrites those requests to the loopback API
+(`next.config.js` → `127.0.0.1:4789`). So a remote browser only ever talks to
+the dashboard; the API stays bound to loopback and is never exposed. See
+[Remote access over Tailscale](#remote-access-over-tailscale) below. (Exposing
+the API directly — `LOCALJOBS_HOST` to an interface address + `LOCALJOBS_TOKEN`
++ the remote origin in `LOCALJOBS_ALLOWED_ORIGINS` — is still possible but
+unnecessary with the proxy, and not recommended.)
+
+## Remote access over Tailscale
+
+Put the dashboard on your private [Tailscale](https://tailscale.com) tailnet —
+reachable from your phone/laptop anywhere, but **not the open internet**. The
+API never leaves loopback; only the dashboard origin is shared, and it proxies
+the API server-side (see above), so the T023 guards (loopback bind, CORS
+allowlist, mutation token) stay in front of the API untouched.
+
+One-time setup on the Mini (after `tailscale up`):
+
+```bash
+# Serve the local dashboard onto the tailnet over HTTPS (tailnet-only).
+tailscale serve --bg 4788
+
+# Confirm — and confirm Funnel is OFF (Funnel = public internet; we do NOT want it).
+tailscale serve status
+tailscale funnel status      # should report no funnel configured
+```
+
+Then open `https://<machine>.<tailnet>.ts.net/` from any device on the tailnet.
+
+- **Keep Funnel OFF.** `tailscale serve` is tailnet-private; `tailscale funnel`
+  would publish to the whole internet. Never funnel this dashboard.
+- Nothing else changes: the dashboard stays bound to `localhost` and the API to
+  `127.0.0.1`. `tailscale serve` terminates on the Mini and forwards to the
+  local dashboard, which proxies `/api/*` to the loopback API.
 
 ## Keep everything running all the time (the real setup)
 
@@ -195,6 +229,8 @@ See `.env.example`:
 | `LOCALJOBS_PORT` | API port (default 4789) |
 | `LOCALJOBS_HOST` | API bind address (default `127.0.0.1`, loopback-only). Set to an interface address (e.g. Tailscale) only for remote access — pair with `LOCALJOBS_TOKEN` |
 | `LOCALJOBS_ALLOWED_ORIGINS` | Comma-separated CORS allowlist (default the local dashboard origins). Never `*` |
+| `LOCALJOBS_API_UPSTREAM` | *(dashboard server)* Where the dashboard proxies `/api/*` (default `http://127.0.0.1:4789`). Keep it loopback; the API is never exposed |
+| `NEXT_PUBLIC_API_BASE` | *(dashboard browser)* Absolute API base for the browser. Blank = same-origin (proxied through the dashboard) — the default and recommended; set only to point the browser at a directly-exposed API |
 | `LOCALJOBS_TOKEN` | Shared secret that non-loopback callers must send (`X-LocalJobs-Token` / `Authorization: Bearer`) to use mutating endpoints. Blank = loopback-only mutations |
 | `LOCALJOBS_DB` | SQLite path (default `./data/jobs.db`) |
 | `LOCALJOBS_NTFY_TOPIC` | [ntfy.sh](https://ntfy.sh) topic for phone push alerts on failure; blank = off (failures still recorded + a macOS notification fires) |
