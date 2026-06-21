@@ -55,6 +55,24 @@ for (const name of members) {
   pushed.push(d);
 }
 
+// Gate members: a producer + several consumers wired with typed-artifact contracts.
+// `check` is synchronous and deterministic (no I/O, no real artifacts) so the gate
+// logic is exercised in isolation. `g-prod-bad` has a FAILING produces contract.
+const ok = () => ({ ok: true, detail: 'fixture ok' });
+const bad = (...violations: string[]) => () => ({ ok: false, violations });
+const gateMembers: JobDefinition[] = [
+  { name: 'g-prod', produces: [{ key: 'csv', check: ok }], run: async () => {} },
+  { name: 'g-prod-bad', produces: [{ key: 'csv', check: bad("missing column 'cid'", 'header drifted') }], run: async () => {} },
+  { name: 'g-cons-ok', consumes: [{ key: 'csv', check: ok }], run: async () => {} },
+  { name: 'g-cons-bad', consumes: [{ key: 'csv', check: bad('row 3 has no place_id') }], run: async () => {} },
+  { name: 'g-cons-throw', consumes: [{ key: 'csv', check: () => { throw new Error('page structure changed'); } }], run: async () => {} },
+];
+for (const d of gateMembers) {
+  syncJob(d);
+  jobs.push(d);
+  pushed.push(d);
+}
+
 try {
   await test('all members succeed → aggregate status success', async () => {
     const def: PipelineDefinition = { name: 'pp-success', jobs: [{ job: 'pp-a' }, { job: 'pp-b', dependsOn: ['pp-a'] }] };
@@ -107,6 +125,75 @@ try {
     assert.equal(listRunsForPipelineRun(pipelineRunId!).length, 0); // never got to running members
     const logText = getPipelineLogs(pipelineRunId!).map((l) => l.message).join('\n');
     assert.ok(/Invalid pipeline DAG/.test(logText), `logs were: ${logText}`);
+  });
+
+  await test('validation gate: a satisfied contract lets the consumer run → success', async () => {
+    const def: PipelineDefinition = {
+      name: 'gate-pass', jobs: [{ job: 'g-prod' }, { job: 'g-cons-ok', dependsOn: ['g-prod'] }],
+    };
+    syncPipeline(def);
+    const { pipelineRunId } = await runPipeline(def, 'manual');
+    assert.equal(getPipelineRun(pipelineRunId!)?.status, 'success');
+    const runs = listRunsForPipelineRun(pipelineRunId!);
+    assert.ok(runs.every((r) => r.status === 'success'), 'both stages ran and succeeded');
+    const logText = getPipelineLogs(pipelineRunId!).map((l) => l.message).join('\n');
+    assert.ok(/1 gate\(s\)/.test(logText), 'gate count surfaced in the start log');
+    assert.ok(/gate ok \[g-prod → g-cons-ok\] artifact "csv"/.test(logText), `gate-ok not logged: ${logText}`);
+  });
+
+  await test('validation gate: a CONSUMER-side drift fails the gate → consumer never runs, status partial', async () => {
+    const def: PipelineDefinition = {
+      name: 'gate-fail-consumer', jobs: [{ job: 'g-prod' }, { job: 'g-cons-bad', dependsOn: ['g-prod'] }],
+    };
+    syncPipeline(def);
+    const { pipelineRunId } = await runPipeline(def, 'manual');
+    assert.equal(getPipelineRun(pipelineRunId!)?.status, 'partial');
+    const runs = listRunsForPipelineRun(pipelineRunId!);
+    assert.ok(runs.some((r) => r.job_name === 'g-prod' && r.status === 'success'), 'producer ran first');
+    const cons = runs.find((r) => r.job_name === 'g-cons-bad');
+    assert.equal(cons?.status, 'failed'); // first-class failed run — NOT skipped
+    assert.match(cons!.error ?? '', /Gate violation/);
+    assert.match(cons!.error ?? '', /row 3 has no place_id/); // exact drift surfaced
+  });
+
+  await test('validation gate: a PRODUCER-side drift fails the gate before the consumer runs', async () => {
+    const def: PipelineDefinition = {
+      name: 'gate-fail-producer', jobs: [{ job: 'g-prod-bad' }, { job: 'g-cons-ok', dependsOn: ['g-prod-bad'] }],
+    };
+    syncPipeline(def);
+    const { pipelineRunId } = await runPipeline(def, 'manual');
+    assert.equal(getPipelineRun(pipelineRunId!)?.status, 'partial');
+    const cons = listRunsForPipelineRun(pipelineRunId!).find((r) => r.job_name === 'g-cons-ok');
+    assert.equal(cons?.status, 'failed');
+    assert.match(cons!.error ?? '', /missing column 'cid'/);
+  });
+
+  await test('validation gate: a contract that THROWS is treated as a violation, not a crash', async () => {
+    const def: PipelineDefinition = {
+      name: 'gate-fail-throw', jobs: [{ job: 'g-prod' }, { job: 'g-cons-throw', dependsOn: ['g-prod'] }],
+    };
+    syncPipeline(def);
+    const { pipelineRunId } = await runPipeline(def, 'manual');
+    assert.equal(getPipelineRun(pipelineRunId!)?.status, 'partial');
+    const cons = listRunsForPipelineRun(pipelineRunId!).find((r) => r.job_name === 'g-cons-throw');
+    assert.equal(cons?.status, 'failed');
+    assert.match(cons!.error ?? '', /check threw — page structure changed/);
+  });
+
+  await test('validation gate: a gate failure CASCADES — the consumer\'s own dependents are skipped', async () => {
+    const def: PipelineDefinition = {
+      name: 'gate-cascade',
+      jobs: [
+        { job: 'g-prod' },
+        { job: 'g-cons-bad', dependsOn: ['g-prod'] },
+        { job: 'pp-dep', dependsOn: ['g-cons-bad'] },
+      ],
+    };
+    syncPipeline(def);
+    const { pipelineRunId } = await runPipeline(def, 'manual');
+    const runs = listRunsForPipelineRun(pipelineRunId!);
+    assert.equal(runs.find((r) => r.job_name === 'g-cons-bad')?.status, 'failed');
+    assert.equal(runs.find((r) => r.job_name === 'pp-dep')?.status, 'skipped'); // downstream of the gated stage
   });
 } finally {
   config.runJobScript = origScript;

@@ -76,6 +76,44 @@ export function buildDag(refs: PipelineJobRef[]): Dag {
   return { nodes, waves, dependencies, dependents };
 }
 
+/**
+ * A validation gate on a DAG edge: the upstream `producer` emits artifact `key`
+ * and the downstream `consumer` requires it, so the contract for `key` is checked
+ * at that boundary before the consumer runs.
+ */
+export interface Gate {
+  key: string;
+  producer: string;
+  consumer: string;
+}
+
+/**
+ * Derive the typed-artifact gates implied by a DAG plus each member's declared
+ * produced/consumed artifact keys. For every edge (producer → consumer), each
+ * key the producer PRODUCES and the consumer CONSUMES becomes a gate to enforce
+ * at that boundary. Pure: a consumed key with no producing upstream is an
+ * external input, not a stage boundary, so it yields no gate. Returned in
+ * consumer-then-producer declaration order for stable logging/tests.
+ */
+export function deriveGates(
+  dag: Dag,
+  produces: Map<string, string[]>,
+  consumes: Map<string, string[]>,
+): Gate[] {
+  const gates: Gate[] = [];
+  for (const consumer of dag.nodes) {
+    const wants = consumes.get(consumer);
+    if (!wants || wants.length === 0) continue;
+    const wantSet = new Set(wants);
+    for (const producer of dag.dependencies.get(consumer)!) {
+      for (const key of produces.get(producer) ?? []) {
+        if (wantSet.has(key)) gates.push({ key, producer, consumer });
+      }
+    }
+  }
+  return gates;
+}
+
 export interface DagExecHooks {
   /** Run one job and resolve with its terminal status. */
   runOne: (job: string) => Promise<RunStatus>;

@@ -85,6 +85,19 @@ export function recordSkippedRun(jobName: string, pipelineRunId: string, reason:
   return id;
 }
 
+/** Record a terminal FAILED run row without spawning a process — used when a
+ *  validation gate between pipeline stages is violated, so the consumer never
+ *  runs but the failure is surfaced as a first-class failed run (with the drift
+ *  detail in `error`). */
+export function recordGateFailure(jobName: string, pipelineRunId: string, error: string): string {
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error, pipeline_run_id)
+    VALUES (?, ?, 'failed', 'pipeline', 1, datetime('now'), datetime('now'), 0, ?, ?)
+  `).run(id, jobName, error, pipelineRunId);
+  return id;
+}
+
 export function setProgress(runId: string, pct: number, message: string): void {
   db.prepare('UPDATE runs SET progress = ?, progress_msg = ? WHERE id = ?')
     .run(Math.max(0, Math.min(100, Math.round(pct))), message, runId);

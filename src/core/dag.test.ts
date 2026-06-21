@@ -1,6 +1,6 @@
 // Dependency-free self-running tests: `npx tsx src/core/dag.test.ts`
 import assert from 'node:assert/strict';
-import { buildDag, DagError, executeDag } from './dag.js';
+import { buildDag, DagError, deriveGates, executeDag } from './dag.js';
 import type { PipelineJobRef } from './types.js';
 
 let passed = 0;
@@ -83,6 +83,51 @@ test('dependents/dependencies maps are correct', () => {
   assert.deepEqual(dag.dependents.get('a'), ['b']);
   assert.deepEqual(dag.dependencies.get('b'), ['a']);
   assert.deepEqual(dag.dependencies.get('a'), []);
+});
+
+test('deriveGates: a key produced upstream and consumed downstream becomes one gate', () => {
+  const dag = buildDag([{ job: 'a' }, { job: 'b', dependsOn: ['a'] }]);
+  const gates = deriveGates(dag, new Map([['a', ['rows']], ['b', []]]), new Map([['a', []], ['b', ['rows']]]));
+  assert.deepEqual(gates, [{ key: 'rows', producer: 'a', consumer: 'b' }]);
+});
+
+test('deriveGates: a consumed key with no producing upstream is NOT a gate (external input)', () => {
+  const dag = buildDag([{ job: 'a' }, { job: 'b', dependsOn: ['a'] }]);
+  // b consumes 'rows' but a produces nothing → no boundary to gate.
+  const gates = deriveGates(dag, new Map([['a', []], ['b', []]]), new Map([['a', []], ['b', ['rows']]]));
+  assert.deepEqual(gates, []);
+});
+
+test('deriveGates: only matching keys across an edge gate (mismatched keys ignored)', () => {
+  const dag = buildDag([{ job: 'a' }, { job: 'b', dependsOn: ['a'] }]);
+  const gates = deriveGates(dag, new Map([['a', ['rows', 'extra']], ['b', []]]), new Map([['a', []], ['b', ['rows', 'other']]]));
+  assert.deepEqual(gates, [{ key: 'rows', producer: 'a', consumer: 'b' }]);
+});
+
+test('deriveGates: only DIRECT edges gate — a non-adjacent producer is skipped', () => {
+  const dag = buildDag([{ job: 'a' }, { job: 'b', dependsOn: ['a'] }, { job: 'c', dependsOn: ['b'] }]);
+  // a produces 'rows', c consumes 'rows', but a is not a direct dep of c → no gate.
+  const gates = deriveGates(
+    dag,
+    new Map([['a', ['rows']], ['b', []], ['c', []]]),
+    new Map([['a', []], ['b', []], ['c', ['rows']]]),
+  );
+  assert.deepEqual(gates, []);
+});
+
+test('deriveGates: a diamond join gates against BOTH producers of the same key', () => {
+  const dag = buildDag([
+    { job: 'a' }, { job: 'b', dependsOn: ['a'] }, { job: 'c', dependsOn: ['a'] }, { job: 'd', dependsOn: ['b', 'c'] },
+  ]);
+  const gates = deriveGates(
+    dag,
+    new Map([['a', []], ['b', ['k']], ['c', ['k']], ['d', []]]),
+    new Map([['a', []], ['b', []], ['c', []], ['d', ['k']]]),
+  );
+  assert.deepEqual(gates.sort((x, y) => x.producer.localeCompare(y.producer)), [
+    { key: 'k', producer: 'b', consumer: 'd' },
+    { key: 'k', producer: 'c', consumer: 'd' },
+  ]);
 });
 
 async function atest(name: string, fn: () => Promise<void>) {

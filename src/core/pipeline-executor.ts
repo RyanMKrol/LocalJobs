@@ -5,15 +5,46 @@ import {
   finishPipelineRun,
   hasActivePipelineRun,
   pipelineRetryableCount,
+  recordGateFailure,
   recordSkippedRun,
   setPipelineProgress,
 } from '../db/store.js';
-import { type Dag, buildDag, executeDag } from './dag.js';
+import { type Dag, type Gate, buildDag, deriveGates, executeDag } from './dag.js';
 import { runJobForPipeline } from './executor.js';
 import { notifyPipeline, notifyStage } from './notifier.js';
 import type { LogLevel, PipelineDefinition, PipelineRunStatus, RunStatus } from './types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Enforce one gate: run the producer's `produces[key]` contract (output is
+ * well-formed) and the consumer's `consumes[key]` contract (input is acceptable),
+ * whichever are declared. A check that returns `ok:false` or throws contributes
+ * its violations. Returns the merged verdict so the boundary fails LOUD with the
+ * exact drift rather than passing bad data downstream.
+ */
+async function enforceGate(gate: Gate): Promise<{ ok: boolean; violations: string[] }> {
+  const producer = getJobDefinition(gate.producer);
+  const consumer = getJobDefinition(gate.consumer);
+  const sides: Array<['producer' | 'consumer', ReturnType<typeof getJobDefinition>, 'produces' | 'consumes']> = [
+    ['producer', producer, 'produces'],
+    ['consumer', consumer, 'consumes'],
+  ];
+  const violations: string[] = [];
+  for (const [side, def, field] of sides) {
+    const contract = def?.[field]?.find((c) => c.key === gate.key);
+    if (!contract) continue;
+    try {
+      const r = await contract.check();
+      if (!r.ok) violations.push(...(r.violations?.length ? r.violations : [`${gate.key}: ${side} contract not satisfied`]));
+    } catch (e) {
+      violations.push(`${gate.key}: ${side} check threw — ${msg(e)}`);
+    }
+  }
+  return { ok: violations.length === 0, violations };
+}
 
 export interface PipelineRunResult {
   pipelineRunId: string | null;
@@ -42,6 +73,20 @@ export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' |
     return { pipelineRunId: id };
   }
 
+  // Derive the typed-artifact gates between dependent stages from each member's
+  // declared produces/consumes keys. Inbound gates are grouped by consumer so a
+  // job's contracts are checked the moment it's about to run.
+  const produces = new Map<string, string[]>();
+  const consumes = new Map<string, string[]>();
+  for (const node of dag.nodes) {
+    const jd = getJobDefinition(node);
+    produces.set(node, (jd?.produces ?? []).map((c) => c.key));
+    consumes.set(node, (jd?.consumes ?? []).map((c) => c.key));
+  }
+  const gates = deriveGates(dag, produces, consumes);
+  const inboundGates = new Map<string, Gate[]>();
+  for (const g of gates) (inboundGates.get(g.consumer) ?? inboundGates.set(g.consumer, []).get(g.consumer)!).push(g);
+
   const pipelineRunId = createPipelineRun(def.name, trigger);
   const log = (m: string, level: LogLevel = 'info') => addPipelineLog(pipelineRunId, m, level);
   const total = dag.nodes.length;
@@ -49,7 +94,7 @@ export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' |
   const minAttempts = def.minAttempts ?? 4;
   const maxCycles = def.repeatUntilStable ? Math.max(1, def.maxCycles ?? 1) : 1;
 
-  log(`Pipeline "${def.name}" started · ${total} job(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}`);
+  log(`Pipeline "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}`);
 
   let lastStatuses = new Map<string, RunStatus>();
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
@@ -63,6 +108,20 @@ export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' |
         if (!jd) {
           log(`job "${job}" has no definition — failing it`, 'error');
           return 'failed';
+        }
+        // Validation gate: every inbound contract from a (now-succeeded) upstream
+        // is checked BEFORE the consumer runs. A violation is a first-class failed
+        // run — the consumer never spawns and the drift is surfaced + notified,
+        // so bad data is stopped at the exact boundary.
+        for (const gate of inboundGates.get(job) ?? []) {
+          const verdict = await enforceGate(gate);
+          if (!verdict.ok) {
+            const detail = `Gate violation [${gate.producer} → ${gate.consumer}] artifact "${gate.key}": ${verdict.violations.join('; ')}`;
+            log(`⨯ ${detail}`, 'error');
+            recordGateFailure(job, pipelineRunId, detail);
+            return 'failed';
+          }
+          log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"`);
         }
         const { status } = await runJobForPipeline(jd, pipelineRunId);
         return status;

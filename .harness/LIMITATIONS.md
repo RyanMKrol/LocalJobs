@@ -66,4 +66,24 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   private.
   *Revisit:* if Fragrantica objects or ToS posture changes, re-privatise `src/jobs/perfumes`.
 
+- **Stage validation gates run in the daemon, un-sandboxed and un-timed.**
+  *Why:* a gate must decide whether to even spawn the consumer, so its
+  `ArtifactContract.check()` runs inline in the parent (daemon) process before
+  the child is forked — unlike a job's `run()`, which is isolated + timeout-killed.
+  *Impact:* a slow or hanging `check()` blocks that pipeline (no per-gate timeout),
+  and a `check()` doing heavy I/O competes with the daemon. Throws are caught and
+  turned into violations, so a crash can't escape — but a hang isn't bounded.
+  *Revisit:* if a contract ever needs real work, give gates their own timeout
+  (or run them as a lightweight child) the way job runs are bounded.
+
+- **Gates are edge-scoped and matched purely by `key` string.**
+  *Why:* `deriveGates` only emits a gate where a DIRECT upstream `produces` a key
+  the downstream `consumes`; a consumed key with no producing upstream is treated
+  as an external input (no gate, no warning).
+  *Impact:* a typo'd/mismatched key silently produces NO gate rather than an error,
+  so a contract you thought was enforced may not be. There's also no config-time
+  check that declared contracts line up.
+  *Revisit:* add a registry-time warning when a job `consumes` a key that no
+  pipeline upstream `produces`.
+
 > Add further project trade-offs below as they arise.

@@ -197,6 +197,23 @@ doubt, log it.
   check `capStatus(jobName, dailyCap, monthlyCap)` in the loop and stop gracefully
   when `!allowed`. Convention: daily cap = monthly cap / 10 (so manual re-runs
   don't blow the month). Caps live in the job's config, env-overridable.
+- **Validation gates between pipeline stages (typed artifacts).** A job may
+  declare `produces` and/or `consumes` — arrays of `ArtifactContract`
+  (`{ key, description?, check() }`) in `src/core/types.ts`. For every pipeline
+  **edge** where the upstream `produces` a key the downstream `consumes`, the
+  pipeline executor runs both contracts' `check()` at that boundary — producer
+  side (output well-formed) right before, consumer side (input acceptable) — and
+  a `check` returning `ok:false` (or throwing) is a **gate violation**: the
+  consumer never spawns, a first-class **failed** run is recorded
+  (`recordGateFailure`, error = the exact drift), a stage notification fires, and
+  the failure cascades to the consumer's own dependents. This is how an
+  external-format drift (Takeout CSV layout, Fragrantica page structure) fails
+  LOUD at the exact gate instead of feeding bad data downstream. The `check`
+  should inspect the REAL artifact (read the `data/` file, sniff the scraped
+  page) and return precise per-drift `violations`. Gate derivation
+  (`deriveGates`) lives in `src/core/dag.ts` (pure, edge-scoped — a consumed key
+  with no producing upstream is an external input, not a gate); enforcement lives
+  in `src/core/pipeline-executor.ts`.
 - **Job resources are job-local.** A job's input/output data lives in its own
   `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.

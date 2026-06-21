@@ -185,6 +185,12 @@ stays gitignored — only the code is published. It needs `GOOGLE_MAPS_API_KEY`
 and `GEMINI_API_KEY` in `.env`; see the job's `config.ts` for the full env list
 (rate limits, spend caps, dry-run toggles).
 
+Stages can also declare **typed-artifact contracts** (`produces`/`consumes` on a
+job): the pipeline validates them at each dependency boundary, so an upstream
+external-format drift (a changed Google Takeout CSV layout, a reshaped
+Fragrantica page) fails LOUD at the exact gate — recording a failed run and
+firing an alert — instead of silently feeding bad data downstream.
+
 ## Example pipeline: perfumes
 
 The perfume-profile pipeline ships in-repo as a second worked example under

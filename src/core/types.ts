@@ -19,6 +19,32 @@ export interface JobContext {
   progress(pct: number, message?: string): void;
 }
 
+/** Outcome of validating one typed-artifact contract at a stage boundary. */
+export interface GateResult {
+  /** Whether the artifact satisfies the contract. */
+  ok: boolean;
+  /** When `!ok`: one line per drift detected (e.g. "missing column 'cid'"). */
+  violations?: string[];
+  /** Optional note logged whether it passes or fails (e.g. "120 rows · 7 cols"). */
+  detail?: string;
+}
+
+/**
+ * A typed artifact a job produces or consumes — the contract enforced at a
+ * pipeline stage boundary. `key` ties a producer's output to its consumer's
+ * expectation; `check` inspects the ACTUAL artifact (a data file, a scraped
+ * page, …) and reports drift so an external-format change (Takeout CSV layout,
+ * Fragrantica page structure) fails LOUD at the exact gate instead of feeding
+ * bad data downstream. A `check` that throws is treated as a failed gate.
+ */
+export interface ArtifactContract {
+  /** Stable identifier shared by the producing job and its consumer(s). */
+  key: string;
+  description?: string;
+  /** Validate the real artifact. Sync or async; throwing counts as a violation. */
+  check(): GateResult | Promise<GateResult>;
+}
+
 /** A job is a unit of work the orchestrator can schedule and run. */
 export interface JobDefinition {
   /** Unique, stable identifier (also the primary key in the DB). */
@@ -35,6 +61,18 @@ export interface JobDefinition {
   timeoutMs?: number;
   /** How many times to retry on failure before marking the run failed. */
   maxRetries?: number;
+  /**
+   * Typed artifacts this job emits. Each is validated AFTER the job succeeds and
+   * before a downstream consumer of the same `key` starts (the producer side of
+   * the stage gate).
+   */
+  produces?: ArtifactContract[];
+  /**
+   * Typed artifacts this job requires. Each is validated BEFORE the job starts,
+   * against the artifact left by a successful upstream producer of the same
+   * `key` (the consumer side of the stage gate).
+   */
+  consumes?: ArtifactContract[];
   run(ctx: JobContext): Promise<void>;
 }
 
