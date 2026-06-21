@@ -36,3 +36,6 @@ data/*
 # --- OS / misc ---
 .DS_Store
 *.log
+
+# Personal running backlog (references private job work)
+TODO.md
