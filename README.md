@@ -116,10 +116,10 @@ You can also **pause** a job (the enable toggle on its page) without deleting it
 It then appears in the dashboard automatically with history tracked from run one.
 
 > **Your jobs stay private by default.** This repo is public; it ships the
-> framework, the `demo` job, and the **places** pipeline as a worked example.
-> Every other `src/jobs/*.job.ts` (and private subfolders like `perfumes/`) is
-> gitignored, so the jobs you add stay local-only unless you choose to publish
-> them. Every job's `data/` folder is **always** gitignored
+> framework, the `demo` job, and the **places** and **perfumes** pipelines as
+> worked examples. Every other `src/jobs/*.job.ts` (and any private subfolder you
+> add) is gitignored, so the jobs you add stay local-only unless you choose to
+> publish them. Every job's `data/` folder is **always** gitignored
 > (`src/jobs/**/data/`) — only code is ever published, never datasets or output.
 > Secrets always go in `.env` (gitignored), never in code — see `.env.example`.
 
@@ -148,6 +148,8 @@ src/
     demo.job.ts        minimal example job
     places/            published example pipeline: ingest → resolve → enrich →
                        llm-enrich (its data/ stays gitignored)
+    perfumes/          published example pipeline: find-url → fetch → parse →
+                       build (its data/ stays gitignored)
 dashboard/             Next.js dashboard (client of the daemon's API)
 scripts/               launchd install scripts + start wrapper
 data/                  SQLite db + daemon/dashboard logs (gitignored)
@@ -182,3 +184,18 @@ the per-item work ledger, and the spend caps. Its `data/` (inputs + outputs)
 stays gitignored — only the code is published. It needs `GOOGLE_MAPS_API_KEY`
 and `GEMINI_API_KEY` in `.env`; see the job's `config.ts` for the full env list
 (rate limits, spend caps, dry-run toggles).
+
+## Example pipeline: perfumes
+
+The perfume-profile pipeline ships in-repo as a second worked example under
+`src/jobs/perfumes/`, chaining four jobs (the `perfumes` pipeline runs them in
+order, serially): `perfumes-find-url` (locate the Fragrantica page via the Claude
+CLI) → `perfumes-fetch` (headless Chrome fetch through Cloudflare clearance) →
+`perfumes-parse` (extract structured notes/accords) → `perfumes-build` (research +
+write a markdown profile from the in-project `profile.template.md`). It shares the
+same scheduling/visibility/alerting, the per-item work ledger, and `repeatUntilStable`
+cycling. Its `data/` (the scraped inputs, generated markdown, and the Chrome
+profile) stays gitignored — only the code is published. It drives the local
+`claude` CLI; see the job's `config.ts` for the full env list (models, pacing,
+headless toggle, dry-run). The published code documents the Fragrantica-scraping
+technique — see `.harness/LIMITATIONS.md` for that trade-off.

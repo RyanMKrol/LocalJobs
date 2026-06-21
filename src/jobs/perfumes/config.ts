@@ -1,0 +1,52 @@
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const dataDir = resolve(here, 'data');
+
+export const perfumesConfig = {
+  dataDir,
+  inputFile: resolve(dataDir, 'raw', 'perfumes.json'),
+  outDir: resolve(dataDir, 'out'),
+  urlsFile: resolve(dataDir, 'out', 'fragrantica-urls.json'),
+  pagesDir: resolve(dataDir, 'out', 'pages'),
+  pagesFailedDir: resolve(dataDir, 'out', 'pages-failed'), // saved block/short pages for debugging
+  profileDir: resolve(dataDir, 'chrome-profile'), // persistent browser profile — keeps Cloudflare clearance
+  fragranticaDir: resolve(dataDir, 'out', 'fragrantica'),
+  markdownDir: resolve(dataDir, 'out', 'markdown'),
+  /** The output contract — the in-project profile template (self-contained, no
+   *  external repo). Override with PERFUMES_TEMPLATE_PATH to point elsewhere. */
+  templatePath: process.env.PERFUMES_TEMPLATE_PATH ?? resolve(here, 'profile.template.md'),
+
+  // ── Claude Code CLI (the Ralph-style worker — $0 under the user's plan) ──
+  claudeBin: process.env.PERFUMES_CLAUDE_BIN ?? 'claude',
+  modelFind: process.env.PERFUMES_MODEL_FIND ?? 'claude-sonnet-4-6',
+  modelParse: process.env.PERFUMES_MODEL_PARSE ?? 'claude-sonnet-4-6',
+  modelBuild: process.env.PERFUMES_MODEL_BUILD ?? 'claude-opus-4-8',
+  claudeTimeoutMs: Number(process.env.PERFUMES_CLAUDE_TIMEOUT_MS ?? 300_000), // 5 min/call
+
+  // ── per-item retry budget (mirrors the other pipelines) ──
+  maxAttempts: Number(process.env.PERFUMES_MAX_ATTEMPTS ?? 4),
+  /** Per-run cap for a single stage (0 = no cap). */
+  runLimit: Number(process.env.PERFUMES_RUN_LIMIT ?? 0),
+
+  // ── fetch (real Chrome + persistent profile beats Fragrantica's Cloudflare) ──
+  // The block is rate/reputation-based: a persistent profile keeps the CF clearance
+  // cookie and generous, jittered pacing avoids tripping the rate limiter.
+  fetchChannel: process.env.PERFUMES_FETCH_CHANNEL ?? 'chrome', // real Chrome; '' falls back to bundled chromium
+  fetchHeadless: process.env.PERFUMES_FETCH_HEADLESS !== 'false', // headless works; set false to watch it
+  fetchDelayMs: Number(process.env.PERFUMES_FETCH_DELAY_MS ?? 12_000),
+  fetchJitterMs: Number(process.env.PERFUMES_FETCH_JITTER_MS ?? 6000),
+  pageTimeoutMs: Number(process.env.PERFUMES_PAGE_TIMEOUT_MS ?? 45_000),
+  /** Wait up to this long for real content to appear (Cloudflare challenge → real page). */
+  contentWaitMs: Number(process.env.PERFUMES_CONTENT_WAIT_MS ?? 18_000),
+  scrollSteps: Number(process.env.PERFUMES_SCROLL_STEPS ?? 14),
+
+  // ── pipeline orchestration ──
+  cycleSleepMs: Number(process.env.PERFUMES_CYCLE_SLEEP_MS ?? 5_000),
+  rateLimitBackoffMs: Number(process.env.PERFUMES_RATELIMIT_BACKOFF_MS ?? 600_000), // 10 min
+  maxCycles: Number(process.env.PERFUMES_MAX_CYCLES ?? 40),
+
+  /** Test mode: skip real Claude calls (fabricate), for harness testing. */
+  dryRun: process.env.PERFUMES_DRY_RUN === '1',
+};
