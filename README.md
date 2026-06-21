@@ -206,13 +206,13 @@ data/                  SQLite db + daemon/dashboard logs (gitignored)
 
 ## Dashboard pages
 
-Nav: **Overview · Pipelines · Services · Database**
+Nav: **Overview · Pipelines · Services · Database · Backlog**
 
 - **Overview** — four **clickable stat tiles** (Running / Succeeded / Failed /
   Stuck); clicking a tile filters the pipeline cards and run table below to that
   category. Also shows the **stuck items** list (items that gave up, won't retry),
   each with two manual controls: **↻ Unstick** (delete the ledger row so it
-  retries fresh next run) and **✕ Dismiss** (permanently park genuinely-bad-data
+  retries fresh next run) and **✕ Ignore** (permanently park genuinely-bad-data
   items so they drop off the list and are never reprocessed).
 - **Pipelines** — every pipeline with schedule, enabled state, member-job count,
   last/next run; plus a **Standalone jobs** section for jobs not part of any pipeline.
@@ -232,6 +232,10 @@ Nav: **Overview · Pipelines · Services · Database**
   page through its rows. Backed by a read-only API path (table names whitelisted
   against the live schema, only `SELECT` runs) so the local DB can be inspected
   without building a bespoke query per question. No write/mutation path is exposed.
+- **Backlog** — a read-only, human-readable render of the harness task list
+  (`.harness/TASKS.json`): each task as a card (id, title, depends-on, tags,
+  model, what to do + done-when), split into **harness-buildable** and
+  **🔒 needs-a-human** groups. Served via `GET /api/backlog`.
 
 ## Configuration
 

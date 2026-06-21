@@ -127,6 +127,21 @@ export interface TablePage {
   offset: number;
 }
 
+export interface BacklogTask {
+  id: string;
+  title: string;
+  status: string;
+  gate: null | 'gate' | 'needs-human';
+  dependsOn: string[];
+  tags?: string[];
+  model?: string;
+  effort?: string;
+  scope?: string[];
+  verify?: string[];
+  do: string;
+  doneWhen: string;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -165,6 +180,9 @@ export const api = {
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
+
+  // Read-only harness backlog (.harness/TASKS.json)
+  backlog: () => get<{ tasks: BacklogTask[]; error?: string }>('/api/backlog'),
 
   // Read-only DB browser
   dbTables: () => get<{ tables: string[] }>('/api/db/tables'),

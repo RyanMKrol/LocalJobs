@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { runJob } from '../core/executor.js';
 import { runPipeline } from '../core/pipeline-executor.js';
@@ -43,6 +45,18 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   // routing, so we only set the content type here (writeHead merges with those).
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(payload);
+}
+
+// The harness backlog (.harness/TASKS.json), resolved relative to this file so it
+// works regardless of the daemon's cwd. Read-only pass-through for the dashboard.
+const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/TASKS.json', import.meta.url));
+function readBacklog(): { tasks: unknown[]; error?: string } {
+  try {
+    const parsed = JSON.parse(readFileSync(BACKLOG_PATH, 'utf8')) as { tasks?: unknown[] };
+    return { tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [] };
+  } catch (e) {
+    return { tasks: [], error: e instanceof Error ? e.message : 'cannot read backlog' };
+  }
 }
 
 /** True if `origin` is one of the configured allowlist entries. */
@@ -363,6 +377,11 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         const page = browseTable(parts[3], limit, offset);
         if (!page) return json(res, 404, { error: 'table not found' });
         return json(res, 200, page);
+      }
+
+      // GET /api/backlog — the harness TASKS.json backlog (read-only)
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'backlog' && parts.length === 2) {
+        return json(res, 200, readBacklog());
       }
 
       return json(res, 404, { error: 'not found' });
