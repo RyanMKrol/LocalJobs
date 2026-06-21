@@ -115,10 +115,13 @@ You can also **pause** a job (the enable toggle on its page) without deleting it
 
 It then appears in the dashboard automatically with history tracked from run one.
 
-> **Your jobs stay private.** This repo is public but ships only the framework +
-> the `demo` job. Every other `src/jobs/*.job.ts` is gitignored, so the jobs you
-> add are local-only and never pushed. Secrets always go in `.env` (gitignored),
-> never in code — see `.env.example`.
+> **Your jobs stay private by default.** This repo is public; it ships the
+> framework, the `demo` job, and the **places** pipeline as a worked example.
+> Every other `src/jobs/*.job.ts` (and private subfolders like `perfumes/`) is
+> gitignored, so the jobs you add stay local-only unless you choose to publish
+> them. Every job's `data/` folder is **always** gitignored
+> (`src/jobs/**/data/`) — only code is ever published, never datasets or output.
+> Secrets always go in `.env` (gitignored), never in code — see `.env.example`.
 
 > **Gotcha:** the daemon loads job code at startup, so **any change to job/daemon
 > code needs a daemon restart** to take effect. The dashboard only needs a
@@ -142,7 +145,9 @@ src/
     notifier.ts        ntfy + macOS notification on failure
   jobs/
     registry.ts        auto-discovers *.job.ts files (no manual registration)
-    demo.job.ts        example job (the only tracked job; real jobs are gitignored)
+    demo.job.ts        minimal example job
+    places/            published example pipeline: ingest → resolve → enrich →
+                       llm-enrich (its data/ stays gitignored)
 dashboard/             Next.js dashboard (client of the daemon's API)
 scripts/               launchd install scripts + start wrapper
 data/                  SQLite db + daemon/dashboard logs (gitignored)
@@ -166,8 +171,14 @@ See `.env.example`:
 | `LOCALJOBS_NTFY_TOPIC` | [ntfy.sh](https://ntfy.sh) topic for phone push alerts on failure; blank = off (failures still recorded + a macOS notification fires) |
 | `LOCALJOBS_NTFY_SERVER` | ntfy server (default `https://ntfy.sh`) |
 
-## Roadmap
+## Example pipeline: places
 
-The Google Places "second brain" pipeline will be added as jobs here:
-`resolve-place-ids` (headless CID→place_id) and `enrich-places` (Places API →
-DynamoDB), reusing the same scheduling/visibility/alerting.
+The Google Places "second brain" pipeline ships in-repo as a worked example
+under `src/jobs/places/`, chaining four jobs (the `places` pipeline runs them in
+order): `places-ingest` (parse saved-place CSVs) → `cid-to-place-id-resolver`
+(headless CID→place_id) → `places-enrich` (Google Places API) → `enrich-with-llm`
+(Gemini summaries → markdown). It reuses the same scheduling/visibility/alerting,
+the per-item work ledger, and the spend caps. Its `data/` (inputs + outputs)
+stays gitignored — only the code is published. It needs `GOOGLE_MAPS_API_KEY`
+and `GEMINI_API_KEY` in `.env`; see the job's `config.ts` for the full env list
+(rate limits, spend caps, dry-run toggles).

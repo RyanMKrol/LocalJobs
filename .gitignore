@@ -16,8 +16,8 @@ service-account*.json
 src/jobs/*.job.ts
 src/jobs/*.job.js
 !src/jobs/demo.job.ts
-# Job subfolders are private business logic (e.g. the places pipeline).
-src/jobs/places/
+# Job subfolders are private business logic. The places pipeline code is now
+# published (only its data/ stays ignored, below); perfumes remains private.
 src/jobs/perfumes/
 # Per-job resources/datasets live in the job's own data/ folder — never published.
 src/jobs/**/data/
