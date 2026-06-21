@@ -47,6 +47,14 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Impact:* one extra tiny `[skip ci]` commit per completed task in history.
   *Revisit:* squash/clean up if the noise ever bothers you.
 
+- **Core unit tests spawn real child processes and use real (short) sleeps.**
+  *Why:* the executor/pipeline spawn `runJob` as a child and `callService` has no injectable clock
+  or `spawn` seam, so tests point `config.runJobScript` at a fake NDJSON-emitting script and bound
+  throttle waits with small/negative `maxWaitMs` rather than mocking timers.
+  *Impact:* the suite is a few seconds slower (process spawns + a ~2-3s min-interval spacing test)
+  and the scheduler/throttle tests are mildly timing-sensitive (generous margins keep them stable).
+  *Revisit:* inject a clock + a `spawn` factory if these ever flake or the suite gets too slow.
+
 ---
 
 ## Project

@@ -4,6 +4,16 @@ import type { LogLevel, PipelineRunStatus, RunStatus } from './types.js';
 
 type LogFn = (message: string, level?: LogLevel) => void;
 
+/**
+ * Make a string safe to use as an HTTP header value. ntfy header fields (Title,
+ * X-Job) must be Latin-1, so strip any non-printable-ASCII (emoji/Unicode) and
+ * trim. The body keeps full Unicode, and emoji are conveyed via the Tags header.
+ * Exported so the sanitiser can be unit-tested directly.
+ */
+export function sanitizeHeader(s: string): string {
+  return s.replace(/[^\x20-\x7E]/g, '').trim();
+}
+
 function fmtDur(ms: number | null | undefined): string {
   if (!ms) return '';
   if (ms < 1000) return `${ms}ms`;
@@ -114,12 +124,9 @@ async function sendNtfy(
 ): Promise<{ ok: boolean; error?: string }> {
   if (!config.ntfyTopic) return { ok: true }; // not configured — nothing to fail
   try {
-    // HTTP header values must be Latin-1; strip emoji/Unicode from header fields
-    // (the body keeps full Unicode, and Tags render emoji). Emoji belong in Tags.
-    const headerSafe = (s: string) => s.replace(/[^\x20-\x7E]/g, '').trim();
     const res = await fetch(`${config.ntfyServer}/${config.ntfyTopic}`, {
       method: 'POST',
-      headers: { Title: headerSafe(title) || 'localjobs', Priority: priority, Tags: tags, 'X-Job': headerSafe(jobName) },
+      headers: { Title: sanitizeHeader(title) || 'localjobs', Priority: priority, Tags: tags, 'X-Job': sanitizeHeader(jobName) },
       body,
     });
     return res.ok ? { ok: true } : { ok: false, error: `ntfy HTTP ${res.status}` };
@@ -132,10 +139,15 @@ async function sendMacNotification(title: string, body: string): Promise<void> {
   try {
     const { spawn } = await import('node:child_process');
     const safe = (s: string) => s.replace(/["\\]/g, '');
-    spawn('osascript', [
+    const child = spawn('osascript', [
       '-e',
       `display notification "${safe(body)}" with title "${safe(title)}"`,
-    ]).unref();
+    ]);
+    // osascript only exists on macOS; on any other host (incl. CI) the spawn
+    // emits an async 'error' event — swallow it so a missing binary can never
+    // crash a job run with an unhandled error.
+    child.on('error', () => {});
+    child.unref();
   } catch {
     // ignore
   }
