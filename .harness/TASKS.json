@@ -39,7 +39,7 @@
     {
       "id": "T002",
       "title": "Self-contain the perfume profile template",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T001"
       ],
