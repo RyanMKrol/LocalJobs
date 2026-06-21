@@ -81,7 +81,7 @@ export default function Services() {
         <table>
           <thead>
             <tr>
-              <th>Service</th><th>Rate / min</th><th>Today</th><th>This month</th><th></th>
+              <th>Service</th><th>Rate / min</th><th>Rate / day</th><th>Rate / month</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -107,7 +107,7 @@ export default function Services() {
                     </>
                   ) : (
                     <>
-                      <td className="mono">{s.rate_last_min}{s.rate_per_minute != null ? ` / ${s.rate_per_minute}` : ''}</td>
+                      <td><Bar used={s.rate_last_min} cap={s.rate_per_minute} /></td>
                       <td><Bar used={s.used_today} cap={s.daily_cap} /></td>
                       <td><Bar used={s.used_month} cap={s.monthly_cap} /></td>
                       <td><button className="btn secondary" onClick={() => startEdit(s)}>✎ Edit limits</button></td>
