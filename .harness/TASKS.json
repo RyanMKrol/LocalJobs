@@ -15,7 +15,7 @@
     {
       "id": "T001",
       "title": "Green CI baseline on the public checkout",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
