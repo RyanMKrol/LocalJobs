@@ -122,4 +122,19 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   across re-runs spanning corpus changes. Pin `PERFUMES_CONFIDENCE_K` for a fixed
   reference point if that matters.
 
+- **Service migration leaves `job_usage` rows behind; backfill is month-scoped.**
+  T013 removed the per-job `recordUsage`/`capStatus` from `places-enrich` and
+  `enrich-with-llm` so the shared service quota (`google-places`, `gemini`) is the
+  sole governor. `scripts/backfill-service-usage.ts` tops up `service_usage` from
+  the legacy `job_usage` for **this calendar month only** (the window the live caps
+  actually care about) and is idempotent (adds `max(0, job − service)`). It does
+  NOT reconcile prior months, and the stale `job_usage` rows are left in place
+  (harmless — nothing reads them for these jobs anymore). It was run once in-place;
+  re-running is a safe no-op.
+  *Side effect:* with the per-job cap gone, a `dryRun` pass of `enrich-with-llm`
+  no longer increments any meter (it bypasses `callService`), so dry runs are now
+  entirely unmetered — fine, since they cost nothing.
+  *Revisit:* if cross-month accuracy ever matters, extend the backfill to walk
+  per-month buckets instead of just the current month.
+
 > Add further project trade-offs below as they arise.

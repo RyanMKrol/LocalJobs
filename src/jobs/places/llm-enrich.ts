@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 import type { JobContext } from '../../core/types.js';
-import { capStatus, getWorkItem, isWorkItemDone, markWorkItem, recordUsage, workItemCounts } from '../../db/store.js';
-import { QuotaExceededError, callService } from '../../core/services.js';
+import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../db/store.js';
+import { QuotaExceededError, callService, getServiceDef } from '../../core/services.js';
 import { llmConfig, placesConfig } from './config.js';
 import type { EnrichedFile, EnrichedPlace } from './types.js';
 
@@ -87,8 +87,11 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
   const perRunCap = llmConfig.runLimit > 0 ? llmConfig.runLimit : Infinity;
   const ai = llmConfig.dryRun ? null : new GoogleGenAI({ apiKey: llmConfig.apiKey });
 
-  const startCap = capStatus(JOB_NAME, llmConfig.dailyCap, llmConfig.monthlyCap);
-  ctx.log(`Spend caps — today: ${startCap.today}/${llmConfig.dailyCap}, month: ${startCap.month}/${llmConfig.monthlyCap} (${startCap.dayLeft} left today)`);
+  // Spend is governed SOLELY by the shared 'gemini' service quota (enforced inside
+  // callService, which throws QuotaExceededError when exhausted) — read it here
+  // just for visibility.
+  const svc = getServiceDef('gemini');
+  ctx.log(`Service quota (gemini) — today: ${serviceCallsToday('gemini')}/${svc?.dailyCap ?? '∞'}, month: ${serviceCallsThisMonth('gemini')}/${svc?.monthlyCap ?? '∞'}`);
 
   let ok = 0;
   let fail = 0;
@@ -97,11 +100,8 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
       ctx.log(`Reached per-run limit of ${llmConfig.runLimit} — stopping; next run continues.`);
       break;
     }
-    const cap = capStatus(JOB_NAME, llmConfig.dailyCap, llmConfig.monthlyCap);
-    if (!cap.allowed) {
-      ctx.log(`Spend cap hit — ${cap.reason}. Stopping; next run resumes.`, 'warn');
-      break;
-    }
+    // Day/month spend is enforced by the 'gemini' service quota inside callService
+    // below (a hit quota throws QuotaExceededError → graceful stop).
     const place = todo[i];
     const attempts = (getWorkItem(JOB_NAME, place.placeId)?.attempts ?? 0) + 1;
     const name = displayName(place);
@@ -109,8 +109,9 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
     try {
       // Route the paid Gemini call through the shared 'gemini' service (rate + quota
       // enforced across all jobs); dry-run skips it.
+      // callService meters the billable Gemini call against the shared 'gemini'
+      // service (the single source of quota); dry-run bypasses it.
       const result = ai ? await callService('gemini', () => researchPlace(ai, place)) : dryRunResult(place);
-      recordUsage(JOB_NAME); // a real (billable) Gemini call happened
       store[place.placeId] = { placeId: place.placeId, cid: place.cid, name, result, at: new Date().toISOString() };
       const mdPath = writeMarkdown(place, name, result, placesMeta[place.cid]);
       markWorkItem(JOB_NAME, place.placeId, 'success', { attempts, detail: { name, markdown: mdPath } });

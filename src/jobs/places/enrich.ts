@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import type { JobContext } from '../../core/types.js';
-import { capStatus, getWorkItem, isWorkItemDone, markWorkItem, recordUsage, workItemCounts } from '../../db/store.js';
-import { QuotaExceededError, callService } from '../../core/services.js';
+import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../db/store.js';
+import { QuotaExceededError, callService, getServiceDef } from '../../core/services.js';
 import { enrichConfig, placesConfig } from './config.js';
 import type { EnrichedFile, EnrichedPlace, ResolvedFile } from './types.js';
 
@@ -24,8 +24,10 @@ interface FetchResult {
  *
  * Design constraints (free Enterprise+Atmosphere tier = 1000 calls/month):
  *  - Incremental: a place enriched successfully is NEVER re-enriched.
- *  - Budget-aware: stops at `monthlyLimit` successful calls per calendar month,
- *    so the default run stays inside the free tier ($0).
+ *  - Budget-aware: spend is governed SOLELY by the shared 'google-places' service
+ *    quota (day/month), enforced inside callService — there is no longer a
+ *    redundant per-job cap. When the service quota is exhausted, callService
+ *    throws QuotaExceededError and the run stops gracefully ($0, inside free tier).
  *  - Quits gracefully if the API returns a rate/quota error (429).
  *  - Designed to run weekly: each run picks up whatever is still un-enriched,
  *    within that month's remaining budget. ~1766 places => ~2 months to finish.
@@ -54,10 +56,19 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
   // past the retry budget = done). enriched.json still holds the data payload.
   const todo = resolvedOk.filter((r) => !isWorkItemDone(JOB_NAME, r.placeId!, enrichConfig.maxAttempts));
   const ledger = workItemCounts(JOB_NAME);
-  const cap0 = capStatus(JOB_NAME, enrichConfig.dailyCap, enrichConfig.monthlyCap);
+
+  // Spend is governed by the shared 'google-places' service quota (the single
+  // source of truth) — read it just for visibility + headroom estimation.
+  const svc = getServiceDef('google-places');
+  const monthCap = svc?.monthlyCap ?? Infinity;
+  const dayCap = svc?.dailyCap ?? Infinity;
+  let usedMonth = serviceCallsThisMonth('google-places');
+  let usedToday = serviceCallsToday('google-places');
+  const monthLeft = Math.max(0, monthCap - usedMonth);
+  const dayLeft = Math.max(0, dayCap - usedToday);
 
   ctx.log(`Ledger so far: ${JSON.stringify(ledger)}`);
-  ctx.log(`Spend caps — today: ${cap0.today}/${enrichConfig.dailyCap}, month: ${cap0.month}/${enrichConfig.monthlyCap}`);
+  ctx.log(`Service quota (google-places) — today: ${usedToday}/${dayCap}, month: ${usedMonth}/${monthCap}`);
   ctx.log(`Still to enrich: ${todo.length} (new + retryable failures, up to ${enrichConfig.maxAttempts} attempts each)`);
 
   if (todo.length === 0) {
@@ -65,20 +76,18 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
     ctx.log('Nothing to enrich — every resolved place is already done. ✓');
     return;
   }
-  if (!cap0.allowed) {
-    ctx.log(`Spend cap already reached — ${cap0.reason}. Re-run later to continue.`, 'warn');
+  if (monthLeft <= 0 || dayLeft <= 0) {
+    ctx.log(`google-places service quota already exhausted (today ${usedToday}/${dayCap}, month ${usedMonth}/${monthCap}). Re-run later to continue.`, 'warn');
     return;
   }
 
   const perRunCap = enrichConfig.runLimit > 0 ? enrichConfig.runLimit : Infinity;
-  const willAttempt = Math.min(todo.length, cap0.monthLeft, cap0.dayLeft, perRunCap);
+  const willAttempt = Math.min(todo.length, monthLeft, dayLeft, perRunCap);
   ctx.log(`This run will enrich up to ${willAttempt} place(s).`);
 
   let okCount = 0;
   let failCount = 0;
   let consecutiveFails = 0;
-  let usedToday = cap0.today;
-  let usedMonth = cap0.month;
   let stopReason = 'completed all available';
 
   for (let i = 0; i < todo.length; i++) {
@@ -87,16 +96,8 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       ctx.log(`Reached per-run limit of ${enrichConfig.runLimit} — stopping; the next daily run continues.`);
       break;
     }
-    if (usedMonth >= enrichConfig.monthlyCap) {
-      stopReason = `monthly cap reached (${enrichConfig.monthlyCap})`;
-      ctx.log(`Reached monthly cap of ${enrichConfig.monthlyCap} — stopping for this month.`, 'warn');
-      break;
-    }
-    if (usedToday >= enrichConfig.dailyCap) {
-      stopReason = `daily cap reached (${enrichConfig.dailyCap})`;
-      ctx.log(`Reached daily cap of ${enrichConfig.dailyCap} — stopping; the next daily run continues.`, 'warn');
-      break;
-    }
+    // Day/month spend is enforced by the 'google-places' service quota inside
+    // callService below (a hit quota throws QuotaExceededError → graceful stop).
     const place = todo[i];
     const placeId = place.placeId!; // guaranteed non-null by the resolvedOk filter
     const attempts = (getWorkItem(JOB_NAME, placeId)?.attempts ?? 0) + 1;
@@ -127,8 +128,8 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       throw new Error(`Places API auth/permission error (check GOOGLE_MAPS_API_KEY): HTTP ${res.status} — ${res.error}`);
     }
 
-    // A real (metered) call happened.
-    recordUsage(JOB_NAME);
+    // A real (metered) call happened — callService already recorded it against
+    // the shared 'google-places' service meter; track locally just for logging.
     usedToday++; usedMonth++;
 
     if (res.ok && res.data) {
@@ -144,7 +145,7 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       ctx.log(`      type:     ${ptype}`);
       ctx.log(`      price:    ${d.priceLevel ?? '—'}`);
       ctx.log(`      address:  ${d.formattedAddress ?? '—'}`);
-      ctx.log(`      spend:    ${usedMonth}/${enrichConfig.monthlyCap} month · ${usedToday}/${enrichConfig.dailyCap} today`);
+      ctx.log(`      spend:    ${usedMonth}/${monthCap} month · ${usedToday}/${dayCap} today (google-places service)`);
       consecutiveFails = 0;
     } else {
       enriched[place.cid] = { cid: place.cid, placeId, status: 'failed', enrichedAt: new Date().toISOString(), attempts, error: res.error };
@@ -174,7 +175,7 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
   ctx.log('═══════════════ ENRICH SUMMARY ═══════════════');
   ctx.log(`Stop reason:          ${stopReason}`);
   ctx.log(`This run — enriched:  ${okCount},  failed: ${failCount}`);
-  ctx.log(`Spend used:           ${usedMonth}/${enrichConfig.monthlyCap} month · ${usedToday}/${enrichConfig.dailyCap} today`);
+  ctx.log(`Spend used:           ${usedMonth}/${monthCap} month · ${usedToday}/${dayCap} today (google-places service)`);
   ctx.log(`Ledger (lifetime):    ${JSON.stringify(finalLedger)}`);
   ctx.log(`Overall enriched:     ${(finalLedger.success ?? 0)}/${resolvedOk.length}`);
   ctx.log(`Wrote ${placesConfig.enrichedOut}`);

@@ -216,14 +216,27 @@ doubt, log it.
   monthly / 30, so a full month of daily runs exactly fits the monthly ceiling and
   a single day's run can never blow it (see the places pipeline's
   `DAILY_SPEND_DIVISOR`). Caps live in the job's config, env-overridable.
+  **One governor only:** if a paid call already goes through a shared **service**
+  (below), the service quota is the SINGLE source of truth — do NOT also stack a
+  per-job `job_usage` cap on the same calls (it shadows the service's
+  `QuotaExceededError` soft-fail and double-meters). The places paid jobs
+  (`places-enrich`→`google-places`, `enrich-with-llm`→`gemini`) govern spend
+  purely via their service quota; `DAILY_SPEND_DIVISOR` feeds the *service* caps.
+  Use the per-job `job_usage` meter only when the metered call is NOT routed
+  through a service.
 - **Services (cross-job shared APIs).** For an external dependency called from
   multiple jobs (e.g. Gemini, Google Places, Fragrantica, Claude CLI), define a
   `ServiceDefinition` in a `*.service.ts` file and call the API through
   `callService(name, fn)` from `src/core/services.ts`. This coordinates rate
-  limits and quotas across all job processes via the SQLite `service_usage` meter.
-  See `places/gemini.service.ts` and `perfumes/fragrantica.service.ts` for worked
-  examples. The simpler per-job `recordUsage`/`capStatus` on `job_usage` still
-  exists for single-job-only metering when cross-job coordination isn't needed.
+  limits and quotas across all job processes via the SQLite `service_usage` meter,
+  and is the SOLE spend governor for those calls — a hit day/month quota throws
+  `QuotaExceededError`, which the caller catches to stop the run gracefully (the
+  item is left un-done and the next run resumes). See `places/gemini.service.ts`
+  and `perfumes/fragrantica.service.ts` for worked examples. The simpler per-job
+  `recordUsage`/`capStatus` on `job_usage` still exists for single-job-only
+  metering when cross-job coordination isn't needed. (When migrating an existing
+  job onto a service, top up `service_usage` from its historical `job_usage` once
+  with `scripts/backfill-service-usage.ts` so the month's count carries over.)
 - **Validation gates between pipeline stages (typed artifacts).** A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
   (`{ key, description?, check() }`) in `src/core/types.ts`. For every pipeline

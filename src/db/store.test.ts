@@ -2,11 +2,13 @@
 // by `npm test` (LOCALJOBS_DB). Self-asserting: throws on failure.
 import assert from 'node:assert/strict';
 import {
-  addPipelineLog, createPipelineRun, createRun, finishPipelineRun, finishRun, getPipeline,
-  getPipelineJobs, getPipelineLogs, getPipelineRun, hasActivePipelineRun, listRunsForPipelineRun,
-  listServices, pipelineRetryableCount, reapOrphanPipelineRuns, recordServiceCall, recordSkippedRun,
-  serviceCallsToday, syncJob, syncPipeline, syncService, tryReserveMinInterval, tryReserveServiceSlot,
+  addPipelineLog, backfillServiceUsage, createPipelineRun, createRun, finishPipelineRun, finishRun,
+  getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, hasActivePipelineRun,
+  listRunsForPipelineRun, listServices, pipelineRetryableCount, reapOrphanPipelineRuns,
+  recordServiceCall, recordSkippedRun, recordUsage, serviceCallsThisMonth, serviceCallsToday,
+  syncJob, syncPipeline, syncService, tryReserveMinInterval, tryReserveServiceSlot, usageThisMonth,
 } from './store.js';
+import { callService, QuotaExceededError, registerService } from '../core/services.js';
 
 // member jobs must exist (runs.job_name FK → jobs.name)
 for (const n of ['t-a', 't-b', 't-c']) syncJob({ name: n, run: async () => {} });
@@ -56,3 +58,52 @@ assert.equal(tryReserveMinInterval('t-mi', 10_000), true); // no prior call
 assert.equal(tryReserveMinInterval('t-mi', 10_000), false); // <10s since last call
 
 console.log('  ✓ store pipeline + service helpers');
+
+// ── backfillServiceUsage: idempotent top-up from job_usage → service_usage (T013) ──
+// Simulate the pre-migration state: a job that metered onto job_usage but whose
+// shared service_usage under-counts. The backfill reconciles the gap once.
+for (let i = 0; i < 5; i++) recordUsage('t-bf-job'); // legacy per-job meter = 5
+recordServiceCall('t-bf-svc'); // shared meter already has 1 (a post-migration call)
+{
+  const jobMonth = usageThisMonth('t-bf-job');
+  const svcBefore = serviceCallsThisMonth('t-bf-svc');
+  assert.equal(jobMonth, 5);
+  assert.equal(svcBefore, 1);
+  const topup = Math.max(0, jobMonth - svcBefore); // 4
+  backfillServiceUsage('t-bf-svc', topup);
+  assert.equal(serviceCallsThisMonth('t-bf-svc'), 5, 'service_usage reconciled to job_usage');
+  // Idempotent: re-running with the recomputed diff (now 0) is a no-op.
+  const topup2 = Math.max(0, usageThisMonth('t-bf-job') - serviceCallsThisMonth('t-bf-svc'));
+  assert.equal(topup2, 0);
+  backfillServiceUsage('t-bf-svc', topup2);
+  assert.equal(serviceCallsThisMonth('t-bf-svc'), 5, 'no double-count on second run');
+  // A non-positive count is a guarded no-op.
+  backfillServiceUsage('t-bf-svc', -3);
+  assert.equal(serviceCallsThisMonth('t-bf-svc'), 5);
+}
+console.log('  ✓ backfillServiceUsage idempotent top-up (no double-count)');
+
+// ── QuotaExceededError soft-fail: the path the jobs now rely on as SOLE governor ──
+// With per-job caps removed, an exhausted service quota is what stops the loop.
+// Model the job's per-item loop: callService throws QuotaExceededError → break,
+// leaving the unprocessed item un-done (resumes next run).
+{
+  registerService({ name: 't-quota', monthlyCap: 2, paid: true });
+  syncService({ name: 't-quota', monthlyCap: 2, paid: true });
+  const items = ['a', 'b', 'c', 'd'];
+  const processed: string[] = [];
+  let stopped = false;
+  for (const item of items) {
+    try {
+      await callService('t-quota', async () => { processed.push(item); });
+    } catch (e) {
+      assert.ok(e instanceof QuotaExceededError && e.retryable === true && e.window === 'monthly');
+      stopped = true;
+      break; // graceful stop — remaining items left un-done for the next run
+    }
+  }
+  assert.ok(stopped, 'loop stopped on QuotaExceededError once the quota was hit');
+  assert.deepEqual(processed, ['a', 'b'], 'only the in-quota items ran; the rest are deferred');
+  assert.equal(serviceCallsThisMonth('t-quota'), 2, 'no usage recorded past the cap');
+}
+console.log('  ✓ QuotaExceededError soft-fail stops the loop (service quota is sole governor)');

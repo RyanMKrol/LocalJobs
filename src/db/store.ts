@@ -482,6 +482,19 @@ export function recordServiceCall(service: string): void {
   db.prepare('INSERT INTO service_usage (service) VALUES (?)').run(service);
 }
 
+/**
+ * Seed N service_usage rows for a service (one-time backfill when migrating a
+ * job's metering from the per-job `job_usage` meter onto the shared service
+ * meter). Idempotent topping-up is the caller's job: pass the DIFFERENCE you
+ * want to add, not an absolute target. Inserts in a single transaction.
+ */
+export function backfillServiceUsage(service: string, count: number): void {
+  if (count <= 0) return;
+  const insert = db.prepare('INSERT INTO service_usage (service) VALUES (?)');
+  const tx = db.transaction((n: number) => { for (let i = 0; i < n; i++) insert.run(service); });
+  tx(count);
+}
+
 export function serviceCallsToday(service: string): number {
   return (db.prepare(
     "SELECT COUNT(*) AS n FROM service_usage WHERE service = ? AND ts >= datetime('now','start of day')",
