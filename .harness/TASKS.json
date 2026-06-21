@@ -265,7 +265,7 @@
     {
       "id": "T011",
       "title": "Perfumes: weight Fragrantica vs LLM research by confidence",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T004"
       ],
