@@ -118,6 +118,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/pipeline-executor.ts` | Orchestrate a pipeline run: member jobs in DAG order, stage gates, retries |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
+| `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items`, `job_usage`, `pipelines`, `pipeline_jobs`, `pipeline_runs`, `pipeline_run_logs`, `services`, `service_usage` |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
@@ -248,6 +249,19 @@ doubt, log it.
   metering when cross-job coordination isn't needed. (When migrating an existing
   job onto a service, top up `service_usage` from its historical `job_usage` once
   with `scripts/backfill-service-usage.ts` so the month's count carries over.)
+- **Headless-browser scrapes (shared launch helper).** Any job that drives a
+  real browser to scrape a reputation-gated site (Cloudflare et al.) should launch
+  via `launchPersistentBrowser` from `src/core/browser.ts` rather than calling
+  `chromium.launchPersistentContext` inline. It encapsulates the proven learnings:
+  a persistent on-disk profile (keeps the clearance cookie across pages AND runs),
+  the real-Chrome channel with a bundled-chromium fallback, an anti-automation
+  flag + realistic UA/viewport/locale, and stale-`Singleton*`-lock cleanup. The
+  block is rate/reputation-based, not per-request detection — so this owns only
+  the *launch*; the job still **paces** its requests (jittered min-interval),
+  ideally via a shared **service** (the `fragrantica` service does the spacing
+  while `core/browser` does the launch). `jitteredDelayMs` in the same module is
+  for jobs that pace their own loop instead of routing through a service. See
+  `perfumes/fetch.ts` for the worked example.
 - **Validation gates between pipeline stages (typed artifacts).** A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
   (`{ key, description?, check() }`) in `src/core/types.ts`. For every pipeline

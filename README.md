@@ -148,6 +148,8 @@ src/
     pipeline-executor.ts  orchestrate pipeline runs; stage gates; member jobs
     notifier.ts        ntfy + macOS notification on failure (+ stuck-items heads-up)
     services.ts        callService: cross-job rate-limit + quota middleware
+    browser.ts         shared headless-browser launch (persistent profile +
+                       real-Chrome channel) for reputation-gated scrapes
   jobs/
     registry.ts        auto-discovers *.job.ts, *.pipeline.ts, *.service.ts
     demo.job.ts        minimal example job

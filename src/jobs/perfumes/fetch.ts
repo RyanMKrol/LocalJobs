@@ -1,7 +1,8 @@
-import { rmSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type BrowserContext, chromium } from 'playwright';
+import type { BrowserContext } from 'playwright';
 import type { JobContext } from '../../core/types.js';
+import { launchPersistentBrowser } from '../../core/browser.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import { callService } from '../../core/services.js';
 import { perfumesConfig } from './config.js';
@@ -89,28 +90,16 @@ export async function runFetch(ctx: JobContext): Promise<StageResult> {
 }
 
 /** Persistent profile + real Chrome keeps Cloudflare's clearance cookie across pages
- *  and runs. Falls back to bundled chromium if real Chrome isn't installed. */
+ *  and runs. Falls back to bundled chromium if real Chrome isn't installed. The
+ *  reputation-gate launch logic lives in the shared `core/browser` helper; pacing
+ *  stays here (handled by the 'fragrantica' service's jittered min-interval). */
 async function launchContext(ctx: JobContext): Promise<BrowserContext> {
-  const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
-  const base = {
+  return launchPersistentBrowser({
+    profileDir: perfumesConfig.profileDir,
     headless: perfumesConfig.fetchHeadless,
-    viewport: { width: 1280, height: 1800 },
-    userAgent: UA,
-    locale: 'en-GB',
-    args: ['--disable-blink-features=AutomationControlled'],
-  };
-  // Clear any stale single-instance locks left by a crashed run.
-  for (const f of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
-    try { rmSync(join(perfumesConfig.profileDir, f), { force: true }); } catch { /* ignore */ }
-  }
-  const channel = perfumesConfig.fetchChannel;
-  try {
-    return await chromium.launchPersistentContext(perfumesConfig.profileDir, channel ? { ...base, channel } : base);
-  } catch (e) {
-    if (!channel) throw e;
-    ctx.log(`[fetch] real Chrome (channel=${channel}) unavailable (${e instanceof Error ? e.message.split('\n')[0] : e}); using bundled chromium`, 'warn');
-    return await chromium.launchPersistentContext(perfumesConfig.profileDir, base);
-  }
+    channel: perfumesConfig.fetchChannel,
+    log: (msg, level) => ctx.log(`[fetch] ${msg}`, level),
+  });
 }
 
 async function fetchPage(context: BrowserContext, url: string): Promise<FetchOutcome> {
