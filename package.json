@@ -8,7 +8,9 @@
     "daemon": "tsx src/daemon.ts",
     "dev": "tsx watch src/daemon.ts",
     "run-job": "tsx src/runJob.ts",
-    "db:reset": "tsx src/db/reset.ts"
+    "db:reset": "tsx src/db/reset.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "rm -f /tmp/lj-test.db* 2>/dev/null; LOCALJOBS_DB=/tmp/lj-test.db tsx scripts/run-tests.ts"
   },
   "dependencies": {
     "@google/genai": "^2.9.0",

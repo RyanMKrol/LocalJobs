@@ -201,8 +201,11 @@ doubt, log it.
   `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.
   These are gitignored via `src/jobs/**/data/`.
-- Run/verify with `npx tsc --noEmit` (daemon) and `npm run build` in
-  `dashboard/` before declaring done.
+- **Run the checks on every change** — `npm test` (the unit suite) AND
+  `npx tsc --noEmit` (daemon typecheck), plus `npm run build` in `dashboard/` for UI
+  changes — before declaring done. Keep the suite green; **add unit tests for new
+  behaviour as you build it** (tests live in `*.test.ts`; `npm test` discovers + runs
+  them against a scratch DB). Never declare done on red.
 - After ANY change to `src/`, the daemon must be restarted to take effect.
   After UI changes, rebuild the dashboard and restart its agent.
 
