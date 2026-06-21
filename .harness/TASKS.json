@@ -174,7 +174,7 @@
     {
       "id": "T007",
       "title": "Docs audit — README + CLAUDE.md vs current repo",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T004"
       ],
