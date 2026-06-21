@@ -54,8 +54,10 @@ This repo is **public**. Two hard rules:
    gitignored and read via `process.env`. If a job needs a credential, document
    the env var name in `.env.example` and read it from the environment.
 2. **Never commit private jobs.** The framework is public; the owner's actual
-   jobs are not. Only `src/jobs/demo.job.ts` is tracked — every other
-   `*.job.ts` is gitignored. Do not force-add them.
+   jobs are not. Top-level `src/jobs/*.job.ts` files are gitignored (except
+   `demo.job.ts`). The `places/` and `perfumes/` subfolders are tracked as
+   published examples — any new private pipeline should live in its own subfolder
+   added to `.gitignore`. Do not force-add private files.
 
 Before any commit: `git status` and confirm no `.env`, no real `*.job.ts`, and
 no credentials are staged. If you ever spot a secret about to be committed, stop
@@ -77,21 +79,27 @@ queues, or cloud infra unless explicitly asked.
 ## Architecture (how it fits together)
 
 ```
-launchd ──keeps alive──▶ daemon (src/daemon.ts) ──spawns──▶ child (src/runJob.ts)
-                            │  scheduler (croner)                runs ONE job,
-                            │  executor (timeout/retries)        emits NDJSON
-                            │  HTTP API on :4789                 (log/progress/result)
-                            ▼
+launchd ──keeps alive──▶ daemon (src/daemon.ts)
+                            │  scheduler (croner) ──schedules─┬─▶ executor ──spawns──▶ child (src/runJob.ts)
+                            │  HTTP API on :4789              │    (single job,           runs ONE job,
+                            │                                 │     timeout/retries)       emits NDJSON
+                            │                                 └─▶ pipeline-executor
+                            │                                      (orchestrates member
+                            ▼                                       jobs in DAG order)
                          SQLite (data/jobs.db, WAL)  ◀── parent is sole writer
                             ▲
                          dashboard (Next.js, :4788) ── polls the API, read-only
 ```
 
 - **The daemon is the only long-lived process.** launchd keeps ONE daemon
-  alive; the daemon schedules ALL jobs internally. Never create one launchd
-  agent per job.
+  alive; the daemon schedules ALL jobs AND pipelines internally. Never create one
+  launchd agent per job.
 - **Each job runs in an isolated child process** so a hang/crash can't take down
   the daemon, and timeouts can hard-kill it (SIGTERM→SIGKILL).
+- **Pipelines** compose existing jobs into a DAG. The pipeline executor runs member
+  jobs in topological order (respecting `dependsOn` edges and bounded parallelism)
+  via the same executor. A pipeline run is a first-class DB record distinct from
+  each member job's own run.
 - **The child only emits events; the parent (executor) is the sole DB writer.**
 - **The dashboard is a pure read/refresh client of the API.** It never touches
   SQLite directly and is not required for jobs to run.
@@ -101,16 +109,22 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts) ──spawns──▶ 
 | Path | Responsibility |
 |---|---|
 | `src/config.ts` | Env-driven config: ports, db path, ntfy |
-| `src/daemon.ts` | Long-lived entrypoint: sync jobs, reap orphans, start scheduler + API |
+| `src/daemon.ts` | Long-lived entrypoint: sync jobs + pipelines, reap orphans, start scheduler + API |
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
-| `src/core/types.ts` | `JobDefinition`, `JobContext`, event types — the contracts |
+| `src/core/types.ts` | `JobDefinition`, `PipelineDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention |
-| `src/core/scheduler.ts` | croner triggers for scheduled jobs; respects `enabled` |
+| `src/core/scheduler.ts` | croner triggers for scheduled jobs + pipelines; respects `enabled` |
+| `src/core/dag.ts` | Pipeline DAG: build + validate topological order, cycle detection |
+| `src/core/pipeline-executor.ts` | Orchestrate a pipeline run: member jobs in DAG order, stage gates, retries |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
-| `src/db/schema.sql` | `jobs`, `runs`, `run_logs` |
+| `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
+| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items`, `job_usage`, `pipelines`, `pipeline_jobs`, `pipeline_runs`, `pipeline_run_logs`, `services`, `service_usage` |
+| `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
-| `src/jobs/registry.ts` | Auto-discovers `*.job.ts` files (no manual registration) |
-| `src/jobs/*.job.ts` | One job per file, default-exporting a `JobDefinition` (gitignored except demo) |
+| `src/jobs/registry.ts` | Auto-discovers `*.job.ts`, `*.pipeline.ts`, and `*.service.ts` files (no manual registration) |
+| `src/jobs/*.job.ts` | One job per file, default-exporting a `JobDefinition` (root-level files gitignored except demo; subfolder jobs in `places/`+`perfumes/` are tracked) |
+| `src/jobs/*.pipeline.ts` | Pipeline manifests, default-exporting a `PipelineDefinition` (DAG of jobs) |
+| `src/jobs/*.service.ts` | Service definitions, default-exporting a `ServiceDefinition` (shared rate-limited dependencies) |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
 | `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`) |
 | `scripts/*` | launchd install scripts + start wrapper |
@@ -141,15 +155,17 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts) ──spawns──▶ 
 3. Tell the user to restart the daemon (jobs are loaded at startup):
    `launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs`
 
-> **Privacy — real jobs are local-only.** Every `src/jobs/*.job.ts` except
-> `demo.job.ts` is gitignored. The public repo ships only the framework + the
-> demo. NEVER commit a real job file (no `git add -f`); that would leak what the
-> owner is doing. New jobs you create here stay untracked by design.
+> **Privacy — real jobs are local-only by default.** Top-level
+> `src/jobs/*.job.ts` files are gitignored (only `demo.job.ts` is tracked). The
+> public repo also ships the `places/` and `perfumes/` subfolder pipelines as
+> worked examples, but their `data/` folders stay gitignored. New jobs you add as
+> a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
+> private job file.
 >
-> For a **multi-file pipeline**, put everything in a gitignored subfolder (e.g.
-> `src/jobs/places/`, which is ignored wholesale). Jobs are discovered
-> **recursively**, so a `*.job.ts` inside that folder is picked up automatically
-> while its helper modules stay private too.
+> For a **new private multi-file pipeline**, create `src/jobs/<name>/` and add the
+> line `src/jobs/<name>/` to `.gitignore`. Jobs are discovered **recursively**,
+> so a `*.job.ts` inside that folder is picked up automatically while its helper
+> modules stay private too.
 
 ### Job conventions
 - Jobs must be **idempotent / safe to re-run** (they retry and can be run
@@ -197,6 +213,14 @@ doubt, log it.
   check `capStatus(jobName, dailyCap, monthlyCap)` in the loop and stop gracefully
   when `!allowed`. Convention: daily cap = monthly cap / 10 (so manual re-runs
   don't blow the month). Caps live in the job's config, env-overridable.
+- **Services (cross-job shared APIs).** For an external dependency called from
+  multiple jobs (e.g. Gemini, Google Places, Fragrantica, Claude CLI), define a
+  `ServiceDefinition` in a `*.service.ts` file and call the API through
+  `callService(name, fn)` from `src/core/services.ts`. This coordinates rate
+  limits and quotas across all job processes via the SQLite `service_usage` meter.
+  See `places/gemini.service.ts` and `perfumes/fragrantica.service.ts` for worked
+  examples. The simpler per-job `recordUsage`/`capStatus` on `job_usage` still
+  exists for single-job-only metering when cross-job coordination isn't needed.
 - **Validation gates between pipeline stages (typed artifacts).** A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
   (`{ key, description?, check() }`) in `src/core/types.ts`. For every pipeline

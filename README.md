@@ -135,16 +135,21 @@ src/
   daemon.ts            long-lived orchestrator entrypoint
   runJob.ts            child entrypoint: runs one job, emits NDJSON
   db/
-    schema.sql         jobs / runs / run_logs (WAL)
+    schema.sql         jobs · runs · run_logs · work_items · job_usage ·
+                       pipelines · pipeline_runs · services · service_usage (WAL)
     index.ts           connection + schema bootstrap
     store.ts           ALL queries
   core/
-    types.ts           JobDefinition, JobContext, events
+    types.ts           JobDefinition, PipelineDefinition, ServiceDefinition,
+                       JobContext, events
     executor.ts        spawn child, capture events, timeout-kill, retries
-    scheduler.ts       croner triggers per scheduled job
-    notifier.ts        ntfy + macOS notification on failure
+    scheduler.ts       croner triggers per scheduled job + pipeline
+    dag.ts             pipeline DAG: topo sort + cycle detection
+    pipeline-executor.ts  orchestrate pipeline runs; stage gates; member jobs
+    notifier.ts        ntfy + macOS notification on failure (+ stuck-items heads-up)
+    services.ts        callService: cross-job rate-limit + quota middleware
   jobs/
-    registry.ts        auto-discovers *.job.ts files (no manual registration)
+    registry.ts        auto-discovers *.job.ts, *.pipeline.ts, *.service.ts
     demo.job.ts        minimal example job
     places/            published example pipeline: ingest → resolve → enrich →
                        llm-enrich (its data/ stays gitignored)
@@ -161,6 +166,10 @@ data/                  SQLite db + daemon/dashboard logs (gitignored)
 - **Jobs** — every job, schedule, enabled state, last/next run
 - **Job detail** — ▶ Run now, enable toggle, full run history
 - **Run detail** — live progress bar + streaming logs, duration, exit code, error
+- **Pipelines** — every pipeline, schedule, enabled state, member jobs, last/next run
+- **Pipeline detail** — ▶ Run now, enable toggle, full run history
+- **Pipeline run detail** — live framework logs, per-stage job outcomes and statuses
+- **Services** — per-service usage counts vs caps, current per-minute call rate
 
 ## Configuration
 
