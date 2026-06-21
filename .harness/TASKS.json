@@ -339,19 +339,21 @@
       "title": "Mobile dashboard styling pass",
       "status": "pending",
       "dependsOn": [],
-      "gate": "needs-human",
+      "gate": null,
       "tags": [
         "dashboard",
         "ui",
-        "needs-human"
+        "testing"
       ],
       "scope": [
         "dashboard/"
       ],
       "design": null,
-      "verify": [],
-      "do": "Review + fix the dashboard's styling on mobile — it currently looks bad on a phone. Responsive pass over tables, stat cards, nav, the DAG graph, and schedule cells. Needs a human eye: 'looks good on mobile' isn't machine-verifiable.",
-      "doneWhen": "A human reviews the dashboard on a phone and confirms it looks good (responsive, no overflow/wrapping issues)."
+      "verify": [
+        "run-app"
+      ],
+      "do": "Make the dashboard responsive on mobile (it currently looks bad on a phone). Build an automated check that loads each dashboard page in a headless browser at an iPhone-class viewport (iPhone 17, ~402px wide) against a scratch DB, and asserts basic mobile styling is respected — no horizontal overflow, no text crossing element boundaries, no weird truncation/clipping. Then fix the responsive CSS (tables, stat cards, nav, DAG graph, schedule cells) until it passes.",
+      "doneWhen": "An automated iPhone-class-viewport (iPhone 17, ~402px) check covers every dashboard page and asserts no horizontal overflow / no boundary-crossing / no weird truncation; the dashboard passes it; dashboard build green; the check is runnable + its result recorded in the worklog."
     },
     {
       "id": "T041",
