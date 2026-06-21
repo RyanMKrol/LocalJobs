@@ -311,7 +311,7 @@
     {
       "id": "T013",
       "title": "Finish service migration: drop per-job caps + backfill service_usage",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T003",
         "T012"
