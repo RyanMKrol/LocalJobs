@@ -197,7 +197,7 @@
     {
       "id": "T008",
       "title": "Dashboard quick fixes",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T001"
       ],
