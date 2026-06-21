@@ -7,11 +7,9 @@ import { ProgressBar, StatusBadge, fmtDuration, fmtRelative, usePoll } from './u
 type Filter = 'running' | 'success' | 'failed' | 'stuck' | null;
 
 export default function Overview() {
-  const { data, error } = usePoll(() => api.recentRuns(100), 2000);
   const { data: stuckData } = usePoll(() => api.stuck(), 5000);
   const { data: pipeData } = usePoll(() => api.pipelines(), 3000);
-  const { data: pipeRunData } = usePoll(() => api.recentPipelineRuns(50), 2000);
-  const runs = data?.runs ?? [];
+  const { data: pipeRunData, error } = usePoll(() => api.recentPipelineRuns(50), 2000);
   const stuck = stuckData?.stuck ?? [];
   const pipelines = pipeData?.pipelines ?? [];
   const pipelineRuns = pipeRunData?.runs ?? [];
@@ -25,19 +23,20 @@ export default function Overview() {
   async function unstick(job: string, key: string) {
     try { await api.unstick(job, key); } catch { /* next poll reflects reality */ }
   }
-  async function dismiss(job: string, key: string) {
-    if (!window.confirm(`Permanently dismiss "${key}"?\n\nIt will never be retried and drops off the stuck list. Manual-only — use Unstick instead if you want it retried.`)) return;
+  async function ignoreItem(job: string, key: string) {
+    if (!window.confirm(`Permanently ignore "${key}"?\n\nIt will never be retried and drops off the stuck list. Manual-only — use Unstick instead if you want it retried.`)) return;
     try { await api.dismiss(job, key); } catch { /* next poll reflects reality */ }
   }
   async function runPipeline(name: string) {
     try { await api.runPipeline(name); } catch { /* next poll reflects reality */ }
   }
 
+  // Counts reflect PIPELINE runs (the unit of work on this page), matching the
+  // list the tiles filter — not individual job/member runs.
   const counts = {
-    running: runs.filter((r) => r.status === 'running').length,
-    success: runs.filter((r) => r.status === 'success').length,
-    failed: runs.filter((r) => ['failed', 'timeout'].includes(r.status)).length,
-    total: runs.length,
+    running: pipelineRuns.filter((r) => r.status === 'running').length,
+    success: pipelineRuns.filter((r) => r.status === 'success').length,
+    failed: pipelineRuns.filter((r) => ['failed', 'partial', 'cancelled'].includes(r.status)).length,
   };
 
   // Apply filter to pipeline cards and pipeline runs table
@@ -68,7 +67,7 @@ export default function Overview() {
   return (
     <>
       <h1>Overview</h1>
-      <p className="sub">Recent activity across all jobs. Auto-refreshes every 2s.</p>
+      <p className="sub">Recent pipeline activity. Auto-refreshes every 2s.</p>
       {error && <p className="muted">⚠ Cannot reach daemon at the API ({error}). Is it running?</p>}
 
       {activeFilter && (
@@ -157,7 +156,7 @@ export default function Overview() {
                 <td className="muted">{fmtRelative(s.updated_at)}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="btn" onClick={() => unstick(s.job_name, s.item_key)}>↻ Unstick</button>{' '}
-                  <button className="btn" onClick={() => dismiss(s.job_name, s.item_key)} title="Permanently park this item — never retried, drops off the stuck list">✕ Dismiss</button>
+                  <button className="btn" onClick={() => ignoreItem(s.job_name, s.item_key)} title="Permanently ignore this item — never retried, drops off the stuck list">✕ Ignore</button>
                 </td>
               </tr>
             ))}
