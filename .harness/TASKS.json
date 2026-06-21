@@ -448,6 +448,24 @@
       "verify": [],
       "do": "Check in on the dashboard's overall look & feel and make it more joyful. Subjective design work needing the owner's eye.",
       "doneWhen": "Look & feel reviewed with the owner and agreed changes applied."
+    },
+    {
+      "id": "T046",
+      "title": "Investigate why the Claude CLI service has a per-minute rate limit",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "investigation",
+        "needs-human"
+      ],
+      "scope": [
+        "src/jobs/perfumes/claude-cli.service.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Investigate why the claude-cli service is configured with a per-minute rate limit (rate_per_minute). Work out whether that cap is actually necessary/correct — is the Claude CLI genuinely rate-limited per minute, or is the value arbitrary/leftover? Then decide whether to keep, adjust, or remove it.",
+      "doneWhen": "The reason for the claude-cli per-minute rate limit is understood and a decision is recorded (keep / adjust / remove)."
     }
   ]
 }
