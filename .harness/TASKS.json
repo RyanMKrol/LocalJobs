@@ -110,7 +110,7 @@
     {
       "id": "T031",
       "title": "Trim the README — it's a wall of text",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
