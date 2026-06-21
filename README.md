@@ -164,7 +164,11 @@ data/                  SQLite db + daemon/dashboard logs (gitignored)
 
 ## Dashboard pages
 
-- **Overview** — live status counts + recent runs across all jobs
+- **Overview** — live status counts + recent runs across all jobs, plus the
+  **stuck items** list (items that gave up). Each has two manual controls:
+  **↻ Unstick** (delete the ledger row so it retries fresh) and **✕ Dismiss**
+  (permanently park genuinely-bad-data items so they drop off the list and never
+  reprocess)
 - **Jobs** — every job, schedule, enabled state, last/next run
 - **Job detail** — ▶ Run now, enable toggle, full run history
 - **Run detail** — live progress bar + streaming logs, duration, exit code, error

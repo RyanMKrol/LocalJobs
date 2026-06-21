@@ -4,10 +4,11 @@ import assert from 'node:assert/strict';
 import {
   addPipelineLog, backfillServiceUsage, createPipelineRun, createRun, finishPipelineRun, finishRun,
   getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, getWorkItem, hasActivePipelineRun,
+  dismissWorkItem, isWorkItemDone,
   listRunsForPipelineRun, listServices, markWorkItem, orphanedWorkItems, pipelineRetryableCount,
   pruneOrphanedWorkItems, reapOrphanPipelineRuns, recordServiceCall, recordSkippedRun, recordUsage,
-  serviceCallsThisMonth, serviceCallsToday, syncJob, syncPipeline, syncService, tryReserveMinInterval,
-  tryReserveServiceSlot, usageThisMonth,
+  serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncPipeline, syncService,
+  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, usageThisMonth,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 
@@ -146,3 +147,44 @@ console.log('  ✓ QuotaExceededError soft-fail stops the loop (service quota is
   assert.equal(getWorkItem('t-prune', 'keep-1'), undefined, 'empty set pruned all');
 }
 console.log('  ✓ pruneOrphanedWorkItems removes orphaned keys, keeps current (manual prune)');
+
+// ── dismissWorkItem: manually park a stuck item permanently (T017) ──
+// Genuinely-bad-data items that will never process must be removable from the
+// stuck list by hand — never automatically — and distinct from unstick/retry.
+{
+  syncJob({ name: 't-dismiss', run: async () => {} });
+  markWorkItem('t-dismiss', 'bad-1', 'failed', { attempts: 4 }); // stuck
+  markWorkItem('t-dismiss', 'bad-2', 'failed', { attempts: 4 }); // stuck
+  markWorkItem('t-dismiss', 'ok-1', 'success');
+
+  const stuckBefore = stuckItems().filter((i) => i.job_name === 't-dismiss');
+  assert.deepEqual(stuckBefore.map((i) => i.item_key).sort(), ['bad-1', 'bad-2']);
+  assert.equal(stuckCount('t-dismiss'), 2);
+
+  // dismiss bad-1 → row updated, parked as 'dismissed'
+  assert.equal(dismissWorkItem('t-dismiss', 'bad-1'), 1);
+  assert.equal(getWorkItem('t-dismiss', 'bad-1')?.status, 'dismissed');
+
+  // dismissed item is gone from the stuck list and the count
+  const stuckAfter = stuckItems().filter((i) => i.job_name === 't-dismiss');
+  assert.deepEqual(stuckAfter.map((i) => i.item_key), ['bad-2'], 'dismissed item left the stuck list');
+  assert.equal(stuckCount('t-dismiss'), 1);
+
+  // a dismissed item counts as done — never reprocessed on a re-run
+  assert.equal(isWorkItemDone('t-dismiss', 'bad-1', 4), true, 'dismissed = done, never reprocessed');
+
+  // dismiss only acts on a failed row: a no-op on success, and idempotent on
+  // an already-dismissed row (it's no longer 'failed')
+  assert.equal(dismissWorkItem('t-dismiss', 'ok-1'), 0, 'cannot dismiss a success');
+  assert.equal(getWorkItem('t-dismiss', 'ok-1')?.status, 'success');
+  assert.equal(dismissWorkItem('t-dismiss', 'bad-1'), 0, 'already dismissed → no-op');
+  assert.equal(dismissWorkItem('t-dismiss', 'never-existed'), 0, 'unknown key → no-op');
+
+  // distinct from unstick: unstick DELETES (to retry), dismiss PARKS (kept, done).
+  // unstick won't touch a dismissed row; the still-stuck bad-2 can be unstuck.
+  assert.equal(unstickWorkItem('t-dismiss', 'bad-1'), 0, 'unstick does not delete a dismissed row');
+  assert.ok(getWorkItem('t-dismiss', 'bad-1'), 'dismissed row still present after unstick attempt');
+  assert.equal(unstickWorkItem('t-dismiss', 'bad-2'), 1, 'a still-stuck item can be unstuck');
+  assert.equal(getWorkItem('t-dismiss', 'bad-2'), undefined, 'unstick removed the stuck row');
+}
+console.log('  ✓ dismissWorkItem parks a stuck item (manual, distinct from unstick, stays off stuck list)');

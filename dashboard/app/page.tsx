@@ -16,6 +16,10 @@ export default function Overview() {
   async function unstick(job: string, key: string) {
     try { await api.unstick(job, key); } catch { /* next poll reflects reality */ }
   }
+  async function dismiss(job: string, key: string) {
+    if (!window.confirm(`Permanently dismiss "${key}"?\n\nIt will never be retried and drops off the stuck list. Manual-only — use Unstick instead if you want it retried.`)) return;
+    try { await api.dismiss(job, key); } catch { /* next poll reflects reality */ }
+  }
   async function runPipeline(name: string) {
     try { await api.runPipeline(name); } catch { /* next poll reflects reality */ }
   }
@@ -80,7 +84,10 @@ export default function Overview() {
                 <td>{s.attempts}</td>
                 <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}{s.detail?.pageTitle ? ` · title="${s.detail.pageTitle}"` : ''}</td>
                 <td className="muted">{fmtRelative(s.updated_at)}</td>
-                <td><button className="btn" onClick={() => unstick(s.job_name, s.item_key)}>↻ Unstick</button></td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn" onClick={() => unstick(s.job_name, s.item_key)}>↻ Unstick</button>{' '}
+                  <button className="btn" onClick={() => dismiss(s.job_name, s.item_key)} title="Permanently park this item — never retried, drops off the stuck list">✕ Dismiss</button>
+                </td>
               </tr>
             ))}
           </tbody>

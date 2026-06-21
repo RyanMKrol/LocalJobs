@@ -132,6 +132,7 @@ export const api = {
   toggle: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/jobs/${name}/toggle`, { enabled }),
   stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${job}` : ''}`),
   unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),
+  dismiss: (job: string, key: string) => post<{ ok: boolean; dismissed: number }>(`/api/stuck/dismiss`, { job, key }),
 
   recentPipelineRuns: (limit = 50) => get<{ runs: PipelineRun[] }>(`/api/pipeline-runs?limit=${limit}`),
   pipelines: () => get<{ pipelines: Pipeline[] }>('/api/pipelines'),

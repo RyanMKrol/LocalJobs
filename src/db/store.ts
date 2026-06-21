@@ -172,7 +172,7 @@ export function reapOrphanRuns(): number {
 
 // ---- work items (per-item idempotency ledger) ----
 
-export type WorkStatus = 'success' | 'failed' | 'skipped';
+export type WorkStatus = 'success' | 'failed' | 'skipped' | 'dismissed';
 
 export interface WorkItemRow {
   job_name: string;
@@ -192,12 +192,14 @@ export function getWorkItem(jobName: string, itemKey: string): WorkItemRow | und
 
 /**
  * Has this item been fully processed and so should NOT be reprocessed?
- * True when it succeeded, or it failed but has exhausted its retry budget.
+ * True when it succeeded, was manually dismissed, or it failed but has exhausted
+ * its retry budget. A `dismissed` row is a human's "give up on this one
+ * permanently" — it must never be reprocessed (see {@link dismissWorkItem}).
  */
 export function isWorkItemDone(jobName: string, itemKey: string, maxAttempts: number): boolean {
   const row = getWorkItem(jobName, itemKey);
   if (!row) return false;
-  if (row.status === 'success') return true;
+  if (row.status === 'success' || row.status === 'dismissed') return true;
   return row.status === 'failed' && row.attempts >= maxAttempts;
 }
 
@@ -252,6 +254,21 @@ export function stuckItems(minAttempts = 4): StuckItem[] {
 export function unstickWorkItem(jobName: string, itemKey: string): number {
   return db.prepare("DELETE FROM work_items WHERE job_name = ? AND item_key = ? AND status = 'failed'")
     .run(jobName, itemKey).changes;
+}
+
+/**
+ * "Dismiss" a stuck item: permanently mark a failed ledger row as `dismissed`
+ * so it drops off the stuck list and is never reprocessed (genuinely bad data
+ * that will never succeed). The OPPOSITE of {@link unstickWorkItem}: unstick
+ * deletes the row to RETRY it; dismiss keeps the row but parks it as done so it
+ * neither retries nor shows as stuck. MANUAL ONLY — nothing in the run/schedule
+ * path calls this; it's invoked solely from the dashboard control. Only acts on
+ * a currently-`failed` row (a stuck item), so it can't park a successful one.
+ * Returns the number of rows updated (0 if the item wasn't failed). */
+export function dismissWorkItem(jobName: string, itemKey: string): number {
+  return db.prepare(
+    "UPDATE work_items SET status = 'dismissed', updated_at = datetime('now') WHERE job_name = ? AND item_key = ? AND status = 'failed'",
+  ).run(jobName, itemKey).changes;
 }
 
 /** A ledger row identified for / removed by a manual prune. */

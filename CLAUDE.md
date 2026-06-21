@@ -203,8 +203,8 @@ doubt, log it.
 - **Idempotency — per-item work ledger (the standard).** For jobs that process
   many items, record each item's outcome in the `work_items` SQLite table via
   `src/db/store.ts` (`isWorkItemDone`, `markWorkItem`, `workItemCounts`), keyed by
-  `(jobName, itemKey)`. Re-runs skip items already done (success, or failed past
-  `maxAttempts`) so work is never reprocessed. The whole places pipeline uses this
+  `(jobName, itemKey)`. Re-runs skip items already done (success, manually
+  `dismissed`, or failed past `maxAttempts`) so work is never reprocessed. The whole places pipeline uses this
   (resolver by CID, enrich + LLM by place_id); the rich output still goes to the
   job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
   "skip if it's in the JSON file" checks.
@@ -219,6 +219,17 @@ doubt, log it.
     (used when a job has no `inputKeys()`), a `{ dryRun: true }` preview, and
     refuses an empty current set unless `{ force: true }` (an empty set would
     orphan every row — a guard against a misbehaving `inputKeys()`).
+  - **Stuck items: unstick vs dismiss (both manual only).** An item that failed
+    past `maxAttempts` is **stuck** — it won't retry and surfaces on the
+    dashboard front page / alerts (`stuckItems`, `stuckCount`). Two manual
+    controls resolve it, and they are opposites: **unstick**
+    (`POST /api/stuck/unstick`, `unstickWorkItem`) DELETES the failed ledger row
+    so the item is RETRIED fresh next run; **dismiss**
+    (`POST /api/stuck/dismiss`, `dismissWorkItem`) marks the failed row
+    `dismissed` — a permanent "give up on this one" for genuinely bad data, so it
+    drops off the stuck list and is never reprocessed (`isWorkItemDone` treats
+    `dismissed` as done). Both act ONLY on a currently-`failed` row and are
+    **never automatic** — nothing in the run/schedule path dismisses anything.
 - **Spend / usage caps.** For jobs that make metered external calls (paid APIs),
   enforce per-day AND per-month caps via the `job_usage` meter in `src/db/store.ts`
   (`recordUsage`, `capStatus`). Call `recordUsage(jobName)` once per real action;

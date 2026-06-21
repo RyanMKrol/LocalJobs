@@ -31,6 +31,7 @@ import {
   stuckCount,
   stuckItems,
   unstickWorkItem,
+  dismissWorkItem,
 } from '../db/store.js';
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -126,6 +127,15 @@ export function startApi(): void {
         if (!body.job || !body.key) return json(res, 400, { error: 'job and key are required' });
         const unstuck = unstickWorkItem(String(body.job), String(body.key));
         return json(res, 200, { ok: true, unstuck });
+      }
+
+      // POST /api/stuck/dismiss  { job, key } — permanently park a stuck item
+      // (manual only; never retries, drops off the stuck list)
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'stuck' && parts[2] === 'dismiss') {
+        const body = await readBody(req);
+        if (!body.job || !body.key) return json(res, 400, { error: 'job and key are required' });
+        const dismissed = dismissWorkItem(String(body.job), String(body.key));
+        return json(res, 200, { ok: true, dismissed });
       }
 
       // GET /api/jobs  (each flagged with its pipeline, if it's a member)
