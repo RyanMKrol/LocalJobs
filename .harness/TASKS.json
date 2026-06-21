@@ -147,7 +147,7 @@
     {
       "id": "T006",
       "title": "Validation gates between pipeline stages",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T005"
       ],
