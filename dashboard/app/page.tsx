@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { api } from './lib/api';
 import { ProgressBar, StatusBadge, fmtDuration, fmtRelative, usePoll } from './ui';
 
-type Filter = 'running' | 'success' | 'failed' | 'stuck' | null;
+type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | null;
 
 export default function Overview() {
   const { data: stuckData } = usePoll(() => api.stuck(), 5000);
@@ -36,14 +36,16 @@ export default function Overview() {
   const counts = {
     running: pipelineRuns.filter((r) => r.status === 'running').length,
     success: pipelineRuns.filter((r) => r.status === 'success').length,
-    failed: pipelineRuns.filter((r) => ['failed', 'partial', 'cancelled'].includes(r.status)).length,
+    failed: pipelineRuns.filter((r) => ['failed', 'partial'].includes(r.status)).length,
+    cancelled: pipelineRuns.filter((r) => r.status === 'cancelled').length,
   };
 
   // Apply filter to pipeline cards and pipeline runs table
   const visiblePipelines = activeFilter == null ? pipelines : pipelines.filter((p) => {
     if (activeFilter === 'running') return p.last_run?.status === 'running';
     if (activeFilter === 'success') return p.last_run?.status === 'success';
-    if (activeFilter === 'failed') return ['failed', 'partial', 'cancelled'].includes(p.last_run?.status ?? '');
+    if (activeFilter === 'failed') return ['failed', 'partial'].includes(p.last_run?.status ?? '');
+    if (activeFilter === 'cancelled') return p.last_run?.status === 'cancelled';
     if (activeFilter === 'stuck') return p.stuck > 0;
     return true;
   });
@@ -51,7 +53,8 @@ export default function Overview() {
   const visiblePipelineRuns = activeFilter == null || activeFilter === 'stuck' ? pipelineRuns : pipelineRuns.filter((r) => {
     if (activeFilter === 'running') return r.status === 'running';
     if (activeFilter === 'success') return r.status === 'success';
-    if (activeFilter === 'failed') return ['failed', 'partial', 'cancelled'].includes(r.status);
+    if (activeFilter === 'failed') return ['failed', 'partial'].includes(r.status);
+    if (activeFilter === 'cancelled') return r.status === 'cancelled';
     return true;
   });
 
@@ -61,6 +64,7 @@ export default function Overview() {
     running: 'Running',
     success: 'Succeeded',
     failed: 'Failed',
+    cancelled: 'Cancelled',
     stuck: 'Stuck items',
   };
 
@@ -98,6 +102,13 @@ export default function Overview() {
           title="Click to filter by failed"
         >
           <div className="n" style={{ color: 'var(--red)' }}>{counts.failed}</div><div className="l">Failed runs</div>
+        </button>
+        <button
+          className={`statcard${activeFilter === 'cancelled' ? ' active' : ''}`}
+          onClick={() => toggleFilter('cancelled')}
+          title="Click to filter by cancelled"
+        >
+          <div className="n" style={{ color: counts.cancelled ? 'var(--muted)' : undefined }}>{counts.cancelled}</div><div className="l">Cancelled</div>
         </button>
         <button
           className={`statcard${activeFilter === 'stuck' ? ' active' : ''}`}
