@@ -93,7 +93,7 @@
     {
       "id": "T004",
       "title": "Publish the perfumes job code",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T002",
         "T003"
