@@ -309,6 +309,15 @@ doubt, log it.
   fixtures). The checks are deliberately SHAPE + NON-EMPTY (exists · non-empty ·
   expected fields/columns) — enough to catch real drift without brittle
   full-schema validation. Each pipeline derives 3 gates (one per stage boundary).
+  Gate **state** is surfaced on the dashboard's pipeline-run DAG: `classifyGates`
+  (also in `src/core/dag.ts`, pure) maps each gate to `passed`/`failed`/`pending`
+  from the run's member runs — a gate is `failed` when its consumer's latest run
+  is a gate-failure (matched via the shared `gateFailurePrefix`, the SAME format
+  `recordGateFailure` writes), `passed` once the consumer actually ran, else
+  `pending`. The `GET /api/pipeline-runs/:id` endpoint returns this as `gates[]`,
+  and `dashboard/.../Dag.tsx` renders a chip per gate on its consumer node (red +
+  a link to the failure logs when violated). Gates render ONLY when a run's
+  `gates` prop is passed — the structure-only `/pipelines/[name]` graph omits it.
 - **Pipeline progress is rolled up from member jobs (don't set it by hand).** A
   pipeline run's `progress` is a first-class roll-up: each member stage
   contributes a fraction in [0,1] of the pipeline's total stage count — a

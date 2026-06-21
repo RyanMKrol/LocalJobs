@@ -72,6 +72,16 @@ export interface Pipeline {
   runs?: PipelineRun[];
 }
 
+/** A validation gate's state within one pipeline run (derived from member runs). */
+export interface GateStatus {
+  key: string;
+  producer: string;
+  consumer: string;
+  state: 'passed' | 'failed' | 'pending';
+  /** When `state === 'failed'`, the member run id to link to its failure logs. */
+  failureRunId?: string | null;
+}
+
 export interface Service {
   name: string;
   description: string;
@@ -174,7 +184,9 @@ export const api = {
   pipelines: () => get<{ pipelines: Pipeline[] }>('/api/pipelines'),
   pipeline: (name: string) => get<{ pipeline: Pipeline }>(`/api/pipelines/${name}`),
   pipelineRun: (id: string, after = 0) =>
-    get<{ run: PipelineRun; jobs: Run[]; logs: LogLine[] }>(`/api/pipeline-runs/${id}?after=${after}`),
+    get<{ run: PipelineRun; jobs: Run[]; logs: LogLine[]; gates: GateStatus[] }>(
+      `/api/pipeline-runs/${id}?after=${after}`,
+    ),
   runPipeline: (name: string) => post<{ ok: boolean }>(`/api/pipelines/${name}/run`),
   togglePipeline: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/pipelines/${name}/toggle`, { enabled }),
   services: () => get<{ services: Service[] }>('/api/services'),

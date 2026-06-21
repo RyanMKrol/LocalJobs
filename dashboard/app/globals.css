@@ -119,6 +119,12 @@ tbody tr:hover { background: var(--panel-2); }
 .dag-node.failed .dag-node-status, .dag-node.timeout .dag-node-status { color: var(--red); }
 .dag-arrow { color: var(--grey); font-size: 22px; }
 a:hover .dag-node { border-color: var(--accent); }
+.dag-gates { display: flex; flex-direction: column; gap: 4px; margin-top: 5px; }
+.dag-gate { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); text-decoration: none; letter-spacing: .02em; }
+.dag-gate.passed { border-color: rgba(63,185,80,.45); color: var(--green); }
+.dag-gate.pending { opacity: .7; }
+.dag-gate.failed { border-color: rgba(248,81,73,.6); background: rgba(248,81,73,.12); color: var(--red); font-weight: 600; }
+a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.22); }
 
 /* service usage bars */
 .ubar { height: 7px; background: var(--panel-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); margin-top: 5px; max-width: 220px; }

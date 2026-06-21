@@ -281,6 +281,15 @@ non-empty `google-takeout` `places[]`, a `resolved.json` with real `place_id`s,
 a parsed perfume with a `name` + `notes`, …), so a pipeline's start log reports
 3 gates per pipeline. The contracts live in each pipeline's `contracts.ts`.
 
+These gates are **surfaced on the dashboard's pipeline-run DAG**: each
+producer→consumer gate shows as a small chip on its consumer node — green when
+passed, muted when still pending, and **red when violated**, with the failed
+chip linking straight to the gate-failure run's logs. Gates are run-scoped, so
+they appear only on a pipeline *run* (`/pipeline-runs/[id]`), never on the
+structure-only `/pipelines/[name]` graph. The state is derived server-side
+(`classifyGates` in `core/dag.ts`) and returned as a `gates[]` array on the
+`GET /api/pipeline-runs/:id` response.
+
 ## Example pipeline: perfumes
 
 The perfume-profile pipeline ships in-repo as a second worked example under

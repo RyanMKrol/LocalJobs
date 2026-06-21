@@ -1,6 +1,7 @@
 // Dependency-free self-running tests: `npx tsx src/core/dag.test.ts`
 import assert from 'node:assert/strict';
-import { buildDag, DagError, deriveGates, executeDag } from './dag.js';
+import { buildDag, classifyGates, DagError, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
+import type { Gate, GateRunRef } from './dag.js';
 import type { PipelineJobRef } from './types.js';
 
 let passed = 0;
@@ -128,6 +129,61 @@ test('deriveGates: a diamond join gates against BOTH producers of the same key',
     { key: 'k', producer: 'b', consumer: 'd' },
     { key: 'k', producer: 'c', consumer: 'd' },
   ]);
+});
+
+// ---- classifyGates: gate state from a run's member runs ----
+
+const G: Gate = { key: 'rows', producer: 'a', consumer: 'b' };
+const failRun = (id: string, gate: Gate, extra = 'csv layout drift'): GateRunRef => ({
+  id, job_name: gate.consumer, status: 'failed', error: `${gateFailurePrefix(gate)}: ${extra}`,
+});
+
+test('classifyGates: a gate-failure run on the consumer → failed, links to that run', () => {
+  const runs: GateRunRef[] = [
+    { id: 'r1', job_name: 'a', status: 'success', error: null },
+    failRun('r2', G),
+  ];
+  assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'failed', failureRunId: 'r2' }]);
+});
+
+test('classifyGates: consumer ran for real (not skipped, not a gate failure) → passed', () => {
+  const runs: GateRunRef[] = [
+    { id: 'r1', job_name: 'a', status: 'success', error: null },
+    { id: 'r2', job_name: 'b', status: 'success', error: null },
+  ];
+  assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'passed' }]);
+});
+
+test('classifyGates: a real consumer failure (not a gate violation) still counts as gate passed', () => {
+  // The gate let the consumer spawn; the consumer then failed on its own work.
+  const runs: GateRunRef[] = [{ id: 'r2', job_name: 'b', status: 'failed', error: 'boom: timeout' }];
+  assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'passed' }]);
+});
+
+test('classifyGates: consumer not yet run → pending', () => {
+  const runs: GateRunRef[] = [{ id: 'r1', job_name: 'a', status: 'running', error: null }];
+  assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'pending' }]);
+});
+
+test('classifyGates: consumer skipped by an upstream failure → pending (gate never evaluated)', () => {
+  const runs: GateRunRef[] = [{ id: 'r2', job_name: 'b', status: 'skipped', error: 'skipped: upstream a did not succeed' }];
+  assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'pending' }]);
+});
+
+test('classifyGates: one inbound gate failing leaves the consumer\'s OTHER inbound gate pending', () => {
+  const g1: Gate = { key: 'rows', producer: 'a', consumer: 'c' };
+  const g2: Gate = { key: 'meta', producer: 'b', consumer: 'c' };
+  // Only g1 failed; the executor returns on first failure so g2 was never checked.
+  const runs: GateRunRef[] = [failRun('r3', g1)];
+  assert.deepEqual(classifyGates([g1, g2], runs), [
+    { ...g1, state: 'failed', failureRunId: 'r3' },
+    { ...g2, state: 'pending' },
+  ]);
+});
+
+test('classifyGates: latest gate-failure run wins when a gate fails across cycles', () => {
+  const runs: GateRunRef[] = [failRun('old', G), failRun('new', G)];
+  assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'failed', failureRunId: 'new' }]);
 });
 
 async function atest(name: string, fn: () => Promise<void>) {

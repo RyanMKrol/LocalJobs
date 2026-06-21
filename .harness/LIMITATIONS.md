@@ -239,4 +239,19 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Revisit:* if silent per-item drift becomes a problem, add a stricter opt-in
   contract variant that samples N records or asserts a minimum well-formed fraction.
 
+- **Gate markers are chips on the consumer node, not lines drawn on the edge.**
+  *Why:* the pipeline DAG renders as left-to-right *wave columns* (`Dag.tsx`), not
+  per-node SVG edges — there is no drawn producer→consumer line to attach a marker
+  to. Each inbound gate is shown as a small chip beneath its consumer node instead,
+  labelled with the producer + artifact key so the boundary it guards is explicit.
+  *Impact:* when a producer and consumer sit more than one wave apart, the chip
+  isn't visually connected to the producer by a line; you read the relationship
+  from the chip's label, not a drawn arrow. Gate STATE (passed/failed/pending) is
+  derived from member runs by string-matching the gate-failure error prefix
+  (`gateFailurePrefix`), so the executor's failure-detail format and the API's
+  classifier are coupled — both live in `core/dag.ts` to keep them in lockstep.
+  *Revisit:* if a true node-graph (SVG edges) replaces the wave layout, move the
+  gate marker onto the actual edge; if the failure-detail format must change, update
+  `gateFailurePrefix` (one place) so `classifyGates` keeps matching.
+
 > Add further project trade-offs below as they arise.

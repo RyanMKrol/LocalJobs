@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment } from 'react';
-import type { PipelineMember } from '../lib/api';
+import type { GateStatus, PipelineMember } from '../lib/api';
 
 /** Topologically order members into waves (jobs in a wave have no ordering). */
 function computeWaves(members: PipelineMember[]): string[][] {
@@ -30,24 +30,63 @@ function computeWaves(members: PipelineMember[]): string[][] {
 }
 
 /**
+ * Render the validation gates inbound to one consumer node as small chips, each
+ * naming its producer + artifact key and coloured by state. A FAILED gate is red
+ * and links to its gate-failure run's logs. Gates are only supplied on a pipeline
+ * RUN, so the structure-only /pipelines/[name] view renders no chips.
+ */
+function GateChips({ gates, from }: { gates: GateStatus[]; from?: string }) {
+  if (gates.length === 0) return null;
+  const suffix = from ? `?from=${encodeURIComponent(from)}` : '';
+  return (
+    <div className="dag-gates">
+      {gates.map((g) => {
+        const label = `⛒ ${g.producer} · ${g.key}`;
+        const title = `gate ${g.state}: ${g.producer} → ${g.consumer} (artifact "${g.key}")`;
+        if (g.state === 'failed' && g.failureRunId) {
+          return (
+            <a key={`${g.producer}:${g.key}`} href={`/runs/${g.failureRunId}${suffix}`} className="dag-gate failed" title={title}>
+              {label}
+            </a>
+          );
+        }
+        return (
+          <span key={`${g.producer}:${g.key}`} className={`dag-gate ${g.state}`} title={title}>
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * Render a pipeline DAG as left-to-right waves of status-coloured nodes. Pass
  * `statusByJob` to colour each node by a run's member status, and `runIdByJob`
- * to make nodes link into that member's run logs.
+ * to make nodes link into that member's run logs. Pass `gates` (run view only) to
+ * mark each producer→consumer validation gate on its consumer node — a failed
+ * gate is red and links to its failure logs.
  */
 export function Dag({
   members,
   statusByJob,
   runIdByJob,
+  gates,
   from,
 }: {
   members: PipelineMember[];
   statusByJob?: Record<string, string>;
   runIdByJob?: Record<string, string>;
+  /** Validation-gate states for THIS run; omit on the structure-only view. */
+  gates?: GateStatus[];
   /** Path of the page rendering this DAG, threaded onto node links as `?from=`
    *  so the job/run page can send the back-link to where you actually came from. */
   from?: string;
 }) {
   const waves = computeWaves(members);
+  // Group gates by consumer so each node shows its own inbound gates.
+  const gatesByConsumer = new Map<string, GateStatus[]>();
+  for (const g of gates ?? []) (gatesByConsumer.get(g.consumer) ?? gatesByConsumer.set(g.consumer, []).get(g.consumer)!).push(g);
   return (
     <div className="dag">
       {waves.map((wave, i) => (
@@ -66,6 +105,7 @@ export function Dag({
               return (
                 <div key={job}>
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
+                  <GateChips gates={gatesByConsumer.get(job) ?? []} from={from} />
                 </div>
               );
             })}

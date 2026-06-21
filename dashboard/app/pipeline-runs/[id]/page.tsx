@@ -24,6 +24,7 @@ export default function PipelineRunDetail({ params }: { params: Promise<{ id: st
   const run = data?.run;
   const members = data?.jobs ?? [];
   const logs = data?.logs ?? [];
+  const gates = data?.gates ?? [];
 
   // Which stage rows are expanded to show older runs
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -64,7 +65,7 @@ export default function PipelineRunDetail({ params }: { params: Promise<{ id: st
 
       {pipeline && (
         <div className="panel" style={{ marginBottom: 16 }}>
-          <Dag members={pipeline.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} from={`/pipeline-runs/${id}`} />
+          <Dag members={pipeline.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/pipeline-runs/${id}`} />
         </div>
       )}
 

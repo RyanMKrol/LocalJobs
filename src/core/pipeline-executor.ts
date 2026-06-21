@@ -9,7 +9,7 @@ import {
   recordSkippedRun,
   rollUpPipelineProgress,
 } from '../db/store.js';
-import { type Dag, type Gate, buildDag, deriveGates, executeDag } from './dag.js';
+import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
 import { runJobForPipeline } from './executor.js';
 import { notifyPipeline, notifyStage } from './notifier.js';
 import type { LogLevel, PipelineDefinition, PipelineRunStatus, RunStatus } from './types.js';
@@ -116,7 +116,7 @@ export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' |
         for (const gate of inboundGates.get(job) ?? []) {
           const verdict = await enforceGate(gate);
           if (!verdict.ok) {
-            const detail = `Gate violation [${gate.producer} → ${gate.consumer}] artifact "${gate.key}": ${verdict.violations.join('; ')}`;
+            const detail = `${gateFailurePrefix(gate)}: ${verdict.violations.join('; ')}`;
             log(`⨯ ${detail}`, 'error');
             recordGateFailure(job, pipelineRunId, detail);
             return 'failed';

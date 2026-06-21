@@ -88,6 +88,63 @@ export interface Gate {
 }
 
 /**
+ * The stable, leading portion of the error a gate violation records on its
+ * (failed, never-spawned) consumer run — `recordGateFailure` writes this prefix
+ * followed by the per-drift violations. Centralised here so the executor (which
+ * WRITES the failure) and the API (which READS member runs back to classify each
+ * gate's state) agree on one format. Changing it is a breaking change to both.
+ */
+export function gateFailurePrefix(gate: Gate): string {
+  return `Gate violation [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"`;
+}
+
+/** A gate's outcome within one pipeline run, derived from member runs. */
+export type GateState = 'passed' | 'failed' | 'pending';
+
+export interface GateStatus extends Gate {
+  state: GateState;
+  /** When `failed`, the id of the gate-failure run to link to its logs. */
+  failureRunId?: string;
+}
+
+/** Minimal shape of a member run needed to classify gates (a subset of a DB run row). */
+export interface GateRunRef {
+  id: string;
+  job_name: string;
+  status: string;
+  error: string | null;
+}
+
+/**
+ * Classify each gate against a pipeline run's member runs — pure, so it's the
+ * same logic on the API and in tests. `runs` must be in chronological order (the
+ * DB returns them `ORDER BY started_at`), so the consumer's LAST run reflects the
+ * current state. A gate is:
+ *  - **failed** if its consumer's latest run is a gate-failure for THIS gate (its
+ *    error starts with `gateFailurePrefix`); links to that run's logs.
+ *  - **passed** if the consumer actually executed — the consumer only spawns once
+ *    all its inbound gates passed.
+ *  - **pending** otherwise: the consumer hasn't crossed this boundary — not yet
+ *    run, skipped by an upstream failure, or blocked by a DIFFERENT inbound gate
+ *    (its latest run is a gate failure that isn't this gate's).
+ */
+export function classifyGates(gates: Gate[], runs: GateRunRef[]): GateStatus[] {
+  return gates.map((gate) => {
+    const consumerRuns = runs.filter((r) => r.job_name === gate.consumer);
+    const latest = consumerRuns[consumerRuns.length - 1];
+    if (!latest) return { ...gate, state: 'pending' };
+    const err = latest.error ?? '';
+    if (latest.status === 'failed' && err.startsWith(gateFailurePrefix(gate))) {
+      return { ...gate, state: 'failed', failureRunId: latest.id };
+    }
+    if (latest.status === 'skipped' || err.startsWith('Gate violation')) {
+      return { ...gate, state: 'pending' };
+    }
+    return { ...gate, state: 'passed' };
+  });
+}
+
+/**
  * Derive the typed-artifact gates implied by a DAG plus each member's declared
  * produced/consumed artifact keys. For every edge (producer → consumer), each
  * key the producer PRODUCES and the consumer CONSUMES becomes a gate to enforce

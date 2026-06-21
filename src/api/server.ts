@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
+import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
 import { runJob } from '../core/executor.js';
 import { runPipeline } from '../core/pipeline-executor.js';
 import { nextPipelineRun, nextRun } from '../core/scheduler.js';
@@ -138,6 +139,30 @@ function pipelineView(name: string) {
     jobs: members,
     stuck: members.reduce((sum, m) => sum + stuckCount(m.job_name), 0),
   };
+}
+
+/**
+ * Derive the validation gates for a pipeline from its members' declared
+ * produces/consumes contracts (the same `deriveGates` the executor enforces).
+ * Pure structure — gate STATE is layered on per-run by `classifyGates`. A
+ * malformed DAG yields no gates (the run endpoint surfaces the DAG error itself).
+ */
+function gatesForPipeline(name: string): Gate[] {
+  const refs = getPipelineJobs(name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
+  let dag;
+  try {
+    dag = buildDag(refs);
+  } catch {
+    return [];
+  }
+  const produces = new Map<string, string[]>();
+  const consumes = new Map<string, string[]>();
+  for (const node of dag.nodes) {
+    const jd = getJobDefinition(node);
+    produces.set(node, (jd?.produces ?? []).map((c) => c.key));
+    consumes.set(node, (jd?.consumes ?? []).map((c) => c.key));
+  }
+  return deriveGates(dag, produces, consumes);
 }
 
 /** Map each pipeline member job → its pipeline name (for grouping the jobs list). */
@@ -325,7 +350,12 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         const run = getPipelineRun(parts[2]);
         if (!run) return json(res, 404, { error: 'pipeline run not found' });
         const after = Number(url.searchParams.get('after') ?? 0);
-        return json(res, 200, { run, jobs: listRunsForPipelineRun(parts[2]), logs: getPipelineLogs(parts[2], after) });
+        const memberRuns = listRunsForPipelineRun(parts[2]);
+        // Gates are run-scoped: derive the pipeline's gate structure, then classify
+        // each against THIS run's member runs (passed / failed / pending). The
+        // structure-only /pipelines/:name view never gets these.
+        const gates = classifyGates(gatesForPipeline(run.pipeline_name), memberRuns);
+        return json(res, 200, { run, jobs: memberRuns, logs: getPipelineLogs(parts[2], after), gates });
       }
 
       // GET /api/services  (usage vs caps + current per-minute rate)
