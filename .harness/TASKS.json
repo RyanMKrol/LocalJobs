@@ -611,7 +611,7 @@
     {
       "id": "T025",
       "title": "Set package versions to 1.0.0",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T001"
       ],
