@@ -202,6 +202,13 @@ export function stuckItems(minAttempts = 4): StuckItem[] {
   return rows.map((r) => ({ ...r, detail: r.detail ? JSON.parse(r.detail) : null }));
 }
 
+/** "Unstick" an item: delete its failed ledger row so it's retried fresh on the
+ *  next run. Returns the number of rows removed (0 if it wasn't failed). */
+export function unstickWorkItem(jobName: string, itemKey: string): number {
+  return db.prepare("DELETE FROM work_items WHERE job_name = ? AND item_key = ? AND status = 'failed'")
+    .run(jobName, itemKey).changes;
+}
+
 /** How many items have given up for one job (failed, out of retries). */
 export function stuckCount(jobName: string, minAttempts = 4): number {
   return (db.prepare(

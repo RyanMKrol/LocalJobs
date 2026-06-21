@@ -44,6 +44,18 @@ export async function notifyRun(jobName: string, runId: string, status: RunStatu
   ]);
 }
 
+/** Generic push a long-running job can call to send milestone updates to the phone. */
+export async function push(
+  title: string,
+  body: string,
+  opts: { priority?: string; tags?: string; job?: string } = {},
+): Promise<void> {
+  await Promise.allSettled([
+    sendNtfy(title, body, opts.job ?? 'localjobs', opts.priority ?? 'default', opts.tags ?? 'bell'),
+    sendMacNotification(title, body),
+  ]);
+}
+
 async function sendNtfy(
   title: string,
   body: string,

@@ -13,6 +13,7 @@ import {
   setJobEnabled,
   stuckCount,
   stuckItems,
+  unstickWorkItem,
 } from '../db/store.js';
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -82,6 +83,14 @@ export function startApi(): void {
         const jobFilter = url.searchParams.get('job');
         const items = stuckItems().filter((i) => !jobFilter || i.job_name === jobFilter);
         return json(res, 200, { stuck: items });
+      }
+
+      // POST /api/stuck/unstick  { job, key } — reset a stuck item so it retries
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'stuck' && parts[2] === 'unstick') {
+        const body = await readBody(req);
+        if (!body.job || !body.key) return json(res, 400, { error: 'job and key are required' });
+        const unstuck = unstickWorkItem(String(body.job), String(body.key));
+        return json(res, 200, { ok: true, unstuck });
       }
 
       // GET /api/jobs

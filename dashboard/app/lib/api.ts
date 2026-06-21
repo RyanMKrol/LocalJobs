@@ -37,7 +37,19 @@ export interface StuckItem {
   job_name: string;
   item_key: string;
   attempts: number;
-  detail: { name?: string; error?: string; status?: string } | null;
+  detail: {
+    name?: string;
+    error?: string;
+    status?: string;
+    // richer fetch diagnostics (perfumes-fetch)
+    pageTitle?: string;
+    snippet?: string;
+    debugFile?: string;
+    finalUrl?: string;
+    textLength?: number;
+    httpStatus?: number | null;
+    url?: string;
+  } | null;
   updated_at: string;
 }
 
@@ -73,4 +85,5 @@ export const api = {
   runNow: (name: string) => post<{ ok: boolean }>(`/api/jobs/${name}/run`),
   toggle: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/jobs/${name}/toggle`, { enabled }),
   stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${job}` : ''}`),
+  unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),
 };

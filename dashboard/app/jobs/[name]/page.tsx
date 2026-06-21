@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { Fragment, use, useState } from 'react';
 import { api } from '../../lib/api';
 import { StatusBadge, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
 
@@ -23,6 +23,13 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
   async function toggle() {
     if (!job) return;
     await api.toggle(name, job.enabled === 0);
+  }
+
+  async function unstick(key: string) {
+    try { await api.unstick(name, key); } catch { /* next poll reflects reality */ }
+  }
+  async function unstickAll() {
+    try { await Promise.all(stuck.map((s) => api.unstick(s.job_name, s.item_key))); } catch { /* ignore */ }
   }
 
   return (
@@ -61,22 +68,45 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
 
       {stuck.length > 0 && (
         <>
-          <h2 style={{ color: 'var(--red)' }}>⛔ Stuck items ({stuck.length})</h2>
-          <p className="sub">These gave up after exhausting their retries and will NOT be reprocessed.</p>
+          <div className="row">
+            <h2 style={{ color: 'var(--red)', margin: 0 }}>⛔ Stuck items ({stuck.length})</h2>
+            <div className="spacer" />
+            <button className="btn" onClick={unstickAll}>↻ Unstick all</button>
+          </div>
+          <p className="sub">These gave up after exhausting their retries and will NOT be reprocessed until you unstick them.</p>
           <div className="panel" style={{ borderColor: 'var(--red)' }}>
             <table>
               <thead>
-                <tr><th>Item</th><th>Attempts</th><th>Reason</th><th>ID</th></tr>
+                <tr><th>Item</th><th>Attempts</th><th>Reason</th><th></th></tr>
               </thead>
               <tbody>
-                {stuck.map((s) => (
-                  <tr key={s.item_key}>
-                    <td><strong>{s.detail?.name ?? s.item_key}</strong></td>
-                    <td>{s.attempts}</td>
-                    <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}</td>
-                    <td className="mono muted" style={{ fontSize: 11 }}>{s.item_key}</td>
-                  </tr>
-                ))}
+                {stuck.map((s) => {
+                  const d = s.detail ?? {};
+                  const hasDebug = d.snippet || d.debugFile || d.finalUrl || d.pageTitle;
+                  return (
+                    <Fragment key={s.item_key}>
+                      <tr>
+                        <td>
+                          <strong>{d.name ?? s.item_key}</strong>
+                          <div className="mono muted" style={{ fontSize: 11 }}>{s.item_key}</div>
+                        </td>
+                        <td>{s.attempts}</td>
+                        <td className="muted">{d.error ?? d.status ?? '—'}</td>
+                        <td><button className="btn" onClick={() => unstick(s.item_key)}>↻ Unstick</button></td>
+                      </tr>
+                      {hasDebug && (
+                        <tr>
+                          <td colSpan={4} className="muted" style={{ fontSize: 12, paddingTop: 0, lineHeight: 1.6 }}>
+                            {d.pageTitle != null && <div>page title: <span className="mono">{d.pageTitle || '(empty)'}</span>{d.httpStatus != null ? ` · HTTP ${d.httpStatus}` : ''}{d.textLength != null ? ` · ${d.textLength} chars` : ''}</div>}
+                            {d.snippet && <div>page text: <span className="mono">“{d.snippet}”</span></div>}
+                            {d.finalUrl && <div>final URL: <span className="mono">{d.finalUrl}</span></div>}
+                            {d.debugFile && <div>saved page: <span className="mono">{d.debugFile}</span></div>}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

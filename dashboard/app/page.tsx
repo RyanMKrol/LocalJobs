@@ -9,6 +9,10 @@ export default function Overview() {
   const runs = data?.runs ?? [];
   const stuck = stuckData?.stuck ?? [];
 
+  async function unstick(job: string, key: string) {
+    try { await api.unstick(job, key); } catch { /* next poll reflects reality */ }
+  }
+
   const counts = {
     running: runs.filter((r) => r.status === 'running').length,
     success: runs.filter((r) => r.status === 'success').length,
@@ -33,19 +37,20 @@ export default function Overview() {
       <div className="panel" style={stuck.length ? { borderColor: 'var(--red)' } : undefined}>
         <table>
           <thead>
-            <tr><th>Item</th><th>Job</th><th>Attempts</th><th>Reason</th><th>When</th></tr>
+            <tr><th>Item</th><th>Job</th><th>Attempts</th><th>Reason</th><th>When</th><th></th></tr>
           </thead>
           <tbody>
             {stuck.length === 0 && (
-              <tr><td colSpan={5} className="muted">Nothing stuck — every item either succeeded or is still retrying. ✓</td></tr>
+              <tr><td colSpan={6} className="muted">Nothing stuck — every item either succeeded or is still retrying. ✓</td></tr>
             )}
             {stuck.map((s) => (
               <tr key={`${s.job_name}:${s.item_key}`}>
                 <td>{s.detail?.name ?? <span className="mono">{s.item_key}</span>}</td>
                 <td><a href={`/jobs/${s.job_name}`}>{s.job_name}</a></td>
                 <td>{s.attempts}</td>
-                <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}</td>
+                <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}{s.detail?.pageTitle ? ` · title="${s.detail.pageTitle}"` : ''}</td>
                 <td className="muted">{fmtRelative(s.updated_at)}</td>
+                <td><button className="btn" onClick={() => unstick(s.job_name, s.item_key)}>↻ Unstick</button></td>
               </tr>
             ))}
           </tbody>
