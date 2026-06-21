@@ -106,7 +106,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts) ──spawns──▶ 
 | `src/core/types.ts` | `JobDefinition`, `JobContext`, event types — the contracts |
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention |
 | `src/core/scheduler.ts` | croner triggers for scheduled jobs; respects `enabled` |
-| `src/core/notifier.ts` | Failure alerts: ntfy + macOS notification |
+| `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs` |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
 | `src/jobs/registry.ts` | Auto-discovers `*.job.ts` files (no manual registration) |

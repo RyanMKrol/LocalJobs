@@ -9,7 +9,7 @@ import {
   hasActiveRun,
   setProgress,
 } from '../db/store.js';
-import { notifyFailure } from './notifier.js';
+import { notifyRun } from './notifier.js';
 import type { JobDefinition, JobEvent, RunTrigger } from './types.js';
 
 export interface RunResult {
@@ -41,6 +41,7 @@ export async function runJob(def: JobDefinition, trigger: RunTrigger): Promise<R
 
     if (outcome.status === 'success') {
       finishRun(runId, 'success', { exitCode: 0 });
+      await notifyRun(def.name, runId, 'success');
       return { runId };
     }
 
@@ -52,7 +53,7 @@ export async function runJob(def: JobDefinition, trigger: RunTrigger): Promise<R
       addLog(runId, `Attempt ${attempt} ${outcome.status}; retrying...`, 'warn');
       continue;
     }
-    await notifyFailure(def.name, runId, outcome.status, outcome.error ?? 'unknown error');
+    await notifyRun(def.name, runId, outcome.status);
     return { runId };
   }
 
