@@ -170,40 +170,6 @@ It then appears in the dashboard automatically with history tracked from run one
 > code needs a daemon restart** to take effect. The dashboard only needs a
 > rebuild + restart when you change the *UI*, not when you add jobs.
 
-## Layout
-
-```
-src/
-  config.ts            env-driven config (ports, db path, ntfy)
-  daemon.ts            long-lived orchestrator entrypoint
-  runJob.ts            child entrypoint: runs one job, emits NDJSON
-  db/
-    schema.sql         jobs · runs · run_logs · work_items · job_usage ·
-                       pipelines · pipeline_runs · services · service_usage (WAL)
-    index.ts           connection + schema bootstrap
-    store.ts           ALL queries
-  core/
-    types.ts           JobDefinition, PipelineDefinition, ServiceDefinition,
-                       JobContext, events
-    executor.ts        spawn child, capture events, timeout-kill, retries
-    scheduler.ts       croner triggers per scheduled job + pipeline
-    dag.ts             pipeline DAG: topo sort + cycle detection
-    pipeline-executor.ts  orchestrate pipeline runs; stage gates; member jobs; progress roll-up
-    notifier.ts        ntfy + macOS notification on failure (+ stuck-items heads-up)
-    services.ts        callService: cross-job rate-limit + quota middleware
-    browser.ts         shared headless-browser launch (persistent profile +
-                       real-Chrome channel) for reputation-gated scrapes
-  jobs/
-    registry.ts        auto-discovers *.job.ts, *.pipeline.ts, *.service.ts
-    places/            published example pipeline: ingest → resolve → enrich →
-                       llm-enrich (its data/ stays gitignored)
-    perfumes/          published example pipeline: find-url → fetch → parse →
-                       build (its data/ stays gitignored)
-dashboard/             Next.js dashboard (client of the daemon's API)
-scripts/               launchd install scripts + start wrapper
-data/                  SQLite db + daemon/dashboard logs (gitignored)
-```
-
 ## Dashboard pages
 
 Nav: **Overview · Pipelines · Services · Database · Backlog**
@@ -253,64 +219,27 @@ See `.env.example`:
 | `LOCALJOBS_NTFY_TOPIC` | [ntfy.sh](https://ntfy.sh) topic for phone push alerts on failure; blank = off (failures still recorded + a macOS notification fires) |
 | `LOCALJOBS_NTFY_SERVER` | ntfy server (default `https://ntfy.sh`) |
 
-## Example pipeline: places
+## Worked example pipelines
 
-The Google Places "second brain" pipeline ships in-repo as a worked example
-under `src/jobs/places/`, chaining four jobs (the `places` pipeline runs them in
-order): `places-ingest` (parse saved-place CSVs) → `cid-to-place-id-resolver`
-(headless CID→place_id) → `places-enrich` (Google Places API) → `enrich-with-llm`
-(Gemini summaries → markdown). It reuses the same scheduling/visibility/alerting,
-the per-item work ledger, and the spend caps. It runs **daily at 03:00**; because
-both paid stages are metered, each one's daily cap defaults to its monthly free
-allowance / 30 (`DAILY_SPEND_DIVISOR` in `config.ts`) so a daily run drains the
-backlog steadily and can never blow the month. Each paid stage's spend is
-governed by a single shared **service** quota (`google-places`, `gemini`) — when
-it's exhausted the run stops gracefully and resumes next day. Its `data/` (inputs + outputs)
-stays gitignored — only the code is published. It needs `GOOGLE_MAPS_API_KEY`
-and `GEMINI_API_KEY` in `.env`; see the job's `config.ts` for the full env list
-(rate limits, spend caps, dry-run toggles).
+Both are published under `src/jobs/`; their `data/` stays gitignored.
 
-Stages can also declare **typed-artifact contracts** (`produces`/`consumes` on a
-job): the pipeline validates them at each dependency boundary, so an upstream
-external-format drift (a changed Google Takeout CSV layout, a reshaped
-Fragrantica page) fails LOUD at the exact gate — recording a failed run and
-firing an alert — instead of silently feeding bad data downstream. Both worked
-pipelines declare them: each stage boundary checks the produced artifact is
-present, non-empty, and has its expected shape (the places CSV normalized to a
-non-empty `google-takeout` `places[]`, a `resolved.json` with real `place_id`s,
-a parsed perfume with a `name` + `notes`, …), so a pipeline's start log reports
-3 gates per pipeline. The contracts live in each pipeline's `contracts.ts`.
+**places** — Google Places enrichment. Four stages: `places-ingest` (parse
+saved-place CSVs) → `cid-to-place-id-resolver` (headless CID→place_id) →
+`places-enrich` (Google Places API) → `enrich-with-llm` (Gemini summaries →
+markdown). Runs daily at 03:00. Needs `GOOGLE_MAPS_API_KEY` + `GEMINI_API_KEY`.
+Spend is governed by `google-places`/`gemini` service quotas (capped at monthly/30
+per day). See `places/config.ts` for the full env list.
 
-These gates are **surfaced on the dashboard's pipeline-run DAG**: each
-producer→consumer gate shows as a small chip on its consumer node — green when
-passed, muted when still pending, and **red when violated**, with the failed
-chip linking straight to the gate-failure run's logs. Gates are run-scoped, so
-they appear only on a pipeline *run* (`/pipeline-runs/[id]`), never on the
-structure-only `/pipelines/[name]` graph. The state is derived server-side
-(`classifyGates` in `core/dag.ts`) and returned as a `gates[]` array on the
-`GET /api/pipeline-runs/:id` response.
+**perfumes** — Fragrantica profile builder. Four stages: `perfumes-find-url`
+(locate the page via the Claude CLI) → `perfumes-fetch` (headless Chrome /
+Cloudflare clearance) → `perfumes-parse` (extract structured notes/accords) →
+`perfumes-build` (research + write a markdown profile). Uses `repeatUntilStable`
+cycling. Drives the local `claude` CLI. See `perfumes/config.ts` for models,
+pacing, headless toggle, and dry-run options. See `.harness/LIMITATIONS.md` for
+scraping trade-offs.
 
-## Example pipeline: perfumes
-
-The perfume-profile pipeline ships in-repo as a second worked example under
-`src/jobs/perfumes/`, chaining four jobs (the `perfumes` pipeline runs them in
-order, serially): `perfumes-find-url` (locate the Fragrantica page via the Claude
-CLI) → `perfumes-fetch` (headless Chrome fetch through Cloudflare clearance) →
-`perfumes-parse` (extract structured notes/accords — each accord's strength `pct`
-is lifted from the cached page HTML's coloured-bar width when an `<id>.html` is
-present; an empty notes pyramid is normalized to explicitly-empty tiers, never
-guessed) → `perfumes-build` (research + write a markdown profile from the
-in-project `profile.template.md` — when Fragrantica gave no notes, the build
-prompt keeps the notes empty and says so rather than fabricating a pyramid; and
-the subjective community fields are blended against the LLM's own web research by
-a **continuous sample-size confidence weight** `votes/(votes+k)`, where `k` is
-calibrated to the scraped corpus's median vote count, so a niche house's
-low-vote signal is down-weighted while a designer blockbuster's is trusted — the
-chosen weighting is stated explicitly in the built profile, override `k` with
-`PERFUMES_CONFIDENCE_K`). It shares the
-same scheduling/visibility/alerting, the per-item work ledger, and `repeatUntilStable`
-cycling. Its `data/` (the scraped inputs, generated markdown, and the Chrome
-profile) stays gitignored — only the code is published. It drives the local
-`claude` CLI; see the job's `config.ts` for the full env list (models, pacing,
-headless toggle, dry-run). The published code documents the Fragrantica-scraping
-technique — see `.harness/LIMITATIONS.md` for that trade-off.
+**Typed-artifact contracts.** Each stage boundary declares `produces`/`consumes`
+contracts (`contracts.ts` in each pipeline). A shape violation at a gate fails
+LOUD — recording a failed run and firing an alert — instead of silently feeding
+bad data downstream. Gates surface as chips on the pipeline-run DAG in the
+dashboard (green/pending/red, with a link to the failure logs when violated).
