@@ -133,6 +133,7 @@ export const api = {
   stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${job}` : ''}`),
   unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),
 
+  recentPipelineRuns: (limit = 50) => get<{ runs: PipelineRun[] }>(`/api/pipeline-runs?limit=${limit}`),
   pipelines: () => get<{ pipelines: Pipeline[] }>('/api/pipelines'),
   pipeline: (name: string) => get<{ pipeline: Pipeline }>(`/api/pipelines/${name}`),
   pipelineRun: (id: string, after = 0) =>

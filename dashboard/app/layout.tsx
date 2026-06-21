@@ -12,7 +12,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <header className="site">
           <div className="inner">
-            <span className="brand">⚙︎ Local Jobs</span>
+            <a href="/" className="brand">⚙︎ Local Jobs</a>
             <nav>
               <a href="/">Overview</a>
               <a href="/pipelines">Pipelines</a>

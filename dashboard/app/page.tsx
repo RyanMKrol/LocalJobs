@@ -7,9 +7,11 @@ export default function Overview() {
   const { data, error } = usePoll(() => api.recentRuns(100), 2000);
   const { data: stuckData } = usePoll(() => api.stuck(), 5000);
   const { data: pipeData } = usePoll(() => api.pipelines(), 3000);
+  const { data: pipeRunData } = usePoll(() => api.recentPipelineRuns(50), 2000);
   const runs = data?.runs ?? [];
   const stuck = stuckData?.stuck ?? [];
   const pipelines = pipeData?.pipelines ?? [];
+  const pipelineRuns = pipeRunData?.runs ?? [];
 
   async function unstick(job: string, key: string) {
     try { await api.unstick(job, key); } catch { /* next poll reflects reality */ }
@@ -85,24 +87,24 @@ export default function Overview() {
         </table>
       </div>
 
-      <h2>Recent runs</h2>
+      <h2>Recent pipeline runs</h2>
       <div className="panel">
         <table>
           <thead>
-            <tr><th>Job</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th></th></tr>
+            <tr><th>Pipeline</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th></th></tr>
           </thead>
           <tbody>
-            {runs.length === 0 && (
-              <tr><td colSpan={6} className="muted">No runs yet — trigger one from a job page.</td></tr>
+            {pipelineRuns.length === 0 && (
+              <tr><td colSpan={6} className="muted">No pipeline runs yet — trigger one from a pipeline card above.</td></tr>
             )}
-            {runs.map((r) => (
+            {pipelineRuns.map((r) => (
               <tr key={r.id}>
-                <td><a href={`/jobs/${r.job_name}`}>{r.job_name}</a></td>
-                <td><StatusBadge status={r.status} /></td>
+                <td><a href={`/pipelines/${r.pipeline_name}`}>{r.pipeline_name}</a></td>
+                <td><span className={`badge ${r.status}`}>{r.status}</span></td>
                 <td className="muted">{r.trigger}</td>
                 <td className="muted">{fmtRelative(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                <td><a href={`/runs/${r.id}`}>details →</a></td>
+                <td><a href={`/pipeline-runs/${r.id}`}>details →</a></td>
               </tr>
             ))}
           </tbody>

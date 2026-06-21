@@ -55,7 +55,7 @@ export function Dag({
               const node = (
                 <div className={`dag-node ${status}`}>
                   <div className="dag-node-name">{job}</div>
-                  <div className="dag-node-status">{status}</div>
+                  {statusByJob && <div className="dag-node-status">{status}</div>}
                 </div>
               );
               return (

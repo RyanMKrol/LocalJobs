@@ -23,7 +23,9 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
   return (
     <>
       <p className="muted">
-        <a href={run ? `/jobs/${run.job_name}` : '/'}>← {run ? run.job_name : 'back'}</a>
+        <a href={run?.pipeline_run_id ? `/pipeline-runs/${run.pipeline_run_id}` : run ? `/jobs/${run.job_name}` : '/'}>
+          ← {run?.pipeline_run_id ? 'pipeline run' : run ? run.job_name : 'back'}
+        </a>
       </p>
       {error && <p className="muted">⚠ {error}</p>}
       {run && (

@@ -35,7 +35,7 @@ header.site .inner {
   max-width: 1100px; margin: 0 auto; padding: 14px 20px;
   display: flex; align-items: center; gap: 20px;
 }
-header.site .brand { font-weight: 700; font-size: 16px; }
+header.site .brand { font-weight: 700; font-size: 16px; color: var(--text); }
 header.site nav a { color: var(--muted); margin-right: 16px; }
 header.site nav a:hover { color: var(--text); }
 

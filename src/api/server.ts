@@ -16,6 +16,7 @@ import {
   listJobs,
   listPipelineRunsForPipeline,
   listPipelines,
+  listRecentPipelineRuns,
   listRecentRuns,
   listRunsForJob,
   listRunsForPipelineRun,
@@ -191,6 +192,12 @@ export function startApi(): void {
         const body = await readBody(req);
         setPipelineEnabled(parts[2], !!body.enabled);
         return json(res, 200, { ok: true, enabled: !!body.enabled });
+      }
+
+      // GET /api/pipeline-runs?limit=
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipeline-runs' && parts.length === 2) {
+        const limit = Number(url.searchParams.get('limit') ?? 50);
+        return json(res, 200, { runs: listRecentPipelineRuns(limit) });
       }
 
       // GET /api/pipeline-runs/:id  (+ ?after= for incremental framework logs)

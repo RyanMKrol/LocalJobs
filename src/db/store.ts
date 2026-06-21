@@ -387,6 +387,10 @@ export function listPipelineRunsForPipeline(name: string, limit = 50): PipelineR
     .all(name, limit) as PipelineRunRow[];
 }
 
+export function listRecentPipelineRuns(limit = 50): PipelineRunRow[] {
+  return db.prepare('SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT ?').all(limit) as PipelineRunRow[];
+}
+
 export function lastPipelineRunForPipeline(name: string): PipelineRunRow | undefined {
   return db.prepare('SELECT * FROM pipeline_runs WHERE pipeline_name = ? ORDER BY started_at DESC LIMIT 1')
     .get(name) as PipelineRunRow | undefined;
