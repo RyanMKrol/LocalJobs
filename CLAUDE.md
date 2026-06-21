@@ -206,6 +206,10 @@ doubt, log it.
   changes — before declaring done. Keep the suite green; **add unit tests for new
   behaviour as you build it** (tests live in `*.test.ts`; `npm test` discovers + runs
   them against a scratch DB). Never declare done on red.
+- **Commit + push as you go.** Make small, atomized commits as each coherent change
+  lands (one per layer/feature — not a big-bang), and **push each commit immediately**
+  — don't wait to be asked. (Respect the git hygiene rules above: never commit
+  credentials or the gitignored private job folders / `TODO.md`.)
 - After ANY change to `src/`, the daemon must be restarted to take effect.
   After UI changes, rebuild the dashboard and restart its agent.
 
