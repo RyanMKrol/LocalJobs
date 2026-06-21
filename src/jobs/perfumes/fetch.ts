@@ -6,7 +6,7 @@ import { launchPersistentBrowser } from '../../core/browser.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import { callService } from '../../core/services.js';
 import { perfumesConfig } from './config.js';
-import { ensureDirs, label, loadPerfumes, readJsonFile } from './lib.js';
+import { ensureDirs, label, loadPerfumes, readJsonFile, reportItemProgress } from './lib.js';
 import type { StageResult } from './types.js';
 
 export const FETCH_JOB = 'perfumes-fetch';
@@ -37,9 +37,11 @@ export async function runFetch(ctx: JobContext): Promise<StageResult> {
   let ok = 0;
   let failed = 0;
   const cap = perfumesConfig.runLimit > 0 ? perfumesConfig.runLimit : Infinity;
+  const total = Math.min(todo.length, cap); // how many we'll actually fetch this run (progress denominator)
   try {
-    for (const p of todo) {
+    for (const [i, p] of todo.entries()) {
       if (ok + failed >= cap) break;
+      ctx.log(`[fetch] ${i + 1}/${total} → ${label(p)}`);
       const attempts = (getWorkItem(FETCH_JOB, p.id)?.attempts ?? 0) + 1;
       const o = await callService('fragrantica', () => fetchPage(context, urls[p.id]), {
         onThrottle: (ms) => ctx.log(`[fetch] waited ${Math.round(ms / 1000)}s for fragrantica spacing`),
@@ -81,6 +83,7 @@ export async function runFetch(ctx: JobContext): Promise<StageResult> {
         ctx.log(`[fetch] ✗ ${label(p)}: ${why} · title="${o.title}" · ${o.text.length} chars · saved ${debugFile}${attempts >= perfumesConfig.maxAttempts ? ' — giving up' : ''}`, 'warn');
       }
       // pacing is now handled by the 'fragrantica' service (min-interval + jitter)
+      reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
     }
   } finally {
     await context.close();

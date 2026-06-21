@@ -2,7 +2,7 @@ import type { JobContext } from '../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import { runClaude } from './claude.js';
 import { perfumesConfig } from './config.js';
-import { ensureDirs, label, loadPerfumes, readJsonFile, writeJsonFile } from './lib.js';
+import { ensureDirs, label, loadPerfumes, readJsonFile, reportItemProgress, writeJsonFile } from './lib.js';
 import type { PerfumeInput, StageResult } from './types.js';
 
 export const FIND_JOB = 'perfumes-find-url';
@@ -19,9 +19,11 @@ export async function runFindUrl(ctx: JobContext): Promise<StageResult> {
   let failed = 0;
   let rateLimited = false;
   const cap = perfumesConfig.runLimit > 0 ? perfumesConfig.runLimit : Infinity;
+  const total = Math.min(todo.length, cap); // how many we'll actually attempt this run (progress denominator)
 
-  for (const p of todo) {
+  for (const [i, p] of todo.entries()) {
     if (ok + failed >= cap) break;
+    ctx.log(`[find-url] ${i + 1}/${total} → ${label(p)}`);
     const attempts = (getWorkItem(FIND_JOB, p.id)?.attempts ?? 0) + 1;
     const res = perfumesConfig.dryRun
       ? { ok: true, text: `https://www.fragrantica.com/perfume/${encodeURIComponent(p.brand)}/${encodeURIComponent(p.name)}-0.html`, rateLimited: false }
@@ -44,6 +46,7 @@ export async function runFindUrl(ctx: JobContext): Promise<StageResult> {
       failed++;
       ctx.log(`[find-url] ✗ ${label(p)}: ${reason}${attempts >= perfumesConfig.maxAttempts ? ' — giving up' : ''}`, 'warn');
     }
+    reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
   }
 
   const pending = perfumes.filter((p) => !isWorkItemDone(FIND_JOB, p.id, perfumesConfig.maxAttempts)).length;

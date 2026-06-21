@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getWorkItem } from '../../db/store.js';
+import type { JobContext } from '../../core/types.js';
 import { perfumesConfig } from './config.js';
 import type { PerfumeInput } from './types.js';
 
@@ -31,6 +32,24 @@ export function isStuck(jobName: string, id: string): boolean {
 }
 
 export const label = (p: PerfumeInput): string => `${p.name} — ${p.brand}`;
+
+/**
+ * Emit a per-item progress update for an item-loop stage: `done` of `total`
+ * items finished maps to a 0..100 percentage, with an `done/total` status (plus
+ * an optional suffix like "3 ok, 1 failed"). Centralises what every perfumes
+ * stage does after each item so a long stage advances the run % AS IT WORKS
+ * instead of jumping 0→100 only at the end. `total <= 0` (an empty run) reports
+ * 100 rather than dividing by zero.
+ */
+export function reportItemProgress(
+  ctx: Pick<JobContext, 'progress'>,
+  done: number,
+  total: number,
+  suffix?: string,
+): void {
+  const pct = total > 0 ? (done / total) * 100 : 100;
+  ctx.progress(pct, `${done}/${total}${suffix ? ` · ${suffix}` : ''}`);
+}
 
 /** Every parsed Fragrantica perfume's vote count, across the whole scraped
  *  corpus (the `data/out/fragrantica/*.json` files). This is the ecosystem-wide

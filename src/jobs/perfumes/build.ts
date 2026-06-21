@@ -4,7 +4,7 @@ import type { JobContext } from '../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import { runClaude, unfenceMarkdown } from './claude.js';
 import { perfumesConfig } from './config.js';
-import { ensureDirs, label, loadPerfumes, loadVoteCorpus, readJsonFile } from './lib.js';
+import { ensureDirs, label, loadPerfumes, loadVoteCorpus, readJsonFile, reportItemProgress } from './lib.js';
 import { normalizeNotes, notesEmpty } from './parse.js';
 import type { PerfumeInput, StageResult } from './types.js';
 
@@ -39,9 +39,11 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
   let failed = 0;
   let rateLimited = false;
   const cap = perfumesConfig.runLimit > 0 ? perfumesConfig.runLimit : Infinity;
+  const total = Math.min(todo.length, cap); // how many we'll actually build this run (progress denominator)
 
-  for (const p of todo) {
+  for (const [i, p] of todo.entries()) {
     if (ok + failed >= cap) break;
+    ctx.log(`[build] ${i + 1}/${total} → ${label(p)}`);
     const attempts = (getWorkItem(BUILD_JOB, p.id)?.attempts ?? 0) + 1;
     const fragJson = readFileSync(fragPath(p.id), 'utf8');
     const res = perfumesConfig.dryRun
@@ -64,6 +66,7 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
       failed++;
       ctx.log(`[build] ✗ ${label(p)}: ${msg}${attempts >= perfumesConfig.maxAttempts ? ' — giving up' : ''}`, 'warn');
     }
+    reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
   }
 
   return { ok, failed, pending: pendingOf().length, rateLimited };

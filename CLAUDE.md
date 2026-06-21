@@ -175,6 +175,14 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   manually). Use guards / "skip if already done".
 - Use `ctx.log` and `ctx.progress` generously — that's the entire visibility
   story. No `console.log` (it still gets captured, but prefer `ctx`).
+- **Item-loop jobs report progress per item, not just at the end.** Any job that
+  processes N items must call `ctx.progress(i/N*100)` and log an `i/N` line as it
+  finishes each one, so the run % advances live (and rolls up into the pipeline)
+  instead of jumping 0→100 at the finish. Use a sensible denominator — the count
+  it will actually attempt this run (e.g. `Math.min(todo.length, runLimit)`). The
+  perfumes stages share `reportItemProgress(ctx, done, total, suffix?)` in
+  `perfumes/lib.ts` for this; the places stages emit it inline. All 8 example-job
+  loops do this — match it in new jobs.
 - Keep secrets in `.env` (read via `process.env`); never hardcode. The child
   inherits the daemon's env.
 - Long jobs: set a realistic `timeoutMs` so a hang is killed, not left forever.

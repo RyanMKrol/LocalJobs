@@ -4,7 +4,7 @@ import type { JobContext } from '../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import { extractJson, runClaude } from './claude.js';
 import { perfumesConfig } from './config.js';
-import { ensureDirs, label, loadPerfumes } from './lib.js';
+import { ensureDirs, label, loadPerfumes, reportItemProgress } from './lib.js';
 import type { Accord, PerfumeInput, StageResult } from './types.js';
 
 export const PARSE_JOB = 'perfumes-parse';
@@ -22,9 +22,11 @@ export async function runParse(ctx: JobContext): Promise<StageResult> {
   let failed = 0;
   let rateLimited = false;
   const cap = perfumesConfig.runLimit > 0 ? perfumesConfig.runLimit : Infinity;
+  const total = Math.min(todo.length, cap); // how many we'll actually parse this run (progress denominator)
 
-  for (const p of todo) {
+  for (const [i, p] of todo.entries()) {
     if (ok + failed >= cap) break;
+    ctx.log(`[parse] ${i + 1}/${total} → ${label(p)}`);
     const attempts = (getWorkItem(PARSE_JOB, p.id)?.attempts ?? 0) + 1;
     const pageText = readFileSync(pagePath(p.id), 'utf8');
     const res = perfumesConfig.dryRun
@@ -48,6 +50,7 @@ export async function runParse(ctx: JobContext): Promise<StageResult> {
       failed++;
       ctx.log(`[parse] ✗ ${label(p)}: ${msg}${attempts >= perfumesConfig.maxAttempts ? ' — giving up' : ''}`, 'warn');
     }
+    reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
   }
 
   return { ok, failed, pending: pendingOf().length, rateLimited };
