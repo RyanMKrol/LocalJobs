@@ -30,8 +30,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "T006 built the gate MECHANISM but no real job declares contracts, so zero gates fire. Declare `produces`/`consumes` ArtifactContracts on the perfumes + places pipeline stages (e.g. fetch produces raw pages, parse consumes them; ingest produces CSV rows, resolver consumes them) so the executor enforces a gate on each DAG edge and fails LOUD on format drift. Verify against cached data/ fixtures — NO live calls.",
-      "doneWhen": "Perfumes + places stages declare produces/consumes contracts; gates derive and fire between stages (pipeline start-log gate count > 0); a unit test proves a satisfied contract passes and a drifted one fails the consumer; no live API/scrape used in verification."
+      "do": "T006 built the gate MECHANISM but no real job declares contracts, so zero gates fire. Declare produces/consumes ArtifactContracts on the perfumes + places pipeline stages. Each contract is SHAPE + NON-EMPTY: assert the produced artifact exists, is non-empty, and has its expected fields/columns (e.g. the Takeout CSV has its expected headers; a parsed perfume has name + notes; a resolved place has a place_id) — enough to catch real format drift without brittle full-schema checks. Verify against cached data/ fixtures — NO live calls.",
+      "doneWhen": "Perfumes + places stages declare produces/consumes shape+non-empty contracts; gates derive and fire between stages (pipeline start-log gate count > 0); a unit test proves a satisfied contract passes and a drifted/empty one fails the consumer; no live API/scrape in verification."
     },
     {
       "id": "T028",
@@ -54,8 +54,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Represent validation gates on the pipeline DAG graph: show a gate marker on the producer→consumer edge in a pipeline run, make a failed gate visually distinct, and make the gate-failure run/logs reachable from the graph. Expose gate info via the API so the dashboard can render it.",
-      "doneWhen": "Gates appear on the pipeline-run DAG between producer→consumer; a failed gate is visually distinct and links to its failure logs; dashboard build passes."
+      "do": "Represent validation gates on the pipeline DAG graph: render a gate marker on the producer->consumer edge in a pipeline RUN, make a FAILED gate visually distinct (e.g. red), and make the gate-failure run/logs reachable by clicking it. Expose gate state via the API so the dashboard can render it. Gates show only on a pipeline RUN, never on the structure-only /pipelines/[name] view.",
+      "doneWhen": "Gates appear on the pipeline-run DAG between producer->consumer; a failed gate is visually distinct and links to its failure logs; gates do NOT show on the structure-only /pipelines/[name] graph; dashboard build passes."
     },
     {
       "id": "T029",
@@ -104,8 +104,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The persistent Chrome profile lives inside the perfumes job (`src/jobs/perfumes/data/chrome-profile`). Now that `src/core/browser.ts` is the shared helper, move it to a framework-level, configurable path so it isn't perfumes-specific and other scrapers (e.g. the places resolver) can reuse the warmed, trusted profile. Keep it gitignored.",
-      "doneWhen": "The Chrome profile path is framework-level + configurable (not under src/jobs/perfumes/data); the new location is gitignored; perfumes fetch still uses it; typecheck + tests green."
+      "do": "The persistent Chrome profile lives inside the perfumes job (src/jobs/perfumes/data/chrome-profile). Move it to a framework-level location — a top-level data/chrome-profile/ resolved in src/core/browser.ts and env-overridable (e.g. LOCALJOBS_CHROME_PROFILE) — so it isn't perfumes-specific and other scrapers (e.g. the places resolver) can reuse the warmed, trusted profile. Keep the new location gitignored; perfumes fetch keeps working against it.",
+      "doneWhen": "The Chrome profile path is framework-level (top-level data/chrome-profile, env-overridable) not under src/jobs/perfumes/data; the new path is gitignored; perfumes fetch still uses it; typecheck + tests green."
     },
     {
       "id": "T031",
@@ -129,8 +129,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The README is too verbose. Trim it: drop or shrink the `## Layout` file-tree, and present the worked-example pipelines compactly/scannably instead of long prose. Keep the essential 'what it is / how to run it'.",
-      "doneWhen": "README is noticeably shorter + scannable; the Layout file-tree is gone or minimal; example pipelines are compact; the core run/install instructions remain accurate."
+      "do": "The README is a wall of text. Trim it: REMOVE the ## Layout file-tree entirely, and present the worked-example pipelines compactly/scannably (a short line each, not paragraphs). Keep the essential what-it-is / how-to-run / ports / config content and the dashboard pages list. Aim for a noticeably shorter, scannable doc.",
+      "doneWhen": "The Layout file-tree is gone; example pipelines are compact; the core what-it-is / how-to-run / install content remains accurate; the README is materially shorter."
     },
     {
       "id": "T032",
@@ -155,8 +155,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The overview 'Failed' tile (and other status rollups) lump `cancelled` in with failed/partial. A cancelled run is a deliberate stop, not a failure. Give `cancelled` its own treatment — not counted as failed — on the overview tiles and any other status aggregation.",
-      "doneWhen": "Cancelled runs are no longer counted as failed on the overview (and any other rollup); dashboard build passes."
+      "do": "Cancelled runs are currently lumped into the overview Failed tile. A cancelled run is a deliberate stop, not a failure. Stop counting cancelled as failed, and give it its OWN clickable Cancelled overview stat tile (filtering like the other tiles), consistent with how status is aggregated elsewhere.",
+      "doneWhen": "Cancelled runs no longer count as Failed; a dedicated clickable Cancelled tile shows + filters them; dashboard build passes."
     },
     {
       "id": "T033",
@@ -181,8 +181,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Manually-ignored items currently reappear as 'stuck' and inflate stuck counts on the pipelines tab + pipeline/job detail. Fix the root cause (ignore must persist; the stuck query must exclude ignored; a re-run must not resurrect an ignored item) AND split the concepts: ignored items are parked and shown ONLY on the overview via a new fifth 'Ignored' tile (which filters to them) — never counted as stuck, and not shown on the pipelines tab, pipeline detail, or job detail.",
-      "doneWhen": "Ignored items never count as stuck and don't appear outside the overview; a 5th 'Ignored' overview tile shows + filters them; an ignored item stays ignored across re-runs; unit tests cover persistence + exclusion-from-stuck."
+      "do": "Manually-ignored items (the Ignore action) currently reappear as stuck and inflate stuck counts on the pipelines tab + pipeline/job detail. There is ONE ignore concept (not two): stuck = automatic after repeated failures; ignored = a manual park. Fix the root cause so an ignored item STAYS ignored (ignore persists; the stuck query excludes ignored; a re-run does not resurrect it), is NEVER counted as stuck, and is shown ONLY on the overview via a new fifth Ignored tile (which filters to them).",
+      "doneWhen": "Ignored items never count as stuck and don't appear outside the overview; a 5th clickable Ignored overview tile shows + filters them; an ignored item stays ignored across re-runs; unit tests cover persistence + exclusion-from-stuck."
     },
     {
       "id": "T034",
@@ -285,8 +285,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Remove the concept of standalone (non-pipeline) jobs: model every unit of work as a pipeline (a single job = a one-stage pipeline). Drop the dashboard 'Standalone jobs' section, the job-level standalone schedule/enable path (pipelines own scheduling), and the registry/scheduler handling for non-member jobs. Decide how a lone job is declared (implicit one-job pipeline). Now that demo is gone there are no standalone jobs to migrate.",
-      "doneWhen": "No standalone-job code path remains; every job belongs to a pipeline; the dashboard has no Standalone section; scheduler/registry handle only pipeline-driven jobs; typecheck + tests green; docs updated."
+      "do": "Remove the concept of standalone (non-pipeline) jobs: EVERY job must belong to a pipeline declared in an explicit *.pipeline.ts manifest (a single job = a one-stage pipeline WITH its own manifest — no implicit wrapping). Drop the dashboard Standalone jobs section, the job-level standalone schedule/enable path (pipelines own scheduling), and the registry/scheduler handling for non-member jobs. A job with no manifest is a config error — fail loud at load. Now that demo is gone there are no standalone jobs to migrate.",
+      "doneWhen": "No standalone-job code path remains; every job must be declared in a *.pipeline.ts manifest (single-job pipelines included); a job with no manifest fails loudly at load; the dashboard has no Standalone section; scheduler/registry handle only pipeline-driven jobs; typecheck + tests green; docs updated."
     },
     {
       "id": "T038",
@@ -309,18 +309,19 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Rename the 'pipeline' concept to 'workflow' everywhere: types (PipelineDefinition→WorkflowDefinition), DB tables (pipelines, pipeline_jobs, pipeline_runs, pipeline_run_logs → workflow*) WITH a migration that preserves existing rows, store functions, the `*.pipeline.ts` discovery convention (→ `*.workflow.ts`), pipeline-executor.ts, API routes (/api/pipelines, /pipeline-runs), dashboard routes/pages (/pipelines, /pipeline-runs) + labels, the `pipeline` field on jobs, and all docs. Mechanical but wide.",
-      "doneWhen": "No 'pipeline' naming remains for the concept (code, DB, routes, UI, docs); a DB migration moves existing pipeline_* data to workflow_* without loss; typecheck + tests + dashboard build green; docs updated."
+      "do": "Rename the pipeline concept to workflow everywhere: types (PipelineDefinition->WorkflowDefinition), DB tables (pipelines, pipeline_jobs, pipeline_runs, pipeline_run_logs -> workflow*) with a migration that PRESERVES existing rows, store functions, the discovery convention *.pipeline.ts -> *.workflow.ts (rename the existing local perfumes/places manifest files too, or they won't be discovered), pipeline-executor.ts -> workflow-executor, API routes (/api/pipelines, /pipeline-runs -> /api/workflows, /workflow-runs), dashboard routes/pages + all labels, the pipeline field on jobs, and all docs. Clean break — no old-name redirects needed. Mechanical but wide. Do this AFTER T037 so the model lands clean.",
+      "doneWhen": "No 'pipeline' naming remains for the concept (code, DB tables, routes, UI, docs, *.workflow.ts files); a DB migration moves existing pipeline_* data to workflow_* without loss; typecheck + tests + dashboard build green; docs updated."
     },
     {
       "id": "T039",
       "title": "Programmatic input ingestion into a pipeline's data/raw",
       "status": "pending",
       "dependsOn": [],
-      "gate": null,
+      "gate": "needs-human",
       "tags": [
         "coding",
-        "framework"
+        "framework",
+        "needs-human"
       ],
       "scope": [
         "src/api/server.ts",
@@ -331,8 +332,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Add a way to push fresh input into a pipeline's data/raw without manual file copying — e.g. a daemon API endpoint (POST upload) and/or an `npm run ingest` CLI that writes into the right pipeline's data/raw — so a run can process the latest data programmatically.",
-      "doneWhen": "Fresh input can be pushed into a pipeline's data/raw via an API endpoint or CLI (no manual copy); covered by a test against a scratch dir; documented."
+      "do": "Add a way to push fresh input into a pipeline's data/raw without manual file copying. The mechanism (API endpoint vs CLI vs pull-from-source) is deferred to a human decision before building.",
+      "doneWhen": "Mechanism decided with the human, then built so fresh input can be pushed into a pipeline's data/raw without manual copying."
     },
     {
       "id": "T040",
@@ -352,8 +353,8 @@
       "verify": [
         "run-app"
       ],
-      "do": "Make the dashboard responsive on mobile (it currently looks bad on a phone). Build an automated check that loads each dashboard page in a headless browser at an iPhone-class viewport (iPhone 17, ~402px wide) against a scratch DB, and asserts basic mobile styling is respected — no horizontal overflow, no text crossing element boundaries, no weird truncation/clipping. Then fix the responsive CSS (tables, stat cards, nav, DAG graph, schedule cells) until it passes.",
-      "doneWhen": "An automated iPhone-class-viewport (iPhone 17, ~402px) check covers every dashboard page and asserts no horizontal overflow / no boundary-crossing / no weird truncation; the dashboard passes it; dashboard build green; the check is runnable + its result recorded in the worklog."
+      "do": "Make the dashboard responsive on mobile. Write an automated check that loads each dashboard page in a headless browser at an iPhone-17-class viewport (~402px wide) against a scratch DB and asserts basic mobile styling: no horizontal overflow, no text crossing element boundaries, no weird truncation/clipping. The in-place agent RUNS this check locally and records the per-page result in its worklog — it does NOT need to be added to CI. Then fix the responsive CSS (tables, stat cards, nav, DAG graph, schedule cells) until it passes.",
+      "doneWhen": "An automated iPhone-17-viewport (~402px) check covers every dashboard page and asserts no horizontal overflow / no boundary-crossing / no truncation; the agent ran it locally and recorded the page-by-page outcome in .harness/worklog/T040.md; the dashboard passes it; dashboard build green."
     },
     {
       "id": "T041",
