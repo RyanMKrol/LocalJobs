@@ -1,11 +1,13 @@
 // Regression guard: the perfumes config must stay self-contained — the build
 // template is resolved RELATIVE to this job dir (no absolute machine path, no
 // external repo), and the in-project template file must exist + be template-shaped.
+// Also guards that profileDir is the framework-level path, not a job-local one.
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { perfumesConfig } from './config.js';
+import { defaultChromeProfileDir } from '../../core/browser.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const expected = resolve(here, 'profile.template.md');
@@ -22,3 +24,11 @@ assert.ok(tpl.startsWith('---'), 'template should start with YAML frontmatter');
 assert.ok(tpl.includes('## Sources'), 'template should contain the Sources section the build stage validates');
 
 console.log('  ✓ perfumes template is self-contained (in-project, no external path)');
+
+// profileDir must be the shared framework path, not a job-local perfumes/data path.
+assert.equal(perfumesConfig.profileDir, defaultChromeProfileDir, 'profileDir should be the framework-level defaultChromeProfileDir');
+assert.ok(isAbsolute(perfumesConfig.profileDir), 'profileDir should be an absolute path');
+assert.ok(!perfumesConfig.profileDir.includes('perfumes'), 'profileDir must not be under the perfumes job data folder');
+assert.ok(perfumesConfig.profileDir.endsWith('chrome-profile'), 'profileDir should end with chrome-profile');
+
+console.log('  ✓ perfumes profileDir is framework-level (not job-local)');

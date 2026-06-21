@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { defaultChromeProfileDir } from '../../core/browser.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dataDir = resolve(here, 'data');
@@ -11,7 +12,7 @@ export const perfumesConfig = {
   urlsFile: resolve(dataDir, 'out', 'fragrantica-urls.json'),
   pagesDir: resolve(dataDir, 'out', 'pages'),
   pagesFailedDir: resolve(dataDir, 'out', 'pages-failed'), // saved block/short pages for debugging
-  profileDir: resolve(dataDir, 'chrome-profile'), // persistent browser profile — keeps Cloudflare clearance
+  profileDir: defaultChromeProfileDir, // shared framework profile (data/chrome-profile) — keeps Cloudflare clearance
   fragranticaDir: resolve(dataDir, 'out', 'fragrantica'),
   markdownDir: resolve(dataDir, 'out', 'markdown'),
   /** The output contract — the in-project profile template (self-contained, no

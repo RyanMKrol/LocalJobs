@@ -110,7 +110,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 
 | Path | Responsibility |
 |---|---|
-| `src/config.ts` | Env-driven config: ports, bind host, CORS allowlist, auth token, db path, ntfy |
+| `src/config.ts` | Env-driven config: ports, bind host, CORS allowlist, auth token, db path, ntfy, shared Chrome profile dir |
 | `src/daemon.ts` | Long-lived entrypoint: sync jobs + pipelines, reap orphans, start scheduler + API |
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
 | `src/core/types.ts` | `JobDefinition`, `PipelineDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
@@ -293,6 +293,12 @@ doubt, log it.
   while `core/browser` does the launch). `jitteredDelayMs` in the same module is
   for jobs that pace their own loop instead of routing through a service. See
   `perfumes/fetch.ts` for the worked example.
+  **Shared Chrome profile:** the persistent profile lives at the framework level
+  (`data/chrome-profile/`, env-overridable via `LOCALJOBS_CHROME_PROFILE`),
+  exported from `src/core/browser.ts` as `defaultChromeProfileDir`. All scrape
+  jobs should use it via `perfumesConfig.profileDir` / `defaultChromeProfileDir`
+  rather than defining a job-local path — one shared, warmed, trusted profile
+  means any job benefits from cookies accumulated by others.
 - **Validation gates between pipeline stages (typed artifacts).** A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
   (`{ key, description?, check() }`) in `src/core/types.ts`. For every pipeline

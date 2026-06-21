@@ -1,6 +1,14 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { type BrowserContext, chromium } from 'playwright';
+import { config } from '../config.js';
+
+/**
+ * Framework-level persistent Chrome profile directory (top-level data/chrome-profile).
+ * Override with `LOCALJOBS_CHROME_PROFILE`. Any job that drives a headless browser
+ * should use this default so all scrapers share the same warmed, trusted profile.
+ */
+export const defaultChromeProfileDir: string = config.chromeProfileDir;
 
 /** A plausible desktop-Chrome user agent — looks like an ordinary browser, not
  *  automation. Used as the default UA for the persistent-profile launcher. */

@@ -7,9 +7,11 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isAbsolute } from 'node:path';
 import {
   DESKTOP_CHROME_UA,
   PROFILE_LOCK_FILES,
+  defaultChromeProfileDir,
   jitteredDelayMs,
   launchPersistentBrowser,
   type PersistentLauncher,
@@ -146,6 +148,12 @@ await test('jitteredDelayMs stays within [base, base+maxJitter] and rounds', () 
   assert.equal(jitteredDelayMs(12_000, 6_000, () => 0.5), 15_000, 'mid');
   assert.equal(jitteredDelayMs(1_000, 100, () => 0.337), 1_034, 'rounded to integer ms');
   assert.equal(jitteredDelayMs(1_000, -50, () => 0.5), 1_000, 'negative jitter clamped to 0');
+});
+
+await test('defaultChromeProfileDir is an absolute framework-level path ending in chrome-profile', () => {
+  assert.ok(isAbsolute(defaultChromeProfileDir), 'should be an absolute path');
+  assert.ok(defaultChromeProfileDir.endsWith('chrome-profile'), 'should end with chrome-profile');
+  assert.ok(!defaultChromeProfileDir.includes('perfumes'), 'must not be under the perfumes job folder');
 });
 
 console.log(`\n  browser: ${passed} passed`);

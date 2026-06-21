@@ -10,6 +10,14 @@ export const config = {
   /** Path to the SQLite database file. */
   dbPath: process.env.LOCALJOBS_DB ?? resolve(ROOT, 'data', 'jobs.db'),
 
+  /**
+   * Shared persistent Chrome profile used by all headless-browser scrape jobs.
+   * Keeping a single on-disk profile across runs lets Cloudflare clearance cookies
+   * survive, so any job that calls `launchPersistentBrowser` stays trusted.
+   * Override to an absolute path on machines where the default location won't work.
+   */
+  chromeProfileDir: process.env.LOCALJOBS_CHROME_PROFILE ?? resolve(ROOT, 'data', 'chrome-profile'),
+
   /** Port the orchestrator's HTTP API listens on (localhost only). */
   apiPort: Number(process.env.LOCALJOBS_PORT ?? 4789),
 
