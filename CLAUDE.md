@@ -333,8 +333,17 @@ doubt, log it.
   lands (one per layer/feature — not a big-bang), and **push each commit immediately**
   — don't wait to be asked. (Respect the git hygiene rules above: never commit
   credentials or the gitignored private job folders / `TODO.md`.)
-- After ANY change to `src/`, the daemon must be restarted to take effect.
-  After UI changes, rebuild the dashboard and restart its agent.
+- **Always restart what you changed — a change isn't live until you do (part of Done).**
+  The daemon loads job/daemon code at startup and the dashboard serves a prebuilt
+  bundle, so editing files changes nothing in the running product until you restart.
+  Whenever you touch:
+  - **`src/` (daemon/jobs):** restart the daemon —
+    `launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs`
+  - **`dashboard/` (UI):** rebuild **and** restart it —
+    `npm --prefix dashboard run build && launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs-dashboard`
+
+  Do this in the same step as the change so what's running always matches `main`.
+  (DB-only data fixes don't need a restart, but they do need to be safe to re-run.)
 
 ## Ports & services
 - **API / daemon:** `http://127.0.0.1:4789`
