@@ -5,7 +5,19 @@ import {
   tryReserveMinInterval,
   tryReserveServiceSlot,
 } from '../db/store.js';
-import { getServiceDefinition } from '../jobs/registry.js';
+import type { ServiceDefinition } from './types.js';
+
+// Service definitions live here (not imported from the registry) so callService
+// has NO dependency on the registry — the registry imports the job modules, which
+// import this file, so importing the registry back would be a cycle. The registry
+// registers each *.service.ts it discovers via registerService().
+const _serviceDefs = new Map<string, ServiceDefinition>();
+export function registerService(def: ServiceDefinition): void {
+  _serviceDefs.set(def.name, def);
+}
+export function getServiceDef(name: string): ServiceDefinition | undefined {
+  return _serviceDefs.get(name);
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -44,7 +56,7 @@ export async function callService<T>(
   fn: () => Promise<T>,
   opts: CallServiceOpts = {},
 ): Promise<T> {
-  const def = getServiceDefinition(name);
+  const def = getServiceDef(name);
   if (!def) return fn();
 
   // ── quota (long window) → soft-fail ──

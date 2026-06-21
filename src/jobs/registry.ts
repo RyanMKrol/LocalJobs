@@ -2,6 +2,7 @@ import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildDag, DagError } from '../core/dag.js';
+import { registerService } from '../core/services.js';
 import type { JobDefinition, PipelineDefinition, ServiceDefinition } from '../core/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,8 +55,10 @@ export function getJobDefinition(name: string): JobDefinition | undefined {
 const loadedServices: ServiceDefinition[] = [];
 for (const file of findFiles(__dirname, isServiceFile).sort()) {
   const def = await loadDefault<ServiceDefinition>(file);
-  if (def && typeof def.name === 'string') loadedServices.push(def);
-  else console.warn(`[registry] ${file} has no valid default ServiceDefinition export — skipped`);
+  if (def && typeof def.name === 'string') {
+    loadedServices.push(def);
+    registerService(def); // make it available to callService (no registry import there)
+  } else console.warn(`[registry] ${file} has no valid default ServiceDefinition export — skipped`);
 }
 
 export const services: ServiceDefinition[] = loadedServices;
