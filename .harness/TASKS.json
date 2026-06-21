@@ -406,7 +406,7 @@
     {
       "id": "T017",
       "title": "Manually dismiss stuck items",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T005",
         "T008"
