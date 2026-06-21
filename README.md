@@ -159,7 +159,7 @@ You can also **pause** a job (the enable toggle on its page) without deleting it
 It then appears in the dashboard automatically with history tracked from run one.
 
 > **Your jobs stay private by default.** This repo is public; it ships the
-> framework, the `demo` job, and the **places** and **perfumes** pipelines as
+> framework and the **places** and **perfumes** pipelines as
 > worked examples. Every other `src/jobs/*.job.ts` (and any private subfolder you
 > add) is gitignored, so the jobs you add stay local-only unless you choose to
 > publish them. Every job's `data/` folder is **always** gitignored
@@ -195,7 +195,6 @@ src/
                        real-Chrome channel) for reputation-gated scrapes
   jobs/
     registry.ts        auto-discovers *.job.ts, *.pipeline.ts, *.service.ts
-    demo.job.ts        minimal example job
     places/            published example pipeline: ingest → resolve → enrich →
                        llm-enrich (its data/ stays gitignored)
     perfumes/          published example pipeline: find-url → fetch → parse →

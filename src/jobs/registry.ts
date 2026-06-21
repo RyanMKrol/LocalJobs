@@ -14,9 +14,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  *   *.service.ts   → a ServiceDefinition (a shared rate-limited dependency)
  * Dropping a file in is all that's needed — no edit to this file.
  *
- * Privacy: real files are gitignored; only `demo.job.ts` is tracked. Subfolders
- * (e.g. `places/`, `perfumes/`) are gitignored wholesale. Discovery is by
- * filesystem walk, so this registry never names private jobs in the public repo.
+ * Privacy: top-level `*.job.ts` files are gitignored. The `places/` and
+ * `perfumes/` pipeline subfolders are tracked as public examples; any new private
+ * pipeline lives in its own gitignored subfolder. Discovery is by filesystem walk,
+ * so this registry never names private jobs in the public repo.
  */
 const isJobFile = (f: string) => f.endsWith('.job.ts') || f.endsWith('.job.js');
 const isPipelineFile = (f: string) => f.endsWith('.pipeline.ts') || f.endsWith('.pipeline.js');

@@ -54,10 +54,10 @@ This repo is **public**. Two hard rules:
    gitignored and read via `process.env`. If a job needs a credential, document
    the env var name in `.env.example` and read it from the environment.
 2. **Never commit private jobs.** The framework is public; the owner's actual
-   jobs are not. Top-level `src/jobs/*.job.ts` files are gitignored (except
-   `demo.job.ts`). The `places/` and `perfumes/` subfolders are tracked as
-   published examples — any new private pipeline should live in its own subfolder
-   added to `.gitignore`. Do not force-add private files.
+   jobs are not. Top-level `src/jobs/*.job.ts` files are gitignored. The `places/`
+   and `perfumes/` subfolders are tracked as published examples — any new private
+   pipeline should live in its own subfolder added to `.gitignore`. Do not
+   force-add private files.
 
 Before any commit: `git status` and confirm no `.env`, no real `*.job.ts`, and
 no credentials are staged. If you ever spot a secret about to be committed, stop
@@ -72,7 +72,7 @@ worked-example pipelines: **places** (headless CID→place_id resolution → Goo
 Places API enrichment → Gemini LLM summaries, writing enriched JSON + markdown
 profiles to local files) and **perfumes** (Fragrantica scrape → headless Chrome
 fetch → parse → Claude CLI profile build). Private pipelines are added as
-gitignored subfolders. A `demo` job is included for testing.
+gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
 distributed system. Do not introduce Docker, external databases, message
@@ -125,7 +125,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
 | `src/jobs/registry.ts` | Auto-discovers `*.job.ts`, `*.pipeline.ts`, and `*.service.ts` files (no manual registration) |
-| `src/jobs/*.job.ts` | One job per file, default-exporting a `JobDefinition` (root-level files gitignored except demo; subfolder jobs in `places/`+`perfumes/` are tracked) |
+| `src/jobs/*.job.ts` | One job per file, default-exporting a `JobDefinition` (root-level files gitignored; subfolder jobs in `places/`+`perfumes/` are tracked) |
 | `src/jobs/*.pipeline.ts` | Pipeline manifests, default-exporting a `PipelineDefinition` (DAG of jobs) |
 | `src/jobs/*.service.ts` | Service definitions, default-exporting a `ServiceDefinition` (shared rate-limited dependencies) |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
@@ -159,8 +159,8 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
    `launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs`
 
 > **Privacy — real jobs are local-only by default.** Top-level
-> `src/jobs/*.job.ts` files are gitignored (only `demo.job.ts` is tracked). The
-> public repo also ships the `places/` and `perfumes/` subfolder pipelines as
+> `src/jobs/*.job.ts` files are gitignored. The
+> public repo ships the `places/` and `perfumes/` subfolder pipelines as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
