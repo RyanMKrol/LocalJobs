@@ -38,10 +38,14 @@ export function Dag({
   members,
   statusByJob,
   runIdByJob,
+  from,
 }: {
   members: PipelineMember[];
   statusByJob?: Record<string, string>;
   runIdByJob?: Record<string, string>;
+  /** Path of the page rendering this DAG, threaded onto node links as `?from=`
+   *  so the job/run page can send the back-link to where you actually came from. */
+  from?: string;
 }) {
   const waves = computeWaves(members);
   return (
@@ -58,7 +62,7 @@ export function Dag({
                   {statusByJob && <div className="dag-node-status">{status}</div>}
                 </div>
               );
-              const href = runId ? `/runs/${runId}` : `/jobs/${job}`;
+              const href = (runId ? `/runs/${runId}` : `/jobs/${job}`) + (from ? `?from=${encodeURIComponent(from)}` : '');
               return (
                 <div key={job}>
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>

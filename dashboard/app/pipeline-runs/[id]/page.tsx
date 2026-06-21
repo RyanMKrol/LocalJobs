@@ -64,7 +64,7 @@ export default function PipelineRunDetail({ params }: { params: Promise<{ id: st
 
       {pipeline && (
         <div className="panel" style={{ marginBottom: 16 }}>
-          <Dag members={pipeline.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} />
+          <Dag members={pipeline.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} from={`/pipeline-runs/${id}`} />
         </div>
       )}
 

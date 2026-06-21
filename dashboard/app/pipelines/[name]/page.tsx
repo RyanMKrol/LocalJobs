@@ -43,7 +43,7 @@ export default function PipelineDetail({ params }: { params: Promise<{ name: str
       </div>
 
       <h2>Graph</h2>
-      <div className="panel">{p && <Dag members={p.jobs} />}</div>
+      <div className="panel">{p && <Dag members={p.jobs} from={`/pipelines/${name}`} />}</div>
 
       <h2>Runs</h2>
       <div className="panel">

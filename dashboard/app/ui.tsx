@@ -44,6 +44,23 @@ export function fmtRelative(t: string | null): string {
   return `${Math.round(h / 24)}d ago`;
 }
 
+/**
+ * Resolve a back-link from a `?from=` path (threaded onto DAG node links), so a
+ * job/run page returns to where you actually navigated from — the pipeline or the
+ * pipeline run — rather than a fixed parent. Falls back to `fallback` when `from`
+ * is absent/foreign.
+ */
+export function backFrom(
+  from: string | null | undefined,
+  fallback: { href: string; label: string },
+): { href: string; label: string } {
+  if (!from || !from.startsWith('/')) return fallback;
+  const segs = from.split('?')[0].split('/').filter(Boolean);
+  if (segs[0] === 'pipeline-runs' && segs[1]) return { href: from, label: `pipeline run ${segs[1]}` };
+  if ((segs[0] === 'pipelines' || segs[0] === 'jobs') && segs[1]) return { href: from, label: decodeURIComponent(segs[1]) };
+  return fallback;
+}
+
 /** Poll an async function on an interval; returns latest data + error. */
 export function usePoll<T>(fn: () => Promise<T>, intervalMs: number, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);

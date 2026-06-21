@@ -1,17 +1,27 @@
 'use client';
 
 import { use, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api } from '../../lib/api';
-import { ProgressBar, StatusBadge, fmtDuration, fmtTime, usePoll } from '../../ui';
+import { ProgressBar, StatusBadge, backFrom, fmtDuration, fmtTime, usePoll } from '../../ui';
 
 type LevelFilter = 'all' | 'info' | 'warn' | 'error';
 
 export default function RunDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [filter, setFilter] = useState<LevelFilter>('all');
+  const fromParam = useSearchParams().get('from');
   const { data, error } = usePoll(() => api.run(id), 1000, [id]);
   const run = data?.run;
   const logs = data?.logs ?? [];
+
+  // Back to where we came from (?from=), else: the parent pipeline run (shown by id),
+  // else the job this run belongs to.
+  const back = backFrom(fromParam, run?.pipeline_run_id
+    ? { href: `/pipeline-runs/${run.pipeline_run_id}`, label: `pipeline run ${run.pipeline_run_id}` }
+    : run
+    ? { href: `/jobs/${run.job_name}`, label: run.job_name }
+    : { href: '/', label: 'back' });
 
   const counts = {
     info: logs.filter((l) => l.level === 'info').length,
@@ -23,9 +33,7 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
   return (
     <>
       <p className="muted">
-        <a href={run?.pipeline_run_id ? `/pipeline-runs/${run.pipeline_run_id}` : run ? `/jobs/${run.job_name}` : '/'}>
-          ← {run?.pipeline_run_id ? 'pipeline run' : run ? run.job_name : 'back'}
-        </a>
+        <a href={back.href}>← {back.label}</a>
       </p>
       {error && <p className="muted">⚠ {error}</p>}
       {run && (

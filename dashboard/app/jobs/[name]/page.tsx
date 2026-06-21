@@ -1,12 +1,14 @@
 'use client';
 
 import { Fragment, use, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api } from '../../lib/api';
-import { StatusBadge, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
+import { StatusBadge, backFrom, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
 
 export default function JobDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const [busy, setBusy] = useState(false);
+  const back = backFrom(useSearchParams().get('from'), { href: '/pipelines', label: 'Pipelines' });
 
   const { data: jobData } = usePoll(() => api.job(name), 3000, [name]);
   const { data: runsData } = usePoll(() => api.jobRuns(name), 2000, [name]);
@@ -34,7 +36,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
 
   return (
     <>
-      <p className="muted"><a href="/pipelines">← Pipelines</a></p>
+      <p className="muted"><a href={back.href}>← {back.label}</a></p>
       <div className="row">
         <h1 style={{ margin: 0 }}>{name}</h1>
         <div className="spacer" />
