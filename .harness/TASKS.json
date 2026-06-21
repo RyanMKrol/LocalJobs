@@ -220,7 +220,7 @@
     {
       "id": "T009",
       "title": "Perfumes: populate accord percentages",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T004"
       ],
