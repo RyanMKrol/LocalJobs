@@ -41,6 +41,7 @@ CI_TIMEOUT="${CI_TIMEOUT:-1200}"                   # max seconds to wait for a C
 CI_WORKFLOW="${CI_WORKFLOW:-CI}"                   # MUST match `name:` in the CI workflow yaml
 REQUIRE_CI="${REQUIRE_CI:-1}"                      # 1 = never mark done without green CI
 MAIN_BRANCH="${MAIN_BRANCH:-main}"
+INTEGRATE_HOOK="${INTEGRATE_HOOK:-}"               # optional cmd run after each task integrates (deploy/restart)
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 CLAUDE_FLAGS="${CLAUDE_FLAGS:---dangerously-skip-permissions}"
 # Rate-limit-aware backoff: when Claude hits the usage limit, sleep and resume the SAME task.
@@ -95,6 +96,13 @@ mark_done() {
   git -C "$ROOT" add "$BACKLOG" "$WORKLOG" 2>/dev/null || true
   git -C "$ROOT" commit -q -m "$id: mark done [skip ci]" 2>/dev/null || true
   git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push status update for $id"
+}
+
+# Optional post-integration hook (deploy/restart so the running product matches main).
+run_integrate_hook() {
+  [ -n "$INTEGRATE_HOOK" ] || return 0
+  log "integrate hook: $INTEGRATE_HOOK"
+  ( cd "$ROOT" && eval "$INTEGRATE_HOOK" ) || log "WARN: integrate hook failed (non-fatal)"
 }
 
 # task_ladder <id> — emit "MODEL<TAB>EFFORT" per build rung (rung 0 = primary, then escalations).
@@ -316,7 +324,7 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
       fi
       if [ "$REQUIRE_CI" = "1" ]; then
         if wait_ci_green; then
-          mark_done "$task"; log "integrated $task → $MAIN_BRANCH (CI green)"; cur_task=""; cur_attempts=0; cur_rung=0
+          mark_done "$task"; run_integrate_hook; log "integrated $task → $MAIN_BRANCH (CI green)"; cur_task=""; cur_attempts=0; cur_rung=0
         else
           # NEVER halt the whole loop on one red CI: revert the pushed commit to restore main, then
           # soft-retry. If it keeps failing, bump eventually BLOCKS it and the loop moves on.
@@ -329,7 +337,7 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
           bump "$task"
         fi
       else
-        mark_done "$task"; log "marked $task done (REQUIRE_CI=0; local DoD only)"; cur_task=""; cur_attempts=0; cur_rung=0
+        mark_done "$task"; run_integrate_hook; log "marked $task done (REQUIRE_CI=0; local DoD only)"; cur_task=""; cur_attempts=0; cur_rung=0
       fi
       ;;
     failed:soft)    log "agent soft-failed $rtask: ${extra:-}"; bump "$task" ;;
