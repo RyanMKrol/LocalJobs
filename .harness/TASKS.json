@@ -1656,7 +1656,7 @@
     {
       "id": "T066",
       "title": "Workflow-run DAG: fix the graph layout on mobile/narrow widths",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
