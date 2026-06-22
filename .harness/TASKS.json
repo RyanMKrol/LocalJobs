@@ -605,6 +605,33 @@
       "verify": [],
       "do": "On the workflows page, the last-run column shows a status pill (running/success) plus a relative time (e.g. \"8 minutes ago\") that currently wraps awkwardly across two lines. Make it clean: EITHER force the pill + time onto one line (white-space:nowrap), OR stack them deliberately (pill on its own line, time on the next). Pick whichever reads best — the user is fine with either as long as it is not an awkward wrap.",
       "doneWhen": "The last-run cell renders cleanly (pill + time on one line, or deliberately stacked) with no awkward mid-value wrap; dashboard build passes."
+    },
+    {
+      "id": "T052",
+      "title": "Workflows page: centre the Stages + Schedule column values",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the workflows page table, centre-align the VALUES in the \"Stages\" and \"Schedule\" columns (they read better centred). Leave the \"Last run\" and \"Next\" column values LEFT-aligned as they are. Centre the matching headers too if that reads cleaner.",
+      "doneWhen": "Stages + Schedule column values (and ideally their headers) are centre-aligned on the workflows page; Last run + Next stay left-aligned; dashboard build passes."
     }
   ]
 }
