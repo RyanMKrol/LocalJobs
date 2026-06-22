@@ -67,6 +67,15 @@ export function fmtRelative(t: string | null): string {
  * workflow run — rather than a fixed parent. Falls back to `fallback` when `from`
  * is absent/foreign.
  */
+export function exitCodeLabel(code: number | null): string {
+  if (code === null) return 'no exit code';
+  if (code === 0) return 'OK';
+  if (code === 1) return 'failed — exception';
+  if (code === 137) return 'killed (SIGKILL)';
+  if (code === 143) return 'terminated (SIGTERM)';
+  return 'unexpected exit';
+}
+
 export function backFrom(
   from: string | null | undefined,
   fallback: { href: string; label: string },

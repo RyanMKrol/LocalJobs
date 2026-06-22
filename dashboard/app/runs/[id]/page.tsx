@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '../../lib/api';
-import { ProgressBar, StatusBadge, backFrom, fmtDuration, fmtTime, usePoll } from '../../ui';
+import { ProgressBar, StatusBadge, backFrom, exitCodeLabel, fmtDuration, fmtTime, usePoll } from '../../ui';
 
 type LevelFilter = 'all' | 'info' | 'warn' | 'error';
 
@@ -62,7 +62,13 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
               <div className="k">Started</div><div>{fmtTime(run.started_at)}</div>
               <div className="k">Finished</div><div>{fmtTime(run.finished_at)}</div>
               <div className="k">Duration</div><div className="mono">{fmtDuration(run.duration_ms)}</div>
-              <div className="k">Exit code</div><div className="mono">{run.exit_code ?? '—'}</div>
+              <div className="k">Exit code</div><div className="mono">
+                {run.exit_code != null
+                  ? `${exitCodeLabel(run.exit_code)} (${run.exit_code})`
+                  : ['success', 'failed', 'timeout', 'cancelled', 'skipped', 'partial'].includes(run.status)
+                  ? exitCodeLabel(null)
+                  : '—'}
+              </div>
               {run.error && <><div className="k">Error</div><div className="mono" style={{ color: 'var(--red)' }}>{run.error.split('\n')[0]}</div></>}
             </div>
           </div>
