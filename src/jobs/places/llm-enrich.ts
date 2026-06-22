@@ -57,7 +57,9 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
   ctx.log(`Google-enriched places available: ${candidates.length}`);
 
   // Idempotency: skip place_ids already done (success, or failed past retry budget).
-  const todo = candidates.filter((p) => !isWorkItemDone(JOB_NAME, p.placeId, llmConfig.maxAttempts));
+  // A manual run-limit (T094) also filters to the selected roots — the root is the
+  // originating CID this place descends from.
+  const todo = candidates.filter((p) => ctx.rootAllowed(p.cid) && !isWorkItemDone(JOB_NAME, p.placeId, llmConfig.maxAttempts));
   const ledger = workItemCounts(JOB_NAME);
   ctx.log(`Ledger so far: ${JSON.stringify(ledger)}`);
   ctx.log(`To process this run: ${todo.length} (place_ids not yet done)`);
@@ -114,7 +116,7 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
       const result = ai ? await callService('gemini', () => researchPlace(ai, place)) : dryRunResult(place);
       store[place.placeId] = { placeId: place.placeId, cid: place.cid, name, result, at: new Date().toISOString() };
       const mdPath = writeMarkdown(place, name, result, placesMeta[place.cid]);
-      markWorkItem(JOB_NAME, place.placeId, 'success', { attempts, detail: { name, markdown: mdPath } });
+      markWorkItem(JOB_NAME, place.placeId, 'success', { attempts, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name, markdown: mdPath } });
       ok++;
       ctx.log(`[${i + 1}] ✓ "${name}"  ·  place_id=${place.placeId}`);
       ctx.log(`      type: ${result.placeType} · cuisine: ${result.cuisine.join(', ') || '—'} · vibe: ${result.vibe} · confidence: ${result.confidence}`);
@@ -131,7 +133,7 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
         ctx.log(`Gemini quota/credit/rate limit hit on "${name}" — stopping run gracefully (place not counted). ${msg}`, 'warn');
         break;
       }
-      markWorkItem(JOB_NAME, place.placeId, 'failed', { attempts, detail: { name, error: msg } });
+      markWorkItem(JOB_NAME, place.placeId, 'failed', { attempts, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name, error: msg } });
       fail++;
       const note = attempts >= llmConfig.maxAttempts ? ' — giving up (max attempts)' : `; will retry (attempt ${attempts}/${llmConfig.maxAttempts})`;
       ctx.log(`[${i + 1}] ✗ "${name}" — ${msg}${note}`, 'warn');

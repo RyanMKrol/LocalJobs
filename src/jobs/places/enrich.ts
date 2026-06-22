@@ -54,7 +54,9 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
 
   // Idempotency via the work_items ledger, keyed by place_id (success, or failed
   // past the retry budget = done). enriched.json still holds the data payload.
-  const todo = resolvedOk.filter((r) => !isWorkItemDone(JOB_NAME, r.placeId!, enrichConfig.maxAttempts));
+  // Idempotent by place_id; a manual run-limit (T094) also filters to the selected
+  // roots — here the root is the originating CID this place_id was resolved from.
+  const todo = resolvedOk.filter((r) => ctx.rootAllowed(r.cid) && !isWorkItemDone(JOB_NAME, r.placeId!, enrichConfig.maxAttempts));
   const ledger = workItemCounts(JOB_NAME);
 
   // Spend is governed by the shared 'google-places' service quota (the single
@@ -136,7 +138,7 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       enriched[place.cid] = { cid: place.cid, placeId, status: 'success', enrichedAt: new Date().toISOString(), attempts, data: res.data };
       const d = res.data;
       const dn = (d.displayName as { text?: string } | undefined)?.text ?? place.name;
-      markWorkItem(JOB_NAME, placeId, 'success', { attempts, detail: { cid: place.cid, name: dn } });
+      markWorkItem(JOB_NAME, placeId, 'success', { attempts, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver', detail: { cid: place.cid, name: dn } });
       okCount++;
       const ptype = (d.primaryTypeDisplayName as { text?: string } | undefined)?.text ?? '—';
       ctx.log(`[${i + 1}] ENRICHED "${dn}"`);
@@ -149,7 +151,7 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       consecutiveFails = 0;
     } else {
       enriched[place.cid] = { cid: place.cid, placeId, status: 'failed', enrichedAt: new Date().toISOString(), attempts, error: res.error };
-      markWorkItem(JOB_NAME, placeId, 'failed', { attempts, detail: { name: place.name, error: res.error } });
+      markWorkItem(JOB_NAME, placeId, 'failed', { attempts, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver', detail: { name: place.name, error: res.error } });
       failCount++;
       consecutiveFails++;
       const note = attempts >= enrichConfig.maxAttempts ? ' — giving up (max attempts)' : `; will retry (attempt ${attempts}/${enrichConfig.maxAttempts})`;

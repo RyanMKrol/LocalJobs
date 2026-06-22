@@ -87,6 +87,11 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
         <h1 style={{ margin: 0 }}>Workflow run</h1>
         <div className="spacer" />
         {run && <span className={`badge ${run.status}`}>{statusLabel(run.status)}</span>}
+        {run?.run_limit != null && (
+          <span className="badge" title="This run was limited to N originating inputs (all their fan-out ran).">
+            limited · {run.run_limit} input{run.run_limit === 1 ? '' : 's'}
+          </span>
+        )}
         {run?.status === 'running' && (
           <button className="btn btn-danger" onClick={cancel} disabled={busy}>
             {busy ? 'Cancelling…' : '✕ Cancel'}

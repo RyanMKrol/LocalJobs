@@ -136,6 +136,20 @@ inside its workflow.
 - **Manual:** dashboard → **Workflows → [workflow] → ▶ Run now**. To run a single
   stage ad-hoc, make it (or wrap it in) its own one-stage workflow and run that.
 
+**Limit a manual run to N originating inputs.** Beside ▶ Run now, a *limitable*
+workflow shows a small number box (blank = all). Enter `N` to process only the
+**first N originating inputs** — and **all** the fan-out work they spawn runs to
+completion (the cap bounds the *roots*, not per-stage item counts). Use it to "run
+the perfumes workflow for just 1 perfume" or "resolve + enrich just 5 places". Via
+the API: `POST /api/workflows/:name/run` with `{ "limit": N }` (a positive integer;
+rejected `400` if the workflow has no stage that declares input keys). **Scheduled
+runs are always unlimited** — the limit is a manual-only option. The framework
+tracks each work item's originating-input `root_key` so the same N inputs flow
+through every stage even where the key changes (places: `cid → place_id`). A box
+only appears when some member declares `inputKeys()` (the *root stage*); both
+example workflows are limitable. The run's detail page shows a `limited · N inputs`
+badge.
+
 You can also **pause** a workflow (the enable toggle on its page) without deleting it.
 
 **Cancel a running workflow.** A workflow run that's mid-flight can be stopped via

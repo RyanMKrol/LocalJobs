@@ -40,6 +40,7 @@ export function openDb(): Database.Database {
   }
 
   migrateDropJobColumns(db);
+  migrateRunLimitLineage(db);
 
   // Data migration: unify the manual-park concept on a single name (T033).
   // The old `dismissed` status is renamed to `ignored` — same semantics
@@ -111,6 +112,34 @@ export function migrateDropJobColumns(db: Database.Database): void {
   const cols = (db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[]).map((c) => c.name);
   if (cols.includes('schedule')) db.exec('ALTER TABLE jobs DROP COLUMN schedule');
   if (cols.includes('enabled')) db.exec('ALTER TABLE jobs DROP COLUMN enabled');
+}
+
+/**
+ * Additive, idempotent migration (T094) for the manual run-limit feature:
+ *  - `work_items.root_key` / `parent_key` — input lineage so a limit can bound N
+ *    originating inputs and run ALL their fan-out. Existing rows are backfilled to
+ *    `root_key = item_key` (each is its own root) + an index on (job_name, root_key).
+ *  - `workflow_runs.run_limit` / `selected_roots` — the per-run cap + frozen
+ *    allowlist (both NULL = unlimited; scheduled runs never set them).
+ * Safe on a fresh DB (schema.sql already has the columns → the guards skip).
+ */
+export function migrateRunLimitLineage(db: Database.Database): void {
+  const tableExists = (name: string): boolean =>
+    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name);
+
+  if (tableExists('work_items')) {
+    const wiCols = db.prepare('PRAGMA table_info(work_items)').all() as { name: string }[];
+    if (!wiCols.some((c) => c.name === 'root_key')) db.exec('ALTER TABLE work_items ADD COLUMN root_key TEXT');
+    if (!wiCols.some((c) => c.name === 'parent_key')) db.exec('ALTER TABLE work_items ADD COLUMN parent_key TEXT');
+    db.exec('UPDATE work_items SET root_key = item_key WHERE root_key IS NULL');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_work_items_root ON work_items(job_name, root_key)');
+  }
+
+  if (tableExists('workflow_runs')) {
+    const wrCols = db.prepare('PRAGMA table_info(workflow_runs)').all() as { name: string }[];
+    if (!wrCols.some((c) => c.name === 'run_limit')) db.exec('ALTER TABLE workflow_runs ADD COLUMN run_limit INTEGER');
+    if (!wrCols.some((c) => c.name === 'selected_roots')) db.exec('ALTER TABLE workflow_runs ADD COLUMN selected_roots TEXT');
+  }
 }
 
 // Single shared connection for the process that imports this module.

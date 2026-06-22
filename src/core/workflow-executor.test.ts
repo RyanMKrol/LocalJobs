@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { config } from '../config.js';
 import { jobs } from '../jobs/registry.js';
 import {
-  createWorkflowRun, createRun, finishRun, getWorkflowLogs, getWorkflowRun,
+  createWorkflowRun, createRun, finishRun, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots,
   lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,
   rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow,
 } from '../db/store.js';
@@ -76,6 +76,19 @@ const gateMembers: JobDefinition[] = [
   { name: 'g-cons-desc', consumes: [{ key: 'csv', description: 'every row has a place_id', check: ok }], run: async () => {} },
 ];
 for (const d of gateMembers) {
+  syncJob(d);
+  jobs.push(d);
+  pushed.push(d);
+}
+
+// Run-limit members (T094): a root stage that declares inputKeys() + a consumer.
+// The fake child just succeeds — selection happens in the PARENT at run start, so
+// these prove run_limit + selected_roots are frozen on the run row correctly.
+const limitMembers: JobDefinition[] = [
+  { name: 'lim-root', inputKeys: () => ['k1', 'k2', 'k3', 'k4'], run: async () => {} },
+  { name: 'lim-cons', run: async () => {} },
+];
+for (const d of limitMembers) {
   syncJob(d);
   jobs.push(d);
   pushed.push(d);
@@ -249,6 +262,40 @@ try {
     assert.equal(runs.find((r) => r.job_name === 'g-cons-bad')?.status, 'failed');
     assert.equal(runs.find((r) => r.job_name === 'pp-dep')?.status, 'skipped'); // downstream of the gated stage
   });
+  await test('run-limit: a manual limit selects the first N roots and freezes them on the run row', async () => {
+    const def: WorkflowDefinition = {
+      name: 'lim-wf', jobs: [{ job: 'lim-root' }, { job: 'lim-cons', dependsOn: ['lim-root'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual', { limit: 2 });
+    assert.ok(workflowRunId);
+    assert.equal(getWorkflowRun(workflowRunId!)?.run_limit, 2, 'run_limit persisted on the row');
+    assert.deepEqual(getWorkflowRunRoots(workflowRunId!), ['k1', 'k2'], 'first 2 pending roots selected (input order)');
+    const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
+    assert.match(logText, /limited to 2 originating input\(s\): k1, k2/, `limit not logged: ${logText}`);
+  });
+
+  await test('run-limit: an unlimited manual run leaves run_limit + selected_roots null (today\'s behaviour)', async () => {
+    const def: WorkflowDefinition = {
+      name: 'lim-wf-unl', jobs: [{ job: 'lim-root' }, { job: 'lim-cons', dependsOn: ['lim-root'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    assert.equal(getWorkflowRun(workflowRunId!)?.run_limit, null, 'no limit → run_limit null');
+    assert.equal(getWorkflowRunRoots(workflowRunId!), null, 'no limit → no allowlist');
+  });
+
+  await test('run-limit: a SCHEDULED run is never limited even when a root stage exists', async () => {
+    const def: WorkflowDefinition = {
+      name: 'lim-wf-sched', jobs: [{ job: 'lim-root' }, { job: 'lim-cons', dependsOn: ['lim-root'] }],
+    };
+    syncWorkflow(def);
+    // The scheduler calls runWorkflow(def, 'schedule') with NO opts → unlimited.
+    const { workflowRunId } = await runWorkflow(def, 'schedule');
+    assert.equal(getWorkflowRun(workflowRunId!)?.run_limit, null, 'scheduled run stays unlimited');
+    assert.equal(getWorkflowRunRoots(workflowRunId!), null, 'scheduled run has no allowlist');
+  });
+
   await test('cancellation: aborting a running workflow kills the in-flight stage, launches no more, marks cancelled', async () => {
     const def: WorkflowDefinition = {
       name: 'pp-cancel',

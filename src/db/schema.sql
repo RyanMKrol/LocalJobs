@@ -53,12 +53,20 @@ CREATE TABLE IF NOT EXISTS work_items (
   status     TEXT NOT NULL,             -- success | failed | skipped | ignored (manual park: stuck item given up on; the ONE manual-park concept)
   attempts   INTEGER NOT NULL DEFAULT 1,
   detail     TEXT,                      -- optional JSON: error, output path, summary…
+  -- Input lineage (T094): the ORIGINATING input this item descends from. For a
+  -- root item root_key == item_key; downstream/fan-out stages inherit it via
+  -- parent_key so a manual run-limit can bound the set of originating inputs and
+  -- run ALL their fan-out. NULL only on rows from before the migration (backfilled
+  -- to item_key) — markWorkItem always resolves a root.
+  root_key   TEXT,                      -- originating input this item descends from
+  parent_key TEXT,                      -- immediate upstream item (for fan-out); NULL for roots
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (job_name, item_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(job_name, status);
+CREATE INDEX IF NOT EXISTS idx_work_items_root ON work_items(job_name, root_key);
 
 -- Spend/usage meter. One row per metered external action (e.g. one API call), so a
 -- job can enforce per-day and per-month caps by counting rows in the window. This
@@ -93,15 +101,20 @@ CREATE TABLE IF NOT EXISTS workflow_jobs (
 
 -- One row per workflow execution.
 CREATE TABLE IF NOT EXISTS workflow_runs (
-  id            TEXT PRIMARY KEY,
-  workflow_name TEXT NOT NULL,
-  status        TEXT NOT NULL,             -- running | success | partial | failed | cancelled
-  trigger       TEXT NOT NULL,             -- schedule | manual
-  progress      INTEGER NOT NULL DEFAULT 0,
-  progress_msg  TEXT NOT NULL DEFAULT '',
-  started_at    TEXT,
-  finished_at   TEXT,
-  duration_ms   INTEGER,
+  id             TEXT PRIMARY KEY,
+  workflow_name  TEXT NOT NULL,
+  status         TEXT NOT NULL,             -- running | success | partial | failed | cancelled
+  trigger        TEXT NOT NULL,             -- schedule | manual
+  progress       INTEGER NOT NULL DEFAULT 0,
+  progress_msg   TEXT NOT NULL DEFAULT '',
+  -- Manual run-limit (T094): N originating inputs this run is bounded to, plus the
+  -- frozen allowlist of selected root keys (JSON array). Both NULL = unlimited
+  -- (scheduled runs are always unlimited). `run_limit` (not `limit` — a SQL keyword).
+  run_limit      INTEGER,                   -- NULL = unlimited
+  selected_roots TEXT,                      -- JSON array of root keys; NULL = unlimited
+  started_at     TEXT,
+  finished_at    TEXT,
+  duration_ms    INTEGER,
   FOREIGN KEY (workflow_name) REFERENCES workflows(name)
 );
 

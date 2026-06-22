@@ -336,3 +336,38 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   executor the sole DB writer). So a poll immediately after cancel may still briefly
   show `running`. *Revisit:* if a synchronous guarantee is needed, have the API await
   the run reaching a terminal state before responding.
+
+## Workflow run-limits (T094)
+
+- **"Pending" for re-selection = entry-not-done OR any descendant outstanding.**
+  *Why:* a limited re-run should resume a partially-finished root's downstream work, so
+  `selectPendingRoots` keeps a root in the candidate pool if its entry-stage item isn't done OR any
+  ledger row for that root (across the workflow's members) is still outstanding (not success/ignored
+  and not failed-past-budget).
+  *Impact:* a root whose entry is done but whose only outstanding descendants are **stuck** (failed
+  past `maxAttempts`) is treated as done and won't be re-selected by a *limited* run — unstick it, or
+  run unlimited, to retry it. Conversely a root with any retryable descendant is re-selected and
+  counts against the N, so a limited re-run may "spend" some of N on finishing in-flight roots before
+  reaching brand-new ones.
+  *Revisit:* if "limit = N brand-new roots only" is ever wanted, add a selection mode that counts only
+  never-started roots.
+
+- **A limited run selects roots from the root stage's CURRENT `inputKeys()` — which for `places`
+  reads `places.json` (the ingest output), not the raw CSVs.**
+  *Why:* the root stage is `cid-to-place-id-resolver`, and its candidate roots are the CIDs in
+  `places.json`. Selection runs in the daemon at run start, **before** `places-ingest` (re)builds
+  `places.json` that same run.
+  *Impact:* on a brand-new DB/checkout where `places.json` doesn't exist yet, a limited places run
+  selects **nothing** (inputKeys returns `[]`) and does no work. Run the workflow **unlimited once**
+  (so ingest produces `places.json`) before using a limit, or run `places-ingest` first. Perfumes is
+  unaffected — its root stage reads the committed-by-the-user `perfumes.json` input directly.
+  *Revisit:* if needed, run ingest's transform as part of `inputKeys()` (it's cheap + idempotent) so a
+  fresh limited run can enumerate roots without a prior unlimited pass.
+
+- **Stages topologically BEFORE the root stage run UNFILTERED under a limit.**
+  *Why:* they establish the universe of roots rather than consuming it — e.g. `places-ingest` parses
+  ALL Takeout CSVs into `places.json` regardless of the limit. The limit applies from the root stage
+  onward.
+  *Impact:* a limited places run still does the full (cheap, idempotent) bulk ingest each time; only
+  resolve/enrich/llm are bounded to N CIDs. This is intended, not a bug.
+  *Revisit:* only if a pre-root stage ever becomes expensive — then it would need its own bounding.

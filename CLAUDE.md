@@ -140,7 +140,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
-| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items`, `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs`, `workflow_run_logs`, `services`, `service_usage` |
+| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage` |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
 | `src/jobs/registry.ts` | Auto-discovers `*.job.ts`, `*.workflow.ts`, and `*.service.ts` files (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
@@ -288,6 +288,29 @@ doubt, log it.
     (used when a job has no `inputKeys()`), a `{ dryRun: true }` preview, and
     refuses an empty current set unless `{ force: true }` (an empty set would
     orphan every row — a guard against a misbehaving `inputKeys()`).
+  - **Input lineage + manual run-limits (T094).** A manual workflow run can be
+    capped to **N originating inputs** (`POST /api/workflows/:name/run { limit: N }`,
+    or the number box beside ▶ Run now); **all** fan-out of each selected root runs
+    to completion (the cap bounds roots, not per-stage counts), and **scheduled runs
+    are always unlimited**. The framework tracks lineage via two nullable
+    `work_items` columns — `root_key` (the originating input an item descends from)
+    and `parent_key` — resolved in `markWorkItem` (`store.ts`): rule 1 explicit
+    `rootKey` wins, rule 2 inherit the `parentKey` row's root, rule 3 default
+    `root_key = item_key`. So **same-key stages need NO lineage args** (perfumes:
+    every stage keys by `p.id`); only **key-changing / fan-out stages pass `rootKey`**
+    (places enrich/llm pass `rootKey: cid` since they key by `place_id`). The **root
+    stage** is the first member (topological order) declaring `inputKeys()` — its
+    keys are the candidate roots; selection (`selectPendingRoots` in `store.ts`)
+    freezes the first N *pending* roots on the run row (`run_limit` +
+    `selected_roots` JSON) in `runWorkflow`. The id is threaded to each child via the
+    `LOCALJOBS_WORKFLOW_RUN_ID` env (`executor.ts`); the child (`runJob.ts`) loads
+    `getWorkflowRunRoots` into `ctx.selectedRoots()`/`ctx.rootAllowed(rootKey)`. **Every
+    stage MUST filter its work-list by `ctx.rootAllowed(root)`** — when unlimited it's
+    a no-op (the set is null → always true), so unlimited runs behave exactly as
+    before. A workflow is *limitable* (the API surfaces `limitable`; the dashboard
+    shows the box) only when some member declares `inputKeys()`. ⚠️ A key-changing
+    stage that marks a derived item WITHOUT `rootKey`/`parentKey` makes it its own
+    root → silently skipped under a limit; always pass lineage on such stages.
   - **Stuck vs ignored: unstick vs ignore (both manual only).** An item that
     failed past `maxAttempts` is **stuck** — it won't retry and surfaces on the
     dashboard front page / alerts (`stuckItems`, `stuckCount`). Two manual

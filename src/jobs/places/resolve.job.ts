@@ -1,6 +1,6 @@
 import type { JobDefinition } from '../../core/types.js';
 import { normalizedPlacesContract, resolvedPlacesContract } from './contracts.js';
-import { runResolve } from './resolve.js';
+import { resolveInputKeys, runResolve } from './resolve.js';
 
 /**
  * Resolve every saved place's CID to a Google place_id (+ coords / featureId /
@@ -14,6 +14,10 @@ const job: JobDefinition = {
   maxRetries: 3,
   consumes: [normalizedPlacesContract()],
   produces: [resolvedPlacesContract()],
+  // Root stage (T094): each saved-place CID is an originating input. A manual
+  // run-limit selects the first N CIDs; downstream stages change the key to
+  // place_id but inherit the cid as their root (see enrich/llm markWorkItem).
+  inputKeys: resolveInputKeys,
   async run(ctx) {
     await runResolve(ctx);
   },

@@ -10,6 +10,22 @@ const JOB_NAME = 'cid-to-place-id-resolver';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * The originating-input keys for the places workflow (T094): every saved place's
+ * CID from the ingest output (places.json). Used by a manual run-limit to select
+ * the first N roots. Guarded — returns [] if places.json isn't present yet (the
+ * limit then selects nothing; run ingest first, or run unlimited).
+ */
+export function resolveInputKeys(): string[] {
+  try {
+    if (!existsSync(placesConfig.placesOut)) return [];
+    const ingest = JSON.parse(readFileSync(placesConfig.placesOut, 'utf8')) as IngestOutput;
+    return ingest.places.filter((p) => p.cid).map((p) => p.cid!);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Resolve each saved place's CID to a Google place_id (+ coords/featureId/kgMid)
  * by loading the headless Maps page and reading the place_id out of its network
  * responses. Resumable: already-resolved CIDs are skipped and progress is
@@ -36,8 +52,10 @@ export async function runResolve(ctx: JobContext): Promise<ResolvedFile> {
   ctx.log('Per place we log: input CID, resolved place_id (the Places API id), coordinates (lat/lng), feature ID, KG MID, status.');
   ctx.log(`Failures (incl. timeouts) ARE retried on re-run, until they succeed or reach ${resolveConfig.maxAttempts} attempts.`);
 
-  // Idempotency via the work_items ledger, keyed by CID (resolved.json holds the payload).
-  let todo = resolvable.filter((p) => !isWorkItemDone(JOB_NAME, p.cid!, resolveConfig.maxAttempts));
+  // Idempotency via the work_items ledger, keyed by CID (resolved.json holds the
+  // payload). A manual run-limit (T094) also filters to the selected roots — for
+  // places the root IS the cid (markWorkItem rule 3 keys root_key=cid here).
+  let todo = resolvable.filter((p) => ctx.rootAllowed(p.cid!) && !isWorkItemDone(JOB_NAME, p.cid!, resolveConfig.maxAttempts));
   ctx.log(`To resolve this run: ${todo.length} (new places + retryable past failures)`);
   if (resolveConfig.limit > 0 && todo.length > resolveConfig.limit) {
     todo = todo.slice(0, resolveConfig.limit);

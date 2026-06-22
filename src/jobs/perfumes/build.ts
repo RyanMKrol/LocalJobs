@@ -17,7 +17,7 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
   const perfumes = loadPerfumes();
   const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
   const fragPath = (id: string) => join(perfumesConfig.fragranticaDir, `${id}.json`);
-  const pendingOf = () => perfumes.filter((p) => existsSync(fragPath(p.id)) && !isWorkItemDone(BUILD_JOB, p.id, perfumesConfig.maxAttempts));
+  const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && existsSync(fragPath(p.id)) && !isWorkItemDone(BUILD_JOB, p.id, perfumesConfig.maxAttempts));
   const todo = pendingOf();
   ctx.log(`[build] ${todo.length} profile(s) to build`);
 

@@ -47,7 +47,7 @@ async function runAttempts(
 
     const runId = createRun(def.name, trigger, attempt, workflowRunId);
     lastRunId = runId;
-    const outcome = await executeAttempt(def.name, runId, timeoutMs, signal);
+    const outcome = await executeAttempt(def.name, runId, timeoutMs, signal, workflowRunId);
 
     if (outcome.status === 'success') {
       finishRun(runId, 'success', { exitCode: 0 });
@@ -109,6 +109,7 @@ function executeAttempt(
   runId: string,
   timeoutMs: number,
   signal?: AbortSignal,
+  workflowRunId?: string | null,
 ): Promise<AttemptOutcome> {
   return new Promise((resolveOutcome) => {
     // Cancelled before we even spawn — don't start a child at all.
@@ -117,10 +118,16 @@ function executeAttempt(
       return;
     }
 
+    // Pass the workflow run id to the child so a LIMITED run's frozen
+    // originating-input allowlist (T094) reaches the job via ctx.rootAllowed().
+    // A standalone run (null) sets nothing → the child sees an unlimited run.
+    const env = workflowRunId
+      ? { ...process.env, LOCALJOBS_WORKFLOW_RUN_ID: workflowRunId }
+      : process.env;
     const child = spawn(
       process.execPath,
       ['--import', 'tsx', config.runJobScript, jobName],
-      { stdio: ['ignore', 'pipe', 'pipe'], env: process.env },
+      { stdio: ['ignore', 'pipe', 'pipe'], env },
     );
 
     let resultStatus: 'success' | 'failed' | null = null;

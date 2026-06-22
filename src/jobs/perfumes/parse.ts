@@ -14,7 +14,7 @@ export async function runParse(ctx: JobContext): Promise<StageResult> {
   ensureDirs();
   const perfumes = loadPerfumes();
   const pagePath = (id: string) => join(perfumesConfig.pagesDir, `${id}.txt`);
-  const pendingOf = () => perfumes.filter((p) => existsSync(pagePath(p.id)) && !isWorkItemDone(PARSE_JOB, p.id, perfumesConfig.maxAttempts));
+  const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && existsSync(pagePath(p.id)) && !isWorkItemDone(PARSE_JOB, p.id, perfumesConfig.maxAttempts));
   const todo = pendingOf();
   ctx.log(`[parse] ${todo.length} page(s) to parse into structured JSON`);
 

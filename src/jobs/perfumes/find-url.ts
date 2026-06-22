@@ -12,7 +12,7 @@ export async function runFindUrl(ctx: JobContext): Promise<StageResult> {
   ensureDirs();
   const perfumes = loadPerfumes();
   const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
-  const todo = perfumes.filter((p) => !isWorkItemDone(FIND_JOB, p.id, perfumesConfig.maxAttempts));
+  const todo = perfumes.filter((p) => ctx.rootAllowed(p.id) && !isWorkItemDone(FIND_JOB, p.id, perfumesConfig.maxAttempts));
   ctx.log(`[find-url] ${perfumes.length} perfumes · ${todo.length} still need a Fragrantica URL`);
 
   let ok = 0;

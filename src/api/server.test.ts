@@ -6,6 +6,9 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { config } from '../config.js';
+import { jobs, workflows } from '../jobs/registry.js';
+import { syncJob, syncWorkflow } from '../db/store.js';
+import type { JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,
   createApiServer,
@@ -141,5 +144,53 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
     assert.equal(res.status, 404);
   });
 });
+
+// ── run-limit (T094): the workflow view advertises limitability + the run
+// endpoint validates a manual limit BEFORE starting a run (so an invalid limit
+// never spawns anything). Self-contained: a fake limitable workflow (root stage
+// declares inputKeys()) + a plain one, registered then cleaned up so the registry
+// job count other tests assert stays correct. ──
+{
+  const limRoot: JobDefinition = { name: 'srv-lim-root', inputKeys: () => ['a', 'b'], run: async () => {} };
+  const plain: JobDefinition = { name: 'srv-plain', run: async () => {} };
+  for (const d of [limRoot, plain]) { syncJob(d); jobs.push(d); }
+  const limWf: WorkflowDefinition = { name: 'srv-lim-wf', jobs: [{ job: 'srv-lim-root' }] };
+  const plainWf: WorkflowDefinition = { name: 'srv-plain-wf', jobs: [{ job: 'srv-plain' }] };
+  for (const w of [limWf, plainWf]) { syncWorkflow(w); workflows.push(w); } // registry resolves /run via this array
+
+  await test('run-limit: a workflow with a root stage advertises limitable: true; a plain one false', async () => {
+    await withServer({}, async (base) => {
+      const lim = (await (await fetch(`${base}/api/workflows/srv-lim-wf`)).json()) as { workflow: { limitable?: boolean } };
+      assert.equal(lim.workflow.limitable, true, 'root stage declares inputKeys → limitable');
+      const pl = (await (await fetch(`${base}/api/workflows/srv-plain-wf`)).json()) as { workflow: { limitable?: boolean } };
+      assert.equal(pl.workflow.limitable, false, 'no inputKeys member → not limitable');
+    });
+  });
+
+  await test('run-limit: a non-positive / non-integer limit is rejected 400 (no run started)', async () => {
+    await withServer({}, async (base) => {
+      for (const limit of [0, -3, 1.5, 'abc']) {
+        const res = await fetch(`${base}/api/workflows/srv-lim-wf/run`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit }),
+        });
+        assert.equal(res.status, 400, `limit=${limit} rejected`);
+        assert.match(((await res.json()) as { error?: string }).error ?? '', /limit must be a positive integer/);
+      }
+    });
+  });
+
+  await test('run-limit: a limit on a non-limitable workflow is rejected 400 (no run started)', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/srv-plain-wf/run`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 2 }),
+      });
+      assert.equal(res.status, 400);
+      assert.match(((await res.json()) as { error?: string }).error ?? '', /cannot be limited/);
+    });
+  });
+
+  for (const d of [limRoot, plain]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
+  for (const w of [limWf, plainWf]) { const i = workflows.indexOf(w); if (i >= 0) workflows.splice(i, 1); }
+}
 
 console.log(`\n  ${passed} assertions passed`);

@@ -134,7 +134,10 @@ function jobView(name: string) {
   };
 }
 
-/** Decorate a workflow with its last/next run, member jobs+edges, and total stuck. */
+/** Decorate a workflow with its last/next run, member jobs+edges, and total stuck.
+ *  `limitable` (T094) is true when some member declares `inputKeys()` — only then
+ *  can a manual run be limited to N originating inputs (the dashboard shows the
+ *  limit input only for limitable workflows). */
 function workflowView(name: string) {
   const members = getWorkflowJobs(name);
   return {
@@ -142,6 +145,7 @@ function workflowView(name: string) {
     next_run: nextWorkflowRun(name),
     jobs: members,
     stuck: members.reduce((sum, m) => sum + stuckCount(m.job_name), 0),
+    limitable: members.some((m) => !!getJobDefinition(m.job_name)?.inputKeys),
   };
 }
 
@@ -337,12 +341,26 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, { workflow: { ...p, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
       }
 
-      // POST /api/workflows/:name/run
+      // POST /api/workflows/:name/run   (optional body { limit })
+      // A positive-integer `limit` caps the manual run to N originating inputs and
+      // runs all their fan-out (T094); omit it for an unlimited run. A limit is
+      // rejected for a workflow with no stage that declares input keys.
       if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'run') {
         const def = getWorkflowDefinition(parts[2]);
         if (!def) return json(res, 404, { error: 'workflow not found' });
-        runWorkflow(def, 'manual').catch((e) => console.error('[api] workflow run error', e));
-        return json(res, 202, { ok: true, message: 'workflow run started' });
+        const body = await readBody(req);
+        let limit: number | undefined;
+        if (body.limit !== undefined && body.limit !== null && body.limit !== '') {
+          limit = Number(body.limit);
+          if (!Number.isInteger(limit) || limit < 1) {
+            return json(res, 400, { error: 'limit must be a positive integer' });
+          }
+          if (!def.jobs.some((j) => getJobDefinition(j.job)?.inputKeys)) {
+            return json(res, 400, { error: `workflow "${def.name}" cannot be limited (no stage declares input keys)` });
+          }
+        }
+        runWorkflow(def, 'manual', { limit }).catch((e) => console.error('[api] workflow run error', e));
+        return json(res, 202, { ok: true, message: 'workflow run started', limit: limit ?? null });
       }
 
       // POST /api/workflows/:name/toggle  { enabled }

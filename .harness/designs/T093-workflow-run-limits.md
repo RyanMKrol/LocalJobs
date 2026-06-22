@@ -1,7 +1,19 @@
 # T093 — Design: workflow run-limits via framework-tracked input lineage
 
-**Status:** design (implemented by T094). Doc-only change.
+**Status:** IMPLEMENTED by T094 (the design held; see implementation notes below).
 **Author of decisions:** interview 2026-06-22 (see "Decisions already made").
+
+> **Implementation notes (T094).** The design was followed as written, with three
+> immaterial deviations: (1) the additive migration (§4.7) was extracted into an
+> exported `migrateRunLimitLineage(db)` in `src/db/index.ts` (mirroring
+> `migrateDropJobColumns`) so it has its own unit test, rather than living inline in
+> `openDb()`. (2) `distinctRoots`/`rootCount` (listed under §4.1 store additions)
+> were not needed by the selection path and were not added — `selectPendingRoots`
+> + `getWorkflowRunRoots` suffice. (3) The places enrich/llm stages pass an explicit
+> `rootKey: cid` (resolution rule 1) rather than relying on `parentKey` inheritance
+> (rule 2); rule-2 inheritance is still implemented + unit-tested via a synthetic
+> fan-out fixture. Verified end-to-end with a dry-run perfumes `find-url` pass on a
+> scratch DB (limit=1 → only the 1 selected perfume processed; 0 paid calls).
 
 ## 1. Problem & goal
 

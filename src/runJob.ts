@@ -7,6 +7,7 @@
  */
 import 'dotenv/config'; // load .env so jobs can read secrets (e.g. API keys)
 import { getJobDefinition } from './jobs/registry.js';
+import { getWorkflowRunRoots } from './db/store.js';
 import type { JobContext, JobEvent } from './core/types.js';
 
 function emit(event: JobEvent): void {
@@ -31,9 +32,20 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Run-limit lineage (T094): when this child is a member of a LIMITED workflow
+  // run, the parent passes the workflow run id via env; load its frozen
+  // originating-input allowlist so the job can skip items outside the selected
+  // roots. Absent env / unlimited run → null set → rootAllowed always true
+  // (standalone + unlimited runs behave exactly as before).
+  const wfRunId = process.env.LOCALJOBS_WORKFLOW_RUN_ID || null;
+  const roots = wfRunId ? getWorkflowRunRoots(wfRunId) : null;
+  const rootSet: ReadonlySet<string> | null = roots ? new Set(roots) : null;
+
   const ctx: JobContext = {
     log: (message, level = 'info') => emit({ type: 'log', level, message }),
     progress: (pct, message = '') => emit({ type: 'progress', pct, message }),
+    selectedRoots: () => rootSet,
+    rootAllowed: (rootKey) => !rootSet || rootSet.has(rootKey),
   };
 
   try {

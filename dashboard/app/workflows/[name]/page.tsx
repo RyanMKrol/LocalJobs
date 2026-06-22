@@ -8,13 +8,14 @@ import { fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../u
 export default function WorkflowDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const [busy, setBusy] = useState(false);
+  const [limit, setLimit] = useState('');
   const { data } = usePoll(() => api.workflow(name), 3000, [name]);
   const p = data?.workflow;
   const runs = p?.runs ?? [];
 
   async function run() {
     setBusy(true);
-    try { await api.runWorkflow(name); } finally { setTimeout(() => setBusy(false), 1200); }
+    try { await api.runWorkflow(name, limit ? Number(limit) : undefined); } finally { setTimeout(() => setBusy(false), 1200); }
   }
   async function toggle() { if (p) await api.toggleWorkflow(name, p.enabled === 0); }
 
@@ -24,6 +25,18 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       <div className="row">
         <h1 style={{ margin: 0 }}>{name}</h1>
         <div className="spacer" />
+        {p?.limitable && (
+          <input
+            className="mono"
+            type="number"
+            min={1}
+            value={limit}
+            onChange={(e) => setLimit(e.target.value)}
+            placeholder="all"
+            title="Limit this run to N originating inputs (blank = all). All fan-out of the selected inputs runs."
+            style={{ width: '4.5rem' }}
+          />
+        )}
         <button className="btn" onClick={run} disabled={busy}>{busy ? 'Started…' : '▶ Run now'}</button>
       </div>
       <p className="sub">{p?.description}</p>

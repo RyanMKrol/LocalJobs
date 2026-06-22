@@ -173,6 +173,10 @@ export interface WorkItemRow {
   status: WorkStatus;
   attempts: number;
   detail: string | null;
+  /** Originating input this item descends from (T094). For a root, == item_key. */
+  root_key: string | null;
+  /** Immediate upstream item this was derived from (fan-out); NULL for roots. */
+  parent_key: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -196,23 +200,98 @@ export function isWorkItemDone(jobName: string, itemKey: string, maxAttempts: nu
   return row.status === 'failed' && row.attempts >= maxAttempts;
 }
 
-/** Record (upsert) the outcome of processing a work item. `detail` is JSON-serialized. */
+/**
+ * Resolve an item's originating-input `root_key` (T094), evaluated in order:
+ *  1. an explicit `rootKey` opt wins;
+ *  2. else inherit the parent row's `root_key` (looked up by `parentJob`, default
+ *     this job), falling back to `parentKey` itself if the parent row is missing;
+ *  3. else the item is its own root → `item_key`.
+ * So same-key stages (perfumes) need NO lineage args (rule 3); only key-changing /
+ * fan-out stages (places enrich/llm) pass `rootKey`/`parentKey`.
+ */
+function resolveRootKey(
+  jobName: string,
+  itemKey: string,
+  opts: { rootKey?: string; parentKey?: string; parentJob?: string },
+): string {
+  if (opts.rootKey) return opts.rootKey;
+  if (opts.parentKey) {
+    const parent = getWorkItem(opts.parentJob ?? jobName, opts.parentKey);
+    return parent?.root_key ?? opts.parentKey;
+  }
+  return itemKey;
+}
+
+/**
+ * Record (upsert) the outcome of processing a work item. `detail` is JSON-serialized.
+ * Lineage opts (T094) are all optional + back-compatible: with none given the item
+ * is its own root (`root_key = item_key`). Pass `rootKey` (or `parentKey`/`parentJob`
+ * to inherit) only on a stage that changes keys or fans out, so a run-limit can
+ * bound originating inputs and still run all their descendants.
+ */
 export function markWorkItem(
   jobName: string,
   itemKey: string,
   status: WorkStatus,
-  opts: { attempts?: number; detail?: unknown } = {},
+  opts: { attempts?: number; detail?: unknown; rootKey?: string; parentKey?: string; parentJob?: string } = {},
 ): void {
   const detail = opts.detail === undefined ? null : JSON.stringify(opts.detail);
+  const rootKey = resolveRootKey(jobName, itemKey, opts);
+  const parentKey = opts.parentKey ?? null;
   db.prepare(`
-    INSERT INTO work_items (job_name, item_key, status, attempts, detail)
-    VALUES (@job, @key, @status, @attempts, @detail)
+    INSERT INTO work_items (job_name, item_key, status, attempts, detail, root_key, parent_key)
+    VALUES (@job, @key, @status, @attempts, @detail, @root, @parent)
     ON CONFLICT(job_name, item_key) DO UPDATE SET
       status = excluded.status,
       attempts = excluded.attempts,
       detail = excluded.detail,
+      root_key = excluded.root_key,
+      parent_key = excluded.parent_key,
       updated_at = datetime('now')
-  `).run({ job: jobName, key: itemKey, status, attempts: opts.attempts ?? 1, detail });
+  `).run({ job: jobName, key: itemKey, status, attempts: opts.attempts ?? 1, detail, root: rootKey, parent: parentKey });
+}
+
+/**
+ * Whether a root still has outstanding work anywhere across a workflow's member
+ * jobs (T094) — true if ANY ledger row for that root, in any of `jobNames`, is not
+ * yet done (not success/ignored and not a failure past the retry budget). One
+ * indexed query over (job_name, root_key).
+ */
+function rootHasOutstandingWork(jobNames: string[], rootKey: string, minAttempts: number): boolean {
+  if (jobNames.length === 0) return false;
+  const ph = jobNames.map(() => '?').join(',');
+  const row = db.prepare(`
+    SELECT 1 FROM work_items
+     WHERE job_name IN (${ph}) AND root_key = ?
+       AND NOT (status IN ('success','ignored') OR (status = 'failed' AND attempts >= ?))
+     LIMIT 1
+  `).get(...jobNames, rootKey, minAttempts);
+  return !!row;
+}
+
+/**
+ * Select the first `n` PENDING originating-input roots for a limited workflow run
+ * (T094), preserving `candidateRootsInOrder` order (the root stage's `inputKeys()`,
+ * which is stable input-file order → deterministic selection). A root is pending
+ * iff its entry-stage work isn't done OR any descendant across `members` is still
+ * outstanding — so a fresh DB selects the first N inputs and a resumed run skips
+ * fully-done roots and advances to the next outstanding ones. `n <= 0` selects none.
+ */
+export function selectPendingRoots(
+  members: string[],
+  entryJob: string,
+  candidateRootsInOrder: string[],
+  n: number,
+  minAttempts: number,
+): string[] {
+  if (n <= 0) return [];
+  const selected: string[] = [];
+  for (const root of candidateRootsInOrder) {
+    const pending = !isWorkItemDone(entryJob, root, minAttempts) || rootHasOutstandingWork(members, root, minAttempts);
+    if (pending) selected.push(root);
+    if (selected.length >= n) break;
+  }
+  return selected;
 }
 
 /** Count of work items per status for a job, e.g. { success: 1700, failed: 3 }. */
@@ -419,13 +498,42 @@ export function getWorkflowJobs(name: string): { job_name: string; depends_on: s
   return rows.map((r) => ({ job_name: r.job_name, depends_on: JSON.parse(r.depends_on) as string[] }));
 }
 
-export function createWorkflowRun(workflowName: string, trigger: RunTrigger): string {
+/**
+ * Open a workflow run. `runLimit`/`selectedRoots` (T094) record a MANUAL run's
+ * cap on originating inputs and the frozen allowlist of selected root keys; both
+ * default to null = unlimited (scheduled runs never set them). The allowlist is
+ * frozen ONCE here and read identically by every member child (and reused across
+ * repeatUntilStable cycles).
+ */
+export function createWorkflowRun(
+  workflowName: string,
+  trigger: RunTrigger,
+  runLimit: number | null = null,
+  selectedRoots: string[] | null = null,
+): string {
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO workflow_runs (id, workflow_name, status, trigger, started_at)
-    VALUES (?, ?, 'running', ?, datetime('now'))
-  `).run(id, workflowName, trigger);
+    INSERT INTO workflow_runs (id, workflow_name, status, trigger, started_at, run_limit, selected_roots)
+    VALUES (?, ?, 'running', ?, datetime('now'), ?, ?)
+  `).run(id, workflowName, trigger, runLimit, selectedRoots ? JSON.stringify(selectedRoots) : null);
   return id;
+}
+
+/**
+ * The frozen originating-input allowlist for a workflow run (T094), or null when
+ * the run is unlimited (no limit, or an unknown id). Read once per member child
+ * (via LOCALJOBS_WORKFLOW_RUN_ID) to build `ctx.selectedRoots()`/`rootAllowed()`.
+ */
+export function getWorkflowRunRoots(workflowRunId: string): string[] | null {
+  const row = db.prepare('SELECT selected_roots FROM workflow_runs WHERE id = ?')
+    .get(workflowRunId) as { selected_roots: string | null } | undefined;
+  if (!row || row.selected_roots == null) return null;
+  try {
+    const parsed = JSON.parse(row.selected_roots) as unknown;
+    return Array.isArray(parsed) ? (parsed as string[]) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function setWorkflowProgress(id: string, pct: number, message: string): void {

@@ -4,6 +4,7 @@ import {
   createWorkflowRun,
   finishWorkflowRun,
   hasActiveWorkflowRun,
+  selectPendingRoots,
   workflowRetryableCount,
   recordGateFailure,
   recordSkippedRun,
@@ -99,12 +100,37 @@ export function isWorkflowRunActive(workflowRunId: string): boolean {
 }
 
 /**
+ * The first member in topological (wave) order whose JobDefinition declares
+ * `inputKeys()` — the ROOT STAGE that enumerates per-item originating inputs
+ * (T094). Its `inputKeys()` are the candidate roots a limited run selects from.
+ * Returns null when no member declares input keys (the workflow can't be limited).
+ */
+function findRootStage(dag: Dag): string | null {
+  for (const wave of dag.waves) {
+    for (const job of wave) {
+      if (getJobDefinition(job)?.inputKeys) return job;
+    }
+  }
+  return null;
+}
+
+/**
  * Run a workflow: execute its DAG (one topological pass), optionally repeating in
  * cycles until no retryable work remains. The daemon owns this (it's the DB
  * writer). Member job runs link to the workflow run; the workflow emits per-stage
  * + aggregate notifications and writes framework logs.
+ *
+ * `opts.limit` (T094) caps a MANUAL run to N originating inputs: the framework
+ * selects the first N pending roots from the root stage's `inputKeys()` at run
+ * start, freezes them on the run row, and each stage filters to `ctx.rootAllowed`.
+ * All fan-out of a selected root runs to completion. Unset / scheduled runs are
+ * unlimited (today's behaviour, unchanged).
  */
-export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' | 'manual'): Promise<WorkflowRunResult> {
+export async function runWorkflow(
+  def: WorkflowDefinition,
+  trigger: 'schedule' | 'manual',
+  opts: { limit?: number } = {},
+): Promise<WorkflowRunResult> {
   if (hasActiveWorkflowRun(def.name)) {
     return { workflowRunId: null, skipped: true, reason: 'already running' };
   }
@@ -133,16 +159,39 @@ export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' |
   const inboundGates = new Map<string, Gate[]>();
   for (const g of gates) (inboundGates.get(g.consumer) ?? inboundGates.set(g.consumer, []).get(g.consumer)!).push(g);
 
-  const workflowRunId = createWorkflowRun(def.name, trigger);
-  const controller = new AbortController();
-  activeWorkflowRuns.set(workflowRunId, controller);
-  const log = (m: string, level: LogLevel = 'info') => addWorkflowLog(workflowRunId, m, level);
   const total = dag.nodes.length;
   const memberNames = def.jobs.map((j) => j.job);
   const minAttempts = def.minAttempts ?? 4;
   const maxCycles = def.repeatUntilStable ? Math.max(1, def.maxCycles ?? 1) : 1;
 
-  log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}`);
+  // Run-limit selection (T094): for a manual limit, pick the first N pending
+  // originating-input roots from the root stage's inputKeys() and freeze them on
+  // the run row. The allowlist is computed ONCE here (reused across cycles); each
+  // member child reads it via the run row. Unset limit → unlimited (null).
+  let runLimit: number | null = null;
+  let selectedRoots: string[] | null = null;
+  let limitNote = '';
+  if (opts.limit && opts.limit > 0) {
+    runLimit = opts.limit;
+    const rootStage = findRootStage(dag);
+    if (rootStage) {
+      const candidates = await getJobDefinition(rootStage)!.inputKeys!();
+      selectedRoots = selectPendingRoots(memberNames, rootStage, candidates, runLimit, minAttempts);
+      limitNote = ` · limited to ${runLimit} originating input(s): ${selectedRoots.length ? selectedRoots.join(', ') : '(none pending)'}`;
+    } else {
+      // Defensive: the API rejects a limit on a non-limitable workflow, so this is
+      // only reachable if called directly. Fall back to unlimited rather than block.
+      limitNote = ` · limit ${runLimit} ignored (no stage declares input keys)`;
+      runLimit = null;
+    }
+  }
+
+  const workflowRunId = createWorkflowRun(def.name, trigger, runLimit, selectedRoots);
+  const controller = new AbortController();
+  activeWorkflowRuns.set(workflowRunId, controller);
+  const log = (m: string, level: LogLevel = 'info') => addWorkflowLog(workflowRunId, m, level);
+
+  log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
 
   let lastStatuses = new Map<string, RunStatus>();
   try {

@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import {
   browseTable, listDbTables, listCannedQueries, runCannedQuery,
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
-  getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getServiceRow, getWorkItem, hasActiveWorkflowRun,
+  getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   ignoreWorkItem, ignoredItems, isWorkItemDone,
-  listRunsForWorkflowRun, listServices, markWorkItem, orphanedWorkItems, workflowRetryableCount,
+  listRunsForWorkflowRun, listServices, markWorkItem, orphanedWorkItems, selectPendingRoots, workflowRetryableCount,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, usageThisMonth,
@@ -229,6 +229,136 @@ console.log('  ✓ pruneOrphanedWorkItems removes orphaned keys, keeps current (
   assert.equal(getWorkItem('t-ignore', 'bad-2'), undefined, 'unstick removed the stuck row');
 }
 console.log('  ✓ ignoreWorkItem parks a stuck item (manual, persists, off stuck list, on Ignored list)');
+
+// ── input lineage + run-limit root selection (T094) ──
+// The framework tracks each work item's originating-input root_key so a manual
+// run-limit can bound N roots and run ALL their fan-out. Covers the resolution
+// rule (explicit / inherit-from-parent / default-to-key), selectPendingRoots
+// (fresh → first N, resumed → skips done, N > pending → all), the run row's
+// run_limit/selected_roots, and a fan-out fixture (1 root → many descendants).
+{
+  syncJob({ name: 'lin-root', run: async () => {} });
+  syncJob({ name: 'lin-child', run: async () => {} });
+
+  // rule 3: no lineage opts → item is its own root
+  markWorkItem('lin-root', 'r1', 'success');
+  assert.equal(getWorkItem('lin-root', 'r1')?.root_key, 'r1', 'default root = item_key');
+  assert.equal(getWorkItem('lin-root', 'r1')?.parent_key, null, 'a root has no parent');
+
+  // rule 1: explicit rootKey wins, and parent_key is recorded
+  markWorkItem('lin-child', 'placeA', 'success', { rootKey: 'r1', parentKey: 'r1', parentJob: 'lin-root' });
+  assert.equal(getWorkItem('lin-child', 'placeA')?.root_key, 'r1', 'explicit rootKey used');
+  assert.equal(getWorkItem('lin-child', 'placeA')?.parent_key, 'r1', 'parent_key recorded');
+
+  // rule 2: inherit the parent row's root_key when only parentKey is given
+  markWorkItem('lin-child', 'grandB', 'success', { parentKey: 'placeA', parentJob: 'lin-child' });
+  assert.equal(getWorkItem('lin-child', 'grandB')?.root_key, 'r1', 'root inherited from parent row');
+
+  // rule 2 fallback: a missing parent row → parentKey itself becomes the root
+  markWorkItem('lin-child', 'orphanC', 'success', { parentKey: 'no-such-parent', parentJob: 'lin-child' });
+  assert.equal(getWorkItem('lin-child', 'orphanC')?.root_key, 'no-such-parent', 'fallback to parentKey when parent absent');
+}
+console.log('  ✓ markWorkItem lineage resolution (explicit / inherit / default-to-key)');
+
+{
+  // selectPendingRoots: fresh DB → first N candidates in input order
+  syncJob({ name: 'sel-a', run: async () => {} });
+  syncJob({ name: 'sel-b', run: async () => {} });
+  const members = ['sel-a', 'sel-b'];
+  const candidates = ['c1', 'c2', 'c3', 'c4', 'c5'];
+  assert.deepEqual(selectPendingRoots(members, 'sel-a', candidates, 2, 4), ['c1', 'c2'], 'fresh → first N in order');
+  assert.deepEqual(selectPendingRoots(members, 'sel-a', candidates, 0, 4), [], 'N=0 → none');
+
+  // resumed: c1 fully done (entry success + no outstanding descendant) is skipped;
+  // c2 entry done BUT a descendant still outstanding → re-selected; c3 fresh.
+  markWorkItem('sel-a', 'c1', 'success', { rootKey: 'c1' });
+  markWorkItem('sel-b', 'c1-child', 'success', { rootKey: 'c1' });
+  markWorkItem('sel-a', 'c2', 'success', { rootKey: 'c2' });
+  markWorkItem('sel-b', 'c2-child', 'failed', { rootKey: 'c2', attempts: 1 }); // retryable → outstanding
+  assert.deepEqual(
+    selectPendingRoots(members, 'sel-a', candidates, 2, 4),
+    ['c2', 'c3'],
+    'resumed → skips fully-done c1, re-selects c2 (outstanding descendant), then c3',
+  );
+
+  // a stuck descendant (failed past minAttempts) does NOT keep a root pending
+  markWorkItem('sel-a', 'c4', 'success', { rootKey: 'c4' });
+  markWorkItem('sel-b', 'c4-child', 'failed', { rootKey: 'c4', attempts: 4 }); // exhausted → done
+  assert.deepEqual(selectPendingRoots(members, 'sel-a', ['c4'], 5, 4), [], 'root with only exhausted descendants is done');
+
+  // N larger than the pending count → all pending (no error)
+  assert.deepEqual(selectPendingRoots(members, 'sel-a', ['c2', 'c3', 'c5'], 99, 4), ['c2', 'c3', 'c5']);
+}
+console.log('  ✓ selectPendingRoots (fresh → first N · resumed skips done · N > pending → all)');
+
+{
+  // createWorkflowRun persists run_limit + selected_roots; getWorkflowRunRoots reads them back
+  syncJob({ name: 'lim-x', run: async () => {} });
+  syncWorkflow({ name: 'lim-wf', jobs: [{ job: 'lim-x' }] });
+  const limited = createWorkflowRun('lim-wf', 'manual', 2, ['c1', 'c2']);
+  assert.equal(getWorkflowRun(limited)?.run_limit, 2, 'run_limit persisted');
+  assert.deepEqual(getWorkflowRunRoots(limited), ['c1', 'c2'], 'selected_roots round-trips as an array');
+  finishWorkflowRun(limited, 'success');
+
+  const unlimited = createWorkflowRun('lim-wf', 'manual');
+  assert.equal(getWorkflowRun(unlimited)?.run_limit, null, 'unlimited run → run_limit null');
+  assert.equal(getWorkflowRunRoots(unlimited), null, 'unlimited run → no allowlist (null)');
+  finishWorkflowRun(unlimited, 'success');
+  assert.equal(getWorkflowRunRoots('no-such-run'), null, 'unknown run → null');
+}
+console.log('  ✓ createWorkflowRun persists run_limit/selected_roots; getWorkflowRunRoots reads them');
+
+{
+  // FAN-OUT FIXTURE: one selected root must run ALL its descendants while an
+  // unselected root runs nothing. Simulates what the framework + jobs do — the
+  // child's allowlist set + rootAllowed gate, with root_key propagating through
+  // two fan-out stages (A: root→3 children, B: each child→2 grandchildren).
+  syncJob({ name: 'fan-a', run: async () => {} });
+  syncJob({ name: 'fan-b', run: async () => {} });
+  const members = ['fan-a', 'fan-b'];
+  const roots = ['R1', 'R2'];
+
+  // limit = 1 → select R1 only
+  const selected = selectPendingRoots(members, 'fan-a', roots, 1, 4);
+  assert.deepEqual(selected, ['R1']);
+  const allow = new Set(selected);
+  const rootAllowed = (r: string) => allow.has(r); // limited run → set is non-null
+
+  // Stage A: for each root, if allowed, fan out to 3 children carrying the root.
+  for (const r of roots) {
+    if (!rootAllowed(r)) continue;
+    for (let i = 1; i <= 3; i++) markWorkItem('fan-a', `${r}-k${i}`, 'success', { rootKey: r, parentKey: r, parentJob: 'fan-a' });
+  }
+  // Stage B: read A's children, keep those whose ROOT is allowed, fan each to 2.
+  for (const r of roots) {
+    for (let i = 1; i <= 3; i++) {
+      const childKey = `${r}-k${i}`;
+      const childRow = getWorkItem('fan-a', childKey);
+      if (!childRow) continue; // A never produced it (root not selected)
+      if (!rootAllowed(childRow.root_key!)) continue;
+      for (let j = 1; j <= 2; j++) {
+        markWorkItem('fan-b', `${childKey}-g${j}`, 'success', { parentKey: childKey, parentJob: 'fan-a' });
+      }
+    }
+  }
+
+  // R1: 3 children in A + 6 grandchildren in B, ALL carrying root_key R1.
+  const aR1 = ['R1-k1', 'R1-k2', 'R1-k3'];
+  for (const k of aR1) assert.equal(getWorkItem('fan-a', k)?.root_key, 'R1', `${k} descends from R1`);
+  let grandCount = 0;
+  for (const k of aR1) for (let j = 1; j <= 2; j++) {
+    const g = getWorkItem('fan-b', `${k}-g${j}`);
+    assert.ok(g, `grandchild ${k}-g${j} ran`);
+    assert.equal(g?.root_key, 'R1', 'grandchild inherited root R1 through two fan-out stages');
+    grandCount++;
+  }
+  assert.equal(grandCount, 6, 'all 6 descendants of the selected root ran');
+
+  // R2 (not selected) produced NOTHING at any stage.
+  assert.equal(getWorkItem('fan-a', 'R2-k1'), undefined, 'unselected root has no stage-A descendants');
+  assert.equal(getWorkItem('fan-b', 'R2-k1-g1'), undefined, 'unselected root has no stage-B descendants');
+}
+console.log('  ✓ run-limit fan-out: ALL descendants of the selected root run; unselected root runs nothing');
 
 // ── service limit overrides: persistence + reconcile across code-sync (T018) ──
 // The Services page can override a service's rate/quota. The override must persist

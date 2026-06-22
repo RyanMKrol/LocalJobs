@@ -53,6 +53,8 @@ export interface WorkflowRun {
   trigger: string;
   progress: number;
   progress_msg: string;
+  /** Manual run-limit: N originating inputs this run was bounded to (T094); null = unlimited. */
+  run_limit?: number | null;
   started_at: string | null;
   finished_at: string | null;
   duration_ms: number | null;
@@ -68,6 +70,8 @@ export interface Workflow {
   next_run: string | null;
   jobs: WorkflowMember[];
   stuck: number;
+  /** True when a member declares input keys — only then can a manual run be limited (T094). */
+  limitable?: boolean;
   /** Structural gates derived from member job contracts; present on the detail endpoint. */
   gates?: StructuralGate[];
   runs?: WorkflowRun[];
@@ -267,7 +271,8 @@ export const api = {
     get<GateInspection>(
       `/api/workflow-runs/${id}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
     ),
-  runWorkflow: (name: string) => post<{ ok: boolean }>(`/api/workflows/${name}/run`),
+  runWorkflow: (name: string, limit?: number) =>
+    post<{ ok: boolean; limit: number | null }>(`/api/workflows/${name}/run`, limit !== undefined ? { limit } : undefined),
   toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${name}/toggle`, { enabled }),
   cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
   services: () => get<{ services: Service[] }>('/api/services'),

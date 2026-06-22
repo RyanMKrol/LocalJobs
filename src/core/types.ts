@@ -17,6 +17,15 @@ export interface JobContext {
   log(message: string, level?: LogLevel): void;
   /** Report progress 0..100 with an optional status message. */
   progress(pct: number, message?: string): void;
+  /**
+   * The active originating-input allowlist for a LIMITED run (T094), or null when
+   * the run is unlimited (the default — process everything). When non-null a job
+   * MUST skip any item whose ROOT key is not in this set. Built by the child from
+   * the workflow run's frozen `selected_roots`.
+   */
+  selectedRoots(): ReadonlySet<string> | null;
+  /** Convenience over {@link selectedRoots}: true when unlimited OR `rootKey` is selected. */
+  rootAllowed(rootKey: string): boolean;
 }
 
 /**
@@ -210,6 +219,10 @@ export interface WorkflowRunRow {
    *  workflow's total stage count (see `rollUpWorkflowProgress` in the store). */
   progress: number;
   progress_msg: string;
+  /** Manual run-limit: N originating inputs this run was bounded to (T094); null = unlimited. */
+  run_limit: number | null;
+  /** Frozen allowlist of selected root keys (JSON string in the DB); null = unlimited. */
+  selected_roots: string | null;
   started_at: string | null;
   finished_at: string | null;
   duration_ms: number | null;

@@ -26,7 +26,7 @@ export async function runFetch(ctx: JobContext): Promise<StageResult> {
   ensureDirs();
   const perfumes = loadPerfumes();
   const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
-  const pendingOf = () => perfumes.filter((p) => urls[p.id] && !isWorkItemDone(FETCH_JOB, p.id, perfumesConfig.maxAttempts));
+  const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && urls[p.id] && !isWorkItemDone(FETCH_JOB, p.id, perfumesConfig.maxAttempts));
   const todo = pendingOf();
   ctx.log(`[fetch] ${todo.length} page(s) to fetch (have a URL, not yet captured)`);
   if (todo.length === 0) return { ok: 0, failed: 0, pending: 0, rateLimited: false };
