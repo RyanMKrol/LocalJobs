@@ -1548,6 +1548,25 @@
       "verify": [],
       "do": "Add a DAG / graph view of the backlog on /backlog that shows the task dependency hierarchy visually. Each node is the task ID; lay nodes out in dependency (topological) order with edges for `dependsOn` — the existing components/Dag.tsx wave-layout can be reused/generalized. Colour nodes by status (done / pending / needs-human). On hover (or click) over a node, show more detail about that task — title, model + escalation, status, and the do/doneWhen summary. Offer it alongside the existing list (a toggle, or a second section). Data is already in /api/backlog (tasks + dependsOn).",
       "doneWhen": "/backlog offers a DAG view: nodes labelled by task id, edges for dependsOn, nodes coloured by status, and per-node detail on hover/click; the existing list view still works; dashboard build passes."
+    },
+    {
+      "id": "T062",
+      "title": "Daily self-inspection workflow: review run logs → propose/fix framework issues",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "framework",
+        "workflow",
+        "needs-human"
+      ],
+      "scope": [
+        "src/jobs/"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Add a workflow that runs ONCE PER DAY and inspects the new logs produced by other workflows runs since the last inspection (run_logs / workflow framework logs on the box), evaluates any errors for FRAMEWORK-LEVEL problems (not job-specific bad-data), and — where a fix is safe — proposes and applies it. Envisioned as a one-step workflow whose single job instructs Claude (headless) to read the recent logs and propose fixes. NEEDS-HUMAN: discuss the design first — how Claude runs autonomously and safely APPLIES/commits framework fixes (vs just proposing), how to distinguish framework-level vs job-level errors, how it interacts with the build loop / CI / the always-push rule, guardrails against runaway or unreviewed changes, and how findings are surfaced (dashboard / notification / a drafted task in the backlog).",
+      "doneWhen": "Design agreed with the human; then a daily workflow reviews new run logs, identifies framework-level errors, and proposes (and where safe, applies) fixes within the agreed guardrails."
     }
   ]
 }
