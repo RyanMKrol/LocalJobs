@@ -1567,6 +1567,64 @@
       "verify": [],
       "do": "Add a workflow that runs ONCE PER DAY and inspects the new logs produced by other workflows runs since the last inspection (run_logs / workflow framework logs on the box), evaluates any errors for FRAMEWORK-LEVEL problems (not job-specific bad-data), and — where a fix is safe — proposes and applies it. Envisioned as a one-step workflow whose single job instructs Claude (headless) to read the recent logs and propose fixes. NEEDS-HUMAN: discuss the design first — how Claude runs autonomously and safely APPLIES/commits framework fixes (vs just proposing), how to distinguish framework-level vs job-level errors, how it interacts with the build loop / CI / the always-push rule, guardrails against runaway or unreviewed changes, and how findings are surfaced (dashboard / notification / a drafted task in the backlog).",
       "doneWhen": "Design agreed with the human; then a daily workflow reviews new run logs, identifies framework-level errors, and proposes (and where safe, applies) fixes within the agreed guardrails."
+    },
+    {
+      "id": "T063",
+      "title": "Validation gate: open a dedicated page (not an in-page scroll)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On a workflow run, clicking a validation gate currently just SCROLLS to an in-page \"Validation Gates\" section. Make it behave like clicking a job node — navigate to its OWN dedicated page (e.g. a /workflow-runs/[id]/gates/[key] route, or /gates/...) that shows that gate in full: what it validates (contract key + description), the two stages it bridges, its state, and its logs. Refactor the in-page section into that dedicated page + route (add a read-only API route for a single gate if needed).",
+      "doneWhen": "Clicking a validation gate on a workflow run navigates to a dedicated gate-detail PAGE (not an in-page scroll), consistent with how a job node opens its own page; the page shows the gate contract/description, the stages it bridges, state, and logs; dashboard build passes."
+    },
+    {
+      "id": "T064",
+      "title": "Validation gates: reframe producer/consumer as input/output",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "framework"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/",
+        "src/core/",
+        "src/core/*.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The validation-gate detail/logs label the two sides \"producer\" and \"consumer\", which is jargon-y. Reframe as INPUT/OUTPUT: the producer side validates the upstream stage’s OUTPUT; the consumer side validates the downstream stage’s INPUT. Relabel the UI and the gate-check log lines accordingly — e.g. \"output (from <stage>)\" / \"input (to <stage>)\" — so it reads intuitively. Display/wording only; keep the underlying produces/consumes contract model + field names unchanged.",
+      "doneWhen": "Gate detail + gate-check log lines read in input/output terms instead of producer/consumer; the underlying contract data model is unchanged; dashboard build + any affected tests pass."
     }
   ]
 }
