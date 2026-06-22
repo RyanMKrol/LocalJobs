@@ -71,6 +71,7 @@ tbody tr:hover { background: var(--panel-2); }
 .btn:hover { filter: brightness(1.08); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+.btn.btn-danger { background: var(--red); color: #fff; }
 
 .statcards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 8px; }
 .statcard { padding: 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); text-align: left; cursor: pointer; font: inherit; color: inherit; transition: border-color .15s, box-shadow .15s; }

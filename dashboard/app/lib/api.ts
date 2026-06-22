@@ -269,6 +269,7 @@ export const api = {
     ),
   runWorkflow: (name: string) => post<{ ok: boolean }>(`/api/workflows/${name}/run`),
   toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${name}/toggle`, { enabled }),
+  cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),

@@ -1,6 +1,6 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState } from 'react';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
 import type { GateStatus, Run } from '../../lib/api';
@@ -53,11 +53,17 @@ function GatePanel({ id, gates }: { id: string; gates: GateStatus[] }) {
 
 export default function WorkflowRunDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const [busy, setBusy] = useState(false);
   const { data } = usePoll(() => api.workflowRun(id), 2000, [id]);
   const run = data?.run;
   const members = data?.jobs ?? [];
   const logs = data?.logs ?? [];
   const gates = data?.gates ?? [];
+
+  async function cancel() {
+    setBusy(true);
+    try { await api.cancelWorkflowRun(id); } catch { /* poll will reflect new status */ } finally { setTimeout(() => setBusy(false), 1200); }
+  }
 
   // Fetch the workflow definition (for the DAG edges) once we know its name.
   const { data: pdata } = usePoll(
@@ -81,6 +87,11 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
         <h1 style={{ margin: 0 }}>Workflow run</h1>
         <div className="spacer" />
         {run && <span className={`badge ${run.status}`}>{statusLabel(run.status)}</span>}
+        {run?.status === 'running' && (
+          <button className="btn btn-danger" onClick={cancel} disabled={busy}>
+            {busy ? 'Cancelling…' : '✕ Cancel'}
+          </button>
+        )}
       </div>
       <p className="sub">{run?.progress_msg}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}</p>
 
