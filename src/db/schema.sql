@@ -66,7 +66,11 @@ CREATE TABLE IF NOT EXISTS work_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(job_name, status);
-CREATE INDEX IF NOT EXISTS idx_work_items_root ON work_items(job_name, root_key);
+-- NOTE: the (job_name, root_key) index is created by migrateRunLimitLineage() in
+-- index.ts, NOT here. On an already-existing DB the root_key column is added by
+-- that migration, which runs AFTER this schema bootstrap; creating the index here
+-- would reference a column that doesn't exist yet and crash openDb on every start
+-- (the T094 regression). Keep it in the migration so both fresh and existing DBs work.
 
 -- Spend/usage meter. One row per metered external action (e.g. one API call), so a
 -- job can enforce per-day and per-month caps by counting rows in the window. This
