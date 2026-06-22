@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
-import { fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
+import { fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
 
 export default function WorkflowDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
@@ -53,7 +53,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
             {runs.length === 0 && <tr><td colSpan={5} className="muted">No runs yet.</td></tr>}
             {runs.map((r) => (
               <tr key={r.id}>
-                <td><span className={`badge ${r.status}`}>{r.status}</span></td>
+                <td><span className={`badge ${r.status}`}>{statusLabel(r.status)}</span></td>
                 <td className="muted">{r.trigger}</td>
                 <td className="muted">{fmtRelative(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>

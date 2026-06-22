@@ -2,6 +2,7 @@
 
 import { Fragment } from 'react';
 import type { GateStatus, WorkflowMember } from '../lib/api';
+import { statusLabel } from '../ui';
 
 /** Topologically order members into waves (jobs in a wave have no ordering). */
 function computeWaves(members: WorkflowMember[]): string[][] {
@@ -96,7 +97,7 @@ export function Dag({
               const node = (
                 <div className={`dag-node ${status}`}>
                   <div className="dag-node-name">{job}</div>
-                  {statusByJob && <div className="dag-node-status">{status}</div>}
+                  {statusByJob && <div className="dag-node-status">{statusLabel(status)}</div>}
                 </div>
               );
               const href = (runId ? `/runs/${runId}` : `/jobs/${job}`) + (from ? `?from=${encodeURIComponent(from)}` : '');

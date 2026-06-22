@@ -3,8 +3,25 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RunStatus } from './lib/api';
 
+const STATUS_LABELS: Record<string, string> = {
+  success:   'Succeeded',
+  failed:    'Failed',
+  running:   'Running',
+  queued:    'Queued',
+  timeout:   'Timed out',
+  cancelled: 'Cancelled',
+  skipped:   'Skipped',
+  partial:   'Partial',
+  passed:    'Passed',
+  pending:   'Pending',
+};
+
+export function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
+
 export function StatusBadge({ status }: { status: RunStatus }) {
-  return <span className={`badge ${status}`}>{status}</span>;
+  return <span className={`badge ${status}`}>{statusLabel(status)}</span>;
 }
 
 export function ProgressBar({ pct }: { pct: number }) {

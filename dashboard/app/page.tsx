@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { api } from './lib/api';
-import { ProgressBar, StatusBadge, fmtDuration, fmtRelative, usePoll } from './ui';
+import { ProgressBar, StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
 
 type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | 'ignored' | null;
 
@@ -172,7 +172,7 @@ export default function Overview() {
               <div className="spacer" />
               {p.last_run && (
                 <a href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}>
-                  <span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span>
+                  <span className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</span>
                 </a>
               )}
             </div>
@@ -235,7 +235,7 @@ export default function Overview() {
             {visibleWorkflowRuns.map((r) => (
               <tr key={r.id}>
                 <td><a href={`/workflows/${r.workflow_name}`}>{r.workflow_name}</a></td>
-                <td><span className={`badge ${r.status}`}>{r.status}</span></td>
+                <td><span className={`badge ${r.status}`}>{statusLabel(r.status)}</span></td>
                 <td className="muted">{r.trigger}</td>
                 <td className="muted">{fmtRelative(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>

@@ -4,7 +4,7 @@ import { use, useState } from 'react';
 import { Dag, gateAnchor } from '../../components/Dag';
 import { api } from '../../lib/api';
 import type { GateStatus, Run } from '../../lib/api';
-import { StatusBadge, fmtDuration, fmtRelative, usePoll } from '../../ui';
+import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
 
 function groupByStage(members: Run[]): Map<string, Run[]> {
   const groups = new Map<string, Run[]>();
@@ -39,7 +39,7 @@ function GatePanel({ gates, runIdByJob }: { gates: GateStatus[]; runIdByJob: Rec
               const producerRunId = runIdByJob[g.producer];
               return (
                 <tr key={`${g.producer}:${g.key}`} id={gateAnchor(g)}>
-                  <td><span className={`badge ${g.state}`}>{g.state}</span></td>
+                  <td><span className={`badge ${g.state}`}>{statusLabel(g.state)}</span></td>
                   <td>
                     <div><strong>{g.producer}</strong> → <strong>{g.consumer}</strong></div>
                     <div className="muted mono">artifact &ldquo;{g.key}&rdquo;</div>
@@ -102,7 +102,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
       <div className="row">
         <h1 style={{ margin: 0 }}>Workflow run</h1>
         <div className="spacer" />
-        {run && <span className={`badge ${run.status}`}>{run.status}</span>}
+        {run && <span className={`badge ${run.status}`}>{statusLabel(run.status)}</span>}
       </div>
       <p className="sub">{run?.progress_msg}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}</p>
 
