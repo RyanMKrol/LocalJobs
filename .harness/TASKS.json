@@ -519,6 +519,37 @@
       "verify": [],
       "do": "On the overview page, hide the entire \"Stuck items\" SECTION (its heading + list/empty-state) when there are zero stuck items — render the section only when there is at least one stuck item. Keep the Stuck stat TILE/count at the top regardless. Apply the same empty-section hiding to the Ignored section if it has its own dedicated section.",
       "doneWhen": "When nothing is stuck, the overview shows no \"Stuck items\" heading or section (just the count tile up top); when something is stuck the section renders as before; the dashboard build passes."
+    },
+    {
+      "id": "T049",
+      "title": "Sweep the repo for lingering \"pipeline\" usage (rename to workflow)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "cleanup"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/",
+        "dashboard/",
+        "docs/",
+        "README.md",
+        "CLAUDE.md",
+        "src/db/schema.sql"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "After the pipeline→workflow rename (T038), do a COMPLETE repo scan for any remaining use of the word \"pipeline\" and convert it to \"workflow\" across the board — code identifiers, types, API routes, UI labels/headings, comments, and docs (README.md / CLAUDE.md / docs) / schema. EXCLUDE legitimate residual references: the DB migration that renames the old `pipelines`/`pipeline_*` tables MUST still name them to perform the rename — leave those; and node_modules, .git, data/, and historical .harness/worklog/ notes are out of scope.",
+      "doneWhen": "A `grep -ri pipeline` over tracked source + docs (excluding the migration’s necessary old-table references, node_modules, data/, and worklog) returns nothing; every stray identifier/label/route now reads \"workflow\"; typecheck + tests + dashboard build pass."
     }
   ]
 }
