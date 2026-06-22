@@ -1,21 +1,18 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use } from 'react';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
 import type { GateStatus, Run } from '../../lib/api';
 import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
 
-function groupByStage(members: Run[]): Map<string, Run[]> {
-  const groups = new Map<string, Run[]>();
-  for (const r of members) {
-    const list = groups.get(r.job_name) ?? [];
-    list.push(r);
-    groups.set(r.job_name, list);
-  }
-  // Within each group: latest first (members are start-time ordered, so reverse)
-  for (const [, list] of groups) list.reverse();
-  return groups;
+function latestByStage(members: Run[]): Run[] {
+  const latest = new Map<string, Run>();
+  // members are ordered by start time ascending; later writes overwrite earlier ones
+  // so the final value per key is the latest run. Map preserves first-insertion order
+  // (updating an existing key keeps its position), so stage order is maintained.
+  for (const r of members) latest.set(r.job_name, r);
+  return [...latest.values()];
 }
 
 /**
@@ -62,9 +59,6 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   const logs = data?.logs ?? [];
   const gates = data?.gates ?? [];
 
-  // Which stage rows are expanded to show older runs
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
   // Fetch the workflow definition (for the DAG edges) once we know its name.
   const { data: pdata } = usePoll(
     () => api.workflow(run?.workflow_name ?? '__none__'),
@@ -78,16 +72,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   const runIdByJob: Record<string, string> = {};
   for (const r of members) { statusByJob[r.job_name] = r.status; runIdByJob[r.job_name] = r.id; }
 
-  const groups = groupByStage(members);
-
-  const toggleExpand = (jobName: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(jobName)) next.delete(jobName);
-      else next.add(jobName);
-      return next;
-    });
-  };
+  const latestRuns = latestByStage(members);
 
   return (
     <>
@@ -110,45 +95,18 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
       <h2>Member runs</h2>
       <div className="panel">
         <table>
-          <thead><tr><th>Stage</th><th>Status</th><th>When</th><th>Duration</th><th></th><th></th></tr></thead>
+          <thead><tr><th>Stage</th><th>Status</th><th>When</th><th>Duration</th><th></th></tr></thead>
           <tbody>
-            {members.length === 0 && <tr><td colSpan={6} className="muted">No member runs yet.</td></tr>}
-            {[...groups.entries()].map(([jobName, runs]) => {
-              const latest = runs[0];
-              const older = runs.slice(1);
-              const isExpanded = expanded.has(jobName);
-              return (
-                <>
-                  <tr key={latest.id}>
-                    <td><strong>{latest.job_name}</strong></td>
-                    <td><StatusBadge status={latest.status} /></td>
-                    <td className="muted">{fmtRelative(latest.started_at)}</td>
-                    <td className="mono">{fmtDuration(latest.duration_ms)}</td>
-                    <td><a href={`/runs/${latest.id}`}>logs →</a></td>
-                    <td>
-                      {older.length > 0 && (
-                        <button
-                          onClick={() => toggleExpand(jobName)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', fontSize: '0.85em', color: 'var(--muted)' }}
-                        >
-                          {isExpanded ? `▲ hide` : `▼ +${older.length}`}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                  {isExpanded && older.map((r) => (
-                    <tr key={r.id} style={{ opacity: 0.65 }}>
-                      <td style={{ paddingLeft: '1.5rem' }}>{r.job_name}</td>
-                      <td><StatusBadge status={r.status} /></td>
-                      <td className="muted">{fmtRelative(r.started_at)}</td>
-                      <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                      <td><a href={`/runs/${r.id}`}>logs →</a></td>
-                      <td></td>
-                    </tr>
-                  ))}
-                </>
-              );
-            })}
+            {members.length === 0 && <tr><td colSpan={5} className="muted">No member runs yet.</td></tr>}
+            {latestRuns.map((r) => (
+              <tr key={r.id}>
+                <td><strong>{r.job_name}</strong></td>
+                <td><StatusBadge status={r.status} /></td>
+                <td className="muted">{fmtRelative(r.started_at)}</td>
+                <td className="mono">{fmtDuration(r.duration_ms)}</td>
+                <td><a href={`/runs/${r.id}`}>logs →</a></td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
