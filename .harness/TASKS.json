@@ -1652,6 +1652,36 @@
       "verify": [],
       "do": "On the validation-gate page the producer/consumer log lines do not make it obvious WHAT the gate checks. Add a clear, VISUAL representation of the contract: a left-to-right flow — upstream stage OUTPUT → [the gate: what it validates] → downstream stage INPUT — so you can see at a glance what data the gate expects and whether it is satisfied. Surface the contract’s expected shape (key + description + the fields/columns/non-empty it asserts) and, where feasible, a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation. This likely needs the produces/consumes ArtifactContract to optionally declare a machine-readable expected shape (fields/columns) for display, and the gate to report expected-vs-actual rather than just ok/violations. Builds on T063 (dedicated gate page) + T064 (input/output framing).",
       "doneWhen": "The gate page visually shows, left-to-right, output → gate(what it checks) → input, making it obvious what the gate validates and what actually flowed (expected shape + a sample/summary + pass/fail per expectation); contracts can declare an expected shape for display; typecheck + tests + dashboard build pass."
+    },
+    {
+      "id": "T066",
+      "title": "Workflow-run DAG: fix the graph layout on mobile/narrow widths",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/workflow-runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "do": "On a workflow-run page, the DAG graph (components/Dag.tsx — left-to-right waves) looks misaligned on narrow/mobile widths: the vertical centring of nodes/waves reads as visually off as the width shrinks. Make it responsive — EITHER fix the vertical alignment of the left-to-right layout at narrow widths, OR switch to a TOP-DOWN (vertical) layout below a small-screen breakpoint (lean: top-down likely reads better on a phone since multi-node waves do not fit horizontally). The agent picks whichever looks best. Validate visually: render the page at an iPhone-class viewport (~402px) AND at desktop width and confirm the graph is cleanly aligned + legible at both (reuse the T040 viewport-screenshot approach; screenshot-verifiable, not needs-human).",
+      "doneWhen": "The workflow-run DAG renders cleanly aligned + legible at a narrow/mobile viewport (~402px) and at desktop width, with no awkward vertical-centring misalignment; validated via viewport screenshots at both widths recorded in the worklog; dashboard build passes."
     }
   ]
 }
