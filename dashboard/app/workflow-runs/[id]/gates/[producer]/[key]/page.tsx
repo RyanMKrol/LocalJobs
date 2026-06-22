@@ -63,7 +63,12 @@ function SideCard({
               <span className="gate-expect-text">
                 <span className="gate-expect-label">{r.label}</span>
                 {r.detail && <span className="muted gate-expect-detail">{r.detail}</span>}
-                {r.actual?.actual && <code className="code-block gate-expect-actual">{r.actual.actual}</code>}
+                {r.actual?.actual && (
+                  <span className="gate-expect-actual-wrap">
+                    <span className="gate-expect-actual-label">actual</span>
+                    <code className="code-block gate-expect-actual">{r.actual.actual}</code>
+                  </span>
+                )}
               </span>
             </li>
           ))}

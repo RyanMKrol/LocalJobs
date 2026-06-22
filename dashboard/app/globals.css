@@ -232,7 +232,9 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .gate-expect-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .gate-expect-label { font-size: 13px; }
 .gate-expect-detail { font-size: 12px; }
-.gate-expect-actual { margin-top: 3px; }
+.gate-expect-actual-wrap { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.gate-expect-actual-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.gate-expect-actual { }
 .gate-sample { margin: 12px 0 0; }
 .gate-sample-label { font-size: 12px; margin: 0 0 4px; }
 .gate-card-foot { margin: 12px 0 0; font-size: 13px; }
