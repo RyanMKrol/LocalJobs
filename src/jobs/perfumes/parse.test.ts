@@ -59,4 +59,35 @@ assert.deepEqual(parseAccordPercents('<html><body>no accords here</body></html>'
   assert.deepEqual(accords, [{ name: 'woody', pct: 100 }], 'duplicate accord names dedupe to the strongest');
 }
 
-console.log('  ✓ perfumes accord percentages parse from bar widths (synthetic fixture)');
+// ── Real-markup guard (T072): a captured Fragrantica page follows the accord
+// bars with an `/accords-search/?green=100&woody=64&...` link whose query-param
+// numbers are the OPACITY-derived search weights, NOT the bar widths. The parser
+// must read the bar widths and ignore those query params entirely. This fixture
+// reproduces the exact structure observed in a live fetch of Amouage Beach Hut
+// Man (green 100%, woody 75.0859%, ...). ──
+{
+  const html =
+    `<div class="flex flex-col items-center pb-4"><h6 class="text-sm font-semibold">main accords</h6>` +
+    `<div class="flex flex-col w-full max-w-[280px] md:max-w-[320px]">` +
+    bar('green', '100%') +
+    bar('woody', '75.0859%') +
+    bar('aromatic', '74.3476%') +
+    bar('earthy', '58.0808%') +
+    `</div>` +
+    // The trailing search link — its ?green=100&woody=64&... are NOT bar widths.
+    `<a href="/accords-search/?green=100&amp;woody=64&amp;aromatic=63&amp;earthy=40">search</a></div>`;
+  const accords = parseAccordPercents(html);
+  assert.deepEqual(
+    accords,
+    [
+      { name: 'green', pct: 100 },
+      { name: 'woody', pct: 75 },
+      { name: 'aromatic', pct: 74 },
+      { name: 'earthy', pct: 58 },
+    ],
+    'real-markup: bar widths win; the /accords-search query params must not leak in',
+  );
+  assert.ok(!accords.some((a) => a.pct === 64 || a.pct === 63 || a.pct === 40), 'search-link weights must not appear');
+}
+
+console.log('  ✓ perfumes accord percentages parse from bar widths (synthetic + real-markup fixture)');

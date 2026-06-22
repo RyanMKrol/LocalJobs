@@ -311,3 +311,15 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   `classifyGates` over the run's member runs). *Revisit:* if per-run fidelity
   matters, persist the producing/consuming `GateResult` (checks + sample) on the
   member run when the gate is enforced and serve that instead of re-checking.
+
+- **Accord percentages backfill only on RE-FETCH, not retroactively.** *Why:*
+  T072 fixed `perfumes-fetch` to persist the raw page HTML (the success path used
+  to save only innerText `.txt`, so the parser's `pages/<id>.html` never existed
+  and every accord `pct` fell back to `null`). The parser was already correct —
+  verified end-to-end against a live fetch of Amouage Beach Hut Man, where it lifts
+  the real bar-width %s exactly. *Impact:* the ~42 perfume outputs built before
+  this fix still carry `pct: null`; they only gain real percentages when their page
+  is re-fetched (the fetch ledger must re-run that item) and re-parsed. Nothing
+  auto-invalidates the old `.txt`-only captures. *Revisit:* to backfill, clear the
+  `perfumes-fetch` work-items (or delete the stale `pages/*.txt`) so a run re-fetches
+  and now also saves `.html`, then let `perfumes-parse` re-run.

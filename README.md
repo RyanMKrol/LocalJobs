@@ -287,7 +287,9 @@ per day). See `places/config.ts` for the full env list.
 
 **perfumes** — Fragrantica profile builder. Four stages: `perfumes-find-url`
 (locate the page via the Claude CLI) → `perfumes-fetch` (headless Chrome /
-Cloudflare clearance) → `perfumes-parse` (extract structured notes/accords) →
+Cloudflare clearance — saves both the page text *and* the raw HTML so the parse
+stage can read the accord-bar widths) → `perfumes-parse` (extract structured
+notes/accords, lifting each accord's strength % off the saved HTML's bar widths) →
 `perfumes-build` (research + write a markdown profile). Uses `repeatUntilStable`
 cycling. Drives the local `claude` CLI. See `perfumes/config.ts` for models,
 pacing, headless toggle, and dry-run options. See `.harness/LIMITATIONS.md` for

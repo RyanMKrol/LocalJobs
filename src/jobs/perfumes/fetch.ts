@@ -53,9 +53,15 @@ export async function runFetch(ctx: JobContext): Promise<StageResult> {
 
       if (o.text.length >= 600 && matched && !blocked) {
         writeFileSync(join(perfumesConfig.pagesDir, `${p.id}.txt`), o.text);
+        // Persist the raw HTML alongside the text: the accord-bar widths (each
+        // accord's strength %) live in inline `width: NN%` styles that innerText
+        // drops, so the parse stage reads them back from this .html. Without it
+        // every accord pct falls back to null (the success path used to save only
+        // .txt, so pages/<id>.html never existed — T072).
+        writeFileSync(join(perfumesConfig.pagesDir, `${p.id}.html`), o.html);
         markWorkItem(FETCH_JOB, p.id, 'success', { attempts, detail: { name: label(p) } });
         ok++;
-        ctx.log(`[fetch] ✓ ${label(p)} (${o.text.length} chars)`);
+        ctx.log(`[fetch] ✓ ${label(p)} (${o.text.length} chars, ${o.html.length} html bytes)`);
       } else {
         // Save the offending page so we can see exactly what Fragrantica returned.
         const debugFile = join(perfumesConfig.pagesFailedDir, `${p.id}.html`);
