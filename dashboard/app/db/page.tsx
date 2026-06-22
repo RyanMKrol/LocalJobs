@@ -129,7 +129,7 @@ export default function DbBrowser() {
       {queriesPoll.error && <p className="muted">⚠ Cannot reach the daemon API ({queriesPoll.error}).</p>}
 
       <h2 style={{ marginBottom: 6 }}>Common queries</h2>
-      <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 12 }}>
         {queries.length === 0 && <span className="muted">No queries.</span>}
         {queries.map((q) => (
           <button
@@ -160,7 +160,7 @@ export default function DbBrowser() {
 
       <h2 style={{ marginTop: 28, marginBottom: 6 }}>Browse tables</h2>
       {tablesPoll.error && <p className="muted">⚠ Cannot reach the daemon API ({tablesPoll.error}).</p>}
-      <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 12 }}>
         {tables.length === 0 && <span className="muted">No tables.</span>}
         {tables.map((t) => (
           <button key={t} className={`btn ${t === table ? '' : 'secondary'}`} onClick={() => selectTable(t)}>{t}</button>
