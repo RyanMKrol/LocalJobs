@@ -1929,7 +1929,7 @@
     {
       "id": "T076",
       "title": "Backlog DAG view: nicer node rendering + drop the 'next' indicator",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
