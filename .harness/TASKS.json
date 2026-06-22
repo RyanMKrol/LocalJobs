@@ -762,6 +762,33 @@
       "verify": [],
       "do": "Validation gates now render on a workflow run (T028) but you cannot INSPECT them — no way to see what a gate validated, its logs, or to manually double-check it. Add comprehensive gate logging + clickable gate detail: (1) the workflow executor logs, per gate check, the contract key, producer→consumer, what it ASSERTED (the contract description) and the pass/fail result + any violation detail, into the workflow run’s framework logs; (2) expose per-gate detail via the API (contract key + description, state, and the relevant member-run/log refs); (3) make EVERY gate on the run DAG clickable to a detail view showing what it validates and its outcome — passing and pending gates too, not only failed ones (T028) — so you can confirm a gate is doing what you expect.",
       "doneWhen": "Each validation gate on a workflow run is clickable and opens a detail view showing what it validates (contract key + description, producer→consumer) and its outcome; the executor logs each gate check (assertion + result/violation) to the run’s framework logs; passing/pending gates are inspectable, not just failed ones; a unit test covers the gate logging/detail; typecheck + tests + dashboard build pass."
+    },
+    {
+      "id": "T058",
+      "title": "Back-nav: drop \"workflow run\" words, show just the run id",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "When you open a job/run from within a workflow run, the back-nav header reads \"← workflow run {id}\" (lowercase). Drop the words \"workflow run\" — show just the run id (a leading \"#\" is fine, e.g. \"← #42\"). Update both the backFrom helper’s workflow-run label (ui.tsx) and the runs/[id] fallback that also builds \"workflow run {id}\".",
+      "doneWhen": "The back-link to a workflow run shows just the run id (no \"workflow run\" words); both the ?from-derived label and the runs/[id] fallback are updated; dashboard build passes."
     }
   ]
 }
