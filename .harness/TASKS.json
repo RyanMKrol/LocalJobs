@@ -1444,7 +1444,7 @@
     {
       "id": "T058",
       "title": "Back-nav: drop \"workflow run\" words, show just the run id",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
