@@ -2253,7 +2253,7 @@
     {
       "id": "T088",
       "title": "Gate detail: render code/JSON-shaped values in a clear code block",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
