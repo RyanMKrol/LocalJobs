@@ -438,8 +438,8 @@ doubt, log it.
   - **Expected-vs-actual gate page (black box).** Each gate has a dedicated page
     (`dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx`) that
     explains the gate to a NON-EXPERT with no knowledge of internals. It lays the
-    boundary out left-to-right — upstream **Output** → **Gate** (what it checks) →
-    downstream **Input** — and on each side shows the contract's declared
+    boundary out left-to-right — **Produced →** → **Gate** (what it checks) →
+    **→ Consumed** — and on each side shows the contract's declared
     **expected shape** alongside the **actual** artifact's per-expectation ✓/✗ and
     a small sample. To support it, an `ArtifactContract` may declare a
     machine-readable `shape: ArtifactShape` (`{ summary, format?, expectations[] }`,
@@ -450,8 +450,8 @@ doubt, log it.
     executor enforcement is unchanged — keep the labels in `shape.expectations`
     identical to the ones the `check` emits. The page is served by
     `GET /api/workflow-runs/:id/gates/:producer/:key`, which classifies the gate
-    state for the run and runs each side's contract `check()` LIVE (output =
-    producer's `produces[key]`, input = consumer's `consumes[key]`). That endpoint
+    state for the run and runs each side's contract `check()` LIVE (produced =
+    producer's `produces[key]`, consumed = consumer's `consumes[key]`). That endpoint
     reads `data/` files only — NEVER a paid/remote call — so it is safe to poll;
     keep any future contract `check()` cheap + side-effect-free for the same reason.
 - **Workflow progress is rolled up from member jobs (don't set it by hand).** A

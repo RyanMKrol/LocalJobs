@@ -126,7 +126,7 @@ export interface GateResult {
   sample?: string;
 }
 
-/** One side (output/input) of a gate: the declared shape + a live check result. */
+/** One side (produced/consumed) of a gate: the declared shape + a live check result. */
 export interface GateSide {
   shape: ArtifactShape | null;
   result: GateResult | null;
@@ -135,8 +135,8 @@ export interface GateSide {
 /** Full inspection of a single gate: classified state + expected-vs-actual sides. */
 export interface GateInspection {
   gate: GateStatus;
-  output: GateSide | null;
-  input: GateSide | null;
+  produced: GateSide | null;
+  consumed: GateSide | null;
 }
 
 /** One row in the first-cut input→output mapping for a workflow run (T095). */

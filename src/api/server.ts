@@ -177,7 +177,7 @@ function gatesForWorkflow(name: string): Gate[] {
   return deriveGates(dag, produces, consumes).map((g) => {
     const pd = getJobDefinition(g.producer)?.produces?.find((c) => c.key === g.key)?.description;
     const cd = getJobDefinition(g.consumer)?.consumes?.find((c) => c.key === g.key)?.description;
-    const parts = [pd && `output: ${pd}`, cd && `input: ${cd}`].filter(Boolean) as string[];
+    const parts = [pd && `produced: ${pd}`, cd && `consumed: ${cd}`].filter(Boolean) as string[];
     return parts.length ? { ...g, description: parts.join(' · ') } : g;
   });
 }
@@ -409,8 +409,8 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
 
       // GET /api/workflow-runs/:id/gates/:producer/:key
       // Inspect ONE validation gate for the dashboard's expected-vs-actual view:
-      // the classified gate state plus, for each side (output = producer's
-      // `produces[key]`, input = consumer's `consumes[key]`), the contract's
+      // the classified gate state plus, for each side (produced = producer's
+      // `produces[key]`, consumed = consumer's `consumes[key]`), the contract's
       // declared `shape` and a LIVE `check()` of the artifact on disk (per-
       // expectation pass/fail + a small sample of what flowed). Reads files only —
       // never a paid/remote call — so it's safe to poll.
@@ -437,9 +437,9 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
           }
           return { shape: contract.shape ?? null, result };
         };
-        const output = await inspectSide(gate.producer, 'produces');
-        const input = await inspectSide(gate.consumer, 'consumes');
-        return json(res, 200, { gate, output, input });
+        const produced = await inspectSide(gate.producer, 'produces');
+        const consumed = await inspectSide(gate.consumer, 'consumes');
+        return json(res, 200, { gate, produced, consumed });
       }
 
       // GET /api/workflow-runs/:id/io

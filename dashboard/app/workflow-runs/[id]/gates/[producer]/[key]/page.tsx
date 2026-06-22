@@ -28,18 +28,20 @@ function Mark({ actual }: { actual?: ExpectationResult }) {
 }
 
 /**
- * One side of the gate flow — the upstream OUTPUT or downstream INPUT. Shows the
- * stage name, the artifact's declared shape (what's expected) and, when the
+ * One side of the gate flow — the upstream 'Produced →' or downstream '→ Consumed'.
+ * Shows the stage name, the artifact's declared shape (what's expected) and, when the
  * stage has run, the per-expectation pass/fail against what actually flowed plus
  * a small sample.
  */
 function SideCard({
   role,
+  logLabel,
   jobName,
   side,
   runId,
 }: {
-  role: 'Output' | 'Input';
+  role: 'Produced →' | '→ Consumed';
+  logLabel: string;
   jobName: string;
   side: { shape: ArtifactShape | null; result: GateResult | null } | null;
   runId?: string;
@@ -83,7 +85,7 @@ function SideCard({
         </div>
       )}
       {!result && <p className="muted">This stage hasn&apos;t run yet — showing the expected shape only.</p>}
-      {runId && <p className="gate-card-foot"><a href={`/runs/${runId}`}>view {role.toLowerCase()} logs →</a></p>}
+      {runId && <p className="gate-card-foot"><a href={`/runs/${runId}`}>view {logLabel} logs →</a></p>}
     </div>
   );
 }
@@ -142,9 +144,9 @@ export default function GateDetail({
             <strong>{gate.producer}</strong> to <strong>{gate.consumer}</strong>.
           </p>
 
-          {/* Left-to-right flow: upstream OUTPUT → the gate (what it checks) → downstream INPUT */}
+          {/* Left-to-right flow: 'Produced →' → the gate (what it checks) → '→ Consumed' */}
           <div className="gate-flow">
-            <SideCard role="Output" jobName={gate.producer} side={inspect?.output ?? null} runId={producerRunId} />
+            <SideCard role="Produced →" logLabel="producer" jobName={gate.producer} side={inspect?.produced ?? null} runId={producerRunId} />
 
             <div className="gate-arrow" aria-hidden>→</div>
 
@@ -164,7 +166,7 @@ export default function GateDetail({
 
             <div className="gate-arrow" aria-hidden>→</div>
 
-            <SideCard role="Input" jobName={gate.consumer} side={inspect?.input ?? null} runId={gate.state === 'failed' ? undefined : consumerRunId} />
+            <SideCard role="→ Consumed" logLabel="consumer" jobName={gate.consumer} side={inspect?.consumed ?? null} runId={gate.state === 'failed' ? undefined : consumerRunId} />
           </div>
         </>
       )}
