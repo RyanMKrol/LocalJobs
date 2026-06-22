@@ -1392,7 +1392,7 @@
     {
       "id": "T056",
       "title": "Overview: workflow status pill links to that run",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
