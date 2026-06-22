@@ -2412,7 +2412,7 @@
     {
       "id": "T094",
       "title": "Build: workflow run-limits (input lineage + manual N-input cap)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T093"
       ],
