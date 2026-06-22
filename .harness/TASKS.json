@@ -1978,7 +1978,7 @@
     {
       "id": "T078",
       "title": "Backlog section headers: add an expand/collapse caret affordance",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
