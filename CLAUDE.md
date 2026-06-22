@@ -124,7 +124,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention |
 | `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled` |
 | `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection |
-| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, real-time progress roll-up |
+| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
@@ -208,7 +208,8 @@ load.
   story. No `console.log` (it still gets captured, but prefer `ctx`).
 - **Item-loop jobs report progress per item, not just at the end.** Any job that
   processes N items must call `ctx.progress(i/N*100)` and log an `i/N` line as it
-  finishes each one, so the run % advances live (and rolls up into the workflow)
+  finishes each one, so the job's own run % advances live (the workflow bar only
+  steps when the whole stage finishes — see the progress roll-up note below)
   instead of jumping 0→100 at the finish. Use a sensible denominator — the count
   it will actually attempt this run (e.g. `Math.min(todo.length, runLimit)`). The
   perfumes stages share `reportItemProgress(ctx, done, total, suffix?)` in
@@ -415,16 +416,19 @@ doubt, log it.
     reads `data/` files only — NEVER a paid/remote call — so it is safe to poll;
     keep any future contract `check()` cheap + side-effect-free for the same reason.
 - **Workflow progress is rolled up from member jobs (don't set it by hand).** A
-  workflow run's `progress` is a first-class roll-up: each member stage
-  contributes a fraction in [0,1] of the workflow's total stage count — a
-  terminal run counts as a full stage, a still-running member contributes its own
-  `progress`/100, a not-yet-started stage contributes 0. It updates in **real
-  time**: `setProgress` (the executor's per-member progress writer) calls
+  workflow run's `progress` is a first-class roll-up that counts **only completed
+  stages** over the workflow's total stage count — a member in a terminal state
+  contributes a full stage (1); a still-running or not-yet-started member
+  contributes 0 (**no partial credit** for in-flight work). So with N stages the
+  bar stays at 0% until the first stage finishes, then **steps in 100/N
+  increments** per completed stage (4 jobs → 0/25/50/75/100; 5 jobs →
+  0/20/…/100). `setProgress` (the executor's per-member progress writer) calls
   `rollUpWorkflowProgress` in `src/db/store.ts` whenever a workflow member emits
-  progress, so the workflow reflects in-flight work instead of a flat 0% or
-  coarse whole-stage steps. The denominator comes from the `workflow_jobs` table
-  (member count), so no new column is needed. Use `rollUpWorkflowProgress`, not
-  ad-hoc `setWorkflowProgress(settled/total)`, when surfacing workflow progress.
+  progress or settles, but a mid-run member's `progress` no longer moves the bar —
+  only crossing into a terminal state does. The denominator comes from the
+  `workflow_jobs` table (member count), so no new column is needed. Use
+  `rollUpWorkflowProgress`, not ad-hoc `setWorkflowProgress(settled/total)`, when
+  surfacing workflow progress.
 - **Job resources are job-local.** A job's input/output data lives in its own
   `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.

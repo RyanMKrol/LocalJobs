@@ -213,7 +213,8 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
 - **Workflow detail** — ▶ Run now, enable toggle, full run history
 - **Workflow run detail** — live framework logs, per-stage job outcomes and
   statuses, **grouped by stage with older cycles collapsed** (click to expand),
-  overall progress bar (rolled up in real time from member-job progress)
+  overall progress bar (counts completed stages only — stays at 0% until the
+  first member finishes, then steps in 100/N increments per completed stage)
 - **Job detail** — a **read-only member view**: timeout/retries, full run history,
   and per-job stuck items. A job has no schedule, enable toggle, instructions or
   run-now of its own (you run + enable its *workflow*). Reached via links from the

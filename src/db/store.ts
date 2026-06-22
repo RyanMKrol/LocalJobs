@@ -440,13 +440,14 @@ const TERMINAL_RUN_STATUSES = new Set<RunStatus>(['success', 'failed', 'timeout'
 
 /**
  * Roll up a workflow run's overall progress (0..100) from its member-job runs.
- * The denominator is the workflow's total stage count (its member jobs); each
- * stage contributes a completion fraction in [0,1] — a terminal run counts as a
- * full stage, a still-running run contributes its own `progress`/100, and a
- * stage with no run yet contributes 0. This is the first-class roll-up: it makes
- * a workflow report meaningful overall progress (e.g. mid-stage) instead of a
- * flat 0% or coarse whole-stage steps. Called in real time whenever a member
- * emits progress (via `setProgress`) or a stage settles.
+ * The denominator is the workflow's total stage count (its member jobs); progress
+ * counts ONLY completed stages — a member in a terminal state contributes a full
+ * stage (1), while a still-running or not-yet-started member contributes 0 (no
+ * partial credit for in-flight work). So with N stages the bar stays at 0% until
+ * the first stage finishes, then steps in 100/N increments per completed stage
+ * (e.g. 4 jobs -> 0/25/50/75/100). Called whenever a member settles (via
+ * `setProgress`) or a stage finishes; an in-flight member's mid-run progress no
+ * longer moves the bar.
  *
  * Pass `message` to also update `progress_msg`; omit it to refresh only the
  * percentage (keeps the last stage message intact). Returns the percentage
@@ -468,13 +469,13 @@ export function rollUpWorkflowProgress(workflowRunId: string, message?: string):
       AND rowid = (SELECT MAX(rowid) FROM runs
                    WHERE workflow_run_id = r.workflow_run_id AND job_name = r.job_name)
   `).all(workflowRunId) as { status: RunStatus; progress: number }[];
-  let fraction = 0;
+  // Count ONLY completed (terminal) stages — no partial credit for a member
+  // that is still running, so the bar steps in whole 100/N increments.
+  let completed = 0;
   for (const r of rows) {
-    fraction += TERMINAL_RUN_STATUSES.has(r.status)
-      ? 1
-      : Math.max(0, Math.min(100, r.progress)) / 100;
+    if (TERMINAL_RUN_STATUSES.has(r.status)) completed += 1;
   }
-  const pct = Math.max(0, Math.min(100, (fraction / total) * 100));
+  const pct = Math.max(0, Math.min(100, (completed / total) * 100));
   if (message === undefined) {
     db.prepare('UPDATE workflow_runs SET progress = ? WHERE id = ?').run(Math.round(pct), workflowRunId);
   } else {

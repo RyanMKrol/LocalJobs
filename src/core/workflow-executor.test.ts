@@ -92,7 +92,7 @@ try {
     assert.ok(memberRuns.every((r) => r.status === 'success'));
   });
 
-  await test('progress roll-up: workflow % is computed from member progress over the total stage count, in real time', async () => {
+  await test('progress roll-up: workflow % counts only completed stages over the total stage count (no in-flight partial credit)', async () => {
     // Four independent stages → denominator 4. We drive member runs directly
     // (no spawn) to assert the roll-up math across mixed stage states.
     const def: WorkflowDefinition = {
@@ -109,16 +109,15 @@ try {
     finishRun(aRun, 'success', { exitCode: 0 });
     assert.equal(rollUpWorkflowProgress(prid), 25);
 
-    // Stage ru-b starts and reports 50% — setProgress rolls it up in real time:
-    // (1 + 0.5) / 4 = 37.5% → 38 (no explicit rollUp call needed).
+    // Stage ru-b starts and reports 50% — an in-flight member earns NO partial
+    // credit, so the bar stays at 25% (only ru-a has completed).
     const bRun = createRun('ru-b', 'workflow', 1, prid);
     createRun('ru-c', 'workflow', 1, prid); // ru-c running at 0% contributes nothing
     setProgress(bRun, 50, 'halfway');
-    assert.equal(getWorkflowRun(prid)?.progress, 38, 'mid-stage member progress rolled up live');
+    assert.equal(getWorkflowRun(prid)?.progress, 25, 'mid-stage member progress does NOT move the bar');
 
-    // ru-b finishes its work (100%) → (1 + 1) / 4 = 50%; ru-d never started (0).
-    setProgress(bRun, 100, 'done');
-    assert.equal(getWorkflowRun(prid)?.progress, 50);
+    // ru-b finishes (terminal) → 2/4 = 50% (a whole-stage step); ru-d never started.
+    finishRun(bRun, 'success', { exitCode: 0 });
     assert.equal(rollUpWorkflowProgress(prid), 50);
   });
 

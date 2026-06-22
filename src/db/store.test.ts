@@ -7,7 +7,7 @@ import {
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   ignoreWorkItem, ignoredItems, isWorkItemDone,
   listRunsForWorkflowRun, listServices, markWorkItem, orphanedWorkItems, workflowRetryableCount,
-  pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage,
+  pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, usageThisMonth,
 } from './store.js';
@@ -61,6 +61,34 @@ assert.equal(tryReserveMinInterval('t-mi', 10_000), true); // no prior call
 assert.equal(tryReserveMinInterval('t-mi', 10_000), false); // <10s since last call
 
 console.log('  ✓ store workflow + service helpers');
+
+// ── rollUpWorkflowProgress: completed-stage stepping, no in-flight partial credit (T081) ──
+// Four-stage workflow → denominator 4. Progress counts ONLY terminal members:
+// the bar stays at 0% until the first stage finishes, then steps in 100/4 = 25.
+syncWorkflow({ name: 't-rollup', jobs: [{ job: 't-a' }, { job: 't-b' }, { job: 't-c' }, { job: 't-d' }] });
+syncJob({ name: 't-d', run: async () => {} });
+const rp = createWorkflowRun('t-rollup', 'manual');
+assert.equal(rollUpWorkflowProgress(rp), 0, 'no member runs yet → 0%');
+
+const ra = createRun('t-a', 'workflow', 1, rp);
+finishRun(ra, 'success', { exitCode: 0 });
+assert.equal(rollUpWorkflowProgress(rp), 25, 'one completed stage → 25%');
+
+// An in-flight member at 50% earns NO partial credit — the bar stays at 25%.
+const rb = createRun('t-b', 'workflow', 1, rp);
+createRun('t-c', 'workflow', 1, rp); // running at 0% contributes nothing
+setProgress(rb, 50, 'halfway');
+assert.equal(getWorkflowRun(rp)?.progress, 25, 'in-flight member does not move the bar');
+
+// t-b reaching a terminal state steps the bar a whole stage → 2/4 = 50%.
+finishRun(rb, 'success', { exitCode: 0 });
+assert.equal(rollUpWorkflowProgress(rp), 50, 'second completed stage → 50%');
+
+// A failed member is also terminal → still counts as a completed stage (3/4 = 75%).
+const rc = createRun('t-c', 'workflow', 2, rp);
+finishRun(rc, 'failed', { exitCode: 1 });
+assert.equal(rollUpWorkflowProgress(rp), 75, 'failed member is terminal → counts toward stepping');
+console.log('  ✓ rollUpWorkflowProgress: completed-stage stepping, no in-flight partial credit');
 
 // ── backfillServiceUsage: idempotent top-up from job_usage → service_usage (T013) ──
 // Simulate the pre-migration state: a job that metered onto job_usage but whose
