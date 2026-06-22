@@ -106,20 +106,22 @@ tbody tr:hover { background: var(--panel-2); }
 .badge.passed { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 
 /* workflow DAG */
-.dag { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 18px; }
+.dag { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 18px; }
 .dag-wave { display: flex; flex-direction: column; gap: 10px; }
-.dag-node { min-width: 156px; padding: 10px 12px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--border); }
+/* boxed card nodes with a left accent bar for status — NOT whole-card tinting */
+.dag-node { min-width: 156px; padding: 10px 12px 10px 14px; border-radius: 9px; background: var(--panel); border: 1px solid var(--border); border-left-width: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: border-color .15s, box-shadow .15s; }
 .dag-node-name { font-weight: 600; font-size: 13px; color: var(--text); }
 .dag-node-status { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
-.dag-node.success { border-color: rgba(63,185,80,.5); }
-.dag-node.running { border-color: rgba(88,166,255,.6); box-shadow: 0 0 0 1px rgba(88,166,255,.3); }
-.dag-node.failed, .dag-node.timeout { border-color: rgba(248,81,73,.5); }
+/* status accent: coloured left bar only */
+.dag-node.success { border-left-color: var(--green); }
+.dag-node.running { border-left-color: var(--accent); box-shadow: 0 0 0 1px rgba(88,166,255,.2), 0 1px 3px rgba(0,0,0,.3); }
+.dag-node.failed, .dag-node.timeout { border-left-color: var(--red); }
 .dag-node.skipped { opacity: .55; }
 .dag-node.success .dag-node-status { color: var(--green); }
 .dag-node.running .dag-node-status { color: var(--accent); }
 .dag-node.failed .dag-node-status, .dag-node.timeout .dag-node-status { color: var(--red); }
-.dag-arrow { color: var(--grey); font-size: 22px; }
-a:hover .dag-node { border-color: var(--accent); }
+.dag-arrow { color: var(--grey); font-size: 22px; display: flex; align-items: center; }
+a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent); box-shadow: 0 0 0 1px rgba(88,166,255,.2), 0 1px 3px rgba(0,0,0,.3); }
 .dag-gates { display: flex; flex-direction: column; gap: 4px; margin-top: 5px; }
 .dag-gate { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); text-decoration: none; letter-spacing: .02em; }
 .dag-gate.passed { border-color: rgba(63,185,80,.45); color: var(--green); }
@@ -128,12 +130,12 @@ a:hover .dag-node { border-color: var(--accent); }
 a.dag-gate:hover { border-color: var(--accent); }
 a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.22); }
 /* backlog dag node states */
-.dag-node.done { border-color: rgba(63,185,80,.5); }
+.dag-node.done { border-left-color: var(--green); }
 .dag-node.done .dag-node-status { color: var(--green); }
-.dag-node.needs-human { border-color: rgba(88,166,255,.5); }
+.dag-node.needs-human { border-left-color: var(--accent); }
 .dag-node.needs-human .dag-node-status { color: var(--accent); }
-.dag-node.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,.35); }
-button.dag-node:hover { border-color: var(--accent); }
+.dag-node.selected { border-color: var(--accent); border-left-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,.35); }
+button.dag-node:hover { border-color: var(--accent); border-left-color: var(--accent); }
 /* backlog dag scroll wrapper */
 .backlog-dag-scroll { overflow-x: auto; flex-wrap: nowrap; }
 /* collapsible section heading (used on /backlog for all three sections) */
