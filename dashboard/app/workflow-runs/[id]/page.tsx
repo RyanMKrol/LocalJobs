@@ -38,7 +38,7 @@ function GatePanel({ id, gates }: { id: string; gates: GateStatus[] }) {
                 </td>
                 <td className="muted">{g.description ?? <span className="mono">no contract description</span>}</td>
                 <td>
-                  <a href={`/workflow-runs/${id}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`}>
+                  <a style={{ whiteSpace: 'nowrap' }} href={`/workflow-runs/${id}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`}>
                     detail →
                   </a>
                 </td>
