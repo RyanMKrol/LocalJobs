@@ -18,7 +18,7 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
   // Back to where we came from (?from=), else: the parent workflow run (shown by id),
   // else the job this run belongs to.
   const back = backFrom(fromParam, run?.workflow_run_id
-    ? { href: `/workflow-runs/${run.workflow_run_id}`, label: `workflow run ${run.workflow_run_id}` }
+    ? { href: `/workflow-runs/${run.workflow_run_id}`, label: `#${run.workflow_run_id}` }
     : run
     ? { href: `/jobs/${run.job_name}`, label: run.job_name }
     : { href: '/', label: 'back' });

@@ -56,7 +56,7 @@ export function backFrom(
 ): { href: string; label: string } {
   if (!from || !from.startsWith('/')) return fallback;
   const segs = from.split('?')[0].split('/').filter(Boolean);
-  if (segs[0] === 'workflow-runs' && segs[1]) return { href: from, label: `workflow run ${segs[1]}` };
+  if (segs[0] === 'workflow-runs' && segs[1]) return { href: from, label: `#${segs[1]}` };
   if ((segs[0] === 'workflows' || segs[0] === 'jobs') && segs[1]) return { href: from, label: decodeURIComponent(segs[1]) };
   return fallback;
 }
