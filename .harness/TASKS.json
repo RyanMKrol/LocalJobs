@@ -2111,7 +2111,7 @@
     {
       "id": "T083",
       "title": "Run page: use the job name as the header instead of generic 'Run'",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
