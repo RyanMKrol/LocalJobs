@@ -17,7 +17,7 @@ function test(name: string, fn: () => void) {
 }
 
 test('plain ASCII passes through unchanged', () => {
-  assert.equal(sanitizeHeader('places-pipeline'), 'places-pipeline');
+  assert.equal(sanitizeHeader('places-workflow'), 'places-workflow');
   assert.equal(sanitizeHeader('demo job - failed'), 'demo job - failed');
 });
 

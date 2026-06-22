@@ -8,7 +8,7 @@ import { StatusBadge, backFrom, fmtDuration, fmtRelative, fmtTime, usePoll } fro
 export default function JobDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const [busy, setBusy] = useState(false);
-  const back = backFrom(useSearchParams().get('from'), { href: '/pipelines', label: 'Pipelines' });
+  const back = backFrom(useSearchParams().get('from'), { href: '/workflows', label: 'Workflows' });
 
   const { data: jobData } = usePoll(() => api.job(name), 3000, [name]);
   const { data: runsData } = usePoll(() => api.jobRuns(name), 2000, [name]);

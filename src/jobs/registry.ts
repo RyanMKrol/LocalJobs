@@ -3,24 +3,24 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildDag, DagError } from '../core/dag.js';
 import { registerService } from '../core/services.js';
-import type { JobDefinition, PipelineDefinition, ServiceDefinition } from '../core/types.js';
+import type { JobDefinition, WorkflowDefinition, ServiceDefinition } from '../core/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Auto-discover units of work under this folder (including subfolders):
  *   *.job.ts       → a JobDefinition (the unit of work)
- *   *.pipeline.ts  → a PipelineDefinition (a DAG composing jobs)
+ *   *.workflow.ts  → a WorkflowDefinition (a DAG composing jobs)
  *   *.service.ts   → a ServiceDefinition (a shared rate-limited dependency)
  * Dropping a file in is all that's needed — no edit to this file.
  *
  * Privacy: top-level `*.job.ts` files are gitignored. The `places/` and
- * `perfumes/` pipeline subfolders are tracked as public examples; any new private
- * pipeline lives in its own gitignored subfolder. Discovery is by filesystem walk,
+ * `perfumes/` workflow subfolders are tracked as public examples; any new private
+ * workflow lives in its own gitignored subfolder. Discovery is by filesystem walk,
  * so this registry never names private jobs in the public repo.
  */
 const isJobFile = (f: string) => f.endsWith('.job.ts') || f.endsWith('.job.js');
-const isPipelineFile = (f: string) => f.endsWith('.pipeline.ts') || f.endsWith('.pipeline.js');
+const isWorkflowFile = (f: string) => f.endsWith('.workflow.ts') || f.endsWith('.workflow.js');
 const isServiceFile = (f: string) => f.endsWith('.service.ts') || f.endsWith('.service.js');
 
 function findFiles(dir: string, pred: (f: string) => boolean): string[] {
@@ -68,74 +68,74 @@ export function getServiceDefinition(name: string): ServiceDefinition | undefine
   return services.find((s) => s.name === name);
 }
 
-// ──────────────────────────────── pipelines ────────────────────────────────
+// ──────────────────────────────── workflows ────────────────────────────────
 const jobNameSet = new Set(jobs.map((j) => j.name));
-const loadedPipelines: PipelineDefinition[] = [];
-const seenPipelineNames = new Set<string>();
+const loadedWorkflows: WorkflowDefinition[] = [];
+const seenWorkflowNames = new Set<string>();
 
-for (const file of findFiles(__dirname, isPipelineFile).sort()) {
-  const def = await loadDefault<PipelineDefinition>(file);
+for (const file of findFiles(__dirname, isWorkflowFile).sort()) {
+  const def = await loadDefault<WorkflowDefinition>(file);
   if (!def || typeof def.name !== 'string' || !Array.isArray(def.jobs)) {
-    console.warn(`[registry] ${file} has no valid default PipelineDefinition export — skipped`);
+    console.warn(`[registry] ${file} has no valid default WorkflowDefinition export — skipped`);
     continue;
   }
-  const err = validatePipeline(def, jobNameSet, seenPipelineNames);
+  const err = validateWorkflow(def, jobNameSet, seenWorkflowNames);
   if (err) {
-    console.warn(`[registry] pipeline "${def.name}" (${file}) is invalid — skipped: ${err}`);
+    console.warn(`[registry] workflow "${def.name}" (${file}) is invalid — skipped: ${err}`);
     continue;
   }
-  seenPipelineNames.add(def.name);
-  loadedPipelines.push(def);
+  seenWorkflowNames.add(def.name);
+  loadedWorkflows.push(def);
 }
 
-export const pipelines: PipelineDefinition[] = loadedPipelines;
+export const workflows: WorkflowDefinition[] = loadedWorkflows;
 
-export function getPipelineDefinition(name: string): PipelineDefinition | undefined {
-  return pipelines.find((p) => p.name === name);
+export function getWorkflowDefinition(name: string): WorkflowDefinition | undefined {
+  return workflows.find((p) => p.name === name);
 }
 
-/** Union of every member job name across all valid pipelines. Every job MUST be a
+/** Union of every member job name across all valid workflows. Every job MUST be a
  *  member — there are no standalone jobs — so this is also the set of all runnable
  *  jobs the scheduler considers. */
 export function memberJobNames(): Set<string> {
   const set = new Set<string>();
-  for (const p of pipelines) for (const ref of p.jobs) set.add(ref.job);
+  for (const p of workflows) for (const ref of p.jobs) set.add(ref.job);
   return set;
 }
 
 /**
- * Job names that belong to NO pipeline. There are no standalone jobs in this
- * framework: every job must be declared in a `*.pipeline.ts` manifest (a single
- * job is a one-stage pipeline with its own manifest — there is no implicit
+ * Job names that belong to NO workflow. There are no standalone jobs in this
+ * framework: every job must be declared in a `*.workflow.ts` manifest (a single
+ * job is a one-stage workflow with its own manifest — there is no implicit
  * wrapping). A non-empty result is therefore a configuration error. Pure +
  * exported so it can be unit-tested without importing the live registry.
  */
 export function orphanJobNames(
   jobDefs: ReadonlyArray<{ name: string }>,
-  pipelineDefs: ReadonlyArray<{ jobs: ReadonlyArray<{ job: string }> }>,
+  workflowDefs: ReadonlyArray<{ jobs: ReadonlyArray<{ job: string }> }>,
 ): string[] {
   const members = new Set<string>();
-  for (const p of pipelineDefs) for (const ref of p.jobs) members.add(ref.job);
+  for (const p of workflowDefs) for (const ref of p.jobs) members.add(ref.job);
   return jobDefs.filter((j) => !members.has(j.name)).map((j) => j.name);
 }
 
-// Fail LOUD at load if any discovered job belongs to no pipeline. A job with no
+// Fail LOUD at load if any discovered job belongs to no workflow. A job with no
 // manifest is a config error — better to refuse to start than to silently host an
 // orphan that can never be scheduled or composed.
-const orphans = orphanJobNames(jobs, pipelines);
+const orphans = orphanJobNames(jobs, workflows);
 if (orphans.length > 0) {
   throw new Error(
-    `[registry] standalone jobs are not allowed — every job must be declared in a *.pipeline.ts manifest ` +
-      `(a single job = a one-stage pipeline). Orphaned job(s) with no pipeline: ${orphans.join(', ')}`,
+    `[registry] standalone jobs are not allowed — every job must be declared in a *.workflow.ts manifest ` +
+      `(a single job = a one-stage workflow). Orphaned job(s) with no workflow: ${orphans.join(', ')}`,
   );
 }
 
-function validatePipeline(
-  def: PipelineDefinition,
+function validateWorkflow(
+  def: WorkflowDefinition,
   jobNames: Set<string>,
   seenNames: Set<string>,
 ): string | null {
-  if (seenNames.has(def.name)) return `duplicate pipeline name "${def.name}"`;
+  if (seenNames.has(def.name)) return `duplicate workflow name "${def.name}"`;
   if (jobNames.has(def.name)) return `name collides with a job named "${def.name}"`;
   if (def.jobs.length === 0) return 'has no member jobs';
   for (const ref of def.jobs) {

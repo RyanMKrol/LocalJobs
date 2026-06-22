@@ -20,15 +20,15 @@ export interface RunResult {
 }
 
 /**
- * The attempt+retry loop, shared by the standalone and pipeline paths. Creates a
- * run row per attempt (optionally linked to a pipeline run), spawns the child,
+ * The attempt+retry loop, shared by the standalone and workflow paths. Creates a
+ * run row per attempt (optionally linked to a workflow run), spawns the child,
  * retries up to the job's maxRetries, and returns the final run id + status.
  * Does NOT notify or check overlap — the callers own those policies.
  */
 async function runAttempts(
   def: JobDefinition,
   trigger: RunTrigger,
-  pipelineRunId: string | null,
+  workflowRunId: string | null,
 ): Promise<{ runId: string | null; status: RunStatus }> {
   const jobRow = getJob(def.name);
   const timeoutMs = jobRow?.timeout_ms ?? def.timeoutMs ?? 0;
@@ -36,7 +36,7 @@ async function runAttempts(
 
   let lastRunId: string | null = null;
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-    const runId = createRun(def.name, trigger, attempt, pipelineRunId);
+    const runId = createRun(def.name, trigger, attempt, workflowRunId);
     lastRunId = runId;
     const outcome = await executeAttempt(def.name, runId, timeoutMs);
 
@@ -69,21 +69,21 @@ export async function runJob(def: JobDefinition, trigger: RunTrigger): Promise<R
 }
 
 /**
- * Run a job as a member of a pipeline: its run row links to the pipeline run and
- * the per-job notification is SUPPRESSED (the pipeline sends stage notifications
+ * Run a job as a member of a workflow: its run row links to the workflow run and
+ * the per-job notification is SUPPRESSED (the workflow sends stage notifications
  * instead). Returns the final status. If a standalone run of this job is already
  * active, it is recorded as 'skipped' (idempotency means the standalone run will
- * cover the work, and the next pipeline run resumes anything outstanding).
+ * cover the work, and the next workflow run resumes anything outstanding).
  */
-export async function runJobForPipeline(
+export async function runJobForWorkflow(
   def: JobDefinition,
-  pipelineRunId: string,
+  workflowRunId: string,
 ): Promise<{ runId: string | null; status: RunStatus }> {
   if (hasActiveRun(def.name)) {
-    const runId = recordSkippedRun(def.name, pipelineRunId, 'skipped: a standalone run of this job is already active');
+    const runId = recordSkippedRun(def.name, workflowRunId, 'skipped: a standalone run of this job is already active');
     return { runId, status: 'skipped' };
   }
-  return runAttempts(def, 'pipeline', pipelineRunId);
+  return runAttempts(def, 'workflow', workflowRunId);
 }
 
 interface AttemptOutcome {

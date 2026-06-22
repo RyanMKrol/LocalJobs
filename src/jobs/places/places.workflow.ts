@@ -1,7 +1,7 @@
-import type { PipelineDefinition } from '../../core/types.js';
+import type { WorkflowDefinition } from '../../core/types.js';
 
 /**
- * The places pipeline as a first-class DAG:
+ * The places workflow as a first-class DAG:
  *   ingest → resolve (CID → place_id) → enrich (Places API) → enrich-with-llm (Gemini)
  * Each stage feeds the next via files in data/out + the work_items ledger.
  *
@@ -12,11 +12,11 @@ import type { PipelineDefinition } from '../../core/types.js';
  * items are picked up on the next run (idempotent via the ledger).
  *
  * Runs DAILY at 03:00 (the old per-job crons are suppressed now that these jobs
- * are pipeline members). The cost of the paid stages is bounded by the per-stage
+ * are workflow members). The cost of the paid stages is bounded by the per-stage
  * daily spend cap (= monthly free allowance / 30, see config.ts DAILY_SPEND_DIVISOR),
  * so a daily run drains the backlog steadily and can never blow the month.
  */
-const pipeline: PipelineDefinition = {
+const workflow: WorkflowDefinition = {
   name: 'places',
   description: 'Ingest Takeout → resolve CID→place_id → enrich (Places API) → enrich with LLM (Gemini).',
   schedule: '0 3 * * *',
@@ -30,4 +30,4 @@ const pipeline: PipelineDefinition = {
   ],
 };
 
-export default pipeline;
+export default workflow;

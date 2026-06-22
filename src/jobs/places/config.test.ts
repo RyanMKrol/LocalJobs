@@ -1,14 +1,14 @@
-// Regression guard for T012: the places pipeline runs on a DAILY cron, and each
+// Regression guard for T012: the places workflow runs on a DAILY cron, and each
 // paid stage's daily spend cap is the monthly free allowance / 30 — so a full
 // month of daily runs can never exceed the monthly cap. Runs against the scratch
 // DB set by `npm test` (LOCALJOBS_DB). Self-asserting: throws on failure.
 import assert from 'node:assert/strict';
 import { capStatus, recordUsage } from '../../db/store.js';
 import { DAILY_SPEND_DIVISOR, enrichConfig, llmConfig } from './config.js';
-import pipeline from './places.pipeline.js';
+import workflow from './places.workflow.js';
 
-// 1. The pipeline is no longer manual-only — it runs daily at 03:00.
-assert.equal(pipeline.schedule, '0 3 * * *', 'places pipeline must run on a daily cron, not manual-only');
+// 1. The workflow is no longer manual-only — it runs daily at 03:00.
+assert.equal(workflow.schedule, '0 3 * * *', 'places workflow must run on a daily cron, not manual-only');
 
 // 2. Daily caps derive from the monthly free allowance / 30 (env-overridable).
 assert.equal(DAILY_SPEND_DIVISOR, 30);

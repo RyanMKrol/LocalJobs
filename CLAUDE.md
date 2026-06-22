@@ -56,7 +56,7 @@ This repo is **public**. Two hard rules:
 2. **Never commit private jobs.** The framework is public; the owner's actual
    jobs are not. Top-level `src/jobs/*.job.ts` files are gitignored. The `places/`
    and `perfumes/` subfolders are tracked as published examples — any new private
-   pipeline should live in its own subfolder added to `.gitignore`. Do not
+   workflow should live in its own subfolder added to `.gitignore`. Do not
    force-add private files.
 
 Before any commit: `git status` and confirm no `.env`, no real `*.job.ts`, and
@@ -68,10 +68,10 @@ and tell the user.
 `local-jobs` is a self-hosted job orchestrator + dashboard that runs on an
 always-on **Mac Mini**. Its purpose is to host **long-running / headless local
 work** that doesn't fit serverless or a web request. The repo ships two
-worked-example pipelines: **places** (headless CID→place_id resolution → Google
+worked-example workflows: **places** (headless CID→place_id resolution → Google
 Places API enrichment → Gemini LLM summaries, writing enriched JSON + markdown
 profiles to local files) and **perfumes** (Fragrantica scrape → headless Chrome
-fetch → parse → Claude CLI profile build). Private pipelines are added as
+fetch → parse → Claude CLI profile build). Private workflows are added as
 gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
@@ -82,7 +82,7 @@ queues, or cloud infra unless explicitly asked.
 
 ```
 launchd ──keeps alive──▶ daemon (src/daemon.ts)
-                            │  scheduler (croner) ──schedules──▶ pipeline-executor
+                            │  scheduler (croner) ──schedules──▶ workflow-executor
                             │  HTTP API on :4789                  (orchestrates member
                             │  (manual run ─┐                      jobs in DAG order)
                             │   ─▶ executor)│                            │
@@ -97,17 +97,17 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 ```
 
 - **The daemon is the only long-lived process.** launchd keeps ONE daemon
-  alive; the daemon schedules ALL pipelines internally (and pipelines drive their
+  alive; the daemon schedules ALL workflows internally (and workflows drive their
   member jobs). Never create one launchd agent per job.
 - **Each job runs in an isolated child process** so a hang/crash can't take down
   the daemon, and timeouts can hard-kill it (SIGTERM→SIGKILL).
-- **Pipelines compose jobs into a DAG — and EVERY job belongs to one.** There are
-  no standalone jobs: a lone job is just a one-stage pipeline with its own manifest.
-  The pipeline owns scheduling + the enable toggle; it drives its member jobs. A job
-  discovered with no `*.pipeline.ts` manifest is a config error and the registry
-  **fails loud at load** (the daemon refuses to start). The pipeline executor runs
+- **Workflows compose jobs into a DAG — and EVERY job belongs to one.** There are
+  no standalone jobs: a lone job is just a one-stage workflow with its own manifest.
+  The workflow owns scheduling + the enable toggle; it drives its member jobs. A job
+  discovered with no `*.workflow.ts` manifest is a config error and the registry
+  **fails loud at load** (the daemon refuses to start). The workflow executor runs
   member jobs in topological order (respecting `dependsOn` edges and bounded
-  parallelism) via the same executor. A pipeline run is a first-class DB record
+  parallelism) via the same executor. A workflow run is a first-class DB record
   distinct from each member job's own run.
 - **The child only emits events; the parent (executor) is the sole DB writer.**
 - **The dashboard is a pure read/refresh client of the API.** It never touches
@@ -118,22 +118,22 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | Path | Responsibility |
 |---|---|
 | `src/config.ts` | Env-driven config: ports, bind host, CORS allowlist, auth token, db path, ntfy, shared Chrome profile dir |
-| `src/daemon.ts` | Long-lived entrypoint: sync jobs + pipelines, reap orphans, start scheduler + API |
+| `src/daemon.ts` | Long-lived entrypoint: sync jobs + workflows, reap orphans, start scheduler + API |
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
-| `src/core/types.ts` | `JobDefinition`, `PipelineDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
+| `src/core/types.ts` | `JobDefinition`, `WorkflowDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention |
-| `src/core/scheduler.ts` | croner triggers for scheduled **pipelines** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled` |
-| `src/core/dag.ts` | Pipeline DAG: build + validate topological order, cycle detection |
-| `src/core/pipeline-executor.ts` | Orchestrate a pipeline run: member jobs in DAG order, stage gates, retries, real-time progress roll-up |
+| `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled` |
+| `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection |
+| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, real-time progress roll-up |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
-| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items`, `job_usage`, `pipelines`, `pipeline_jobs`, `pipeline_runs`, `pipeline_run_logs`, `services`, `service_usage` |
+| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items`, `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs`, `workflow_run_logs`, `services`, `service_usage` |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
-| `src/jobs/registry.ts` | Auto-discovers `*.job.ts`, `*.pipeline.ts`, and `*.service.ts` files (no manual registration); fails loud if any job belongs to no pipeline (`orphanJobNames`) |
+| `src/jobs/registry.ts` | Auto-discovers `*.job.ts`, `*.workflow.ts`, and `*.service.ts` files (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
 | `src/jobs/*.job.ts` | One job per file, default-exporting a `JobDefinition` (root-level files gitignored; subfolder jobs in `places/`+`perfumes/` are tracked) |
-| `src/jobs/*.pipeline.ts` | Pipeline manifests, default-exporting a `PipelineDefinition` (DAG of jobs) |
+| `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs) |
 | `src/jobs/*.service.ts` | Service definitions, default-exporting a `ServiceDefinition` (shared rate-limited dependencies) |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
 | `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`) |
@@ -141,9 +141,9 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 
 ## How to add a job (the common request)
 
-**Every job must belong to a pipeline** — there are no standalone jobs. A lone job
-is a one-stage pipeline with its own `*.pipeline.ts` manifest (no implicit
-wrapping). The pipeline owns the `schedule`; a job with no manifest fails loud at
+**Every job must belong to a workflow** — there are no standalone jobs. A lone job
+is a one-stage workflow with its own `*.workflow.ts` manifest (no implicit
+wrapping). The workflow owns the `schedule`; a job with no manifest fails loud at
 load.
 
 1. Create `src/jobs/<name>.job.ts`:
@@ -164,33 +164,33 @@ load.
    };
    export default job;
    ```
-   (A job's own `schedule` field is ignored — scheduling lives on the pipeline.)
-2. Declare it in a `*.pipeline.ts` manifest — a one-stage pipeline for a lone job;
-   the pipeline carries the cron `schedule` (or `null` for manual-only):
+   (A job's own `schedule` field is ignored — scheduling lives on the workflow.)
+2. Declare it in a `*.workflow.ts` manifest — a one-stage workflow for a lone job;
+   the workflow carries the cron `schedule` (or `null` for manual-only):
    ```ts
-   import type { PipelineDefinition } from '../core/types.js';
+   import type { WorkflowDefinition } from '../core/types.js';
 
-   const pipeline: PipelineDefinition = {
+   const workflow: WorkflowDefinition = {
      name: 'unique-name',           // distinct from every job name
      description: 'what it does',
      schedule: '0 3 * * *',         // croner cron, or null for manual-only
      jobs: [{ job: 'unique-name' }],
    };
-   export default pipeline;
+   export default workflow;
    ```
-3. That's it for wiring — jobs and pipelines are **auto-discovered** by filename
-   glob (`*.job.ts` / `*.pipeline.ts`). There is **no registry to edit**.
+3. That's it for wiring — jobs and workflows are **auto-discovered** by filename
+   glob (`*.job.ts` / `*.workflow.ts`). There is **no registry to edit**.
 4. Tell the user to restart the daemon (jobs are loaded at startup):
    `launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs`
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/jobs/*.job.ts` files are gitignored. The
-> public repo ships the `places/` and `perfumes/` subfolder pipelines as
+> public repo ships the `places/` and `perfumes/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
 >
-> For a **new private multi-file pipeline**, create `src/jobs/<name>/` and add the
+> For a **new private multi-file workflow**, create `src/jobs/<name>/` and add the
 > line `src/jobs/<name>/` to `.gitignore`. Jobs are discovered **recursively**,
 > so a `*.job.ts` inside that folder is picked up automatically while its helper
 > modules stay private too.
@@ -202,7 +202,7 @@ load.
   story. No `console.log` (it still gets captured, but prefer `ctx`).
 - **Item-loop jobs report progress per item, not just at the end.** Any job that
   processes N items must call `ctx.progress(i/N*100)` and log an `i/N` line as it
-  finishes each one, so the run % advances live (and rolls up into the pipeline)
+  finishes each one, so the run % advances live (and rolls up into the workflow)
   instead of jumping 0→100 at the finish. Use a sensible denominator — the count
   it will actually attempt this run (e.g. `Math.min(todo.length, runLimit)`). The
   perfumes stages share `reportItemProgress(ctx, done, total, suffix?)` in
@@ -234,19 +234,19 @@ doubt, log it.
 ## Conventions
 - TypeScript, ESM, **NodeNext** — always use `.js` extensions in relative
   imports (e.g. `import { x } from './foo.js'`), even for `.ts` files.
-- **Every job belongs to a pipeline — no standalone jobs.** A job must be a member
-  of a pipeline declared in a `*.pipeline.ts` manifest (a lone job = a one-stage
-  pipeline with its own manifest; there is no implicit wrapping). The pipeline owns
+- **Every job belongs to a workflow — no standalone jobs.** A job must be a member
+  of a workflow declared in a `*.workflow.ts` manifest (a lone job = a one-stage
+  workflow with its own manifest; there is no implicit wrapping). The workflow owns
   scheduling + the enable toggle and drives its members — a job never gets its own
   cron. The registry enforces this at load via `orphanJobNames` and **throws** (the
-  daemon refuses to start) if any discovered job has no pipeline. When you add a
+  daemon refuses to start) if any discovered job has no workflow. When you add a
   job, add its manifest in the same change.
 - All SQL goes through `src/db/store.ts`. Don't scatter `db.prepare` calls.
 - **Idempotency — per-item work ledger (the standard).** For jobs that process
   many items, record each item's outcome in the `work_items` SQLite table via
   `src/db/store.ts` (`isWorkItemDone`, `markWorkItem`, `workItemCounts`), keyed by
   `(jobName, itemKey)`. Re-runs skip items already done (success, manually
-  `ignored`, or failed past `maxAttempts`) so work is never reprocessed. The whole places pipeline uses this
+  `ignored`, or failed past `maxAttempts`) so work is never reprocessed. The whole places workflow uses this
   (resolver by CID, enrich + LLM by place_id); the rich output still goes to the
   job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
   "skip if it's in the JSON file" checks.
@@ -273,8 +273,8 @@ doubt, log it.
     an ignored item drops off the stuck list, is **never counted as stuck**, is
     never reprocessed or resurrected by a re-run (`isWorkItemDone` treats
     `ignored` as done), and surfaces ONLY on the overview's **Ignored** tile
-    (`GET /api/ignored`, `ignoredItems`) — not on the pipelines tab or
-    pipeline/job detail. Both controls act ONLY on a currently-`failed` row and
+    (`GET /api/ignored`, `ignoredItems`) — not on the workflows tab or
+    workflow/job detail. Both controls act ONLY on a currently-`failed` row and
     are **never automatic** — nothing in the run/schedule path ignores anything.
     (DB note: the legacy `dismissed` status is migrated to `ignored` on startup
     in `src/db/index.ts`.)
@@ -283,9 +283,9 @@ doubt, log it.
   (`recordUsage`, `capStatus`). Call `recordUsage(jobName)` once per real action;
   check `capStatus(jobName, dailyCap, monthlyCap)` in the loop and stop gracefully
   when `!allowed`. Convention: daily cap = monthly cap / 10 (so manual re-runs
-  don't blow the month) — but a **daily-scheduled** job/pipeline must use daily =
+  don't blow the month) — but a **daily-scheduled** job/workflow must use daily =
   monthly / 30, so a full month of daily runs exactly fits the monthly ceiling and
-  a single day's run can never blow it (see the places pipeline's
+  a single day's run can never blow it (see the places workflow's
   `DAILY_SPEND_DIVISOR`). Caps live in the job's config, env-overridable.
   **One governor only:** if a paid call already goes through a shared **service**
   (below), the service quota is the SINGLE source of truth — do NOT also stack a
@@ -337,11 +337,11 @@ doubt, log it.
   jobs should use it via `perfumesConfig.profileDir` / `defaultChromeProfileDir`
   rather than defining a job-local path — one shared, warmed, trusted profile
   means any job benefits from cookies accumulated by others.
-- **Validation gates between pipeline stages (typed artifacts).** A job may
+- **Validation gates between workflow stages (typed artifacts).** A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
-  (`{ key, description?, check() }`) in `src/core/types.ts`. For every pipeline
+  (`{ key, description?, check() }`) in `src/core/types.ts`. For every workflow
   **edge** where the upstream `produces` a key the downstream `consumes`, the
-  pipeline executor runs both contracts' `check()` at that boundary — producer
+  workflow executor runs both contracts' `check()` at that boundary — producer
   side (output well-formed) right before, consumer side (input acceptable) — and
   a `check` returning `ok:false` (or throwing) is a **gate violation**: the
   consumer never spawns, a first-class **failed** run is recorded
@@ -353,34 +353,34 @@ doubt, log it.
   page) and return precise per-drift `violations`. Gate derivation
   (`deriveGates`) lives in `src/core/dag.ts` (pure, edge-scoped — a consumed key
   with no producing upstream is an external input, not a gate); enforcement lives
-  in `src/core/pipeline-executor.ts`. Both example pipelines declare these: the
+  in `src/core/workflow-executor.ts`. Both example workflows declare these: the
   contracts live in `src/jobs/places/contracts.ts` and
   `src/jobs/perfumes/contracts.ts` as small **factory functions** (each takes an
   optional path defaulting to the job's real `data/` artifact, so the jobs wire
   `produces:[…()]`/`consumes:[…()]` while unit tests point them at synthetic
   fixtures). The checks are deliberately SHAPE + NON-EMPTY (exists · non-empty ·
   expected fields/columns) — enough to catch real drift without brittle
-  full-schema validation. Each pipeline derives 3 gates (one per stage boundary).
-  Gate **state** is surfaced on the dashboard's pipeline-run DAG: `classifyGates`
+  full-schema validation. Each workflow derives 3 gates (one per stage boundary).
+  Gate **state** is surfaced on the dashboard's workflow-run DAG: `classifyGates`
   (also in `src/core/dag.ts`, pure) maps each gate to `passed`/`failed`/`pending`
   from the run's member runs — a gate is `failed` when its consumer's latest run
   is a gate-failure (matched via the shared `gateFailurePrefix`, the SAME format
   `recordGateFailure` writes), `passed` once the consumer actually ran, else
-  `pending`. The `GET /api/pipeline-runs/:id` endpoint returns this as `gates[]`,
+  `pending`. The `GET /api/workflow-runs/:id` endpoint returns this as `gates[]`,
   and `dashboard/.../Dag.tsx` renders a chip per gate on its consumer node (red +
   a link to the failure logs when violated). Gates render ONLY when a run's
-  `gates` prop is passed — the structure-only `/pipelines/[name]` graph omits it.
-- **Pipeline progress is rolled up from member jobs (don't set it by hand).** A
-  pipeline run's `progress` is a first-class roll-up: each member stage
-  contributes a fraction in [0,1] of the pipeline's total stage count — a
+  `gates` prop is passed — the structure-only `/workflows/[name]` graph omits it.
+- **Workflow progress is rolled up from member jobs (don't set it by hand).** A
+  workflow run's `progress` is a first-class roll-up: each member stage
+  contributes a fraction in [0,1] of the workflow's total stage count — a
   terminal run counts as a full stage, a still-running member contributes its own
   `progress`/100, a not-yet-started stage contributes 0. It updates in **real
   time**: `setProgress` (the executor's per-member progress writer) calls
-  `rollUpPipelineProgress` in `src/db/store.ts` whenever a pipeline member emits
-  progress, so the pipeline reflects in-flight work instead of a flat 0% or
-  coarse whole-stage steps. The denominator comes from the `pipeline_jobs` table
-  (member count), so no new column is needed. Use `rollUpPipelineProgress`, not
-  ad-hoc `setPipelineProgress(settled/total)`, when surfacing pipeline progress.
+  `rollUpWorkflowProgress` in `src/db/store.ts` whenever a workflow member emits
+  progress, so the workflow reflects in-flight work instead of a flat 0% or
+  coarse whole-stage steps. The denominator comes from the `workflow_jobs` table
+  (member count), so no new column is needed. Use `rollUpWorkflowProgress`, not
+  ad-hoc `setWorkflowProgress(settled/total)`, when surfacing workflow progress.
 - **Job resources are job-local.** A job's input/output data lives in its own
   `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.

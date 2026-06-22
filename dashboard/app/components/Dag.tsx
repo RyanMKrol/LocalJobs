@@ -1,10 +1,10 @@
 'use client';
 
 import { Fragment } from 'react';
-import type { GateStatus, PipelineMember } from '../lib/api';
+import type { GateStatus, WorkflowMember } from '../lib/api';
 
 /** Topologically order members into waves (jobs in a wave have no ordering). */
-function computeWaves(members: PipelineMember[]): string[][] {
+function computeWaves(members: WorkflowMember[]): string[][] {
   const names = members.map((m) => m.job_name);
   const indeg = new Map(members.map((m) => [m.job_name, m.depends_on.length]));
   const dependents = new Map<string, string[]>(names.map((n) => [n, []]));
@@ -32,8 +32,8 @@ function computeWaves(members: PipelineMember[]): string[][] {
 /**
  * Render the validation gates inbound to one consumer node as small chips, each
  * naming its producer + artifact key and coloured by state. A FAILED gate is red
- * and links to its gate-failure run's logs. Gates are only supplied on a pipeline
- * RUN, so the structure-only /pipelines/[name] view renders no chips.
+ * and links to its gate-failure run's logs. Gates are only supplied on a workflow
+ * RUN, so the structure-only /workflows/[name] view renders no chips.
  */
 function GateChips({ gates, from }: { gates: GateStatus[]; from?: string }) {
   if (gates.length === 0) return null;
@@ -61,7 +61,7 @@ function GateChips({ gates, from }: { gates: GateStatus[]; from?: string }) {
 }
 
 /**
- * Render a pipeline DAG as left-to-right waves of status-coloured nodes. Pass
+ * Render a workflow DAG as left-to-right waves of status-coloured nodes. Pass
  * `statusByJob` to colour each node by a run's member status, and `runIdByJob`
  * to make nodes link into that member's run logs. Pass `gates` (run view only) to
  * mark each producer→consumer validation gate on its consumer node — a failed
@@ -74,7 +74,7 @@ export function Dag({
   gates,
   from,
 }: {
-  members: PipelineMember[];
+  members: WorkflowMember[];
   statusByJob?: Record<string, string>;
   runIdByJob?: Record<string, string>;
   /** Validation-gate states for THIS run; omit on the structure-only view. */

@@ -18,9 +18,9 @@ function groupByStage(members: Run[]): Map<string, Run[]> {
   return groups;
 }
 
-export default function PipelineRunDetail({ params }: { params: Promise<{ id: string }> }) {
+export default function WorkflowRunDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data } = usePoll(() => api.pipelineRun(id), 2000, [id]);
+  const { data } = usePoll(() => api.workflowRun(id), 2000, [id]);
   const run = data?.run;
   const members = data?.jobs ?? [];
   const logs = data?.logs ?? [];
@@ -29,13 +29,13 @@ export default function PipelineRunDetail({ params }: { params: Promise<{ id: st
   // Which stage rows are expanded to show older runs
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Fetch the pipeline definition (for the DAG edges) once we know its name.
+  // Fetch the workflow definition (for the DAG edges) once we know its name.
   const { data: pdata } = usePoll(
-    () => api.pipeline(run?.pipeline_name ?? '__none__'),
+    () => api.workflow(run?.workflow_name ?? '__none__'),
     5000,
-    [run?.pipeline_name],
+    [run?.workflow_name],
   );
-  const pipeline = pdata?.pipeline;
+  const workflow = pdata?.workflow;
 
   // Latest member run per stage (members are ordered by start time).
   const statusByJob: Record<string, string> = {};
@@ -55,17 +55,17 @@ export default function PipelineRunDetail({ params }: { params: Promise<{ id: st
 
   return (
     <>
-      <p className="muted"><a href={run ? `/pipelines/${run.pipeline_name}` : '/pipelines'}>← {run?.pipeline_name ?? 'pipelines'}</a></p>
+      <p className="muted"><a href={run ? `/workflows/${run.workflow_name}` : '/workflows'}>← {run?.workflow_name ?? 'workflows'}</a></p>
       <div className="row">
-        <h1 style={{ margin: 0 }}>Pipeline run</h1>
+        <h1 style={{ margin: 0 }}>Workflow run</h1>
         <div className="spacer" />
         {run && <span className={`badge ${run.status}`}>{run.status}</span>}
       </div>
       <p className="sub">{run?.progress_msg}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}</p>
 
-      {pipeline && (
+      {workflow && (
         <div className="panel" style={{ marginBottom: 16 }}>
-          <Dag members={pipeline.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/pipeline-runs/${id}`} />
+          <Dag members={workflow.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/workflow-runs/${id}`} />
         </div>
       )}
 

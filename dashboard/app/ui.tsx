@@ -46,8 +46,8 @@ export function fmtRelative(t: string | null): string {
 
 /**
  * Resolve a back-link from a `?from=` path (threaded onto DAG node links), so a
- * job/run page returns to where you actually navigated from — the pipeline or the
- * pipeline run — rather than a fixed parent. Falls back to `fallback` when `from`
+ * job/run page returns to where you actually navigated from — the workflow or the
+ * workflow run — rather than a fixed parent. Falls back to `fallback` when `from`
  * is absent/foreign.
  */
 export function backFrom(
@@ -56,8 +56,8 @@ export function backFrom(
 ): { href: string; label: string } {
   if (!from || !from.startsWith('/')) return fallback;
   const segs = from.split('?')[0].split('/').filter(Boolean);
-  if (segs[0] === 'pipeline-runs' && segs[1]) return { href: from, label: `pipeline run ${segs[1]}` };
-  if ((segs[0] === 'pipelines' || segs[0] === 'jobs') && segs[1]) return { href: from, label: decodeURIComponent(segs[1]) };
+  if (segs[0] === 'workflow-runs' && segs[1]) return { href: from, label: `workflow run ${segs[1]}` };
+  if ((segs[0] === 'workflows' || segs[0] === 'jobs') && segs[1]) return { href: from, label: decodeURIComponent(segs[1]) };
   return fallback;
 }
 

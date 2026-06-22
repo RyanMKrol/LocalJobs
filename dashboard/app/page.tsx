@@ -9,12 +9,12 @@ type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | 'ignore
 export default function Overview() {
   const { data: stuckData } = usePoll(() => api.stuck(), 5000);
   const { data: ignoredData } = usePoll(() => api.ignored(), 5000);
-  const { data: pipeData } = usePoll(() => api.pipelines(), 3000);
-  const { data: pipeRunData, error } = usePoll(() => api.recentPipelineRuns(50), 2000);
+  const { data: pipeData } = usePoll(() => api.workflows(), 3000);
+  const { data: pipeRunData, error } = usePoll(() => api.recentWorkflowRuns(50), 2000);
   const stuck = stuckData?.stuck ?? [];
   const ignored = ignoredData?.ignored ?? [];
-  const pipelines = pipeData?.pipelines ?? [];
-  const pipelineRuns = pipeRunData?.runs ?? [];
+  const workflows = pipeData?.workflows ?? [];
+  const workflowRuns = pipeRunData?.runs ?? [];
 
   const [activeFilter, setActiveFilter] = useState<Filter>(null);
 
@@ -29,32 +29,32 @@ export default function Overview() {
     if (!window.confirm(`Permanently ignore "${key}"?\n\nIt will never be retried and drops off the stuck list (it moves to the Ignored tile). Manual-only — use Unstick instead if you want it retried.`)) return;
     try { await api.ignore(job, key); } catch { /* next poll reflects reality */ }
   }
-  async function runPipeline(name: string) {
-    try { await api.runPipeline(name); } catch { /* next poll reflects reality */ }
+  async function runWorkflow(name: string) {
+    try { await api.runWorkflow(name); } catch { /* next poll reflects reality */ }
   }
 
-  // Counts reflect PIPELINE runs (the unit of work on this page), matching the
+  // Counts reflect WORKFLOW runs (the unit of work on this page), matching the
   // list the tiles filter — not individual job/member runs.
   const counts = {
-    running: pipelineRuns.filter((r) => r.status === 'running').length,
-    success: pipelineRuns.filter((r) => r.status === 'success').length,
-    failed: pipelineRuns.filter((r) => ['failed', 'partial'].includes(r.status)).length,
-    cancelled: pipelineRuns.filter((r) => r.status === 'cancelled').length,
+    running: workflowRuns.filter((r) => r.status === 'running').length,
+    success: workflowRuns.filter((r) => r.status === 'success').length,
+    failed: workflowRuns.filter((r) => ['failed', 'partial'].includes(r.status)).length,
+    cancelled: workflowRuns.filter((r) => r.status === 'cancelled').length,
   };
 
-  // Apply filter to pipeline cards and pipeline runs table. The item-level
-  // filters (stuck/ignored) don't map to a pipeline status; 'ignored' is an
-  // overview-only view, so it hides the pipeline/run/stuck sections entirely.
-  const visiblePipelines = activeFilter == null ? pipelines : pipelines.filter((p) => {
+  // Apply filter to workflow cards and workflow runs table. The item-level
+  // filters (stuck/ignored) don't map to a workflow status; 'ignored' is an
+  // overview-only view, so it hides the workflow/run/stuck sections entirely.
+  const visibleWorkflows = activeFilter == null ? workflows : workflows.filter((p) => {
     if (activeFilter === 'running') return p.last_run?.status === 'running';
     if (activeFilter === 'success') return p.last_run?.status === 'success';
     if (activeFilter === 'failed') return ['failed', 'partial'].includes(p.last_run?.status ?? '');
     if (activeFilter === 'cancelled') return p.last_run?.status === 'cancelled';
     if (activeFilter === 'stuck') return p.stuck > 0;
-    return false; // 'ignored' — no pipeline-level concept
+    return false; // 'ignored' — no workflow-level concept
   });
 
-  const visiblePipelineRuns = activeFilter == null || activeFilter === 'stuck' ? pipelineRuns : pipelineRuns.filter((r) => {
+  const visibleWorkflowRuns = activeFilter == null || activeFilter === 'stuck' ? workflowRuns : workflowRuns.filter((r) => {
     if (activeFilter === 'running') return r.status === 'running';
     if (activeFilter === 'success') return r.status === 'success';
     if (activeFilter === 'failed') return ['failed', 'partial'].includes(r.status);
@@ -78,7 +78,7 @@ export default function Overview() {
   return (
     <>
       <h1>Overview</h1>
-      <p className="sub">Recent pipeline activity. Auto-refreshes every 2s.</p>
+      <p className="sub">Recent workflow activity. Auto-refreshes every 2s.</p>
       {error && <p className="muted">⚠ Cannot reach daemon at the API ({error}). Is it running?</p>}
 
       {activeFilter && (
@@ -161,17 +161,17 @@ export default function Overview() {
       )}
 
       {activeFilter !== 'ignored' && (<>
-      <h2>Pipelines</h2>
+      <h2>Workflows</h2>
       <div className="grid cards" style={{ marginBottom: 8 }}>
-        {visiblePipelines.length === 0 && (
+        {visibleWorkflows.length === 0 && (
           <div className="panel" style={{ padding: 16 }}>
-            <span className="muted">{activeFilter ? 'No pipelines match the current filter.' : 'No pipelines yet.'}</span>
+            <span className="muted">{activeFilter ? 'No workflows match the current filter.' : 'No workflows yet.'}</span>
           </div>
         )}
-        {visiblePipelines.map((p) => (
+        {visibleWorkflows.map((p) => (
           <div key={p.name} className="panel" style={{ padding: 16 }}>
             <div className="row">
-              <a href={`/pipelines/${p.name}`}><strong>{p.name}</strong></a>
+              <a href={`/workflows/${p.name}`}><strong>{p.name}</strong></a>
               <div className="spacer" />
               {p.last_run && <span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span>}
             </div>
@@ -180,7 +180,7 @@ export default function Overview() {
             </div>
             {p.last_run?.status === 'running' && <ProgressBar pct={p.last_run.progress} />}
             <div style={{ marginTop: 10 }}>
-              <button className="btn secondary" onClick={() => runPipeline(p.name)}>▶ Run</button>
+              <button className="btn secondary" onClick={() => runWorkflow(p.name)}>▶ Run</button>
             </div>
           </div>
         ))}
@@ -217,28 +217,28 @@ export default function Overview() {
         </table>
       </div>
 
-      <h2>Recent pipeline runs</h2>
+      <h2>Recent workflow runs</h2>
       <div className="panel">
         <table>
           <thead>
-            <tr><th>Pipeline</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th></th></tr>
+            <tr><th>Workflow</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th></th></tr>
           </thead>
           <tbody>
-            {visiblePipelineRuns.length === 0 && (
+            {visibleWorkflowRuns.length === 0 && (
               <tr><td colSpan={6} className="muted">
-                {activeFilter && pipelineRuns.length > 0
-                  ? 'No pipeline runs match the current filter.'
-                  : 'No pipeline runs yet — trigger one from a pipeline card above.'}
+                {activeFilter && workflowRuns.length > 0
+                  ? 'No workflow runs match the current filter.'
+                  : 'No workflow runs yet — trigger one from a workflow card above.'}
               </td></tr>
             )}
-            {visiblePipelineRuns.map((r) => (
+            {visibleWorkflowRuns.map((r) => (
               <tr key={r.id}>
-                <td><a href={`/pipelines/${r.pipeline_name}`}>{r.pipeline_name}</a></td>
+                <td><a href={`/workflows/${r.workflow_name}`}>{r.workflow_name}</a></td>
                 <td><span className={`badge ${r.status}`}>{r.status}</span></td>
                 <td className="muted">{r.trigger}</td>
                 <td className="muted">{fmtRelative(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                <td><a href={`/pipeline-runs/${r.id}`}>details →</a></td>
+                <td><a href={`/workflow-runs/${r.id}`}>details →</a></td>
               </tr>
             ))}
           </tbody>

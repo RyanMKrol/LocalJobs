@@ -20,7 +20,7 @@ export const placesConfig = {
 };
 
 /**
- * The places pipeline runs on a DAILY cron, so the daily spend cap must be the
+ * The places workflow runs on a DAILY cron, so the daily spend cap must be the
  * monthly free allowance spread evenly across the month: daily ≈ monthly / 30.
  * That way a daily run can NEVER blow the month — 30 capped days exactly fits the
  * monthly ceiling — while still draining the backlog steadily. (Contrast the
@@ -43,7 +43,7 @@ export const llmConfig = {
   /**
    * Spend caps (Gemini is paid, ~$0.002/call). Monthly is the real ceiling
    * (~$4/mo at 2000); daily defaults to monthly/30 (≈66) so the daily-scheduled
-   * pipeline spreads the month's budget evenly and can't blow it. Both enforced;
+   * workflow spreads the month's budget evenly and can't blow it. Both enforced;
    * whichever hits first stops.
    */
   monthlyCap: llmMonthlyCap,
@@ -68,7 +68,7 @@ export const enrichConfig = {
   /**
    * Spend caps. Monthly 1000 = the free Enterprise+Atmosphere tier, so a default
    * run never incurs charges; daily defaults to monthly/30 (≈33) so the
-   * daily-scheduled pipeline spreads the free allowance evenly and a daily run
+   * daily-scheduled workflow spreads the free allowance evenly and a daily run
    * can never exhaust the month. Both enforced. (The separate Google Cloud daily
    * quota on GetPlaceRequest is an external belt-and-braces.)
    */

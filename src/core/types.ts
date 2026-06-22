@@ -5,9 +5,9 @@ export type RunStatus =
   | 'failed'
   | 'timeout'
   | 'cancelled'
-  | 'skipped'; // a pipeline member whose upstream dependency did not succeed
+  | 'skipped'; // a workflow member whose upstream dependency did not succeed
 
-export type RunTrigger = 'schedule' | 'manual' | 'pipeline';
+export type RunTrigger = 'schedule' | 'manual' | 'workflow';
 
 export type LogLevel = 'info' | 'warn' | 'error';
 
@@ -31,7 +31,7 @@ export interface GateResult {
 
 /**
  * A typed artifact a job produces or consumes — the contract enforced at a
- * pipeline stage boundary. `key` ties a producer's output to its consumer's
+ * workflow stage boundary. `key` ties a producer's output to its consumer's
  * expectation; `check` inspects the ACTUAL artifact (a data file, a scraped
  * page, …) and reports drift so an external-format change (Takeout CSV layout,
  * Fragrantica page structure) fails LOUD at the exact gate instead of feeding
@@ -104,36 +104,36 @@ export interface RunRow {
   duration_ms: number | null;
   exit_code: number | null;
   error: string | null;
-  /** Set when this run is a member of a pipeline run; null/absent for standalone runs. */
-  pipeline_run_id?: string | null;
+  /** Set when this run is a member of a workflow run; null/absent for standalone runs. */
+  workflow_run_id?: string | null;
 }
 
-// ─────────────────────────────── Pipelines ───────────────────────────────
+// ─────────────────────────────── Workflows ───────────────────────────────
 
-export type PipelineRunStatus =
+export type WorkflowRunStatus =
   | 'running'
   | 'success' // every member job succeeded
   | 'partial' // ran to completion but ≥1 member failed/skipped
   | 'failed' // could not run (setup error / no members)
   | 'cancelled'; // orphaned by restart or stopped
 
-/** One node of a pipeline DAG: a reference to a job + its upstream deps. */
-export interface PipelineJobRef {
+/** One node of a workflow DAG: a reference to a job + its upstream deps. */
+export interface WorkflowJobRef {
   /** Name of an existing JobDefinition (discovered from a *.job.ts file). */
   job: string;
   /** Sibling member jobs that must SUCCEED before this one starts. */
   dependsOn?: string[];
 }
 
-/** A pipeline composes existing jobs into a DAG the framework runs as a unit. */
-export interface PipelineDefinition {
+/** A workflow composes existing jobs into a DAG the framework runs as a unit. */
+export interface WorkflowDefinition {
   /** Unique, stable identifier (PK in the DB; must not collide with a job name). */
   name: string;
   description?: string;
-  /** Cron expression (croner). Omit/null for manual-only. Drives the whole pipeline. */
+  /** Cron expression (croner). Omit/null for manual-only. Drives the whole workflow. */
   schedule?: string | null;
   /** Member jobs and their ordering edges. */
-  jobs: PipelineJobRef[];
+  jobs: WorkflowJobRef[];
   /** Bounded parallelism for independent branches. Default 1 (serial topo order). */
   maxConcurrency?: number;
   /** Re-run the whole pass in cycles until no retryable work remains. Default false. */
@@ -146,13 +146,13 @@ export interface PipelineDefinition {
   minAttempts?: number;
 }
 
-export interface PipelineRunRow {
+export interface WorkflowRunRow {
   id: string;
-  pipeline_name: string;
-  status: PipelineRunStatus;
+  workflow_name: string;
+  status: WorkflowRunStatus;
   trigger: RunTrigger;
   /** Overall 0..100, rolled up in real time from member-job progress over the
-   *  pipeline's total stage count (see `rollUpPipelineProgress` in the store). */
+   *  workflow's total stage count (see `rollUpWorkflowProgress` in the store). */
   progress: number;
   progress_msg: string;
   started_at: string | null;

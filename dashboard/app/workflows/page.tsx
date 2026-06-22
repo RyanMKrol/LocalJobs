@@ -3,32 +3,32 @@
 import { api } from '../lib/api';
 import { fmtRelative, fmtTime, usePoll } from '../ui';
 
-export default function Pipelines() {
-  const { data, error } = usePoll(() => api.pipelines(), 3000);
-  const pipelines = data?.pipelines ?? [];
+export default function Workflows() {
+  const { data, error } = usePoll(() => api.workflows(), 3000);
+  const workflows = data?.workflows ?? [];
 
   async function run(name: string) {
-    try { await api.runPipeline(name); } catch { /* next poll reflects reality */ }
+    try { await api.runWorkflow(name); } catch { /* next poll reflects reality */ }
   }
 
   return (
     <>
-      <h1>Pipelines</h1>
+      <h1>Workflows</h1>
       <p className="sub">DAGs of jobs the framework runs as a unit. Auto-refreshes every 3s.</p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       <div className="panel">
         <table>
           <thead>
-            <tr><th>Pipeline</th><th>Stages</th><th>Schedule</th><th>Last run</th><th>Next</th><th></th></tr>
+            <tr><th>Workflow</th><th>Stages</th><th>Schedule</th><th>Last run</th><th>Next</th><th></th></tr>
           </thead>
           <tbody>
-            {pipelines.length === 0 && (
-              <tr><td colSpan={6} className="muted">No pipelines yet — drop a <span className="mono">*.pipeline.ts</span> in src/jobs.</td></tr>
+            {workflows.length === 0 && (
+              <tr><td colSpan={6} className="muted">No workflows yet — drop a <span className="mono">*.workflow.ts</span> in src/jobs.</td></tr>
             )}
-            {pipelines.map((p) => (
+            {workflows.map((p) => (
               <tr key={p.name}>
                 <td>
-                  <a href={`/pipelines/${p.name}`}><strong>{p.name}</strong></a>
+                  <a href={`/workflows/${p.name}`}><strong>{p.name}</strong></a>
                   {p.stuck > 0 && <span style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}>⛔ {p.stuck} stuck</span>}
                   <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
                 </td>

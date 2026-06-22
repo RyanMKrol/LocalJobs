@@ -1,18 +1,18 @@
 import { getJobDefinition } from '../jobs/registry.js';
 import {
-  addPipelineLog,
-  createPipelineRun,
-  finishPipelineRun,
-  hasActivePipelineRun,
-  pipelineRetryableCount,
+  addWorkflowLog,
+  createWorkflowRun,
+  finishWorkflowRun,
+  hasActiveWorkflowRun,
+  workflowRetryableCount,
   recordGateFailure,
   recordSkippedRun,
-  rollUpPipelineProgress,
+  rollUpWorkflowProgress,
 } from '../db/store.js';
 import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
-import { runJobForPipeline } from './executor.js';
-import { notifyPipeline, notifyStage } from './notifier.js';
-import type { LogLevel, PipelineDefinition, PipelineRunStatus, RunStatus } from './types.js';
+import { runJobForWorkflow } from './executor.js';
+import { notifyWorkflow, notifyStage } from './notifier.js';
+import type { LogLevel, WorkflowDefinition, WorkflowRunStatus, RunStatus } from './types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -46,31 +46,31 @@ async function enforceGate(gate: Gate): Promise<{ ok: boolean; violations: strin
   return { ok: violations.length === 0, violations };
 }
 
-export interface PipelineRunResult {
-  pipelineRunId: string | null;
+export interface WorkflowRunResult {
+  workflowRunId: string | null;
   skipped?: boolean;
   reason?: string;
 }
 
 /**
- * Run a pipeline: execute its DAG (one topological pass), optionally repeating in
+ * Run a workflow: execute its DAG (one topological pass), optionally repeating in
  * cycles until no retryable work remains. The daemon owns this (it's the DB
- * writer). Member job runs link to the pipeline run; the pipeline emits per-stage
+ * writer). Member job runs link to the workflow run; the workflow emits per-stage
  * + aggregate notifications and writes framework logs.
  */
-export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' | 'manual'): Promise<PipelineRunResult> {
-  if (hasActivePipelineRun(def.name)) {
-    return { pipelineRunId: null, skipped: true, reason: 'already running' };
+export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' | 'manual'): Promise<WorkflowRunResult> {
+  if (hasActiveWorkflowRun(def.name)) {
+    return { workflowRunId: null, skipped: true, reason: 'already running' };
   }
 
   let dag: Dag;
   try {
     dag = buildDag(def.jobs);
   } catch (e) {
-    const id = createPipelineRun(def.name, trigger);
-    addPipelineLog(id, `Invalid pipeline DAG: ${e instanceof Error ? e.message : e}`, 'error');
-    finishPipelineRun(id, 'failed');
-    return { pipelineRunId: id };
+    const id = createWorkflowRun(def.name, trigger);
+    addWorkflowLog(id, `Invalid workflow DAG: ${e instanceof Error ? e.message : e}`, 'error');
+    finishWorkflowRun(id, 'failed');
+    return { workflowRunId: id };
   }
 
   // Derive the typed-artifact gates between dependent stages from each member's
@@ -87,14 +87,14 @@ export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' |
   const inboundGates = new Map<string, Gate[]>();
   for (const g of gates) (inboundGates.get(g.consumer) ?? inboundGates.set(g.consumer, []).get(g.consumer)!).push(g);
 
-  const pipelineRunId = createPipelineRun(def.name, trigger);
-  const log = (m: string, level: LogLevel = 'info') => addPipelineLog(pipelineRunId, m, level);
+  const workflowRunId = createWorkflowRun(def.name, trigger);
+  const log = (m: string, level: LogLevel = 'info') => addWorkflowLog(workflowRunId, m, level);
   const total = dag.nodes.length;
   const memberNames = def.jobs.map((j) => j.job);
   const minAttempts = def.minAttempts ?? 4;
   const maxCycles = def.repeatUntilStable ? Math.max(1, def.maxCycles ?? 1) : 1;
 
-  log(`Pipeline "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}`);
+  log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}`);
 
   let lastStatuses = new Map<string, RunStatus>();
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
@@ -118,32 +118,32 @@ export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' |
           if (!verdict.ok) {
             const detail = `${gateFailurePrefix(gate)}: ${verdict.violations.join('; ')}`;
             log(`⨯ ${detail}`, 'error');
-            recordGateFailure(job, pipelineRunId, detail);
+            recordGateFailure(job, workflowRunId, detail);
             return 'failed';
           }
           log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"`);
         }
-        const { status } = await runJobForPipeline(jd, pipelineRunId);
+        const { status } = await runJobForWorkflow(jd, workflowRunId);
         return status;
       },
       onStart: (job) => log(`▶ ${job} started`),
       onSettle: async (job, s) => {
         settled++;
-        rollUpPipelineProgress(pipelineRunId, `${settled}/${total} stages (${job} ${s})`);
+        rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} ${s})`);
         log(`${s === 'success' ? '✓' : '✗'} ${job} → ${s}`, s === 'success' ? 'info' : 'warn');
-        await notifyStage(def.name, pipelineRunId, job, s, log);
+        await notifyStage(def.name, workflowRunId, job, s, log);
       },
       onSkip: async (job, reason) => {
         settled++;
-        recordSkippedRun(job, pipelineRunId, `skipped: ${reason}`);
-        rollUpPipelineProgress(pipelineRunId, `${settled}/${total} stages (${job} skipped)`);
+        recordSkippedRun(job, workflowRunId, `skipped: ${reason}`);
+        rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} skipped)`);
         log(`⊘ ${job} skipped — ${reason}`, 'warn');
-        await notifyStage(def.name, pipelineRunId, job, 'skipped', log);
+        await notifyStage(def.name, workflowRunId, job, 'skipped', log);
       },
     });
 
     if (!def.repeatUntilStable) break;
-    const retryable = pipelineRetryableCount(memberNames, minAttempts);
+    const retryable = workflowRetryableCount(memberNames, minAttempts);
     log(`cycle ${cycle} complete · retryable work left = ${retryable}`);
     if (retryable === 0) {
       log('Stable — no retryable work remaining.');
@@ -156,10 +156,10 @@ export async function runPipeline(def: PipelineDefinition, trigger: 'schedule' |
   }
 
   const statuses = [...lastStatuses.values()];
-  const status: PipelineRunStatus =
+  const status: WorkflowRunStatus =
     statuses.length === 0 ? 'failed' : statuses.every((s) => s === 'success') ? 'success' : 'partial';
-  finishPipelineRun(pipelineRunId, status);
-  log(`Pipeline "${def.name}" finished: ${status}`);
-  await notifyPipeline(def.name, pipelineRunId, status, log);
-  return { pipelineRunId };
+  finishWorkflowRun(workflowRunId, status);
+  log(`Workflow "${def.name}" finished: ${status}`);
+  await notifyWorkflow(def.name, workflowRunId, status, log);
+  return { workflowRunId };
 }

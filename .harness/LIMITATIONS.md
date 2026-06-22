@@ -266,4 +266,20 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   drop the job toggle UI + endpoint + column and the unused `schedule` field from
   `JobDefinition` once the schema change is in scope.
 
+- **The pipeline→workflow rename is a clean break with a one-way DB migration.**
+  *Why:* T038 renamed the "pipeline" concept to "workflow" everywhere (types, DB
+  tables `pipeline_*`→`workflow_*`, the `*.pipeline.ts` discovery glob, the
+  `pipeline-executor`, the `/api/pipelines` + `/pipeline-runs` routes and dashboard
+  pages, and all docs). No old-name redirects/aliases were kept, per the task.
+  *Impact:* (a) any external bookmark or integration hitting `/api/pipelines`,
+  `/pipeline-runs`, or `/pipelines` 404s — they're now `/api/workflows`,
+  `/workflow-runs`, `/workflows`. (b) The DB migration (`migrateWorkflowRename` in
+  `src/db/index.ts`, run before schema bootstrap) renames the legacy tables/columns
+  in place and is idempotent + lossless, but is **one-way** — there's no
+  down-migration back to `pipeline_*`. It relies on SQLite ≥ 3.25 `ALTER TABLE …
+  RENAME COLUMN` (better-sqlite3 bundles 3.49) and on `foreign_keys = ON` so child
+  FK references are rewritten automatically. *Revisit:* the migration block can be
+  deleted once every live DB is known to be on the `workflow_*` schema (it's a
+  no-op from then on).
+
 > Add further project trade-offs below as they arise.

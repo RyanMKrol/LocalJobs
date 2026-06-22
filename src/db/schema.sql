@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS runs (
   duration_ms  INTEGER,
   exit_code    INTEGER,
   error        TEXT,
-  pipeline_run_id TEXT,                    -- set when this run is a pipeline member
+  workflow_run_id TEXT,                    -- set when this run is a workflow member
   FOREIGN KEY (job_name) REFERENCES jobs(name)
 );
 
@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_run ON run_logs(run_id, id);
 -- Per-item idempotency ledger. A "work item" is one unit of work a job processes
 -- (e.g. one place_id). Jobs record an outcome here so they never reprocess an
 -- item that's already done. Keyed by (job_name, item_key) — the item_key is the
--- job's natural unit of work (place_id for the places pipeline).
+-- job's natural unit of work (place_id for the places workflow).
 CREATE TABLE IF NOT EXISTS work_items (
   job_name   TEXT NOT NULL,
   item_key   TEXT NOT NULL,
@@ -71,10 +71,10 @@ CREATE TABLE IF NOT EXISTS job_usage (
 
 CREATE INDEX IF NOT EXISTS idx_job_usage ON job_usage(job_name, ts);
 
--- ─────────────────────── Pipelines (a DAG of jobs) ───────────────────────
--- A pipeline composes existing jobs into a DAG the framework runs as one unit.
+-- ─────────────────────── Workflows (a DAG of jobs) ───────────────────────
+-- A workflow composes existing jobs into a DAG the framework runs as one unit.
 -- `enabled` is user-owned (dashboard toggle), preserved across code syncs.
-CREATE TABLE IF NOT EXISTS pipelines (
+CREATE TABLE IF NOT EXISTS workflows (
   name        TEXT PRIMARY KEY,
   description TEXT NOT NULL DEFAULT '',
   schedule    TEXT,                       -- cron, or NULL for manual-only
@@ -82,19 +82,19 @@ CREATE TABLE IF NOT EXISTS pipelines (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Membership + edges, synced (replaced) from each *.pipeline.ts manifest.
-CREATE TABLE IF NOT EXISTS pipeline_jobs (
-  pipeline_name TEXT NOT NULL,
+-- Membership + edges, synced (replaced) from each *.workflow.ts manifest.
+CREATE TABLE IF NOT EXISTS workflow_jobs (
+  workflow_name TEXT NOT NULL,
   job_name      TEXT NOT NULL,
   depends_on    TEXT NOT NULL DEFAULT '[]', -- JSON array of member job names
-  PRIMARY KEY (pipeline_name, job_name),
-  FOREIGN KEY (pipeline_name) REFERENCES pipelines(name)
+  PRIMARY KEY (workflow_name, job_name),
+  FOREIGN KEY (workflow_name) REFERENCES workflows(name)
 );
 
--- One row per pipeline execution.
-CREATE TABLE IF NOT EXISTS pipeline_runs (
+-- One row per workflow execution.
+CREATE TABLE IF NOT EXISTS workflow_runs (
   id            TEXT PRIMARY KEY,
-  pipeline_name TEXT NOT NULL,
+  workflow_name TEXT NOT NULL,
   status        TEXT NOT NULL,             -- running | success | partial | failed | cancelled
   trigger       TEXT NOT NULL,             -- schedule | manual
   progress      INTEGER NOT NULL DEFAULT 0,
@@ -102,24 +102,24 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
   started_at    TEXT,
   finished_at   TEXT,
   duration_ms   INTEGER,
-  FOREIGN KEY (pipeline_name) REFERENCES pipelines(name)
+  FOREIGN KEY (workflow_name) REFERENCES workflows(name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_pipeline_runs_name ON pipeline_runs(pipeline_name, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workflow_runs_name ON workflow_runs(workflow_name, started_at DESC);
 
--- Framework-level log lines for a pipeline run (orchestration events: stage
+-- Framework-level log lines for a workflow run (orchestration events: stage
 -- start/finish, notifications sent/failed, throttle/quota waits, skips). Distinct
 -- from each member job's own run_logs.
-CREATE TABLE IF NOT EXISTS pipeline_run_logs (
+CREATE TABLE IF NOT EXISTS workflow_run_logs (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  pipeline_run_id TEXT NOT NULL,
+  workflow_run_id TEXT NOT NULL,
   ts              TEXT NOT NULL DEFAULT (datetime('now')),
   level           TEXT NOT NULL DEFAULT 'info',
   message         TEXT NOT NULL,
-  FOREIGN KEY (pipeline_run_id) REFERENCES pipeline_runs(id)
+  FOREIGN KEY (workflow_run_id) REFERENCES workflow_runs(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_pipeline_run_logs ON pipeline_run_logs(pipeline_run_id, id);
+CREATE INDEX IF NOT EXISTS idx_workflow_run_logs ON workflow_run_logs(workflow_run_id, id);
 
 -- ─────────────────── Services (shared rate limits + quotas) ───────────────────
 -- An external dependency whose limits are enforced ACROSS all jobs — a per-job
@@ -127,7 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_run_logs ON pipeline_run_logs(pipeline_r
 -- The limit columns (rate_per_minute/daily_cap/monthly_cap) are seeded from code
 -- on sync, but a dashboard edit takes ownership: `limits_overridden` flips to 1
 -- and a subsequent code-sync then PRESERVES the user's values (same reconcile as
--- the user-owned `enabled` flag on jobs/pipelines).
+-- the user-owned `enabled` flag on jobs/workflows).
 CREATE TABLE IF NOT EXISTS services (
   name              TEXT PRIMARY KEY,
   description       TEXT NOT NULL DEFAULT '',

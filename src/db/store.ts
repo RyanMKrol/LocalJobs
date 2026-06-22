@@ -3,9 +3,9 @@ import { db } from './index.js';
 import type {
   JobDefinition,
   LogLevel,
-  PipelineDefinition,
-  PipelineRunRow,
-  PipelineRunStatus,
+  WorkflowDefinition,
+  WorkflowRunRow,
+  WorkflowRunStatus,
   RunRow,
   RunStatus,
   RunTrigger,
@@ -64,49 +64,49 @@ export function createRun(
   jobName: string,
   trigger: RunTrigger,
   attempt = 1,
-  pipelineRunId: string | null = null,
+  workflowRunId: string | null = null,
 ): string {
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, pipeline_run_id)
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, workflow_run_id)
     VALUES (?, ?, 'running', ?, ?, datetime('now'), ?)
-  `).run(id, jobName, trigger, attempt, pipelineRunId);
+  `).run(id, jobName, trigger, attempt, workflowRunId);
   return id;
 }
 
-/** Record a terminal run row without spawning a process — used for pipeline
+/** Record a terminal run row without spawning a process — used for workflow
  *  members that are SKIPPED because an upstream dependency didn't succeed. */
-export function recordSkippedRun(jobName: string, pipelineRunId: string, reason: string): string {
+export function recordSkippedRun(jobName: string, workflowRunId: string, reason: string): string {
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error, pipeline_run_id)
-    VALUES (?, ?, 'skipped', 'pipeline', 1, datetime('now'), datetime('now'), 0, ?, ?)
-  `).run(id, jobName, reason, pipelineRunId);
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error, workflow_run_id)
+    VALUES (?, ?, 'skipped', 'workflow', 1, datetime('now'), datetime('now'), 0, ?, ?)
+  `).run(id, jobName, reason, workflowRunId);
   return id;
 }
 
 /** Record a terminal FAILED run row without spawning a process — used when a
- *  validation gate between pipeline stages is violated, so the consumer never
+ *  validation gate between workflow stages is violated, so the consumer never
  *  runs but the failure is surfaced as a first-class failed run (with the drift
  *  detail in `error`). */
-export function recordGateFailure(jobName: string, pipelineRunId: string, error: string): string {
+export function recordGateFailure(jobName: string, workflowRunId: string, error: string): string {
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error, pipeline_run_id)
-    VALUES (?, ?, 'failed', 'pipeline', 1, datetime('now'), datetime('now'), 0, ?, ?)
-  `).run(id, jobName, error, pipelineRunId);
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error, workflow_run_id)
+    VALUES (?, ?, 'failed', 'workflow', 1, datetime('now'), datetime('now'), 0, ?, ?)
+  `).run(id, jobName, error, workflowRunId);
   return id;
 }
 
 export function setProgress(runId: string, pct: number, message: string): void {
   db.prepare('UPDATE runs SET progress = ?, progress_msg = ? WHERE id = ?')
     .run(Math.max(0, Math.min(100, Math.round(pct))), message, runId);
-  // If this run is a pipeline member, roll its progress up into the parent
-  // pipeline run in real time, so the pipeline reflects in-flight member
+  // If this run is a workflow member, roll its progress up into the parent
+  // workflow run in real time, so the workflow reflects in-flight member
   // progress rather than only whole settled stages.
-  const row = db.prepare('SELECT pipeline_run_id FROM runs WHERE id = ?')
-    .get(runId) as { pipeline_run_id: string | null } | undefined;
-  if (row?.pipeline_run_id) rollUpPipelineProgress(row.pipeline_run_id);
+  const row = db.prepare('SELECT workflow_run_id FROM runs WHERE id = ?')
+    .get(runId) as { workflow_run_id: string | null } | undefined;
+  if (row?.workflow_run_id) rollUpWorkflowProgress(row.workflow_run_id);
 }
 
 export function finishRun(
@@ -375,32 +375,32 @@ export function backfillMonthlyUsage(jobName: string, count: number): void {
   tx(count);
 }
 
-// ════════════════════════════════ pipelines ════════════════════════════════
+// ════════════════════════════════ workflows ════════════════════════════════
 
-const upsertPipelineStmt = db.prepare(`
-  INSERT INTO pipelines (name, description, schedule, enabled)
+const upsertWorkflowStmt = db.prepare(`
+  INSERT INTO workflows (name, description, schedule, enabled)
   VALUES (@name, @description, @schedule, 1)
   ON CONFLICT(name) DO UPDATE SET
     description = excluded.description,
     schedule    = excluded.schedule
 `);
 
-/** Upsert a pipeline + REPLACE its membership/edges. `enabled` is preserved. */
-export function syncPipeline(def: PipelineDefinition): void {
+/** Upsert a workflow + REPLACE its membership/edges. `enabled` is preserved. */
+export function syncWorkflow(def: WorkflowDefinition): void {
   const tx = db.transaction(() => {
-    upsertPipelineStmt.run({
+    upsertWorkflowStmt.run({
       name: def.name,
       description: def.description ?? '',
       schedule: def.schedule ?? null,
     });
-    db.prepare('DELETE FROM pipeline_jobs WHERE pipeline_name = ?').run(def.name);
-    const ins = db.prepare('INSERT INTO pipeline_jobs (pipeline_name, job_name, depends_on) VALUES (?, ?, ?)');
+    db.prepare('DELETE FROM workflow_jobs WHERE workflow_name = ?').run(def.name);
+    const ins = db.prepare('INSERT INTO workflow_jobs (workflow_name, job_name, depends_on) VALUES (?, ?, ?)');
     for (const ref of def.jobs) ins.run(def.name, ref.job, JSON.stringify(ref.dependsOn ?? []));
   });
   tx();
 }
 
-export interface PipelineRow {
+export interface WorkflowRow {
   name: string;
   description: string;
   schedule: string | null;
@@ -408,50 +408,50 @@ export interface PipelineRow {
   created_at: string;
 }
 
-export function getPipeline(name: string): PipelineRow | undefined {
-  return db.prepare('SELECT * FROM pipelines WHERE name = ?').get(name) as PipelineRow | undefined;
+export function getWorkflow(name: string): WorkflowRow | undefined {
+  return db.prepare('SELECT * FROM workflows WHERE name = ?').get(name) as WorkflowRow | undefined;
 }
 
-export function listPipelines(): PipelineRow[] {
-  return db.prepare('SELECT * FROM pipelines ORDER BY name').all() as PipelineRow[];
+export function listWorkflows(): WorkflowRow[] {
+  return db.prepare('SELECT * FROM workflows ORDER BY name').all() as WorkflowRow[];
 }
 
-export function setPipelineEnabled(name: string, enabled: boolean): void {
-  db.prepare('UPDATE pipelines SET enabled = ? WHERE name = ?').run(enabled ? 1 : 0, name);
+export function setWorkflowEnabled(name: string, enabled: boolean): void {
+  db.prepare('UPDATE workflows SET enabled = ? WHERE name = ?').run(enabled ? 1 : 0, name);
 }
 
-export function getPipelineJobs(name: string): { job_name: string; depends_on: string[] }[] {
-  const rows = db.prepare('SELECT job_name, depends_on FROM pipeline_jobs WHERE pipeline_name = ?')
+export function getWorkflowJobs(name: string): { job_name: string; depends_on: string[] }[] {
+  const rows = db.prepare('SELECT job_name, depends_on FROM workflow_jobs WHERE workflow_name = ?')
     .all(name) as { job_name: string; depends_on: string }[];
   return rows.map((r) => ({ job_name: r.job_name, depends_on: JSON.parse(r.depends_on) as string[] }));
 }
 
-export function createPipelineRun(pipelineName: string, trigger: RunTrigger): string {
+export function createWorkflowRun(workflowName: string, trigger: RunTrigger): string {
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO pipeline_runs (id, pipeline_name, status, trigger, started_at)
+    INSERT INTO workflow_runs (id, workflow_name, status, trigger, started_at)
     VALUES (?, ?, 'running', ?, datetime('now'))
-  `).run(id, pipelineName, trigger);
+  `).run(id, workflowName, trigger);
   return id;
 }
 
-export function setPipelineProgress(id: string, pct: number, message: string): void {
-  db.prepare('UPDATE pipeline_runs SET progress = ?, progress_msg = ? WHERE id = ?')
+export function setWorkflowProgress(id: string, pct: number, message: string): void {
+  db.prepare('UPDATE workflow_runs SET progress = ?, progress_msg = ? WHERE id = ?')
     .run(Math.max(0, Math.min(100, Math.round(pct))), message, id);
 }
 
 /** Member-run statuses that are terminal — a stage in any of these counts as a
- *  fully-completed stage for the pipeline progress roll-up (regardless of
+ *  fully-completed stage for the workflow progress roll-up (regardless of
  *  success/failure), since no further progress will come from it. */
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(['success', 'failed', 'timeout', 'cancelled', 'skipped']);
 
 /**
- * Roll up a pipeline run's overall progress (0..100) from its member-job runs.
- * The denominator is the pipeline's total stage count (its member jobs); each
+ * Roll up a workflow run's overall progress (0..100) from its member-job runs.
+ * The denominator is the workflow's total stage count (its member jobs); each
  * stage contributes a completion fraction in [0,1] — a terminal run counts as a
  * full stage, a still-running run contributes its own `progress`/100, and a
  * stage with no run yet contributes 0. This is the first-class roll-up: it makes
- * a pipeline report meaningful overall progress (e.g. mid-stage) instead of a
+ * a workflow report meaningful overall progress (e.g. mid-stage) instead of a
  * flat 0% or coarse whole-stage steps. Called in real time whenever a member
  * emits progress (via `setProgress`) or a stage settles.
  *
@@ -459,22 +459,22 @@ const TERMINAL_RUN_STATUSES = new Set<RunStatus>(['success', 'failed', 'timeout'
  * percentage (keeps the last stage message intact). Returns the percentage
  * written.
  */
-export function rollUpPipelineProgress(pipelineRunId: string, message?: string): number {
-  const pr = db.prepare('SELECT pipeline_name FROM pipeline_runs WHERE id = ?')
-    .get(pipelineRunId) as { pipeline_name: string } | undefined;
+export function rollUpWorkflowProgress(workflowRunId: string, message?: string): number {
+  const pr = db.prepare('SELECT workflow_name FROM workflow_runs WHERE id = ?')
+    .get(workflowRunId) as { workflow_name: string } | undefined;
   if (!pr) return 0;
-  const total = (db.prepare('SELECT COUNT(*) AS n FROM pipeline_jobs WHERE pipeline_name = ?')
-    .get(pr.pipeline_name) as { n: number }).n;
+  const total = (db.prepare('SELECT COUNT(*) AS n FROM workflow_jobs WHERE workflow_name = ?')
+    .get(pr.workflow_name) as { n: number }).n;
   if (total <= 0) return 0;
-  // Latest run per member job in this pipeline run. UUID ids aren't ordered, so
+  // Latest run per member job in this workflow run. UUID ids aren't ordered, so
   // pick by rowid; across repeatUntilStable cycles this naturally tracks the
   // current cycle's run for each job.
   const rows = db.prepare(`
     SELECT status, progress FROM runs r
-    WHERE pipeline_run_id = ?
+    WHERE workflow_run_id = ?
       AND rowid = (SELECT MAX(rowid) FROM runs
-                   WHERE pipeline_run_id = r.pipeline_run_id AND job_name = r.job_name)
-  `).all(pipelineRunId) as { status: RunStatus; progress: number }[];
+                   WHERE workflow_run_id = r.workflow_run_id AND job_name = r.job_name)
+  `).all(workflowRunId) as { status: RunStatus; progress: number }[];
   let fraction = 0;
   for (const r of rows) {
     fraction += TERMINAL_RUN_STATUSES.has(r.status)
@@ -483,16 +483,16 @@ export function rollUpPipelineProgress(pipelineRunId: string, message?: string):
   }
   const pct = Math.max(0, Math.min(100, (fraction / total) * 100));
   if (message === undefined) {
-    db.prepare('UPDATE pipeline_runs SET progress = ? WHERE id = ?').run(Math.round(pct), pipelineRunId);
+    db.prepare('UPDATE workflow_runs SET progress = ? WHERE id = ?').run(Math.round(pct), workflowRunId);
   } else {
-    setPipelineProgress(pipelineRunId, pct, message);
+    setWorkflowProgress(workflowRunId, pct, message);
   }
   return pct;
 }
 
-export function finishPipelineRun(id: string, status: PipelineRunStatus): void {
+export function finishWorkflowRun(id: string, status: WorkflowRunStatus): void {
   db.prepare(`
-    UPDATE pipeline_runs SET
+    UPDATE workflow_runs SET
       status = ?,
       finished_at = datetime('now'),
       duration_ms = CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER),
@@ -501,45 +501,45 @@ export function finishPipelineRun(id: string, status: PipelineRunStatus): void {
   `).run(status, status, id);
 }
 
-export function getPipelineRun(id: string): PipelineRunRow | undefined {
-  return db.prepare('SELECT * FROM pipeline_runs WHERE id = ?').get(id) as PipelineRunRow | undefined;
+export function getWorkflowRun(id: string): WorkflowRunRow | undefined {
+  return db.prepare('SELECT * FROM workflow_runs WHERE id = ?').get(id) as WorkflowRunRow | undefined;
 }
 
-export function listPipelineRunsForPipeline(name: string, limit = 50): PipelineRunRow[] {
-  return db.prepare('SELECT * FROM pipeline_runs WHERE pipeline_name = ? ORDER BY started_at DESC LIMIT ?')
-    .all(name, limit) as PipelineRunRow[];
+export function listWorkflowRunsForWorkflow(name: string, limit = 50): WorkflowRunRow[] {
+  return db.prepare('SELECT * FROM workflow_runs WHERE workflow_name = ? ORDER BY started_at DESC LIMIT ?')
+    .all(name, limit) as WorkflowRunRow[];
 }
 
-export function listRecentPipelineRuns(limit = 50): PipelineRunRow[] {
-  return db.prepare('SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT ?').all(limit) as PipelineRunRow[];
+export function listRecentWorkflowRuns(limit = 50): WorkflowRunRow[] {
+  return db.prepare('SELECT * FROM workflow_runs ORDER BY started_at DESC LIMIT ?').all(limit) as WorkflowRunRow[];
 }
 
-export function lastPipelineRunForPipeline(name: string): PipelineRunRow | undefined {
-  return db.prepare('SELECT * FROM pipeline_runs WHERE pipeline_name = ? ORDER BY started_at DESC LIMIT 1')
-    .get(name) as PipelineRunRow | undefined;
+export function lastWorkflowRunForWorkflow(name: string): WorkflowRunRow | undefined {
+  return db.prepare('SELECT * FROM workflow_runs WHERE workflow_name = ? ORDER BY started_at DESC LIMIT 1')
+    .get(name) as WorkflowRunRow | undefined;
 }
 
-/** Member job runs of a pipeline run, in start order (for drill-down). */
-export function listRunsForPipelineRun(pipelineRunId: string): RunRow[] {
-  return db.prepare('SELECT * FROM runs WHERE pipeline_run_id = ? ORDER BY started_at')
-    .all(pipelineRunId) as RunRow[];
+/** Member job runs of a workflow run, in start order (for drill-down). */
+export function listRunsForWorkflowRun(workflowRunId: string): RunRow[] {
+  return db.prepare('SELECT * FROM runs WHERE workflow_run_id = ? ORDER BY started_at')
+    .all(workflowRunId) as RunRow[];
 }
 
-export function hasActivePipelineRun(name: string): boolean {
-  return (db.prepare(`SELECT COUNT(*) AS n FROM pipeline_runs WHERE pipeline_name = ? AND status = 'running'`)
+export function hasActiveWorkflowRun(name: string): boolean {
+  return (db.prepare(`SELECT COUNT(*) AS n FROM workflow_runs WHERE workflow_name = ? AND status = 'running'`)
     .get(name) as { n: number }).n > 0;
 }
 
-/** On daemon startup, close pipeline runs orphaned by a crash. */
-export function reapOrphanPipelineRuns(): number {
+/** On daemon startup, close workflow runs orphaned by a crash. */
+export function reapOrphanWorkflowRuns(): number {
   return db.prepare(`
-    UPDATE pipeline_runs SET status = 'cancelled', finished_at = datetime('now')
+    UPDATE workflow_runs SET status = 'cancelled', finished_at = datetime('now')
     WHERE status = 'running'
   `).run().changes;
 }
 
 /** Member-job work items still in the retry window = "retryable work left" (for repeatUntilStable). */
-export function pipelineRetryableCount(jobNames: string[], minAttempts: number): number {
+export function workflowRetryableCount(jobNames: string[], minAttempts: number): number {
   if (jobNames.length === 0) return 0;
   const ph = jobNames.map(() => '?').join(',');
   return (db.prepare(
@@ -547,16 +547,16 @@ export function pipelineRetryableCount(jobNames: string[], minAttempts: number):
   ).get(...jobNames, minAttempts) as { n: number }).n;
 }
 
-// ---- pipeline framework logs ----
+// ---- workflow framework logs ----
 
-export function addPipelineLog(pipelineRunId: string, message: string, level: LogLevel = 'info'): void {
-  db.prepare('INSERT INTO pipeline_run_logs (pipeline_run_id, level, message) VALUES (?, ?, ?)')
-    .run(pipelineRunId, level, message);
+export function addWorkflowLog(workflowRunId: string, message: string, level: LogLevel = 'info'): void {
+  db.prepare('INSERT INTO workflow_run_logs (workflow_run_id, level, message) VALUES (?, ?, ?)')
+    .run(workflowRunId, level, message);
 }
 
-export function getPipelineLogs(pipelineRunId: string, afterId = 0): { id: number; ts: string; level: LogLevel; message: string }[] {
-  return db.prepare('SELECT id, ts, level, message FROM pipeline_run_logs WHERE pipeline_run_id = ? AND id > ? ORDER BY id')
-    .all(pipelineRunId, afterId) as { id: number; ts: string; level: LogLevel; message: string }[];
+export function getWorkflowLogs(workflowRunId: string, afterId = 0): { id: number; ts: string; level: LogLevel; message: string }[] {
+  return db.prepare('SELECT id, ts, level, message FROM workflow_run_logs WHERE workflow_run_id = ? AND id > ? ORDER BY id')
+    .all(workflowRunId, afterId) as { id: number; ts: string; level: LogLevel; message: string }[];
 }
 
 // ════════════════════════ services (shared rate + quota) ════════════════════════

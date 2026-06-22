@@ -1,5 +1,5 @@
 // Tests for the real-job artifact contracts (T027) and that they make the
-// pipeline executor derive gates. Run via `npm test`.
+// workflow executor derive gates. Run via `npm test`.
 //
 // Contract checks are exercised against SYNTHETIC fixtures in a temp dir (the
 // real data/ folders are gitignored and absent in CI) — NO live API/scrape.
@@ -169,9 +169,9 @@ test('enriched-places: an empty map fails', () => {
   assert.equal(run(enrichedPlacesContract(p)).ok, false);
 });
 
-// ─────────────── gates DERIVE + FIRE: keys wire up across each pipeline edge ───────
+// ─────────────── gates DERIVE + FIRE: keys wire up across each workflow edge ───────
 // Mirror the keys declared on the real jobs (verified statically by tsc) and prove
-// deriveGates yields one gate per stage boundary — i.e. the pipeline start-log
+// deriveGates yields one gate per stage boundary — i.e. the workflow start-log
 // gate count is > 0.
 test('perfumes: gates derive between every stage (count > 0)', () => {
   const dag = buildDag([
@@ -223,7 +223,7 @@ test('places: gates derive between every stage (count > 0)', () => {
 
 // Assert the contract `key`s the jobs actually use match the keys the gate
 // derivation above relies on — so a rename can't silently break wiring.
-test('contract keys are stable + match the pipeline wiring', () => {
+test('contract keys are stable + match the workflow wiring', () => {
   assert.equal(fragranticaUrlsContract().key, 'fragrantica-urls');
   assert.equal(fragranticaPagesContract().key, 'fragrantica-pages');
   assert.equal(fragranticaDataContract().key, 'fragrantica-data');

@@ -33,7 +33,7 @@ export const perfumesConfig = {
   // median perfume sits at weight 0.5); set this to pin k to a fixed value.
   confidenceK: process.env.PERFUMES_CONFIDENCE_K ? Number(process.env.PERFUMES_CONFIDENCE_K) : null,
 
-  // ── per-item retry budget (mirrors the other pipelines) ──
+  // ── per-item retry budget (mirrors the other workflows) ──
   maxAttempts: Number(process.env.PERFUMES_MAX_ATTEMPTS ?? 4),
   /** Per-run cap for a single stage (0 = no cap). */
   runLimit: Number(process.env.PERFUMES_RUN_LIMIT ?? 0),
@@ -50,7 +50,7 @@ export const perfumesConfig = {
   contentWaitMs: Number(process.env.PERFUMES_CONTENT_WAIT_MS ?? 18_000),
   scrollSteps: Number(process.env.PERFUMES_SCROLL_STEPS ?? 14),
 
-  // ── pipeline orchestration ──
+  // ── workflow orchestration ──
   cycleSleepMs: Number(process.env.PERFUMES_CYCLE_SLEEP_MS ?? 5_000),
   rateLimitBackoffMs: Number(process.env.PERFUMES_RATELIMIT_BACKOFF_MS ?? 600_000), // 10 min
   maxCycles: Number(process.env.PERFUMES_MAX_CYCLES ?? 40),

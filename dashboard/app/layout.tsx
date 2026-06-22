@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <a href="/" className="brand">⚙︎ Local Jobs</a>
             <nav>
               <a href="/">Overview</a>
-              <a href="/pipelines">Pipelines</a>
+              <a href="/workflows">Workflows</a>
               <a href="/services">Services</a>
               <a href="/db">Database</a>
               <a href="/backlog">Backlog</a>

@@ -5,22 +5,22 @@ import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
 import { fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
 
-export default function PipelineDetail({ params }: { params: Promise<{ name: string }> }) {
+export default function WorkflowDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const [busy, setBusy] = useState(false);
-  const { data } = usePoll(() => api.pipeline(name), 3000, [name]);
-  const p = data?.pipeline;
+  const { data } = usePoll(() => api.workflow(name), 3000, [name]);
+  const p = data?.workflow;
   const runs = p?.runs ?? [];
 
   async function run() {
     setBusy(true);
-    try { await api.runPipeline(name); } finally { setTimeout(() => setBusy(false), 1200); }
+    try { await api.runWorkflow(name); } finally { setTimeout(() => setBusy(false), 1200); }
   }
-  async function toggle() { if (p) await api.togglePipeline(name, p.enabled === 0); }
+  async function toggle() { if (p) await api.toggleWorkflow(name, p.enabled === 0); }
 
   return (
     <>
-      <p className="muted"><a href="/pipelines">← Pipelines</a></p>
+      <p className="muted"><a href="/workflows">← Workflows</a></p>
       <div className="row">
         <h1 style={{ margin: 0 }}>{name}</h1>
         <div className="spacer" />
@@ -43,7 +43,7 @@ export default function PipelineDetail({ params }: { params: Promise<{ name: str
       </div>
 
       <h2>Graph</h2>
-      <div className="panel">{p && <Dag members={p.jobs} from={`/pipelines/${name}`} />}</div>
+      <div className="panel">{p && <Dag members={p.jobs} from={`/workflows/${name}`} />}</div>
 
       <h2>Runs</h2>
       <div className="panel">
@@ -57,7 +57,7 @@ export default function PipelineDetail({ params }: { params: Promise<{ name: str
                 <td className="muted">{r.trigger}</td>
                 <td className="muted">{fmtRelative(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                <td><a href={`/pipeline-runs/${r.id}`}>details →</a></td>
+                <td><a href={`/workflow-runs/${r.id}`}>details →</a></td>
               </tr>
             ))}
           </tbody>

@@ -1,6 +1,6 @@
-import type { PipelineJobRef, RunStatus } from './types.js';
+import type { WorkflowJobRef, RunStatus } from './types.js';
 
-/** Thrown when a pipeline's `jobs` cannot form a valid DAG. */
+/** Thrown when a workflow's `jobs` cannot form a valid DAG. */
 export class DagError extends Error {}
 
 export interface Dag {
@@ -15,7 +15,7 @@ export interface Dag {
 }
 
 /**
- * Build a DAG from a pipeline's job refs. Validates: no duplicate members, every
+ * Build a DAG from a workflow's job refs. Validates: no duplicate members, every
  * `dependsOn` names a member, no self-edge, and the graph is acyclic. Returns
  * execution **waves** (Kahn's algorithm) — a job lands one wave after its latest
  * dependency, so processing waves left-to-right always respects all edges.
@@ -23,7 +23,7 @@ export interface Dag {
  * NOTE: this is pure graph logic over the refs given. Checking that each `job`
  * resolves to a real *.job.ts definition is the registry's responsibility.
  */
-export function buildDag(refs: PipelineJobRef[]): Dag {
+export function buildDag(refs: WorkflowJobRef[]): Dag {
   const nodes = refs.map((r) => r.job);
 
   const seen = new Set<string>();
@@ -41,7 +41,7 @@ export function buildDag(refs: PipelineJobRef[]): Dag {
   for (const r of refs) {
     for (const dep of r.dependsOn ?? []) {
       if (dep === r.job) throw new DagError(`job "${r.job}" depends on itself`);
-      if (!seen.has(dep)) throw new DagError(`job "${r.job}" depends on "${dep}", which is not a member of this pipeline`);
+      if (!seen.has(dep)) throw new DagError(`job "${r.job}" depends on "${dep}", which is not a member of this workflow`);
       dependencies.get(r.job)!.push(dep);
       dependents.get(dep)!.push(r.job);
     }
@@ -98,7 +98,7 @@ export function gateFailurePrefix(gate: Gate): string {
   return `Gate violation [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"`;
 }
 
-/** A gate's outcome within one pipeline run, derived from member runs. */
+/** A gate's outcome within one workflow run, derived from member runs. */
 export type GateState = 'passed' | 'failed' | 'pending';
 
 export interface GateStatus extends Gate {
@@ -116,7 +116,7 @@ export interface GateRunRef {
 }
 
 /**
- * Classify each gate against a pipeline run's member runs — pure, so it's the
+ * Classify each gate against a workflow run's member runs — pure, so it's the
  * same logic on the API and in tests. `runs` must be in chronological order (the
  * DB returns them `ORDER BY started_at`), so the consumer's LAST run reflects the
  * current state. A gate is:

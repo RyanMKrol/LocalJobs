@@ -9,7 +9,7 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 export type RunStatus =
   | 'queued' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped';
 
-export type PipelineRunStatus = 'running' | 'success' | 'partial' | 'failed' | 'cancelled';
+export type WorkflowRunStatus = 'running' | 'success' | 'partial' | 'failed' | 'cancelled';
 
 export interface Run {
   id: string;
@@ -24,7 +24,7 @@ export interface Run {
   duration_ms: number | null;
   exit_code: number | null;
   error: string | null;
-  pipeline_run_id?: string | null;
+  workflow_run_id?: string | null;
 }
 
 export interface Job {
@@ -39,18 +39,18 @@ export interface Job {
   next_run: string | null;
   instructions: string | null;
   stuck: number;
-  pipeline?: string | null; // set if this job is a pipeline member
+  workflow?: string | null; // set if this job is a workflow member
 }
 
-export interface PipelineMember {
+export interface WorkflowMember {
   job_name: string;
   depends_on: string[];
 }
 
-export interface PipelineRun {
+export interface WorkflowRun {
   id: string;
-  pipeline_name: string;
-  status: PipelineRunStatus;
+  workflow_name: string;
+  status: WorkflowRunStatus;
   trigger: string;
   progress: number;
   progress_msg: string;
@@ -59,20 +59,20 @@ export interface PipelineRun {
   duration_ms: number | null;
 }
 
-export interface Pipeline {
+export interface Workflow {
   name: string;
   description: string;
   schedule: string | null;
   enabled: number;
   created_at: string;
-  last_run: PipelineRun | null;
+  last_run: WorkflowRun | null;
   next_run: string | null;
-  jobs: PipelineMember[];
+  jobs: WorkflowMember[];
   stuck: number;
-  runs?: PipelineRun[];
+  runs?: WorkflowRun[];
 }
 
-/** A validation gate's state within one pipeline run (derived from member runs). */
+/** A validation gate's state within one workflow run (derived from member runs). */
 export interface GateStatus {
   key: string;
   producer: string;
@@ -181,15 +181,15 @@ export const api = {
   unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),
   ignore: (job: string, key: string) => post<{ ok: boolean; ignored: number }>(`/api/stuck/ignore`, { job, key }),
 
-  recentPipelineRuns: (limit = 50) => get<{ runs: PipelineRun[] }>(`/api/pipeline-runs?limit=${limit}`),
-  pipelines: () => get<{ pipelines: Pipeline[] }>('/api/pipelines'),
-  pipeline: (name: string) => get<{ pipeline: Pipeline }>(`/api/pipelines/${name}`),
-  pipelineRun: (id: string, after = 0) =>
-    get<{ run: PipelineRun; jobs: Run[]; logs: LogLine[]; gates: GateStatus[] }>(
-      `/api/pipeline-runs/${id}?after=${after}`,
+  recentWorkflowRuns: (limit = 50) => get<{ runs: WorkflowRun[] }>(`/api/workflow-runs?limit=${limit}`),
+  workflows: () => get<{ workflows: Workflow[] }>('/api/workflows'),
+  workflow: (name: string) => get<{ workflow: Workflow }>(`/api/workflows/${name}`),
+  workflowRun: (id: string, after = 0) =>
+    get<{ run: WorkflowRun; jobs: Run[]; logs: LogLine[]; gates: GateStatus[] }>(
+      `/api/workflow-runs/${id}?after=${after}`,
     ),
-  runPipeline: (name: string) => post<{ ok: boolean }>(`/api/pipelines/${name}/run`),
-  togglePipeline: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/pipelines/${name}/toggle`, { enabled }),
+  runWorkflow: (name: string) => post<{ ok: boolean }>(`/api/workflows/${name}/run`),
+  toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${name}/toggle`, { enabled }),
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),

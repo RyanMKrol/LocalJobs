@@ -1,14 +1,14 @@
-// Store tests for the pipeline + service helpers. Runs against the scratch DB set
+// Store tests for the workflow + service helpers. Runs against the scratch DB set
 // by `npm test` (LOCALJOBS_DB). Self-asserting: throws on failure.
 import assert from 'node:assert/strict';
 import {
   browseTable, listDbTables,
-  addPipelineLog, backfillServiceUsage, createPipelineRun, createRun, finishPipelineRun, finishRun,
-  getPipeline, getPipelineJobs, getPipelineLogs, getPipelineRun, getServiceRow, getWorkItem, hasActivePipelineRun,
+  addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
+  getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   ignoreWorkItem, ignoredItems, isWorkItemDone,
-  listRunsForPipelineRun, listServices, markWorkItem, orphanedWorkItems, pipelineRetryableCount,
-  pruneOrphanedWorkItems, reapOrphanPipelineRuns, recordServiceCall, recordSkippedRun, recordUsage,
-  serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncPipeline, syncService,
+  listRunsForWorkflowRun, listServices, markWorkItem, orphanedWorkItems, workflowRetryableCount,
+  pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage,
+  serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, usageThisMonth,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
@@ -16,36 +16,36 @@ import { callService, QuotaExceededError, registerService } from '../core/servic
 // member jobs must exist (runs.job_name FK → jobs.name)
 for (const n of ['t-a', 't-b', 't-c']) syncJob({ name: n, run: async () => {} });
 
-// pipeline sync + edges
-syncPipeline({ name: 't-pipe', description: 'd', schedule: '0 2 * * *', jobs: [{ job: 't-a' }, { job: 't-b', dependsOn: ['t-a'] }] });
-assert.equal(getPipeline('t-pipe')?.schedule, '0 2 * * *');
-assert.deepEqual(getPipelineJobs('t-pipe'), [{ job_name: 't-a', depends_on: [] }, { job_name: 't-b', depends_on: ['t-a'] }]);
+// workflow sync + edges
+syncWorkflow({ name: 't-pipe', description: 'd', schedule: '0 2 * * *', jobs: [{ job: 't-a' }, { job: 't-b', dependsOn: ['t-a'] }] });
+assert.equal(getWorkflow('t-pipe')?.schedule, '0 2 * * *');
+assert.deepEqual(getWorkflowJobs('t-pipe'), [{ job_name: 't-a', depends_on: [] }, { job_name: 't-b', depends_on: ['t-a'] }]);
 
 // re-sync replaces membership/edges
-syncPipeline({ name: 't-pipe', jobs: [{ job: 't-a' }, { job: 't-b' }, { job: 't-c', dependsOn: ['t-a'] }] });
-assert.equal(getPipelineJobs('t-pipe').length, 3);
+syncWorkflow({ name: 't-pipe', jobs: [{ job: 't-a' }, { job: 't-b' }, { job: 't-c', dependsOn: ['t-a'] }] });
+assert.equal(getWorkflowJobs('t-pipe').length, 3);
 
-// pipeline run + linked member runs + skip + logs
-const pr = createPipelineRun('t-pipe', 'manual');
-assert.ok(hasActivePipelineRun('t-pipe'));
-const r1 = createRun('t-a', 'pipeline', 1, pr);
+// workflow run + linked member runs + skip + logs
+const pr = createWorkflowRun('t-pipe', 'manual');
+assert.ok(hasActiveWorkflowRun('t-pipe'));
+const r1 = createRun('t-a', 'workflow', 1, pr);
 finishRun(r1, 'success', { exitCode: 0 });
 recordSkippedRun('t-c', pr, 'skipped: upstream t-a did not succeed');
-const members = listRunsForPipelineRun(pr);
+const members = listRunsForWorkflowRun(pr);
 assert.equal(members.length, 2);
 assert.ok(members.some((m) => m.status === 'skipped'));
-assert.equal(members.find((m) => m.status === 'success')?.pipeline_run_id, pr);
-addPipelineLog(pr, 'stage t-a finished');
-assert.equal(getPipelineLogs(pr).length, 1);
-finishPipelineRun(pr, 'partial');
-assert.equal(getPipelineRun(pr)?.status, 'partial');
-assert.ok(!hasActivePipelineRun('t-pipe'));
+assert.equal(members.find((m) => m.status === 'success')?.workflow_run_id, pr);
+addWorkflowLog(pr, 'stage t-a finished');
+assert.equal(getWorkflowLogs(pr).length, 1);
+finishWorkflowRun(pr, 'partial');
+assert.equal(getWorkflowRun(pr)?.status, 'partial');
+assert.ok(!hasActiveWorkflowRun('t-pipe'));
 
 // orphan reaping
-const pr2 = createPipelineRun('t-pipe', 'manual');
-assert.ok(reapOrphanPipelineRuns() >= 1);
-assert.equal(getPipelineRun(pr2)?.status, 'cancelled');
-assert.equal(pipelineRetryableCount(['t-a', 't-b', 't-c'], 4), 0);
+const pr2 = createWorkflowRun('t-pipe', 'manual');
+assert.ok(reapOrphanWorkflowRuns() >= 1);
+assert.equal(getWorkflowRun(pr2)?.status, 'cancelled');
+assert.equal(workflowRetryableCount(['t-a', 't-b', 't-c'], 4), 0);
 
 // services: sync + quota count + atomic rate reservation
 syncService({ name: 't-svc', ratePerMinute: 2, dailyCap: 5, monthlyCap: 50, paid: true });
@@ -60,7 +60,7 @@ assert.equal(tryReserveServiceSlot('t-rate', 2), false); // rate of 2/min exhaus
 assert.equal(tryReserveMinInterval('t-mi', 10_000), true); // no prior call
 assert.equal(tryReserveMinInterval('t-mi', 10_000), false); // <10s since last call
 
-console.log('  ✓ store pipeline + service helpers');
+console.log('  ✓ store workflow + service helpers');
 
 // ── backfillServiceUsage: idempotent top-up from job_usage → service_usage (T013) ──
 // Simulate the pre-migration state: a job that metered onto job_usage but whose

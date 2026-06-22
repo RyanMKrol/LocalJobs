@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { buildDag, classifyGates, DagError, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
 import type { Gate, GateRunRef } from './dag.js';
-import type { PipelineJobRef } from './types.js';
+import type { WorkflowJobRef } from './types.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -17,7 +17,7 @@ function test(name: string, fn: () => void) {
 }
 
 test('linear chain → one job per wave, in order', () => {
-  const refs: PipelineJobRef[] = [
+  const refs: WorkflowJobRef[] = [
     { job: 'a' },
     { job: 'b', dependsOn: ['a'] },
     { job: 'c', dependsOn: ['b'] },
@@ -27,7 +27,7 @@ test('linear chain → one job per wave, in order', () => {
 });
 
 test('diamond → parallel middle wave, join waits for both', () => {
-  const refs: PipelineJobRef[] = [
+  const refs: WorkflowJobRef[] = [
     { job: 'a' },
     { job: 'b', dependsOn: ['a'] },
     { job: 'c', dependsOn: ['a'] },
@@ -41,7 +41,7 @@ test('diamond → parallel middle wave, join waits for both', () => {
 
 test('cross-level dep lands one wave after its LATEST dependency', () => {
   // d depends on a (wave0) and c (wave2) → d must be wave3, not wave1.
-  const refs: PipelineJobRef[] = [
+  const refs: WorkflowJobRef[] = [
     { job: 'a' },
     { job: 'b', dependsOn: ['a'] },
     { job: 'c', dependsOn: ['b'] },

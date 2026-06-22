@@ -4,26 +4,26 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
 import { runJob } from '../core/executor.js';
-import { runPipeline } from '../core/pipeline-executor.js';
-import { nextPipelineRun, nextRun } from '../core/scheduler.js';
-import { getJobDefinition, getPipelineDefinition } from '../jobs/registry.js';
+import { runWorkflow } from '../core/workflow-executor.js';
+import { nextWorkflowRun, nextRun } from '../core/scheduler.js';
+import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
 import {
   browseTable,
   getLogs,
-  getPipeline,
-  getPipelineJobs,
-  getPipelineLogs,
-  getPipelineRun,
+  getWorkflow,
+  getWorkflowJobs,
+  getWorkflowLogs,
+  getWorkflowRun,
   getRun,
-  lastPipelineRunForPipeline,
+  lastWorkflowRunForWorkflow,
   lastRunForJob,
   listJobs,
-  listPipelineRunsForPipeline,
-  listPipelines,
-  listRecentPipelineRuns,
+  listWorkflowRunsForWorkflow,
+  listWorkflows,
+  listRecentWorkflowRuns,
   listRecentRuns,
   listRunsForJob,
-  listRunsForPipelineRun,
+  listRunsForWorkflowRun,
   listDbTables,
   listServices,
   orphanedWorkItems,
@@ -33,7 +33,7 @@ import {
   serviceCallsToday,
   updateServiceLimits,
   setJobEnabled,
-  setPipelineEnabled,
+  setWorkflowEnabled,
   stuckCount,
   stuckItems,
   unstickWorkItem,
@@ -131,25 +131,25 @@ function jobView(name: string) {
   };
 }
 
-/** Decorate a pipeline with its last/next run, member jobs+edges, and total stuck. */
-function pipelineView(name: string) {
-  const members = getPipelineJobs(name);
+/** Decorate a workflow with its last/next run, member jobs+edges, and total stuck. */
+function workflowView(name: string) {
+  const members = getWorkflowJobs(name);
   return {
-    last_run: lastPipelineRunForPipeline(name) ?? null,
-    next_run: nextPipelineRun(name),
+    last_run: lastWorkflowRunForWorkflow(name) ?? null,
+    next_run: nextWorkflowRun(name),
     jobs: members,
     stuck: members.reduce((sum, m) => sum + stuckCount(m.job_name), 0),
   };
 }
 
 /**
- * Derive the validation gates for a pipeline from its members' declared
+ * Derive the validation gates for a workflow from its members' declared
  * produces/consumes contracts (the same `deriveGates` the executor enforces).
  * Pure structure — gate STATE is layered on per-run by `classifyGates`. A
  * malformed DAG yields no gates (the run endpoint surfaces the DAG error itself).
  */
-function gatesForPipeline(name: string): Gate[] {
-  const refs = getPipelineJobs(name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
+function gatesForWorkflow(name: string): Gate[] {
+  const refs = getWorkflowJobs(name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
   let dag;
   try {
     dag = buildDag(refs);
@@ -166,10 +166,10 @@ function gatesForPipeline(name: string): Gate[] {
   return deriveGates(dag, produces, consumes);
 }
 
-/** Map each pipeline member job → its pipeline name (for grouping the jobs list). */
-function memberPipelineMap(): Map<string, string> {
+/** Map each workflow member job → its workflow name (for grouping the jobs list). */
+function memberWorkflowMap(): Map<string, string> {
   const map = new Map<string, string>();
-  for (const p of listPipelines()) for (const m of getPipelineJobs(p.name)) map.set(m.job_name, p.name);
+  for (const p of listWorkflows()) for (const m of getWorkflowJobs(p.name)) map.set(m.job_name, p.name);
   return map;
 }
 
@@ -249,10 +249,10 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, { ignored: items });
       }
 
-      // GET /api/jobs  (each flagged with its pipeline, if it's a member)
+      // GET /api/jobs  (each flagged with its workflow, if it's a member)
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'jobs' && parts.length === 2) {
-        const memberOf = memberPipelineMap();
-        const rows = listJobs().map((j) => ({ ...j, ...jobView(j.name), pipeline: memberOf.get(j.name) ?? null }));
+        const memberOf = memberWorkflowMap();
+        const rows = listJobs().map((j) => ({ ...j, ...jobView(j.name), workflow: memberOf.get(j.name) ?? null }));
         return json(res, 200, { jobs: rows });
       }
 
@@ -316,56 +316,56 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, { ok: true, enabled: !!body.enabled });
       }
 
-      // GET /api/pipelines
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipelines' && parts.length === 2) {
-        const rows = listPipelines().map((p) => ({ ...p, ...pipelineView(p.name) }));
-        return json(res, 200, { pipelines: rows });
+      // GET /api/workflows
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts.length === 2) {
+        const rows = listWorkflows().map((p) => ({ ...p, ...workflowView(p.name) }));
+        return json(res, 200, { workflows: rows });
       }
 
-      // GET /api/pipelines/:name/runs
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipelines' && parts[3] === 'runs') {
-        return json(res, 200, { runs: listPipelineRunsForPipeline(parts[2]) });
+      // GET /api/workflows/:name/runs
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'runs') {
+        return json(res, 200, { runs: listWorkflowRunsForWorkflow(parts[2]) });
       }
 
-      // GET /api/pipelines/:name
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipelines' && parts.length === 3) {
-        const p = getPipeline(parts[2]);
-        if (!p) return json(res, 404, { error: 'pipeline not found' });
-        return json(res, 200, { pipeline: { ...p, ...pipelineView(p.name), runs: listPipelineRunsForPipeline(p.name, 20) } });
+      // GET /api/workflows/:name
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts.length === 3) {
+        const p = getWorkflow(parts[2]);
+        if (!p) return json(res, 404, { error: 'workflow not found' });
+        return json(res, 200, { workflow: { ...p, ...workflowView(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
       }
 
-      // POST /api/pipelines/:name/run
-      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'pipelines' && parts[3] === 'run') {
-        const def = getPipelineDefinition(parts[2]);
-        if (!def) return json(res, 404, { error: 'pipeline not found' });
-        runPipeline(def, 'manual').catch((e) => console.error('[api] pipeline run error', e));
-        return json(res, 202, { ok: true, message: 'pipeline run started' });
+      // POST /api/workflows/:name/run
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'run') {
+        const def = getWorkflowDefinition(parts[2]);
+        if (!def) return json(res, 404, { error: 'workflow not found' });
+        runWorkflow(def, 'manual').catch((e) => console.error('[api] workflow run error', e));
+        return json(res, 202, { ok: true, message: 'workflow run started' });
       }
 
-      // POST /api/pipelines/:name/toggle  { enabled }
-      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'pipelines' && parts[3] === 'toggle') {
+      // POST /api/workflows/:name/toggle  { enabled }
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'toggle') {
         const body = await readBody(req);
-        setPipelineEnabled(parts[2], !!body.enabled);
+        setWorkflowEnabled(parts[2], !!body.enabled);
         return json(res, 200, { ok: true, enabled: !!body.enabled });
       }
 
-      // GET /api/pipeline-runs?limit=
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipeline-runs' && parts.length === 2) {
+      // GET /api/workflow-runs?limit=
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts.length === 2) {
         const limit = Number(url.searchParams.get('limit') ?? 50);
-        return json(res, 200, { runs: listRecentPipelineRuns(limit) });
+        return json(res, 200, { runs: listRecentWorkflowRuns(limit) });
       }
 
-      // GET /api/pipeline-runs/:id  (+ ?after= for incremental framework logs)
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'pipeline-runs' && parts.length === 3) {
-        const run = getPipelineRun(parts[2]);
-        if (!run) return json(res, 404, { error: 'pipeline run not found' });
+      // GET /api/workflow-runs/:id  (+ ?after= for incremental framework logs)
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts.length === 3) {
+        const run = getWorkflowRun(parts[2]);
+        if (!run) return json(res, 404, { error: 'workflow run not found' });
         const after = Number(url.searchParams.get('after') ?? 0);
-        const memberRuns = listRunsForPipelineRun(parts[2]);
-        // Gates are run-scoped: derive the pipeline's gate structure, then classify
+        const memberRuns = listRunsForWorkflowRun(parts[2]);
+        // Gates are run-scoped: derive the workflow's gate structure, then classify
         // each against THIS run's member runs (passed / failed / pending). The
-        // structure-only /pipelines/:name view never gets these.
-        const gates = classifyGates(gatesForPipeline(run.pipeline_name), memberRuns);
-        return json(res, 200, { run, jobs: memberRuns, logs: getPipelineLogs(parts[2], after), gates });
+        // structure-only /workflows/:name view never gets these.
+        const gates = classifyGates(gatesForWorkflow(run.workflow_name), memberRuns);
+        return json(res, 200, { run, jobs: memberRuns, logs: getWorkflowLogs(parts[2], after), gates });
       }
 
       // GET /api/services  (usage vs caps + current per-minute rate)

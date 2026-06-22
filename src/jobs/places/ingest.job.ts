@@ -5,7 +5,7 @@ import { runIngest } from './ingest.js';
 /**
  * Normalize the Google Takeout saved-place CSVs into a single deduped
  * places.json (+ validation report). The foundation step of the places
- * pipeline — later jobs resolve CIDs to place_ids and enrich via the Places API.
+ * workflow — later jobs resolve CIDs to place_ids and enrich via the Places API.
  */
 const job: JobDefinition = {
   name: 'places-ingest',

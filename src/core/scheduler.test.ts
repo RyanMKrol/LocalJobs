@@ -1,18 +1,18 @@
 // Unit tests for the scheduler. There are NO standalone jobs: every job belongs
-// to a pipeline, so the scheduler only ever registers crons for PIPELINES. Its
+// to a workflow, so the scheduler only ever registers crons for WORKFLOWS. Its
 // triggers must respect the live `enabled` flag (checked at fire-time, not
-// registration), and a job must NEVER get a cron of its own (the pipeline drives
+// registration), and a job must NEVER get a cron of its own (the workflow drives
 // its members).
 //
-// To stay deterministic and avoid spawning/firing any REAL registry pipeline (some
-// are scheduled and metered), we swap the registry's `pipelines` array for fakes
+// To stay deterministic and avoid spawning/firing any REAL registry workflow (some
+// are scheduled and metered), we swap the registry's `workflows` array for fakes
 // for the duration of the test, then restore it. The enabled fake is pre-seeded
-// with a 'running' pipeline run so its fire short-circuits to "already running"
+// with a 'running' workflow run so its fire short-circuits to "already running"
 // (observable via the scheduler's own console.log) — nothing is spawned.
-import { pipelines } from '../jobs/registry.js';
-import { createPipelineRun, listPipelineRunsForPipeline, setPipelineEnabled, syncPipeline } from '../db/store.js';
-import { nextPipelineRun, nextRun, startScheduler, stopScheduler } from './scheduler.js';
-import type { PipelineDefinition } from './types.js';
+import { workflows } from '../jobs/registry.js';
+import { createWorkflowRun, listWorkflowRunsForWorkflow, setWorkflowEnabled, syncWorkflow } from '../db/store.js';
+import { nextWorkflowRun, nextRun, startScheduler, stopScheduler } from './scheduler.js';
+import type { WorkflowDefinition } from './types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let passed = 0;
@@ -22,35 +22,35 @@ function ok(name: string, cond: boolean, detail = '') {
 }
 
 const EVERY_SECOND = '* * * * * *';
-const ON: PipelineDefinition = { name: 'test-sched-pipe-on', schedule: EVERY_SECOND, jobs: [{ job: 'test-sched-member' }] };
-const OFF: PipelineDefinition = { name: 'test-sched-pipe-off', schedule: EVERY_SECOND, jobs: [{ job: 'test-sched-member' }] };
-const MANUAL: PipelineDefinition = { name: 'test-sched-pipe-manual', schedule: null, jobs: [{ job: 'test-sched-member' }] };
+const ON: WorkflowDefinition = { name: 'test-sched-pipe-on', schedule: EVERY_SECOND, jobs: [{ job: 'test-sched-member' }] };
+const OFF: WorkflowDefinition = { name: 'test-sched-pipe-off', schedule: EVERY_SECOND, jobs: [{ job: 'test-sched-member' }] };
+const MANUAL: WorkflowDefinition = { name: 'test-sched-pipe-manual', schedule: null, jobs: [{ job: 'test-sched-member' }] };
 
-// DB rows (FK + enabled flag) for the fake pipelines.
-for (const d of [ON, OFF, MANUAL]) syncPipeline(d);
-setPipelineEnabled(OFF.name, false);
-// Pre-seed a perpetual 'running' pipeline run so the enabled pipeline's fire is
+// DB rows (FK + enabled flag) for the fake workflows.
+for (const d of [ON, OFF, MANUAL]) syncWorkflow(d);
+setWorkflowEnabled(OFF.name, false);
+// Pre-seed a perpetual 'running' workflow run so the enabled workflow's fire is
 // overlap-skipped (returns before spawning/notifying) — lets us observe a fire
 // without side effects.
-createPipelineRun(ON.name, 'manual');
+createWorkflowRun(ON.name, 'manual');
 
-// Swap registry contents so ONLY our fakes are scheduled (never a real metered pipeline).
-const savedPipes = pipelines.splice(0, pipelines.length);
+// Swap registry contents so ONLY our fakes are scheduled (never a real metered workflow).
+const savedPipes = workflows.splice(0, workflows.length);
 const origLog = console.log;
 const captured: string[] = [];
 
 try {
-  pipelines.push(ON, OFF, MANUAL);
+  workflows.push(ON, OFF, MANUAL);
   // Capture scheduler fire/registration logs while still printing test output.
   console.log = (...a: unknown[]) => { captured.push(a.map(String).join(' ')); origLog(...a); };
 
   startScheduler();
 
-  // Registration: scheduled pipelines get a cron (enabled state is irrelevant to
-  // registration — the gate is at fire-time); a manual (null-schedule) pipeline does not.
-  ok('enabled pipeline is registered (nextPipelineRun present)', nextPipelineRun(ON.name) !== null);
-  ok('disabled pipeline is STILL registered (gate is at fire-time)', nextPipelineRun(OFF.name) !== null);
-  ok('manual-only pipeline has no schedule', nextPipelineRun(MANUAL.name) === null);
+  // Registration: scheduled workflows get a cron (enabled state is irrelevant to
+  // registration — the gate is at fire-time); a manual (null-schedule) workflow does not.
+  ok('enabled workflow is registered (nextWorkflowRun present)', nextWorkflowRun(ON.name) !== null);
+  ok('disabled workflow is STILL registered (gate is at fire-time)', nextWorkflowRun(OFF.name) !== null);
+  ok('manual-only workflow has no schedule', nextWorkflowRun(MANUAL.name) === null);
   // Jobs are NEVER scheduled on their own — there are no standalone crons.
   ok('a member job gets no own cron', nextRun('test-sched-member') === null);
 
@@ -59,17 +59,17 @@ try {
 
   const firedOn = captured.some((l) => l.includes(ON.name) && l.includes('skipped'));
   const firedOff = captured.some((l) => l.includes(OFF.name) && l.includes('skipped'));
-  ok('ENABLED pipeline fired (passed the gate → overlap-skipped, logged)', firedOn, captured.join('\n'));
-  ok('DISABLED pipeline never fired its action (gate blocked it)', !firedOff);
-  // The disabled pipeline created no NEW runs; the enabled one only has the pre-seeded running row.
-  ok('disabled pipeline created no run rows', listPipelineRunsForPipeline(OFF.name).length === 0);
-  ok('enabled pipeline spawned nothing (only the pre-seeded running row exists)', listPipelineRunsForPipeline(ON.name).length === 1);
-  ok('cron stopped: nextPipelineRun null after stopScheduler', nextPipelineRun(ON.name) === null);
+  ok('ENABLED workflow fired (passed the gate → overlap-skipped, logged)', firedOn, captured.join('\n'));
+  ok('DISABLED workflow never fired its action (gate blocked it)', !firedOff);
+  // The disabled workflow created no NEW runs; the enabled one only has the pre-seeded running row.
+  ok('disabled workflow created no run rows', listWorkflowRunsForWorkflow(OFF.name).length === 0);
+  ok('enabled workflow spawned nothing (only the pre-seeded running row exists)', listWorkflowRunsForWorkflow(ON.name).length === 1);
+  ok('cron stopped: nextWorkflowRun null after stopScheduler', nextWorkflowRun(ON.name) === null);
 } finally {
   console.log = origLog;
   stopScheduler();
   // Restore the real registry contents for the rest of the suite.
-  pipelines.splice(0, pipelines.length, ...savedPipes);
+  workflows.splice(0, workflows.length, ...savedPipes);
 }
 
 console.log(`\n${passed} scheduler test(s) passed.`);

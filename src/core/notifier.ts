@@ -1,6 +1,6 @@
 import { config } from '../config.js';
-import { getPipelineRun, getRun, stuckCount, workItemCounts } from '../db/store.js';
-import type { LogLevel, PipelineRunStatus, RunStatus } from './types.js';
+import { getWorkflowRun, getRun, stuckCount, workItemCounts } from '../db/store.js';
+import type { LogLevel, WorkflowRunStatus, RunStatus } from './types.js';
 
 type LogFn = (message: string, level?: LogLevel) => void;
 
@@ -70,11 +70,11 @@ export async function push(
   return ntfy;
 }
 
-/** Notify on a single pipeline STAGE (member job) completing — status + the job's
- *  work-item tally — and log the send outcome to the pipeline's framework log. */
+/** Notify on a single workflow STAGE (member job) completing — status + the job's
+ *  work-item tally — and log the send outcome to the workflow's framework log. */
 export async function notifyStage(
-  pipelineName: string,
-  _pipelineRunId: string,
+  workflowName: string,
+  _workflowRunId: string,
   jobName: string,
   status: RunStatus,
   log: LogFn,
@@ -84,31 +84,31 @@ export async function notifyStage(
   const failed = counts.failed ?? 0;
   const stuck = stuckCount(jobName);
   const emoji = status === 'success' ? '✓' : status === 'skipped' ? '⊘' : '✗';
-  const title = `${emoji} ${pipelineName}: ${jobName} ${status}`;
+  const title = `${emoji} ${workflowName}: ${jobName} ${status}`;
   let body = `stage ${status}`;
   if (ok || failed) body += ` · ${ok} ok, ${failed} failed`;
   if (stuck) body += ` · ⚠ ${stuck} stuck`;
   const res = await push(title, body, {
-    job: pipelineName,
+    job: workflowName,
     priority: status === 'success' ? 'low' : 'default',
     tags: status === 'success' ? 'white_check_mark' : status === 'skipped' ? 'fast_forward' : 'warning',
   });
   log(res.ok ? `notification sent — ${title}` : `notification FAILED (${res.error}) — ${title}`, res.ok ? 'info' : 'error');
 }
 
-/** Notify on the whole pipeline run finishing (aggregate), and log the outcome. */
-export async function notifyPipeline(
-  pipelineName: string,
-  pipelineRunId: string,
-  status: PipelineRunStatus,
+/** Notify on the whole workflow run finishing (aggregate), and log the outcome. */
+export async function notifyWorkflow(
+  workflowName: string,
+  workflowRunId: string,
+  status: WorkflowRunStatus,
   log: LogFn,
 ): Promise<void> {
-  const run = getPipelineRun(pipelineRunId);
+  const run = getWorkflowRun(workflowRunId);
   const emoji = status === 'success' ? '✅' : status === 'partial' ? '⚠️' : status === 'cancelled' ? '🛑' : '❌';
-  const title = `${emoji} ${pipelineName} pipeline — ${status}`;
-  const body = (run?.progress_msg?.trim() || `pipeline ${status}`) + (run?.duration_ms ? ` · ${fmtDur(run.duration_ms)}` : '');
+  const title = `${emoji} ${workflowName} workflow — ${status}`;
+  const body = (run?.progress_msg?.trim() || `workflow ${status}`) + (run?.duration_ms ? ` · ${fmtDur(run.duration_ms)}` : '');
   const res = await push(title, body, {
-    job: pipelineName,
+    job: workflowName,
     priority: status === 'success' ? 'default' : 'high',
     tags: status === 'success' ? 'tada' : 'rotating_light',
   });

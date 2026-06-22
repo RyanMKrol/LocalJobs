@@ -7,7 +7,7 @@ One long-lived daemon (kept alive by launchd) schedules and runs all jobs in
 isolated child processes, records every run to SQLite, and a Next.js dashboard
 shows live progress, history, durations, and pass/fail — plus push alerts on
 failure. Built to host long-running / headless local work (notably a Google
-Places enrichment pipeline) that doesn't fit serverless or a web request.
+Places enrichment workflow) that doesn't fit serverless or a web request.
 
 ```
 launchd ──keeps alive──▶ daemon ──spawns──▶ job (isolated child process)
@@ -124,22 +124,22 @@ npm run dev               # dashboard on http://localhost:4788
 
 ## Triggering jobs — two ways
 
-**Pipelines own scheduling.** There are no standalone jobs: every job belongs to a
-pipeline, and the *pipeline* is the only thing that carries a cron schedule and an
-enable toggle (a single job is just a one-stage pipeline). A job's own `schedule`
-field is not used — the pipeline drives its members.
+**Workflows own scheduling.** There are no standalone jobs: every job belongs to a
+workflow, and the *workflow* is the only thing that carries a cron schedule and an
+enable toggle (a single job is just a one-stage workflow). A job's own `schedule`
+field is not used — the workflow drives its members.
 
-- **Scheduled:** a *pipeline* declares a cron `schedule` in its manifest; the daemon
+- **Scheduled:** a *workflow* declares a cron `schedule` in its manifest; the daemon
   fires it automatically. Nothing for you to do.
-- **Manual:** dashboard → **Pipelines → [pipeline] → ▶ Run now** (or a single
+- **Manual:** dashboard → **Workflows → [workflow] → ▶ Run now** (or a single
   **Job → ▶ Run now** for an ad-hoc one-off). Good for testing.
 
-You can also **pause** a pipeline (the enable toggle on its page) without deleting it.
+You can also **pause** a workflow (the enable toggle on its page) without deleting it.
 
 ## Adding a job
 
-Every job must be declared in a `*.pipeline.ts` manifest — even a lone job, which
-becomes a one-stage pipeline. A job with **no** manifest is a configuration error
+Every job must be declared in a `*.workflow.ts` manifest — even a lone job, which
+becomes a one-stage workflow. A job with **no** manifest is a configuration error
 and the daemon **refuses to start** (it fails loud at load).
 
 1. Create `src/jobs/<name>.job.ts` exporting a `JobDefinition`:
@@ -160,20 +160,20 @@ and the daemon **refuses to start** (it fails loud at load).
    };
    export default job;
    ```
-2. Declare it in a `*.pipeline.ts` manifest (a one-stage pipeline for a lone job;
-   the pipeline carries the `schedule`):
+2. Declare it in a `*.workflow.ts` manifest (a one-stage workflow for a lone job;
+   the workflow carries the `schedule`):
    ```ts
-   import type { PipelineDefinition } from '../core/types.js';
+   import type { WorkflowDefinition } from '../core/types.js';
 
-   const pipeline: PipelineDefinition = {
+   const workflow: WorkflowDefinition = {
      name: 'cleanup-temp',
      description: 'Nightly temp-file cleanup',
      schedule: '0 4 * * *',   // 4am daily (croner); null = manual-only
      jobs: [{ job: 'cleanup-temp' }],
    };
-   export default pipeline;
+   export default workflow;
    ```
-3. Restart the daemon — jobs and pipelines are **auto-discovered** (no registry to edit):
+3. Restart the daemon — jobs and workflows are **auto-discovered** (no registry to edit):
    ```bash
    launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs
    ```
@@ -181,7 +181,7 @@ and the daemon **refuses to start** (it fails loud at load).
 It then appears in the dashboard automatically with history tracked from run one.
 
 > **Your jobs stay private by default.** This repo is public; it ships the
-> framework and the **places** and **perfumes** pipelines as
+> framework and the **places** and **perfumes** workflows as
 > worked examples. Every other `src/jobs/*.job.ts` (and any private subfolder you
 > add) is gitignored, so the jobs you add stay local-only unless you choose to
 > publish them. Every job's `data/` folder is **always** gitignored
@@ -194,10 +194,10 @@ It then appears in the dashboard automatically with history tracked from run one
 
 ## Dashboard pages
 
-Nav: **Overview · Pipelines · Services · Database · Backlog**
+Nav: **Overview · Workflows · Services · Database · Backlog**
 
 - **Overview** — six **clickable stat tiles** (Running / Succeeded / Failed /
-  Cancelled / Stuck / Ignored); clicking a tile filters the pipeline cards and
+  Cancelled / Stuck / Ignored); clicking a tile filters the workflow cards and
   run table below to that category. Also shows the **stuck items** list (items
   that gave up, won't retry), each with two manual controls: **↻ Unstick**
   (delete the ledger row so it retries fresh next run) and **✕ Ignore**
@@ -205,15 +205,15 @@ Nav: **Overview · Pipelines · Services · Database · Backlog**
   manual-park concept: they drop off the stuck list, are **never counted as
   stuck**, are never reprocessed, and appear ONLY here — under the **Ignored**
   tile (click it to list them).
-- **Pipelines** — every pipeline with schedule, enabled state, member-job count,
-  and last/next run. Every job belongs to a pipeline, so there is no separate
-  standalone-jobs list; drill into a pipeline to reach its member jobs.
-- **Pipeline detail** — ▶ Run now, enable toggle, full run history
-- **Pipeline run detail** — live framework logs, per-stage job outcomes and
+- **Workflows** — every workflow with schedule, enabled state, member-job count,
+  and last/next run. Every job belongs to a workflow, so there is no separate
+  standalone-jobs list; drill into a workflow to reach its member jobs.
+- **Workflow detail** — ▶ Run now, enable toggle, full run history
+- **Workflow run detail** — live framework logs, per-stage job outcomes and
   statuses, **grouped by stage with older cycles collapsed** (click to expand),
   overall progress bar (rolled up in real time from member-job progress)
 - **Job detail** — ▶ Run now, enable toggle, full run history, per-job stuck
-  items; reached via links from the Pipelines page or stuck-items list (no
+  items; reached via links from the Workflows page or stuck-items list (no
   top-level nav entry — use `/jobs/<name>`)
 - **Run detail** — live progress bar + streaming logs, duration, exit code, error
 - **Services** — per-service usage counts vs caps, current per-minute call rate,
@@ -245,7 +245,7 @@ See `.env.example`:
 | `LOCALJOBS_NTFY_TOPIC` | [ntfy.sh](https://ntfy.sh) topic for phone push alerts on failure; blank = off (failures still recorded + a macOS notification fires) |
 | `LOCALJOBS_NTFY_SERVER` | ntfy server (default `https://ntfy.sh`) |
 
-## Worked example pipelines
+## Worked example workflows
 
 Both are published under `src/jobs/`; their `data/` stays gitignored.
 
@@ -265,7 +265,7 @@ pacing, headless toggle, and dry-run options. See `.harness/LIMITATIONS.md` for
 scraping trade-offs.
 
 **Typed-artifact contracts.** Each stage boundary declares `produces`/`consumes`
-contracts (`contracts.ts` in each pipeline). A shape violation at a gate fails
+contracts (`contracts.ts` in each workflow). A shape violation at a gate fails
 LOUD — recording a failed run and firing an alert — instead of silently feeding
-bad data downstream. Gates surface as chips on the pipeline-run DAG in the
+bad data downstream. Gates surface as chips on the workflow-run DAG in the
 dashboard (green/pending/red, with a link to the failure logs when violated).

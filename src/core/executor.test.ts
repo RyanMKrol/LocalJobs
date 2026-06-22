@@ -1,7 +1,7 @@
 // Unit tests for the executor's attempt loop: NDJSON event parsing, retries, and
 // timeout-kill. We point `config.runJobScript` at a FAKE child script (written to a
 // temp file) that emits canned NDJSON per scenario — so no real job runs and there
-// are zero external calls. We drive the engine via `runJobForPipeline` (which shares
+// are zero external calls. We drive the engine via `runJobForWorkflow` (which shares
 // the same attempt/spawn machinery as `runJob` but does NOT notify), so these tests
 // never spawn `osascript`/ntfy. Runs against the scratch DB (LOCALJOBS_DB).
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../config.js';
 import { createRun, getLogs, getRun, listRunsForJob, syncJob } from '../db/store.js';
-import { runJob, runJobForPipeline } from './executor.js';
+import { runJob, runJobForWorkflow } from './executor.js';
 import type { JobDefinition } from './types.js';
 
 let passed = 0;
@@ -58,7 +58,7 @@ const dir = mkdtempSync(join(tmpdir(), 'lj-exec-'));
 const fakePath = join(dir, 'fake-runner.mjs');
 writeFileSync(fakePath, FAKE);
 const counterFile = join(dir, 'counter.txt');
-const PL = 'test-exec-pipeline-run'; // runs.pipeline_run_id has no FK — a synthetic id is fine
+const PL = 'test-exec-workflow-run'; // runs.workflow_run_id has no FK — a synthetic id is fine
 const origScript = config.runJobScript;
 config.runJobScript = fakePath;
 
@@ -69,7 +69,7 @@ try {
   await test('success path: NDJSON log/progress/result parsed; non-JSON stdout still logged', async () => {
     const d = def('exec-success');
     syncJob(d);
-    const { runId, status } = await runJobForPipeline(d, PL);
+    const { runId, status } = await runJobForWorkflow(d, PL);
     assert.equal(status, 'success');
     assert.ok(runId);
     const run = getRun(runId!);
@@ -86,7 +86,7 @@ try {
   await test('failure path: failed result event → run failed with the reported error', async () => {
     const d = def('fail-exec');
     syncJob(d);
-    const { runId, status } = await runJobForPipeline(d, PL);
+    const { runId, status } = await runJobForWorkflow(d, PL);
     assert.equal(status, 'failed');
     const run = getRun(runId!);
     assert.equal(run?.status, 'failed');
@@ -98,7 +98,7 @@ try {
     process.env.LJ_TEST_COUNTER = counterFile;
     const d = def('retry-exec', { maxRetries: 2 });
     syncJob(d);
-    const { runId, status } = await runJobForPipeline(d, PL);
+    const { runId, status } = await runJobForWorkflow(d, PL);
     delete process.env.LJ_TEST_COUNTER;
     assert.equal(status, 'success');
     const runs = listRunsForJob('retry-exec');
@@ -111,7 +111,7 @@ try {
     const d = def('timeout-exec', { timeoutMs: 400 });
     syncJob(d);
     const t0 = Date.now();
-    const { runId, status } = await runJobForPipeline(d, PL);
+    const { runId, status } = await runJobForWorkflow(d, PL);
     assert.equal(status, 'timeout');
     assert.ok(Date.now() - t0 < 5000, 'killed promptly, not left to hang');
     const run = getRun(runId!);
@@ -131,11 +131,11 @@ try {
     assert.equal(listRunsForJob('overlap-exec').length, 1);
   });
 
-  await test('overlap guard (pipeline member): a busy job records a skipped member run', async () => {
+  await test('overlap guard (workflow member): a busy job records a skipped member run', async () => {
     const d = def('ploverlap-exec');
     syncJob(d);
     createRun('ploverlap-exec', 'manual'); // busy with a standalone run
-    const { runId, status } = await runJobForPipeline(d, PL);
+    const { runId, status } = await runJobForWorkflow(d, PL);
     assert.equal(status, 'skipped');
     assert.equal(getRun(runId!)?.status, 'skipped');
   });

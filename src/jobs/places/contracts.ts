@@ -1,4 +1,4 @@
-// Typed-artifact contracts for the places pipeline stage boundaries.
+// Typed-artifact contracts for the places workflow stage boundaries.
 //
 // Each factory returns an ArtifactContract whose `check()` inspects the REAL
 // artifact left on disk and reports SHAPE + NON-EMPTY drift — enough to catch a
@@ -7,7 +7,7 @@
 // unit-tested against synthetic fixtures (the jobs use the default data paths).
 //
 // Keys are shared across the producing job's `produces` and the consuming job's
-// `consumes` so the pipeline executor derives a gate at each edge:
+// `consumes` so the workflow executor derives a gate at each edge:
 //   ingest ──places-normalized──▶ resolve ──resolved-place-ids──▶ enrich
 //          ──enriched-places──▶ enrich-with-llm
 import { existsSync, readFileSync } from 'node:fs';
