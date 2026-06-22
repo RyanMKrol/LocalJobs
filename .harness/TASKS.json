@@ -1682,6 +1682,33 @@
       ],
       "do": "On a workflow-run page, the DAG graph (components/Dag.tsx — left-to-right waves) looks misaligned on narrow/mobile widths: the vertical centring of nodes/waves reads as visually off as the width shrinks. Make it responsive — EITHER fix the vertical alignment of the left-to-right layout at narrow widths, OR switch to a TOP-DOWN (vertical) layout below a small-screen breakpoint (lean: top-down likely reads better on a phone since multi-node waves do not fit horizontally). The agent picks whichever looks best. Validate visually: render the page at an iPhone-class viewport (~402px) AND at desktop width and confirm the graph is cleanly aligned + legible at both (reuse the T040 viewport-screenshot approach; screenshot-verifiable, not needs-human).",
       "doneWhen": "The workflow-run DAG renders cleanly aligned + legible at a narrow/mobile viewport (~402px) and at desktop width, with no awkward vertical-centring misalignment; validated via viewport screenshots at both widths recorded in the worklog; dashboard build passes."
+    },
+    {
+      "id": "T067",
+      "title": "Backlog view: make every section collapsible",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Backlog view (/backlog), make EACH section collapsible — currently only the Done section can collapse. Apply the same collapse/expand toggle to the Harness-buildable and Needs-a-human sections (and any others), each with its count in the header, so the whole page can be tidied. Match the existing Done-section collapse pattern; each section toggles independently.",
+      "doneWhen": "On /backlog, every section (Harness-buildable, Needs a human, Done) has a working collapse/expand toggle with its count; sections toggle independently; dashboard build passes."
     }
   ]
 }
