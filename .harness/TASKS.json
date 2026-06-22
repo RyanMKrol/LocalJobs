@@ -2329,7 +2329,7 @@
     {
       "id": "T091",
       "title": "Backend: cancel a running workflow run (abort + kill children + API)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
