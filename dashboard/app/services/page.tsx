@@ -91,7 +91,7 @@ export default function Services() {
               return (
                 <tr key={s.name}>
                   <td>
-                    <strong>{s.name}</strong> {s.paid ? <span className="pill paid">paid</span> : <span className="pill">free</span>}
+                    <strong>{s.name}</strong> {s.paid ? <span className="pill paid">paid</span> : <span className="pill free">free</span>}
                     {s.limits_overridden ? <span className="pill" title="Limits edited from the dashboard; preserved across code-sync"> edited</span> : null}
                     <div className="muted" style={{ fontSize: 12 }}>{s.description}</div>
                   </td>
