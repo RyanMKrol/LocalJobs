@@ -737,6 +737,31 @@
       "verify": [],
       "do": "On the overview page, each workflow card shows a status pill (running / success / cancelled / …) for its last/current run, but there is no one-click way to reach that run — you have to click the workflow, find the run, then Details. Make the pill a LINK straight to that specific workflow run (/workflow-runs/{last_run.id}) — i.e. whichever run it references (the currently-running one, else the most recent). The run id is already on the card’s last_run.",
       "doneWhen": "On the overview, clicking a workflow card’s status pill navigates directly to that workflow run’s detail page in one click; a card with no run yet shows a non-link pill (no dead link); dashboard build passes."
+    },
+    {
+      "id": "T057",
+      "title": "Validation gates: clickable detail + comprehensive logging",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "coding",
+        "framework",
+        "dashboard"
+      ],
+      "scope": [
+        "src/core/",
+        "src/api/server.ts",
+        "src/db/store.ts",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/core/*.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Validation gates now render on a workflow run (T028) but you cannot INSPECT them — no way to see what a gate validated, its logs, or to manually double-check it. Add comprehensive gate logging + clickable gate detail: (1) the workflow executor logs, per gate check, the contract key, producer→consumer, what it ASSERTED (the contract description) and the pass/fail result + any violation detail, into the workflow run’s framework logs; (2) expose per-gate detail via the API (contract key + description, state, and the relevant member-run/log refs); (3) make EVERY gate on the run DAG clickable to a detail view showing what it validates and its outcome — passing and pending gates too, not only failed ones (T028) — so you can confirm a gate is doing what you expect.",
+      "doneWhen": "Each validation gate on a workflow run is clickable and opens a detail view showing what it validates (contract key + description, producer→consumer) and its outcome; the executor logs each gate check (assertion + result/violation) to the run’s framework logs; passing/pending gates are inspectable, not just failed ones; a unit test covers the gate logging/detail; typecheck + tests + dashboard build pass."
     }
   ]
 }
