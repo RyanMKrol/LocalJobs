@@ -212,7 +212,7 @@
     {
       "id": "T035",
       "title": "Services: colour free services green",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
