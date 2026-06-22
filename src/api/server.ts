@@ -165,7 +165,15 @@ function gatesForWorkflow(name: string): Gate[] {
     produces.set(node, (jd?.produces ?? []).map((c) => c.key));
     consumes.set(node, (jd?.consumes ?? []).map((c) => c.key));
   }
-  return deriveGates(dag, produces, consumes);
+  // Enrich each derived gate with a human description of what its contracts
+  // assert (producer's `produces[key]` + consumer's `consumes[key]` descriptions)
+  // so the dashboard's per-gate detail can explain what the gate validates.
+  return deriveGates(dag, produces, consumes).map((g) => {
+    const pd = getJobDefinition(g.producer)?.produces?.find((c) => c.key === g.key)?.description;
+    const cd = getJobDefinition(g.consumer)?.consumes?.find((c) => c.key === g.key)?.description;
+    const parts = [pd && `produces — ${pd}`, cd && `consumes — ${cd}`].filter(Boolean) as string[];
+    return parts.length ? { ...g, description: parts.join(' · ') } : g;
+  });
 }
 
 /** Map each workflow member job → its workflow name (for grouping the jobs list). */

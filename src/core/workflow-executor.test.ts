@@ -68,6 +68,10 @@ const gateMembers: JobDefinition[] = [
   { name: 'g-cons-ok', consumes: [{ key: 'csv', check: ok }], run: async () => {} },
   { name: 'g-cons-bad', consumes: [{ key: 'csv', check: bad('row 3 has no place_id') }], run: async () => {} },
   { name: 'g-cons-throw', consumes: [{ key: 'csv', check: () => { throw new Error('page structure changed'); } }], run: async () => {} },
+  // Described contracts: the executor must log WHAT the gate asserts (the contract
+  // descriptions), not just pass/fail, into the workflow run's framework log.
+  { name: 'g-prod-desc', produces: [{ key: 'csv', description: 'CSV has cid + name columns', check: ok }], run: async () => {} },
+  { name: 'g-cons-desc', consumes: [{ key: 'csv', description: 'every row has a place_id', check: ok }], run: async () => {} },
 ];
 for (const d of gateMembers) {
   syncJob(d);
@@ -172,6 +176,22 @@ try {
     const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
     assert.ok(/1 gate\(s\)/.test(logText), 'gate count surfaced in the start log');
     assert.ok(/gate ok \[g-prod → g-cons-ok\] artifact "csv"/.test(logText), `gate-ok not logged: ${logText}`);
+  });
+
+  await test('validation gate: the executor logs each gate check WITH what it asserts (contract descriptions)', async () => {
+    const def: WorkflowDefinition = {
+      name: 'gate-logging', jobs: [{ job: 'g-prod-desc' }, { job: 'g-cons-desc', dependsOn: ['g-prod-desc'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success');
+    const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
+    // The "checking" line names the boundary, the artifact, AND both assertions.
+    assert.match(logText, /checking gate \[g-prod-desc → g-cons-desc\] artifact "csv"/, `checking line missing: ${logText}`);
+    assert.match(logText, /producer asserts: CSV has cid \+ name columns/, `producer assertion not logged: ${logText}`);
+    assert.match(logText, /consumer asserts: every row has a place_id/, `consumer assertion not logged: ${logText}`);
+    // …and the pass result is still logged with the same assertion suffix.
+    assert.match(logText, /✓ gate ok \[g-prod-desc → g-cons-desc\] artifact "csv".*every row has a place_id/, `gate-ok result missing: ${logText}`);
   });
 
   await test('validation gate: a CONSUMER-side drift fails the gate → consumer never runs, status partial', async () => {

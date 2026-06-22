@@ -88,8 +88,8 @@ const logs = [
 ];
 
 const gates = [
-  { key: 'resolved.json', producer: 'places-resolve', consumer: 'places-enrich', state: 'passed' },
-  { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', state: 'failed', failureRunId: '1' },
+  { key: 'resolved.json', producer: 'places-resolve', consumer: 'places-enrich', state: 'passed', description: 'produces — resolved.json is a non-empty array of place_ids · consumes — every row has a place_id' },
+  { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', state: 'failed', failureRunId: '1', description: 'produces — enriched.json has name + address fields' },
 ];
 
 const tasks = [

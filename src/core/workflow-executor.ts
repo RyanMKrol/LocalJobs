@@ -25,6 +25,21 @@ const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * its violations. Returns the merged verdict so the boundary fails LOUD with the
  * exact drift rather than passing bad data downstream.
  */
+/**
+ * The human-readable assertions a gate enforces — the producer's `produces[key]`
+ * and the consumer's `consumes[key]` contract descriptions, whichever are
+ * declared. Logged before each check so the run's framework log says what the
+ * gate is verifying (not just pass/fail). Pure lookup; runs no checks.
+ */
+function gateAssertions(gate: Gate): string[] {
+  const out: string[] = [];
+  const p = getJobDefinition(gate.producer)?.produces?.find((c) => c.key === gate.key)?.description;
+  const c = getJobDefinition(gate.consumer)?.consumes?.find((c) => c.key === gate.key)?.description;
+  if (p) out.push(`producer asserts: ${p}`);
+  if (c) out.push(`consumer asserts: ${c}`);
+  return out;
+}
+
 async function enforceGate(gate: Gate): Promise<{ ok: boolean; violations: string[] }> {
   const producer = getJobDefinition(gate.producer);
   const consumer = getJobDefinition(gate.consumer);
@@ -114,6 +129,9 @@ export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' |
         // run — the consumer never spawns and the drift is surfaced + notified,
         // so bad data is stopped at the exact boundary.
         for (const gate of inboundGates.get(job) ?? []) {
+          const asserts = gateAssertions(gate);
+          const suffix = asserts.length ? ` · ${asserts.join('; ')}` : '';
+          log(`⛒ checking gate [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${suffix}`);
           const verdict = await enforceGate(gate);
           if (!verdict.ok) {
             const detail = `${gateFailurePrefix(gate)}: ${verdict.violations.join('; ')}`;
@@ -121,7 +139,7 @@ export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' |
             recordGateFailure(job, workflowRunId, detail);
             return 'failed';
           }
-          log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"`);
+          log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${suffix}`);
         }
         const { status } = await runJobForWorkflow(jd, workflowRunId);
         return status;

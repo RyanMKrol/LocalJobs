@@ -78,6 +78,8 @@ export interface GateStatus {
   producer: string;
   consumer: string;
   state: 'passed' | 'failed' | 'pending';
+  /** What the gate's contracts assert (producer/consumer contract descriptions). */
+  description?: string | null;
   /** When `state === 'failed'`, the member run id to link to its failure logs. */
   failureRunId?: string | null;
 }

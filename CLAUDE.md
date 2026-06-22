@@ -367,10 +367,21 @@ doubt, log it.
   from the run's member runs — a gate is `failed` when its consumer's latest run
   is a gate-failure (matched via the shared `gateFailurePrefix`, the SAME format
   `recordGateFailure` writes), `passed` once the consumer actually ran, else
-  `pending`. The `GET /api/workflow-runs/:id` endpoint returns this as `gates[]`,
-  and `dashboard/.../Dag.tsx` renders a chip per gate on its consumer node (red +
-  a link to the failure logs when violated). Gates render ONLY when a run's
-  `gates` prop is passed — the structure-only `/workflows/[name]` graph omits it.
+  `pending`. The `GET /api/workflow-runs/:id` endpoint returns this as `gates[]`
+  — each gate carries its `description` (what the producer's `produces[key]` and
+  consumer's `consumes[key]` contracts ASSERT, enriched in the API's
+  `gatesForWorkflow`), so a gate is inspectable, not just coloured.
+  `dashboard/.../Dag.tsx` renders a chip per gate on its consumer node, and
+  EVERY chip (passed/failed/pending alike) links to that gate's row in the
+  **Validation gates** panel on the workflow-run page (`gateAnchor` gives the
+  shared DOM id) — the panel shows what each gate validates (key + description,
+  producer→consumer), its outcome, and links to the producer/consumer/violation
+  run logs. Gates render ONLY when a run's `gates` prop is passed — the
+  structure-only `/workflows/[name]` graph omits it. The executor also LOGS each
+  gate check to the workflow run's framework logs: a `⛒ checking gate …` line
+  naming the boundary, artifact, and both contracts' assertions
+  (`gateAssertions`), then a `✓ gate ok …` / `⨯ Gate violation …` result line —
+  so the run page tells you what each gate verified and why it passed or failed.
 - **Workflow progress is rolled up from member jobs (don't set it by hand).** A
   workflow run's `progress` is a first-class roll-up: each member stage
   contributes a fraction in [0,1] of the workflow's total stage count — a

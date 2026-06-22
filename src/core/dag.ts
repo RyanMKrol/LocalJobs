@@ -85,6 +85,13 @@ export interface Gate {
   key: string;
   producer: string;
   consumer: string;
+  /**
+   * Human-readable summary of what the gate's contracts ASSERT (the producer's
+   * `produces[key].description` and/or the consumer's `consumes[key].description`).
+   * Not set by `deriveGates` (which only sees keys) — enriched by the caller that
+   * has the job definitions (the API) so the detail view can explain the gate.
+   */
+  description?: string;
 }
 
 /**

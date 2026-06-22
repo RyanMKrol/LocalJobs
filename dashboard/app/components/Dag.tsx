@@ -29,31 +29,29 @@ function computeWaves(members: WorkflowMember[]): string[][] {
   return waves;
 }
 
+/** Stable DOM id for a gate's detail row, shared by its chip link + the panel. */
+export function gateAnchor(g: { producer: string; key: string }): string {
+  return `gate-${`${g.producer}-${g.key}`.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+}
+
 /**
  * Render the validation gates inbound to one consumer node as small chips, each
- * naming its producer + artifact key and coloured by state. A FAILED gate is red
- * and links to its gate-failure run's logs. Gates are only supplied on a workflow
- * RUN, so the structure-only /workflows/[name] view renders no chips.
+ * naming its producer + artifact key and coloured by state. EVERY chip (passed,
+ * failed, or pending) links to that gate's detail row on the workflow-run page,
+ * so any gate can be inspected — not just failures. Gates are only supplied on a
+ * workflow RUN, so the structure-only /workflows/[name] view renders no chips.
  */
-function GateChips({ gates, from }: { gates: GateStatus[]; from?: string }) {
+function GateChips({ gates }: { gates: GateStatus[] }) {
   if (gates.length === 0) return null;
-  const suffix = from ? `?from=${encodeURIComponent(from)}` : '';
   return (
     <div className="dag-gates">
       {gates.map((g) => {
         const label = `⛒ ${g.producer} · ${g.key}`;
-        const title = `gate ${g.state}: ${g.producer} → ${g.consumer} (artifact "${g.key}")`;
-        if (g.state === 'failed' && g.failureRunId) {
-          return (
-            <a key={`${g.producer}:${g.key}`} href={`/runs/${g.failureRunId}${suffix}`} className="dag-gate failed" title={title}>
-              {label}
-            </a>
-          );
-        }
+        const title = `gate ${g.state}: ${g.producer} → ${g.consumer} (artifact "${g.key}") — click for detail`;
         return (
-          <span key={`${g.producer}:${g.key}`} className={`dag-gate ${g.state}`} title={title}>
+          <a key={`${g.producer}:${g.key}`} href={`#${gateAnchor(g)}`} className={`dag-gate ${g.state}`} title={title}>
             {label}
-          </span>
+          </a>
         );
       })}
     </div>
@@ -105,7 +103,7 @@ export function Dag({
               return (
                 <div key={job}>
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
-                  <GateChips gates={gatesByConsumer.get(job) ?? []} from={from} />
+                  <GateChips gates={gatesByConsumer.get(job) ?? []} />
                 </div>
               );
             })}

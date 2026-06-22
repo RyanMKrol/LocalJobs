@@ -186,6 +186,12 @@ test('classifyGates: latest gate-failure run wins when a gate fails across cycle
   assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'failed', failureRunId: 'new' }]);
 });
 
+test('classifyGates: a gate description (detail) is preserved into the classified status', () => {
+  const described: Gate = { ...G, description: 'produces — CSV has rows · consumes — rows have place_id' };
+  const runs: GateRunRef[] = [{ id: 'r2', job_name: 'b', status: 'success', error: null }];
+  assert.deepEqual(classifyGates([described], runs), [{ ...described, state: 'passed' }]);
+});
+
 async function atest(name: string, fn: () => Promise<void>) {
   try {
     await fn();
