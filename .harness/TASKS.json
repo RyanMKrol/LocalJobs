@@ -1497,7 +1497,7 @@
     {
       "id": "T060",
       "title": "Backlog view: add a Done section",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
