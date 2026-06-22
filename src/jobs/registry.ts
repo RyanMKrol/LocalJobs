@@ -94,12 +94,40 @@ export function getPipelineDefinition(name: string): PipelineDefinition | undefi
   return pipelines.find((p) => p.name === name);
 }
 
-/** Union of every member job name across all valid pipelines (scheduler uses this
- *  to suppress a member job's own cron — the pipeline drives it). */
+/** Union of every member job name across all valid pipelines. Every job MUST be a
+ *  member — there are no standalone jobs — so this is also the set of all runnable
+ *  jobs the scheduler considers. */
 export function memberJobNames(): Set<string> {
   const set = new Set<string>();
   for (const p of pipelines) for (const ref of p.jobs) set.add(ref.job);
   return set;
+}
+
+/**
+ * Job names that belong to NO pipeline. There are no standalone jobs in this
+ * framework: every job must be declared in a `*.pipeline.ts` manifest (a single
+ * job is a one-stage pipeline with its own manifest — there is no implicit
+ * wrapping). A non-empty result is therefore a configuration error. Pure +
+ * exported so it can be unit-tested without importing the live registry.
+ */
+export function orphanJobNames(
+  jobDefs: ReadonlyArray<{ name: string }>,
+  pipelineDefs: ReadonlyArray<{ jobs: ReadonlyArray<{ job: string }> }>,
+): string[] {
+  const members = new Set<string>();
+  for (const p of pipelineDefs) for (const ref of p.jobs) members.add(ref.job);
+  return jobDefs.filter((j) => !members.has(j.name)).map((j) => j.name);
+}
+
+// Fail LOUD at load if any discovered job belongs to no pipeline. A job with no
+// manifest is a config error — better to refuse to start than to silently host an
+// orphan that can never be scheduled or composed.
+const orphans = orphanJobNames(jobs, pipelines);
+if (orphans.length > 0) {
+  throw new Error(
+    `[registry] standalone jobs are not allowed — every job must be declared in a *.pipeline.ts manifest ` +
+      `(a single job = a one-stage pipeline). Orphaned job(s) with no pipeline: ${orphans.join(', ')}`,
+  );
 }
 
 function validatePipeline(

@@ -124,13 +124,23 @@ npm run dev               # dashboard on http://localhost:4788
 
 ## Triggering jobs — two ways
 
-- **Scheduled:** a job declares a cron `schedule` in its definition; the daemon
-  fires it automatically. Nothing for you to do.
-- **Manual:** dashboard → **Jobs → [job] → ▶ Run now**. Good for testing/one-offs.
+**Pipelines own scheduling.** There are no standalone jobs: every job belongs to a
+pipeline, and the *pipeline* is the only thing that carries a cron schedule and an
+enable toggle (a single job is just a one-stage pipeline). A job's own `schedule`
+field is not used — the pipeline drives its members.
 
-You can also **pause** a job (the enable toggle on its page) without deleting it.
+- **Scheduled:** a *pipeline* declares a cron `schedule` in its manifest; the daemon
+  fires it automatically. Nothing for you to do.
+- **Manual:** dashboard → **Pipelines → [pipeline] → ▶ Run now** (or a single
+  **Job → ▶ Run now** for an ad-hoc one-off). Good for testing.
+
+You can also **pause** a pipeline (the enable toggle on its page) without deleting it.
 
 ## Adding a job
+
+Every job must be declared in a `*.pipeline.ts` manifest — even a lone job, which
+becomes a one-stage pipeline. A job with **no** manifest is a configuration error
+and the daemon **refuses to start** (it fails loud at load).
 
 1. Create `src/jobs/<name>.job.ts` exporting a `JobDefinition`:
    ```ts
@@ -139,7 +149,6 @@ You can also **pause** a job (the enable toggle on its page) without deleting it
    const job: JobDefinition = {
      name: 'cleanup-temp',
      description: 'Deletes stale temp files',
-     schedule: '0 4 * * *',   // 4am daily (croner); null = manual-only
      timeoutMs: 600_000,      // killed if it runs >10 min; 0 = no timeout
      maxRetries: 1,
      async run(ctx) {
@@ -151,7 +160,20 @@ You can also **pause** a job (the enable toggle on its page) without deleting it
    };
    export default job;
    ```
-2. Restart the daemon — jobs are **auto-discovered** (no registry to edit):
+2. Declare it in a `*.pipeline.ts` manifest (a one-stage pipeline for a lone job;
+   the pipeline carries the `schedule`):
+   ```ts
+   import type { PipelineDefinition } from '../core/types.js';
+
+   const pipeline: PipelineDefinition = {
+     name: 'cleanup-temp',
+     description: 'Nightly temp-file cleanup',
+     schedule: '0 4 * * *',   // 4am daily (croner); null = manual-only
+     jobs: [{ job: 'cleanup-temp' }],
+   };
+   export default pipeline;
+   ```
+3. Restart the daemon — jobs and pipelines are **auto-discovered** (no registry to edit):
    ```bash
    launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs
    ```
@@ -184,7 +206,8 @@ Nav: **Overview · Pipelines · Services · Database · Backlog**
   stuck**, are never reprocessed, and appear ONLY here — under the **Ignored**
   tile (click it to list them).
 - **Pipelines** — every pipeline with schedule, enabled state, member-job count,
-  last/next run; plus a **Standalone jobs** section for jobs not part of any pipeline.
+  and last/next run. Every job belongs to a pipeline, so there is no separate
+  standalone-jobs list; drill into a pipeline to reach its member jobs.
 - **Pipeline detail** — ▶ Run now, enable toggle, full run history
 - **Pipeline run detail** — live framework logs, per-stage job outcomes and
   statuses, **grouped by stage with older cycles collapsed** (click to expand),

@@ -82,26 +82,33 @@ queues, or cloud infra unless explicitly asked.
 
 ```
 launchd ──keeps alive──▶ daemon (src/daemon.ts)
-                            │  scheduler (croner) ──schedules─┬─▶ executor ──spawns──▶ child (src/runJob.ts)
-                            │  HTTP API on :4789              │    (single job,           runs ONE job,
-                            │                                 │     timeout/retries)       emits NDJSON
-                            │                                 └─▶ pipeline-executor
-                            │                                      (orchestrates member
-                            ▼                                       jobs in DAG order)
+                            │  scheduler (croner) ──schedules──▶ pipeline-executor
+                            │  HTTP API on :4789                  (orchestrates member
+                            │  (manual run ─┐                      jobs in DAG order)
+                            │   ─▶ executor)│                            │
+                            │               └────────┬───────────────────┘
+                            │                        ▼
+                            │                     executor ──spawns──▶ child (src/runJob.ts)
+                            │                  (single job,              runs ONE job,
+                            ▼                   timeout/retries)          emits NDJSON
                          SQLite (data/jobs.db, WAL)  ◀── parent is sole writer
                             ▲
                          dashboard (Next.js, :4788) ── polls the API, read-only
 ```
 
 - **The daemon is the only long-lived process.** launchd keeps ONE daemon
-  alive; the daemon schedules ALL jobs AND pipelines internally. Never create one
-  launchd agent per job.
+  alive; the daemon schedules ALL pipelines internally (and pipelines drive their
+  member jobs). Never create one launchd agent per job.
 - **Each job runs in an isolated child process** so a hang/crash can't take down
   the daemon, and timeouts can hard-kill it (SIGTERM→SIGKILL).
-- **Pipelines** compose existing jobs into a DAG. The pipeline executor runs member
-  jobs in topological order (respecting `dependsOn` edges and bounded parallelism)
-  via the same executor. A pipeline run is a first-class DB record distinct from
-  each member job's own run.
+- **Pipelines compose jobs into a DAG — and EVERY job belongs to one.** There are
+  no standalone jobs: a lone job is just a one-stage pipeline with its own manifest.
+  The pipeline owns scheduling + the enable toggle; it drives its member jobs. A job
+  discovered with no `*.pipeline.ts` manifest is a config error and the registry
+  **fails loud at load** (the daemon refuses to start). The pipeline executor runs
+  member jobs in topological order (respecting `dependsOn` edges and bounded
+  parallelism) via the same executor. A pipeline run is a first-class DB record
+  distinct from each member job's own run.
 - **The child only emits events; the parent (executor) is the sole DB writer.**
 - **The dashboard is a pure read/refresh client of the API.** It never touches
   SQLite directly and is not required for jobs to run.
@@ -115,7 +122,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
 | `src/core/types.ts` | `JobDefinition`, `PipelineDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention |
-| `src/core/scheduler.ts` | croner triggers for scheduled jobs + pipelines; respects `enabled` |
+| `src/core/scheduler.ts` | croner triggers for scheduled **pipelines** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled` |
 | `src/core/dag.ts` | Pipeline DAG: build + validate topological order, cycle detection |
 | `src/core/pipeline-executor.ts` | Orchestrate a pipeline run: member jobs in DAG order, stage gates, retries, real-time progress roll-up |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
@@ -124,7 +131,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items`, `job_usage`, `pipelines`, `pipeline_jobs`, `pipeline_runs`, `pipeline_run_logs`, `services`, `service_usage` |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
-| `src/jobs/registry.ts` | Auto-discovers `*.job.ts`, `*.pipeline.ts`, and `*.service.ts` files (no manual registration) |
+| `src/jobs/registry.ts` | Auto-discovers `*.job.ts`, `*.pipeline.ts`, and `*.service.ts` files (no manual registration); fails loud if any job belongs to no pipeline (`orphanJobNames`) |
 | `src/jobs/*.job.ts` | One job per file, default-exporting a `JobDefinition` (root-level files gitignored; subfolder jobs in `places/`+`perfumes/` are tracked) |
 | `src/jobs/*.pipeline.ts` | Pipeline manifests, default-exporting a `PipelineDefinition` (DAG of jobs) |
 | `src/jobs/*.service.ts` | Service definitions, default-exporting a `ServiceDefinition` (shared rate-limited dependencies) |
@@ -134,6 +141,11 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 
 ## How to add a job (the common request)
 
+**Every job must belong to a pipeline** — there are no standalone jobs. A lone job
+is a one-stage pipeline with its own `*.pipeline.ts` manifest (no implicit
+wrapping). The pipeline owns the `schedule`; a job with no manifest fails loud at
+load.
+
 1. Create `src/jobs/<name>.job.ts`:
    ```ts
    import type { JobDefinition } from '../core/types.js';
@@ -142,7 +154,6 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
      name: 'unique-name',           // stable; it's the DB primary key
      description: 'what it does',
      instructions: 'optional setup steps shown on the dashboard job page',
-     schedule: '0 3 * * *',         // croner cron, or null for manual-only
      timeoutMs: 600_000,            // 0 = no timeout
      maxRetries: 1,
      async run(ctx) {
@@ -153,9 +164,23 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
    };
    export default job;
    ```
-2. That's it for wiring — jobs are **auto-discovered** by filename glob
-   (`*.job.ts`). There is **no registry to edit**.
-3. Tell the user to restart the daemon (jobs are loaded at startup):
+   (A job's own `schedule` field is ignored — scheduling lives on the pipeline.)
+2. Declare it in a `*.pipeline.ts` manifest — a one-stage pipeline for a lone job;
+   the pipeline carries the cron `schedule` (or `null` for manual-only):
+   ```ts
+   import type { PipelineDefinition } from '../core/types.js';
+
+   const pipeline: PipelineDefinition = {
+     name: 'unique-name',           // distinct from every job name
+     description: 'what it does',
+     schedule: '0 3 * * *',         // croner cron, or null for manual-only
+     jobs: [{ job: 'unique-name' }],
+   };
+   export default pipeline;
+   ```
+3. That's it for wiring — jobs and pipelines are **auto-discovered** by filename
+   glob (`*.job.ts` / `*.pipeline.ts`). There is **no registry to edit**.
+4. Tell the user to restart the daemon (jobs are loaded at startup):
    `launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs`
 
 > **Privacy — real jobs are local-only by default.** Top-level
@@ -209,6 +234,13 @@ doubt, log it.
 ## Conventions
 - TypeScript, ESM, **NodeNext** — always use `.js` extensions in relative
   imports (e.g. `import { x } from './foo.js'`), even for `.ts` files.
+- **Every job belongs to a pipeline — no standalone jobs.** A job must be a member
+  of a pipeline declared in a `*.pipeline.ts` manifest (a lone job = a one-stage
+  pipeline with its own manifest; there is no implicit wrapping). The pipeline owns
+  scheduling + the enable toggle and drives its members — a job never gets its own
+  cron. The registry enforces this at load via `orphanJobNames` and **throws** (the
+  daemon refuses to start) if any discovered job has no pipeline. When you add a
+  job, add its manifest in the same change.
 - All SQL goes through `src/db/store.ts`. Don't scatter `db.prepare` calls.
 - **Idempotency — per-item work ledger (the standard).** For jobs that process
   many items, record each item's outcome in the `work_items` SQLite table via

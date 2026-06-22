@@ -254,4 +254,16 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   gate marker onto the actual edge; if the failure-detail format must change, update
   `gateFailurePrefix` (one place) so `classifyGates` keeps matching.
 
+- **The per-job `enabled` toggle + `schedule` field are now vestigial.** *Why:*
+  T037 made every job a pipeline member and moved scheduling/enable ownership to the
+  pipeline. The scheduler no longer reads a job's `schedule` or its `jobs.enabled`
+  flag — only the pipeline's. The job-level toggle still exists on the job detail
+  page and `POST /api/jobs/:name/toggle` / `setJobEnabled` still write the column,
+  but flipping it changes nothing about whether the job runs (the pipeline gates
+  that). *Impact:* a stale control that looks meaningful but isn't. It was left in
+  place because removing it cleanly would require editing the out-of-scope job
+  detail page and the `jobs.schedule`/`enabled` columns. *Revisit:* a follow-up can
+  drop the job toggle UI + endpoint + column and the unused `schedule` field from
+  `JobDefinition` once the schema change is in scope.
+
 > Add further project trade-offs below as they arise.

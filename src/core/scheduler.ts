@@ -1,44 +1,23 @@
 import { Cron } from 'croner';
-import { getJob, getPipeline } from '../db/store.js';
-import { jobs, memberJobNames, pipelines } from '../jobs/registry.js';
-import { runJob } from './executor.js';
+import { getPipeline } from '../db/store.js';
+import { pipelines } from '../jobs/registry.js';
 import { runPipeline } from './pipeline-executor.js';
-import type { JobDefinition, PipelineDefinition } from './types.js';
+import type { PipelineDefinition } from './types.js';
 
-const crons = new Map<string, Cron>();
 const pipelineCrons = new Map<string, Cron>();
 
 /**
- * Register cron triggers for scheduled pipelines and standalone jobs. A job that
- * belongs to a pipeline does NOT get its own cron — the pipeline drives it.
+ * Register cron triggers for scheduled pipelines. There are NO standalone jobs:
+ * every job belongs to a pipeline (a single job is a one-stage pipeline), and the
+ * pipeline is the only thing that owns a schedule — it drives its member jobs.
  * Each fire checks the live `enabled` flag so dashboard toggles take effect
  * without a restart.
  */
 export function startScheduler(): void {
-  const members = memberJobNames();
-  for (const def of jobs) {
-    if (!def.schedule) continue;
-    if (members.has(def.name)) {
-      console.log(`[scheduler] ${def.name} is a pipeline member — own schedule suppressed (the pipeline drives it)`);
-      continue;
-    }
-    scheduleJob(def);
-  }
   for (const def of pipelines) {
     if (!def.schedule) continue;
     schedulePipeline(def);
   }
-}
-
-function scheduleJob(def: JobDefinition): void {
-  const cron = new Cron(def.schedule as string, { name: def.name }, async () => {
-    const row = getJob(def.name);
-    if (!row || row.enabled === 0) return; // respect user toggle
-    const result = await runJob(def, 'schedule');
-    if (result.skipped) console.log(`[scheduler] ${def.name} skipped: ${result.reason}`);
-  });
-  crons.set(def.name, cron);
-  console.log(`[scheduler] ${def.name} scheduled (${def.schedule}); next: ${cron.nextRun()?.toISOString() ?? 'n/a'}`);
 }
 
 function schedulePipeline(def: PipelineDefinition): void {
@@ -52,9 +31,13 @@ function schedulePipeline(def: PipelineDefinition): void {
   console.log(`[scheduler] pipeline ${def.name} scheduled (${def.schedule}); next: ${cron.nextRun()?.toISOString() ?? 'n/a'}`);
 }
 
-/** Next scheduled fire time for a standalone job, if any. */
-export function nextRun(jobName: string): string | null {
-  return crons.get(jobName)?.nextRun()?.toISOString() ?? null;
+/**
+ * Next scheduled fire time for a job. Always null: jobs have no schedule of their
+ * own — the pipeline they belong to drives them — so a job never has a standalone
+ * next-run. Kept so the job API view can report "next run" uniformly.
+ */
+export function nextRun(_jobName: string): string | null {
+  return null;
 }
 
 /** Next scheduled fire time for a pipeline, if any. */
@@ -63,8 +46,6 @@ export function nextPipelineRun(name: string): string | null {
 }
 
 export function stopScheduler(): void {
-  for (const cron of crons.values()) cron.stop();
   for (const cron of pipelineCrons.values()) cron.stop();
-  crons.clear();
   pipelineCrons.clear();
 }
