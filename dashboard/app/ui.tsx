@@ -87,6 +87,62 @@ export function backFrom(
   return fallback;
 }
 
+const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Convert a 5-field cron expression to a short English phrase.
+ *  Returns the raw expression unchanged when the pattern isn't recognised —
+ *  so a wrong description is never shown. */
+export function cronToEnglish(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return expr;
+  const [min, hour, dom, month, dow] = parts;
+  if (month !== '*') return expr; // don't attempt month-specific patterns
+
+  const isNum = (s: string) => /^\d+$/.test(s);
+  const toInt = (s: string) => parseInt(s, 10);
+  const pad2   = (n: number) => String(n).padStart(2, '0');
+
+  // Every minute: * * * * *
+  if (min === '*' && hour === '*' && dom === '*' && dow === '*') return 'Every minute';
+
+  // Every N minutes: */N * * * *
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && dow === '*') {
+    const n = toInt(min.slice(2));
+    if (n > 0) return `Every ${n} minute${n === 1 ? '' : 's'}`;
+  }
+
+  // Every hour: 0 * * * *
+  if (min === '0' && hour === '*' && dom === '*' && dow === '*') return 'Every hour';
+
+  // Every N hours on the hour: 0 */N * * *
+  if (min === '0' && hour.startsWith('*/') && dom === '*' && dow === '*') {
+    const n = toInt(hour.slice(2));
+    if (n > 0) return `Every ${n} hour${n === 1 ? '' : 's'}`;
+  }
+
+  // At M minutes past every hour: M * * * *
+  if (isNum(min) && hour === '*' && dom === '*' && dow === '*') {
+    const m = toInt(min);
+    if (m >= 0 && m < 60) return `At ${m} ${m === 1 ? 'minute' : 'minutes'} past every hour`;
+  }
+
+  // Daily at HH:MM: M H * * *
+  if (isNum(min) && isNum(hour) && dom === '*' && dow === '*') {
+    const h = toInt(hour), m = toInt(min);
+    if (h >= 0 && h < 24 && m >= 0 && m < 60)
+      return `At ${pad2(h)}:${pad2(m)}, every day`;
+  }
+
+  // Weekly on a named day at HH:MM: M H * * D  (single digit dow)
+  if (isNum(min) && isNum(hour) && dom === '*' && /^\d$/.test(dow)) {
+    const h = toInt(hour), m = toInt(min), d = toInt(dow);
+    if (h >= 0 && h < 24 && m >= 0 && m < 60 && d >= 0 && d <= 6)
+      return `At ${pad2(h)}:${pad2(m)} on ${DAYS_OF_WEEK[d]}`;
+  }
+
+  return expr; // unrecognised — fall back to raw, never show wrong description
+}
+
 /** Poll an async function on an interval; returns latest data + error. */
 export function usePoll<T>(fn: () => Promise<T>, intervalMs: number, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);

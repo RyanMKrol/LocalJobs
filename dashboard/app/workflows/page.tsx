@@ -1,7 +1,7 @@
 'use client';
 
 import { api } from '../lib/api';
-import { fmtRelative, fmtTime, statusLabel, usePoll } from '../ui';
+import { cronToEnglish, fmtRelative, fmtTime, statusLabel, usePoll } from '../ui';
 
 export default function Workflows() {
   const { data, error } = usePoll(() => api.workflows(), 3000);
@@ -33,7 +33,12 @@ export default function Workflows() {
                   <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
                 </td>
                 <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
-                <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>{p.schedule ?? <span className="muted">manual</span>}{p.enabled ? '' : ' (off)'}</td>
+                <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
+                  {p.schedule
+                    ? <span title={cronToEnglish(p.schedule)}>{p.schedule}</span>
+                    : <span className="muted">manual</span>}
+                  {p.enabled ? '' : ' (off)'}
+                </td>
                 <td>
                   {p.last_run
                     ? <span style={{ whiteSpace: 'nowrap' }}><a href={`/workflow-runs/${p.last_run.id}`} className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</a> <span className="muted">{fmtRelative(p.last_run.started_at)}</span></span>
