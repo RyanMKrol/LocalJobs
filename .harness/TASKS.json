@@ -1493,6 +1493,33 @@
       "verify": [],
       "do": "Status terminology lacks parity: the UI shows success as \"OK\" in places, which does not pair with \"failed\". Standardize the human-facing success/failure labels across the WHOLE dashboard to a consistent pair — use \"Succeeded\" / \"Failed\" (matching the existing overview tile) everywhere a run/gate status is shown (StatusBadge, status pills, gate states, etc.), and keep the other labels in consistent tense (Running / Cancelled / Pending). Best done by centralizing a statusLabel() map in ui.tsx and using it at every render site rather than printing the raw status. DISPLAY ONLY — do NOT change the underlying status VALUES (\"success\"/\"failed\"/\"cancelled\"/… in the types / DB / API), only how they render.",
       "doneWhen": "Success renders consistently as \"Succeeded\" (no stray \"OK\") and failure as \"Failed\" across every dashboard view; other statuses read in consistent tense; underlying status values unchanged; dashboard build passes."
+    },
+    {
+      "id": "T060",
+      "title": "Backlog view: add a Done section",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Backlog view (/backlog), add a THIRD section \"Done\" alongside \"Harness-buildable\" and \"Needs a human\", listing all completed (status:done) tasks so the page shows a complete history of work done. Done tasks must appear ONLY under Done — the Harness-buildable and Needs-a-human sections show only NOT-done tasks. Order Done by id; it will be long (~40+), so keep it compact/scannable (a one-line row per task; collapsing it by default is fine).",
+      "doneWhen": "/backlog shows three sections — Harness-buildable, Needs a human, Done; done tasks appear only under Done (not under buildable); the other two sections list only pending tasks; the section counts are correct; dashboard build passes."
     }
   ]
 }
