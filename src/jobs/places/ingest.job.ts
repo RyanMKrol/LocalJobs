@@ -11,7 +11,7 @@ const job: JobDefinition = {
   name: 'places-ingest',
   description: 'Normalize Takeout saved-place CSVs into places.json + validation report.',
   timeoutMs: 120_000,
-  maxRetries: 0,
+  maxRetries: 3,
   produces: [normalizedPlacesContract()],
   async run(ctx) {
     const report = await runIngest(ctx);

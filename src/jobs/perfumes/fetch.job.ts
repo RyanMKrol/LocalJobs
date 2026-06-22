@@ -6,7 +6,7 @@ const job: JobDefinition = {
   name: 'perfumes-fetch',
   description: 'Stage 2: headless browser captures each Fragrantica page\'s full text (scrolled).',
   timeoutMs: 0,
-  maxRetries: 0,
+  maxRetries: 3,
   consumes: [fragranticaUrlsContract()],
   produces: [fragranticaPagesContract()],
   async run(ctx) { await runFetch(ctx); },

@@ -155,7 +155,7 @@ load.
      name: 'unique-name',           // stable; it's the DB primary key
      description: 'what it does',
      timeoutMs: 600_000,            // 0 = no timeout
-     maxRetries: 1,
+     maxRetries: 3,
      async run(ctx) {
        ctx.log('message');          // -> run_logs, shown live in dashboard
        ctx.progress(50, 'halfway'); // -> progress bar 0..100

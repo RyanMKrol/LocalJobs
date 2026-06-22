@@ -12,7 +12,7 @@ const job: JobDefinition = {
   name: 'enrich-with-llm',
   description: 'Research each place with Gemini (grounded search + website) into a second-brain profile.',
   timeoutMs: 0,
-  maxRetries: 0,
+  maxRetries: 3,
   consumes: [enrichedPlacesContract()],
   async run(ctx) {
     await runLlmEnrich(ctx);

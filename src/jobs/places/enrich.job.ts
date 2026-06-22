@@ -11,7 +11,7 @@ const job: JobDefinition = {
   name: 'places-enrich',
   description: 'Enrich resolved places via the Google Places API (free-tier budgeted, weekly).',
   timeoutMs: 0, // budget-capped + each call bounded; no job-level timeout
-  maxRetries: 0,
+  maxRetries: 3,
   consumes: [resolvedPlacesContract()],
   produces: [enrichedPlacesContract()],
   async run(ctx) {

@@ -6,7 +6,7 @@ const job: JobDefinition = {
   name: 'perfumes-parse',
   description: 'Stage 3: Claude Code parses each captured page into structured Fragrantica JSON.',
   timeoutMs: 0,
-  maxRetries: 0,
+  maxRetries: 3,
   consumes: [fragranticaPagesContract()],
   produces: [fragranticaDataContract()],
   async run(ctx) { await runParse(ctx); },

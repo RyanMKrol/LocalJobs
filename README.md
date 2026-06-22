@@ -152,7 +152,7 @@ and the daemon **refuses to start** (it fails loud at load).
      name: 'cleanup-temp',
      description: 'Deletes stale temp files',
      timeoutMs: 600_000,      // killed if it runs >10 min; 0 = no timeout
-     maxRetries: 1,
+     maxRetries: 3,
      async run(ctx) {
        ctx.log('starting');
        ctx.progress(50, 'halfway');

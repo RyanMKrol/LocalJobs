@@ -11,7 +11,7 @@ const job: JobDefinition = {
   name: 'cid-to-place-id-resolver',
   description: 'Resolve saved-place CIDs to Google place_ids via a headless browser.',
   timeoutMs: 0, // no job-level timeout; each place is internally bounded + resumable
-  maxRetries: 0,
+  maxRetries: 3,
   consumes: [normalizedPlacesContract()],
   produces: [resolvedPlacesContract()],
   async run(ctx) {
