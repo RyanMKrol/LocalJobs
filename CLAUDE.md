@@ -269,6 +269,23 @@ doubt, log it.
   read-only MEMBER view (status · run history · logs); you run + enable a WORKFLOW.
   Don't add any of these back to `JobDefinition` or the job page.
 - All SQL goes through `src/db/store.ts`. Don't scatter `db.prepare` calls.
+- **Schema bootstrap must NEVER reference a migration-added column (T098).**
+  `openDb()` (in `src/db/index.ts`) runs `db.exec(schema.sql)` FIRST, then the
+  additive migrations. On a **fresh** DB `schema.sql`'s `CREATE TABLE` already
+  carries every column, so a bootstrap `CREATE INDEX … ON t(new_col)` works — but
+  on an **existing** DB the column is only added by a LATER `ALTER TABLE` in a
+  migration, so that same bootstrap index throws `no such column` and crash-loops
+  the daemon at startup (the T094 regression, fixed in 2748c58). **Rule:**
+  `schema.sql` must NOT create an index/constraint on a column that an additive
+  migration adds — put such an index INSIDE the migration, AFTER its `ALTER TABLE`
+  (see `migrateRunLimitLineage` in `src/db/index.ts`: it ALTERs in `root_key`,
+  backfills, then `CREATE INDEX … idx_work_items_root`). The unit suite can't catch
+  this on its own because it always starts from a fresh scratch DB; the regression
+  guard `src/db/migrate-existing-db.test.ts` runs the REAL `openDb(path)` against a
+  pre-seeded OLD-shape DB (tables/rows lacking the newer columns) and asserts it
+  doesn't throw and ends correctly migrated — it FAILS if pointed at the pre-fix
+  buggy `schema.sql`. (`openDb(dbPath?)` takes an optional path solely so this test
+  can drive it; the daemon uses the default.)
 - **Idempotency — per-item work ledger (the standard).** For jobs that process
   many items, record each item's outcome in the `work_items` SQLite table via
   `src/db/store.ts` (`isWorkItemDone`, `markWorkItem`, `workItemCounts`), keyed by

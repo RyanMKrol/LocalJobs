@@ -7,11 +7,16 @@ import { config } from '../config.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Open (or create) the SQLite database and apply the schema.
+ * Open (or create) the SQLite database and apply the schema + migrations.
  * WAL mode lets the daemon write while the dashboard reads concurrently.
+ *
+ * `dbPath` defaults to the configured DB; it's parameterised ONLY so the
+ * regression suite can drive the full bootstrap+migration path against a
+ * pre-seeded old-shape database (see migrate-existing-db.test.ts) — the daemon
+ * always uses the default.
  */
-export function openDb(): Database.Database {
-  const db = new Database(config.dbPath);
+export function openDb(dbPath: string = config.dbPath): Database.Database {
+  const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
