@@ -2307,7 +2307,7 @@
     {
       "id": "T090",
       "title": "DAG: place validation-gate chips on the connecting arrow, between the two jobs",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
