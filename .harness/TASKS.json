@@ -1767,7 +1767,7 @@
     {
       "id": "T070",
       "title": "Strip workflow-level properties from individual jobs",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
