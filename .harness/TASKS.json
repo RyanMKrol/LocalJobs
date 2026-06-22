@@ -1175,7 +1175,7 @@
     {
       "id": "T048",
       "title": "Overview: hide the Stuck-items section when empty",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
