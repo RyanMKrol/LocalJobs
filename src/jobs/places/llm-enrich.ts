@@ -46,7 +46,7 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
   ctx.log(`enrich-with-llm starting (model: ${llmConfig.model})`);
   if (llmConfig.dryRun) ctx.log('DRY RUN — no Gemini calls, fabricated results.', 'warn');
   if (!llmConfig.apiKey && !llmConfig.dryRun) {
-    throw new Error('GEMINI_API_KEY is not set. Add it to .env (see job instructions).');
+    throw new Error('GEMINI_API_KEY is not set. Add it to .env (see README — places workflow).');
   }
   if (!existsSync(placesConfig.enrichedOut)) {
     throw new Error(`enriched.json not found — run places-enrich first (${placesConfig.enrichedOut})`);

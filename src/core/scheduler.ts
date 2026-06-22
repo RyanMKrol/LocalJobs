@@ -31,15 +31,6 @@ function scheduleWorkflow(def: WorkflowDefinition): void {
   console.log(`[scheduler] workflow ${def.name} scheduled (${def.schedule}); next: ${cron.nextRun()?.toISOString() ?? 'n/a'}`);
 }
 
-/**
- * Next scheduled fire time for a job. Always null: jobs have no schedule of their
- * own — the workflow they belong to drives them — so a job never has a standalone
- * next-run. Kept so the job API view can report "next run" uniformly.
- */
-export function nextRun(_jobName: string): string | null {
-  return null;
-}
-
 /** Next scheduled fire time for a workflow, if any. */
 export function nextWorkflowRun(name: string): string | null {
   return workflowCrons.get(name)?.nextRun()?.toISOString() ?? null;

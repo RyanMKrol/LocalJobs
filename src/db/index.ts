@@ -39,6 +39,8 @@ export function openDb(): Database.Database {
     db.exec('ALTER TABLE services ADD COLUMN limits_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
+  migrateDropJobColumns(db);
+
   // Data migration: unify the manual-park concept on a single name (T033).
   // The old `dismissed` status is renamed to `ignored` — same semantics
   // (parked, never reprocessed, off the stuck list). Idempotent.
@@ -91,6 +93,24 @@ export function migrateWorkflowRename(db: Database.Database): void {
   for (const idx of ['idx_pipeline_runs_name', 'idx_pipeline_run_logs', 'idx_runs_pipeline']) {
     db.exec(`DROP INDEX IF EXISTS ${idx}`);
   }
+}
+
+/**
+ * Destructive column migration (T070): a job is only ever a workflow member, so
+ * workflow-level concerns must NOT live on individual jobs. Drop the now-unused
+ * per-job `schedule` and `enabled` columns from an already-existing `jobs` table
+ * (a fresh DB never had them — see schema.sql). Neither column is indexed, so the
+ * DROP is safe; idempotent (skipped once the column is gone). No meaningful data
+ * loss: scheduling + the enable toggle live on the `workflows` table.
+ */
+export function migrateDropJobColumns(db: Database.Database): void {
+  const tableExists = !!db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = 'jobs'")
+    .get();
+  if (!tableExists) return; // fresh DB: schema.sql will create the trimmed table
+  const cols = (db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[]).map((c) => c.name);
+  if (cols.includes('schedule')) db.exec('ALTER TABLE jobs DROP COLUMN schedule');
+  if (cols.includes('enabled')) db.exec('ALTER TABLE jobs DROP COLUMN enabled');
 }
 
 // Single shared connection for the process that imports this module.

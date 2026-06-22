@@ -1,12 +1,12 @@
 -- Job definitions, synced from code on daemon startup.
--- `enabled` is owned by the user (toggled from the dashboard) and preserved across syncs.
+-- A job is ONLY ever a workflow member (T037/T070): workflow-level concerns —
+-- schedule + the enable toggle — live on the `workflows` table, never here. A job
+-- carries no `schedule` or `enabled` column; you run a workflow, never a job.
 CREATE TABLE IF NOT EXISTS jobs (
   name         TEXT PRIMARY KEY,
   description  TEXT NOT NULL DEFAULT '',
-  schedule     TEXT,                      -- cron expression, or NULL for manual-only
   timeout_ms   INTEGER NOT NULL DEFAULT 0, -- 0 = no timeout
   max_retries  INTEGER NOT NULL DEFAULT 0,
-  enabled      INTEGER NOT NULL DEFAULT 1,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

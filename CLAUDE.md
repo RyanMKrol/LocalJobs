@@ -154,7 +154,6 @@ load.
    const job: JobDefinition = {
      name: 'unique-name',           // stable; it's the DB primary key
      description: 'what it does',
-     instructions: 'optional setup steps shown on the dashboard job page',
      timeoutMs: 600_000,            // 0 = no timeout
      maxRetries: 1,
      async run(ctx) {
@@ -165,7 +164,13 @@ load.
    };
    export default job;
    ```
-   (A job's own `schedule` field is ignored — scheduling lives on the workflow.)
+   A job carries NO workflow-level properties (T070): no `schedule`, no `enabled`
+   toggle, no `instructions`, and no run-now — those live ONLY on the workflow. The
+   `JobDefinition` is just identity + execution params (`timeoutMs`/`maxRetries`) +
+   `run`/`produces`/`consumes`. You run a WORKFLOW, never a job; a job runs when its
+   prerequisites are met inside its workflow, and `/jobs/[name]` is a read-only
+   member view (status · run history · logs). Put any setup/run docs in the README,
+   not on the job.
 2. Declare it in a `*.workflow.ts` manifest — a one-stage workflow for a lone job;
    the workflow carries the cron `schedule` (or `null` for manual-only):
    ```ts
@@ -242,6 +247,14 @@ doubt, log it.
   cron. The registry enforces this at load via `orphanJobNames` and **throws** (the
   daemon refuses to start) if any discovered job has no workflow. When you add a
   job, add its manifest in the same change.
+- **No workflow-level properties on a job (T070).** Because a job is only ever a
+  workflow member, ALL workflow-level concerns live on the workflow, never the job:
+  a job has NO `schedule`, NO `enabled` toggle, NO `instructions`, and NO run-now.
+  There is no `POST /api/jobs/:name/run` or `/toggle`, no per-job scheduling, and
+  the `jobs` table has no `schedule`/`enabled` columns (dropped by the
+  `migrateDropJobColumns` migration in `src/db/index.ts`). `/jobs/[name]` is a
+  read-only MEMBER view (status · run history · logs); you run + enable a WORKFLOW.
+  Don't add any of these back to `JobDefinition` or the job page.
 - All SQL goes through `src/db/store.ts`. Don't scatter `db.prepare` calls.
 - **Idempotency — per-item work ledger (the standard).** For jobs that process
   many items, record each item's outcome in the `work_items` SQLite table via

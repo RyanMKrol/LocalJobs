@@ -38,7 +38,7 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
 
   if (enrichConfig.dryRun) ctx.log('DRY RUN — no real API calls, no quota used, fabricated data.', 'warn');
   if (!enrichConfig.apiKey && !enrichConfig.dryRun) {
-    throw new Error('GOOGLE_MAPS_API_KEY is not set. Add it to .env (see job instructions).');
+    throw new Error('GOOGLE_MAPS_API_KEY is not set. Add it to .env (see README — places workflow).');
   }
   if (!existsSync(placesConfig.resolvedOut)) {
     throw new Error(`resolved.json not found — run cid-to-place-id-resolver first (${placesConfig.resolvedOut})`);

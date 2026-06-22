@@ -11,7 +11,7 @@
 // (observable via the scheduler's own console.log) — nothing is spawned.
 import { workflows } from '../jobs/registry.js';
 import { createWorkflowRun, listWorkflowRunsForWorkflow, setWorkflowEnabled, syncWorkflow } from '../db/store.js';
-import { nextWorkflowRun, nextRun, startScheduler, stopScheduler } from './scheduler.js';
+import { nextWorkflowRun, startScheduler, stopScheduler } from './scheduler.js';
 import type { WorkflowDefinition } from './types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -51,8 +51,8 @@ try {
   ok('enabled workflow is registered (nextWorkflowRun present)', nextWorkflowRun(ON.name) !== null);
   ok('disabled workflow is STILL registered (gate is at fire-time)', nextWorkflowRun(OFF.name) !== null);
   ok('manual-only workflow has no schedule', nextWorkflowRun(MANUAL.name) === null);
-  // Jobs are NEVER scheduled on their own — there are no standalone crons.
-  ok('a member job gets no own cron', nextRun('test-sched-member') === null);
+  // Jobs are NEVER scheduled on their own — there are no standalone crons (the
+  // scheduler exposes no per-job next-run; only `nextWorkflowRun` exists).
 
   await sleep(2500); // cross ≥2 one-second boundaries → ≥2 fires each
   stopScheduler();

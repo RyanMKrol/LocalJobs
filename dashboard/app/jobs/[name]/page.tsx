@@ -1,13 +1,12 @@
 'use client';
 
-import { Fragment, use, useState } from 'react';
+import { Fragment, use } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '../../lib/api';
-import { StatusBadge, backFrom, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
+import { StatusBadge, backFrom, fmtDuration, fmtRelative, usePoll } from '../../ui';
 
 export default function JobDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
-  const [busy, setBusy] = useState(false);
   const back = backFrom(useSearchParams().get('from'), { href: '/workflows', label: 'Workflows' });
 
   const { data: jobData } = usePoll(() => api.job(name), 3000, [name]);
@@ -16,16 +15,6 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
   const job = jobData?.job;
   const runs = runsData?.runs ?? [];
   const stuck = stuckData?.stuck ?? [];
-
-  async function runNow() {
-    setBusy(true);
-    try { await api.runNow(name); } finally { setTimeout(() => setBusy(false), 1200); }
-  }
-
-  async function toggle() {
-    if (!job) return;
-    await api.toggle(name, job.enabled === 0);
-  }
 
   async function unstick(key: string) {
     try { await api.unstick(name, key); } catch { /* next poll reflects reality */ }
@@ -37,34 +26,20 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
   return (
     <>
       <p className="muted"><a href={back.href}>← {back.label}</a></p>
-      <div className="row">
-        <h1 style={{ margin: 0 }}>{name}</h1>
-        <div className="spacer" />
-        <button className="btn" onClick={runNow} disabled={busy}>{busy ? 'Started…' : '▶ Run now'}</button>
-      </div>
+      <h1 style={{ margin: 0 }}>{name}</h1>
       <p className="sub">{job?.description}</p>
 
-      {job?.instructions && (
-        <div className="panel" style={{ padding: 18, marginBottom: 8, borderColor: 'var(--accent)' }}>
-          <div className="k" style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: 8 }}>
-            ⓘ How to run this job
-          </div>
-          <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{job.instructions}</div>
-        </div>
-      )}
+      {/* A job is only ever a workflow member (T070): scheduling, the enable
+          toggle and run-now live on the workflow — you run a workflow, never a
+          job. This page is a read-only member view (status · history · logs). */}
+      <p className="muted" style={{ marginTop: 0 }}>
+        Member job — runs as part of {job?.workflow ? <a href={`/workflows/${job.workflow}`}>{job.workflow}</a> : 'its workflow'} when its prerequisites are met. Schedule + run it from the workflow.
+      </p>
 
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
         <div className="kv">
-          <div className="k">Schedule</div><div className="mono" style={{ whiteSpace: 'nowrap' }}>{job?.schedule ?? 'manual-only'}</div>
-          <div className="k">Enabled</div>
-          <div>
-            <span className="toggle" onClick={toggle}>
-              <input type="checkbox" checked={!!job?.enabled} readOnly /> {job?.enabled ? 'enabled' : 'disabled'} (click to toggle)
-            </span>
-          </div>
           <div className="k">Timeout</div><div>{job?.timeout_ms ? `${job.timeout_ms} ms` : 'none'}</div>
           <div className="k">Max retries</div><div>{job?.max_retries ?? 0}</div>
-          <div className="k">Next run</div><div className="muted">{job?.next_run ? fmtTime(job.next_run) : '—'}</div>
         </div>
       </div>
 

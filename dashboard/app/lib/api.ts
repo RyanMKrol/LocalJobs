@@ -27,17 +27,16 @@ export interface Run {
   workflow_run_id?: string | null;
 }
 
+// A job is only ever a workflow member (T070): schedule, the enable toggle, the
+// next-run and run-now all live on the workflow, never the job. The job view is
+// read-only — status, run history, logs.
 export interface Job {
   name: string;
   description: string;
-  schedule: string | null;
   timeout_ms: number;
   max_retries: number;
-  enabled: number;
   created_at: string;
   last_run: Run | null;
-  next_run: string | null;
-  instructions: string | null;
   stuck: number;
   workflow?: string | null; // set if this job is a workflow member
 }
@@ -241,8 +240,7 @@ export const api = {
   jobRuns: (name: string) => get<{ runs: Run[] }>(`/api/jobs/${name}/runs`),
   recentRuns: (limit = 50) => get<{ runs: Run[] }>(`/api/runs?limit=${limit}`),
   run: (id: string, after = 0) => get<{ run: Run; logs: LogLine[] }>(`/api/runs/${id}?after=${after}`),
-  runNow: (name: string) => post<{ ok: boolean }>(`/api/jobs/${name}/run`),
-  toggle: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/jobs/${name}/toggle`, { enabled }),
+  // No runNow/toggle for a job (T070): you run + enable a WORKFLOW, never a job.
   stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${job}` : ''}`),
   ignored: (job?: string) => get<{ ignored: StuckItem[] }>(`/api/ignored${job ? `?job=${job}` : ''}`),
   unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),

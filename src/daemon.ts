@@ -14,7 +14,8 @@ function main(): void {
   console.log('[daemon] starting local-jobs orchestrator');
   console.log(`[daemon] db: ${config.dbPath}`);
 
-  // Sync code-defined jobs, services, and workflows into the DB (preserves user `enabled` toggles).
+  // Sync code-defined jobs, services, and workflows into the DB (the user `enabled`
+  // toggle — owned by workflows + services, never jobs — is preserved across syncs).
   for (const def of jobs) syncJob(def);
   for (const def of services) syncService(def);
   for (const def of workflows) syncWorkflow(def);

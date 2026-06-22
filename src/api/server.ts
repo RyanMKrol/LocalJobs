@@ -4,9 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
-import { runJob } from '../core/executor.js';
 import { runWorkflow } from '../core/workflow-executor.js';
-import { nextWorkflowRun, nextRun } from '../core/scheduler.js';
+import { nextWorkflowRun } from '../core/scheduler.js';
 import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
 import {
   browseTable,
@@ -35,7 +34,6 @@ import {
   serviceCallsThisMonth,
   serviceCallsToday,
   updateServiceLimits,
-  setJobEnabled,
   setWorkflowEnabled,
   stuckCount,
   stuckItems,
@@ -122,14 +120,16 @@ async function readBody(req: IncomingMessage): Promise<any> {
   }
 }
 
-/** Decorate a job row with its last run, next scheduled time, and instructions. */
+/**
+ * Decorate a job row with its last run. A job is only ever a workflow member
+ * (T037/T070): scheduling, the enable toggle, the next-run and run-now all live
+ * on the workflow, so the job view carries none of them — it is a read-only
+ * member view (status, run history, logs).
+ */
 function jobView(name: string) {
-  const def = getJobDefinition(name);
   return {
     last_run: lastRunForJob(name) ?? null,
-    next_run: nextRun(name),
-    has_def: !!def,
-    instructions: def?.instructions ?? null,
+    has_def: !!getJobDefinition(name),
     stuck: stuckCount(name),
   };
 }
@@ -279,14 +279,9 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, { job: { ...job, ...jobView(job.name) } });
       }
 
-      // POST /api/jobs/:name/run
-      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'jobs' && parts[3] === 'run') {
-        const def = getJobDefinition(parts[2]);
-        if (!def) return json(res, 404, { error: 'job not found' });
-        // Fire-and-forget: respond immediately, run happens in the daemon.
-        runJob(def, 'manual').catch((e) => console.error('[api] run error', e));
-        return json(res, 202, { ok: true, message: 'run started' });
-      }
+      // NOTE: there is intentionally NO POST /api/jobs/:name/run (T070). A job is
+      // only ever a workflow member — you run a WORKFLOW (POST /api/workflows/:name/run),
+      // never a job; a job runs when its prerequisites are met inside its workflow.
 
       // POST /api/jobs/:name/prune  { keys?: string[], dryRun?: boolean, force?: boolean }
       // MANUAL-ONLY: remove work_items whose item_key is no longer in the job's
@@ -320,12 +315,9 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, { ok: true, job: jobName, removed });
       }
 
-      // POST /api/jobs/:name/toggle  { enabled: boolean }
-      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'jobs' && parts[3] === 'toggle') {
-        const body = await readBody(req);
-        setJobEnabled(parts[2], !!body.enabled);
-        return json(res, 200, { ok: true, enabled: !!body.enabled });
-      }
+      // NOTE: there is intentionally NO POST /api/jobs/:name/toggle (T070). The
+      // enable toggle lives on the workflow (POST /api/workflows/:name/toggle) —
+      // a job has no enabled flag of its own.
 
       // GET /api/workflows
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts.length === 2) {

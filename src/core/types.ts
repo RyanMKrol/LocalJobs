@@ -101,18 +101,17 @@ export interface ArtifactContract {
   check(): GateResult | Promise<GateResult>;
 }
 
-/** A job is a unit of work the orchestrator can schedule and run. */
+/**
+ * A job is a unit of work the orchestrator runs ONLY as a member of a workflow
+ * (T037/T070). Workflow-level concerns — scheduling, the enable toggle, manual
+ * run — live on the WorkflowDefinition, never here: a job never owns a schedule,
+ * an enabled flag, or instructions, and is never run on its own. It runs when its
+ * prerequisites are met inside its workflow.
+ */
 export interface JobDefinition {
   /** Unique, stable identifier (also the primary key in the DB). */
   name: string;
   description?: string;
-  /**
-   * Optional human instructions shown on the dashboard — e.g. any manual setup
-   * needed before a run (like placing input data). Plain text; newlines kept.
-   */
-  instructions?: string;
-  /** Cron expression (croner syntax). Omit/null for manual-only jobs. */
-  schedule?: string | null;
   /** Hard timeout in ms; the child process is killed if exceeded. 0 = none. */
   timeoutMs?: number;
   /** How many times to retry on failure before marking the run failed. */

@@ -278,7 +278,7 @@ console.log('  ✓ callService enforces a user limit override over the code defa
 
   const page = browseTable('jobs', 2, 0);
   assert.ok(page, 'browseTable returns a page for a known table');
-  assert.ok(page!.columns.includes('name') && page!.columns.includes('enabled'), 'reports columns');
+  assert.ok(page!.columns.includes('name') && page!.columns.includes('description'), 'reports columns');
   assert.ok(page!.rows.length <= 2 && page!.rows.length <= page!.total, 'respects the limit');
   assert.equal(page!.limit, 2);
   assert.equal(page!.offset, 0);

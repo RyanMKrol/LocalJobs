@@ -13,15 +13,15 @@ import type {
 } from '../core/types.js';
 
 /**
- * Upsert a job definition. The user-owned `enabled` flag is preserved on
- * existing rows so re-syncing code never re-enables something you turned off.
+ * Upsert a job definition. A job is only ever a workflow member (T037/T070), so
+ * it carries no schedule or enable toggle — those live on the workflow. Only the
+ * job's identity + execution params (timeout/retries) are synced here.
  */
 const upsertJobStmt = db.prepare(`
-  INSERT INTO jobs (name, description, schedule, timeout_ms, max_retries, enabled)
-  VALUES (@name, @description, @schedule, @timeout_ms, @max_retries, 1)
+  INSERT INTO jobs (name, description, timeout_ms, max_retries)
+  VALUES (@name, @description, @timeout_ms, @max_retries)
   ON CONFLICT(name) DO UPDATE SET
     description = excluded.description,
-    schedule    = excluded.schedule,
     timeout_ms  = excluded.timeout_ms,
     max_retries = excluded.max_retries
 `);
@@ -30,7 +30,6 @@ export function syncJob(def: JobDefinition): void {
   upsertJobStmt.run({
     name: def.name,
     description: def.description ?? '',
-    schedule: def.schedule ?? null,
     timeout_ms: def.timeoutMs ?? 0,
     max_retries: def.maxRetries ?? 0,
   });
@@ -39,10 +38,8 @@ export function syncJob(def: JobDefinition): void {
 export interface JobRow {
   name: string;
   description: string;
-  schedule: string | null;
   timeout_ms: number;
   max_retries: number;
-  enabled: number;
   created_at: string;
 }
 
@@ -52,10 +49,6 @@ export function getJob(name: string): JobRow | undefined {
 
 export function listJobs(): JobRow[] {
   return db.prepare('SELECT * FROM jobs ORDER BY name').all() as JobRow[];
-}
-
-export function setJobEnabled(name: string, enabled: boolean): void {
-  db.prepare('UPDATE jobs SET enabled = ? WHERE name = ?').run(enabled ? 1 : 0, name);
 }
 
 // ---- runs ----

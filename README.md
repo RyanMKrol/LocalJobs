@@ -124,15 +124,17 @@ npm run dev               # dashboard on http://localhost:4788
 
 ## Triggering jobs — two ways
 
-**Workflows own scheduling.** There are no standalone jobs: every job belongs to a
-workflow, and the *workflow* is the only thing that carries a cron schedule and an
-enable toggle (a single job is just a one-stage workflow). A job's own `schedule`
-field is not used — the workflow drives its members.
+**Workflows own everything schedule-related.** There are no standalone jobs: every
+job belongs to a workflow, and the *workflow* is the only thing that carries a cron
+schedule, an enable toggle, and a run button (a single job is just a one-stage
+workflow). A job has **no** schedule, enable toggle, instructions, or run-now of its
+own — you run a *workflow*, never a job; a job runs when its prerequisites are met
+inside its workflow.
 
 - **Scheduled:** a *workflow* declares a cron `schedule` in its manifest; the daemon
   fires it automatically. Nothing for you to do.
-- **Manual:** dashboard → **Workflows → [workflow] → ▶ Run now** (or a single
-  **Job → ▶ Run now** for an ad-hoc one-off). Good for testing.
+- **Manual:** dashboard → **Workflows → [workflow] → ▶ Run now**. To run a single
+  stage ad-hoc, make it (or wrap it in) its own one-stage workflow and run that.
 
 You can also **pause** a workflow (the enable toggle on its page) without deleting it.
 
@@ -212,9 +214,10 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
 - **Workflow run detail** — live framework logs, per-stage job outcomes and
   statuses, **grouped by stage with older cycles collapsed** (click to expand),
   overall progress bar (rolled up in real time from member-job progress)
-- **Job detail** — ▶ Run now, enable toggle, full run history, per-job stuck
-  items; reached via links from the Workflows page or stuck-items list (no
-  top-level nav entry — use `/jobs/<name>`)
+- **Job detail** — a **read-only member view**: timeout/retries, full run history,
+  and per-job stuck items. A job has no schedule, enable toggle, instructions or
+  run-now of its own (you run + enable its *workflow*). Reached via links from the
+  Workflows page or stuck-items list (no top-level nav entry — use `/jobs/<name>`)
 - **Run detail** — live progress bar + streaming logs, duration, exit code, error
 - **Services** — per-service usage counts vs caps, current per-minute call rate,
   and **editable rate/quota limits** (override the code default; the override is

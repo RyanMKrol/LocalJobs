@@ -109,7 +109,7 @@ await test('mutation guard: a remote POST with no token is rejected 401', async 
     const prev = config.authToken;
     config.authToken = '';
     try {
-      const res = await fetch(`${base}/api/jobs/__no_such_job__/run`, { method: 'POST' });
+      const res = await fetch(`${base}/api/workflows/__no_such_workflow__/run`, { method: 'POST' });
       assert.equal(res.status, 401);
     } finally {
       config.authToken = prev;
@@ -122,8 +122,8 @@ await test('mutation guard: a remote POST with the right token passes the guard'
     const prev = config.authToken;
     config.authToken = 'secret';
     try {
-      // Unknown job → 404 means the guard let it through to routing (not 401).
-      const res = await fetch(`${base}/api/jobs/__no_such_job__/run`, {
+      // Unknown workflow → 404 means the guard let it through to routing (not 401).
+      const res = await fetch(`${base}/api/workflows/__no_such_workflow__/run`, {
         method: 'POST',
         headers: { 'X-LocalJobs-Token': 'secret' },
       });
@@ -136,8 +136,8 @@ await test('mutation guard: a remote POST with the right token passes the guard'
 
 await test('mutation guard: a loopback POST passes the guard (default isLoopback)', async () => {
   await withServer({}, async (base) => {
-    // Real connection is from 127.0.0.1 → loopback → allowed; unknown job → 404, not 401.
-    const res = await fetch(`${base}/api/jobs/__no_such_job__/run`, { method: 'POST' });
+    // Real connection is from 127.0.0.1 → loopback → allowed; unknown workflow → 404, not 401.
+    const res = await fetch(`${base}/api/workflows/__no_such_workflow__/run`, { method: 'POST' });
     assert.equal(res.status, 404);
   });
 });
