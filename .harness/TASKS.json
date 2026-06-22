@@ -1713,7 +1713,7 @@
     {
       "id": "T068",
       "title": "Workflow-run view: show only the latest member run per stage",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
