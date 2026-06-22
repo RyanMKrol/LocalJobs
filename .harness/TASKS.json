@@ -2084,7 +2084,7 @@
     {
       "id": "T082",
       "title": "Workflow-run gates panel: keep 'detail →' on one line",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
