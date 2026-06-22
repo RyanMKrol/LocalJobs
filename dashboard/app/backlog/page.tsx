@@ -60,6 +60,16 @@ function TaskCard({ t, isNext, defaults }: { t: BacklogTask; isNext: boolean; de
   );
 }
 
+function DoneRow({ t }: { t: BacklogTask }) {
+  return (
+    <div className="row done-row" style={{ gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border)', alignItems: 'baseline', flexWrap: 'wrap' }}>
+      <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
+      <span style={{ flex: 1 }}>{t.title}</span>
+      <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
+    </div>
+  );
+}
+
 function findNextEligible(tasks: BacklogTask[]): string | null {
   const doneIds = new Set(tasks.filter((t) => t.status === 'done').map((t) => t.id));
   const next = tasks.find(
@@ -72,8 +82,9 @@ export default function Backlog() {
   const { data, error } = usePoll(() => api.backlog(), 5000);
   const tasks = data?.tasks ?? [];
   const defaults = data?.defaults;
-  const buildable = tasks.filter((t) => t.gate == null);
-  const human = tasks.filter((t) => t.gate != null);
+  const done = tasks.filter((t) => t.status === 'done').sort((a, b) => a.id.localeCompare(b.id));
+  const buildable = tasks.filter((t) => t.status !== 'done' && t.gate == null);
+  const human = tasks.filter((t) => t.status !== 'done' && t.gate != null);
   const nextId = findNextEligible(tasks);
 
   return (
@@ -81,7 +92,7 @@ export default function Backlog() {
       <h1>Backlog</h1>
       <p className="sub">
         The harness task list (<span className="mono">.harness/TASKS.json</span>), rendered.
-        {' '}{tasks.length} task(s) · {buildable.length} harness-buildable · {human.length} need a human. Auto-refreshes.
+        {' '}{tasks.length} task(s) · {buildable.length} harness-buildable · {human.length} need a human · {done.length} done. Auto-refreshes.
       </p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {data?.error && <p className="muted">⚠ Cannot read the backlog ({data.error}).</p>}
@@ -94,6 +105,17 @@ export default function Backlog() {
       <p className="sub">The loop skips these — work them manually.</p>
       {human.length === 0 && <p className="muted">None.</p>}
       {human.map((t) => <TaskCard key={t.id} t={t} isNext={false} defaults={defaults} />)}
+
+      <h2 style={{ marginTop: 28 }}>✅ Done ({done.length})</h2>
+      <details>
+        <summary className="muted" style={{ cursor: 'pointer', fontSize: 13, marginBottom: 8 }}>
+          Show {done.length} completed task{done.length !== 1 ? 's' : ''}
+        </summary>
+        <div className="panel" style={{ padding: '0 14px' }}>
+          {done.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None yet.</p>}
+          {done.map((t) => <DoneRow key={t.id} t={t} />)}
+        </div>
+      </details>
     </>
   );
 }
