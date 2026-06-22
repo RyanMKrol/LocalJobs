@@ -88,12 +88,12 @@ export default function GateDetail({
               <tbody>
                 {producerRunId ? (
                   <tr>
-                    <td>Producer — {gate.producer}</td>
+                    <td>Output (from {gate.producer})</td>
                     <td><a href={`/runs/${producerRunId}`}>view logs →</a></td>
                   </tr>
                 ) : (
                   <tr>
-                    <td colSpan={2} className="muted">Producer not run yet</td>
+                    <td colSpan={2} className="muted">Output stage not run yet</td>
                   </tr>
                 )}
                 {consumerRunId ? (
@@ -101,7 +101,7 @@ export default function GateDetail({
                     <td>
                       {gate.state === 'failed'
                         ? `Gate violation — ${gate.consumer}`
-                        : `Consumer — ${gate.consumer}`}
+                        : `Input (to ${gate.consumer})`}
                     </td>
                     <td>
                       <a href={`/runs/${consumerRunId}`}>
@@ -111,7 +111,7 @@ export default function GateDetail({
                   </tr>
                 ) : (
                   <tr>
-                    <td colSpan={2} className="muted">Consumer not run yet</td>
+                    <td colSpan={2} className="muted">Input stage not run yet</td>
                   </tr>
                 )}
               </tbody>

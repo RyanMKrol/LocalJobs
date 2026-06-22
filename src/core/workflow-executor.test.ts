@@ -188,8 +188,8 @@ try {
     const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
     // The "checking" line names the boundary, the artifact, AND both assertions.
     assert.match(logText, /checking gate \[g-prod-desc → g-cons-desc\] artifact "csv"/, `checking line missing: ${logText}`);
-    assert.match(logText, /producer asserts: CSV has cid \+ name columns/, `producer assertion not logged: ${logText}`);
-    assert.match(logText, /consumer asserts: every row has a place_id/, `consumer assertion not logged: ${logText}`);
+    assert.match(logText, /output \(from g-prod-desc\): CSV has cid \+ name columns/, `output assertion not logged: ${logText}`);
+    assert.match(logText, /input \(to g-cons-desc\): every row has a place_id/, `input assertion not logged: ${logText}`);
     // …and the pass result is still logged with the same assertion suffix.
     assert.match(logText, /✓ gate ok \[g-prod-desc → g-cons-desc\] artifact "csv".*every row has a place_id/, `gate-ok result missing: ${logText}`);
   });

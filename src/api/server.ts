@@ -171,7 +171,7 @@ function gatesForWorkflow(name: string): Gate[] {
   return deriveGates(dag, produces, consumes).map((g) => {
     const pd = getJobDefinition(g.producer)?.produces?.find((c) => c.key === g.key)?.description;
     const cd = getJobDefinition(g.consumer)?.consumes?.find((c) => c.key === g.key)?.description;
-    const parts = [pd && `produces — ${pd}`, cd && `consumes — ${cd}`].filter(Boolean) as string[];
+    const parts = [pd && `output: ${pd}`, cd && `input: ${cd}`].filter(Boolean) as string[];
     return parts.length ? { ...g, description: parts.join(' · ') } : g;
   });
 }

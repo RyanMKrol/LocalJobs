@@ -35,17 +35,17 @@ function gateAssertions(gate: Gate): string[] {
   const out: string[] = [];
   const p = getJobDefinition(gate.producer)?.produces?.find((c) => c.key === gate.key)?.description;
   const c = getJobDefinition(gate.consumer)?.consumes?.find((c) => c.key === gate.key)?.description;
-  if (p) out.push(`producer asserts: ${p}`);
-  if (c) out.push(`consumer asserts: ${c}`);
+  if (p) out.push(`output (from ${gate.producer}): ${p}`);
+  if (c) out.push(`input (to ${gate.consumer}): ${c}`);
   return out;
 }
 
 async function enforceGate(gate: Gate): Promise<{ ok: boolean; violations: string[] }> {
   const producer = getJobDefinition(gate.producer);
   const consumer = getJobDefinition(gate.consumer);
-  const sides: Array<['producer' | 'consumer', ReturnType<typeof getJobDefinition>, 'produces' | 'consumes']> = [
-    ['producer', producer, 'produces'],
-    ['consumer', consumer, 'consumes'],
+  const sides: Array<['output' | 'input', ReturnType<typeof getJobDefinition>, 'produces' | 'consumes']> = [
+    ['output', producer, 'produces'],
+    ['input', consumer, 'consumes'],
   ];
   const violations: string[] = [];
   for (const [side, def, field] of sides) {
