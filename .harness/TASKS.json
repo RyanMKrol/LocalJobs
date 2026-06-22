@@ -655,6 +655,33 @@
       "verify": [],
       "do": "The Database view currently only does full per-table scans, which are hard to parse. Add a set of useful PREDEFINED/canned queries surfaced on that page — NOT a free-form SQL editor — covering the most useful read-only views, e.g.: recent failed runs, stuck + ignored items by job, service usage/spend this month vs caps, workflow-run durations/outcomes, work_items counts by status per job. Implement them as NAMED, server-side, strictly read-only (SELECT-only) queries — the same safety model as the existing table browser, never arbitrary SQL from the client — exposed via the API and rendered on the DB page alongside the table browser.",
       "doneWhen": "The Database view offers a set of named common queries (read-only) with results rendered; no free-form/arbitrary SQL is accepted from the client; the existing table browser still works; a unit test covers each canned query against the scratch DB; typecheck + tests + dashboard build pass."
+    },
+    {
+      "id": "T054",
+      "title": "Database view: click a row to see full row data (truncation fix)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/db/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Database view table browser, long cell values (especially the message column on e.g. workflow-run logs) are truncated with no way to read the full value. Make each row clickable to open a popover/modal showing the COMPLETE row data — every column, untruncated (a key/value list or pretty-printed JSON). The full row data is already returned by the read-only API; this is purely a display affordance, closeable (Esc / click-away).",
+      "doneWhen": "Clicking a row in the DB table browser opens a popover/modal showing the full untruncated value of every column; it is dismissable; the table browser otherwise works as before; dashboard build passes."
     }
   ]
 }
