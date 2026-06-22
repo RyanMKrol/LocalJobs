@@ -1201,7 +1201,7 @@
     {
       "id": "T049",
       "title": "Sweep the repo for lingering \"pipeline\" usage (rename to workflow)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
