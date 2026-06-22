@@ -710,6 +710,33 @@
       "verify": [],
       "do": "On the Backlog view, show each task’s ESCALATION PATH (the model/effort ladder the loop climbs on repeated failure), not just the starting model. Render the EFFECTIVE ladder — rung 0 (task model/effort, else defaults) then each escalation rung — resolving per-task `escalation` else `defaults.escalation` (same resolution the loop’s task_ladder does). This needs `/api/backlog` to ALSO return the backlog `defaults` (it currently returns only `tasks`) so inherited model/escalation can be resolved, and the BacklogTask type to include `escalation`. Also: where a task INHERITS the default model/effort, show the ACTUAL resolved value (e.g. \"opus/high\"), never the literal word \"default\" — so the view always reflects the real current default and updates automatically if `defaults` changes.",
       "doneWhen": "Each task on /backlog shows its escalation path (e.g. \"sonnet/medium → opus/high\") resolving per-task vs defaults inheritance; a task that inherits the default shows the REAL resolved model/effort (never the word \"default\"); a task with no escalation shows just its single rung; the API returns defaults; dashboard build + typecheck pass."
+    },
+    {
+      "id": "T056",
+      "title": "Overview: workflow status pill links to that run",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the overview page, each workflow card shows a status pill (running / success / cancelled / …) for its last/current run, but there is no one-click way to reach that run — you have to click the workflow, find the run, then Details. Make the pill a LINK straight to that specific workflow run (/workflow-runs/{last_run.id}) — i.e. whichever run it references (the currently-running one, else the most recent). The run id is already on the card’s last_run.",
+      "doneWhen": "On the overview, clicking a workflow card’s status pill navigates directly to that workflow run’s detail page in one click; a card with no run yet shows a non-link pill (no dead link); dashboard build passes."
     }
   ]
 }
