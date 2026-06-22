@@ -1314,7 +1314,7 @@
     {
       "id": "T053",
       "title": "Database view: surface useful canned queries (not a SQL editor)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
