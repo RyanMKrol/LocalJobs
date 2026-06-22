@@ -36,7 +36,7 @@ export default function Workflows() {
                 <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>{p.schedule ?? <span className="muted">manual</span>}{p.enabled ? '' : ' (off)'}</td>
                 <td>
                   {p.last_run
-                    ? <span style={{ whiteSpace: 'nowrap' }}><span className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</span> <span className="muted">{fmtRelative(p.last_run.started_at)}</span></span>
+                    ? <span style={{ whiteSpace: 'nowrap' }}><a href={`/workflow-runs/${p.last_run.id}`} className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</a> <span className="muted">{fmtRelative(p.last_run.started_at)}</span></span>
                     : <span className="muted">never</span>}
                 </td>
                 <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
