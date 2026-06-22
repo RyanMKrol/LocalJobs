@@ -2360,7 +2360,7 @@
     {
       "id": "T092",
       "title": "UI: Cancel button for a running workflow",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T091"
       ],
