@@ -2280,7 +2280,7 @@
     {
       "id": "T089",
       "title": "Gate detail: make the per-expectation 'actual' result stand out",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
