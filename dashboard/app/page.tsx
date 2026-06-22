@@ -133,7 +133,7 @@ export default function Overview() {
         </button>
       </div>
 
-      {activeFilter === 'ignored' && (
+      {activeFilter === 'ignored' && ignored.length > 0 && (
         <>
           <h2>🚫 Ignored items <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>— manually parked, never retried, not counted as stuck</span></h2>
           <div className="panel">
@@ -142,9 +142,6 @@ export default function Overview() {
                 <tr><th>Item</th><th>Job</th><th>Attempts</th><th>Reason</th><th>When</th></tr>
               </thead>
               <tbody>
-                {visibleIgnored.length === 0 && (
-                  <tr><td colSpan={5} className="muted">Nothing ignored — no items have been manually parked. ✓</td></tr>
-                )}
                 {visibleIgnored.map((s) => (
                   <tr key={`${s.job_name}:${s.item_key}`}>
                     <td>{s.detail?.name ?? <span className="mono">{s.item_key}</span>}</td>
@@ -186,19 +183,17 @@ export default function Overview() {
         ))}
       </div>
 
+      {stuck.length > 0 && (
+      <>
       <h2>⛔ Stuck items <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>— gave up, will NOT retry</span></h2>
-      <div className="panel" style={stuck.length ? { borderColor: 'var(--red)' } : undefined}>
+      <div className="panel" style={{ borderColor: 'var(--red)' }}>
         <table>
           <thead>
             <tr><th>Item</th><th>Job</th><th>Attempts</th><th>Reason</th><th>When</th><th></th></tr>
           </thead>
           <tbody>
             {visibleStuck.length === 0 && (
-              <tr><td colSpan={6} className="muted">
-                {activeFilter && activeFilter !== 'stuck' && stuck.length > 0
-                  ? 'Stuck items hidden by current filter.'
-                  : 'Nothing stuck — every item either succeeded or is still retrying. ✓'}
-              </td></tr>
+              <tr><td colSpan={6} className="muted">Stuck items hidden by current filter.</td></tr>
             )}
             {visibleStuck.map((s) => (
               <tr key={`${s.job_name}:${s.item_key}`}>
@@ -216,6 +211,8 @@ export default function Overview() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
 
       <h2>Recent workflow runs</h2>
       <div className="panel">
