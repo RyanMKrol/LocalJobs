@@ -1845,6 +1845,32 @@
       ],
       "do": "Despite T009, the perfumes output still has accords with pct=null (example: Amouage Beach Hut Man — every accord pct is null). Think deeply and evaluate END-TO-END whether accurate accord percentages can be extracted: from the Fragrantica page HTML (the coloured accord-bar widths, expressed as a width % in a style attribute) or, failing that, another signal. Work out WHY T009 still yields null (selector drift? the % lives in a style attr that is not being read?). Fix the parse so accords carry accurate pct. BACKTEST: run the perfumes parse/build stages against the EXISTING fetched HTML under the perfumes data/ folder (no live re-scrape, no paid calls) and evaluate the OUTPUT files — confirm pcts are populated and match the bar widths on the page (spot-check a few). Record before/after in the worklog.",
       "doneWhen": "Perfumes accords carry accurate, non-null percentages (matching the page bar widths) wherever the page provides them; the parse is fixed + unit-tested against a fixture; an end-to-end backtest against existing fetched HTML shows populated pcts in the built output (recorded in the worklog); pct is null ONLY when genuinely absent on the page; typecheck + tests pass."
+    },
+    {
+      "id": "T073",
+      "title": "Backlog view: pending shows pending, not in progress",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Backlog LIST view, the next-eligible task is labelled with a \"▶ in progress\" pill (statusPill), which is misleading — nothing is actively building it (TASKS.json has no in_progress status, and the loop may not even be running). A not-done task should show its REAL status (pending). Show \"pending\" in the list and drop the next-task highlight/border there. Keep the DAG view’s accurately-labelled \"next\" node highlight as-is.",
+      "doneWhen": "On /backlog a pending task shows \"pending\" (no \"in progress\" label) and no special list highlight; the DAG view keeps its \"next\" node; dashboard build passes."
     }
   ]
 }
