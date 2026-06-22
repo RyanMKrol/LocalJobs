@@ -2137,7 +2137,7 @@
     {
       "id": "T084",
       "title": "Back-nav labels: drop the leading '#' before the id (all pages)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
