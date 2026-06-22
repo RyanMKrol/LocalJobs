@@ -578,6 +578,33 @@
       "verify": [],
       "do": "On the workflows page the ▶ Run button is chunky — the play icon and the word \"Run\" wrap onto two lines. Make it render on a SINGLE line (e.g. white-space:nowrap / inline-flex / tighter padding / smaller icon — styling is open, the user is not opinionated). Apply the same fix to any other Run button that wraps (e.g. the workflow cards on the overview).",
       "doneWhen": "The Run button renders on one line (icon + label, no wrap) on the workflows page (and any other card where it wrapped); dashboard build passes."
+    },
+    {
+      "id": "T051",
+      "title": "Workflows page: clean up the last-run column (pill + time)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the workflows page, the last-run column shows a status pill (running/success) plus a relative time (e.g. \"8 minutes ago\") that currently wraps awkwardly across two lines. Make it clean: EITHER force the pill + time onto one line (white-space:nowrap), OR stack them deliberately (pill on its own line, time on the next). Pick whichever reads best — the user is fine with either as long as it is not an awkward wrap.",
+      "doneWhen": "The last-run cell renders cleanly (pill + time on one line, or deliberately stacked) with no awkward mid-value wrap; dashboard build passes."
     }
   ]
 }
