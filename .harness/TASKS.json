@@ -1337,7 +1337,7 @@
     {
       "id": "T054",
       "title": "Database view: click a row to see full row data (truncation fix)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
