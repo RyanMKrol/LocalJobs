@@ -21,27 +21,27 @@ function escalationPath(t: BacklogTask, defaults: BacklogDefaults | undefined): 
   return rungs.join(' → ');
 }
 
-function statusPill(t: BacklogTask) {
+function statusPill(t: BacklogTask, isNext: boolean) {
   if (t.status === 'done') {
     return <span className="pill done">✓ done</span>;
   }
-  // Pending is pending. Nothing is "in progress" unless a job is actively running, which
-  // TASKS.json does not track — so a not-done task shows its real status. (The DAG view still
-  // highlights the next-eligible task as "next".)
+  if (isNext) {
+    return <span className="pill in-progress">▶ in progress</span>;
+  }
   return <span className="pill">{t.status}</span>;
 }
 
-function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults | undefined }) {
+function TaskCard({ t, isNext, defaults }: { t: BacklogTask; isNext: boolean; defaults: BacklogDefaults | undefined }) {
   const human = t.gate === 'needs-human' || t.gate === 'gate';
   const ladder = escalationPath(t, defaults);
   return (
-    <div className="panel" style={{ padding: 14, marginBottom: 8, borderColor: human ? 'var(--accent)' : undefined }}>
+    <div className="panel" style={{ padding: 14, marginBottom: 8, borderColor: human ? 'var(--accent)' : isNext ? 'rgba(88,166,255,.4)' : undefined }}>
       <div className="row" style={{ gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <span className="mono" style={{ fontWeight: 700 }}>{t.id}</span>
         <strong>{t.title}</strong>
         <div className="spacer" />
         {human && <span className="pill" style={{ background: 'var(--accent)', color: '#fff' }}>🔒 needs human</span>}
-        {statusPill(t)}
+        {statusPill(t, isNext)}
       </div>
       {t.dependsOn && t.dependsOn.length > 0 && (
         <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -90,7 +90,7 @@ function DagDetailPanel({ t, isNext, defaults }: { t: BacklogTask; isNext: boole
         <strong>{t.title}</strong>
         <div className="spacer" />
         {human && <span className="pill" style={{ background: 'var(--accent)', color: '#fff' }}>🔒 needs human</span>}
-        {statusPill(t)}
+        {statusPill(t, isNext)}
       </div>
       {t.dependsOn && t.dependsOn.length > 0 && (
         <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
@@ -170,12 +170,12 @@ export default function Backlog() {
         <>
           <h2>🤖 Harness-buildable ({buildable.length})</h2>
           {buildable.length === 0 && <p className="muted">None.</p>}
-          {buildable.map((t) => <TaskCard key={t.id} t={t} defaults={defaults} />)}
+          {buildable.map((t) => <TaskCard key={t.id} t={t} isNext={t.id === nextId} defaults={defaults} />)}
 
           <h2 style={{ marginTop: 28 }}>🔒 Needs a human ({human.length})</h2>
           <p className="sub">The loop skips these — work them manually.</p>
           {human.length === 0 && <p className="muted">None.</p>}
-          {human.map((t) => <TaskCard key={t.id} t={t} defaults={defaults} />)}
+          {human.map((t) => <TaskCard key={t.id} t={t} isNext={false} defaults={defaults} />)}
 
           <h2 style={{ marginTop: 28 }}>✅ Done ({done.length})</h2>
           <details>
