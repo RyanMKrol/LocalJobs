@@ -39,7 +39,10 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
       {run && (
         <>
           <div className="row">
-            <h1 style={{ margin: 0 }}>Run</h1>
+            <div>
+              <h1 style={{ margin: 0 }}>{run.job_name}</h1>
+              <span className="muted" style={{ fontSize: 12 }}>run</span>
+            </div>
             <StatusBadge status={run.status} />
             <div className="spacer" />
             <span className="muted mono">{run.id}</span>
