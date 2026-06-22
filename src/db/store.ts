@@ -294,6 +294,67 @@ export function selectPendingRoots(
   return selected;
 }
 
+/**
+ * Input→output mapping across a workflow's first and last stages (T095).
+ *
+ * Fetches all work_items for `firstWaveJobs` (inputs) and `lastWaveJobs`
+ * (outputs), then joins them: each last-wave item whose `root_key` matches a
+ * first-wave `item_key` is the output row for that input.
+ *
+ * KNOWN LIMITATIONS (first-cut, not per-run-scoped):
+ *  - work_items is global — reflects the workflow's current ledger, not strictly
+ *    this run's items. Per-run scoping arrives with further lineage work (T093/T094).
+ *  - Fan-out (1 input → many outputs) is collapsed to the first matching output.
+ *
+ * For the current example workflows (perfumes: all stages share item_key;
+ * places: later stages use root_key = CID from first stage) this join is exact.
+ */
+export interface IoRow {
+  inputJob: string;
+  inputKey: string;
+  inputStatus: string;
+  inputDetail: unknown;
+  outputJob: string | null;
+  outputKey: string | null;
+  outputStatus: string | null;
+  outputDetail: unknown;
+}
+
+export function workItemIoRows(firstWaveJobs: string[], lastWaveJobs: string[]): IoRow[] {
+  if (firstWaveJobs.length === 0) return [];
+  const ph1 = firstWaveJobs.map(() => '?').join(',');
+  const inputs = db.prepare(
+    `SELECT job_name, item_key, status, detail FROM work_items WHERE job_name IN (${ph1}) ORDER BY item_key`,
+  ).all(...firstWaveJobs) as { job_name: string; item_key: string; status: string; detail: string | null }[];
+
+  // Build a root_key → first matching output map from the last wave.
+  const byRoot = new Map<string, { job_name: string; item_key: string; status: string; detail: string | null }>();
+  if (lastWaveJobs.length > 0) {
+    const ph2 = lastWaveJobs.map(() => '?').join(',');
+    const outputs = db.prepare(
+      `SELECT job_name, item_key, status, detail, root_key FROM work_items WHERE job_name IN (${ph2}) ORDER BY item_key`,
+    ).all(...lastWaveJobs) as { job_name: string; item_key: string; status: string; detail: string | null; root_key: string | null }[];
+    for (const o of outputs) {
+      const rk = o.root_key ?? o.item_key;
+      if (!byRoot.has(rk)) byRoot.set(rk, o);
+    }
+  }
+
+  return inputs.map((r) => {
+    const out = byRoot.get(r.item_key);
+    return {
+      inputJob: r.job_name,
+      inputKey: r.item_key,
+      inputStatus: r.status,
+      inputDetail: r.detail != null ? (JSON.parse(r.detail) as unknown) : null,
+      outputJob: out?.job_name ?? null,
+      outputKey: out?.item_key ?? null,
+      outputStatus: out?.status ?? null,
+      outputDetail: out?.detail != null ? (JSON.parse(out.detail) as unknown) : null,
+    };
+  });
+}
+
 /** Count of work items per status for a job, e.g. { success: 1700, failed: 3 }. */
 export function workItemCounts(jobName: string): Record<string, number> {
   const rows = db.prepare('SELECT status, COUNT(*) AS n FROM work_items WHERE job_name = ? GROUP BY status')

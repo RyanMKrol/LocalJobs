@@ -139,6 +139,27 @@ export interface GateInspection {
   input: GateSide | null;
 }
 
+/** One row in the first-cut input→output mapping for a workflow run (T095). */
+export interface IoRow {
+  inputJob: string;
+  inputKey: string;
+  inputStatus: string;
+  /** Arbitrary JSON detail recorded by the job; may contain `name` for display. */
+  inputDetail: Record<string, unknown> | null;
+  outputJob: string | null;
+  outputKey: string | null;
+  outputStatus: string | null;
+  outputDetail: Record<string, unknown> | null;
+}
+
+/** Response from GET /api/workflow-runs/:id/io */
+export interface WorkflowIo {
+  io: IoRow[];
+  firstWave: string[];
+  lastWave: string[];
+  note: string;
+}
+
 export interface Service {
   name: string;
   description: string;
@@ -271,6 +292,7 @@ export const api = {
     get<GateInspection>(
       `/api/workflow-runs/${id}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
     ),
+  workflowRunIo: (id: string) => get<WorkflowIo>(`/api/workflow-runs/${id}/io`),
   runWorkflow: (name: string, limit?: number) =>
     post<{ ok: boolean; limit: number | null }>(`/api/workflows/${name}/run`, limit !== undefined ? { limit } : undefined),
   toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${name}/toggle`, { enabled }),

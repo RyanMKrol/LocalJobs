@@ -30,6 +30,7 @@ import {
   runCannedQuery,
   orphanedWorkItems,
   pruneOrphanedWorkItems,
+  workItemIoRows,
   serviceCallsInLastSeconds,
   serviceCallsThisMonth,
   serviceCallsToday,
@@ -439,6 +440,36 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         const output = await inspectSide(gate.producer, 'produces');
         const input = await inspectSide(gate.consumer, 'consumes');
         return json(res, 200, { gate, output, input });
+      }
+
+      // GET /api/workflow-runs/:id/io
+      // First-cut input→output mapping for a workflow run (T095). Reads the
+      // first- and last-wave jobs' work_items and joins them by root_key so
+      // each input key is paired with its output. DB/file reads only — safe to
+      // poll. Known limitation: work_items is not scoped per run; this reflects
+      // the workflow's global ledger. Fan-out collapses to the first match.
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'io' && parts.length === 4) {
+        const run = getWorkflowRun(parts[2]);
+        if (!run) return json(res, 404, { error: 'workflow run not found' });
+        const refs = getWorkflowJobs(run.workflow_name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
+        let firstWave: string[] = [];
+        let lastWave: string[] = [];
+        try {
+          const dag = buildDag(refs);
+          firstWave = dag.waves[0] ?? [];
+          lastWave = dag.waves[dag.waves.length - 1] ?? [];
+          // If the workflow is a single stage, first == last — show it as both input and output.
+        } catch {
+          return json(res, 200, { io: [], firstWave: [], lastWave: [], note: 'workflow DAG could not be parsed' });
+        }
+        const io = workItemIoRows(firstWave, lastWave);
+        return json(res, 200, {
+          io,
+          firstWave,
+          lastWave,
+          // Surface the limitation so the UI can label the panel clearly.
+          note: 'First-cut mapping: reflects the global work-item ledger, not scoped to this run. Fan-out collapses to one output per input.',
+        });
       }
 
       // GET /api/services  (usage vs caps + current per-minute rate)

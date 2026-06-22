@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
-import type { GateStatus, Run } from '../../lib/api';
+import type { GateStatus, IoRow, Run, WorkflowIo } from '../../lib/api';
 import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
 
 function latestByStage(members: Run[]): Run[] {
@@ -51,6 +51,84 @@ function GatePanel({ id, gates }: { id: string; gates: GateStatus[] }) {
   );
 }
 
+/** Extract a display label from a work-item detail blob: prefers `detail.name`, falls back to `key`. */
+function itemLabel(key: string, detail: IoRow['inputDetail']): string {
+  if (detail && typeof detail.name === 'string' && detail.name) return detail.name;
+  return key;
+}
+
+/**
+ * Input → Output mapping panel (T095 first cut).
+ *
+ * Joins first-stage work items to last-stage work items by root_key so each
+ * input can be paired with its final output. Not scoped to this run — reflects
+ * the workflow's global work-item ledger. Fan-out collapses to one output per
+ * input. These limitations are noted in the panel header.
+ */
+function IoPanel({ data }: { data: WorkflowIo }) {
+  const { io, firstWave, lastWave, note } = data;
+  if (io.length === 0 && firstWave.length === 0) return null;
+  const singleStage = firstWave.length > 0 && firstWave[0] === lastWave?.[0];
+  return (
+    <>
+      <h2>Input → Output mapping</h2>
+      <div className="panel">
+        {io.length === 0 ? (
+          <p className="muted" style={{ margin: 0 }}>No work items recorded yet for this workflow.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Input</th>
+                <th>Input status</th>
+                {!singleStage && <th>Output</th>}
+                {!singleStage && <th>Output status</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {io.map((row) => (
+                <tr key={row.inputKey}>
+                  <td>
+                    <div className="mono" style={{ fontSize: '0.82em' }}>{row.inputKey}</div>
+                    {row.inputDetail && typeof (row.inputDetail as Record<string, unknown>).name === 'string' && (
+                      <div className="muted" style={{ fontSize: '0.88em' }}>{itemLabel(row.inputKey, row.inputDetail)}</div>
+                    )}
+                  </td>
+                  <td><span className={`badge ${row.inputStatus}`}>{row.inputStatus}</span></td>
+                  {!singleStage && (
+                    <td>
+                      {row.outputKey ? (
+                        <>
+                          <div className="mono" style={{ fontSize: '0.82em' }}>{row.outputKey}</div>
+                          {row.outputDetail && typeof (row.outputDetail as Record<string, unknown>).name === 'string' && (
+                            <div className="muted" style={{ fontSize: '0.88em' }}>{itemLabel(row.outputKey, row.outputDetail)}</div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  )}
+                  {!singleStage && (
+                    <td>
+                      {row.outputStatus
+                        ? <span className={`badge ${row.outputStatus}`}>{row.outputStatus}</span>
+                        : <span className="muted">—</span>}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="muted" style={{ fontSize: '0.82em', margin: '8px 0 0' }}>
+          ⚠ First cut — {note}
+        </p>
+      </div>
+    </>
+  );
+}
+
 export default function WorkflowRunDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [busy, setBusy] = useState(false);
@@ -59,6 +137,10 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   const members = data?.jobs ?? [];
   const logs = data?.logs ?? [];
   const gates = data?.gates ?? [];
+
+  // IO mapping panel: poll at a slower cadence (it reads the global work-item
+  // ledger, not run-scoped state, so rapid polling isn't needed).
+  const { data: ioData } = usePoll(() => api.workflowRunIo(id), 5000, [id]);
 
   async function cancel() {
     setBusy(true);
@@ -107,6 +189,8 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
       )}
 
       <GatePanel id={id} gates={gates} />
+
+      {ioData && <IoPanel data={ioData} />}
 
       <h2>Member runs</h2>
       <div className="panel">
