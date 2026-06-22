@@ -1232,7 +1232,7 @@
     {
       "id": "T050",
       "title": "Workflows page: get the Run button onto one line",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
