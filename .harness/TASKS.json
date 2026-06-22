@@ -2540,6 +2540,367 @@
       "verify": [],
       "do": "A raw cron schedule like '0 2 * * *' is hard to parse at a glance. Add a tooltip (hover) on every place a schedule is shown that gives a human-readable description, e.g. '0 2 * * *' -> 'At 02:00, every day'. Implement a small cron->English helper (in ui.tsx) covering the common shapes the app uses (daily at HH:MM, hourly, every N hours/minutes, weekly on a given day, etc.) and fall back to showing the raw expression when a cron can't be confidently described — never show a wrong description. Apply it as a title/tooltip wherever a cron is rendered (the Workflows list Schedule column and the workflow detail page at minimum; grep the dashboard for other schedule render sites and cover them too). PREFER a small in-repo helper to honour the repo's dependency-light convention; only reach for a tiny focused library (e.g. cronstrue) if hand-rolling broad coverage proves unreasonable — and note the choice in the worklog. Manual-only ('null' schedule) workflows should keep their existing 'manual' rendering with no misleading tooltip.",
       "doneWhen": "Hovering a cron schedule anywhere it's shown reveals a human-readable description (e.g. '0 2 * * *' -> 'At 02:00, every day'); unrecognised cron expressions fall back to the raw string (no wrong description); manual-only workflows are unaffected; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T098",
+      "title": "Regression guard: migrations must run against an existing (non-fresh) DB",
+      "status": "done",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "testing",
+        "db",
+        "ci"
+      ],
+      "scope": [
+        "src/db/index.ts",
+        "src/db/migrate-existing-db.test.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Prevent the class of bug that just crash-looped the daemon (the T094 regression, fixed in commit 2748c58): a schema-bootstrap statement in schema.sql referencing a column that only a LATER additive migration adds. It was invisible to CI because the unit suite always starts from a FRESH/empty scratch DB — so schema.sql's CREATE TABLE already contained the new column — while the live/existing DB crashed in openDb(). Add a regression test (src/db/migrate-existing-db.test.ts) that exercises the REAL openDb() bootstrap+migration path against a PRE-POPULATED database seeded to an OLDER schema shape: stand up the core tables (work_items, workflow_runs, runs, jobs, services, etc.) in a pre-migration form WITHOUT the newer migration-added columns/indexes, insert a few representative rows, then run the full openDb() path against THAT file and assert it does not throw and ends correctly migrated (expected columns + indexes present, legacy rows backfilled e.g. root_key = item_key). openDb() currently uses config.dbPath and auto-opens at import — do the smallest enabling refactor to make it testable against a given path (e.g. let openDb(path?) accept an optional path) rather than fragile env juggling. Make the test strong enough that it would FAIL against the OLD buggy schema.sql (i.e. it genuinely catches the ordering bug), ideally by seeding from a realistic 'legacy' snapshot so ANY future ordering violation trips it, not just this one. Finally, codify the invariant: add a Conventions note in CLAUDE.md that schema.sql's bootstrap must NOT create an index/constraint on a column added by a later additive migration — such indexes belong IN the migration, after the ALTER (cross-reference the migrateRunLimitLineage pattern in index.ts).",
+      "doneWhen": "A regression test runs openDb()'s full bootstrap+migration against a pre-seeded OLD-shape database (tables + rows lacking the newer columns) and asserts openDb does not throw and the DB ends migrated (columns + indexes present, legacy rows backfilled); the test would FAIL if pointed at the pre-fix buggy schema.sql (proven to catch the ordering bug); openDb is invokable against an explicit path via the minimal refactor; CLAUDE.md documents the 'no schema-bootstrap index/constraint on a migration-added column' convention; npx tsc --noEmit and npm test are green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T099",
+      "title": "Graph view: 5 toggleable validation-gate styles to reduce footprint",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Re-evaluate how validation gates are drawn on the graph view — they currently take up too much space (the gate chips, see T090 which placed them on the connecting arrow). Produce FIVE distinct, MORE COMPACT gate-display styles and let the user toggle between them live on the website so they can choose a favourite (persist the choice, e.g. localStorage, so it survives polling/navigation; add a small style selector on the graph views). Use best judgement on the five styles; suggested directions (mix/refine as you see fit): (1) icon-only chip — a single ⛒ glyph coloured by state, full producer/key detail on hover tooltip; (2) a small state-coloured dot/badge on the arrow, tooltip for detail; (3) a tiny inline label showing just the artifact key (no producer name); (4) no separate chip at all — encode gate state by colouring the connector/arrow itself, click the arrow for detail; (5) a compact lock/number glyph that expands to full detail on hover/click. ALL styles must preserve what gates already provide: every gate stays clickable through to its detail page, state colouring (passed/failed/pending, and the structural variant) is still distinguishable, and it works on BOTH the workflow-run DAG and the structure-only workflow graph, at desktop AND phone widths. This is an EVALUATION aid: note in the task/worklog that once the user picks a winner a FOLLOW-UP task will hardcode it and remove the toggle + the unused styles.",
+      "doneWhen": "On both graph views the user can switch between five distinct, compact validation-gate display styles via a persisted toggle; every style keeps gates clickable to their detail page, keeps state colouring distinguishable, and works at desktop and phone widths; the gates visibly take less space than the current chip; dashboard build passes and mobile-check stays green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T100",
+      "title": "Polish the run-limit control on the workflow Run UI",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The manual run-limit control added by T094 (on the workflow detail page's Run area) is just a bare text box sitting awkwardly on the page — it looks unfinished and doesn't fit the rest of the site. Improve its visual integration: give it a proper label, sensible sizing/placement grouped with the 'Run now' button, and styling consistent with the site's other form controls (e.g. the Services edit-limits inputs), so the limit reads as a polished part of the run control rather than a stray box. Keep the behaviour unchanged (optional limit; blank = unlimited; scheduled runs unaffected). Also tidy how the chosen limit is surfaced on the resulting workflow-run page (workflow-runs/[id]) if it currently renders raw/awkwardly.",
+      "doneWhen": "The run-limit input is visually integrated with the workflow Run control and matches the site's styling (clear label, appropriate size, sensible placement) — no longer a stray text box; its behaviour is unchanged (blank = unlimited); any display of the active limit on the workflow-run page reads tidily; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T101",
+      "title": "Gate detail: apply the side-card code styling to the middle Gate container",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the validation-gate detail page, the middle 'Gate' container (the gate-center card) renders its code-shaped content — notably the artifact key (gate.key, ~line 148) — as plain mono text, while the producer/consumer SIDE cards now use a dedicated code-block style (introduced by T088). Make the middle Gate card use the SAME code-block styling for its code-shaped content (the artifact key, and any other code/JSON-shaped values it shows) so all three containers read consistently and the gate is easy to read. Reuse the shared code-block class from T088 rather than inventing a new one; keep the plain-English gate description as prose. NOTE: harmonise with T088/T089/T096 which also touch this page.",
+      "doneWhen": "The middle Gate container uses the same code-block styling as the producer/consumer side cards for its code-shaped content (artifact key etc.); the three containers read consistently; plain-English text stays prose; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T102",
+      "title": "Workflow definition view: gate chips open a run-agnostic gate detail",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "api"
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/workflows/[name]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts",
+        "src/core/dag.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the workflow DEFINITION view (/workflows/[name]) the structure graph shows validation-gate chips (StructuralGateChips in Dag.tsx). Clicking one currently jumps into a SPECIFIC RUN's gate detail page (/workflow-runs/<lastRunId>/gates/...), which is wrong for a definition view — it should behave like clicking a JOB there does (which opens the job's run-agnostic read-only view at /jobs/<name>, NOT a specific run). Make a gate chip on the definition view open a DEFINITION-LEVEL gate detail that explains the gate itself — the contract: artifact key, description, producer->consumer, and the declared expected shape — independent of any one run. Add a run-agnostic gate-detail route (e.g. /workflows/[name]/gates/[producer]/[key]) backed by a read-only API (e.g. GET /api/workflows/:name/gates/:producer/:key) returning the structural gate info from deriveGates plus the producer/consumer contracts' shape/description (the 'expected' side only — NO live per-run actuals, NO paid/remote calls, so it's safe to load). Rewire StructuralGateChips on the definition view to link there instead of to the last run. Keep the existing run-scoped gate page (/workflow-runs/[id]/gates/...) for the run views UNCHANGED (that one legitimately shows a specific run's actual-vs-expected). NOTE: harmonise with the gate-page work in T088/T089/T096/T101.",
+      "doneWhen": "On /workflows/[name], clicking a validation-gate chip opens a run-agnostic, definition-level gate detail (contract key, description, producer->consumer, expected shape) rather than a specific run's gate page; the run views still link to their run-scoped gate detail; the new API path is read-only (DB/contracts only, no paid/remote calls); npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T103",
+      "title": "Backlog DAG: render as a real directed graph (node shapes + drawn edges)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/backlog/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The backlog DAG (BacklogDag in components/Dag.tsx, the /backlog DAG view) still looks poor: tasks render as loosely-styled items in left-to-right waves with a single '→' between waves, so there's no clear per-task shape and no real edges — it doesn't read as a graph. Redesign it to look like an actual directed acyclic graph: (1) wrap EVERY task in a clearly-bounded NODE SHAPE (a bordered box/card, clearly separated from its neighbours, status-coloured, showing at least the task id + title); (2) draw REAL directed edges between dependency-related nodes — an arrow from each task to each of its dependents — not just one arrow between waves, so the dependency structure is actually visible. Keep the topological ordering, the click-to-select/inspect behaviour, horizontal scroll, and phone-width responsiveness. PREFER a lightweight in-repo approach (position nodes by the existing topological waves; draw edges with SVG lines + arrowheads) over pulling in a heavy graph-layout library (e.g. dagre/d3) — honour the repo's dependency-light convention; if a library is genuinely warranted, note the tradeoff in the worklog. This supersedes/extends T076 (a first pass at nicer backlog DAG nodes).",
+      "doneWhen": "The /backlog DAG view renders as a genuine directed graph — each task sits in a clearly-bounded, visually-separated node shape and real directed edges (with arrowheads) connect dependent tasks rather than a single per-wave arrow; topological order, node selection/inspect, horizontal scroll, and mobile responsiveness all still work; dashboard build passes and mobile-check stays green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T104",
+      "title": "Workflow-run page: remove the redundant Validation gates panel",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On a workflow-run page (workflow-runs/[id]/page.tsx) the 'Validation gates' panel (the <h2>Validation gates</h2> + the State/Gate/Asserts/detail table, ~lines 26-49) is not very useful and duplicates the graph: the DAG gate chips already link directly to each gate's detail page. Remove that header + panel/table. IMPORTANT: the page still needs the `gates` data to render the chips on the run DAG, so keep fetching gates and keep the DAG's GateChips — only remove the separate panel display. Confirm nothing dangles: the gate chips link straight to /workflow-runs/[id]/gates/... (not to a panel anchor), and there is no gateAnchor reference in code, so no in-page links should break — but double-check and clean up any leftover anchor/link into the removed panel. Update the docs that describe this panel: CLAUDE.md (~lines 390/429, including the 'links to that gate's row in the Validation gates panel' / gateAnchor wording — gate chips now link directly to the gate detail page) and README (~line 330).",
+      "doneWhen": "The Validation gates panel/header is gone from the workflow-run page; gates are still reachable by clicking their chips on the run DAG (which open the gate detail page); no dangling links or anchors reference the removed panel; CLAUDE.md + README no longer describe the panel (and reflect that chips link directly to the gate detail); npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green."
+    },
+    {
+      "id": "T105",
+      "title": "Enforce one active run per workflow (UI + API + executor)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "backend",
+        "workflow",
+        "api"
+      ],
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts",
+        "src/core/workflow-executor.ts",
+        "src/db/store.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/api/server.test.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "A workflow must only ever have ONE active run at a time (different workflows MAY still run concurrently — this is per-workflow, not a global lock). Today the Run button stays active on the Workflows list even while that workflow is running. Enforce the constraint at all three layers: (1) UI — disable/relabel the Run button (the per-row button on the Workflows LIST page workflows/page.tsx AND the 'Run now' button on the workflow DETAIL page workflows/[name]/page.tsx) whenever that workflow has an active run (the workflows API already exposes last_run; treat last_run.status === 'running' as active), e.g. show 'Running…' disabled. (2) API — POST /api/workflows/:name/run should reject a duplicate start with a clear response (e.g. 409 Conflict + message) instead of returning ok/202 and silently skipping, so callers know it didn't start. (3) EXECUTOR — the workflow executor is the AUTHORITATIVE guard: it must atomically refuse to start a second concurrent run of the same workflow (there is already a hasActiveWorkflowRun check / overlap-prevention — make it the single source of truth and race-safe, so two near-simultaneous POSTs can't both start). Add unit tests for the API reject and the executor guard (and that a DIFFERENT workflow can still start while one is running). Document the constraint in CLAUDE.md (executor/overlap section) + README.",
+      "doneWhen": "Starting a workflow that already has an active run is prevented at every layer: the Run button (list + detail) is disabled/shows 'running' while a run is active; POST /api/workflows/:name/run returns a clear conflict (e.g. 409) rather than appearing to start a second run; the executor atomically refuses a concurrent run of the SAME workflow so a race can't start two, while DIFFERENT workflows can still run concurrently; unit tests cover the API reject + executor guard + the different-workflow case; CLAUDE.md + README document the constraint; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T106",
+      "title": "Services: use 'no limit' wording everywhere (table view says 'no cap')",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/services/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Services page the wording for 'no limit set' is inconsistent: the Edit-limits placeholder now reads 'no limit' (set by T074), but the TABLE view shows 'no cap' when a service has no limit (the Bar component, services/page.tsx ~line 8: `if (cap == null) return <span className=\"muted\">no cap</span>`). Align everything to 'no limit': change the table's 'no cap' to 'no limit', and update the per-field ✕ clear-button tooltips that say 'Set to no cap' (daily/monthly) to 'Set to no limit', so the empty/no-limit state reads consistently as 'no limit' across the table, the placeholders, and the tooltips.",
+      "doneWhen": "The Services page uses 'no limit' wording consistently for the no-limit/empty state — the table shows 'no limit' (not 'no cap'), and the edit placeholders + ✕ clear-button tooltips all say 'no limit'; behaviour is unchanged; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T107",
+      "title": "Cron: explicit '?'-icon tooltip with instant human-readable text",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "T097 added a human-readable cron explanation but surfaced it via the native HTML title attribute, which only appears after the browser's ~1s hover delay — not ideal. Replace it with an EXPLICIT tooltip affordance: render a small '?'-in-a-circle help icon next to each cron schedule display, and on hover/focus (or tap, for touch) show the human-readable cron text IMMEDIATELY via a custom tooltip (CSS/JS), with no native-title delay. Reuse the existing cron->English helper from T097 (don't reimplement it). Build it as a small reusable component (e.g. in ui.tsx) and apply it everywhere a cron is shown (the Workflows list + the workflow detail page; grep for any other cron render sites). Make it accessible (keyboard-focusable + appropriate aria) and touch-friendly (tap to reveal), and ensure the tooltip doesn't cause horizontal overflow at phone width. Remove the now-superseded native title-based cron tooltip.",
+      "doneWhen": "Each cron schedule display has an explicit '?'-in-circle icon that, on hover/focus/tap, instantly shows the human-readable cron text (no native-title delay); it reuses the T097 cron->English helper; it's keyboard-accessible and works on touch; no horizontal overflow at ~402px; the old native-title cron tooltip is gone; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T108",
+      "title": "New workflow: notify when new seasons of Plex TV shows are available",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "workflow",
+        "needs-human",
+        "plex"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": [
+        "src/jobs/plex",
+        ".gitignore",
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "do": "Build a NEW workflow that checks my Plex library for TV shows and notifies me when a NEW SEASON has become available (i.e. exists/aired upstream but isn't in my library yet) so I know to download it. NEEDS-HUMAN because it requires my private credentials + infrastructure: a Plex server URL + auth token (PLEX_URL / PLEX_TOKEN), network access to my Plex server, and most likely a TV-metadata source to know which seasons exist (e.g. TVDB/TMDB API key, or a Sonarr instance) — the loop cannot provision these, so the agent should scaffold the workflow around the gap and record failed:blocked until I supply them. Design (follow repo conventions): a multi-stage workflow under a PRIVATE gitignored subfolder src/jobs/plex/ (add 'src/jobs/plex/' to .gitignore; do NOT publish this job's code or document it in the public README) — e.g. stage 1 query the Plex library for each show + its latest owned season; stage 2 look up upstream season availability via the metadata service; stage 3 push a notification (reuse src/core/notifier.ts push() — ntfy + macOS) listing shows with a new season available. Key it idempotently with the work_items ledger per (show, season) so I'm only notified once per new season; route the external metadata calls through a *.service.ts ServiceDefinition for rate-limiting; give the *.workflow.ts a sensible schedule (e.g. daily or weekly). Read all secrets from .env via process.env; add the env var NAMES with placeholders to .env.example (names only, never values). Tell me exactly what to provision (the human step).",
+      "doneWhen": "A private (gitignored) 'plex' workflow exists that, on its schedule, compares my Plex library against upstream season availability and pushes a notification for shows with a newly-available season, de-duplicated per (show, season) via the work_items ledger; it reads PLEX_URL/PLEX_TOKEN (+ any metadata API key) from .env (placeholders documented in .env.example, names only); the job code stays a gitignored private subfolder (never force-added). Until I provision the Plex token/URL + metadata access, the task is recorded failed:blocked with the exact provisioning steps; once provisioned it is verified end-to-end against the live Plex server with the smallest sample. npx tsc --noEmit and npm test stay green."
+    },
+    {
+      "id": "T109",
+      "title": "New monthly workflow: notify about movie gaps in my Plex library",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "workflow",
+        "needs-human",
+        "plex",
+        "movies"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": [
+        "src/jobs/plex",
+        ".gitignore",
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "do": "Build a NEW MONTHLY workflow that scans my Plex MOVIE library for 'gaps' and notifies me which movies to download. NEEDS-HUMAN: like T108 it needs my private Plex server URL + token (PLEX_URL / PLEX_TOKEN), network access to my Plex server, and a movie-metadata source (e.g. TMDB API key, or a Radarr instance) to know what 'complete' looks like — the loop can't provision these, so scaffold around the gap and record failed:blocked until I supply them. WORKING DEFINITION OF 'gap' (confirm with me, it's the key design choice): within collections/franchises where I already own at least one movie (via TMDB collections / Plex collection metadata), the movies I'm MISSING — e.g. I own Star Wars I-VII but not VIII-IX. Note alternative definitions (missing from a watchlist, low-quality versions to upgrade) so I can pick; default to the collection-gap interpretation. Follow repo conventions and REUSE T108 where sensible: this can live in the same PRIVATE gitignored subfolder src/jobs/plex/ (already added to .gitignore by T108; if T108 hasn't landed, add 'src/jobs/plex/') and share the Plex connection + a metadata *.service.ts for rate-limiting; it is its own *.workflow.ts with a MONTHLY schedule. Stages e.g.: enumerate owned movies + their collections from Plex; for each collection resolve the full set from the metadata source and diff to find missing entries; push a notification (reuse src/core/notifier.ts push()) listing the gaps. Key idempotently with the work_items ledger per missing movie so I'm notified once per gap. Secrets from .env via process.env; env var NAMES (placeholders only) in .env.example; do NOT publish the job code or document it in the public README.",
+      "doneWhen": "A private (gitignored) monthly Plex movie-gaps workflow exists that compares my owned movies against their collections/franchises (per the agreed 'gap' definition) and pushes a notification listing missing movies to download, de-duplicated per missing movie via the work_items ledger; it reuses the Plex credentials/connection + a rate-limited metadata service; secrets come from .env (names placeholdered in .env.example) and the code stays a gitignored private subfolder. Until I provision Plex + metadata access (and confirm the 'gap' definition) it is recorded failed:blocked with the exact steps; once provisioned it is verified against the live Plex server with the smallest sample. npx tsc --noEmit and npm test stay green."
+    },
+    {
+      "id": "T110",
+      "title": "Workflow-run IO: expressive output — markdown preview + full popover",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "workflow",
+        "api"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/db/store.ts",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the workflow-run page, the input->output mapping panel (added by T095) currently shows an output that's basically a copy of the input id — no real value. Make the OUTPUT side expressive: show a PREVIEW of the produced artifact (for the example workflows the final stage writes a markdown file, e.g. data/out/markdown/<id>.md — preview its title / first lines / a short excerpt), and make clicking the output open the FULL markdown in a popover/modal (reuse the existing RowModal/db-modal pattern + styling). The input side can stay roughly as-is. Add a READ-ONLY API endpoint to fetch a given run item's output content, and make it PATH-SAFE: resolve the file only within the job's known output directory (e.g. its data/out), reject any path traversal, read files only (no paid/remote calls, safe to load). Resolve the output path from the T095 IO mapping / work_items detail. PREFER showing the markdown as readable text (monospace, scrollable) in the popover to avoid adding a markdown-renderer dependency (repo is dependency-light); a light in-house render is optional. Works for the perfumes + places example workflows. NOTE: harmonise with T095 (the panel) and reuse the db page's modal where possible.",
+      "doneWhen": "On the workflow-run page the output side of the IO mapping shows a meaningful preview of the produced artifact (e.g. the markdown title/excerpt), and clicking it opens the full markdown in a popover/modal; the content is served by a read-only API restricted to the job's output directory (no path traversal, files only, no paid/remote calls); it works for the perfumes and places workflows; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T111",
+      "title": "Clean slate: clear the ledger + all workflow output artifacts for a fresh production start",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "ops",
+        "cleanup",
+        "db"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": [
+        "scripts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "One-time clean slate so the workflows can run from scratch in production with no prior TESTING data. NEEDS-HUMAN: this is destructive and operates on the LIVE production DB (data/jobs.db) and local data/ files — the loop must never run it; the agent PREPARES a safe, guarded reset and the human executes it. Deliverable: a guarded reset utility under scripts/ (e.g. scripts/reset-clean-slate.ts) that DRY-RUNS by default and requires an explicit confirm flag to actually delete, printing exactly what it will remove. CLEAR: the work_items ledger plus the run/usage history + logs — work_items, runs, run_logs, workflow_runs, workflow_run_logs, job_usage, service_usage — and every workflow's OUTPUT artifacts under each job's data/out/** (e.g. places data/out json + markdown; perfumes data/out/pages, pages-failed, fragrantica, markdown). PRESERVE (must NOT touch): data/raw/** inputs (the workflows need them), data/chrome-profile/ (warmed Cloudflare clearance — not an output), .env (secrets), the definition tables jobs/workflows/services (they re-sync from code on daemon start), and user settings — service limit overrides (limits_overridden + values) and workflow enabled toggles. Note the process for the human: stop the daemon (ensure no workflow is running), run the script with the confirm flag, then restart the daemon — it re-syncs definitions and, with an empty ledger, reprocesses all inputs from scratch. Call out that clearing service_usage resets the monthly spend meter (intended for a fresh start). NEVER git add anything under data/.",
+      "doneWhen": "A guarded scripts/ reset utility exists (dry-run by default, explicit confirm to delete, prints what it removes) that clears the work_items ledger + run/usage history/logs + every workflow's data/out artifacts while preserving data/raw inputs, the chrome-profile, .env, definition tables, and user service-limit/enabled settings. The human runs it, restarts the daemon, and the dashboard shows an empty ledger/run history with workflows ready to reprocess all inputs from scratch; until the human runs it the task is recorded failed:blocked with the exact steps. npx tsc --noEmit and npm test stay green; nothing under data/ is committed."
     }
   ]
 }
