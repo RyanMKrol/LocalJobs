@@ -1951,7 +1951,7 @@
     {
       "id": "T077",
       "title": "Backlog list: make Done items clickable to reveal task detail",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
