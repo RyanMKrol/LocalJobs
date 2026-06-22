@@ -26,8 +26,8 @@ function statusPill(t: BacklogTask) {
     return <span className="pill done">✓ done</span>;
   }
   // Pending is pending. Nothing is "in progress" unless a job is actively running, which
-  // TASKS.json does not track — so a not-done task shows its real status. (The DAG view still
-  // highlights the next-eligible task as "next".)
+  // TASKS.json does not track — so a not-done task shows its real status. (The DAG view does
+  // not single out a "next" task — T076 dropped that concept.)
   return <span className="pill">{t.status}</span>;
 }
 
@@ -72,19 +72,11 @@ function DoneRow({ t }: { t: BacklogTask }) {
   );
 }
 
-function findNextEligible(tasks: BacklogTask[]): string | null {
-  const doneIds = new Set(tasks.filter((t) => t.status === 'done').map((t) => t.id));
-  const next = tasks.find(
-    (t) => t.status !== 'done' && t.gate == null && t.dependsOn.every((dep) => doneIds.has(dep)),
-  );
-  return next?.id ?? null;
-}
-
-function DagDetailPanel({ t, isNext, defaults }: { t: BacklogTask; isNext: boolean; defaults: BacklogDefaults | undefined }) {
+function DagDetailPanel({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults | undefined }) {
   const human = t.gate === 'needs-human' || t.gate === 'gate';
   const ladder = escalationPath(t, defaults);
   return (
-    <div className="panel" style={{ padding: 14, marginTop: 12, borderColor: human ? 'var(--accent)' : isNext ? 'rgba(88,166,255,.4)' : undefined }}>
+    <div className="panel" style={{ padding: 14, marginTop: 12, borderColor: human ? 'var(--accent)' : undefined }}>
       <div className="row" style={{ gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 6 }}>
         <span className="mono" style={{ fontWeight: 700 }}>{t.id}</span>
         <strong>{t.title}</strong>
@@ -121,7 +113,6 @@ export default function Backlog() {
   const done = tasks.filter((t) => t.status === 'done').sort((a, b) => a.id.localeCompare(b.id));
   const buildable = tasks.filter((t) => t.status !== 'done' && t.gate == null);
   const human = tasks.filter((t) => t.status !== 'done' && t.gate != null);
-  const nextId = findNextEligible(tasks);
   const selectedTask = selectedId ? tasks.find((t) => t.id === selectedId) ?? null : null;
 
   return (
@@ -146,7 +137,6 @@ export default function Backlog() {
           <div className="panel" style={{ padding: 0, overflowX: 'auto' }}>
             <BacklogDag
               tasks={tasks}
-              nextId={nextId}
               selectedId={selectedId}
               onSelect={setSelectedId}
             />
@@ -155,12 +145,12 @@ export default function Backlog() {
             Click a node to inspect it. Nodes left-to-right follow dependency order.
             <span style={{ marginLeft: 12 }}>
               <span className="dag-legend done" /> done
-              {' · '}<span className="dag-legend next" /> next
               {' · '}<span className="dag-legend needs-human" /> needs human
+              {' · '}<span className="dag-legend pending" /> pending
             </span>
           </p>
           {selectedTask && (
-            <DagDetailPanel t={selectedTask} isNext={selectedTask.id === nextId} defaults={defaults} />
+            <DagDetailPanel t={selectedTask} defaults={defaults} />
           )}
           {!selectedTask && tasks.length > 0 && (
             <p className="muted" style={{ fontSize: 12 }}>Select a node above to see task details.</p>

@@ -187,17 +187,17 @@ function computeBacklogWaves(tasks: BacklogTask[]): string[][] {
 }
 
 /**
- * Render the backlog task graph as left-to-right dependency waves. Each node is
- * labelled by task id and coloured by status. Click a node to select it.
+ * Render the backlog task graph as left-to-right dependency waves. Each node is a
+ * styled card showing the task id, its title, and a status badge coloured by state
+ * (done · needs human · pending). Click a node to select it. There is deliberately
+ * NO "next" concept on this view (T076).
  */
 export function BacklogDag({
   tasks,
-  nextId,
   selectedId,
   onSelect,
 }: {
   tasks: BacklogTask[];
-  nextId: string | null;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }) {
@@ -210,31 +210,22 @@ export function BacklogDag({
           <div className="dag-wave">
             {wave.map((id) => {
               const t = taskById.get(id);
-              const statusClass =
-                t?.status === 'done'
-                  ? 'done'
-                  : t?.gate != null
-                    ? 'needs-human'
-                    : id === nextId
-                      ? 'running'
-                      : '';
+              const statusClass = t?.status === 'done' ? 'done' : t?.gate != null ? 'needs-human' : '';
+              const statusWord = t?.status === 'done' ? 'done' : t?.gate != null ? 'needs human' : 'pending';
               const isSelected = id === selectedId;
               return (
                 <button
                   key={id}
                   onClick={() => onSelect(isSelected ? null : id)}
                   title={t?.title ?? id}
-                  className={`dag-node ${statusClass}${isSelected ? ' selected' : ''}`}
+                  className={`dag-node backlog-node ${statusClass}${isSelected ? ' selected' : ''}`}
                   style={{ all: 'unset', cursor: 'pointer', display: 'block', textAlign: 'left' }}
                 >
-                  <div className="dag-node-name">{id}</div>
-                  {t?.status === 'done' ? (
-                    <div className="dag-node-status">done</div>
-                  ) : t?.gate != null ? (
-                    <div className="dag-node-status">needs human</div>
-                  ) : id === nextId ? (
-                    <div className="dag-node-status">▶ next</div>
-                  ) : null}
+                  <div className="backlog-node-head">
+                    <span className="backlog-node-id">{id}</span>
+                    <span className={`backlog-node-badge ${statusClass}`}>{statusWord}</span>
+                  </div>
+                  <div className="backlog-node-title">{t?.title ?? id}</div>
                 </button>
               );
             })}
