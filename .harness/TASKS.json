@@ -1648,7 +1648,7 @@
         "dashboard/app/lib/api.ts",
         "src/core/*.test.ts"
       ],
-      "design": null,
+      "design": "Clarification (interview 2026-06-22): Design for a BLACK BOX — a user must understand the data from the dashboard alone, with no knowledge of system internals. Show the contract's expected shape AND a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation, worded for a non-expert reader.",
       "verify": [],
       "do": "On the validation-gate page the producer/consumer log lines do not make it obvious WHAT the gate checks. Add a clear, VISUAL representation of the contract: a left-to-right flow — upstream stage OUTPUT → [the gate: what it validates] → downstream stage INPUT — so you can see at a glance what data the gate expects and whether it is satisfied. Surface the contract’s expected shape (key + description + the fields/columns/non-empty it asserts) and, where feasible, a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation. This likely needs the produces/consumes ArtifactContract to optionally declare a machine-readable expected shape (fields/columns) for display, and the gate to report expected-vs-actual rather than just ok/violations. Builds on T063 (dedicated gate page) + T064 (input/output framing).",
       "doneWhen": "The gate page visually shows, left-to-right, output → gate(what it checks) → input, making it obvious what the gate validates and what actually flowed (expected shape + a sample/summary + pass/fail per expectation); contracts can declare an expected shape for display; typecheck + tests + dashboard build pass."
@@ -1676,7 +1676,7 @@
         "dashboard/app/globals.css",
         "dashboard/app/workflow-runs/[id]/page.tsx"
       ],
-      "design": null,
+      "design": "Clarification (interview 2026-06-22): Switch to a TOP-DOWN (vertical) DAG layout below the mobile breakpoint — don't just re-centre the left-to-right layout. Validate at ~402px AND desktop via viewport screenshots recorded in the worklog.",
       "verify": [
         "run-app"
       ],
@@ -1759,7 +1759,7 @@
         "dashboard/app/components/Dag.tsx",
         "dashboard/app/globals.css"
       ],
-      "design": null,
+      "design": "Clarification (interview 2026-06-22): Style = subtle bordered cards: 1px border, rounded corners, padding, and a COLOURED STATUS ACCENT (a left accent bar or dot) — NOT whole-card status tinting. Keep it understated and scannable.",
       "verify": [],
       "do": "Make the DAG (components/Dag.tsx) prettier and easier to read. Right now nodes are essentially flat text, which is hard to scan when there are many. Give each job node a clear OUTLINE/box (bordered card — padding, rounded corners), make the connecting arrows/edges read as a flow, and keep the status colouring legible. Use your own judgement on the exact styling; the goal is a visually pleasing, scannable graph. Applies wherever the DAG renders (the workflow definition page and the workflow-run page).",
       "doneWhen": "DAG job nodes render as outlined/boxed cards (not flat text) with clear flow edges and legible status colours, noticeably more scannable on both the workflow definition and workflow-run pages; dashboard build passes."
@@ -1787,7 +1787,7 @@
         "CLAUDE.md",
         "README.md"
       ],
-      "design": null,
+      "design": "Clarification (interview 2026-06-22): Remove ALL job-level properties — schedule, enabled toggle, next-run, the instructions panel, AND the per-job Run-now button. The job page becomes a read-only member view (status, run history, logs). You run a workflow, never a job.",
       "verify": [],
       "do": "A job is only ever a member of a workflow now (T037), so workflow-level concerns must NOT live on individual jobs. On the job view (/jobs/[name]) strip: the Schedule, the Enabled toggle, the Next run, the How-to-run-this-job instructions panel, and the Run-now button — you run a WORKFLOW, not a job; a job runs when its prerequisites are met inside its workflow. Remove these properties at the job level wherever they are integrated (the JobDefinition type, jobs-table columns + a migration, the scheduler per-job scheduling path, the API job view, the dashboard job page). Workflows keep schedule/enabled/run/next-run; the job page becomes a read-only member view (status, run history, logs). This may be a comprehensive refactor — that is acceptable.",
       "doneWhen": "Individual jobs no longer carry schedule/enabled/next-run/instructions and have no Run-now button or per-job scheduling; those live only at the workflow level; /jobs/[name] is a read-only member view; a DB migration drops the now-unused job columns without loss; typecheck + tests + dashboard build pass; docs updated."
@@ -1837,14 +1837,15 @@
         "src/jobs/perfumes/parse.job.ts",
         "src/jobs/perfumes/build.ts",
         "src/jobs/perfumes/types.ts",
-        "src/jobs/perfumes/parse.test.ts"
+        "src/jobs/perfumes/parse.test.ts",
+        "src/jobs/perfumes/fetch.ts"
       ],
-      "design": null,
+      "design": "Clarification (interview 2026-06-22): ROOT CAUSE — fetch.ts persists only innerText (pages/<id>.txt); the accord bar widths live in raw HTML that is saved ONLY for failed pages (pages-failed/<id>.html). T009's parser reads pages/<id>.html, which never exists on the success path, so pct always falls back to null. FIX: extend fetch.ts to ALSO persist the raw HTML alongside the .txt so widths survive going forward (keep the .txt for the Claude parse step). The committed unit test stays hermetic on a synthetic HTML fixture (do NOT commit real Fragrantica HTML). END-TO-END proof is for the agent's own confidence: ONE local live fetch of a single perfume (paced via the fragrantica service) is allowed to confirm fetch.ts persists HTML and parse fills real pcts — be frugal; the monthly cap is the only hard ceiling. The existing 42 outputs stay null until re-fetched in production.",
       "verify": [
         "run-app"
       ],
       "do": "Despite T009, the perfumes output still has accords with pct=null (example: Amouage Beach Hut Man — every accord pct is null). Think deeply and evaluate END-TO-END whether accurate accord percentages can be extracted: from the Fragrantica page HTML (the coloured accord-bar widths, expressed as a width % in a style attribute) or, failing that, another signal. Work out WHY T009 still yields null (selector drift? the % lives in a style attr that is not being read?). Fix the parse so accords carry accurate pct. BACKTEST: run the perfumes parse/build stages against the EXISTING fetched HTML under the perfumes data/ folder (no live re-scrape, no paid calls) and evaluate the OUTPUT files — confirm pcts are populated and match the bar widths on the page (spot-check a few). Record before/after in the worklog.",
-      "doneWhen": "Perfumes accords carry accurate, non-null percentages (matching the page bar widths) wherever the page provides them; the parse is fixed + unit-tested against a fixture; an end-to-end backtest against existing fetched HTML shows populated pcts in the built output (recorded in the worklog); pct is null ONLY when genuinely absent on the page; typecheck + tests pass."
+      "doneWhen": "Perfumes accords carry accurate, non-null percentages (matching the page bar widths) wherever the page provides them; fetch.ts is changed to persist raw HTML so the parser can read bar widths going forward; the parse is fixed + unit-tested against a synthetic HTML fixture; the agent confirms end-to-end (a single frugal local live fetch is acceptable) that the built output now has populated pcts, recorded in the worklog; pct is null ONLY when genuinely absent on the page; typecheck + tests pass."
     },
     {
       "id": "T073",
@@ -1867,7 +1868,7 @@
       "scope": [
         "dashboard/app/backlog/page.tsx"
       ],
-      "design": null,
+      "design": "Clarification (interview 2026-06-22): This was implemented in commit 2e65bbb then reverted in e37e40c; re-apply EXACTLY as that commit did and make it stick — the list shows 'pending' (no '▶ in progress'), drop the next-task list highlight/border, and keep the DAG view's accurately-labelled 'next' node highlight as-is.",
       "verify": [],
       "do": "On the Backlog LIST view, the next-eligible task is labelled with a \"▶ in progress\" pill (statusPill), which is misleading — nothing is actively building it (TASKS.json has no in_progress status, and the loop may not even be running). A not-done task should show its REAL status (pending). Show \"pending\" in the list and drop the next-task highlight/border there. Keep the DAG view’s accurately-labelled \"next\" node highlight as-is.",
       "doneWhen": "On /backlog a pending task shows \"pending\" (no \"in progress\" label) and no special list highlight; the DAG view keeps its \"next\" node; dashboard build passes."

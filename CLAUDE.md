@@ -461,9 +461,13 @@ this in addition to everything above:
   to `.harness/worklog/<TASK>.md` and the result line to `.harness/worklog/.result`.
 - **Definition of Done mirrors CI** (`.harness/HARNESS.md` §5): `npx tsc --noEmit`, `npm test`, and
   `npm --prefix dashboard run build` for any `dashboard/` change — all green before you commit.
-- **Never make live paid-API calls (Google Places, Gemini) in verification** — that spends the
-  monthly cap. Use the existing fetched data under each job's `data/` folder, or synthetic
-  fixtures, plus the scratch DB. If a check truly needs a paid call, record `failed:blocked`.
+- **Verify correctness — paid calls allowed, frugally.** The ONE hard rule is **never exceed a
+  service's monthly cap** (the `service_usage` quota enforces this — `callService` throws
+  `QuotaExceededError` at the ceiling). Otherwise: prefer cached `data/` / synthetic fixtures / the
+  scratch DB first, and make a live paid call (Google Places, Gemini) or live scrape only as a last
+  resort to prove the work, with the smallest sample (1–2 items). **Never skip verification to save
+  money** — an unverified task isn't done. Record `failed:blocked` only when verifying would have to
+  exceed the monthly cap.
 - **Privacy guard (non-negotiable):** never `git add` anything under a `data/` folder, a
   `chrome-profile/`, `.env*`, or a credential file; never `git add -A`/`git add .` — stage
   files explicitly. To publish job code, remove only the relevant code-folder line from

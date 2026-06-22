@@ -61,9 +61,14 @@ npm --prefix dashboard run build      # only for dashboard/ changes
 Plus: add unit tests for new behaviour; update docs in lockstep (§ CLAUDE.md); record empirical
 observations the task's `verify` field asks for in `.harness/worklog/<TASK>.md`.
 
-**No live paid-API calls in verification.** Google Places / Gemini are metered with monthly caps.
-Verify against the existing fetched data under each job's `data/` folder, or synthetic fixtures,
-plus the scratch DB. If a check genuinely needs a paid call, the task records `failed:blocked`.
+**Verify correctness — paid calls are allowed, frugally.** The one hard rule is **never exceed a
+service's monthly cap** (enforced mechanically: the `service_usage` quota makes `callService` throw
+`QuotaExceededError` at the ceiling). Within that, be frugal: try cached data under each job's
+`data/` folder, synthetic fixtures, and the scratch DB **first**; make a live paid call (Google
+Places / Gemini) or a live scrape only when correctness genuinely cannot be confirmed otherwise, and
+then with the smallest sample (1–2 items). **Never skip verification to avoid spend** — an unverified
+task is not done. (Only a task that would have to *exceed* the monthly cap to verify records
+`failed:blocked`.)
 
 ## 6. Models & escalation
 
