@@ -185,6 +185,14 @@ export interface DagExecHooks {
   onStart?: (job: string) => void;
   onSettle?: (job: string, status: RunStatus) => void | Promise<void>;
   onSkip?: (job: string, reason: string) => void | Promise<void>;
+  /**
+   * Cancellation. Once aborted, the loop stops launching NEW stages (not-yet-
+   * started members simply never spawn) and only drains the already in-flight
+   * members — whose `runOne` is itself responsible for hard-killing its child on
+   * the same signal. So an aborted run settles cleanly: in-flight work is killed
+   * and reaped, nothing new starts.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -193,6 +201,10 @@ export interface DagExecHooks {
  * SKIPPED, and that skip cascades to its own dependents. Pure orchestration —
  * the job-runner and side effects are injected, so it's deterministically
  * testable. Resolves with the terminal status of every node.
+ *
+ * If `hooks.signal` aborts mid-run, no further stages are launched; the loop
+ * waits out the in-flight members (each kills its own child via the signal) and
+ * returns. Not-yet-started members are left absent from the status map.
  */
 export async function executeDag(dag: Dag, hooks: DagExecHooks): Promise<Map<string, RunStatus>> {
   const concurrency = Math.max(1, hooks.concurrency ?? 1);
@@ -210,24 +222,29 @@ export async function executeDag(dag: Dag, hooks: DagExecHooks): Promise<Map<str
   };
 
   while (remaining.size > 0) {
-    const ready = [...remaining].filter((n) => indegree.get(n) === 0 && !inflight.has(n));
-    for (const job of ready) {
-      const failedDep = dag.dependencies.get(job)!.find((d) => status.get(d) !== 'success');
-      if (failedDep) {
-        await settle(job, 'skipped', true, `upstream ${failedDep} did not succeed`);
-        continue;
+    // Once cancelled, stop launching new stages — only drain what's in flight.
+    if (!hooks.signal?.aborted) {
+      const ready = [...remaining].filter((n) => indegree.get(n) === 0 && !inflight.has(n));
+      for (const job of ready) {
+        const failedDep = dag.dependencies.get(job)!.find((d) => status.get(d) !== 'success');
+        if (failedDep) {
+          await settle(job, 'skipped', true, `upstream ${failedDep} did not succeed`);
+          continue;
+        }
+        if (inflight.size >= concurrency) continue; // no free slot; pick up next round
+        hooks.onStart?.(job);
+        const p = hooks
+          .runOne(job)
+          .then((s) => settle(job, s, false))
+          .finally(() => inflight.delete(job));
+        inflight.set(job, p);
       }
-      if (inflight.size >= concurrency) continue; // no free slot; pick up next round
-      hooks.onStart?.(job);
-      const p = hooks
-        .runOne(job)
-        .then((s) => settle(job, s, false))
-        .finally(() => inflight.delete(job));
-      inflight.set(job, p);
     }
 
     if (inflight.size > 0) {
       await Promise.race(inflight.values());
+    } else if (hooks.signal?.aborted) {
+      break; // cancelled and nothing left in flight — stop without launching more
     } else if (remaining.size > 0 && ![...remaining].some((n) => indegree.get(n) === 0)) {
       break; // safety: nothing runnable and nothing in flight (impossible for a valid DAG)
     }

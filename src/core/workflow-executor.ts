@@ -68,6 +68,37 @@ export interface WorkflowRunResult {
 }
 
 /**
+ * In-memory registry of currently-executing workflow runs → their AbortController.
+ * Populated when `runWorkflow` starts (so BOTH the scheduler path and the manual
+ * `POST /api/workflows/:name/run` path register, since both flow through it) and
+ * removed when the run settles. This is what makes a running workflow cancellable:
+ * the API looks the run up here and calls `abort()`. It lives only in the daemon
+ * process — a run not present here is not active in THIS process (already finished,
+ * or orphaned by a restart) and so cannot be cancelled.
+ */
+const activeWorkflowRuns = new Map<string, AbortController>();
+
+/**
+ * Cancel a running workflow run by aborting its execution: in-flight member
+ * children are hard-killed and no further stages launch (see `runWorkflow` /
+ * `executeDag`). Returns false if the id isn't an active run in this process
+ * (unknown or already terminal). The DB transition to 'cancelled' is written by
+ * `runWorkflow` itself when it observes the abort, keeping the executor the sole
+ * writer.
+ */
+export function cancelWorkflowRun(workflowRunId: string): boolean {
+  const controller = activeWorkflowRuns.get(workflowRunId);
+  if (!controller) return false;
+  controller.abort();
+  return true;
+}
+
+/** Whether a workflow run is currently executing in this process (registry membership). */
+export function isWorkflowRunActive(workflowRunId: string): boolean {
+  return activeWorkflowRuns.has(workflowRunId);
+}
+
+/**
  * Run a workflow: execute its DAG (one topological pass), optionally repeating in
  * cycles until no retryable work remains. The daemon owns this (it's the DB
  * writer). Member job runs link to the workflow run; the workflow emits per-stage
@@ -103,6 +134,8 @@ export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' |
   for (const g of gates) (inboundGates.get(g.consumer) ?? inboundGates.set(g.consumer, []).get(g.consumer)!).push(g);
 
   const workflowRunId = createWorkflowRun(def.name, trigger);
+  const controller = new AbortController();
+  activeWorkflowRuns.set(workflowRunId, controller);
   const log = (m: string, level: LogLevel = 'info') => addWorkflowLog(workflowRunId, m, level);
   const total = dag.nodes.length;
   const memberNames = def.jobs.map((j) => j.job);
@@ -112,12 +145,14 @@ export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' |
   log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}`);
 
   let lastStatuses = new Map<string, RunStatus>();
+  try {
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
     if (def.repeatUntilStable) log(`──── cycle ${cycle}/${maxCycles} ────`);
     let settled = 0;
 
     lastStatuses = await executeDag(dag, {
       concurrency: def.maxConcurrency ?? 1,
+      signal: controller.signal,
       runOne: async (job) => {
         const jd = getJobDefinition(job);
         if (!jd) {
@@ -141,7 +176,7 @@ export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' |
           }
           log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${suffix}`);
         }
-        const { status } = await runJobForWorkflow(jd, workflowRunId);
+        const { status } = await runJobForWorkflow(jd, workflowRunId, controller.signal);
         return status;
       },
       onStart: (job) => log(`▶ ${job} started`),
@@ -160,6 +195,10 @@ export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' |
       },
     });
 
+    // Cancelled mid-run — stop cycling (the in-flight stage was already killed
+    // and drained by executeDag) and fall through to the cancelled finalisation.
+    if (controller.signal.aborted) break;
+
     if (!def.repeatUntilStable) break;
     const retryable = workflowRetryableCount(memberNames, minAttempts);
     log(`cycle ${cycle} complete · retryable work left = ${retryable}`);
@@ -172,12 +211,19 @@ export async function runWorkflow(def: WorkflowDefinition, trigger: 'schedule' |
       await sleep(def.cycleSleepMs ?? 0);
     }
   }
+  } finally {
+    activeWorkflowRuns.delete(workflowRunId);
+  }
 
+  // A cancelled run is recorded 'cancelled' regardless of the members' tally —
+  // the abort is the authoritative outcome (in-flight members were killed and
+  // settled 'cancelled'; not-yet-started stages never spawned).
   const statuses = [...lastStatuses.values()];
-  const status: WorkflowRunStatus =
-    statuses.length === 0 ? 'failed' : statuses.every((s) => s === 'success') ? 'success' : 'partial';
+  const status: WorkflowRunStatus = controller.signal.aborted
+    ? 'cancelled'
+    : statuses.length === 0 ? 'failed' : statuses.every((s) => s === 'success') ? 'success' : 'partial';
   finishWorkflowRun(workflowRunId, status);
-  log(`Workflow "${def.name}" finished: ${status}`);
+  log(status === 'cancelled' ? `Workflow "${def.name}" cancelled` : `Workflow "${def.name}" finished: ${status}`);
   await notifyWorkflow(def.name, workflowRunId, status, log);
   return { workflowRunId };
 }

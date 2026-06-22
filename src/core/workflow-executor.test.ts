@@ -12,10 +12,10 @@ import { config } from '../config.js';
 import { jobs } from '../jobs/registry.js';
 import {
   createWorkflowRun, createRun, finishRun, getWorkflowLogs, getWorkflowRun,
-  listRunsForWorkflowRun, markWorkItem, rollUpWorkflowProgress, setProgress,
-  syncJob, syncWorkflow,
+  lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,
+  rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow,
 } from '../db/store.js';
-import { runWorkflow } from './workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive } from './workflow-executor.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 
 let passed = 0;
@@ -30,11 +30,13 @@ async function test(name: string, fn: () => Promise<void>) {
   }
 }
 
-// Minimal fake child: names starting 'fail' emit a failed result; anything else succeeds.
+// Minimal fake child: names starting 'timeout' HANG (wait to be killed), names
+// starting 'fail' emit a failed result; anything else succeeds.
 const FAKE = `
 const name = process.argv[2] ?? '';
 const done = (o, code) => process.stdout.write(JSON.stringify(o) + '\\n', () => process.exit(code));
-if (name.startsWith('fail')) done({ type: 'result', status: 'failed', error: 'planned failure' }, 1);
+if (name.startsWith('timeout')) setTimeout(() => {}, 60000); // hang until killed
+else if (name.startsWith('fail')) done({ type: 'result', status: 'failed', error: 'planned failure' }, 1);
 else done({ type: 'result', status: 'success' }, 0);
 `;
 
@@ -48,7 +50,7 @@ config.runJobScript = fakePath;
 config.ntfyTopic = ''; // never POST to ntfy during tests
 
 // Member jobs must be discoverable (getJobDefinition) AND exist in the jobs table (FK).
-const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d'];
+const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d', 'timeout-cancel-pp', 'pp-after-cancel'];
 const pushed: JobDefinition[] = [];
 for (const name of members) {
   const d: JobDefinition = { name, run: async () => {} };
@@ -247,6 +249,41 @@ try {
     assert.equal(runs.find((r) => r.job_name === 'g-cons-bad')?.status, 'failed');
     assert.equal(runs.find((r) => r.job_name === 'pp-dep')?.status, 'skipped'); // downstream of the gated stage
   });
+  await test('cancellation: aborting a running workflow kills the in-flight stage, launches no more, marks cancelled', async () => {
+    const def: WorkflowDefinition = {
+      name: 'pp-cancel',
+      jobs: [{ job: 'timeout-cancel-pp' }, { job: 'pp-after-cancel', dependsOn: ['timeout-cancel-pp'] }],
+    };
+    syncWorkflow(def);
+    // Start the run but don't await — its first stage hangs (timeout-* fake).
+    const runPromise = runWorkflow(def, 'manual');
+
+    // Wait until the workflow run row exists and is running, then cancel it.
+    const deadline = Date.now() + 5000;
+    let wrid: string | undefined;
+    while (Date.now() < deadline) {
+      const r = lastWorkflowRunForWorkflow('pp-cancel');
+      if (r && r.status === 'running' && isWorkflowRunActive(r.id)) { wrid = r.id; break; }
+      await new Promise((res) => setTimeout(res, 25));
+    }
+    assert.ok(wrid, 'workflow run became active');
+    assert.equal(cancelWorkflowRun(wrid!), true, 'cancel found the active run');
+
+    const { workflowRunId } = await runPromise;
+    assert.equal(workflowRunId, wrid);
+    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'cancelled', 'workflow run marked cancelled');
+
+    const runs = listRunsForWorkflowRun(workflowRunId!);
+    const killed = runs.find((r) => r.job_name === 'timeout-cancel-pp');
+    assert.equal(killed?.status, 'cancelled', 'the in-flight member was killed and recorded cancelled');
+    // The downstream stage never spawned (no row at all) — cancel stops launching.
+    assert.equal(runs.find((r) => r.job_name === 'pp-after-cancel'), undefined, 'no further stage launched');
+    // Registry cleaned up after the run settled.
+    assert.equal(isWorkflowRunActive(workflowRunId!), false, 'registry entry removed on settle');
+    // A second cancel of a now-terminal run is a no-op (returns false).
+    assert.equal(cancelWorkflowRun(workflowRunId!), false, 'cancelling a settled run returns false');
+  });
+
 } finally {
   config.runJobScript = origScript;
   config.ntfyTopic = origTopic;

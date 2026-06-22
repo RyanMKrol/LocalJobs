@@ -24,11 +24,17 @@ export interface RunResult {
  * run row per attempt (optionally linked to a workflow run), spawns the child,
  * retries up to the job's maxRetries, and returns the final run id + status.
  * Does NOT notify or check overlap — the callers own those policies.
+ *
+ * An optional `signal` makes the attempt cancellable: an abort hard-kills the
+ * in-flight child (SIGTERM→SIGKILL, like the timeout path) and the run settles
+ * `cancelled` — a TERMINAL status that is NOT retried, so a cancelled workflow
+ * stops cleanly without orphaning a process or spawning further attempts.
  */
 async function runAttempts(
   def: JobDefinition,
   trigger: RunTrigger,
   workflowRunId: string | null,
+  signal?: AbortSignal,
 ): Promise<{ runId: string | null; status: RunStatus }> {
   const jobRow = getJob(def.name);
   const timeoutMs = jobRow?.timeout_ms ?? def.timeoutMs ?? 0;
@@ -36,9 +42,12 @@ async function runAttempts(
 
   let lastRunId: string | null = null;
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    // Already cancelled (e.g. between retries) — don't spawn another attempt.
+    if (signal?.aborted) return { runId: lastRunId, status: 'cancelled' };
+
     const runId = createRun(def.name, trigger, attempt, workflowRunId);
     lastRunId = runId;
-    const outcome = await executeAttempt(def.name, runId, timeoutMs);
+    const outcome = await executeAttempt(def.name, runId, timeoutMs, signal);
 
     if (outcome.status === 'success') {
       finishRun(runId, 'success', { exitCode: 0 });
@@ -46,6 +55,8 @@ async function runAttempts(
     }
 
     finishRun(runId, outcome.status, { exitCode: outcome.exitCode, error: outcome.error });
+    // Cancellation is terminal — never retried (the whole workflow is stopping).
+    if (outcome.status === 'cancelled') return { runId, status: 'cancelled' };
     if (attempt <= maxRetries) {
       addLog(runId, `Attempt ${attempt} ${outcome.status}; retrying...`, 'warn');
       continue;
@@ -78,22 +89,34 @@ export async function runJob(def: JobDefinition, trigger: RunTrigger): Promise<R
 export async function runJobForWorkflow(
   def: JobDefinition,
   workflowRunId: string,
+  signal?: AbortSignal,
 ): Promise<{ runId: string | null; status: RunStatus }> {
   if (hasActiveRun(def.name)) {
     const runId = recordSkippedRun(def.name, workflowRunId, 'skipped: a standalone run of this job is already active');
     return { runId, status: 'skipped' };
   }
-  return runAttempts(def, 'workflow', workflowRunId);
+  return runAttempts(def, 'workflow', workflowRunId, signal);
 }
 
 interface AttemptOutcome {
-  status: 'success' | 'failed' | 'timeout';
+  status: 'success' | 'failed' | 'timeout' | 'cancelled';
   exitCode: number | null;
   error: string | null;
 }
 
-function executeAttempt(jobName: string, runId: string, timeoutMs: number): Promise<AttemptOutcome> {
+function executeAttempt(
+  jobName: string,
+  runId: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<AttemptOutcome> {
   return new Promise((resolveOutcome) => {
+    // Cancelled before we even spawn — don't start a child at all.
+    if (signal?.aborted) {
+      resolveOutcome({ status: 'cancelled', exitCode: null, error: 'Cancelled before start' });
+      return;
+    }
+
     const child = spawn(
       process.execPath,
       ['--import', 'tsx', config.runJobScript, jobName],
@@ -103,6 +126,7 @@ function executeAttempt(jobName: string, runId: string, timeoutMs: number): Prom
     let resultStatus: 'success' | 'failed' | null = null;
     let resultError: string | null = null;
     let timedOut = false;
+    let cancelled = false;
 
     const timer =
       timeoutMs > 0
@@ -113,6 +137,17 @@ function executeAttempt(jobName: string, runId: string, timeoutMs: number): Prom
             setTimeout(() => child.kill('SIGKILL'), 3000).unref();
           }, timeoutMs)
         : null;
+
+    // Cancellation: hard-kill the in-flight child (same SIGTERM→SIGKILL path as
+    // the timeout) so aborting actually reaps the process rather than orphaning
+    // it. The 'close' handler then settles this attempt as 'cancelled'.
+    const onAbort = () => {
+      cancelled = true;
+      addLog(runId, 'Workflow cancelled — killing process', 'warn');
+      child.kill('SIGTERM');
+      setTimeout(() => child.kill('SIGKILL'), 3000).unref();
+    };
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
 
     // Parse structured NDJSON events from stdout.
     const rl = createInterface({ input: child.stdout });
@@ -154,6 +189,11 @@ function executeAttempt(jobName: string, runId: string, timeoutMs: number): Prom
 
     child.on('close', (code) => {
       if (timer) clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onAbort);
+      if (cancelled) {
+        resolveOutcome({ status: 'cancelled', exitCode: code, error: 'Cancelled — process killed' });
+        return;
+      }
       if (timedOut) {
         resolveOutcome({ status: 'timeout', exitCode: code, error: `Killed after ${timeoutMs}ms timeout` });
         return;

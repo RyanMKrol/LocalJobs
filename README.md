@@ -138,6 +138,15 @@ inside its workflow.
 
 You can also **pause** a workflow (the enable toggle on its page) without deleting it.
 
+**Cancel a running workflow.** A workflow run that's mid-flight can be stopped via
+`POST /api/workflow-runs/:id/cancel` (a mutating endpoint, so loopback or a token).
+Cancelling **hard-kills the in-flight member's child process** (SIGTERM→SIGKILL — no
+orphaned process), stops launching any further stages, and marks the workflow run and
+the killed member run `cancelled` in the DB. Only a run that is currently `running`
+*and* executing in the live daemon can be cancelled; a finished/unknown run returns a
+clear error. (Jobs are idempotent, so the next scheduled or manual run resumes any
+outstanding work.)
+
 ## Adding a job
 
 Every job must be declared in a `*.workflow.ts` manifest — even a lone job, which

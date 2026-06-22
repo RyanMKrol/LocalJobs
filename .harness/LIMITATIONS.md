@@ -323,3 +323,16 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   auto-invalidates the old `.txt`-only captures. *Revisit:* to backfill, clear the
   `perfumes-fetch` work-items (or delete the stale `pages/*.txt`) so a run re-fetches
   and now also saves `.html`, then let `perfumes-parse` re-run.
+
+- **Workflow-run cancellation is process-local and the DB transition is async.**
+  *Why:* T091 added `POST /api/workflow-runs/:id/cancel` backed by an in-memory
+  `workflowRunId → AbortController` registry in `workflow-executor.ts`. A run can
+  therefore only be cancelled while it is executing in THIS daemon process — a run
+  orphaned by a daemon restart isn't in the registry (cancel returns a 409), but
+  startup already reaps such runs to `cancelled` anyway, so there's nothing live to
+  stop. *Impact:* the API returns `{ ok: true }` the instant `abort()` is signalled;
+  the `cancelled` row(s) are written slightly later, when the executor observes the
+  abort, drains the hard-killed in-flight child, and finalises the run (keeping the
+  executor the sole DB writer). So a poll immediately after cancel may still briefly
+  show `running`. *Revisit:* if a synchronous guarantee is needed, have the API await
+  the run reaching a terminal state before responding.

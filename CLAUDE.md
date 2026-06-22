@@ -110,6 +110,18 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   parallelism) via the same executor. A workflow run is a first-class DB record
   distinct from each member job's own run.
 - **The child only emits events; the parent (executor) is the sole DB writer.**
+- **A running workflow run is cancellable.** `runWorkflow` registers each run in an
+  in-process `workflowRunId → AbortController` map (so BOTH the scheduler and the
+  manual `POST /api/workflows/:name/run` path register, since both flow through it)
+  and removes it when the run settles. `POST /api/workflow-runs/:id/cancel`
+  (mutating — loopback/token guard) looks the run up and `abort()`s it; the signal
+  threads `runWorkflow → executeDag → runJobForWorkflow → runAttempts →
+  executeAttempt`. On abort the in-flight member's child is **hard-killed**
+  (SIGTERM→SIGKILL, reusing the timeout kill path — never just resolving early, which
+  would orphan the child), no further stages launch, and the executor (still the sole
+  writer) records the workflow run + killed member run `cancelled`. A cancelled member
+  is terminal (not retried); not-yet-started stages simply never spawn. Idempotency
+  means the next run resumes outstanding work.
 - **The dashboard is a pure read/refresh client of the API.** It never touches
   SQLite directly and is not required for jobs to run.
 
@@ -121,10 +133,10 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/daemon.ts` | Long-lived entrypoint: sync jobs + workflows, reap orphans, start scheduler + API |
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
 | `src/core/types.ts` | `JobDefinition`, `WorkflowDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
-| `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention |
+| `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
 | `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled` |
-| `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection |
-| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up |
+| `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
+| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |

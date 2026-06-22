@@ -119,6 +119,37 @@ try {
     assert.ok(/timeout/i.test(run?.error ?? ''), `error was: ${run?.error}`);
   });
 
+  await test('cancellation: aborting an in-flight member hard-kills the child and records it cancelled', async () => {
+    // No timeout — the child hangs forever; only the abort can end it. This proves
+    // the abort path actually kills the process (a promptly-resolving promise +
+    // SIGTERM→SIGKILL) rather than leaving it to hang.
+    const d = def('timeout-cancel', { timeoutMs: 0 });
+    syncJob(d);
+    const ac = new AbortController();
+    const t0 = Date.now();
+    const p = runJobForWorkflow(d, PL, ac.signal);
+    setTimeout(() => ac.abort(), 200).unref();
+    const { runId, status } = await p;
+    assert.equal(status, 'cancelled');
+    assert.ok(Date.now() - t0 < 5000, 'killed promptly on abort, not left hanging');
+    const run = getRun(runId!);
+    assert.equal(run?.status, 'cancelled');
+    assert.ok(/cancel/i.test(run?.error ?? ''), `error was: ${run?.error}`);
+  });
+
+  await test('cancellation: an already-aborted signal makes the member cancelled without retrying', async () => {
+    // Pre-aborted signal: no child is spawned, and despite maxRetries the run does
+    // NOT retry (cancellation is terminal).
+    const d = def('retry-precancel', { maxRetries: 3 });
+    syncJob(d);
+    const ac = new AbortController();
+    ac.abort();
+    const { status } = await runJobForWorkflow(d, PL, ac.signal);
+    assert.equal(status, 'cancelled');
+    // No attempt spawned at all → no run rows for this job.
+    assert.equal(listRunsForJob('retry-precancel').length, 0);
+  });
+
   await test('overlap guard (runJob): an already-running job is skipped without spawning', async () => {
     const d = def('overlap-exec');
     syncJob(d);

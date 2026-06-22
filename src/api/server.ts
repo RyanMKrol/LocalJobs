@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
-import { runWorkflow } from '../core/workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun } from '../core/workflow-executor.js';
 import { nextWorkflowRun } from '../core/scheduler.js';
 import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
 import {
@@ -369,6 +369,23 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         // structure-only /workflows/:name view gets structural gates (no run state).
         const gates = classifyGates(gatesForWorkflow(run.workflow_name), memberRuns);
         return json(res, 200, { run, jobs: memberRuns, logs: getWorkflowLogs(parts[2], after), gates });
+      }
+
+      // POST /api/workflow-runs/:id/cancel — abort a RUNNING workflow run.
+      // Mutating (guarded by authoriseMutation above): hard-kills in-flight member
+      // children and stops launching further stages. The run must exist and be
+      // 'running' AND be active in this daemon process (present in the executor's
+      // registry); the executor records the 'cancelled' transition once it observes
+      // the abort. A terminal/unknown run returns a clear error.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'cancel' && parts.length === 4) {
+        const run = getWorkflowRun(parts[2]);
+        if (!run) return json(res, 404, { error: 'workflow run not found' });
+        if (run.status !== 'running') return json(res, 409, { error: `workflow run is ${run.status}, not running` });
+        if (!cancelWorkflowRun(parts[2])) {
+          return json(res, 409, { error: 'workflow run is not active in this process (cannot cancel)' });
+        }
+        console.log(`[api] cancel requested for workflow run ${parts[2]}`);
+        return json(res, 200, { ok: true });
       }
 
       // GET /api/workflow-runs/:id/gates/:producer/:key
