@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment } from 'react';
-import type { GateStatus, WorkflowMember } from '../lib/api';
+import type { BacklogTask, GateStatus, WorkflowMember } from '../lib/api';
 import { statusLabel } from '../ui';
 
 /** Topologically order members into waves (jobs in a wave have no ordering). */
@@ -106,6 +106,93 @@ export function Dag({
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
                   <GateChips gates={gatesByConsumer.get(job) ?? []} />
                 </div>
+              );
+            })}
+          </div>
+          {i < waves.length - 1 && <div className="dag-arrow">→</div>}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** Topologically order backlog tasks into waves by dependsOn. */
+function computeBacklogWaves(tasks: BacklogTask[]): string[][] {
+  const ids = tasks.map((t) => t.id);
+  const indeg = new Map(tasks.map((t) => [t.id, t.dependsOn.length]));
+  const dependents = new Map<string, string[]>(ids.map((id) => [id, []]));
+  for (const t of tasks) {
+    for (const dep of t.dependsOn) dependents.get(dep)?.push(t.id);
+  }
+  const waves: string[][] = [];
+  const seen = new Set<string>();
+  let ready = ids.filter((id) => (indeg.get(id) ?? 0) === 0);
+  while (ready.length) {
+    waves.push(ready);
+    ready.forEach((id) => seen.add(id));
+    const next: string[] = [];
+    for (const id of ready) {
+      for (const dep of dependents.get(id) ?? []) {
+        indeg.set(dep, (indeg.get(dep) ?? 0) - 1);
+        if (indeg.get(dep) === 0) next.push(dep);
+      }
+    }
+    ready = next;
+  }
+  for (const id of ids) if (!seen.has(id)) waves.push([id]); // cycle fallback
+  return waves;
+}
+
+/**
+ * Render the backlog task graph as left-to-right dependency waves. Each node is
+ * labelled by task id and coloured by status. Click a node to select it.
+ */
+export function BacklogDag({
+  tasks,
+  nextId,
+  selectedId,
+  onSelect,
+}: {
+  tasks: BacklogTask[];
+  nextId: string | null;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  const waves = computeBacklogWaves(tasks);
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+  return (
+    <div className="dag backlog-dag-scroll">
+      {waves.map((wave, i) => (
+        <Fragment key={i}>
+          <div className="dag-wave">
+            {wave.map((id) => {
+              const t = taskById.get(id);
+              const statusClass =
+                t?.status === 'done'
+                  ? 'done'
+                  : t?.gate != null
+                    ? 'needs-human'
+                    : id === nextId
+                      ? 'running'
+                      : '';
+              const isSelected = id === selectedId;
+              return (
+                <button
+                  key={id}
+                  onClick={() => onSelect(isSelected ? null : id)}
+                  title={t?.title ?? id}
+                  className={`dag-node ${statusClass}${isSelected ? ' selected' : ''}`}
+                  style={{ all: 'unset', cursor: 'pointer', display: 'block', textAlign: 'left' }}
+                >
+                  <div className="dag-node-name">{id}</div>
+                  {t?.status === 'done' ? (
+                    <div className="dag-node-status">done</div>
+                  ) : t?.gate != null ? (
+                    <div className="dag-node-status">needs human</div>
+                  ) : id === nextId ? (
+                    <div className="dag-node-status">▶ next</div>
+                  ) : null}
+                </button>
               );
             })}
           </div>

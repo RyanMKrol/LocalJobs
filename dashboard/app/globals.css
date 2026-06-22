@@ -127,6 +127,25 @@ a:hover .dag-node { border-color: var(--accent); }
 .dag-gate.failed { border-color: rgba(248,81,73,.6); background: rgba(248,81,73,.12); color: var(--red); font-weight: 600; }
 a.dag-gate:hover { border-color: var(--accent); }
 a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.22); }
+/* backlog dag node states */
+.dag-node.done { border-color: rgba(63,185,80,.5); }
+.dag-node.done .dag-node-status { color: var(--green); }
+.dag-node.needs-human { border-color: rgba(88,166,255,.5); }
+.dag-node.needs-human .dag-node-status { color: var(--accent); }
+.dag-node.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,.35); }
+button.dag-node:hover { border-color: var(--accent); }
+/* backlog dag scroll wrapper */
+.backlog-dag-scroll { overflow-x: auto; flex-wrap: nowrap; }
+/* legend dots */
+.dag-legend { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--border); background: var(--panel-2); vertical-align: middle; }
+.dag-legend.done { border-color: rgba(63,185,80,.5); background: rgba(63,185,80,.15); }
+.dag-legend.next { border-color: rgba(88,166,255,.6); background: rgba(88,166,255,.15); }
+.dag-legend.needs-human { border-color: rgba(88,166,255,.5); background: rgba(88,166,255,.1); }
+/* list/dag view toggle */
+.view-toggle { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.view-toggle button { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px 14px; font-size: 13px; }
+.view-toggle button.active { background: var(--panel-2); color: var(--text); }
+.view-toggle button:hover:not(.active) { background: var(--panel); color: var(--text); }
 
 /* service usage bars */
 .ubar { height: 7px; background: var(--panel-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); margin-top: 5px; max-width: 220px; }
