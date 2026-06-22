@@ -1763,6 +1763,88 @@
       "verify": [],
       "do": "Make the DAG (components/Dag.tsx) prettier and easier to read. Right now nodes are essentially flat text, which is hard to scan when there are many. Give each job node a clear OUTLINE/box (bordered card — padding, rounded corners), make the connecting arrows/edges read as a flow, and keep the status colouring legible. Use your own judgement on the exact styling; the goal is a visually pleasing, scannable graph. Applies wherever the DAG renders (the workflow definition page and the workflow-run page).",
       "doneWhen": "DAG job nodes render as outlined/boxed cards (not flat text) with clear flow edges and legible status colours, noticeably more scannable on both the workflow definition and workflow-run pages; dashboard build passes."
+    },
+    {
+      "id": "T070",
+      "title": "Strip workflow-level properties from individual jobs",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "coding",
+        "framework",
+        "dashboard",
+        "refactor"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "src/core/scheduler.ts",
+        "src/db/schema.sql",
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "dashboard/app/jobs/[name]/page.tsx",
+        "src/jobs/",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "A job is only ever a member of a workflow now (T037), so workflow-level concerns must NOT live on individual jobs. On the job view (/jobs/[name]) strip: the Schedule, the Enabled toggle, the Next run, the How-to-run-this-job instructions panel, and the Run-now button — you run a WORKFLOW, not a job; a job runs when its prerequisites are met inside its workflow. Remove these properties at the job level wherever they are integrated (the JobDefinition type, jobs-table columns + a migration, the scheduler per-job scheduling path, the API job view, the dashboard job page). Workflows keep schedule/enabled/run/next-run; the job page becomes a read-only member view (status, run history, logs). This may be a comprehensive refactor — that is acceptable.",
+      "doneWhen": "Individual jobs no longer carry schedule/enabled/next-run/instructions and have no Run-now button or per-job scheduling; those live only at the workflow level; /jobs/[name] is a read-only member view; a DB migration drops the now-unused job columns without loss; typecheck + tests + dashboard build pass; docs updated."
+    },
+    {
+      "id": "T071",
+      "title": "Show validation gates on the workflow definition graph",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/lib/api.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the workflow DEFINITION page (/workflows/[name]) the graph does not show validation gates at all — they currently only appear on a workflow RUN (with per-run state). Represent the gates STRUCTURALLY on the definition graph too: derive the workflow gates from the produces/consumes contracts on its member jobs (the same deriveGates the executor + run view use, already available via gatesForWorkflow) and mark them on the relevant producer-to-consumer edges, WITHOUT run state — just that a validation gate exists there, ideally clickable to its contract detail. Expose gates on the workflow-definition API endpoint if needed.",
+      "doneWhen": "The /workflows/[name] definition graph shows a marker on every edge that carries a validation gate (structural, no run state), consistent with how gates render on a run; dashboard build passes."
+    },
+    {
+      "id": "T072",
+      "title": "Fragrantica accord percentages still null — evaluate + fix end-to-end",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "coding",
+        "perfumes",
+        "data-quality"
+      ],
+      "scope": [
+        "src/jobs/perfumes/parse.ts",
+        "src/jobs/perfumes/parse.job.ts",
+        "src/jobs/perfumes/build.ts",
+        "src/jobs/perfumes/types.ts",
+        "src/jobs/perfumes/parse.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "do": "Despite T009, the perfumes output still has accords with pct=null (example: Amouage Beach Hut Man — every accord pct is null). Think deeply and evaluate END-TO-END whether accurate accord percentages can be extracted: from the Fragrantica page HTML (the coloured accord-bar widths, expressed as a width % in a style attribute) or, failing that, another signal. Work out WHY T009 still yields null (selector drift? the % lives in a style attr that is not being read?). Fix the parse so accords carry accurate pct. BACKTEST: run the perfumes parse/build stages against the EXISTING fetched HTML under the perfumes data/ folder (no live re-scrape, no paid calls) and evaluate the OUTPUT files — confirm pcts are populated and match the bar widths on the page (spot-check a few). Record before/after in the worklog.",
+      "doneWhen": "Perfumes accords carry accurate, non-null percentages (matching the page bar widths) wherever the page provides them; the parse is fixed + unit-tested against a fixture; an end-to-end backtest against existing fetched HTML shows populated pcts in the built output (recorded in the worklog); pct is null ONLY when genuinely absent on the page; typecheck + tests pass."
     }
   ]
 }
