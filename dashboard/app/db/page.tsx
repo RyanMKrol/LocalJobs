@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api, type CannedQueryResult, type TablePage } from '../lib/api';
 import { usePoll } from '../ui';
 
@@ -8,38 +8,76 @@ const PAGE = 50;
 
 function fmt(v: unknown): string {
   if (v === null || v === undefined) return '∅';
+  if (typeof v === 'object') return JSON.stringify(v, null, 2);
+  return String(v);
+}
+
+function fmtCell(v: unknown): string {
+  if (v === null || v === undefined) return '∅';
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 }
 
-function ResultTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
+function RowModal({ columns, row, onClose }: { columns: string[]; row: Record<string, unknown>; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="panel" style={{ overflowX: 'auto' }}>
-      <table>
-        <thead>
-          <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && (
-            <tr><td colSpan={Math.max(1, columns.length)} className="muted">No rows.</td></tr>
-          )}
-          {rows.map((row, i) => (
-            <tr key={i}>
-              {columns.map((c) => (
-                <td
-                  key={c}
-                  className="mono"
-                  title={fmt(row[c])}
-                  style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  {fmt(row[c])}
-                </td>
-              ))}
-            </tr>
+    <div className="db-modal-overlay" onClick={onClose}>
+      <div className="db-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="db-modal-header">
+          <span>Row detail</span>
+          <button className="db-modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="db-modal-body">
+          {columns.map((c) => (
+            <div key={c} className="db-modal-row">
+              <div className="db-modal-key mono">{c}</div>
+              <div className="db-modal-val mono">{fmt(row[c])}</div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function ResultTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+  const closeModal = useCallback(() => setSelectedRow(null), []);
+
+  return (
+    <>
+      <div className="panel" style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={Math.max(1, columns.length)} className="muted">No rows.</td></tr>
+            )}
+            {rows.map((row, i) => (
+              <tr key={i} className="db-row-clickable" onClick={() => setSelectedRow(row)}>
+                {columns.map((c) => (
+                  <td
+                    key={c}
+                    className="mono"
+                    style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {fmtCell(row[c])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {selectedRow && <RowModal columns={columns} row={selectedRow} onClose={closeModal} />}
+    </>
   );
 }
 
