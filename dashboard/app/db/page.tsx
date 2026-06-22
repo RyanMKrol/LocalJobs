@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { api, type TablePage } from '../lib/api';
+import { api, type CannedQueryResult, type TablePage } from '../lib/api';
 import { usePoll } from '../ui';
 
 const PAGE = 50;
@@ -12,12 +12,55 @@ function fmt(v: unknown): string {
   return String(v);
 }
 
+function ResultTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
+  return (
+    <div className="panel" style={{ overflowX: 'auto' }}>
+      <table>
+        <thead>
+          <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr><td colSpan={Math.max(1, columns.length)} className="muted">No rows.</td></tr>
+          )}
+          {rows.map((row, i) => (
+            <tr key={i}>
+              {columns.map((c) => (
+                <td
+                  key={c}
+                  className="mono"
+                  title={fmt(row[c])}
+                  style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  {fmt(row[c])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function DbBrowser() {
+  const queriesPoll = usePoll(() => api.dbQueries(), 30000);
+  const queries = queriesPoll.data?.queries ?? [];
+
   const tablesPoll = usePoll(() => api.dbTables(), 10000);
   const tables = tablesPoll.data?.tables ?? [];
 
+  const [queryId, setQueryId] = useState<string | null>(null);
   const [table, setTable] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+
+  // Canned query result: refetches when the selected query changes, kept live.
+  const queryRes = usePoll<CannedQueryResult | null>(
+    () => (queryId ? api.dbQuery(queryId) : Promise.resolve(null)),
+    5000,
+    [queryId],
+  );
+  const result = queryRes.data ?? null;
 
   // Refetches when the selected table or page changes (deps), and keeps the page
   // live-refreshing while open. Returns null when no table is selected yet.
@@ -28,21 +71,61 @@ export default function DbBrowser() {
   );
   const page = data ?? null;
 
-  function select(t: string) {
+  function pickQuery(id: string) {
+    setQueryId(id);
+    setTable(null);
+  }
+
+  function selectTable(t: string) {
     setTable(t);
+    setQueryId(null);
     setOffset(0);
   }
+
+  const activeQuery = queries.find((q) => q.id === queryId) ?? null;
 
   return (
     <>
       <h1>Database</h1>
-      <p className="sub">Read-only view of the SQLite tables for ad-hoc browsing — a viewer only, no edits. Auto-refreshes.</p>
-      {tablesPoll.error && <p className="muted">⚠ Cannot reach the daemon API ({tablesPoll.error}).</p>}
+      <p className="sub">Read-only views of the SQLite database: pick a common query, or browse a raw table. A viewer only — no edits, no free-form SQL. Auto-refreshes.</p>
+      {queriesPoll.error && <p className="muted">⚠ Cannot reach the daemon API ({queriesPoll.error}).</p>}
 
+      <h2 style={{ marginBottom: 6 }}>Common queries</h2>
+      <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {queries.length === 0 && <span className="muted">No queries.</span>}
+        {queries.map((q) => (
+          <button
+            key={q.id}
+            className={`btn ${q.id === queryId ? '' : 'secondary'}`}
+            title={q.description}
+            onClick={() => pickQuery(q.id)}
+          >
+            {q.title}
+          </button>
+        ))}
+      </div>
+
+      {queryId && (
+        <>
+          {activeQuery && <p className="muted" style={{ margin: '12px 0 8px' }}>{activeQuery.description}</p>}
+          {queryRes.error && <p className="muted" style={{ color: 'var(--red)' }}>⚠ {queryRes.error}</p>}
+          {result && (
+            <>
+              <p className="muted" style={{ margin: '0 0 8px' }}>
+                {result.rows.length} row{result.rows.length === 1 ? '' : 's'}
+              </p>
+              <ResultTable columns={result.columns} rows={result.rows} />
+            </>
+          )}
+        </>
+      )}
+
+      <h2 style={{ marginTop: 28, marginBottom: 6 }}>Browse tables</h2>
+      {tablesPoll.error && <p className="muted">⚠ Cannot reach the daemon API ({tablesPoll.error}).</p>}
       <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {tables.length === 0 && <span className="muted">No tables.</span>}
         {tables.map((t) => (
-          <button key={t} className={`btn ${t === table ? '' : 'secondary'}`} onClick={() => select(t)}>{t}</button>
+          <button key={t} className={`btn ${t === table ? '' : 'secondary'}`} onClick={() => selectTable(t)}>{t}</button>
         ))}
       </div>
 
@@ -61,32 +144,7 @@ export default function DbBrowser() {
             <button className="btn secondary" disabled={!page || offset + PAGE >= page.total} onClick={() => setOffset((o) => o + PAGE)}>Next ›</button>
           </div>
           {error && <p className="muted" style={{ color: 'var(--red)' }}>⚠ {error}</p>}
-          <div className="panel" style={{ overflowX: 'auto' }}>
-            <table>
-              <thead>
-                <tr>{page?.columns.map((c) => <th key={c}>{c}</th>)}</tr>
-              </thead>
-              <tbody>
-                {page && page.rows.length === 0 && (
-                  <tr><td colSpan={Math.max(1, page.columns.length)} className="muted">No rows.</td></tr>
-                )}
-                {page?.rows.map((row, i) => (
-                  <tr key={i}>
-                    {page.columns.map((c) => (
-                      <td
-                        key={c}
-                        className="mono"
-                        title={fmt(row[c])}
-                        style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      >
-                        {fmt(row[c])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResultTable columns={page?.columns ?? []} rows={page?.rows ?? []} />
         </>
       )}
     </>

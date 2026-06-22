@@ -2,7 +2,7 @@
 // by `npm test` (LOCALJOBS_DB). Self-asserting: throws on failure.
 import assert from 'node:assert/strict';
 import {
-  browseTable, listDbTables,
+  browseTable, listDbTables, listCannedQueries, runCannedQuery,
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   ignoreWorkItem, ignoredItems, isWorkItemDone,
@@ -298,3 +298,73 @@ console.log('  ✓ callService enforces a user limit override over the code defa
   assert.equal(browseTable('sqlite_master', 10, 0), null, 'sqlite-internal table not browsable');
 }
 console.log('  ✓ read-only DB browser lists tables + pages rows, rejects unknown/unsafe names');
+
+// ── canned (predefined) read-only queries (T053) ──
+// The catalogue is fixed; each query runs read-only against the scratch DB and
+// surfaces the expected shape. The client only ever picks by id — no SQL crosses.
+{
+  // seed data each query should surface
+  syncJob({ name: 'q-job', run: async () => {} });
+  const fr = createRun('q-job', 'manual');
+  finishRun(fr, 'failed', { exitCode: 1, error: 'boom' });
+  markWorkItem('q-job', 'k1', 'failed', { attempts: 9 });
+  markWorkItem('q-job', 'k2', 'ignored');
+  markWorkItem('q-job', 'k3', 'success');
+  syncService({ name: 'q-svc', dailyCap: 5, monthlyCap: 50, paid: true });
+  recordServiceCall('q-svc');
+  const wr = createWorkflowRun('t-pipe', 'manual');
+  finishWorkflowRun(wr, 'success');
+
+  // catalogue: stable, non-empty, each entry well-formed
+  const cat = listCannedQueries();
+  assert.ok(cat.length >= 5, 'catalogue has the canned queries');
+  for (const q of cat) {
+    assert.ok(q.id && q.title && q.description, 'each query advertises id/title/description');
+  }
+  const ids = cat.map((q) => q.id);
+  for (const expected of ['recent-failed-runs', 'stuck-ignored-items', 'work-item-status', 'service-spend', 'workflow-run-outcomes']) {
+    assert.ok(ids.includes(expected), `catalogue includes ${expected}`);
+  }
+
+  // every catalogued query runs and returns a well-formed result
+  for (const q of cat) {
+    const r = runCannedQuery(q.id);
+    assert.ok(r, `runCannedQuery(${q.id}) returns a result`);
+    assert.equal(r!.id, q.id);
+    assert.ok(Array.isArray(r!.rows), 'rows is an array');
+    // columns derived from the first row when present
+    if (r!.rows.length > 0) assert.deepEqual(r!.columns, Object.keys(r!.rows[0]));
+  }
+
+  // recent-failed-runs surfaces the failed run, not the success of other jobs
+  const failed = runCannedQuery('recent-failed-runs')!;
+  assert.ok(failed.rows.some((row) => row.id === fr && row.status === 'failed'), 'failed run present');
+  assert.ok(!failed.rows.some((row) => row.status === 'success'), 'only non-success statuses');
+
+  // stuck-ignored-items: q-job has one failed + one ignored, not the success
+  const si = runCannedQuery('stuck-ignored-items')!;
+  const sij = si.rows.filter((row) => row.job_name === 'q-job');
+  assert.ok(sij.some((row) => row.status === 'failed' && row.items === 1), 'failed item counted');
+  assert.ok(sij.some((row) => row.status === 'ignored' && row.items === 1), 'ignored item counted');
+  assert.ok(!sij.some((row) => row.status === 'success'), 'success excluded from stuck/ignored view');
+
+  // work-item-status: full breakdown includes the success too
+  const wis = runCannedQuery('work-item-status')!;
+  assert.ok(wis.rows.some((row) => row.job_name === 'q-job' && row.status === 'success' && row.items === 1), 'success counted in full breakdown');
+
+  // service-spend: q-svc shows one call this month against its caps
+  const spend = runCannedQuery('service-spend')!;
+  const svc = spend.rows.find((row) => row.name === 'q-svc');
+  assert.ok(svc, 'service present');
+  assert.equal(svc!.used_month, 1, 'one call counted this month');
+  assert.equal(svc!.monthly_cap, 50, 'cap surfaced');
+
+  // workflow-run-outcomes: the finished run shows up with its status
+  const wfo = runCannedQuery('workflow-run-outcomes')!;
+  assert.ok(wfo.rows.some((row) => row.id === wr && row.status === 'success'), 'workflow run present');
+
+  // unknown id → null (the only input is the id; no SQL crosses the boundary)
+  assert.equal(runCannedQuery('no-such-query'), null, 'unknown query id → null');
+  assert.equal(runCannedQuery("recent-failed-runs'; DROP TABLE runs;--"), null, 'injection-y id → null');
+}
+console.log('  ✓ canned read-only queries: catalogue + each query returns expected shape, rejects unknown ids');

@@ -220,10 +220,16 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   and **editable rate/quota limits** (override the code default; the override is
   persisted and preserved across daemon restarts / code-sync — same reconcile as
   the enabled toggle)
-- **Database** — a strictly **read-only** SQLite table browser: pick a table,
-  page through its rows. Backed by a read-only API path (table names whitelisted
-  against the live schema, only `SELECT` runs) so the local DB can be inspected
-  without building a bespoke query per question. No write/mutation path is exposed.
+- **Database** — a strictly **read-only** SQLite view with two parts: a set of
+  **named common queries** (recent failed runs, stuck & ignored items by job,
+  work-items by status per job, service usage vs caps this month, recent
+  workflow-run outcomes) and a raw **table browser** (pick a table, page through
+  its rows). It is **not** a free-form SQL editor: the client only ever picks a
+  query by id or a table by name — every query is a fixed, hand-written `SELECT`
+  on the server, and table names are whitelisted against the live schema. Backed
+  by read-only API paths (`GET /api/db/queries`, `/api/db/queries/:id`,
+  `/api/db/tables`, `/api/db/tables/:name`) so the local DB can be inspected
+  without building a bespoke endpoint per question. No write/mutation path is exposed.
 - **Backlog** — a read-only, human-readable render of the harness task list
   (`.harness/TASKS.json`): each task as a card (id, title, depends-on, tags,
   model, what to do + done-when), split into **harness-buildable** and

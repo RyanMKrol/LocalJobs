@@ -137,6 +137,17 @@ export interface TablePage {
   offset: number;
 }
 
+export interface CannedQueryMeta {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface CannedQueryResult extends CannedQueryMeta {
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
 export interface BacklogTask {
   id: string;
   title: string;
@@ -201,4 +212,7 @@ export const api = {
   dbTables: () => get<{ tables: string[] }>('/api/db/tables'),
   dbTable: (name: string, limit = 50, offset = 0) =>
     get<TablePage>(`/api/db/tables/${name}?limit=${limit}&offset=${offset}`),
+  // Named, read-only canned queries (no free-form SQL from the client)
+  dbQueries: () => get<{ queries: CannedQueryMeta[] }>('/api/db/queries'),
+  dbQuery: (id: string) => get<CannedQueryResult>(`/api/db/queries/${id}`),
 };
