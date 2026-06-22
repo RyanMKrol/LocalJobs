@@ -2516,7 +2516,7 @@
     {
       "id": "T097",
       "title": "Schedules: human-readable cron tooltip on hover",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
