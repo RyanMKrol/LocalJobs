@@ -19,7 +19,7 @@ export default function Workflows() {
       <div className="panel">
         <table>
           <thead>
-            <tr><th>Workflow</th><th>Stages</th><th>Schedule</th><th>Last run</th><th>Next</th><th></th></tr>
+            <tr><th>Workflow</th><th style={{ textAlign: 'center' }}>Stages</th><th style={{ textAlign: 'center' }}>Schedule</th><th>Last run</th><th>Next</th><th></th></tr>
           </thead>
           <tbody>
             {workflows.length === 0 && (
@@ -32,8 +32,8 @@ export default function Workflows() {
                   {p.stuck > 0 && <span style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}>⛔ {p.stuck} stuck</span>}
                   <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
                 </td>
-                <td className="muted">{p.jobs.length}</td>
-                <td className="mono" style={{ whiteSpace: 'nowrap' }}>{p.schedule ?? <span className="muted">manual</span>}{p.enabled ? '' : ' (off)'}</td>
+                <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
+                <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>{p.schedule ?? <span className="muted">manual</span>}{p.enabled ? '' : ' (off)'}</td>
                 <td>
                   {p.last_run
                     ? <span style={{ whiteSpace: 'nowrap' }}><span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span> <span className="muted">{fmtRelative(p.last_run.started_at)}</span></span>
