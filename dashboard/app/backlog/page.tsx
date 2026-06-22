@@ -63,11 +63,41 @@ function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults |
 }
 
 function DoneRow({ t }: { t: BacklogTask }) {
+  const [expanded, setExpanded] = useState(false);
   return (
-    <div className="row done-row" style={{ gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border)', alignItems: 'baseline', flexWrap: 'wrap' }}>
-      <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
-      <span style={{ flex: 1 }}>{t.title}</span>
-      <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
+    <div>
+      <div
+        className="row done-row"
+        style={{ gap: 8, padding: '5px 0', borderBottom: expanded ? 'none' : '1px solid var(--border)', alignItems: 'baseline', flexWrap: 'wrap', cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => setExpanded((e) => !e)}
+        role="button"
+        aria-expanded={expanded}
+      >
+        <span className="muted" style={{ fontSize: 10, minWidth: 10 }}>{expanded ? '▾' : '▸'}</span>
+        <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
+        <span style={{ flex: 1 }}>{t.title}</span>
+        <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
+      </div>
+      {expanded && (
+        <div style={{ padding: '8px 14px 12px', borderBottom: '1px solid var(--border)', background: 'var(--panel-2)', borderRadius: '0 0 4px 4px' }}>
+          {t.dependsOn && t.dependsOn.length > 0 && (
+            <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+              depends on: <span className="mono">{t.dependsOn.join(', ')}</span>
+            </div>
+          )}
+          <p style={{ margin: '0 0 6px', fontSize: 13, lineHeight: 1.5 }}>{t.do}</p>
+          <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 6 }}>
+            <strong>Done when:</strong> {t.doneWhen}
+          </div>
+          {t.tags && t.tags.length > 0 && (
+            <div>
+              {t.tags.map((tag) => (
+                <span key={tag} className="pill" style={{ marginRight: 4 }}>{tag}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
