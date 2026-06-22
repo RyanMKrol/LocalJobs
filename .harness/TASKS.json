@@ -1571,7 +1571,7 @@
     {
       "id": "T063",
       "title": "Validation gate: open a dedicated page (not an in-page scroll)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
