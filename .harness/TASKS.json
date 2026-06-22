@@ -1625,6 +1625,33 @@
       "verify": [],
       "do": "The validation-gate detail/logs label the two sides \"producer\" and \"consumer\", which is jargon-y. Reframe as INPUT/OUTPUT: the producer side validates the upstream stage’s OUTPUT; the consumer side validates the downstream stage’s INPUT. Relabel the UI and the gate-check log lines accordingly — e.g. \"output (from <stage>)\" / \"input (to <stage>)\" — so it reads intuitively. Display/wording only; keep the underlying produces/consumes contract model + field names unchanged.",
       "doneWhen": "Gate detail + gate-check log lines read in input/output terms instead of producer/consumer; the underlying contract data model is unchanged; dashboard build + any affected tests pass."
+    },
+    {
+      "id": "T065",
+      "title": "Validation gate: visual representation of what is being checked",
+      "status": "pending",
+      "dependsOn": [
+        "T063",
+        "T064"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "framework"
+      ],
+      "scope": [
+        "dashboard/app/",
+        "src/core/types.ts",
+        "src/core/",
+        "src/api/server.ts",
+        "dashboard/app/lib/api.ts",
+        "src/core/*.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the validation-gate page the producer/consumer log lines do not make it obvious WHAT the gate checks. Add a clear, VISUAL representation of the contract: a left-to-right flow — upstream stage OUTPUT → [the gate: what it validates] → downstream stage INPUT — so you can see at a glance what data the gate expects and whether it is satisfied. Surface the contract’s expected shape (key + description + the fields/columns/non-empty it asserts) and, where feasible, a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation. This likely needs the produces/consumes ArtifactContract to optionally declare a machine-readable expected shape (fields/columns) for display, and the gate to report expected-vs-actual rather than just ok/violations. Builds on T063 (dedicated gate page) + T064 (input/output framing).",
+      "doneWhen": "The gate page visually shows, left-to-right, output → gate(what it checks) → input, making it obvious what the gate validates and what actually flowed (expected shape + a sample/summary + pass/fail per expectation); contracts can declare an expected shape for display; typecheck + tests + dashboard build pass."
     }
   ]
 }
