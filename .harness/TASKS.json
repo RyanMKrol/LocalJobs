@@ -493,6 +493,32 @@
       "verify": [],
       "do": "On the dashboard Backlog page (/backlog), make the done status badge/icon GREEN (it currently renders neutral), and add a distinct IN-PROGRESS icon. Note: TASKS.json only has pending/done (no in_progress status), so derive in-progress client-side as the single next-eligible task — the first not-done task in array order whose dependsOn are all done and which is not gated (i.e. the one the loop builds next) — and badge it distinctly from plain pending. (If a richer live currently-building signal is wired later, prefer that.)",
       "doneWhen": "Done tasks show a green done badge/icon on /backlog; the next-eligible task shows a distinct in-progress icon; plain pending tasks stay neutral; the dashboard build passes."
+    },
+    {
+      "id": "T048",
+      "title": "Overview: hide the Stuck-items section when empty",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the overview page, hide the entire \"Stuck items\" SECTION (its heading + list/empty-state) when there are zero stuck items — render the section only when there is at least one stuck item. Keep the Stuck stat TILE/count at the top regardless. Apply the same empty-section hiding to the Ignored section if it has its own dedicated section.",
+      "doneWhen": "When nothing is stuck, the overview shows no \"Stuck items\" heading or section (just the count tile up top); when something is stuck the section renders as before; the dashboard build passes."
     }
   ]
 }
