@@ -170,7 +170,11 @@ export default function Overview() {
             <div className="row">
               <a href={`/workflows/${p.name}`}><strong>{p.name}</strong></a>
               <div className="spacer" />
-              {p.last_run && <span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span>}
+              {p.last_run && (
+                <a href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}>
+                  <span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span>
+                </a>
+              )}
             </div>
             <div className="muted" style={{ fontSize: 12, margin: '6px 0' }}>
               {p.jobs.length} stages · {p.schedule ?? 'manual'}{p.stuck > 0 ? ` · ⛔ ${p.stuck} stuck` : ''}
