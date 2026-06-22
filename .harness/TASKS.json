@@ -550,6 +550,34 @@
       "verify": [],
       "do": "After the pipeline→workflow rename (T038), do a COMPLETE repo scan for any remaining use of the word \"pipeline\" and convert it to \"workflow\" across the board — code identifiers, types, API routes, UI labels/headings, comments, and docs (README.md / CLAUDE.md / docs) / schema. EXCLUDE legitimate residual references: the DB migration that renames the old `pipelines`/`pipeline_*` tables MUST still name them to perform the rename — leave those; and node_modules, .git, data/, and historical .harness/worklog/ notes are out of scope.",
       "doneWhen": "A `grep -ri pipeline` over tracked source + docs (excluding the migration’s necessary old-table references, node_modules, data/, and worklog) returns nothing; every stray identifier/label/route now reads \"workflow\"; typecheck + tests + dashboard build pass."
+    },
+    {
+      "id": "T050",
+      "title": "Workflows page: get the Run button onto one line",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the workflows page the ▶ Run button is chunky — the play icon and the word \"Run\" wrap onto two lines. Make it render on a SINGLE line (e.g. white-space:nowrap / inline-flex / tighter padding / smaller icon — styling is open, the user is not opinionated). Apply the same fix to any other Run button that wraps (e.g. the workflow cards on the overview).",
+      "doneWhen": "The Run button renders on one line (icon + label, no wrap) on the workflows page (and any other card where it wrapped); dashboard build passes."
     }
   ]
 }
