@@ -1600,7 +1600,7 @@
     {
       "id": "T064",
       "title": "Validation gates: reframe producer/consumer as input/output",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
