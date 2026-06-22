@@ -1824,7 +1824,7 @@
     {
       "id": "T072",
       "title": "Fragrantica accord percentages still null — evaluate + fix end-to-end",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
