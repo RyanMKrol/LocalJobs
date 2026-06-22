@@ -30,27 +30,25 @@ function computeWaves(members: WorkflowMember[]): string[][] {
   return waves;
 }
 
-/** Stable DOM id for a gate's detail row, shared by its chip link + the panel. */
-export function gateAnchor(g: { producer: string; key: string }): string {
-  return `gate-${`${g.producer}-${g.key}`.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
-}
 
 /**
  * Render the validation gates inbound to one consumer node as small chips, each
  * naming its producer + artifact key and coloured by state. EVERY chip (passed,
- * failed, or pending) links to that gate's detail row on the workflow-run page,
- * so any gate can be inspected — not just failures. Gates are only supplied on a
- * workflow RUN, so the structure-only /workflows/[name] view renders no chips.
+ * failed, or pending) links to that gate's dedicated detail page, so any gate can
+ * be inspected — not just failures. `workflowRunId` is required to build the URL;
+ * gates are only supplied on a workflow RUN so the structure-only /workflows/[name]
+ * view renders no chips.
  */
-function GateChips({ gates }: { gates: GateStatus[] }) {
+function GateChips({ gates, workflowRunId }: { gates: GateStatus[]; workflowRunId: string }) {
   if (gates.length === 0) return null;
   return (
     <div className="dag-gates">
       {gates.map((g) => {
         const label = `⛒ ${g.producer} · ${g.key}`;
         const title = `gate ${g.state}: ${g.producer} → ${g.consumer} (artifact "${g.key}") — click for detail`;
+        const href = `/workflow-runs/${workflowRunId}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`;
         return (
-          <a key={`${g.producer}:${g.key}`} href={`#${gateAnchor(g)}`} className={`dag-gate ${g.state}`} title={title}>
+          <a key={`${g.producer}:${g.key}`} href={href} className={`dag-gate ${g.state}`} title={title}>
             {label}
           </a>
         );
@@ -72,6 +70,7 @@ export function Dag({
   runIdByJob,
   gates,
   from,
+  workflowRunId,
 }: {
   members: WorkflowMember[];
   statusByJob?: Record<string, string>;
@@ -81,6 +80,8 @@ export function Dag({
   /** Path of the page rendering this DAG, threaded onto node links as `?from=`
    *  so the job/run page can send the back-link to where you actually came from. */
   from?: string;
+  /** Workflow run id, required when `gates` is provided to build gate-detail URLs. */
+  workflowRunId?: string;
 }) {
   const waves = computeWaves(members);
   // Group gates by consumer so each node shows its own inbound gates.
@@ -104,7 +105,7 @@ export function Dag({
               return (
                 <div key={job}>
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
-                  <GateChips gates={gatesByConsumer.get(job) ?? []} />
+                  {workflowRunId && <GateChips gates={gatesByConsumer.get(job) ?? []} workflowRunId={workflowRunId} />}
                 </div>
               );
             })}

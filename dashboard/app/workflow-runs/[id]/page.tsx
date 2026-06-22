@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState } from 'react';
-import { Dag, gateAnchor } from '../../components/Dag';
+import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
 import type { GateStatus, Run } from '../../lib/api';
 import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
@@ -19,41 +19,34 @@ function groupByStage(members: Run[]): Map<string, Run[]> {
 }
 
 /**
- * Per-gate detail: what each validation gate validates (contract key +
- * description, producer → consumer) and its outcome — for EVERY gate, passed and
- * pending included, not only failures. Each row is the anchor target the DAG's
- * gate chips link to, so any gate is inspectable. `runIdByJob` maps a member to
- * its latest run so we can link to the producer/consumer logs.
+ * Summary of all validation gates for this workflow run. Each row links to that
+ * gate's dedicated detail page (navigating there like a job node does), so the
+ * panel is a quick overview rather than the canonical detail view.
  */
-function GatePanel({ gates, runIdByJob }: { gates: GateStatus[]; runIdByJob: Record<string, string> }) {
+function GatePanel({ id, gates }: { id: string; gates: GateStatus[] }) {
   if (gates.length === 0) return null;
   return (
     <>
       <h2>Validation gates</h2>
       <div className="panel">
         <table>
-          <thead><tr><th>State</th><th>Gate</th><th>Asserts</th><th>Logs</th></tr></thead>
+          <thead><tr><th>State</th><th>Gate</th><th>Asserts</th><th></th></tr></thead>
           <tbody>
-            {gates.map((g) => {
-              const consumerRunId = g.state === 'failed' ? g.failureRunId : runIdByJob[g.consumer];
-              const producerRunId = runIdByJob[g.producer];
-              return (
-                <tr key={`${g.producer}:${g.key}`} id={gateAnchor(g)}>
-                  <td><span className={`badge ${g.state}`}>{statusLabel(g.state)}</span></td>
-                  <td>
-                    <div><strong>{g.producer}</strong> → <strong>{g.consumer}</strong></div>
-                    <div className="muted mono">artifact &ldquo;{g.key}&rdquo;</div>
-                  </td>
-                  <td className="muted">{g.description ?? <span className="mono">no contract description</span>}</td>
-                  <td>
-                    {producerRunId && <div><a href={`/runs/${producerRunId}`}>producer →</a></div>}
-                    {consumerRunId
-                      ? <div><a href={`/runs/${consumerRunId}`}>{g.state === 'failed' ? 'violation →' : 'consumer →'}</a></div>
-                      : <div className="muted">consumer not run yet</div>}
-                  </td>
-                </tr>
-              );
-            })}
+            {gates.map((g) => (
+              <tr key={`${g.producer}:${g.key}`}>
+                <td><span className={`badge ${g.state}`}>{statusLabel(g.state)}</span></td>
+                <td>
+                  <div><strong>{g.producer}</strong> → <strong>{g.consumer}</strong></div>
+                  <div className="muted mono">artifact &ldquo;{g.key}&rdquo;</div>
+                </td>
+                <td className="muted">{g.description ?? <span className="mono">no contract description</span>}</td>
+                <td>
+                  <a href={`/workflow-runs/${id}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`}>
+                    detail →
+                  </a>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -108,11 +101,11 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
 
       {workflow && (
         <div className="panel" style={{ marginBottom: 16 }}>
-          <Dag members={workflow.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/workflow-runs/${id}`} />
+          <Dag members={workflow.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/workflow-runs/${id}`} workflowRunId={id} />
         </div>
       )}
 
-      <GatePanel gates={gates} runIdByJob={runIdByJob} />
+      <GatePanel id={id} gates={gates} />
 
       <h2>Member runs</h2>
       <div className="panel">
