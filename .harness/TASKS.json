@@ -1795,7 +1795,7 @@
     {
       "id": "T071",
       "title": "Show validation gates on the workflow definition graph",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
