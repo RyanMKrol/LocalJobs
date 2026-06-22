@@ -291,7 +291,7 @@
     {
       "id": "T038",
       "title": "Rename 'pipeline' → 'workflow' everywhere",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T037"
       ],
