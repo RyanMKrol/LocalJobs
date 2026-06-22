@@ -2033,7 +2033,7 @@
     {
       "id": "T080",
       "title": "Mobile workflow DAG: centre the down arrow between stacked node boxes",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
