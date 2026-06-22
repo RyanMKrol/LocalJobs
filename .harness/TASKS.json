@@ -1260,7 +1260,7 @@
     {
       "id": "T051",
       "title": "Workflows page: clean up the last-run column (pill + time)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
