@@ -36,7 +36,7 @@ export default function Workflows() {
                 <td className="mono" style={{ whiteSpace: 'nowrap' }}>{p.schedule ?? <span className="muted">manual</span>}{p.enabled ? '' : ' (off)'}</td>
                 <td>
                   {p.last_run
-                    ? <><span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span> <span className="muted">{fmtRelative(p.last_run.started_at)}</span></>
+                    ? <span style={{ whiteSpace: 'nowrap' }}><span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span> <span className="muted">{fmtRelative(p.last_run.started_at)}</span></span>
                     : <span className="muted">never</span>}
                 </td>
                 <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
