@@ -1524,7 +1524,7 @@
     {
       "id": "T061",
       "title": "Backlog view: a DAG / dependency graph of the tasks",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
