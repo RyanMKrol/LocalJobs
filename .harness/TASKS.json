@@ -1287,7 +1287,7 @@
     {
       "id": "T052",
       "title": "Workflows page: centre the Stages + Schedule column values",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
