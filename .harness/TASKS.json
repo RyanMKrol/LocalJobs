@@ -2060,7 +2060,7 @@
     {
       "id": "T081",
       "title": "Workflow-run progress: count completed stages only (no in-flight partial credit)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
