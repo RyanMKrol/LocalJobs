@@ -136,6 +136,11 @@ a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.
 button.dag-node:hover { border-color: var(--accent); }
 /* backlog dag scroll wrapper */
 .backlog-dag-scroll { overflow-x: auto; flex-wrap: nowrap; }
+/* collapsible section heading (used on /backlog for all three sections) */
+.section-heading-summary { font-size: 16px; margin: 0 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; }
+.section-heading-summary::-webkit-details-marker { display: none; }
+.section-heading-summary::before { content: '▾ '; font-size: 12px; opacity: .7; }
+details:not([open]) .section-heading-summary::before { content: '▸ '; }
 /* legend dots */
 .dag-legend { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--border); background: var(--panel-2); vertical-align: middle; }
 .dag-legend.done { border-color: rgba(63,185,80,.5); background: rgba(63,185,80,.15); }

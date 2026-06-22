@@ -168,19 +168,26 @@ export default function Backlog() {
         </>
       ) : (
         <>
-          <h2>🤖 Harness-buildable ({buildable.length})</h2>
-          {buildable.length === 0 && <p className="muted">None.</p>}
-          {buildable.map((t) => <TaskCard key={t.id} t={t} isNext={t.id === nextId} defaults={defaults} />)}
+          <details open>
+            <summary className="section-heading-summary">
+              🤖 Harness-buildable ({buildable.length})
+            </summary>
+            {buildable.length === 0 && <p className="muted">None.</p>}
+            {buildable.map((t) => <TaskCard key={t.id} t={t} isNext={t.id === nextId} defaults={defaults} />)}
+          </details>
 
-          <h2 style={{ marginTop: 28 }}>🔒 Needs a human ({human.length})</h2>
-          <p className="sub">The loop skips these — work them manually.</p>
-          {human.length === 0 && <p className="muted">None.</p>}
-          {human.map((t) => <TaskCard key={t.id} t={t} isNext={false} defaults={defaults} />)}
+          <details open style={{ marginTop: 28 }}>
+            <summary className="section-heading-summary">
+              🔒 Needs a human ({human.length})
+            </summary>
+            <p className="sub">The loop skips these — work them manually.</p>
+            {human.length === 0 && <p className="muted">None.</p>}
+            {human.map((t) => <TaskCard key={t.id} t={t} isNext={false} defaults={defaults} />)}
+          </details>
 
-          <h2 style={{ marginTop: 28 }}>✅ Done ({done.length})</h2>
-          <details>
-            <summary className="muted" style={{ cursor: 'pointer', fontSize: 13, marginBottom: 8 }}>
-              Show {done.length} completed task{done.length !== 1 ? 's' : ''}
+          <details style={{ marginTop: 28 }}>
+            <summary className="section-heading-summary muted">
+              ✅ Done ({done.length})
             </summary>
             <div className="panel" style={{ padding: '0 14px' }}>
               {done.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None yet.</p>}
