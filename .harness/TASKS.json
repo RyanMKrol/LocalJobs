@@ -2216,7 +2216,7 @@
     {
       "id": "T087",
       "title": "Set maxRetries: 3 on all jobs (retry on any non-success)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
