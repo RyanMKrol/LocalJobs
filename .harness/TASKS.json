@@ -2163,7 +2163,7 @@
     {
       "id": "T085",
       "title": "Human-readable exit codes: map codes to labels and surface them site-wide",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
