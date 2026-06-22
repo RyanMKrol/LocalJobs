@@ -274,7 +274,7 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
   .dag-wave { flex-direction: row; flex-wrap: wrap; justify-content: center; }
   .dag-node { min-width: 0; }
   .backlog-node { max-width: none; }
-  .dag-arrow { font-size: 0; text-align: center; }
+  .dag-arrow { font-size: 0; text-align: center; justify-content: center; }
   .dag-arrow::after { content: '↓'; font-size: 22px; color: var(--grey); }
 
   /* DB row modal: full-width key column on narrow screens. */
