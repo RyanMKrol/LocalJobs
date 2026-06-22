@@ -2391,7 +2391,7 @@
     {
       "id": "T093",
       "title": "Design: workflow run-limits via framework-tracked input lineage",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
