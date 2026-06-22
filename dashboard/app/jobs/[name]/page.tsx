@@ -55,7 +55,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
 
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
         <div className="kv">
-          <div className="k">Schedule</div><div className="mono">{job?.schedule ?? 'manual-only'}</div>
+          <div className="k">Schedule</div><div className="mono" style={{ whiteSpace: 'nowrap' }}>{job?.schedule ?? 'manual-only'}</div>
           <div className="k">Enabled</div>
           <div>
             <span className="toggle" onClick={toggle}>

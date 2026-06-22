@@ -35,7 +35,7 @@ export default function Pipelines() {
                   <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
                 </td>
                 <td className="muted">{p.jobs.length}</td>
-                <td className="mono">{p.schedule ?? <span className="muted">manual</span>}{p.enabled ? '' : ' (off)'}</td>
+                <td className="mono" style={{ whiteSpace: 'nowrap' }}>{p.schedule ?? <span className="muted">manual</span>}{p.enabled ? '' : ' (off)'}</td>
                 <td>
                   {p.last_run
                     ? <><span className={`badge ${p.last_run.status}`}>{p.last_run.status}</span> <span className="muted">{fmtRelative(p.last_run.started_at)}</span></>
@@ -67,7 +67,7 @@ export default function Pipelines() {
                   {j.stuck > 0 && <span style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}>⛔ {j.stuck} stuck</span>}
                   <div className="muted" style={{ fontSize: 12 }}>{j.description}</div>
                 </td>
-                <td className="mono">{j.schedule ?? <span className="muted">manual</span>}</td>
+                <td className="mono" style={{ whiteSpace: 'nowrap' }}>{j.schedule ?? <span className="muted">manual</span>}</td>
                 <td>
                   {j.last_run
                     ? <><StatusBadge status={j.last_run.status} /> <span className="muted">{fmtRelative(j.last_run.started_at)}</span></>

@@ -30,7 +30,7 @@ export default function PipelineDetail({ params }: { params: Promise<{ name: str
 
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
         <div className="kv">
-          <div className="k">Schedule</div><div className="mono">{p?.schedule ?? 'manual-only'}</div>
+          <div className="k">Schedule</div><div className="mono" style={{ whiteSpace: 'nowrap' }}>{p?.schedule ?? 'manual-only'}</div>
           <div className="k">Enabled</div>
           <div>
             <span className="toggle" onClick={toggle}>
