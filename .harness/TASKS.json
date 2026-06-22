@@ -1736,6 +1736,33 @@
       "verify": [],
       "do": "On a workflow-run page, the Member runs section shows one row per stage PLUS a collapsible (▼ +N) of EARLIER-CYCLE runs — because a repeat-until-stable workflow re-runs every stage each cycle, so one run accumulates multiple runs per stage. Remove those earlier-cycle rows and the show/hide toggle from this view: show exactly ONE row per stage (the latest run for that stage in this workflow run). The earlier-cycle runs stay in the DB and remain reachable via the job/stage own run history, so nothing is lost — they just stop cluttering the per-run view.",
       "doneWhen": "The workflow-run Member runs section shows a single row per stage (the latest run for that stage in this run); the earlier-cycle (▼ +N / ▲ hide) expander is gone; earlier-cycle runs remain in the DB and reachable elsewhere; dashboard build passes."
+    },
+    {
+      "id": "T069",
+      "title": "Make the DAG prettier — outlined/boxed job nodes",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Make the DAG (components/Dag.tsx) prettier and easier to read. Right now nodes are essentially flat text, which is hard to scan when there are many. Give each job node a clear OUTLINE/box (bordered card — padding, rounded corners), make the connecting arrows/edges read as a flow, and keep the status colouring legible. Use your own judgement on the exact styling; the goal is a visually pleasing, scannable graph. Applies wherever the DAG renders (the workflow definition page and the workflow-run page).",
+      "doneWhen": "DAG job nodes render as outlined/boxed cards (not flat text) with clear flow edges and legible status colours, noticeably more scannable on both the workflow definition and workflow-run pages; dashboard build passes."
     }
   ]
 }
