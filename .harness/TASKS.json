@@ -266,7 +266,7 @@
     {
       "id": "T037",
       "title": "Drop standalone jobs — everything is a pipeline",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
