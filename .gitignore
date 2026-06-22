@@ -45,3 +45,6 @@ TODO.md
 .harness/worklog/.result
 .harness/worklog/.claude-out
 .harness/worklog/STATUS.md
+
+# harness: atomic-write temp for TASKS.json
+.harness/TASKS.json.tmp
