@@ -1686,7 +1686,7 @@
     {
       "id": "T067",
       "title": "Backlog view: make every section collapsible",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
