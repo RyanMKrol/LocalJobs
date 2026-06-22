@@ -193,6 +193,32 @@ button.dag-node:hover { border-color: var(--accent); }
 .db-modal-key { color: var(--muted); font-size: 12px; padding-top: 2px; word-break: break-all; flex-shrink: 0; }
 .db-modal-val { font-size: 12px; white-space: pre-wrap; word-break: break-all; }
 
+/* ── Validation-gate flow (output → gate → input) ─────────────────────────── */
+.gate-flow { display: flex; align-items: stretch; gap: 10px; margin: 8px 0 16px; }
+.gate-card {
+  flex: 1 1 0; min-width: 0;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px;
+}
+.gate-card.gate-center { flex: 0 1 240px; background: var(--panel-2); }
+.gate-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.gate-role { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.gate-summary { margin: 0 0 4px; font-size: 13px; }
+.gate-format { margin: 0 0 10px; font-size: 12px; }
+.gate-arrow { display: flex; align-items: center; color: var(--muted); font-size: 20px; flex: 0 0 auto; }
+.gate-expects { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gate-expects li { display: flex; gap: 8px; align-items: flex-start; }
+.gate-mark { flex: 0 0 auto; width: 16px; text-align: center; font-weight: 700; line-height: 1.4; }
+.gate-mark.pass { color: var(--green); }
+.gate-mark.fail { color: var(--red); }
+.gate-mark.pending { color: var(--muted); }
+.gate-expect-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gate-expect-label { font-size: 13px; }
+.gate-expect-detail { font-size: 12px; }
+.gate-expect-actual { font-size: 12px; }
+.gate-sample { margin: 12px 0 0; font-size: 12px; }
+.gate-card-foot { margin: 12px 0 0; font-size: 13px; }
+
 /* ──────────────────────────────────────────────────────────────────────────
    Mobile / narrow-viewport styling (≤640px — covers iPhone-17-class ~402px).
    Goal: no horizontal overflow, nothing crossing the viewport edge. Wide tables
@@ -234,4 +260,9 @@ button.dag-node:hover { border-color: var(--accent); }
   .db-modal-row { grid-template-columns: 1fr; gap: 2px; }
   .db-modal-key { margin-top: 8px; }
   .db-modal-key:first-child { margin-top: 0; }
+
+  /* Gate flow: stack output → gate → input vertically; arrows point down. */
+  .gate-flow { flex-direction: column; }
+  .gate-card.gate-center { flex: 1 1 auto; }
+  .gate-arrow { justify-content: center; transform: rotate(90deg); }
 }

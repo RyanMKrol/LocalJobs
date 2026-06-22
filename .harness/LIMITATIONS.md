@@ -297,4 +297,17 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   installed locally (`npx playwright install chromium`). *Revisit:* if responsive
   regressions recur, promote it to a CI job with a cached browser.
 
-> Add further project trade-offs below as they arise.
+- **The gate page's "actual" is the artifact ON DISK NOW, not a snapshot of what
+  flowed at run time.** *Why:* T065's expected-vs-actual gate page
+  (`GET /api/workflow-runs/:id/gates/:producer/:key`) re-runs each side's contract
+  `check()` live against the `data/` files when you open the page, rather than
+  persisting the `GateResult` captured during the workflow run. This keeps the run
+  path unchanged (no new columns / no result serialization) and the endpoint
+  cheap + paid-call-free. *Impact:* for a historical run, the per-expectation ✓/✗
+  and sample reflect the CURRENT files — if a later run overwrote them, or the
+  files were deleted/regenerated, the page shows the latest state, which may differ
+  from what actually crossed the gate on that run. The gate *state* badge
+  (passed/failed/pending) is still run-scoped and accurate (it comes from
+  `classifyGates` over the run's member runs). *Revisit:* if per-run fidelity
+  matters, persist the producing/consuming `GateResult` (checks + sample) on the
+  member run when the gate is enforced and serve that instead of re-checking.

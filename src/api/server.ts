@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
+import type { GateResult } from '../core/types.js';
 import { runJob } from '../core/executor.js';
 import { runWorkflow } from '../core/workflow-executor.js';
 import { nextWorkflowRun, nextRun } from '../core/scheduler.js';
@@ -376,6 +377,41 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         // structure-only /workflows/:name view never gets these.
         const gates = classifyGates(gatesForWorkflow(run.workflow_name), memberRuns);
         return json(res, 200, { run, jobs: memberRuns, logs: getWorkflowLogs(parts[2], after), gates });
+      }
+
+      // GET /api/workflow-runs/:id/gates/:producer/:key
+      // Inspect ONE validation gate for the dashboard's expected-vs-actual view:
+      // the classified gate state plus, for each side (output = producer's
+      // `produces[key]`, input = consumer's `consumes[key]`), the contract's
+      // declared `shape` and a LIVE `check()` of the artifact on disk (per-
+      // expectation pass/fail + a small sample of what flowed). Reads files only —
+      // never a paid/remote call — so it's safe to poll.
+      if (
+        method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' &&
+        parts[3] === 'gates' && parts.length === 6
+      ) {
+        const run = getWorkflowRun(parts[2]);
+        if (!run) return json(res, 404, { error: 'workflow run not found' });
+        const producer = decodeURIComponent(parts[4]);
+        const key = decodeURIComponent(parts[5]);
+        const memberRuns = listRunsForWorkflowRun(parts[2]);
+        const gates = classifyGates(gatesForWorkflow(run.workflow_name), memberRuns);
+        const gate = gates.find((g) => g.producer === producer && g.key === key);
+        if (!gate) return json(res, 404, { error: 'gate not found' });
+        const inspectSide = async (jobName: string, field: 'produces' | 'consumes') => {
+          const contract = getJobDefinition(jobName)?.[field]?.find((c) => c.key === key);
+          if (!contract) return null;
+          let result: GateResult;
+          try {
+            result = await contract.check();
+          } catch (e) {
+            result = { ok: false, violations: [`check threw — ${e instanceof Error ? e.message : e}`] };
+          }
+          return { shape: contract.shape ?? null, result };
+        };
+        const output = await inspectSide(gate.producer, 'produces');
+        const input = await inspectSide(gate.consumer, 'consumes');
+        return json(res, 200, { gate, output, input });
       }
 
       // GET /api/services  (usage vs caps + current per-minute rate)

@@ -84,6 +84,48 @@ export interface GateStatus {
   failureRunId?: string | null;
 }
 
+/** One plain-English expectation a contract asserts about its artifact. */
+export interface ShapeExpectation {
+  label: string;
+  detail?: string;
+}
+
+/** The expected shape of an artifact, as declared by a contract (for display). */
+export interface ArtifactShape {
+  summary: string;
+  format?: string;
+  expectations: ShapeExpectation[];
+}
+
+/** Pass/fail for one expectation against the ACTUAL artifact that flowed. */
+export interface ExpectationResult {
+  label: string;
+  ok: boolean;
+  actual?: string;
+}
+
+/** Outcome of running a contract's check against the real artifact. */
+export interface GateResult {
+  ok: boolean;
+  violations?: string[];
+  detail?: string;
+  checks?: ExpectationResult[];
+  sample?: string;
+}
+
+/** One side (output/input) of a gate: the declared shape + a live check result. */
+export interface GateSide {
+  shape: ArtifactShape | null;
+  result: GateResult | null;
+}
+
+/** Full inspection of a single gate: classified state + expected-vs-actual sides. */
+export interface GateInspection {
+  gate: GateStatus;
+  output: GateSide | null;
+  input: GateSide | null;
+}
+
 export interface Service {
   name: string;
   description: string;
@@ -212,6 +254,10 @@ export const api = {
   workflowRun: (id: string, after = 0) =>
     get<{ run: WorkflowRun; jobs: Run[]; logs: LogLine[]; gates: GateStatus[] }>(
       `/api/workflow-runs/${id}?after=${after}`,
+    ),
+  gateInspection: (id: string, producer: string, key: string) =>
+    get<GateInspection>(
+      `/api/workflow-runs/${id}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
     ),
   runWorkflow: (name: string) => post<{ ok: boolean }>(`/api/workflows/${name}/run`),
   toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${name}/toggle`, { enabled }),

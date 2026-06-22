@@ -299,3 +299,16 @@ row in the **Validation gates** panel, which shows what the gate validates
 (contract key + description, producer→consumer) and its outcome, with links to
 the producer/consumer/violation run logs. The executor also logs each gate check
 (what it asserted + the pass/fail result) into the workflow run's framework logs.
+
+Each gate also has a dedicated page (click a gate chip / "detail →") that reads
+as a **black box** — you understand the data without knowing the internals. It
+lays the boundary out left-to-right: upstream stage **Output** → the **Gate**
+(what it checks) → downstream stage **Input**. Each side shows the contract's
+declared *expected shape* (a plain-English summary, the format, and the
+fields/non-empty checks it asserts) and — by re-running the contract's `check()`
+live against the artifact on disk — a per-expectation ✓/✗ against what *actually*
+flowed plus a small sample/summary. A contract opts into this by adding an
+`ArtifactShape` (`shape`) to its `ArtifactContract`; its `check()` returns
+`checks[]` (per-expectation pass/fail, aligned by label) and a `sample`. Served
+by `GET /api/workflow-runs/:id/gates/:producer/:key` (reads files only — never a
+paid/remote call, so it's safe to poll).

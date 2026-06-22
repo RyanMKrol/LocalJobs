@@ -340,7 +340,7 @@ doubt, log it.
   means any job benefits from cookies accumulated by others.
 - **Validation gates between workflow stages (typed artifacts).** A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
-  (`{ key, description?, check() }`) in `src/core/types.ts`. For every workflow
+  (`{ key, description?, shape?, check() }`) in `src/core/types.ts`. For every workflow
   **edge** where the upstream `produces` a key the downstream `consumes`, the
   workflow executor runs both contracts' `check()` at that boundary — producer
   side (output well-formed) right before, consumer side (input acceptable) — and
@@ -382,6 +382,25 @@ doubt, log it.
   naming the boundary, artifact, and both contracts' assertions
   (`gateAssertions`), then a `✓ gate ok …` / `⨯ Gate violation …` result line —
   so the run page tells you what each gate verified and why it passed or failed.
+  - **Expected-vs-actual gate page (black box).** Each gate has a dedicated page
+    (`dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx`) that
+    explains the gate to a NON-EXPERT with no knowledge of internals. It lays the
+    boundary out left-to-right — upstream **Output** → **Gate** (what it checks) →
+    downstream **Input** — and on each side shows the contract's declared
+    **expected shape** alongside the **actual** artifact's per-expectation ✓/✗ and
+    a small sample. To support it, an `ArtifactContract` may declare a
+    machine-readable `shape: ArtifactShape` (`{ summary, format?, expectations[] }`,
+    each expectation a plain-English `{ label, detail? }`), and its `check()`
+    returns `GateResult.checks[]` (per-expectation `{ label, ok, actual? }`, aligned
+    to the shape BY LABEL) plus a `sample` string. `ok`/`violations` are still
+    derived from the failed checks (the contract helper `fromChecks` does this), so
+    executor enforcement is unchanged — keep the labels in `shape.expectations`
+    identical to the ones the `check` emits. The page is served by
+    `GET /api/workflow-runs/:id/gates/:producer/:key`, which classifies the gate
+    state for the run and runs each side's contract `check()` LIVE (output =
+    producer's `produces[key]`, input = consumer's `consumes[key]`). That endpoint
+    reads `data/` files only — NEVER a paid/remote call — so it is safe to poll;
+    keep any future contract `check()` cheap + side-effect-free for the same reason.
 - **Workflow progress is rolled up from member jobs (don't set it by hand).** A
   workflow run's `progress` is a first-class roll-up: each member stage
   contributes a fraction in [0,1] of the workflow's total stage count — a

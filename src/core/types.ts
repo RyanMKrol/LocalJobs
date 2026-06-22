@@ -19,6 +19,44 @@ export interface JobContext {
   progress(pct: number, message?: string): void;
 }
 
+/**
+ * One thing a contract asserts about its artifact, worded for a NON-EXPERT
+ * reader so the dashboard gate page can explain WHAT is checked without anyone
+ * reading the code (the "expected shape"). Static — declared on the contract,
+ * involves no I/O.
+ */
+export interface ShapeExpectation {
+  /** Short, plain label, e.g. "Contains at least one place". Used to align with
+   *  the per-expectation `ExpectationResult.label` from a check. */
+  label: string;
+  /** Optional longer plain-English explanation of why it matters. */
+  detail?: string;
+}
+
+/**
+ * The machine-readable expected shape of an artifact, surfaced on the gate page
+ * as the "expected" side of an expected-vs-actual view. Declared on the
+ * contract; purely descriptive (no checking happens here).
+ */
+export interface ArtifactShape {
+  /** One-line plain summary, e.g. "The normalized list of places to look up." */
+  summary: string;
+  /** The medium/format, e.g. "JSON file", "folder of .txt page captures". */
+  format?: string;
+  /** The specific expectations the `check` enforces (fields/columns/non-empty). */
+  expectations: ShapeExpectation[];
+}
+
+/** Pass/fail for ONE expectation against the ACTUAL artifact that flowed. */
+export interface ExpectationResult {
+  /** Matches a `ShapeExpectation.label` so the page can pair expected ↔ actual. */
+  label: string;
+  /** Whether the actual artifact satisfied this expectation. */
+  ok: boolean;
+  /** What was actually observed, e.g. "120 place(s)" / "missing" / 'source = "x"'. */
+  actual?: string;
+}
+
 /** Outcome of validating one typed-artifact contract at a stage boundary. */
 export interface GateResult {
   /** Whether the artifact satisfies the contract. */
@@ -27,6 +65,17 @@ export interface GateResult {
   violations?: string[];
   /** Optional note logged whether it passes or fails (e.g. "120 rows · 7 cols"). */
   detail?: string;
+  /**
+   * Per-expectation pass/fail aligned (by `label`) to the contract's declared
+   * `shape.expectations` — the EXPECTED-vs-ACTUAL breakdown the gate page
+   * renders. Optional: a contract without a `shape` can omit it.
+   */
+  checks?: ExpectationResult[];
+  /**
+   * A small plain summary/sample of the ACTUAL artifact that flowed, for the
+   * gate page (e.g. "120 place(s) · e.g. \"Blue Bottle\", \"Acme Fire Cult\"").
+   */
+  sample?: string;
 }
 
 /**
@@ -41,6 +90,13 @@ export interface ArtifactContract {
   /** Stable identifier shared by the producing job and its consumer(s). */
   key: string;
   description?: string;
+  /**
+   * Optional machine-readable expected shape, surfaced on the dashboard gate
+   * page so a reader sees what the gate expects (the "expected" half of an
+   * expected-vs-actual view). The `check` should report per-expectation results
+   * in `GateResult.checks`, aligned by `label`.
+   */
+  shape?: ArtifactShape;
   /** Validate the real artifact. Sync or async; throwing counts as a violation. */
   check(): GateResult | Promise<GateResult>;
 }

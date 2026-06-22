@@ -221,6 +221,53 @@ test('places: gates derive between every stage (count > 0)', () => {
   assert.deepEqual(gates.map((g) => g.key), ['places-normalized', 'resolved-place-ids', 'enriched-places']);
 });
 
+// ───────── expected shape + expected-vs-actual reporting (T065) ─────────
+// Every contract declares a machine-readable `shape` for the gate page, and a
+// passing check returns per-expectation `checks` (aligned by label) + a `sample`.
+const allContracts: Array<[string, ArtifactContract]> = [
+  ['fragrantica-urls', fragranticaUrlsContract()],
+  ['fragrantica-pages', fragranticaPagesContract()],
+  ['fragrantica-data', fragranticaDataContract()],
+  ['places-normalized', normalizedPlacesContract()],
+  ['resolved-place-ids', resolvedPlacesContract()],
+  ['enriched-places', enrichedPlacesContract()],
+];
+
+test('every contract declares a shape with a summary + non-empty expectations', () => {
+  for (const [key, c] of allContracts) {
+    assert.ok(c.shape, `${key} has no shape`);
+    assert.ok(c.shape!.summary.length > 0, `${key} shape has no summary`);
+    assert.ok(c.shape!.expectations.length > 0, `${key} shape has no expectations`);
+  }
+});
+
+test('a passing check reports per-expectation results aligned to the shape + a sample', () => {
+  const p = writeJson('shape-ok.json', {
+    source: 'google-takeout',
+    places: [{ name: 'Acme Fire Cult', cid: '123' }],
+  });
+  const c = normalizedPlacesContract(p);
+  const r = run(c);
+  assert.equal(r.ok, true, r.violations?.join('; '));
+  assert.ok(Array.isArray(r.checks) && r.checks.length > 0, 'no checks reported');
+  assert.ok(r.checks!.every((ch) => ch.ok), 'a passing check has a failed expectation');
+  // Every reported check label is a declared expectation (alignment holds).
+  const labels = new Set(c.shape!.expectations.map((e) => e.label));
+  for (const ch of r.checks!) assert.ok(labels.has(ch.label), `check label "${ch.label}" not in shape`);
+  assert.ok(r.sample && r.sample.includes('Acme Fire Cult'), `sample missing actual data: ${r.sample}`);
+});
+
+test('a failing check marks the offending expectation ok:false (expected-vs-actual)', () => {
+  const p = writeJson('shape-drift.json', { source: 'something-else', places: [{ name: 'X' }] });
+  const c = normalizedPlacesContract(p);
+  const r = run(c);
+  assert.equal(r.ok, false);
+  const sourceExp = c.shape!.expectations.find((e) => /takeout/i.test(e.label))!;
+  const sourceCheck = r.checks!.find((ch) => ch.label === sourceExp.label);
+  assert.ok(sourceCheck && sourceCheck.ok === false, 'source expectation not reported as failed');
+  assert.ok(sourceCheck!.actual && sourceCheck!.actual.includes('something-else'), 'actual value not surfaced');
+});
+
 // Assert the contract `key`s the jobs actually use match the keys the gate
 // derivation above relies on — so a rename can't silently break wiring.
 test('contract keys are stable + match the workflow wiring', () => {
