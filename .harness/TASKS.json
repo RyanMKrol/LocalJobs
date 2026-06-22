@@ -2005,7 +2005,7 @@
     {
       "id": "T079",
       "title": "Remove the stale job-level Chrome profile; keep only the framework-level one",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
