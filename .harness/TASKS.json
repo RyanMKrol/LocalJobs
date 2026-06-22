@@ -1419,7 +1419,7 @@
     {
       "id": "T057",
       "title": "Validation gates: clickable detail + comprehensive logging",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
