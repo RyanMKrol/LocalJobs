@@ -708,8 +708,8 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Backlog view, show each task’s ESCALATION PATH (the model/effort ladder the loop climbs on repeated failure), not just the starting model. Render the EFFECTIVE ladder — rung 0 (task model/effort, else defaults) then each escalation rung — resolving per-task `escalation` else `defaults.escalation` (same resolution the loop’s task_ladder does). This needs `/api/backlog` to ALSO return the backlog `defaults` (it currently returns only `tasks`) so inherited model/escalation can be resolved, and the BacklogTask type to include `escalation`.",
-      "doneWhen": "Each task on /backlog shows its escalation path (e.g. \"sonnet/medium → opus/high\"), correctly resolving per-task vs defaults inheritance; a task with no escalation shows just its single rung; the API returns defaults; dashboard build + typecheck pass."
+      "do": "On the Backlog view, show each task’s ESCALATION PATH (the model/effort ladder the loop climbs on repeated failure), not just the starting model. Render the EFFECTIVE ladder — rung 0 (task model/effort, else defaults) then each escalation rung — resolving per-task `escalation` else `defaults.escalation` (same resolution the loop’s task_ladder does). This needs `/api/backlog` to ALSO return the backlog `defaults` (it currently returns only `tasks`) so inherited model/escalation can be resolved, and the BacklogTask type to include `escalation`. Also: where a task INHERITS the default model/effort, show the ACTUAL resolved value (e.g. \"opus/high\"), never the literal word \"default\" — so the view always reflects the real current default and updates automatically if `defaults` changes.",
+      "doneWhen": "Each task on /backlog shows its escalation path (e.g. \"sonnet/medium → opus/high\") resolving per-task vs defaults inheritance; a task that inherits the default shows the REAL resolved model/effort (never the word \"default\"); a task with no escalation shows just its single rung; the API returns defaults; dashboard build + typecheck pass."
     }
   ]
 }
