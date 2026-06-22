@@ -1740,7 +1740,7 @@
     {
       "id": "T069",
       "title": "Make the DAG prettier — outlined/boxed job nodes",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
