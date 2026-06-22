@@ -1850,7 +1850,7 @@
     {
       "id": "T073",
       "title": "Backlog view: pending shows pending, not in progress",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
