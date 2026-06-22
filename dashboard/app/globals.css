@@ -134,3 +134,45 @@ a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.
 .pill { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; background: var(--panel-2); border:1px solid var(--border); color: var(--muted); }
 .pill.paid { color: var(--yellow); border-color: rgba(210,153,34,.4); }
 .pill.free { color: var(--green); border-color: rgba(80,200,120,.4); }
+
+/* Long unbroken tokens (URLs, file paths, item keys) must not push the page wide. */
+.mono { overflow-wrap: anywhere; }
+.logs { overflow-wrap: anywhere; }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Mobile / narrow-viewport styling (≤640px — covers iPhone-17-class ~402px).
+   Goal: no horizontal overflow, nothing crossing the viewport edge. Wide tables
+   become horizontally scrollable WITHIN their panel (so the page itself never
+   scrolls sideways); dense grids collapse to fewer columns.
+   ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .container { padding: 16px 12px 48px; }
+
+  /* Header: let the brand + nav wrap instead of forcing a single wide row. */
+  header.site .inner { flex-wrap: wrap; gap: 6px 14px; padding: 12px 14px; }
+  header.site nav { line-height: 1.9; }
+  header.site nav a { margin-right: 14px; }
+
+  h1 { font-size: 20px; }
+  h2 { margin: 22px 0 10px; }
+
+  /* Stat cards: 4 fixed columns → 2, so the numbers/labels keep room to breathe. */
+  .statcards { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .statcard { padding: 13px; }
+  .statcard .n { font-size: 22px; }
+
+  /* Any panel that holds a table scrolls sideways internally rather than widening
+     the page. The page stays within the viewport; the table can be browsed by
+     swiping the panel. */
+  .panel:has(> table) { overflow-x: auto; }
+  th, td { padding: 8px 10px; }
+
+  /* Key/value blocks stack (label above value) instead of a fixed 160px column. */
+  .kv { grid-template-columns: 1fr; gap: 1px 0; }
+  .kv .k { margin-top: 9px; }
+  .kv .k:first-child { margin-top: 0; }
+
+  /* DAG: keep the nodes from being wider than the viewport. */
+  .dag { padding: 14px; gap: 8px; }
+  .dag-node { min-width: 0; }
+}

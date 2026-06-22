@@ -136,7 +136,8 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs) |
 | `src/jobs/*.service.ts` | Service definitions, default-exporting a `ServiceDefinition` (shared rate-limited dependencies) |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
-| `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`) |
+| `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`); all responsive CSS lives in `app/globals.css` |
+| `dashboard/scripts/mobile-check.mjs` | Hermetic phone-viewport (402px) styling check — headless Chromium + synthetic API fixtures; local only, not in CI |
 | `scripts/*` | launchd install scripts + start wrapper |
 
 ## How to add a job (the common request)
@@ -397,6 +398,14 @@ doubt, log it.
   changes — before declaring done. Keep the suite green; **add unit tests for new
   behaviour as you build it** (tests live in `*.test.ts`; `npm test` discovers + runs
   them against a scratch DB). Never declare done on red.
+- **Dashboard must stay mobile-responsive.** Every page has to survive a phone-width
+  (~402px) viewport with no horizontal page overflow and nothing crossing an
+  element's boundary. Responsive rules live in one place — the `@media (max-width:
+  640px)` block in `dashboard/app/globals.css` (wide tables scroll inside their
+  `.panel` via `.panel:has(> table){overflow-x:auto}`, dense grids collapse, `.kv`
+  blocks stack). After any dashboard UI change, build it and run
+  `node dashboard/scripts/mobile-check.mjs` (hermetic — no daemon, synthetic API
+  fixtures) and keep it green. The check is local-only, not part of CI.
 - **Commit + push as you go.** Make small, atomized commits as each coherent change
   lands (one per layer/feature — not a big-bang), and **push each commit immediately**
   — don't wait to be asked. (Respect the git hygiene rules above: never commit

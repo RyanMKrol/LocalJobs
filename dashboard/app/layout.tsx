@@ -6,6 +6,13 @@ export const metadata = {
   description: 'Local job orchestrator dashboard',
 };
 
+// Make the layout scale to the device width so the mobile media queries apply on
+// phones (instead of rendering at a desktop width and being zoomed out).
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">

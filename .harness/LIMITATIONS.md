@@ -282,4 +282,19 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   deleted once every live DB is known to be on the `workflow_*` schema (it's a
   no-op from then on).
 
+- **The mobile styling check is hermetic + local, not wired into CI.** *Why:*
+  T040 added `dashboard/scripts/mobile-check.mjs`, which boots a real `next start`
+  and drives a headless Chromium — too heavy/flaky for the CI Definition-of-Done
+  (which stays `tsc` + `npm test` + dashboard build). It also serves all `/api/*`
+  from **synthetic in-process fixtures** via Playwright route interception rather
+  than a seeded scratch SQLite + live daemon, so it never touches the DB or makes
+  paid calls. *Impact:* (a) a responsive regression won't be caught automatically
+  on push — you must run the check by hand after a dashboard UI change (it's
+  documented in `CLAUDE.md` + `README.md` as part of Done). (b) the fixtures are a
+  hand-maintained approximation of the API shapes in `dashboard/app/lib/api.ts`;
+  if an endpoint's response shape changes, update the fixtures too or the page may
+  render empty and silently pass. (c) it depends on Playwright's Chromium being
+  installed locally (`npx playwright install chromium`). *Revisit:* if responsive
+  regressions recur, promote it to a CI job with a cached browser.
+
 > Add further project trade-offs below as they arise.

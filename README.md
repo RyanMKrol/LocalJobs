@@ -229,6 +229,26 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   model, what to do + done-when), split into **harness-buildable** and
   **🔒 needs-a-human** groups. Served via `GET /api/backlog`.
 
+Every page is **responsive down to a phone-width (~402px) viewport**: wide tables
+scroll sideways within their panel (the page itself never scrolls horizontally),
+stat tiles collapse to two columns, key/value blocks stack, and the header nav
+wraps. A local check enforces this — see below.
+
+### Mobile styling check
+
+`dashboard/scripts/mobile-check.mjs` loads every dashboard page in a headless
+Chromium at an iPhone-17-class 402px viewport and asserts no horizontal overflow
+and nothing crossing an element's boundary. It is **hermetic**: it starts a
+production `next start` and serves all `/api/*` calls from synthetic in-process
+fixtures (deliberately stuffed with long strings to stress the layout), so it
+needs **no daemon, no SQLite, and makes no API calls**. It is a local check, not
+part of CI. Run it (from the repo root, after building the dashboard) with:
+
+```bash
+cd dashboard && npm run build && cd ..
+node dashboard/scripts/mobile-check.mjs
+```
+
 ## Configuration
 
 See `.env.example`:
