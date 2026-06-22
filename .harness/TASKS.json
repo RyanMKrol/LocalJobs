@@ -238,7 +238,7 @@
     {
       "id": "T036",
       "title": "Keep cron schedule expressions on one line",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
