@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment } from 'react';
-import type { BacklogTask, GateStatus, WorkflowMember } from '../lib/api';
+import type { BacklogTask, GateStatus, StructuralGate, WorkflowMember } from '../lib/api';
 import { statusLabel } from '../ui';
 
 /** Topologically order members into waves (jobs in a wave have no ordering). */
@@ -32,12 +32,43 @@ function computeWaves(members: WorkflowMember[]): string[][] {
 
 
 /**
+ * Render structural (no-run-state) gate chips for the workflow definition view.
+ * Each chip marks that a validation gate exists on this edge. When `lastRunId` is
+ * provided the chip links to that run's gate detail page so the contract can be
+ * inspected; otherwise it renders as a non-interactive marker.
+ */
+function StructuralGateChips({ gates, lastRunId }: { gates: StructuralGate[]; lastRunId?: string }) {
+  if (gates.length === 0) return null;
+  return (
+    <div className="dag-gates">
+      {gates.map((g) => {
+        const label = `⛒ ${g.producer} · ${g.key}`;
+        const title = g.description
+          ? `gate: ${g.producer} → ${g.consumer} (artifact "${g.key}") — ${g.description}`
+          : `gate: ${g.producer} → ${g.consumer} (artifact "${g.key}")`;
+        if (lastRunId) {
+          const href = `/workflow-runs/${lastRunId}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`;
+          return (
+            <a key={`${g.producer}:${g.key}`} href={href} className="dag-gate structural" title={title}>
+              {label}
+            </a>
+          );
+        }
+        return (
+          <span key={`${g.producer}:${g.key}`} className="dag-gate structural" title={title}>
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * Render the validation gates inbound to one consumer node as small chips, each
  * naming its producer + artifact key and coloured by state. EVERY chip (passed,
  * failed, or pending) links to that gate's dedicated detail page, so any gate can
- * be inspected — not just failures. `workflowRunId` is required to build the URL;
- * gates are only supplied on a workflow RUN so the structure-only /workflows/[name]
- * view renders no chips.
+ * be inspected — not just failures. `workflowRunId` is required to build the URL.
  */
 function GateChips({ gates, workflowRunId }: { gates: GateStatus[]; workflowRunId: string }) {
   if (gates.length === 0) return null;
@@ -62,13 +93,16 @@ function GateChips({ gates, workflowRunId }: { gates: GateStatus[]; workflowRunI
  * `statusByJob` to colour each node by a run's member status, and `runIdByJob`
  * to make nodes link into that member's run logs. Pass `gates` (run view only) to
  * mark each producer→consumer validation gate on its consumer node — a failed
- * gate is red and links to its failure logs.
+ * gate is red and links to its failure logs. Pass `structuralGates` (definition
+ * view) to show gate markers without run state.
  */
 export function Dag({
   members,
   statusByJob,
   runIdByJob,
   gates,
+  structuralGates,
+  lastRunId,
   from,
   workflowRunId,
 }: {
@@ -77,6 +111,10 @@ export function Dag({
   runIdByJob?: Record<string, string>;
   /** Validation-gate states for THIS run; omit on the structure-only view. */
   gates?: GateStatus[];
+  /** Structural gates for the definition view (no run state). */
+  structuralGates?: StructuralGate[];
+  /** Last workflow run id; when provided, structural gate chips link to that run's gate detail. */
+  lastRunId?: string;
   /** Path of the page rendering this DAG, threaded onto node links as `?from=`
    *  so the job/run page can send the back-link to where you actually came from. */
   from?: string;
@@ -84,9 +122,12 @@ export function Dag({
   workflowRunId?: string;
 }) {
   const waves = computeWaves(members);
-  // Group gates by consumer so each node shows its own inbound gates.
+  // Group run-state gates by consumer.
   const gatesByConsumer = new Map<string, GateStatus[]>();
   for (const g of gates ?? []) (gatesByConsumer.get(g.consumer) ?? gatesByConsumer.set(g.consumer, []).get(g.consumer)!).push(g);
+  // Group structural gates by consumer.
+  const structuralByConsumer = new Map<string, StructuralGate[]>();
+  for (const g of structuralGates ?? []) (structuralByConsumer.get(g.consumer) ?? structuralByConsumer.set(g.consumer, []).get(g.consumer)!).push(g);
   return (
     <div className="dag">
       {waves.map((wave, i) => (
@@ -106,6 +147,7 @@ export function Dag({
                 <div key={job}>
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
                   {workflowRunId && <GateChips gates={gatesByConsumer.get(job) ?? []} workflowRunId={workflowRunId} />}
+                  {!workflowRunId && <StructuralGateChips gates={structuralByConsumer.get(job) ?? []} lastRunId={lastRunId} />}
                 </div>
               );
             })}

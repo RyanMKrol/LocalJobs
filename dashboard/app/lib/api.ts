@@ -68,7 +68,17 @@ export interface Workflow {
   next_run: string | null;
   jobs: WorkflowMember[];
   stuck: number;
+  /** Structural gates derived from member job contracts; present on the detail endpoint. */
+  gates?: StructuralGate[];
   runs?: WorkflowRun[];
+}
+
+/** A validation gate on the workflow graph — structural only, no run state. */
+export interface StructuralGate {
+  key: string;
+  producer: string;
+  consumer: string;
+  description?: string | null;
 }
 
 /** A validation gate's state within one workflow run (derived from member runs). */

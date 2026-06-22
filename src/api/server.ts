@@ -334,7 +334,7 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts.length === 3) {
         const p = getWorkflow(parts[2]);
         if (!p) return json(res, 404, { error: 'workflow not found' });
-        return json(res, 200, { workflow: { ...p, ...workflowView(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
+        return json(res, 200, { workflow: { ...p, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
       }
 
       // POST /api/workflows/:name/run
@@ -366,7 +366,7 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         const memberRuns = listRunsForWorkflowRun(parts[2]);
         // Gates are run-scoped: derive the workflow's gate structure, then classify
         // each against THIS run's member runs (passed / failed / pending). The
-        // structure-only /workflows/:name view never gets these.
+        // structure-only /workflows/:name view gets structural gates (no run state).
         const gates = classifyGates(gatesForWorkflow(run.workflow_name), memberRuns);
         return json(res, 200, { run, jobs: memberRuns, logs: getWorkflowLogs(parts[2], after), gates });
       }

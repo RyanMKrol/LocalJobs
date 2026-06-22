@@ -43,7 +43,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       </div>
 
       <h2>Graph</h2>
-      <div className="panel">{p && <Dag members={p.jobs} from={`/workflows/${name}`} />}</div>
+      <div className="panel">{p && <Dag members={p.jobs} structuralGates={p.gates} lastRunId={p.last_run?.id} from={`/workflows/${name}`} />}</div>
 
       <h2>Runs</h2>
       <div className="panel">
