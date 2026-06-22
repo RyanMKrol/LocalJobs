@@ -65,10 +65,12 @@ function StructuralGateChips({ gates, lastRunId }: { gates: StructuralGate[]; la
 }
 
 /**
- * Render the validation gates inbound to one consumer node as small chips, each
- * naming its producer + artifact key and coloured by state. EVERY chip (passed,
- * failed, or pending) links to that gate's dedicated detail page, so any gate can
- * be inspected — not just failures. `workflowRunId` is required to build the URL.
+ * Render a set of validation gates as small chips, each naming its producer +
+ * artifact key and coloured by state. Used both on the inter-wave arrow (the gates
+ * guarding that edge) and as the consumer-node fallback for non-adjacent edges.
+ * EVERY chip (passed, failed, or pending) links to that gate's dedicated detail
+ * page, so any gate can be inspected — not just failures. `workflowRunId` is
+ * required to build the URL.
  */
 function GateChips({ gates, workflowRunId }: { gates: GateStatus[]; workflowRunId: string }) {
   if (gates.length === 0) return null;
@@ -92,9 +94,9 @@ function GateChips({ gates, workflowRunId }: { gates: GateStatus[]; workflowRunI
  * Render a workflow DAG as left-to-right waves of status-coloured nodes. Pass
  * `statusByJob` to colour each node by a run's member status, and `runIdByJob`
  * to make nodes link into that member's run logs. Pass `gates` (run view only) to
- * mark each producer→consumer validation gate on its consumer node — a failed
- * gate is red and links to its failure logs. Pass `structuralGates` (definition
- * view) to show gate markers without run state.
+ * mark each producer→consumer validation gate ON THE ARROW between the two jobs it
+ * guards — a failed gate is red and links to its failure logs. Pass
+ * `structuralGates` (definition view) to show those gate markers without run state.
  */
 export function Dag({
   members,
@@ -122,12 +124,32 @@ export function Dag({
   workflowRunId?: string;
 }) {
   const waves = computeWaves(members);
-  // Group run-state gates by consumer.
-  const gatesByConsumer = new Map<string, GateStatus[]>();
-  for (const g of gates ?? []) (gatesByConsumer.get(g.consumer) ?? gatesByConsumer.set(g.consumer, []).get(g.consumer)!).push(g);
-  // Group structural gates by consumer.
-  const structuralByConsumer = new Map<string, StructuralGate[]>();
-  for (const g of structuralGates ?? []) (structuralByConsumer.get(g.consumer) ?? structuralByConsumer.set(g.consumer, []).get(g.consumer)!).push(g);
+  // Wave index of each job, so a gate's (producer, consumer) can be placed on the
+  // arrow that bridges them.
+  const waveOf = new Map<string, number>();
+  waves.forEach((wave, i) => wave.forEach((job) => waveOf.set(job, i)));
+
+  // A gate guards a producer→consumer edge, so its chip belongs ON the arrow
+  // between those two waves — the arrow rendered after the PRODUCER's wave (index
+  // i bridges wave i → i+1). For the strictly-linear example workflows the
+  // producer is always the wave immediately before the consumer, so the gate sits
+  // on that inter-wave arrow. For any non-adjacent edge (producer more than one
+  // wave upstream) we DON'T drop the chip — we fall back to rendering it under the
+  // consumer node, keyed by consumer, rather than mis-placing it on a wrong arrow.
+  const partition = <T extends { producer: string; consumer: string }>(items: T[]) => {
+    const onArrow = new Map<number, T[]>(); // arrow index (= producer wave) → gates
+    const onConsumer = new Map<string, T[]>(); // fallback for non-adjacent edges
+    for (const g of items) {
+      const pi = waveOf.get(g.producer);
+      const ci = waveOf.get(g.consumer);
+      if (pi != null && ci === pi + 1) (onArrow.get(pi) ?? onArrow.set(pi, []).get(pi)!).push(g);
+      else (onConsumer.get(g.consumer) ?? onConsumer.set(g.consumer, []).get(g.consumer)!).push(g);
+    }
+    return { onArrow, onConsumer };
+  };
+  const runGates = partition(gates ?? []);
+  const structGates = partition(structuralGates ?? []);
+
   return (
     <div className="dag">
       {waves.map((wave, i) => (
@@ -146,13 +168,20 @@ export function Dag({
               return (
                 <div key={job}>
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
-                  {workflowRunId && <GateChips gates={gatesByConsumer.get(job) ?? []} workflowRunId={workflowRunId} />}
-                  {!workflowRunId && <StructuralGateChips gates={structuralByConsumer.get(job) ?? []} lastRunId={lastRunId} />}
+                  {/* Fallback chips for non-adjacent edges that can't sit on an arrow. */}
+                  {workflowRunId && <GateChips gates={runGates.onConsumer.get(job) ?? []} workflowRunId={workflowRunId} />}
+                  {!workflowRunId && <StructuralGateChips gates={structGates.onConsumer.get(job) ?? []} lastRunId={lastRunId} />}
                 </div>
               );
             })}
           </div>
-          {i < waves.length - 1 && <div className="dag-arrow">→</div>}
+          {i < waves.length - 1 && (
+            <div className="dag-arrow">
+              <span className="dag-arrow-glyph">→</span>
+              {workflowRunId && <GateChips gates={runGates.onArrow.get(i) ?? []} workflowRunId={workflowRunId} />}
+              {!workflowRunId && <StructuralGateChips gates={structGates.onArrow.get(i) ?? []} lastRunId={lastRunId} />}
+            </div>
+          )}
         </Fragment>
       ))}
     </div>
@@ -230,7 +259,11 @@ export function BacklogDag({
               );
             })}
           </div>
-          {i < waves.length - 1 && <div className="dag-arrow">→</div>}
+          {i < waves.length - 1 && (
+            <div className="dag-arrow">
+              <span className="dag-arrow-glyph">→</span>
+            </div>
+          )}
         </Fragment>
       ))}
     </div>

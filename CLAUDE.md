@@ -385,8 +385,12 @@ doubt, log it.
   — each gate carries its `description` (what the producer's `produces[key]` and
   consumer's `consumes[key]` contracts ASSERT, enriched in the API's
   `gatesForWorkflow`), so a gate is inspectable, not just coloured.
-  `dashboard/.../Dag.tsx` renders a chip per gate on its consumer node, and
-  EVERY chip (passed/failed/pending alike) links to that gate's row in the
+  `dashboard/.../Dag.tsx` renders a chip per gate ON THE CONNECTING ARROW between
+  the producer and consumer waves it guards (not under either node) — at both
+  desktop (`→`) and phone (`↓`) widths; a non-adjacent producer→consumer edge that
+  can't sit on a single inter-wave arrow falls back to rendering under the consumer
+  node rather than being dropped or mis-placed. EVERY chip (passed/failed/pending
+  alike) links to that gate's row in the
   **Validation gates** panel on the workflow-run page (`gateAnchor` gives the
   shared DOM id) — the panel shows what each gate validates (key + description,
   producer→consumer), its outcome, and links to the producer/consumer/violation
