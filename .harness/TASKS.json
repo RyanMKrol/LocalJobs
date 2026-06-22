@@ -2486,7 +2486,7 @@
     {
       "id": "T096",
       "title": "Gate detail: neutral 'Produced → / → Consumed' labels instead of Output/Input",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
