@@ -252,9 +252,13 @@ button.dag-node:hover { border-color: var(--accent); }
   .kv .k { margin-top: 9px; }
   .kv .k:first-child { margin-top: 0; }
 
-  /* DAG: keep the nodes from being wider than the viewport. */
-  .dag { padding: 14px; gap: 8px; }
+  /* DAG: switch to top-down layout on mobile — waves stack vertically, nodes flow
+     horizontally within each wave, and the → arrow becomes ↓. */
+  .dag { flex-direction: column; align-items: stretch; padding: 14px; gap: 8px; }
+  .dag-wave { flex-direction: row; flex-wrap: wrap; justify-content: center; }
   .dag-node { min-width: 0; }
+  .dag-arrow { font-size: 0; text-align: center; }
+  .dag-arrow::after { content: '↓'; font-size: 22px; color: var(--grey); }
 
   /* DB row modal: full-width key column on narrow screens. */
   .db-modal-row { grid-template-columns: 1fr; gap: 2px; }
