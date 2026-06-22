@@ -1902,7 +1902,7 @@
     {
       "id": "T075",
       "title": "Database page: add padding inside the Common queries / Browse tables button panels",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
