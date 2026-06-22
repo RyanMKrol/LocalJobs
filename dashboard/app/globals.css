@@ -95,6 +95,7 @@ tbody tr:hover { background: var(--panel-2); }
 .kv .k { color: var(--muted); }
 .muted { color: var(--muted); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.code-block { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .spacer { flex: 1; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); }
@@ -220,7 +221,7 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .gate-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .gate-role { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .gate-summary { margin: 0 0 4px; font-size: 13px; }
-.gate-format { margin: 0 0 10px; font-size: 12px; }
+.gate-format { margin: 0 0 10px; }
 .gate-arrow { display: flex; align-items: center; color: var(--muted); font-size: 20px; flex: 0 0 auto; }
 .gate-expects { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .gate-expects li { display: flex; gap: 8px; align-items: flex-start; }
@@ -231,8 +232,9 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .gate-expect-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .gate-expect-label { font-size: 13px; }
 .gate-expect-detail { font-size: 12px; }
-.gate-expect-actual { font-size: 12px; }
-.gate-sample { margin: 12px 0 0; font-size: 12px; }
+.gate-expect-actual { margin-top: 3px; }
+.gate-sample { margin: 12px 0 0; }
+.gate-sample-label { font-size: 12px; margin: 0 0 4px; }
 .gate-card-foot { margin: 12px 0 0; font-size: 13px; }
 
 /* ──────────────────────────────────────────────────────────────────────────

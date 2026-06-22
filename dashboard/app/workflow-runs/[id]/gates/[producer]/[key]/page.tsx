@@ -54,7 +54,7 @@ function SideCard({
         <strong>{jobName}</strong>
       </div>
       {shape?.summary && <p className="gate-summary">{shape.summary}</p>}
-      {shape?.format && <p className="muted mono gate-format">{shape.format}</p>}
+      {shape?.format && <code className="code-block gate-format">{shape.format}</code>}
       {rows.length > 0 ? (
         <ul className="gate-expects">
           {rows.map((r) => (
@@ -63,7 +63,7 @@ function SideCard({
               <span className="gate-expect-text">
                 <span className="gate-expect-label">{r.label}</span>
                 {r.detail && <span className="muted gate-expect-detail">{r.detail}</span>}
-                {r.actual?.actual && <span className="muted mono gate-expect-actual">actual: {r.actual.actual}</span>}
+                {r.actual?.actual && <code className="code-block gate-expect-actual">{r.actual.actual}</code>}
               </span>
             </li>
           ))}
@@ -72,7 +72,10 @@ function SideCard({
         <p className="muted">No declared shape for this side.</p>
       )}
       {result?.sample && (
-        <p className="gate-sample"><span className="muted">What actually flowed:</span> <span className="mono">{result.sample}</span></p>
+        <div className="gate-sample">
+          <p className="gate-sample-label muted">What actually flowed:</p>
+          <code className="code-block">{result.sample}</code>
+        </div>
       )}
       {!result && <p className="muted">This stage hasn&apos;t run yet — showing the expected shape only.</p>}
       {runId && <p className="gate-card-foot"><a href={`/runs/${runId}`}>view {role.toLowerCase()} logs →</a></p>}
