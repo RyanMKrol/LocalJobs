@@ -54,10 +54,10 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 // The harness backlog (.harness/TASKS.json), resolved relative to this file so it
 // works regardless of the daemon's cwd. Read-only pass-through for the dashboard.
 const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/TASKS.json', import.meta.url));
-function readBacklog(): { tasks: unknown[]; error?: string } {
+function readBacklog(): { tasks: unknown[]; defaults?: unknown; error?: string } {
   try {
-    const parsed = JSON.parse(readFileSync(BACKLOG_PATH, 'utf8')) as { tasks?: unknown[] };
-    return { tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [] };
+    const parsed = JSON.parse(readFileSync(BACKLOG_PATH, 'utf8')) as { tasks?: unknown[]; defaults?: unknown };
+    return { tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [], defaults: parsed.defaults };
   } catch (e) {
     return { tasks: [], error: e instanceof Error ? e.message : 'cannot read backlog' };
   }

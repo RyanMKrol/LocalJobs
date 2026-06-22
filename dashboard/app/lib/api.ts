@@ -148,6 +148,17 @@ export interface CannedQueryResult extends CannedQueryMeta {
   rows: Record<string, unknown>[];
 }
 
+export interface EscalationRung {
+  model?: string;
+  effort?: string;
+}
+
+export interface BacklogDefaults {
+  model?: string;
+  effort?: string;
+  escalation?: EscalationRung[];
+}
+
 export interface BacklogTask {
   id: string;
   title: string;
@@ -157,6 +168,7 @@ export interface BacklogTask {
   tags?: string[];
   model?: string;
   effort?: string;
+  escalation?: EscalationRung[];
   scope?: string[];
   verify?: string[];
   do: string;
@@ -206,7 +218,7 @@ export const api = {
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
 
   // Read-only harness backlog (.harness/TASKS.json)
-  backlog: () => get<{ tasks: BacklogTask[]; error?: string }>('/api/backlog'),
+  backlog: () => get<{ tasks: BacklogTask[]; defaults?: BacklogDefaults; error?: string }>('/api/backlog'),
 
   // Read-only DB browser
   dbTables: () => get<{ tables: string[] }>('/api/db/tables'),
