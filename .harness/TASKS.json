@@ -1872,6 +1872,674 @@
       "verify": [],
       "do": "On the Backlog LIST view, the next-eligible task is labelled with a \"▶ in progress\" pill (statusPill), which is misleading — nothing is actively building it (TASKS.json has no in_progress status, and the loop may not even be running). A not-done task should show its REAL status (pending). Show \"pending\" in the list and drop the next-task highlight/border there. Keep the DAG view’s accurately-labelled \"next\" node highlight as-is.",
       "doneWhen": "On /backlog a pending task shows \"pending\" (no \"in progress\" label) and no special list highlight; the DAG view keeps its \"next\" node; dashboard build passes."
+    },
+    {
+      "id": "T074",
+      "title": "Services edit-limits: consistent placeholder wording across the three inputs",
+      "status": "done",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/services/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Services page (/services) 'Edit limits' form the three input placeholders are inconsistent: the Rate/min input uses placeholder=\"none\" while Rate/day and Rate/month both use placeholder=\"no cap\" (page.tsx lines ~101/105/109). Make the three placeholders use consistent wording so a blank field reads the same way across all three (e.g. all 'no limit'); keep the existing blank-input-means-null behaviour and the per-field ✕ 'set to no limit/no cap' clear buttons working.",
+      "doneWhen": "On the Services edit-limits form, the Rate/min, Rate/day and Rate/month inputs show consistent placeholder text for the empty (no-limit) state; blank still maps to null and the ✕ clear buttons still work; dashboard build passes and the mobile-check stays green."
+    },
+    {
+      "id": "T075",
+      "title": "Database page: add padding inside the Common queries / Browse tables button panels",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/db/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "do": "On the Database page (/db) the 'Common queries' and 'Browse tables' panels render their buttons directly inside a `.panel` with only `display:flex; flexWrap; gap:8` and no padding (page.tsx ~lines 132 and 163), so the buttons sit flush against the panel border (the `.panel` class itself has no padding by design — globals.css:46 — because table panels go edge-to-edge). Add a bit of inner padding to just these two button panels so the buttons aren't stuck to the container boundary. Do NOT add padding to `.panel` globally — that would break the table panels that intentionally fill edge-to-edge; scope the padding to these button containers (inline style or a dedicated class).",
+      "design": null,
+      "verify": [],
+      "doneWhen": "On /db the Common queries and Browse tables button panels have inner padding so the buttons no longer touch the panel border; table-filled panels elsewhere remain edge-to-edge (unchanged); dashboard build passes and the mobile-check stays green."
+    },
+    {
+      "id": "T076",
+      "title": "Backlog DAG view: nicer node rendering + drop the 'next' indicator",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The Backlog DAG view (BacklogDag in components/Dag.tsx) renders each task as a bare node showing just the id + a status word, with a plain '→' between waves — it reads as a flat list of plain-text items. Two changes: (1) Make the DAG visually nicer — give nodes proper styled cards (e.g. show the task title, not only the id; clearer status colouring; better node/edge/wave styling) while keeping the horizontal scroll, the click-to-select-and-inspect behaviour, and mobile responsiveness. (2) Remove the 'next' concept from the DAG view entirely: drop the '▶ next' node-status label (Dag.tsx ~line 235), the nextId-driven 'running' colour class (Dag.tsx ~line 218), the '· next' legend entry (page.tsx ~line 157), and stop using nextId for any highlight on this view. NOTE: this supersedes T073's decision to keep the DAG 'next' highlight — update the now-stale comment at page.tsx:30 and the DagDetailPanel isNext styling accordingly.",
+      "doneWhen": "On /backlog the DAG view renders tasks as styled nodes (title visible, not bare id + arrow plain text); there is NO 'next' label, highlight, or legend entry anywhere on the DAG view; clicking a node still opens its detail panel; dashboard build passes and mobile-check stays green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T077",
+      "title": "Backlog list: make Done items clickable to reveal task detail",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Backlog LIST view, items under the 'Done' heading (the DoneRow component, page.tsx ~lines 65-73) are a flat, non-interactive list of id + title + '✓ done' pill. Make each done row clickable to reveal more context about the task — its `do`, `doneWhen`, depends-on, and tags (reuse the existing TaskCard / DagDetailPanel content layout) — e.g. expand inline on click or open a detail panel/modal. Keep the collapsed default list compact (the current one-line-per-task summary) so the Done section stays scannable; show the fuller detail only after a click.",
+      "doneWhen": "On /backlog clicking a Done item reveals its fuller detail (do, done-when, depends-on, tags); the default collapsed Done list stays a compact one-line-per-task summary; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T078",
+      "title": "Backlog section headers: add an expand/collapse caret affordance",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/backlog/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The collapsible section headers on the Backlog list view (the <details>/<summary className=\"section-heading-summary\"> blocks in backlog/page.tsx — 'Harness-buildable', 'Needs a human', 'Done') give no visual signal that they're clickable/expandable: there's no caret or marker that changes with state. Add a caret/disclosure indicator on each section header that changes orientation with the open/closed state — collapsed vs expanded (e.g. a caret pointing right ▶ when collapsed and rotating to point down ▼ when open; the user described it as 'left and down', so make the orientation clearly distinct between states). Drive it off the native <details open> state (CSS on .section-heading-summary, e.g. a ::before/::after caret rotated via details[open]); keep it accessible and consistent across all three section headers.",
+      "doneWhen": "On /backlog each section header shows a caret that points one way when the section is collapsed and rotates to a clearly different orientation when expanded, making the header obviously clickable; behaviour is consistent across all three sections; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T079",
+      "title": "Remove the stale job-level Chrome profile; keep only the framework-level one",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "perfumes",
+        "cleanup",
+        "browser"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/jobs/perfumes/config.test.ts",
+        "src/jobs/perfumes/config.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Two chrome-profile folders exist on disk: the framework-level data/chrome-profile (the one ACTUALLY used — config.ts:19 chromeProfileDir -> browser.ts defaultChromeProfileDir -> perfumes/config.ts:15 profileDir -> fetch.ts:107) and an ORPHANED job-level one at src/jobs/perfumes/data/chrome-profile that NO code references. Keep a single framework-level shared profile: (1) delete the stale local folder src/jobs/perfumes/data/chrome-profile (LOCAL-ONLY cleanup — chrome-profile/ and data/ are gitignored and tripwired by the pre-push guard, so this produces NO tracked diff; never `git add` anything under data/ or chrome-profile/). (2) Because the deletion itself isn't CI-verifiable, the committable deliverable is a regression test locking in the invariant: add a unit test (extend perfumes/config.test.ts) asserting perfumesConfig.profileDir === defaultChromeProfileDir (i.e. the framework-level data/chrome-profile, env-overridable via LOCALJOBS_CHROME_PROFILE) so a job-level profile can't silently creep back in. Confirm grep shows no remaining reference to a job-level profile path.",
+      "doneWhen": "src/jobs/perfumes/data/chrome-profile no longer exists locally; the framework-level data/chrome-profile remains and is the only profile any code points at; a unit test asserts perfumesConfig.profileDir === defaultChromeProfileDir; `npx tsc --noEmit` and `npm test` are green. (No tracked diff is expected from the folder deletion itself — only the new test.)"
+    },
+    {
+      "id": "T080",
+      "title": "Mobile workflow DAG: centre the down arrow between stacked node boxes",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "mobile"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On a phone-width viewport the workflow graph (DAG) stacks vertically and the between-wave connector becomes a '↓' (rendered via .dag-arrow::after in the @media(max-width:640px) block, globals.css ~lines 268-269). The arrow is not horizontally centred under the node boxes: .dag-arrow keeps display:flex with default left justification (line 123) while the stacked boxes use justify-content:center (.dag-wave, line 266), so the ↓ sits to the left instead of centred between the boxes it connects. Fix the mobile .dag-arrow so the ↓ is horizontally centred relative to the centred node boxes (e.g. give .dag-arrow justify-content:center in the mobile block, or switch it to a centred block). Keep the desktop left-to-right '→' rendering unchanged.",
+      "doneWhen": "On a ~402px viewport the workflow DAG's down arrow is horizontally centred between the stacked node boxes; the desktop horizontal arrow is unaffected; dashboard build passes and node dashboard/scripts/mobile-check.mjs stays green."
+    },
+    {
+      "id": "T081",
+      "title": "Workflow-run progress: count completed stages only (no in-flight partial credit)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "progress",
+        "backend"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "A workflow run currently shows a confusing fractional percentage (e.g. 2% while one of four jobs is 7% in) because rollUpWorkflowProgress (store.ts ~lines 471-476) gives a still-running member partial credit: `fraction += TERMINAL ? 1 : progress/100`. Change it so progress reflects ONLY completed stages: a member that has reached a terminal state contributes 1, a still-running or not-yet-started member contributes 0 (drop the progress/100 term). So with N stages the bar stays 0% until the first stage finishes, then steps in 100/N increments (4 jobs -> 0/25/50/75/100; 5 jobs -> 0/20/...). Keep the total = workflow_jobs count and the success=100 finish behaviour. Update the unit tests in store.test.ts to assert the new whole-stage stepping (and that an in-flight member no longer moves the bar). IMPORTANT: this reverses the deliberate real-time/in-flight roll-up described in CLAUDE.md ('a still-running member contributes its own progress/100') and README ('rolled up in real time from member-job progress') — update both docs in lockstep to describe completed-stage stepping.",
+      "doneWhen": "rollUpWorkflowProgress returns 0 until the first member reaches a terminal state, then steps in 100/N increments per completed stage with no partial credit for running members; store.test.ts covers the new behaviour; CLAUDE.md + README progress descriptions updated to match; npx tsc --noEmit and npm test green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T082",
+      "title": "Workflow-run gates panel: keep 'detail →' on one line",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "In the Validation gates panel on the workflow-run page (workflow-runs/[id]/page.tsx lines ~41-43) the gate-detail link reads 'detail →' but the arrow wraps onto a new line in the narrow last table cell. Keep the whole 'detail →' link on a single line (e.g. white-space:nowrap on the link or its cell). Don't change the link target or the rest of the table layout.",
+      "doneWhen": "On the workflow-run Validation gates panel the 'detail →' link renders entirely on one line (arrow no longer wraps) at desktop and phone widths; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T083",
+      "title": "Run page: use the job name as the header instead of generic 'Run'",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the individual run page (/runs/[id], runs/[id]/page.tsx line ~42) the page header is a generic '<h1>Run</h1>'. Change the header to the job's name (run.job_name is already available on the page) so the title identifies which job this is a run of. Keep the run id visible (the muted mono span beside the header) and keep the StatusBadge; if useful, keep a small 'run' qualifier as a subtitle so it's still clear this is a single run. Note jobs have no separate title field — run.job_name is the job's identity.",
+      "doneWhen": "On /runs/[id] the page header shows the job name (run.job_name) rather than the literal word 'Run'; the run id and status badge remain visible; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T084",
+      "title": "Back-nav labels: drop the leading '#' before the id (all pages)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The back-navigation link (e.g. on /runs/[id]) shows '← #<id>' — a '#' symbol prefixing an id. This comes from the shared backFrom helper (ui.tsx line ~76): when arriving from a workflow run it builds the label as `#${segs[1]}` (the workflow-run id with a leading '#'). Remove the '#' so the label is just the id. Because backFrom is the shared helper behind the run AND job page back-links, fixing it there applies the change across all pages. Grep the dashboard for any other place that renders a '#'-prefixed id in a nav/back link and remove the '#' there too, so the change is consistent everywhere (not just the run view).",
+      "doneWhen": "Back-navigation labels show the id with no leading '#' (e.g. '← <id>' not '← #<id>'), consistently across the run and job pages and anywhere else a '#'-prefixed id appeared in nav; the link target is unchanged; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T085",
+      "title": "Human-readable exit codes: map codes to labels and surface them site-wide",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Run details currently show a raw exit code (e.g. 'Exit code: 0') which forces the reader to decode the number every time (runs/[id]/page.tsx line ~62). Add a shared, reusable helper (e.g. exitCodeLabel(code: number|null) in ui.tsx) that maps exit codes to human-readable text, and surface the label across the site wherever an exit code is shown. Base the enum on the codes this system ACTUALLY emits (runJob.ts): 0 = success/OK; 1 = failed — job threw an exception (also 'unknown job'); timeouts are SIGTERM/SIGKILL so the code arrives as null (or a signal code like 143 SIGTERM / 137 SIGKILL) — label those as terminated/killed (timeout); null with no signal = 'no exit code / did not complete'. Provide a sensible default for anything unrecognised (e.g. 'unexpected exit (code N)'). Show the human label as the primary text; keep the raw number available (e.g. in parentheses or a title/tooltip) for the curious. Currently only the run detail page renders exit_code — grep the dashboard and apply the helper anywhere else an exit code appears so it's consistent site-wide.",
+      "doneWhen": "A shared helper maps exit codes to human-readable labels (0 success, 1 exception, signal/null = timeout/killed, with a sensible default for unknown codes); every place the dashboard shows an exit code uses it (run detail page at minimum), with the raw number still discoverable; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T086",
+      "title": "Workflows list: make the 'Last run' status pill link to that workflow run",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflows/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Workflows list (/workflows) the 'Last run' column shows a status pill ('running' / 'succeeded' / etc.) that is not clickable (workflows/page.tsx lines ~38-39). Make that pill a link to the workflow run it refers to — p.last_run is a WorkflowRun and already carries its id (api.ts WorkflowRun.id), so wrap the badge in an anchor to `/workflow-runs/${p.last_run.id}`. Keep the relative-time text beside it, the no-run ('—') case, and the existing badge styling.",
+      "doneWhen": "On /workflows each Last-run status pill is a clickable link that navigates to that workflow run's detail page (/workflow-runs/<id>); the relative time and the empty/no-run state are unchanged; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T087",
+      "title": "Set maxRetries: 3 on all jobs (retry on any non-success)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "jobs",
+        "config",
+        "places",
+        "perfumes"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/jobs/places/ingest.job.ts",
+        "src/jobs/places/resolve.job.ts",
+        "src/jobs/places/enrich.job.ts",
+        "src/jobs/places/llm-enrich.job.ts",
+        "src/jobs/perfumes/find-url.job.ts",
+        "src/jobs/perfumes/fetch.job.ts",
+        "src/jobs/perfumes/parse.job.ts",
+        "src/jobs/perfumes/build.job.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "All 8 example jobs currently set maxRetries: 0. Set maxRetries: 3 on every job def so a job that finishes in any non-success state (failed or timeout) is retried up to 3 times. NO executor change is needed — the attempt loop (executor.ts ~lines 38-49) already retries on any non-success outcome up to maxRetries; the DB reads max_retries from the synced job row, so a daemon restart picks up the new values. This is safe because each job is idempotent/resumable (per-item work_items ledger with its own attempt budget) and paid calls are guarded by service quotas, so a whole-job retry just re-runs the loop skipping already-done items (no double-spend). Apply 3 to all 8 jobs unless you find a specific job where retrying the whole process is genuinely harmful — if so, leave it lower and note why in the worklog. Update the doc examples/conventions (CLAUDE.md 'How to add a job' + README job snippet, which currently show maxRetries: 1) so the recommended default reads as 3 for new jobs too.",
+      "doneWhen": "All 8 example job defs set maxRetries: 3 (or a documented lower value with a stated reason); the executor retry behaviour is unchanged (retries on any non-success); CLAUDE.md + README job examples/guidance reflect the new default; npx tsc --noEmit and npm test are green."
+    },
+    {
+      "id": "T088",
+      "title": "Gate detail: render code/JSON-shaped values in a clear code block",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the validation-gate detail page the contract's code/JSON-shaped strings are rendered as plain inline mono text, which reads poorly — e.g. an artifact format/summary like '{ perfumeId: fragranticaUrl }' sits inline in a sentence (SideCard in gates/[producer]/[key]/page.tsx: shape.format line ~57, the per-expectation 'actual:' value line ~66, and result.sample line ~75; the .gate-format/.gate-expect-actual/.gate-sample styles in globals.css). Render the code-shaped values (the artifact format string, the 'actual' values, and the sample of what flowed) inside a clearly-delineated code block — a distinct mono block with its own background/border/padding (and wrapping for long content) — so object/JSON shapes are easy to read and visually separated from prose. Keep genuinely plain-English text (the shape.summary, expectation labels/details, gate description) as normal prose; only the code-shaped bits get the code-block treatment. Add a small reusable code-block style in globals.css rather than ad-hoc inline styles.",
+      "doneWhen": "On a gate detail page the code/JSON-shaped values (artifact format, per-expectation actuals, and the 'what actually flowed' sample) render inside a visually distinct code block (mono, own background/border/padding, wraps long content); plain-English prose stays as prose; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T089",
+      "title": "Gate detail: make the per-expectation 'actual' result stand out",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the validation-gate detail page each expectation's ACTUAL result is currently rendered as muted inline text ('actual: <value>' with className 'muted mono gate-expect-actual', SideCard line ~66; .gate-expect-actual in globals.css) — muting makes the most important part (what actually flowed) recede instead of stand out. Redesign this so the actual result reads as a distinct, prominent element: e.g. put it on its own line with extra spacing above, and give the 'actual' label clear emphasis (bold and/or uppercase small-caps style, and stop muting it). Aim for a tidy 'expected vs actual' feel where the actual value is obviously the answer. Use your judgement on the exact treatment (the user suggested: a newline before it, bold 'actual', uppercase 'actual'). NOTE: this overlaps with T088 (which wraps code/JSON-shaped values in a code block) — whichever lands second should harmonise so the emphasised 'ACTUAL' label and the code-block value work together rather than fight.",
+      "doneWhen": "On a gate detail page each expectation's actual result is visually prominent — clearly separated (own line/spacing) with an emphasised, non-muted 'actual' label (bold/uppercase) — rather than muted inline text; it reads cleanly alongside the T088 code-block treatment if that has landed; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T090",
+      "title": "DAG: place validation-gate chips on the connecting arrow, between the two jobs",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/globals.css",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On every view that shows a workflow graph, validation-gate chips currently render UNDER the consumer (second) job node (Dag.tsx ~lines 149-150 — gates are grouped by consumer and rendered inside the consumer node's cell), which makes a gate look like a property of that one job. A gate actually bridges a producer→consumer boundary, so it should sit ON / BELOW the connecting arrow BETWEEN the two jobs, not under either node. Update the DAG rendering so gate chips are positioned at the edge/arrow that the gate guards. Cover BOTH renderings — the run view (GateChips) and the structure-only definition view (StructuralGateChips) — and BOTH orientations: desktop left-to-right '→' and the mobile stacked '↓' (globals.css .dag-arrow / .dag-gates / @media block). Keep every chip clickable, state-coloured (passed/failed/pending or structural), and linked to its gate detail/failure logs. NOTE: gates are keyed by (producer, consumer); the example workflows are strictly linear so the producer is the wave immediately before the consumer (place the chips on that inter-wave arrow). For any non-adjacent producer→consumer edge, fall back gracefully (don't drop the chip — e.g. keep it associated with the consumer) rather than mis-placing it. Update the CLAUDE.md gate description that currently says chips render 'on its consumer node'.",
+      "doneWhen": "On both the workflow-run DAG and the structure-only workflow graph, gate chips render on/beside the connecting arrow between the producer and consumer (not under the consumer node), at both desktop and phone widths; chips stay clickable, correctly state-coloured, and linked; non-adjacent edges still show their chip without mis-placement; the CLAUDE.md gate wording is updated; dashboard build passes and mobile-check stays green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T091",
+      "title": "Backend: cancel a running workflow run (abort + kill children + API)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "backend",
+        "workflow",
+        "executor",
+        "api"
+      ],
+      "scope": [
+        "src/core/workflow-executor.ts",
+        "src/core/dag.ts",
+        "src/core/executor.ts",
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "src/daemon.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/core/executor.test.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Add the ability to cancel/stop a RUNNING workflow run. Today nothing tracks in-flight runs and the execution path is not interruptible. Build the mechanism: (1) IN-MEMORY REGISTRY: keep a Map<workflowRunId, {AbortController}> populated whenever runWorkflow() starts (so BOTH the scheduler path and the manual /api/workflows/:name/run path register) and cleaned up when it settles. (2) ABORT THREADING: thread an AbortSignal from runWorkflow() through executeDag() (dag.ts) and the runOne hook into runJobForWorkflow()/runAttempts()/executeAttempt() (executor.ts). The DAG loop must stop launching new stages once the signal is aborted (skip not-yet-started members); in-flight members must be actively killed. CRITICAL: aborting must ACTUALLY kill the in-flight child process — the abort handler has to call child.kill('SIGTERM') then SIGKILL after a grace period (reuse the existing timeout kill path at executor.ts ~line 112), NOT merely resolve the promise early (that would orphan the child). (3) STORE TRANSITIONS: mark the workflow run 'cancelled' (finishWorkflowRun) and transition member runs sensibly — a killed in-flight member ends 'cancelled', a not-yet-started stage does not spawn. (4) API: add POST /api/workflow-runs/:id/cancel (mutating — use the existing loopback/token authoriseMutation guard), validating the run exists and is 'running', looking it up in the registry, calling abort(), and recording the cancelled state; return { ok: true } (and a clear error if the run is already terminal or not found). Add unit tests for the abort propagation / that an aborted run stops launching stages and marks cancelled. Update CLAUDE.md (executor/workflow-executor architecture + the API route surface) and README (note the new capability) in lockstep. NOTE: this is safety-critical executor code — be careful not to leave processes hanging or break the existing timeout/retry/overlap behaviour.",
+      "doneWhen": "POST /api/workflow-runs/:id/cancel aborts a running workflow: in-flight child processes are actually killed (no orphans), no further stages launch, and the workflow run + affected member runs are marked 'cancelled' in the DB; a terminal/unknown run id returns a clear error; existing timeout/retry/overlap behaviour is unchanged; new unit tests cover the abort path; CLAUDE.md + README updated; npx tsc --noEmit and npm test green. (Manually verify mid-run that the child PID is gone and the run shows cancelled.)",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T092",
+      "title": "UI: Cancel button for a running workflow",
+      "status": "pending",
+      "dependsOn": [
+        "T091"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Surface a Cancel/Stop control for a running workflow, using the POST /api/workflow-runs/:id/cancel endpoint from T091. Add a cancelWorkflowRun(id) client method to dashboard/app/lib/api.ts (mirror the existing post<> helpers like runWorkflow/toggleWorkflow). Add a 'Cancel' button on the workflow-run detail page (workflow-runs/[id]/page.tsx) in the header row next to the status badge, shown/enabled ONLY while run.status === 'running' and disabled while the request is in flight (mirror the run()/busy pattern from workflows/[name]/page.tsx); on click call api.cancelWorkflowRun(id) with error handling, and let the 2s poll reflect the new 'cancelled' status. Optionally also expose it on the workflow detail page (workflows/[name]/page.tsx) when that workflow has an active run, linking to / acting on the active run. Update the README dashboard-pages section to mention the cancel control.",
+      "doneWhen": "On the workflow-run detail page a Cancel button appears while the run is running, calls the cancel endpoint, becomes disabled during the request, and the page reflects the 'cancelled' status after the next poll; the button is absent/disabled for terminal runs; README dashboard-pages updated; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T093",
+      "title": "Design: workflow run-limits via framework-tracked input lineage",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "design",
+        "architecture",
+        "workflow"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "max",
+      "scope": [
+        ".harness/designs/T093-workflow-run-limits.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Author a design doc at .harness/designs/T093-workflow-run-limits.md for 'run a workflow capped at N originating inputs'. DECISIONS ALREADY MADE (interview 2026-06-22): (a) N counts ORIGINATING inputs — all fan-out work derived from those N roots runs to completion (limit 1 = one root input plus every descendant it produces, e.g. 1 perfume -> 3 similar -> 9 pages -> 27 files all run); (b) the limit is a MANUAL run-time option only (chosen when clicking Run / via the API; scheduled runs stay unlimited); (c) lineage is FRAMEWORK-TRACKED via a root/lineage key on work_items that the framework threads and enforces across stages, each job declaring each produced item's parent. The doc MUST specify: (1) LINEAGE DATA MODEL — new column(s) on work_items (current PK is (job_name,item_key); add e.g. root_key and/or parent_key) tying every item back to its originating input; how the first stage establishes a root and how downstream jobs declare each produced item's parent so root_key propagates through fan-out; the store.ts API additions (markWorkItem carrying lineage; queries to enumerate/count distinct roots and select the first N pending roots). (2) LIMIT SEMANTICS + SELECTION — with limit N, which N roots are chosen (deterministic, e.g. first N pending) and how each stage filters its input to only items whose root is in the selected set. (3) INVOCATION — extend POST /api/workflows/:name/run with an optional { limit }; the workflow_run record carries the limit; thread the limit + selected root-set through the workflow executor down to each member job. (4) JOB CONTRACT — how a job reads the active root-allowlist and declares item lineage (new JobContext helper and/or JobDefinition field in core/types.ts), and how that reaches the child process (runJob.ts gets the job's run via the executor — env/args). (5) BACKWARD COMPAT — the existing 1:1 places + perfumes workflows keep working unchanged when no limit is set; spell out the minimal change to make them declare lineage (each item's root is its own input). (6) UI — the manual Run control gains an optional limit input. (7) MIGRATION — additive work_items column migration in src/db/index.ts. Keep it concrete enough for the build task (T094) to implement; call out risks and the smallest viable first cut.",
+      "doneWhen": "The design doc .harness/designs/T093-workflow-run-limits.md exists and concretely specifies: the lineage data model + work_items schema/column change; the N-originating-inputs limit semantics and root-selection rule; the manual run-time invocation (API + executor + how the root-set/limit reach each job); the JobDefinition/JobContext lineage contract; backward-compat for the existing places/perfumes workflows; and the DB migration. It is detailed enough to implement directly. (Doc-only change; tsc/test trivially green.)"
+    },
+    {
+      "id": "T094",
+      "title": "Build: workflow run-limits (input lineage + manual N-input cap)",
+      "status": "pending",
+      "dependsOn": [
+        "T093"
+      ],
+      "gate": null,
+      "tags": [
+        "backend",
+        "workflow",
+        "api",
+        "dashboard",
+        "places",
+        "perfumes"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/core/types.ts",
+        "src/core/workflow-executor.ts",
+        "src/core/executor.ts",
+        "src/runJob.ts",
+        "src/api/server.ts",
+        "src/jobs/places",
+        "src/jobs/perfumes",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/db/store.test.ts",
+        "src/core/workflow-executor.test.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": ".harness/designs/T093-workflow-run-limits.md",
+      "verify": [],
+      "do": "Implement workflow run-limits per the design doc .harness/designs/T093-workflow-run-limits.md. Agreed shape: framework-tracked input lineage + a MANUAL limit of N originating inputs (all fan-out from each selected root runs to completion; scheduled runs stay unlimited). Concretely: add the lineage key column(s) to work_items (schema.sql) with an additive migration (src/db/index.ts); extend store.ts to record lineage on markWorkItem and to enumerate/select the first N pending roots and filter by root-set; thread an optional { limit } from POST /api/workflows/:name/run through the workflow executor and into each member job (so each stage only processes items whose originating root is in the selected N), reaching the child via runJob.ts; add the JobContext/JobDefinition mechanism (core/types.ts) for a job to read the active root-allowlist and declare each produced item's parent so root_key propagates through fan-out; migrate the existing places + perfumes jobs to declare lineage (1:1, so each item's root is its own input) and confirm they run unchanged with no limit; add an optional limit input to the dashboard Run control. Add unit tests covering lineage propagation, root selection, and limit enforcement INCLUDING a fan-out fixture (1 root -> many descendants) to prove all descendants of the selected roots run. Update CLAUDE.md + README. Follow the design doc; if a decision there proves wrong during implementation, update the doc in the same change. NOTE: this is a large change — if it genuinely cannot fit one context window, record a worklog note proposing a split rather than half-implementing.",
+      "doneWhen": "Running a workflow with a manual limit N processes at most N originating inputs and ALL their fan-out descendants (proven by a fan-out test fixture), keyed off the framework-tracked root key on work_items; running with no limit is unlimited and the existing places/perfumes workflows behave exactly as before; the limit is settable from the dashboard Run control and via POST /api/workflows/:name/run { limit }; the additive work_items migration applies cleanly; unit tests cover lineage + root selection + limit (incl. fan-out); CLAUDE.md + README updated; npx tsc --noEmit, npm test, and the dashboard build are all green."
+    },
+    {
+      "id": "T095",
+      "title": "Workflow run: show input → output mapping (first stab)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "workflow",
+        "api"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "src/core/dag.ts",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Take a FIRST STAB at surfacing, for a given workflow run, the workflow's input (at the first stage) and output (at the final stage) — ideally mapped to each other, even if it's just a flat list. Approach for this first cut: identify the first-stage and last-stage jobs from the workflow DAG (first wave / last wave via dag.ts), read each job's work_items (item_key + status + detail JSON, which may carry an output path/summary), and join first-stage items to last-stage items by shared item_key to produce a flat list of input-item -> final-output rows. Add a store query + a read-only API (extend GET /api/workflow-runs/:id or add GET /api/workflow-runs/:id/io — must read DB/files only, never a paid/remote call, so it's safe to poll) and render a panel on the workflow-run page showing the input -> output list, linking outputs to something useful (the producing run, or the output file path) where possible. This works for the current 1:1 example workflows (perfumes/places share the item key across all stages). KNOWN LIMITATIONS to call out in the UI/copy and code comments: work_items is global (not scoped per run), so this reflects the workflow's current first/last-stage ledger rather than strictly this run's items, and it does not handle fan-out — precise per-run, lineage-aware mapping arrives with the lineage work (T093/T094); cross-reference those but do NOT hard-depend on them. Keep it a clearly-labelled first cut.",
+      "doneWhen": "The workflow-run page shows a panel listing the workflow's input items mapped to their final outputs (a flat input -> output list) derived from the first- and last-stage work_items joined by key, with outputs linking somewhere useful where available; it works for the perfumes and places example workflows; the API path is read-only (DB/files only, safe to poll); the first-cut limitations (not per-run-scoped, no fan-out yet) are noted in the UI and comments; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green."
+    },
+    {
+      "id": "T096",
+      "title": "Gate detail: neutral 'Produced → / → Consumed' labels instead of Output/Input",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "api"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the validation-gate detail page the two sides are labelled 'Output' (producer) and 'Input' (consumer) — job-centric labels that read backwards on a page about the GATE (the gate's input is the producer's output; the gate's output is the consumer's input). Decision (interview 2026-06-22): avoid the frame-of-reference ambiguity by using NEUTRAL DIRECTIONAL labels rather than flipping. Relabel the producer side as 'Produced →' and the consumer side as '→ Consumed' (keep the producer/consumer job names beneath each, as today). Rename the corresponding API response fields too: GET /api/workflow-runs/:id/gates/:producer/:key currently returns { gate, output, input } — rename output->produced and input->consumed (or similar neutral names) and update the client types in dashboard/app/lib/api.ts and the SideCard role prop accordingly. Update the CLAUDE.md gate-page description (which currently says 'upstream stage Output -> Gate -> downstream stage Input', and 'output = producer's produces[key], input = consumer's consumes[key]') to the new wording. NOTE: this overlaps with T088 (code-block rendering) and T089 (emphasise actual) on the same SideCard — whichever lands later should harmonise so labels, code block, and the actual-result emphasis read cleanly together.",
+      "doneWhen": "The gate detail page uses neutral directional labels ('Produced →' for the producer side, '→ Consumed' for the consumer side) instead of Output/Input; the API response fields and client types are renamed to match; the CLAUDE.md gate-page description reflects the new wording; it harmonises with the T088/T089 changes if those have landed; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green."
+    },
+    {
+      "id": "T097",
+      "title": "Schedules: human-readable cron tooltip on hover",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "A raw cron schedule like '0 2 * * *' is hard to parse at a glance. Add a tooltip (hover) on every place a schedule is shown that gives a human-readable description, e.g. '0 2 * * *' -> 'At 02:00, every day'. Implement a small cron->English helper (in ui.tsx) covering the common shapes the app uses (daily at HH:MM, hourly, every N hours/minutes, weekly on a given day, etc.) and fall back to showing the raw expression when a cron can't be confidently described — never show a wrong description. Apply it as a title/tooltip wherever a cron is rendered (the Workflows list Schedule column and the workflow detail page at minimum; grep the dashboard for other schedule render sites and cover them too). PREFER a small in-repo helper to honour the repo's dependency-light convention; only reach for a tiny focused library (e.g. cronstrue) if hand-rolling broad coverage proves unreasonable — and note the choice in the worklog. Manual-only ('null' schedule) workflows should keep their existing 'manual' rendering with no misleading tooltip.",
+      "doneWhen": "Hovering a cron schedule anywhere it's shown reveals a human-readable description (e.g. '0 2 * * *' -> 'At 02:00, every day'); unrecognised cron expressions fall back to the raw string (no wrong description); manual-only workflows are unaffected; dashboard build passes and mobile-check stays green."
     }
   ]
 }
