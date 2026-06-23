@@ -3518,7 +3518,7 @@
     {
       "id": "T134",
       "title": "Graph view: hardcode the chosen \"key\" validation-gate style, remove the toggle + 4 unused styles",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T126"
       ],
