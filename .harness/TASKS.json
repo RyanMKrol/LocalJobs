@@ -3161,7 +3161,7 @@
     {
       "id": "T121",
       "title": "Backlog: remove the DAG view entirely (list-only)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
