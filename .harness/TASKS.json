@@ -3325,7 +3325,7 @@
     {
       "id": "T127",
       "title": "Review + choose: backlog section-header caret style (from T113)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T113"
       ],
@@ -3453,6 +3453,36 @@
           "effort": "xhigh"
         }
       ],
+      "reviewed": false
+    },
+    {
+      "id": "T132",
+      "title": "Backlog: hardcode the chosen \"spin\" section-header caret, remove the toggle + 4 unused styles, centre & pad it",
+      "status": "pending",
+      "dependsOn": [
+        "T127"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T132.md",
       "reviewed": false
     }
   ]
