@@ -2693,7 +2693,7 @@
     {
       "id": "T104",
       "title": "Workflow-run page: remove the redundant Validation gates panel",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
