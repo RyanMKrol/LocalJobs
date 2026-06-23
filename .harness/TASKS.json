@@ -1049,20 +1049,38 @@
     },
     {
       "id": "T044",
-      "title": "Folder-hierarchy check-in",
+      "title": "Reorganize jobs into stages/ + pull services out to a self-contained top-level src/services/",
       "status": "pending",
       "dependsOn": [],
-      "gate": "needs-human",
+      "gate": null,
       "tags": [
-        "review",
-        "needs-human"
+        "refactor",
+        "framework",
+        "services",
+        "coding"
       ],
       "scope": [
-        "."
+        "src/services",
+        "src/jobs/registry.ts",
+        "src/jobs/registry.test.ts",
+        "src/jobs/perfumes",
+        "src/jobs/places",
+        "src/jobs/places/config.test.ts",
+        "CLAUDE.md",
+        "README.md",
+        ".env.example"
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T044.md"
+      "spec": ".harness/tasks/T044.md",
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ]
     },
     {
       "id": "T045",
