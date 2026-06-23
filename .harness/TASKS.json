@@ -3516,6 +3516,44 @@
       "verify": [],
       "spec": ".harness/tasks/T137.md",
       "reviewed": false
+    },
+    {
+      "id": "T138",
+      "title": "Gate page: collapse identical producer/consumer sides to one panel; keep + prove asymmetric (fan-in) gate support",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "backend",
+        "framework",
+        "ui"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "src/core/dag.ts",
+        "src/core/dag.test.ts",
+        "src/core/workflow-executor.test.ts",
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/workflows/[name]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T138.md",
+      "reviewed": false
     }
   ]
 }
