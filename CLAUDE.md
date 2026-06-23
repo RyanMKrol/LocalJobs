@@ -664,6 +664,15 @@ this in addition to everything above:
     read-only-dashboard rule and the shell-owns-the-file rule. `status` stays shell-owned; only
     `reviewed` is human-owned, and the loop's `jq` status-write preserves it. The agent still must
     not hand-edit `reviewed` in TASKS.json — it's a UI action. (Absent values default to false.)
+- **Task `do`/`doneWhen` live in a per-task Markdown spec (T131).** A task's *what to build* and
+  *bar for done* are NOT flat strings in `.harness/TASKS.json` — they live in `.harness/tasks/TNNN.md`
+  with two sections, `## Do` and `## Done when`, referenced by the JSON task's `spec` field (a
+  repo-relative path). TASKS.json keeps every OTHER field (`status`, `dependsOn`, `gate`,
+  `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design`, `reviewed`). The loop's prompt
+  reads the orchestration fields from JSON and appends the spec MD verbatim; `GET /api/backlog`
+  inlines it as `specContent` (`readTaskSpec`, confined to `.harness/tasks/*.md`) and the Backlog
+  page renders it as markdown. **Authoring a NEW task = a JSON object with a `spec` field PLUS its
+  matching `.harness/tasks/TNNN.md` (no `do`/`doneWhen` in JSON), created in the same edit.**
 - **Backlog authoring: pair every "options/chooser" task with a review task (T129).** Whenever
   a backlog task builds MULTIPLE OPTIONS for the owner to choose between (toggleable styles, strategy
   variants, etc.), a PAIRED `needs-human` review task **must** also be authored that: (a)

@@ -277,8 +277,11 @@ export interface BacklogTask {
   escalation?: EscalationRung[];
   scope?: string[];
   verify?: string[];
-  do: string;
-  doneWhen: string;
+  // The task's do/doneWhen live in a per-task Markdown spec (T131): `spec` is the
+  // repo-relative path (.harness/tasks/TNNN.md) and `specContent` is its inlined
+  // text (## Do / ## Done when), supplied by GET /api/backlog for rendering.
+  spec?: string;
+  specContent?: string;
   // Human-review flag (T124): owner-set via the dashboard, not the harness loop.
   // Defaults to false (the API normalises absent values).
   reviewed?: boolean;

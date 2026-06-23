@@ -33,8 +33,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "do": "Make the test suite + typecheck pass on a CLEAN PUBLIC checkout (only public files present — most jobs are still gitignored at this point, so the CI runner sees only the framework + demo job). registry.test.ts currently asserts hardcoded counts (9 jobs / 4 services / 2 pipelines) that only hold when the private jobs are present locally — make it robust to whatever public fileset exists (assert the demo job loads + the registry validates without throwing, not exact private counts). Fix any module that does real work / needs data/ at import time so importing it in CI doesn't fail.",
-      "doneWhen": "On a checkout containing only tracked files, `npx tsc --noEmit` and `npm test` both pass; GitHub Actions 'CI' is green on the pushed commit.",
+      "spec": ".harness/tasks/T001.md",
       "reviewed": false
     },
     {
@@ -62,8 +61,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "do": "The repo must be self-contained — it must NOT reference other folders on the machine. perfumes/config.ts hardcodes templatePath='/Users/ryankrol/Development/perfume-markdown/research/_TEMPLATE.md' (leaks the machine's topography). Copy that template's CONTENT into a tracked in-project file src/jobs/perfumes/profile.template.md, change config.ts to resolve it RELATIVE to the perfumes job dir (no absolute path, no external repo), with an optional PERFUMES_TEMPLATE_PATH env override defaulting to the in-project file. Keep build.ts's FALLBACK_TEMPLATE. Document PERFUMES_TEMPLATE_PATH in .env.example. NOTE: the perfumes folder is still gitignored at this point — make the edits in place; the actual publish happens in T004.",
-      "doneWhen": "No absolute/external-repo path remains in any job code (`grep -rn '/Users/' src/jobs` is clean except inside data/); perfumes build still loads a template; typecheck + tests pass.",
+      "spec": ".harness/tasks/T002.md",
       "reviewed": false
     },
     {
@@ -89,8 +87,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "do": "Make the places job CODE public. Remove ONLY the 'src/jobs/places/' line from .gitignore (keep 'src/jobs/**/data/' and all secret rules). `git add` the places .ts files EXPLICITLY by path (NEVER `git add -A`); confirm via `git status` that nothing under src/jobs/places/data/ is staged. Verify a clean checkout still builds: the newly-public code must typecheck and the suite must stay green with no data/ present (use fixtures, no live API). Update README's note that 'jobs stay private' to reflect that places is now public.",
-      "doneWhen": "src/jobs/places/*.ts is tracked; src/jobs/places/data/** remains ignored (verify with `git check-ignore src/jobs/places/data/out`); typecheck + tests green; the pre-push guard would pass (no sensitive path staged).",
+      "spec": ".harness/tasks/T003.md",
       "reviewed": false
     },
     {
@@ -118,8 +115,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "do": "Make the perfumes job CODE public (depends on T002 having removed the external template path). Remove ONLY the 'src/jobs/perfumes/' line from .gitignore (keep data/ + secret rules). `git add` the perfumes .ts files + profile.template.md EXPLICITLY; confirm nothing under src/jobs/perfumes/data/ (especially chrome-profile/) is staged. Note in docs/LIMITATIONS.md that publishing exposes Fragrantica-scraping technique (accepted).",
-      "doneWhen": "src/jobs/perfumes/*.ts + profile.template.md tracked; src/jobs/perfumes/data/** (incl. chrome-profile) still ignored; typecheck + tests green; no sensitive path staged.",
+      "spec": ".harness/tasks/T004.md",
       "reviewed": false
     },
     {
@@ -145,8 +141,7 @@
       "verify": [
         "npm test"
       ],
-      "do": "Build out unit-test coverage for the framework core (currently only dag.ts + store helpers are tested). Cover: the executor (timeout-kill, retries, event parsing), the pipeline-executor (skip/aggregation/repeat-until-stable paths), the scheduler (croner triggers respect `enabled`), the service limiter callService (quota + throttle + min-interval spacing), and the notifier's header sanitiser. Use fake timers / injected clocks and stub child processes / network — NO live external calls. Keep tests against the scratch DB only.",
-      "doneWhen": "New *.test.ts files exercise the above paths; `npm test` is green; the new suites meaningfully assert behaviour (not just smoke imports).",
+      "spec": ".harness/tasks/T005.md",
       "reviewed": false
     },
     {
@@ -173,8 +168,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "do": "Add typed-artifact validation gates between dependent pipeline stages: let a job declare what it `produces`/`consumes`, and have the DAG/pipeline executor validate the contract at each boundary so an external-format drift (Takeout CSV layout, Fragrantica page structure) fails LOUD at the exact gate instead of passing bad data downstream. Make a failed gate a first-class, surfaced failure (run status + notification). Unit-test both a passing contract and a drifted/failing one.",
-      "doneWhen": "Contracts are declarable + enforced between stages; a violation produces a clear surfaced failure; tests cover pass + fail; typecheck + tests green; docs updated.",
+      "spec": ".harness/tasks/T006.md",
       "reviewed": false
     },
     {
@@ -197,8 +191,7 @@
       "verify": [
         "npx tsc --noEmit"
       ],
-      "do": "Audit README.md + CLAUDE.md against the current repo state and fix drift: the pipelines + services model, the ntfy notify topic/config, the work-ledger / usage-meter / stuck-items / notifier features, the dashboard pages list, the file map, and the now-PUBLIC places/perfumes jobs (the old 'all real jobs are gitignored' framing is no longer fully true — correct it honestly). Keep claims matched to code.",
-      "doneWhen": "Both docs accurately describe the current architecture, jobs, features, and public/private split; no stale claims remain.",
+      "spec": ".harness/tasks/T007.md",
       "reviewed": false
     },
     {
@@ -221,8 +214,7 @@
       "verify": [
         "npm --prefix dashboard run build"
       ],
-      "do": "Four small, self-contained dashboard fixes: (1) the pipeline detail graph (/pipelines/[name]) should show STRUCTURE only — omit the node status label when no `statusByJob` is provided (Dag.tsx); (2) when viewing a stage's logs from a pipeline run (/runs/[id] with a pipeline_run_id), the top-left back-link should return to /pipeline-runs/[pipeline_run_id], not the standalone job; (3) make the top-left 'Local Jobs' wordmark a link to the overview; (4) the overview 'Recent runs' list should show recent PIPELINE runs (link to /pipeline-runs/[id]).",
-      "doneWhen": "All four behaviours implemented; `npm --prefix dashboard run build` passes; typecheck clean.",
+      "spec": ".harness/tasks/T008.md",
       "reviewed": false
     },
     {
@@ -245,8 +237,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The parse stage emits accords: [{name, pct}] but pct is always null. Pull each accord's strength (the coloured bar's width %) off the cached Fragrantica page so accords carry weight. Parse against the already-fetched HTML under src/jobs/perfumes/data — NO live scrape.",
-      "doneWhen": "Accords carry a numeric pct parsed from the bar width on a cached fixture; pct is null only when genuinely absent on the page; a unit test asserts the parsed percentages against a committed/synthetic HTML fixture.",
+      "spec": ".harness/tasks/T009.md",
       "reviewed": false
     },
     {
@@ -268,8 +259,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Some Fragrantica notes-pyramid sections come back empty. Decide and implement how that is reflected in the built markdown — handle honestly: don't fabricate notes, don't silently drop the section. Verify against cached/synthetic fixtures, no live scrape.",
-      "doneWhen": "An empty notes-pyramid section produces a clear, honest markdown result (section omitted or explicitly marked empty — never fabricated); a unit test covers an empty-section fixture and a populated one.",
+      "spec": ".harness/tasks/T010.md",
       "reviewed": false
     },
     {
@@ -292,8 +282,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Niche houses have low vote counts = low-confidence community data. In the build step, down-weight low-sample Fragrantica signal against the LLM's own web research using a CONTINUOUS confidence weight (e.g. votes/(votes+k)). ALSO compute the ecosystem-wide vote/weight distribution across the scraped Fragrantica corpus to calibrate what counts as high vs low weight, and feed that distribution in as an input. Make the weighting explicit in the output. Verify against cached fixtures, no live calls.",
-      "doneWhen": "Build blends Fragrantica vs LLM via a continuous sample-size confidence weight calibrated against the corpus-wide distribution; the chosen weighting is explicit in the built profile; unit tests cover a low-sample and a high-sample fixture and assert the relative weighting.",
+      "spec": ".harness/tasks/T011.md",
       "reviewed": false
     },
     {
@@ -316,8 +305,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The places pipeline is schedule:null (manual-only). Give it a real DAILY cron schedule ('0 3 * * *') so no pipeline is manual-only, and ensure a daily spend cap derived from the monthly free Places allowance (~ monthly/30) is enforced so a daily run can't blow the month. Env-overridable per the caps convention. No live API calls in verification.",
-      "doneWhen": "Places pipeline schedule is a daily cron (not null); a daily cap (≈ monthly free allowance / 30) is configured and enforced in the enrich loops; a unit test asserts the cap arithmetic / that the loop stops at the daily cap; config is env-overridable.",
+      "spec": ".harness/tasks/T012.md",
       "reviewed": false
     },
     {
@@ -343,8 +331,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Remove the redundant per-job capStatus/recordUsage from places-enrich (google-places) and enrich-with-llm (gemini) so the service-level quota is the SINGLE source of truth and the QuotaExceededError soft-fail path is genuinely live (currently shadowed by the job cap). THEN write a backfill script that tops up THIS MONTH's service_usage from job_usage (google-places←places-enrich, gemini←enrich-with-llm) WITHOUT double-counting calls already recorded to service_usage (idempotent), run it in-place against the live data/jobs.db, and self-verify. NO live paid API calls — this only reads/writes the local meter tables.",
-      "doneWhen": "Per-job capStatus/recordUsage removed from both jobs; service quota is the sole governor and the QuotaExceededError path is exercised by a unit test; the backfill script is committed, was run in-place, and before/after service_usage vs job_usage counts (reconciled, no double-count) are logged to .harness/worklog/T013.md.",
+      "spec": ".harness/tasks/T013.md",
       "reviewed": false
     },
     {
@@ -367,8 +354,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Build a framework feature to prune work_items whose item_key is no longer in a job's current input (the case that orphaned the 3 old-id perfume rows after their ids were corrected). A job exposes its current input key-set; a MANUAL-triggered prune (API/CLI, never automatic) removes work_items not in that set and surfaces what it removed. The user clears the 3 orphaned perfume rows via this feature.",
-      "doneWhen": "A manual prune removes work_items whose item_key is absent from the job's current input set and keeps current ones; it is never triggered automatically; the removal is surfaced (API/log); unit tests cover keeps-current + removes-orphaned.",
+      "spec": ".harness/tasks/T014.md",
       "reviewed": false
     },
     {
@@ -391,8 +377,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Promote the Chrome-profile learnings from the perfumes fetch (persistent profile keeps Cloudflare clearance, real-Chrome channel, jittered pacing, rate=reputation-not-detection) into a shared src/core/browser.ts helper, and refactor the perfumes fetch to use it. Behaviour-preserving extraction. NO live fetch in verification.",
-      "doneWhen": "A reusable src/core/browser.ts encapsulates persistent-profile + real-Chrome-channel + jittered-pacing launch; perfumes fetch is refactored onto it with no behaviour change; typecheck + tests green without any live browser/network call.",
+      "spec": ".harness/tasks/T015.md",
       "reviewed": false
     },
     {
@@ -415,8 +400,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Make progress percentage a first-class citizen of the pipeline (today the perfumes pipeline just shows 0%). Give progress sensible denominators and a real-time roll-up from member jobs, so a pipeline run reports meaningful overall progress instead of a flat 0%.",
-      "doneWhen": "Pipeline progress is computed from member-job progress with sensible denominators and rolls up in real time; a unit test asserts the roll-up across member stages; the value is persisted/surfaced for the dashboard.",
+      "spec": ".harness/tasks/T016.md",
       "reviewed": false
     },
     {
@@ -442,8 +426,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Some items will never process (genuinely bad data). Add a way to MANUALLY mark a stuck item as permanently dismissed so it drops off the dashboard front page. MUST be manual-only, never automatic, and distinct from 'unstick' (which retries). Likely a new dismissed status on work_items plus an API + dashboard control.",
-      "doneWhen": "A stuck item can be manually dismissed and then no longer appears in the stuck list/front page; dismissal is never automatic and is distinct from unstick/retry; unit tests cover dismiss + that a dismissed item stays off the stuck list.",
+      "spec": ".harness/tasks/T017.md",
       "reviewed": false
     },
     {
@@ -466,8 +449,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The Services page is read-only. Add the ability to adjust a service's rate_per_minute / daily_cap / monthly_cap from the UI, persisted to the services table (overriding the code default). Reconcile code-sync vs user-edits the same way the job enabled-toggle does (user override wins / is preserved across code sync).",
-      "doneWhen": "Service rate_per_minute / daily_cap / monthly_cap are editable from the Services page and persisted; a code-sync does not clobber a user override (reconciled like the enabled toggle); unit tests cover persistence + the reconcile rule.",
+      "spec": ".harness/tasks/T018.md",
       "reviewed": false
     },
     {
@@ -490,8 +472,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Add a read-only SQLite table viewer page to the dashboard so the local DB can be browsed without building a feature per query. List tables and page through rows via a strictly read-only API path (no arbitrary mutation, no write SQL). Respect the existing read-only-client model.",
-      "doneWhen": "A dashboard page lists the DB tables and shows paged rows via a read-only API; there is no write/mutation path exposed; the dashboard build passes.",
+      "spec": ".harness/tasks/T019.md",
       "reviewed": false
     },
     {
@@ -522,8 +503,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Pipelines are the unit of work; jobs should only be viewed via their pipeline. Drop the /jobs tab + flat top-level job list, but keep per-job run/log drill-down reachable from the pipeline DAG nodes (standalone jobs as a section there).",
-      "doneWhen": "The /jobs flat tab + list is removed; per-job run/log drill-down is still reachable from pipeline DAG nodes; the dashboard build passes with no dangling links to the removed tab.",
+      "spec": ".harness/tasks/T020.md",
       "reviewed": false
     },
     {
@@ -552,8 +532,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The four overview tiles (Running / Succeeded / Failed runs / Stuck items) should be clickable and filter the lists below to just that category.",
-      "doneWhen": "Each of the four tiles is clickable and filters the lists below to its category (with a way to clear the filter); the dashboard build passes.",
+      "spec": ".harness/tasks/T021.md",
       "reviewed": false
     },
     {
@@ -582,8 +561,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "For a repeat-until-stable pipeline (perfumes), each cycle re-runs all stages, so one pipeline run accumulates ~one row per stage per cycle (can be ~100). It is accurate but overwhelming — group/collapse the member-runs list (e.g. latest per stage, or grouped by cycle/stage) rather than a flat 100-row list.",
-      "doneWhen": "The pipeline-run member-runs list is grouped/collapsed (e.g. latest per stage per cycle) instead of a flat long list, while still letting you reach each member run; the dashboard build passes.",
+      "spec": ".harness/tasks/T022.md",
       "reviewed": false
     },
     {
@@ -605,8 +583,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Harden the dashboard + API so remote actors can't abuse the run/toggle endpoints. Tighten CORS (currently '*') to an allowlist/same-origin, confirm the API binds to 127.0.0.1, and guard the mutating run/toggle endpoints (loopback/token check). Keep the read-only dashboard client working. Pairs with the Tailscale remote-access task.",
-      "doneWhen": "CORS is no longer '*' (allowlist/same-origin), the API bind address is confirmed loopback (configurable), and the run/toggle endpoints reject unauthorised callers; unit tests cover a disallowed origin and an unauthorised mutation being rejected.",
+      "spec": ".harness/tasks/T023.md",
       "reviewed": false
     },
     {
@@ -628,8 +605,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Make the dashboard reachable over a Tailscale tailnet (not the open internet) via `tailscale serve`. Keep the dashboard bound to localhost and keep the API on loopback (127.0.0.1) — NEVER expose the API. Add API-proxying so the dashboard serves its data through its OWN origin (e.g. Next.js rewrites / route handlers): a remote browser talks only to the dashboard, and the dashboard server (on the Mini) talks to 127.0.0.1:4789. Document the one-time `tailscale serve` setup (and that Funnel must stay OFF) in the README. The machine-side tailscale up / tailscale serve is operational; this task delivers the code + docs.",
-      "doneWhen": "Dashboard data loads end-to-end when the browser can reach ONLY the dashboard origin (API proxied through the dashboard; API still bound to 127.0.0.1 and never exposed); README documents the `tailscale serve` setup with Funnel off and the T023 guards in front; dashboard build + typecheck pass. (Live tailnet reachability is verified operationally, not in CI.)",
+      "spec": ".harness/tasks/T024.md",
       "reviewed": false
     },
     {
@@ -657,8 +633,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Both packages are pinned at 0.1. Bump the root and dashboard package.json version fields to 1.0.0.",
-      "doneWhen": "Both package.json version fields read 1.0.0; typecheck and the dashboard build pass.",
+      "spec": ".harness/tasks/T025.md",
       "reviewed": false
     },
     {
@@ -712,8 +687,7 @@
       "verify": [
         "npx tsc --noEmit"
       ],
-      "do": "Final end-state documentation sweep after all feature work has landed. Re-audit README.md + CLAUDE.md against the SHIPPED repo and fix any drift the per-task lockstep updates missed: the daily places schedule, the consolidated service-level caps (per-job caps gone), the manual ledger-prune + dismiss-stuck-items features, first-class pipeline progress, the shared headless-browser helper, the dashboard changes (no Jobs tab, filtering tiles, collapsed member-runs, read-only DB browser, editable service limits), the Tailscale remote-access + security-hardening model, and the 1.0.0 version. Keep every claim matched to code.",
-      "doneWhen": "README.md + CLAUDE.md accurately describe the final shipped architecture, jobs, schedules, caps, dashboard pages, remote-access/security posture, and version; no stale claim from any earlier task remains; typecheck clean.",
+      "spec": ".harness/tasks/T026.md",
       "reviewed": false
     },
     {
@@ -734,8 +708,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "T006 built the gate MECHANISM but no real job declares contracts, so zero gates fire. Declare produces/consumes ArtifactContracts on the perfumes + places pipeline stages. Each contract is SHAPE + NON-EMPTY: assert the produced artifact exists, is non-empty, and has its expected fields/columns (e.g. the Takeout CSV has its expected headers; a parsed perfume has name + notes; a resolved place has a place_id) — enough to catch real format drift without brittle full-schema checks. Verify against cached data/ fixtures — NO live calls.",
-      "doneWhen": "Perfumes + places stages declare produces/consumes shape+non-empty contracts; gates derive and fire between stages (pipeline start-log gate count > 0); a unit test proves a satisfied contract passes and a drifted/empty one fails the consumer; no live API/scrape in verification.",
+      "spec": ".harness/tasks/T027.md",
       "reviewed": false
     },
     {
@@ -759,8 +732,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Represent validation gates on the pipeline DAG graph: render a gate marker on the producer->consumer edge in a pipeline RUN, make a FAILED gate visually distinct (e.g. red), and make the gate-failure run/logs reachable by clicking it. Expose gate state via the API so the dashboard can render it. Gates show only on a pipeline RUN, never on the structure-only /pipelines/[name] view.",
-      "doneWhen": "Gates appear on the pipeline-run DAG between producer->consumer; a failed gate is visually distinct and links to its failure logs; gates do NOT show on the structure-only /pipelines/[name] graph; dashboard build passes.",
+      "spec": ".harness/tasks/T028.md",
       "reviewed": false
     },
     {
@@ -781,8 +753,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Jobs that process N items don't report progress as they go — e.g. perfumes-find-url works 41 items but never logs `1/41 …` and the run % doesn't advance. Make every item-processing job emit `ctx.progress(i/N*100)` and a per-item log line as it works (sensible denominators), not just a final summary. Apply across ALL such jobs, not just find-url.",
-      "doneWhen": "Item-processing jobs emit per-item progress + a per-item log line; the run % advances during the run (verified against cached fixtures / scratch DB, no live calls); covers every item-loop job.",
+      "spec": ".harness/tasks/T029.md",
       "reviewed": false
     },
     {
@@ -811,8 +782,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The persistent Chrome profile lives inside the perfumes job (src/jobs/perfumes/data/chrome-profile). Move it to a framework-level location — a top-level data/chrome-profile/ resolved in src/core/browser.ts and env-overridable (e.g. LOCALJOBS_CHROME_PROFILE) — so it isn't perfumes-specific and other scrapers (e.g. the places resolver) can reuse the warmed, trusted profile. Keep the new location gitignored; perfumes fetch keeps working against it.",
-      "doneWhen": "The Chrome profile path is framework-level (top-level data/chrome-profile, env-overridable) not under src/jobs/perfumes/data; the new path is gitignored; perfumes fetch still uses it; typecheck + tests green.",
+      "spec": ".harness/tasks/T030.md",
       "reviewed": false
     },
     {
@@ -837,8 +807,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The README is a wall of text. Trim it: REMOVE the ## Layout file-tree entirely, and present the worked-example pipelines compactly/scannably (a short line each, not paragraphs). Keep the essential what-it-is / how-to-run / ports / config content and the dashboard pages list. Aim for a noticeably shorter, scannable doc.",
-      "doneWhen": "The Layout file-tree is gone; example pipelines are compact; the core what-it-is / how-to-run / install content remains accurate; the README is materially shorter.",
+      "spec": ".harness/tasks/T031.md",
       "reviewed": false
     },
     {
@@ -864,8 +833,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Cancelled runs are currently lumped into the overview Failed tile. A cancelled run is a deliberate stop, not a failure. Stop counting cancelled as failed, and give it its OWN clickable Cancelled overview stat tile (filtering like the other tiles), consistent with how status is aggregated elsewhere.",
-      "doneWhen": "Cancelled runs no longer count as Failed; a dedicated clickable Cancelled tile shows + filters them; dashboard build passes.",
+      "spec": ".harness/tasks/T032.md",
       "reviewed": false
     },
     {
@@ -891,8 +859,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Manually-ignored items (the Ignore action) currently reappear as stuck and inflate stuck counts on the pipelines tab + pipeline/job detail. There is ONE ignore concept (not two): stuck = automatic after repeated failures; ignored = a manual park. Fix the root cause so an ignored item STAYS ignored (ignore persists; the stuck query excludes ignored; a re-run does not resurrect it), is NEVER counted as stuck, and is shown ONLY on the overview via a new fifth Ignored tile (which filters to them).",
-      "doneWhen": "Ignored items never count as stuck and don't appear outside the overview; a 5th clickable Ignored overview tile shows + filters them; an ignored item stays ignored across re-runs; unit tests cover persistence + exclusion-from-stuck.",
+      "spec": ".harness/tasks/T033.md",
       "reviewed": false
     },
     {
@@ -917,8 +884,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Services edit-limits form it's unclear how to clear a cap back to 'no cap' (inputs just show placeholder text). Add an explicit control (e.g. a 'No cap' / clear button per field) that sets the value to no-cap (null) unambiguously, instead of relying on typing/blanking.",
-      "doneWhen": "Each limit field has a clear UI way to set it back to no-cap (null); saving persists null; dashboard build passes.",
+      "spec": ".harness/tasks/T034.md",
       "reviewed": false
     },
     {
@@ -944,8 +910,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Services page, colour the 'free' service pill green (paid stays as-is) so free vs paid reads at a glance.",
-      "doneWhen": "Free-service pills render green; paid unchanged; dashboard build passes.",
+      "spec": ".harness/tasks/T035.md",
       "reviewed": false
     },
     {
@@ -973,8 +938,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Cron schedule expressions (e.g. perfumes `0 2 * * *`) wrap onto two lines even on a wide desktop. Keep the schedule on one line where possible (e.g. white-space:nowrap on the schedule cell/mono span). Keep this in mind for the mobile styling pass too.",
-      "doneWhen": "Schedule cron expressions render on a single line on desktop; dashboard build passes.",
+      "spec": ".harness/tasks/T036.md",
       "reviewed": false
     },
     {
@@ -999,8 +963,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Remove the concept of standalone (non-pipeline) jobs: EVERY job must belong to a pipeline declared in an explicit *.pipeline.ts manifest (a single job = a one-stage pipeline WITH its own manifest — no implicit wrapping). Drop the dashboard Standalone jobs section, the job-level standalone schedule/enable path (pipelines own scheduling), and the registry/scheduler handling for non-member jobs. A job with no manifest is a config error — fail loud at load. Now that demo is gone there are no standalone jobs to migrate.",
-      "doneWhen": "No standalone-job code path remains; every job must be declared in a *.pipeline.ts manifest (single-job pipelines included); a job with no manifest fails loudly at load; the dashboard has no Standalone section; scheduler/registry handle only pipeline-driven jobs; typecheck + tests green; docs updated.",
+      "spec": ".harness/tasks/T037.md",
       "reviewed": false
     },
     {
@@ -1024,8 +987,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Rename the pipeline concept to workflow everywhere: types (PipelineDefinition->WorkflowDefinition), DB tables (pipelines, pipeline_jobs, pipeline_runs, pipeline_run_logs -> workflow*) with a migration that PRESERVES existing rows, store functions, the discovery convention *.pipeline.ts -> *.workflow.ts (rename the existing local perfumes/places manifest files too, or they won't be discovered), pipeline-executor.ts -> workflow-executor, API routes (/api/pipelines, /pipeline-runs -> /api/workflows, /workflow-runs), dashboard routes/pages + all labels, the pipeline field on jobs, and all docs. Clean break — no old-name redirects needed. Mechanical but wide. Do this AFTER T037 so the model lands clean.",
-      "doneWhen": "No 'pipeline' naming remains for the concept (code, DB tables, routes, UI, docs, *.workflow.ts files); a DB migration moves existing pipeline_* data to workflow_* without loss; typecheck + tests + dashboard build green; docs updated.",
+      "spec": ".harness/tasks/T038.md",
       "reviewed": false
     },
     {
@@ -1048,8 +1010,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Add a way to push fresh input into a pipeline's data/raw without manual file copying. The mechanism (API endpoint vs CLI vs pull-from-source) is deferred to a human decision before building.",
-      "doneWhen": "Mechanism decided with the human, then built so fresh input can be pushed into a pipeline's data/raw without manual copying.",
+      "spec": ".harness/tasks/T039.md",
       "reviewed": false
     },
     {
@@ -1070,8 +1031,7 @@
       "verify": [
         "run-app"
       ],
-      "do": "Make the dashboard responsive on mobile. Write an automated check that loads each dashboard page in a headless browser at an iPhone-17-class viewport (~402px wide) against a scratch DB and asserts basic mobile styling: no horizontal overflow, no text crossing element boundaries, no weird truncation/clipping. The in-place agent RUNS this check locally and records the per-page result in its worklog — it does NOT need to be added to CI. Then fix the responsive CSS (tables, stat cards, nav, DAG graph, schedule cells) until it passes.",
-      "doneWhen": "An automated iPhone-17-viewport (~402px) check covers every dashboard page and asserts no horizontal overflow / no boundary-crossing / no truncation; the agent ran it locally and recorded the page-by-page outcome in .harness/worklog/T040.md; the dashboard passes it; dashboard build green.",
+      "spec": ".harness/tasks/T040.md",
       "reviewed": false
     },
     {
@@ -1089,8 +1049,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Decide where pipeline output ultimately lands (Obsidian vault / static site / cloud sync) and build the step that delivers it there, instead of leaving output in data/out. The destination is a human decision first.",
-      "doneWhen": "Destination decided with the human; the delivery step is built and writes output there.",
+      "spec": ".harness/tasks/T041.md",
       "reviewed": false
     },
     {
@@ -1110,8 +1069,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Make remote dashboard access friendlier than typing the tailnet IP:port on mobile — a Tailscale MagicDNS hostname, a `tailscale serve` nice URL, or a phone home-screen shortcut. Partly operational (Tailscale admin / the machine), not CI-verifiable.",
-      "doneWhen": "The dashboard is reachable from the phone via a friendly alias/shortcut (human confirms).",
+      "spec": ".harness/tasks/T042.md",
       "reviewed": false
     },
     {
@@ -1129,8 +1087,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Walk through how the (overnight-built) perfumes pipeline actually works, together — it hasn't been reviewed jointly. A conversation, not a build.",
-      "doneWhen": "The perfumes pipeline has been walked through together and any follow-ups captured.",
+      "spec": ".harness/tasks/T043.md",
       "reviewed": false
     },
     {
@@ -1148,8 +1105,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Review the repo's file/folder organisation together and confirm it's laid out the way the owner wants. Subjective, no pass/fail.",
-      "doneWhen": "Repo layout reviewed together and confirmed / adjustments captured.",
+      "spec": ".harness/tasks/T044.md",
       "reviewed": false
     },
     {
@@ -1168,8 +1124,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Check in on the dashboard's overall look & feel and make it more joyful. Subjective design work needing the owner's eye.",
-      "doneWhen": "Look & feel reviewed with the owner and agreed changes applied.",
+      "spec": ".harness/tasks/T045.md",
       "reviewed": false
     },
     {
@@ -1187,8 +1142,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Investigate why the claude-cli service is configured with a per-minute rate limit (rate_per_minute). Work out whether that cap is actually necessary/correct — is the Claude CLI genuinely rate-limited per minute, or is the value arbitrary/leftover? Then decide whether to keep, adjust, or remove it.",
-      "doneWhen": "The reason for the claude-cli per-minute rate limit is understood and a decision is recorded (keep / adjust / remove).",
+      "spec": ".harness/tasks/T046.md",
       "reviewed": false
     },
     {
@@ -1215,8 +1169,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the dashboard Backlog page (/backlog), make the done status badge/icon GREEN (it currently renders neutral), and add a distinct IN-PROGRESS icon. Note: TASKS.json only has pending/done (no in_progress status), so derive in-progress client-side as the single next-eligible task — the first not-done task in array order whose dependsOn are all done and which is not gated (i.e. the one the loop builds next) — and badge it distinctly from plain pending. (If a richer live currently-building signal is wired later, prefer that.)",
-      "doneWhen": "Done tasks show a green done badge/icon on /backlog; the next-eligible task shows a distinct in-progress icon; plain pending tasks stay neutral; the dashboard build passes.",
+      "spec": ".harness/tasks/T047.md",
       "reviewed": false
     },
     {
@@ -1242,8 +1195,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the overview page, hide the entire \"Stuck items\" SECTION (its heading + list/empty-state) when there are zero stuck items — render the section only when there is at least one stuck item. Keep the Stuck stat TILE/count at the top regardless. Apply the same empty-section hiding to the Ignored section if it has its own dedicated section.",
-      "doneWhen": "When nothing is stuck, the overview shows no \"Stuck items\" heading or section (just the count tile up top); when something is stuck the section renders as before; the dashboard build passes.",
+      "spec": ".harness/tasks/T048.md",
       "reviewed": false
     },
     {
@@ -1274,8 +1226,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "After the pipeline→workflow rename (T038), do a COMPLETE repo scan for any remaining use of the word \"pipeline\" and convert it to \"workflow\" across the board — code identifiers, types, API routes, UI labels/headings, comments, and docs (README.md / CLAUDE.md / docs) / schema. EXCLUDE legitimate residual references: the DB migration that renames the old `pipelines`/`pipeline_*` tables MUST still name them to perform the rename — leave those; and node_modules, .git, data/, and historical .harness/worklog/ notes are out of scope.",
-      "doneWhen": "A `grep -ri pipeline` over tracked source + docs (excluding the migration’s necessary old-table references, node_modules, data/, and worklog) returns nothing; every stray identifier/label/route now reads \"workflow\"; typecheck + tests + dashboard build pass.",
+      "spec": ".harness/tasks/T049.md",
       "reviewed": false
     },
     {
@@ -1303,8 +1254,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the workflows page the ▶ Run button is chunky — the play icon and the word \"Run\" wrap onto two lines. Make it render on a SINGLE line (e.g. white-space:nowrap / inline-flex / tighter padding / smaller icon — styling is open, the user is not opinionated). Apply the same fix to any other Run button that wraps (e.g. the workflow cards on the overview).",
-      "doneWhen": "The Run button renders on one line (icon + label, no wrap) on the workflows page (and any other card where it wrapped); dashboard build passes.",
+      "spec": ".harness/tasks/T050.md",
       "reviewed": false
     },
     {
@@ -1331,8 +1281,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the workflows page, the last-run column shows a status pill (running/success) plus a relative time (e.g. \"8 minutes ago\") that currently wraps awkwardly across two lines. Make it clean: EITHER force the pill + time onto one line (white-space:nowrap), OR stack them deliberately (pill on its own line, time on the next). Pick whichever reads best — the user is fine with either as long as it is not an awkward wrap.",
-      "doneWhen": "The last-run cell renders cleanly (pill + time on one line, or deliberately stacked) with no awkward mid-value wrap; dashboard build passes.",
+      "spec": ".harness/tasks/T051.md",
       "reviewed": false
     },
     {
@@ -1359,8 +1308,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the workflows page table, centre-align the VALUES in the \"Stages\" and \"Schedule\" columns (they read better centred). Leave the \"Last run\" and \"Next\" column values LEFT-aligned as they are. Centre the matching headers too if that reads cleaner.",
-      "doneWhen": "Stages + Schedule column values (and ideally their headers) are centre-aligned on the workflows page; Last run + Next stay left-aligned; dashboard build passes.",
+      "spec": ".harness/tasks/T052.md",
       "reviewed": false
     },
     {
@@ -1383,8 +1331,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The Database view currently only does full per-table scans, which are hard to parse. Add a set of useful PREDEFINED/canned queries surfaced on that page — NOT a free-form SQL editor — covering the most useful read-only views, e.g.: recent failed runs, stuck + ignored items by job, service usage/spend this month vs caps, workflow-run durations/outcomes, work_items counts by status per job. Implement them as NAMED, server-side, strictly read-only (SELECT-only) queries — the same safety model as the existing table browser, never arbitrary SQL from the client — exposed via the API and rendered on the DB page alongside the table browser.",
-      "doneWhen": "The Database view offers a set of named common queries (read-only) with results rendered; no free-form/arbitrary SQL is accepted from the client; the existing table browser still works; a unit test covers each canned query against the scratch DB; typecheck + tests + dashboard build pass.",
+      "spec": ".harness/tasks/T053.md",
       "reviewed": false
     },
     {
@@ -1411,8 +1358,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Database view table browser, long cell values (especially the message column on e.g. workflow-run logs) are truncated with no way to read the full value. Make each row clickable to open a popover/modal showing the COMPLETE row data — every column, untruncated (a key/value list or pretty-printed JSON). The full row data is already returned by the read-only API; this is purely a display affordance, closeable (Esc / click-away).",
-      "doneWhen": "Clicking a row in the DB table browser opens a popover/modal showing the full untruncated value of every column; it is dismissable; the table browser otherwise works as before; dashboard build passes.",
+      "spec": ".harness/tasks/T054.md",
       "reviewed": false
     },
     {
@@ -1440,8 +1386,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Backlog view, show each task’s ESCALATION PATH (the model/effort ladder the loop climbs on repeated failure), not just the starting model. Render the EFFECTIVE ladder — rung 0 (task model/effort, else defaults) then each escalation rung — resolving per-task `escalation` else `defaults.escalation` (same resolution the loop’s task_ladder does). This needs `/api/backlog` to ALSO return the backlog `defaults` (it currently returns only `tasks`) so inherited model/escalation can be resolved, and the BacklogTask type to include `escalation`. Also: where a task INHERITS the default model/effort, show the ACTUAL resolved value (e.g. \"opus/high\"), never the literal word \"default\" — so the view always reflects the real current default and updates automatically if `defaults` changes.",
-      "doneWhen": "Each task on /backlog shows its escalation path (e.g. \"sonnet/medium → opus/high\") resolving per-task vs defaults inheritance; a task that inherits the default shows the REAL resolved model/effort (never the word \"default\"); a task with no escalation shows just its single rung; the API returns defaults; dashboard build + typecheck pass.",
+      "spec": ".harness/tasks/T055.md",
       "reviewed": false
     },
     {
@@ -1468,8 +1413,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the overview page, each workflow card shows a status pill (running / success / cancelled / …) for its last/current run, but there is no one-click way to reach that run — you have to click the workflow, find the run, then Details. Make the pill a LINK straight to that specific workflow run (/workflow-runs/{last_run.id}) — i.e. whichever run it references (the currently-running one, else the most recent). The run id is already on the card’s last_run.",
-      "doneWhen": "On the overview, clicking a workflow card’s status pill navigates directly to that workflow run’s detail page in one click; a card with no run yet shows a non-link pill (no dead link); dashboard build passes.",
+      "spec": ".harness/tasks/T056.md",
       "reviewed": false
     },
     {
@@ -1494,8 +1438,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Validation gates now render on a workflow run (T028) but you cannot INSPECT them — no way to see what a gate validated, its logs, or to manually double-check it. Add comprehensive gate logging + clickable gate detail: (1) the workflow executor logs, per gate check, the contract key, producer→consumer, what it ASSERTED (the contract description) and the pass/fail result + any violation detail, into the workflow run’s framework logs; (2) expose per-gate detail via the API (contract key + description, state, and the relevant member-run/log refs); (3) make EVERY gate on the run DAG clickable to a detail view showing what it validates and its outcome — passing and pending gates too, not only failed ones (T028) — so you can confirm a gate is doing what you expect.",
-      "doneWhen": "Each validation gate on a workflow run is clickable and opens a detail view showing what it validates (contract key + description, producer→consumer) and its outcome; the executor logs each gate check (assertion + result/violation) to the run’s framework logs; passing/pending gates are inspectable, not just failed ones; a unit test covers the gate logging/detail; typecheck + tests + dashboard build pass.",
+      "spec": ".harness/tasks/T057.md",
       "reviewed": false
     },
     {
@@ -1522,8 +1465,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "When you open a job/run from within a workflow run, the back-nav header reads \"← workflow run {id}\" (lowercase). Drop the words \"workflow run\" — show just the run id (a leading \"#\" is fine, e.g. \"← #42\"). Update both the backFrom helper’s workflow-run label (ui.tsx) and the runs/[id] fallback that also builds \"workflow run {id}\".",
-      "doneWhen": "The back-link to a workflow run shows just the run id (no \"workflow run\" words); both the ?from-derived label and the runs/[id] fallback are updated; dashboard build passes.",
+      "spec": ".harness/tasks/T058.md",
       "reviewed": false
     },
     {
@@ -1549,8 +1491,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Status terminology lacks parity: the UI shows success as \"OK\" in places, which does not pair with \"failed\". Standardize the human-facing success/failure labels across the WHOLE dashboard to a consistent pair — use \"Succeeded\" / \"Failed\" (matching the existing overview tile) everywhere a run/gate status is shown (StatusBadge, status pills, gate states, etc.), and keep the other labels in consistent tense (Running / Cancelled / Pending). Best done by centralizing a statusLabel() map in ui.tsx and using it at every render site rather than printing the raw status. DISPLAY ONLY — do NOT change the underlying status VALUES (\"success\"/\"failed\"/\"cancelled\"/… in the types / DB / API), only how they render.",
-      "doneWhen": "Success renders consistently as \"Succeeded\" (no stray \"OK\") and failure as \"Failed\" across every dashboard view; other statuses read in consistent tense; underlying status values unchanged; dashboard build passes.",
+      "spec": ".harness/tasks/T059.md",
       "reviewed": false
     },
     {
@@ -1577,8 +1518,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Backlog view (/backlog), add a THIRD section \"Done\" alongside \"Harness-buildable\" and \"Needs a human\", listing all completed (status:done) tasks so the page shows a complete history of work done. Done tasks must appear ONLY under Done — the Harness-buildable and Needs-a-human sections show only NOT-done tasks. Order Done by id; it will be long (~40+), so keep it compact/scannable (a one-line row per task; collapsing it by default is fine).",
-      "doneWhen": "/backlog shows three sections — Harness-buildable, Needs a human, Done; done tasks appear only under Done (not under buildable); the other two sections list only pending tasks; the section counts are correct; dashboard build passes.",
+      "spec": ".harness/tasks/T060.md",
       "reviewed": false
     },
     {
@@ -1606,8 +1546,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Add a DAG / graph view of the backlog on /backlog that shows the task dependency hierarchy visually. Each node is the task ID; lay nodes out in dependency (topological) order with edges for `dependsOn` — the existing components/Dag.tsx wave-layout can be reused/generalized. Colour nodes by status (done / pending / needs-human). On hover (or click) over a node, show more detail about that task — title, model + escalation, status, and the do/doneWhen summary. Offer it alongside the existing list (a toggle, or a second section). Data is already in /api/backlog (tasks + dependsOn).",
-      "doneWhen": "/backlog offers a DAG view: nodes labelled by task id, edges for dependsOn, nodes coloured by status, and per-node detail on hover/click; the existing list view still works; dashboard build passes.",
+      "spec": ".harness/tasks/T061.md",
       "reviewed": false
     },
     {
@@ -1626,8 +1565,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Add a workflow that runs ONCE PER DAY and inspects the new logs produced by other workflows runs since the last inspection (run_logs / workflow framework logs on the box), evaluates any errors for FRAMEWORK-LEVEL problems (not job-specific bad-data), and — where a fix is safe — proposes and applies it. Envisioned as a one-step workflow whose single job instructs Claude (headless) to read the recent logs and propose fixes. NEEDS-HUMAN: discuss the design first — how Claude runs autonomously and safely APPLIES/commits framework fixes (vs just proposing), how to distinguish framework-level vs job-level errors, how it interacts with the build loop / CI / the always-push rule, guardrails against runaway or unreviewed changes, and how findings are surfaced (dashboard / notification / a drafted task in the backlog).",
-      "doneWhen": "Design agreed with the human; then a daily workflow reviews new run logs, identifies framework-level errors, and proposes (and where safe, applies) fixes within the agreed guardrails.",
+      "spec": ".harness/tasks/T062.md",
       "reviewed": false
     },
     {
@@ -1656,8 +1594,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On a workflow run, clicking a validation gate currently just SCROLLS to an in-page \"Validation Gates\" section. Make it behave like clicking a job node — navigate to its OWN dedicated page (e.g. a /workflow-runs/[id]/gates/[key] route, or /gates/...) that shows that gate in full: what it validates (contract key + description), the two stages it bridges, its state, and its logs. Refactor the in-page section into that dedicated page + route (add a read-only API route for a single gate if needed).",
-      "doneWhen": "Clicking a validation gate on a workflow run navigates to a dedicated gate-detail PAGE (not an in-page scroll), consistent with how a job node opens its own page; the page shows the gate contract/description, the stages it bridges, state, and logs; dashboard build passes.",
+      "spec": ".harness/tasks/T063.md",
       "reviewed": false
     },
     {
@@ -1686,8 +1623,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The validation-gate detail/logs label the two sides \"producer\" and \"consumer\", which is jargon-y. Reframe as INPUT/OUTPUT: the producer side validates the upstream stage’s OUTPUT; the consumer side validates the downstream stage’s INPUT. Relabel the UI and the gate-check log lines accordingly — e.g. \"output (from <stage>)\" / \"input (to <stage>)\" — so it reads intuitively. Display/wording only; keep the underlying produces/consumes contract model + field names unchanged.",
-      "doneWhen": "Gate detail + gate-check log lines read in input/output terms instead of producer/consumer; the underlying contract data model is unchanged; dashboard build + any affected tests pass.",
+      "spec": ".harness/tasks/T064.md",
       "reviewed": false
     },
     {
@@ -1714,8 +1650,7 @@
       ],
       "design": "Clarification (interview 2026-06-22): Design for a BLACK BOX — a user must understand the data from the dashboard alone, with no knowledge of system internals. Show the contract's expected shape AND a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation, worded for a non-expert reader.",
       "verify": [],
-      "do": "On the validation-gate page the producer/consumer log lines do not make it obvious WHAT the gate checks. Add a clear, VISUAL representation of the contract: a left-to-right flow — upstream stage OUTPUT → [the gate: what it validates] → downstream stage INPUT — so you can see at a glance what data the gate expects and whether it is satisfied. Surface the contract’s expected shape (key + description + the fields/columns/non-empty it asserts) and, where feasible, a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation. This likely needs the produces/consumes ArtifactContract to optionally declare a machine-readable expected shape (fields/columns) for display, and the gate to report expected-vs-actual rather than just ok/violations. Builds on T063 (dedicated gate page) + T064 (input/output framing).",
-      "doneWhen": "The gate page visually shows, left-to-right, output → gate(what it checks) → input, making it obvious what the gate validates and what actually flowed (expected shape + a sample/summary + pass/fail per expectation); contracts can declare an expected shape for display; typecheck + tests + dashboard build pass.",
+      "spec": ".harness/tasks/T065.md",
       "reviewed": false
     },
     {
@@ -1745,8 +1680,7 @@
       "verify": [
         "run-app"
       ],
-      "do": "On a workflow-run page, the DAG graph (components/Dag.tsx — left-to-right waves) looks misaligned on narrow/mobile widths: the vertical centring of nodes/waves reads as visually off as the width shrinks. Make it responsive — EITHER fix the vertical alignment of the left-to-right layout at narrow widths, OR switch to a TOP-DOWN (vertical) layout below a small-screen breakpoint (lean: top-down likely reads better on a phone since multi-node waves do not fit horizontally). The agent picks whichever looks best. Validate visually: render the page at an iPhone-class viewport (~402px) AND at desktop width and confirm the graph is cleanly aligned + legible at both (reuse the T040 viewport-screenshot approach; screenshot-verifiable, not needs-human).",
-      "doneWhen": "The workflow-run DAG renders cleanly aligned + legible at a narrow/mobile viewport (~402px) and at desktop width, with no awkward vertical-centring misalignment; validated via viewport screenshots at both widths recorded in the worklog; dashboard build passes.",
+      "spec": ".harness/tasks/T066.md",
       "reviewed": false
     },
     {
@@ -1773,8 +1707,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Backlog view (/backlog), make EACH section collapsible — currently only the Done section can collapse. Apply the same collapse/expand toggle to the Harness-buildable and Needs-a-human sections (and any others), each with its count in the header, so the whole page can be tidied. Match the existing Done-section collapse pattern; each section toggles independently.",
-      "doneWhen": "On /backlog, every section (Harness-buildable, Needs a human, Done) has a working collapse/expand toggle with its count; sections toggle independently; dashboard build passes.",
+      "spec": ".harness/tasks/T067.md",
       "reviewed": false
     },
     {
@@ -1801,8 +1734,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On a workflow-run page, the Member runs section shows one row per stage PLUS a collapsible (▼ +N) of EARLIER-CYCLE runs — because a repeat-until-stable workflow re-runs every stage each cycle, so one run accumulates multiple runs per stage. Remove those earlier-cycle rows and the show/hide toggle from this view: show exactly ONE row per stage (the latest run for that stage in this workflow run). The earlier-cycle runs stay in the DB and remain reachable via the job/stage own run history, so nothing is lost — they just stop cluttering the per-run view.",
-      "doneWhen": "The workflow-run Member runs section shows a single row per stage (the latest run for that stage in this run); the earlier-cycle (▼ +N / ▲ hide) expander is gone; earlier-cycle runs remain in the DB and reachable elsewhere; dashboard build passes.",
+      "spec": ".harness/tasks/T068.md",
       "reviewed": false
     },
     {
@@ -1829,8 +1761,7 @@
       ],
       "design": "Clarification (interview 2026-06-22): Style = subtle bordered cards: 1px border, rounded corners, padding, and a COLOURED STATUS ACCENT (a left accent bar or dot) — NOT whole-card status tinting. Keep it understated and scannable.",
       "verify": [],
-      "do": "Make the DAG (components/Dag.tsx) prettier and easier to read. Right now nodes are essentially flat text, which is hard to scan when there are many. Give each job node a clear OUTLINE/box (bordered card — padding, rounded corners), make the connecting arrows/edges read as a flow, and keep the status colouring legible. Use your own judgement on the exact styling; the goal is a visually pleasing, scannable graph. Applies wherever the DAG renders (the workflow definition page and the workflow-run page).",
-      "doneWhen": "DAG job nodes render as outlined/boxed cards (not flat text) with clear flow edges and legible status colours, noticeably more scannable on both the workflow definition and workflow-run pages; dashboard build passes.",
+      "spec": ".harness/tasks/T069.md",
       "reviewed": false
     },
     {
@@ -1858,8 +1789,7 @@
       ],
       "design": "Clarification (interview 2026-06-22): Remove ALL job-level properties — schedule, enabled toggle, next-run, the instructions panel, AND the per-job Run-now button. The job page becomes a read-only member view (status, run history, logs). You run a workflow, never a job.",
       "verify": [],
-      "do": "A job is only ever a member of a workflow now (T037), so workflow-level concerns must NOT live on individual jobs. On the job view (/jobs/[name]) strip: the Schedule, the Enabled toggle, the Next run, the How-to-run-this-job instructions panel, and the Run-now button — you run a WORKFLOW, not a job; a job runs when its prerequisites are met inside its workflow. Remove these properties at the job level wherever they are integrated (the JobDefinition type, jobs-table columns + a migration, the scheduler per-job scheduling path, the API job view, the dashboard job page). Workflows keep schedule/enabled/run/next-run; the job page becomes a read-only member view (status, run history, logs). This may be a comprehensive refactor — that is acceptable.",
-      "doneWhen": "Individual jobs no longer carry schedule/enabled/next-run/instructions and have no Run-now button or per-job scheduling; those live only at the workflow level; /jobs/[name] is a read-only member view; a DB migration drops the now-unused job columns without loss; typecheck + tests + dashboard build pass; docs updated.",
+      "spec": ".harness/tasks/T070.md",
       "reviewed": false
     },
     {
@@ -1888,8 +1818,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the workflow DEFINITION page (/workflows/[name]) the graph does not show validation gates at all — they currently only appear on a workflow RUN (with per-run state). Represent the gates STRUCTURALLY on the definition graph too: derive the workflow gates from the produces/consumes contracts on its member jobs (the same deriveGates the executor + run view use, already available via gatesForWorkflow) and mark them on the relevant producer-to-consumer edges, WITHOUT run state — just that a validation gate exists there, ideally clickable to its contract detail. Expose gates on the workflow-definition API endpoint if needed.",
-      "doneWhen": "The /workflows/[name] definition graph shows a marker on every edge that carries a validation gate (structural, no run state), consistent with how gates render on a run; dashboard build passes.",
+      "spec": ".harness/tasks/T071.md",
       "reviewed": false
     },
     {
@@ -1915,8 +1844,7 @@
       "verify": [
         "run-app"
       ],
-      "do": "Despite T009, the perfumes output still has accords with pct=null (example: Amouage Beach Hut Man — every accord pct is null). Think deeply and evaluate END-TO-END whether accurate accord percentages can be extracted: from the Fragrantica page HTML (the coloured accord-bar widths, expressed as a width % in a style attribute) or, failing that, another signal. Work out WHY T009 still yields null (selector drift? the % lives in a style attr that is not being read?). Fix the parse so accords carry accurate pct. BACKTEST: there is no usable HTML on disk (success-path pages are saved as innerText .txt only — see the design note), so first change fetch.ts to persist the raw HTML, then prove the fix end-to-end against real HTML — ONE frugal local live fetch of a single perfume is acceptable (the monthly cap is the only hard ceiling). Confirm pcts are populated in the OUTPUT files and match the bar widths on the page (spot-check a few). Record before/after in the worklog.",
-      "doneWhen": "Perfumes accords carry accurate, non-null percentages (matching the page bar widths) wherever the page provides them; fetch.ts is changed to persist raw HTML so the parser can read bar widths going forward; the parse is fixed + unit-tested against a synthetic HTML fixture; the agent confirms end-to-end (a single frugal local live fetch is acceptable) that the built output now has populated pcts, recorded in the worklog; pct is null ONLY when genuinely absent on the page; typecheck + tests pass.",
+      "spec": ".harness/tasks/T072.md",
       "reviewed": false
     },
     {
@@ -1942,8 +1870,7 @@
       ],
       "design": "Clarification (interview 2026-06-22): This was implemented in commit 2e65bbb then reverted in e37e40c; re-apply EXACTLY as that commit did and make it stick — the list shows 'pending' (no '▶ in progress'), drop the next-task list highlight/border, and keep the DAG view's accurately-labelled 'next' node highlight as-is.",
       "verify": [],
-      "do": "On the Backlog LIST view, the next-eligible task is labelled with a \"▶ in progress\" pill (statusPill), which is misleading — nothing is actively building it (TASKS.json has no in_progress status, and the loop may not even be running). A not-done task should show its REAL status (pending). Show \"pending\" in the list and drop the next-task highlight/border there. Keep the DAG view’s accurately-labelled \"next\" node highlight as-is.",
-      "doneWhen": "On /backlog a pending task shows \"pending\" (no \"in progress\" label) and no special list highlight; the DAG view keeps its \"next\" node; dashboard build passes.",
+      "spec": ".harness/tasks/T073.md",
       "reviewed": false
     },
     {
@@ -1969,8 +1896,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Services page (/services) 'Edit limits' form the three input placeholders are inconsistent: the Rate/min input uses placeholder=\"none\" while Rate/day and Rate/month both use placeholder=\"no cap\" (page.tsx lines ~101/105/109). Make the three placeholders use consistent wording so a blank field reads the same way across all three (e.g. all 'no limit'); keep the existing blank-input-means-null behaviour and the per-field ✕ 'set to no limit/no cap' clear buttons working.",
-      "doneWhen": "On the Services edit-limits form, the Rate/min, Rate/day and Rate/month inputs show consistent placeholder text for the empty (no-limit) state; blank still maps to null and the ✕ clear buttons still work; dashboard build passes and the mobile-check stays green.",
+      "spec": ".harness/tasks/T074.md",
       "reviewed": false
     },
     {
@@ -1995,10 +1921,9 @@
         "dashboard/app/db/page.tsx",
         "dashboard/app/globals.css"
       ],
-      "do": "On the Database page (/db) the 'Common queries' and 'Browse tables' panels render their buttons directly inside a `.panel` with only `display:flex; flexWrap; gap:8` and no padding (page.tsx ~lines 132 and 163), so the buttons sit flush against the panel border (the `.panel` class itself has no padding by design — globals.css:46 — because table panels go edge-to-edge). Add a bit of inner padding to just these two button panels so the buttons aren't stuck to the container boundary. Do NOT add padding to `.panel` globally — that would break the table panels that intentionally fill edge-to-edge; scope the padding to these button containers (inline style or a dedicated class).",
+      "spec": ".harness/tasks/T075.md",
       "design": null,
       "verify": [],
-      "doneWhen": "On /db the Common queries and Browse tables button panels have inner padding so the buttons no longer touch the panel border; table-filled panels elsewhere remain edge-to-edge (unchanged); dashboard build passes and the mobile-check stays green.",
       "reviewed": false
     },
     {
@@ -2018,8 +1943,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The Backlog DAG view (BacklogDag in components/Dag.tsx) renders each task as a bare node showing just the id + a status word, with a plain '→' between waves — it reads as a flat list of plain-text items. Two changes: (1) Make the DAG visually nicer — give nodes proper styled cards (e.g. show the task title, not only the id; clearer status colouring; better node/edge/wave styling) while keeping the horizontal scroll, the click-to-select-and-inspect behaviour, and mobile responsiveness. (2) Remove the 'next' concept from the DAG view entirely: drop the '▶ next' node-status label (Dag.tsx ~line 235), the nextId-driven 'running' colour class (Dag.tsx ~line 218), the '· next' legend entry (page.tsx ~line 157), and stop using nextId for any highlight on this view. NOTE: this supersedes T073's decision to keep the DAG 'next' highlight — update the now-stale comment at page.tsx:30 and the DagDetailPanel isNext styling accordingly.",
-      "doneWhen": "On /backlog the DAG view renders tasks as styled nodes (title visible, not bare id + arrow plain text); there is NO 'next' label, highlight, or legend entry anywhere on the DAG view; clicking a node still opens its detail panel; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T076.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2048,8 +1972,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Backlog LIST view, items under the 'Done' heading (the DoneRow component, page.tsx ~lines 65-73) are a flat, non-interactive list of id + title + '✓ done' pill. Make each done row clickable to reveal more context about the task — its `do`, `doneWhen`, depends-on, and tags (reuse the existing TaskCard / DagDetailPanel content layout) — e.g. expand inline on click or open a detail panel/modal. Keep the collapsed default list compact (the current one-line-per-task summary) so the Done section stays scannable; show the fuller detail only after a click.",
-      "doneWhen": "On /backlog clicking a Done item reveals its fuller detail (do, done-when, depends-on, tags); the default collapsed Done list stays a compact one-line-per-task summary; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T077.md",
       "reviewed": false
     },
     {
@@ -2076,8 +1999,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The collapsible section headers on the Backlog list view (the <details>/<summary className=\"section-heading-summary\"> blocks in backlog/page.tsx — 'Harness-buildable', 'Needs a human', 'Done') give no visual signal that they're clickable/expandable: there's no caret or marker that changes with state. Add a caret/disclosure indicator on each section header that changes orientation with the open/closed state — collapsed vs expanded (e.g. a caret pointing right ▶ when collapsed and rotating to point down ▼ when open; the user described it as 'left and down', so make the orientation clearly distinct between states). Drive it off the native <details open> state (CSS on .section-heading-summary, e.g. a ::before/::after caret rotated via details[open]); keep it accessible and consistent across all three section headers.",
-      "doneWhen": "On /backlog each section header shows a caret that points one way when the section is collapsed and rotates to a clearly different orientation when expanded, making the header obviously clickable; behaviour is consistent across all three sections; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T078.md",
       "reviewed": false
     },
     {
@@ -2105,8 +2027,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Two chrome-profile folders exist on disk: the framework-level data/chrome-profile (the one ACTUALLY used — config.ts:19 chromeProfileDir -> browser.ts defaultChromeProfileDir -> perfumes/config.ts:15 profileDir -> fetch.ts:107) and an ORPHANED job-level one at src/jobs/perfumes/data/chrome-profile that NO code references. Keep a single framework-level shared profile: (1) delete the stale local folder src/jobs/perfumes/data/chrome-profile (LOCAL-ONLY cleanup — chrome-profile/ and data/ are gitignored and tripwired by the pre-push guard, so this produces NO tracked diff; never `git add` anything under data/ or chrome-profile/). (2) Because the deletion itself isn't CI-verifiable, the committable deliverable is a regression test locking in the invariant: add a unit test (extend perfumes/config.test.ts) asserting perfumesConfig.profileDir === defaultChromeProfileDir (i.e. the framework-level data/chrome-profile, env-overridable via LOCALJOBS_CHROME_PROFILE) so a job-level profile can't silently creep back in. Confirm grep shows no remaining reference to a job-level profile path.",
-      "doneWhen": "src/jobs/perfumes/data/chrome-profile no longer exists locally; the framework-level data/chrome-profile remains and is the only profile any code points at; a unit test asserts perfumesConfig.profileDir === defaultChromeProfileDir; `npx tsc --noEmit` and `npm test` are green. (No tracked diff is expected from the folder deletion itself — only the new test.)",
+      "spec": ".harness/tasks/T079.md",
       "reviewed": false
     },
     {
@@ -2133,8 +2054,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On a phone-width viewport the workflow graph (DAG) stacks vertically and the between-wave connector becomes a '↓' (rendered via .dag-arrow::after in the @media(max-width:640px) block, globals.css ~lines 268-269). The arrow is not horizontally centred under the node boxes: .dag-arrow keeps display:flex with default left justification (line 123) while the stacked boxes use justify-content:center (.dag-wave, line 266), so the ↓ sits to the left instead of centred between the boxes it connects. Fix the mobile .dag-arrow so the ↓ is horizontally centred relative to the centred node boxes (e.g. give .dag-arrow justify-content:center in the mobile block, or switch it to a centred block). Keep the desktop left-to-right '→' rendering unchanged.",
-      "doneWhen": "On a ~402px viewport the workflow DAG's down arrow is horizontally centred between the stacked node boxes; the desktop horizontal arrow is unaffected; dashboard build passes and node dashboard/scripts/mobile-check.mjs stays green.",
+      "spec": ".harness/tasks/T080.md",
       "reviewed": false
     },
     {
@@ -2156,8 +2076,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "A workflow run currently shows a confusing fractional percentage (e.g. 2% while one of four jobs is 7% in) because rollUpWorkflowProgress (store.ts ~lines 471-476) gives a still-running member partial credit: `fraction += TERMINAL ? 1 : progress/100`. Change it so progress reflects ONLY completed stages: a member that has reached a terminal state contributes 1, a still-running or not-yet-started member contributes 0 (drop the progress/100 term). So with N stages the bar stays 0% until the first stage finishes, then steps in 100/N increments (4 jobs -> 0/25/50/75/100; 5 jobs -> 0/20/...). Keep the total = workflow_jobs count and the success=100 finish behaviour. Update the unit tests in store.test.ts to assert the new whole-stage stepping (and that an in-flight member no longer moves the bar). IMPORTANT: this reverses the deliberate real-time/in-flight roll-up described in CLAUDE.md ('a still-running member contributes its own progress/100') and README ('rolled up in real time from member-job progress') — update both docs in lockstep to describe completed-stage stepping.",
-      "doneWhen": "rollUpWorkflowProgress returns 0 until the first member reaches a terminal state, then steps in 100/N increments per completed stage with no partial credit for running members; store.test.ts covers the new behaviour; CLAUDE.md + README progress descriptions updated to match; npx tsc --noEmit and npm test green.",
+      "spec": ".harness/tasks/T081.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2186,8 +2105,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "In the Validation gates panel on the workflow-run page (workflow-runs/[id]/page.tsx lines ~41-43) the gate-detail link reads 'detail →' but the arrow wraps onto a new line in the narrow last table cell. Keep the whole 'detail →' link on a single line (e.g. white-space:nowrap on the link or its cell). Don't change the link target or the rest of the table layout.",
-      "doneWhen": "On the workflow-run Validation gates panel the 'detail →' link renders entirely on one line (arrow no longer wraps) at desktop and phone widths; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T082.md",
       "reviewed": false
     },
     {
@@ -2213,8 +2131,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the individual run page (/runs/[id], runs/[id]/page.tsx line ~42) the page header is a generic '<h1>Run</h1>'. Change the header to the job's name (run.job_name is already available on the page) so the title identifies which job this is a run of. Keep the run id visible (the muted mono span beside the header) and keep the StatusBadge; if useful, keep a small 'run' qualifier as a subtitle so it's still clear this is a single run. Note jobs have no separate title field — run.job_name is the job's identity.",
-      "doneWhen": "On /runs/[id] the page header shows the job name (run.job_name) rather than the literal word 'Run'; the run id and status badge remain visible; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T083.md",
       "reviewed": false
     },
     {
@@ -2240,8 +2157,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The back-navigation link (e.g. on /runs/[id]) shows '← #<id>' — a '#' symbol prefixing an id. This comes from the shared backFrom helper (ui.tsx line ~76): when arriving from a workflow run it builds the label as `#${segs[1]}` (the workflow-run id with a leading '#'). Remove the '#' so the label is just the id. Because backFrom is the shared helper behind the run AND job page back-links, fixing it there applies the change across all pages. Grep the dashboard for any other place that renders a '#'-prefixed id in a nav/back link and remove the '#' there too, so the change is consistent everywhere (not just the run view).",
-      "doneWhen": "Back-navigation labels show the id with no leading '#' (e.g. '← <id>' not '← #<id>'), consistently across the run and job pages and anywhere else a '#'-prefixed id appeared in nav; the link target is unchanged; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T084.md",
       "reviewed": false
     },
     {
@@ -2268,8 +2184,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Run details currently show a raw exit code (e.g. 'Exit code: 0') which forces the reader to decode the number every time (runs/[id]/page.tsx line ~62). Add a shared, reusable helper (e.g. exitCodeLabel(code: number|null) in ui.tsx) that maps exit codes to human-readable text, and surface the label across the site wherever an exit code is shown. Base the enum on the codes this system ACTUALLY emits (runJob.ts): 0 = success/OK; 1 = failed — job threw an exception (also 'unknown job'); timeouts are SIGTERM/SIGKILL so the code arrives as null (or a signal code like 143 SIGTERM / 137 SIGKILL) — label those as terminated/killed (timeout); null with no signal = 'no exit code / did not complete'. Provide a sensible default for anything unrecognised (e.g. 'unexpected exit (code N)'). Show the human label as the primary text; keep the raw number available (e.g. in parentheses or a title/tooltip) for the curious. Currently only the run detail page renders exit_code — grep the dashboard and apply the helper anywhere else an exit code appears so it's consistent site-wide.",
-      "doneWhen": "A shared helper maps exit codes to human-readable labels (0 success, 1 exception, signal/null = timeout/killed, with a sensible default for unknown codes); every place the dashboard shows an exit code uses it (run detail page at minimum), with the raw number still discoverable; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T085.md",
       "reviewed": false
     },
     {
@@ -2295,8 +2210,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Workflows list (/workflows) the 'Last run' column shows a status pill ('running' / 'succeeded' / etc.) that is not clickable (workflows/page.tsx lines ~38-39). Make that pill a link to the workflow run it refers to — p.last_run is a WorkflowRun and already carries its id (api.ts WorkflowRun.id), so wrap the badge in an anchor to `/workflow-runs/${p.last_run.id}`. Keep the relative-time text beside it, the no-run ('—') case, and the existing badge styling.",
-      "doneWhen": "On /workflows each Last-run status pill is a clickable link that navigates to that workflow run's detail page (/workflow-runs/<id>); the relative time and the empty/no-run state are unchanged; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T086.md",
       "reviewed": false
     },
     {
@@ -2333,8 +2247,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "All 8 example jobs currently set maxRetries: 0. Set maxRetries: 3 on every job def so a job that finishes in any non-success state (failed or timeout) is retried up to 3 times. NO executor change is needed — the attempt loop (executor.ts ~lines 38-49) already retries on any non-success outcome up to maxRetries; the DB reads max_retries from the synced job row, so a daemon restart picks up the new values. This is safe because each job is idempotent/resumable (per-item work_items ledger with its own attempt budget) and paid calls are guarded by service quotas, so a whole-job retry just re-runs the loop skipping already-done items (no double-spend). Apply 3 to all 8 jobs unless you find a specific job where retrying the whole process is genuinely harmful — if so, leave it lower and note why in the worklog. Update the doc examples/conventions (CLAUDE.md 'How to add a job' + README job snippet, which currently show maxRetries: 1) so the recommended default reads as 3 for new jobs too.",
-      "doneWhen": "All 8 example job defs set maxRetries: 3 (or a documented lower value with a stated reason); the executor retry behaviour is unchanged (retries on any non-success); CLAUDE.md + README job examples/guidance reflect the new default; npx tsc --noEmit and npm test are green.",
+      "spec": ".harness/tasks/T087.md",
       "reviewed": false
     },
     {
@@ -2361,8 +2274,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the validation-gate detail page the contract's code/JSON-shaped strings are rendered as plain inline mono text, which reads poorly — e.g. an artifact format/summary like '{ perfumeId: fragranticaUrl }' sits inline in a sentence (SideCard in gates/[producer]/[key]/page.tsx: shape.format line ~57, the per-expectation 'actual:' value line ~66, and result.sample line ~75; the .gate-format/.gate-expect-actual/.gate-sample styles in globals.css). Render the code-shaped values (the artifact format string, the 'actual' values, and the sample of what flowed) inside a clearly-delineated code block — a distinct mono block with its own background/border/padding (and wrapping for long content) — so object/JSON shapes are easy to read and visually separated from prose. Keep genuinely plain-English text (the shape.summary, expectation labels/details, gate description) as normal prose; only the code-shaped bits get the code-block treatment. Add a small reusable code-block style in globals.css rather than ad-hoc inline styles.",
-      "doneWhen": "On a gate detail page the code/JSON-shaped values (artifact format, per-expectation actuals, and the 'what actually flowed' sample) render inside a visually distinct code block (mono, own background/border/padding, wraps long content); plain-English prose stays as prose; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T088.md",
       "reviewed": false
     },
     {
@@ -2389,8 +2301,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the validation-gate detail page each expectation's ACTUAL result is currently rendered as muted inline text ('actual: <value>' with className 'muted mono gate-expect-actual', SideCard line ~66; .gate-expect-actual in globals.css) — muting makes the most important part (what actually flowed) recede instead of stand out. Redesign this so the actual result reads as a distinct, prominent element: e.g. put it on its own line with extra spacing above, and give the 'actual' label clear emphasis (bold and/or uppercase small-caps style, and stop muting it). Aim for a tidy 'expected vs actual' feel where the actual value is obviously the answer. Use your judgement on the exact treatment (the user suggested: a newline before it, bold 'actual', uppercase 'actual'). NOTE: this overlaps with T088 (which wraps code/JSON-shaped values in a code block) — whichever lands second should harmonise so the emphasised 'ACTUAL' label and the code-block value work together rather than fight.",
-      "doneWhen": "On a gate detail page each expectation's actual result is visually prominent — clearly separated (own line/spacing) with an emphasised, non-muted 'actual' label (bold/uppercase) — rather than muted inline text; it reads cleanly alongside the T088 code-block treatment if that has landed; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T089.md",
       "reviewed": false
     },
     {
@@ -2410,8 +2321,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On every view that shows a workflow graph, validation-gate chips currently render UNDER the consumer (second) job node (Dag.tsx ~lines 149-150 — gates are grouped by consumer and rendered inside the consumer node's cell), which makes a gate look like a property of that one job. A gate actually bridges a producer→consumer boundary, so it should sit ON / BELOW the connecting arrow BETWEEN the two jobs, not under either node. Update the DAG rendering so gate chips are positioned at the edge/arrow that the gate guards. Cover BOTH renderings — the run view (GateChips) and the structure-only definition view (StructuralGateChips) — and BOTH orientations: desktop left-to-right '→' and the mobile stacked '↓' (globals.css .dag-arrow / .dag-gates / @media block). Keep every chip clickable, state-coloured (passed/failed/pending or structural), and linked to its gate detail/failure logs. NOTE: gates are keyed by (producer, consumer); the example workflows are strictly linear so the producer is the wave immediately before the consumer (place the chips on that inter-wave arrow). For any non-adjacent producer→consumer edge, fall back gracefully (don't drop the chip — e.g. keep it associated with the consumer) rather than mis-placing it. Update the CLAUDE.md gate description that currently says chips render 'on its consumer node'.",
-      "doneWhen": "On both the workflow-run DAG and the structure-only workflow graph, gate chips render on/beside the connecting arrow between the producer and consumer (not under the consumer node), at both desktop and phone widths; chips stay clickable, correctly state-coloured, and linked; non-adjacent edges still show their chip without mis-placement; the CLAUDE.md gate wording is updated; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T090.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2442,8 +2352,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Add the ability to cancel/stop a RUNNING workflow run. Today nothing tracks in-flight runs and the execution path is not interruptible. Build the mechanism: (1) IN-MEMORY REGISTRY: keep a Map<workflowRunId, {AbortController}> populated whenever runWorkflow() starts (so BOTH the scheduler path and the manual /api/workflows/:name/run path register) and cleaned up when it settles. (2) ABORT THREADING: thread an AbortSignal from runWorkflow() through executeDag() (dag.ts) and the runOne hook into runJobForWorkflow()/runAttempts()/executeAttempt() (executor.ts). The DAG loop must stop launching new stages once the signal is aborted (skip not-yet-started members); in-flight members must be actively killed. CRITICAL: aborting must ACTUALLY kill the in-flight child process — the abort handler has to call child.kill('SIGTERM') then SIGKILL after a grace period (reuse the existing timeout kill path at executor.ts ~line 112), NOT merely resolve the promise early (that would orphan the child). (3) STORE TRANSITIONS: mark the workflow run 'cancelled' (finishWorkflowRun) and transition member runs sensibly — a killed in-flight member ends 'cancelled', a not-yet-started stage does not spawn. (4) API: add POST /api/workflow-runs/:id/cancel (mutating — use the existing loopback/token authoriseMutation guard), validating the run exists and is 'running', looking it up in the registry, calling abort(), and recording the cancelled state; return { ok: true } (and a clear error if the run is already terminal or not found). Add unit tests for the abort propagation / that an aborted run stops launching stages and marks cancelled. Update CLAUDE.md (executor/workflow-executor architecture + the API route surface) and README (note the new capability) in lockstep. NOTE: this is safety-critical executor code — be careful not to leave processes hanging or break the existing timeout/retry/overlap behaviour.",
-      "doneWhen": "POST /api/workflow-runs/:id/cancel aborts a running workflow: in-flight child processes are actually killed (no orphans), no further stages launch, and the workflow run + affected member runs are marked 'cancelled' in the DB; a terminal/unknown run id returns a clear error; existing timeout/retry/overlap behaviour is unchanged; new unit tests cover the abort path; CLAUDE.md + README updated; npx tsc --noEmit and npm test green. (Manually verify mid-run that the child PID is gone and the run shows cancelled.)",
+      "spec": ".harness/tasks/T091.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2476,8 +2385,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Surface a Cancel/Stop control for a running workflow, using the POST /api/workflow-runs/:id/cancel endpoint from T091. Add a cancelWorkflowRun(id) client method to dashboard/app/lib/api.ts (mirror the existing post<> helpers like runWorkflow/toggleWorkflow). Add a 'Cancel' button on the workflow-run detail page (workflow-runs/[id]/page.tsx) in the header row next to the status badge, shown/enabled ONLY while run.status === 'running' and disabled while the request is in flight (mirror the run()/busy pattern from workflows/[name]/page.tsx); on click call api.cancelWorkflowRun(id) with error handling, and let the 2s poll reflect the new 'cancelled' status. Optionally also expose it on the workflow detail page (workflows/[name]/page.tsx) when that workflow has an active run, linking to / acting on the active run. Update the README dashboard-pages section to mention the cancel control.",
-      "doneWhen": "On the workflow-run detail page a Cancel button appears while the run is running, calls the cancel endpoint, becomes disabled during the request, and the page reflects the 'cancelled' status after the next poll; the button is absent/disabled for terminal runs; README dashboard-pages updated; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T092.md",
       "reviewed": false
     },
     {
@@ -2498,8 +2406,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Author a design doc at .harness/designs/T093-workflow-run-limits.md for 'run a workflow capped at N originating inputs'. DECISIONS ALREADY MADE (interview 2026-06-22): (a) N counts ORIGINATING inputs — all fan-out work derived from those N roots runs to completion (limit 1 = one root input plus every descendant it produces, e.g. 1 perfume -> 3 similar -> 9 pages -> 27 files all run); (b) the limit is a MANUAL run-time option only (chosen when clicking Run / via the API; scheduled runs stay unlimited); (c) lineage is FRAMEWORK-TRACKED via a root/lineage key on work_items that the framework threads and enforces across stages, each job declaring each produced item's parent. The doc MUST specify: (1) LINEAGE DATA MODEL — new column(s) on work_items (current PK is (job_name,item_key); add e.g. root_key and/or parent_key) tying every item back to its originating input; how the first stage establishes a root and how downstream jobs declare each produced item's parent so root_key propagates through fan-out; the store.ts API additions (markWorkItem carrying lineage; queries to enumerate/count distinct roots and select the first N pending roots). (2) LIMIT SEMANTICS + SELECTION — with limit N, which N roots are chosen (deterministic, e.g. first N pending) and how each stage filters its input to only items whose root is in the selected set. (3) INVOCATION — extend POST /api/workflows/:name/run with an optional { limit }; the workflow_run record carries the limit; thread the limit + selected root-set through the workflow executor down to each member job. (4) JOB CONTRACT — how a job reads the active root-allowlist and declares item lineage (new JobContext helper and/or JobDefinition field in core/types.ts), and how that reaches the child process (runJob.ts gets the job's run via the executor — env/args). (5) BACKWARD COMPAT — the existing 1:1 places + perfumes workflows keep working unchanged when no limit is set; spell out the minimal change to make them declare lineage (each item's root is its own input). (6) UI — the manual Run control gains an optional limit input. (7) MIGRATION — additive work_items column migration in src/db/index.ts. Keep it concrete enough for the build task (T094) to implement; call out risks and the smallest viable first cut.",
-      "doneWhen": "The design doc .harness/designs/T093-workflow-run-limits.md exists and concretely specifies: the lineage data model + work_items schema/column change; the N-originating-inputs limit semantics and root-selection rule; the manual run-time invocation (API + executor + how the root-set/limit reach each job); the JobDefinition/JobContext lineage contract; backward-compat for the existing places/perfumes workflows; and the DB migration. It is detailed enough to implement directly. (Doc-only change; tsc/test trivially green.)",
+      "spec": ".harness/tasks/T093.md",
       "reviewed": false
     },
     {
@@ -2540,8 +2447,7 @@
       ],
       "design": ".harness/designs/T093-workflow-run-limits.md",
       "verify": [],
-      "do": "Implement workflow run-limits per the design doc .harness/designs/T093-workflow-run-limits.md. Agreed shape: framework-tracked input lineage + a MANUAL limit of N originating inputs (all fan-out from each selected root runs to completion; scheduled runs stay unlimited). Concretely: add the lineage key column(s) to work_items (schema.sql) with an additive migration (src/db/index.ts); extend store.ts to record lineage on markWorkItem and to enumerate/select the first N pending roots and filter by root-set; thread an optional { limit } from POST /api/workflows/:name/run through the workflow executor and into each member job (so each stage only processes items whose originating root is in the selected N), reaching the child via runJob.ts; add the JobContext/JobDefinition mechanism (core/types.ts) for a job to read the active root-allowlist and declare each produced item's parent so root_key propagates through fan-out; migrate the existing places + perfumes jobs to declare lineage (1:1, so each item's root is its own input) and confirm they run unchanged with no limit; add an optional limit input to the dashboard Run control. Add unit tests covering lineage propagation, root selection, and limit enforcement INCLUDING a fan-out fixture (1 root -> many descendants) to prove all descendants of the selected roots run. Update CLAUDE.md + README. Follow the design doc; if a decision there proves wrong during implementation, update the doc in the same change. NOTE: this is a large change — if it genuinely cannot fit one context window, record a worklog note proposing a split rather than half-implementing.",
-      "doneWhen": "Running a workflow with a manual limit N processes at most N originating inputs and ALL their fan-out descendants (proven by a fan-out test fixture), keyed off the framework-tracked root key on work_items; running with no limit is unlimited and the existing places/perfumes workflows behave exactly as before; the limit is settable from the dashboard Run control and via POST /api/workflows/:name/run { limit }; the additive work_items migration applies cleanly; unit tests cover lineage + root selection + limit (incl. fan-out); CLAUDE.md + README updated; npx tsc --noEmit, npm test, and the dashboard build are all green.",
+      "spec": ".harness/tasks/T094.md",
       "reviewed": false
     },
     {
@@ -2574,8 +2480,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Take a FIRST STAB at surfacing, for a given workflow run, the workflow's input (at the first stage) and output (at the final stage) — ideally mapped to each other, even if it's just a flat list. Approach for this first cut: identify the first-stage and last-stage jobs from the workflow DAG (first wave / last wave via dag.ts), read each job's work_items (item_key + status + detail JSON, which may carry an output path/summary), and join first-stage items to last-stage items by shared item_key to produce a flat list of input-item -> final-output rows. Add a store query + a read-only API (extend GET /api/workflow-runs/:id or add GET /api/workflow-runs/:id/io — must read DB/files only, never a paid/remote call, so it's safe to poll) and render a panel on the workflow-run page showing the input -> output list, linking outputs to something useful (the producing run, or the output file path) where possible. This works for the current 1:1 example workflows (perfumes/places share the item key across all stages). KNOWN LIMITATIONS to call out in the UI/copy and code comments: work_items is global (not scoped per run), so this reflects the workflow's current first/last-stage ledger rather than strictly this run's items, and it does not handle fan-out — precise per-run, lineage-aware mapping arrives with the lineage work (T093/T094); cross-reference those but do NOT hard-depend on them. Keep it a clearly-labelled first cut.",
-      "doneWhen": "The workflow-run page shows a panel listing the workflow's input items mapped to their final outputs (a flat input -> output list) derived from the first- and last-stage work_items joined by key, with outputs linking somewhere useful where available; it works for the perfumes and places example workflows; the API path is read-only (DB/files only, safe to poll); the first-cut limitations (not per-run-scoped, no fan-out yet) are noted in the UI and comments; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T095.md",
       "reviewed": false
     },
     {
@@ -2605,8 +2510,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the validation-gate detail page the two sides are labelled 'Output' (producer) and 'Input' (consumer) — job-centric labels that read backwards on a page about the GATE (the gate's input is the producer's output; the gate's output is the consumer's input). Decision (interview 2026-06-22): avoid the frame-of-reference ambiguity by using NEUTRAL DIRECTIONAL labels rather than flipping. Relabel the producer side as 'Produced →' and the consumer side as '→ Consumed' (keep the producer/consumer job names beneath each, as today). Rename the corresponding API response fields too: GET /api/workflow-runs/:id/gates/:producer/:key currently returns { gate, output, input } — rename output->produced and input->consumed (or similar neutral names) and update the client types in dashboard/app/lib/api.ts and the SideCard role prop accordingly. Update the CLAUDE.md gate-page description (which currently says 'upstream stage Output -> Gate -> downstream stage Input', and 'output = producer's produces[key], input = consumer's consumes[key]') to the new wording. NOTE: this overlaps with T088 (code-block rendering) and T089 (emphasise actual) on the same SideCard — whichever lands later should harmonise so labels, code block, and the actual-result emphasis read cleanly together.",
-      "doneWhen": "The gate detail page uses neutral directional labels ('Produced →' for the producer side, '→ Consumed' for the consumer side) instead of Output/Input; the API response fields and client types are renamed to match; the CLAUDE.md gate-page description reflects the new wording; it harmonises with the T088/T089 changes if those have landed; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T096.md",
       "reviewed": false
     },
     {
@@ -2634,8 +2538,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "A raw cron schedule like '0 2 * * *' is hard to parse at a glance. Add a tooltip (hover) on every place a schedule is shown that gives a human-readable description, e.g. '0 2 * * *' -> 'At 02:00, every day'. Implement a small cron->English helper (in ui.tsx) covering the common shapes the app uses (daily at HH:MM, hourly, every N hours/minutes, weekly on a given day, etc.) and fall back to showing the raw expression when a cron can't be confidently described — never show a wrong description. Apply it as a title/tooltip wherever a cron is rendered (the Workflows list Schedule column and the workflow detail page at minimum; grep the dashboard for other schedule render sites and cover them too). PREFER a small in-repo helper to honour the repo's dependency-light convention; only reach for a tiny focused library (e.g. cronstrue) if hand-rolling broad coverage proves unreasonable — and note the choice in the worklog. Manual-only ('null' schedule) workflows should keep their existing 'manual' rendering with no misleading tooltip.",
-      "doneWhen": "Hovering a cron schedule anywhere it's shown reveals a human-readable description (e.g. '0 2 * * *' -> 'At 02:00, every day'); unrecognised cron expressions fall back to the raw string (no wrong description); manual-only workflows are unaffected; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T097.md",
       "reviewed": false
     },
     {
@@ -2656,8 +2559,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Prevent the class of bug that just crash-looped the daemon (the T094 regression, fixed in commit 2748c58): a schema-bootstrap statement in schema.sql referencing a column that only a LATER additive migration adds. It was invisible to CI because the unit suite always starts from a FRESH/empty scratch DB — so schema.sql's CREATE TABLE already contained the new column — while the live/existing DB crashed in openDb(). Add a regression test (src/db/migrate-existing-db.test.ts) that exercises the REAL openDb() bootstrap+migration path against a PRE-POPULATED database seeded to an OLDER schema shape: stand up the core tables (work_items, workflow_runs, runs, jobs, services, etc.) in a pre-migration form WITHOUT the newer migration-added columns/indexes, insert a few representative rows, then run the full openDb() path against THAT file and assert it does not throw and ends correctly migrated (expected columns + indexes present, legacy rows backfilled e.g. root_key = item_key). openDb() currently uses config.dbPath and auto-opens at import — do the smallest enabling refactor to make it testable against a given path (e.g. let openDb(path?) accept an optional path) rather than fragile env juggling. Make the test strong enough that it would FAIL against the OLD buggy schema.sql (i.e. it genuinely catches the ordering bug), ideally by seeding from a realistic 'legacy' snapshot so ANY future ordering violation trips it, not just this one. Finally, codify the invariant: add a Conventions note in CLAUDE.md that schema.sql's bootstrap must NOT create an index/constraint on a column added by a later additive migration — such indexes belong IN the migration, after the ALTER (cross-reference the migrateRunLimitLineage pattern in index.ts).",
-      "doneWhen": "A regression test runs openDb()'s full bootstrap+migration against a pre-seeded OLD-shape database (tables + rows lacking the newer columns) and asserts openDb does not throw and the DB ends migrated (columns + indexes present, legacy rows backfilled); the test would FAIL if pointed at the pre-fix buggy schema.sql (proven to catch the ordering bug); openDb is invokable against an explicit path via the minimal refactor; CLAUDE.md documents the 'no schema-bootstrap index/constraint on a migration-added column' convention; npx tsc --noEmit and npm test are green.",
+      "spec": ".harness/tasks/T098.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2681,8 +2583,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Re-evaluate how validation gates are drawn on the graph view — they currently take up too much space (the gate chips, see T090 which placed them on the connecting arrow). Produce FIVE distinct, MORE COMPACT gate-display styles and let the user toggle between them live on the website so they can choose a favourite (persist the choice, e.g. localStorage, so it survives polling/navigation; add a small style selector on the graph views). Use best judgement on the five styles; suggested directions (mix/refine as you see fit): (1) icon-only chip — a single ⛒ glyph coloured by state, full producer/key detail on hover tooltip; (2) a small state-coloured dot/badge on the arrow, tooltip for detail; (3) a tiny inline label showing just the artifact key (no producer name); (4) no separate chip at all — encode gate state by colouring the connector/arrow itself, click the arrow for detail; (5) a compact lock/number glyph that expands to full detail on hover/click. ALL styles must preserve what gates already provide: every gate stays clickable through to its detail page, state colouring (passed/failed/pending, and the structural variant) is still distinguishable, and it works on BOTH the workflow-run DAG and the structure-only workflow graph, at desktop AND phone widths. This is an EVALUATION aid: note in the task/worklog that once the user picks a winner a FOLLOW-UP task will hardcode it and remove the toggle + the unused styles.",
-      "doneWhen": "On both graph views the user can switch between five distinct, compact validation-gate display styles via a persisted toggle; every style keeps gates clickable to their detail page, keeps state colouring distinguishable, and works at desktop and phone widths; the gates visibly take less space than the current chip; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T099.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2712,8 +2613,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The manual run-limit control added by T094 (on the workflow detail page's Run area) is just a bare text box sitting awkwardly on the page — it looks unfinished and doesn't fit the rest of the site. Improve its visual integration: give it a proper label, sensible sizing/placement grouped with the 'Run now' button, and styling consistent with the site's other form controls (e.g. the Services edit-limits inputs), so the limit reads as a polished part of the run control rather than a stray box. Keep the behaviour unchanged (optional limit; blank = unlimited; scheduled runs unaffected). Also tidy how the chosen limit is surfaced on the resulting workflow-run page (workflow-runs/[id]) if it currently renders raw/awkwardly.",
-      "doneWhen": "The run-limit input is visually integrated with the workflow Run control and matches the site's styling (clear label, appropriate size, sensible placement) — no longer a stray text box; its behaviour is unchanged (blank = unlimited); any display of the active limit on the workflow-run page reads tidily; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T100.md",
       "reviewed": false
     },
     {
@@ -2740,8 +2640,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the validation-gate detail page, the middle 'Gate' container (the gate-center card) renders its code-shaped content — notably the artifact key (gate.key, ~line 148) — as plain mono text, while the producer/consumer SIDE cards now use a dedicated code-block style (introduced by T088). Make the middle Gate card use the SAME code-block styling for its code-shaped content (the artifact key, and any other code/JSON-shaped values it shows) so all three containers read consistently and the gate is easy to read. Reuse the shared code-block class from T088 rather than inventing a new one; keep the plain-English gate description as prose. NOTE: harmonise with T088/T089/T096 which also touch this page.",
-      "doneWhen": "The middle Gate container uses the same code-block styling as the producer/consumer side cards for its code-shaped content (artifact key etc.); the three containers read consistently; plain-English text stays prose; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T101.md",
       "reviewed": false
     },
     {
@@ -2764,8 +2663,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the workflow DEFINITION view (/workflows/[name]) the structure graph shows validation-gate chips (StructuralGateChips in Dag.tsx). Clicking one currently jumps into a SPECIFIC RUN's gate detail page (/workflow-runs/<lastRunId>/gates/...), which is wrong for a definition view — it should behave like clicking a JOB there does (which opens the job's run-agnostic read-only view at /jobs/<name>, NOT a specific run). Make a gate chip on the definition view open a DEFINITION-LEVEL gate detail that explains the gate itself — the contract: artifact key, description, producer->consumer, and the declared expected shape — independent of any one run. Add a run-agnostic gate-detail route (e.g. /workflows/[name]/gates/[producer]/[key]) backed by a read-only API (e.g. GET /api/workflows/:name/gates/:producer/:key) returning the structural gate info from deriveGates plus the producer/consumer contracts' shape/description (the 'expected' side only — NO live per-run actuals, NO paid/remote calls, so it's safe to load). Rewire StructuralGateChips on the definition view to link there instead of to the last run. Keep the existing run-scoped gate page (/workflow-runs/[id]/gates/...) for the run views UNCHANGED (that one legitimately shows a specific run's actual-vs-expected). NOTE: harmonise with the gate-page work in T088/T089/T096/T101.",
-      "doneWhen": "On /workflows/[name], clicking a validation-gate chip opens a run-agnostic, definition-level gate detail (contract key, description, producer->consumer, expected shape) rather than a specific run's gate page; the run views still link to their run-scoped gate detail; the new API path is read-only (DB/contracts only, no paid/remote calls); npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T102.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2787,8 +2685,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The backlog DAG (BacklogDag in components/Dag.tsx, the /backlog DAG view) still looks poor: tasks render as loosely-styled items in left-to-right waves with a single '→' between waves, so there's no clear per-task shape and no real edges — it doesn't read as a graph. Redesign it to look like an actual directed acyclic graph: (1) wrap EVERY task in a clearly-bounded NODE SHAPE (a bordered box/card, clearly separated from its neighbours, status-coloured, showing at least the task id + title); (2) draw REAL directed edges between dependency-related nodes — an arrow from each task to each of its dependents — not just one arrow between waves, so the dependency structure is actually visible. Keep the topological ordering, the click-to-select/inspect behaviour, horizontal scroll, and phone-width responsiveness. PREFER a lightweight in-repo approach (position nodes by the existing topological waves; draw edges with SVG lines + arrowheads) over pulling in a heavy graph-layout library (e.g. dagre/d3) — honour the repo's dependency-light convention; if a library is genuinely warranted, note the tradeoff in the worklog. This supersedes/extends T076 (a first pass at nicer backlog DAG nodes).",
-      "doneWhen": "The /backlog DAG view renders as a genuine directed graph — each task sits in a clearly-bounded, visually-separated node shape and real directed edges (with arrowheads) connect dependent tasks rather than a single per-wave arrow; topological order, node selection/inspect, horizontal scroll, and mobile responsiveness all still work; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T103.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2818,8 +2715,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On a workflow-run page (workflow-runs/[id]/page.tsx) the 'Validation gates' panel (the <h2>Validation gates</h2> + the State/Gate/Asserts/detail table, ~lines 26-49) is not very useful and duplicates the graph: the DAG gate chips already link directly to each gate's detail page. Remove that header + panel/table. IMPORTANT: the page still needs the `gates` data to render the chips on the run DAG, so keep fetching gates and keep the DAG's GateChips — only remove the separate panel display. Confirm nothing dangles: the gate chips link straight to /workflow-runs/[id]/gates/... (not to a panel anchor), and there is no gateAnchor reference in code, so no in-page links should break — but double-check and clean up any leftover anchor/link into the removed panel. Update the docs that describe this panel: CLAUDE.md (~lines 390/429, including the 'links to that gate's row in the Validation gates panel' / gateAnchor wording — gate chips now link directly to the gate detail page) and README (~line 330).",
-      "doneWhen": "The Validation gates panel/header is gone from the workflow-run page; gates are still reachable by clicking their chips on the run DAG (which open the gate detail page); no dangling links or anchors reference the removed panel; CLAUDE.md + README no longer describe the panel (and reflect that chips link directly to the gate detail); npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T104.md",
       "reviewed": false
     },
     {
@@ -2848,8 +2744,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "A workflow must only ever have ONE active run at a time (different workflows MAY still run concurrently — this is per-workflow, not a global lock). Today the Run button stays active on the Workflows list even while that workflow is running. Enforce the constraint at all three layers: (1) UI — disable/relabel the Run button (the per-row button on the Workflows LIST page workflows/page.tsx AND the 'Run now' button on the workflow DETAIL page workflows/[name]/page.tsx) whenever that workflow has an active run (the workflows API already exposes last_run; treat last_run.status === 'running' as active), e.g. show 'Running…' disabled. (2) API — POST /api/workflows/:name/run should reject a duplicate start with a clear response (e.g. 409 Conflict + message) instead of returning ok/202 and silently skipping, so callers know it didn't start. (3) EXECUTOR — the workflow executor is the AUTHORITATIVE guard: it must atomically refuse to start a second concurrent run of the same workflow (there is already a hasActiveWorkflowRun check / overlap-prevention — make it the single source of truth and race-safe, so two near-simultaneous POSTs can't both start). Add unit tests for the API reject and the executor guard (and that a DIFFERENT workflow can still start while one is running). Document the constraint in CLAUDE.md (executor/overlap section) + README.",
-      "doneWhen": "Starting a workflow that already has an active run is prevented at every layer: the Run button (list + detail) is disabled/shows 'running' while a run is active; POST /api/workflows/:name/run returns a clear conflict (e.g. 409) rather than appearing to start a second run; the executor atomically refuses a concurrent run of the SAME workflow so a race can't start two, while DIFFERENT workflows can still run concurrently; unit tests cover the API reject + executor guard + the different-workflow case; CLAUDE.md + README document the constraint; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T105.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -2877,8 +2772,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Services page the wording for 'no limit set' is inconsistent: the Edit-limits placeholder now reads 'no limit' (set by T074), but the TABLE view shows 'no cap' when a service has no limit (the Bar component, services/page.tsx ~line 8: `if (cap == null) return <span className=\"muted\">no cap</span>`). Align everything to 'no limit': change the table's 'no cap' to 'no limit', and update the per-field ✕ clear-button tooltips that say 'Set to no cap' (daily/monthly) to 'Set to no limit', so the empty/no-limit state reads consistently as 'no limit' across the table, the placeholders, and the tooltips.",
-      "doneWhen": "The Services page uses 'no limit' wording consistently for the no-limit/empty state — the table shows 'no limit' (not 'no cap'), and the edit placeholders + ✕ clear-button tooltips all say 'no limit'; behaviour is unchanged; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T106.md",
       "reviewed": false
     },
     {
@@ -2907,8 +2801,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "T097 added a human-readable cron explanation but surfaced it via the native HTML title attribute, which only appears after the browser's ~1s hover delay — not ideal. Replace it with an EXPLICIT tooltip affordance: render a small '?'-in-a-circle help icon next to each cron schedule display, and on hover/focus (or tap, for touch) show the human-readable cron text IMMEDIATELY via a custom tooltip (CSS/JS), with no native-title delay. Reuse the existing cron->English helper from T097 (don't reimplement it). Build it as a small reusable component (e.g. in ui.tsx) and apply it everywhere a cron is shown (the Workflows list + the workflow detail page; grep for any other cron render sites). Make it accessible (keyboard-focusable + appropriate aria) and touch-friendly (tap to reveal), and ensure the tooltip doesn't cause horizontal overflow at phone width. Remove the now-superseded native title-based cron tooltip.",
-      "doneWhen": "Each cron schedule display has an explicit '?'-in-circle icon that, on hover/focus/tap, instantly shows the human-readable cron text (no native-title delay); it reuses the T097 cron->English helper; it's keyboard-accessible and works on touch; no horizontal overflow at ~402px; the old native-title cron tooltip is gone; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T107.md",
       "reviewed": false
     },
     {
@@ -2933,8 +2826,7 @@
       "verify": [
         "live-api"
       ],
-      "do": "Build a NEW workflow that checks my Plex library for TV shows and notifies me when a NEW SEASON has become available (i.e. exists/aired upstream but isn't in my library yet) so I know to download it. NEEDS-HUMAN because it requires my private credentials + infrastructure: a Plex server URL + auth token (PLEX_URL / PLEX_TOKEN), network access to my Plex server, and most likely a TV-metadata source to know which seasons exist (e.g. TVDB/TMDB API key, or a Sonarr instance) — the loop cannot provision these, so the agent should scaffold the workflow around the gap and record failed:blocked until I supply them. Design (follow repo conventions): a multi-stage workflow under a PRIVATE gitignored subfolder src/jobs/plex/ (add 'src/jobs/plex/' to .gitignore; do NOT publish this job's code or document it in the public README) — e.g. stage 1 query the Plex library for each show + its latest owned season; stage 2 look up upstream season availability via the metadata service; stage 3 push a notification (reuse src/core/notifier.ts push() — ntfy + macOS) listing shows with a new season available. Key it idempotently with the work_items ledger per (show, season) so I'm only notified once per new season; route the external metadata calls through a *.service.ts ServiceDefinition for rate-limiting; give the *.workflow.ts a sensible schedule (e.g. daily or weekly). Read all secrets from .env via process.env; add the env var NAMES with placeholders to .env.example (names only, never values). Tell me exactly what to provision (the human step).",
-      "doneWhen": "A private (gitignored) 'plex' workflow exists that, on its schedule, compares my Plex library against upstream season availability and pushes a notification for shows with a newly-available season, de-duplicated per (show, season) via the work_items ledger; it reads PLEX_URL/PLEX_TOKEN (+ any metadata API key) from .env (placeholders documented in .env.example, names only); the job code stays a gitignored private subfolder (never force-added). Until I provision the Plex token/URL + metadata access, the task is recorded failed:blocked with the exact provisioning steps; once provisioned it is verified end-to-end against the live Plex server with the smallest sample. npx tsc --noEmit and npm test stay green.",
+      "spec": ".harness/tasks/T108.md",
       "reviewed": false
     },
     {
@@ -2960,8 +2852,7 @@
       "verify": [
         "live-api"
       ],
-      "do": "Build a NEW MONTHLY workflow that scans my Plex MOVIE library for 'gaps' and notifies me which movies to download. NEEDS-HUMAN: like T108 it needs my private Plex server URL + token (PLEX_URL / PLEX_TOKEN), network access to my Plex server, and a movie-metadata source (e.g. TMDB API key, or a Radarr instance) to know what 'complete' looks like — the loop can't provision these, so scaffold around the gap and record failed:blocked until I supply them. WORKING DEFINITION OF 'gap' (confirm with me, it's the key design choice): within collections/franchises where I already own at least one movie (via TMDB collections / Plex collection metadata), the movies I'm MISSING — e.g. I own Star Wars I-VII but not VIII-IX. Note alternative definitions (missing from a watchlist, low-quality versions to upgrade) so I can pick; default to the collection-gap interpretation. Follow repo conventions and REUSE T108 where sensible: this can live in the same PRIVATE gitignored subfolder src/jobs/plex/ (already added to .gitignore by T108; if T108 hasn't landed, add 'src/jobs/plex/') and share the Plex connection + a metadata *.service.ts for rate-limiting; it is its own *.workflow.ts with a MONTHLY schedule. Stages e.g.: enumerate owned movies + their collections from Plex; for each collection resolve the full set from the metadata source and diff to find missing entries; push a notification (reuse src/core/notifier.ts push()) listing the gaps. Key idempotently with the work_items ledger per missing movie so I'm notified once per gap. Secrets from .env via process.env; env var NAMES (placeholders only) in .env.example; do NOT publish the job code or document it in the public README.",
-      "doneWhen": "A private (gitignored) monthly Plex movie-gaps workflow exists that compares my owned movies against their collections/franchises (per the agreed 'gap' definition) and pushes a notification listing missing movies to download, de-duplicated per missing movie via the work_items ledger; it reuses the Plex credentials/connection + a rate-limited metadata service; secrets come from .env (names placeholdered in .env.example) and the code stays a gitignored private subfolder. Until I provision Plex + metadata access (and confirm the 'gap' definition) it is recorded failed:blocked with the exact steps; once provisioned it is verified against the live Plex server with the smallest sample. npx tsc --noEmit and npm test stay green.",
+      "spec": ".harness/tasks/T109.md",
       "reviewed": false
     },
     {
@@ -2984,8 +2875,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the workflow-run page, the input->output mapping panel (added by T095) currently shows an output that's basically a copy of the input id — no real value. Make the OUTPUT side expressive: show a PREVIEW of the produced artifact (for the example workflows the final stage writes a markdown file, e.g. data/out/markdown/<id>.md — preview its title / first lines / a short excerpt), and make clicking the output open the FULL markdown in a popover/modal (reuse the existing RowModal/db-modal pattern + styling). The input side can stay roughly as-is. Add a READ-ONLY API endpoint to fetch a given run item's output content, and make it PATH-SAFE: resolve the file only within the job's known output directory (e.g. its data/out), reject any path traversal, read files only (no paid/remote calls, safe to load). Resolve the output path from the T095 IO mapping / work_items detail. PREFER showing the markdown as readable text (monospace, scrollable) in the popover to avoid adding a markdown-renderer dependency (repo is dependency-light); a light in-house render is optional. Works for the perfumes + places example workflows. NOTE: harmonise with T095 (the panel) and reuse the db page's modal where possible.",
-      "doneWhen": "On the workflow-run page the output side of the IO mapping shows a meaningful preview of the produced artifact (e.g. the markdown title/excerpt), and clicking it opens the full markdown in a popover/modal; the content is served by a read-only API restricted to the job's output directory (no path traversal, files only, no paid/remote calls); it works for the perfumes and places workflows; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T110.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -3009,8 +2899,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "One-time clean slate so the workflows can run from scratch in production with no prior TESTING data. NEEDS-HUMAN: this is destructive and operates on the LIVE production DB (data/jobs.db) and local data/ files — the loop must never run it; the agent PREPARES a safe, guarded reset and the human executes it. Deliverable: a guarded reset utility under scripts/ (e.g. scripts/reset-clean-slate.ts) that DRY-RUNS by default and requires an explicit confirm flag to actually delete, printing exactly what it will remove. CLEAR: the work_items ledger plus the run/usage history + logs — work_items, runs, run_logs, workflow_runs, workflow_run_logs, job_usage, service_usage — and every workflow's OUTPUT artifacts under each job's data/out/** (e.g. places data/out json + markdown; perfumes data/out/pages, pages-failed, fragrantica, markdown). PRESERVE (must NOT touch): data/raw/** inputs (the workflows need them), data/chrome-profile/ (warmed Cloudflare clearance — not an output), .env (secrets), the definition tables jobs/workflows/services (they re-sync from code on daemon start), and user settings — service limit overrides (limits_overridden + values) and workflow enabled toggles. Note the process for the human: stop the daemon (ensure no workflow is running), run the script with the confirm flag, then restart the daemon — it re-syncs definitions and, with an empty ledger, reprocesses all inputs from scratch. Call out that clearing service_usage resets the monthly spend meter (intended for a fresh start). NEVER git add anything under data/.",
-      "doneWhen": "A guarded scripts/ reset utility exists (dry-run by default, explicit confirm to delete, prints what it removes) that clears the work_items ledger + run/usage history/logs + every workflow's data/out artifacts while preserving data/raw inputs, the chrome-profile, .env, definition tables, and user service-limit/enabled settings. The human runs it, restarts the daemon, and the dashboard shows an empty ledger/run history with workflows ready to reprocess all inputs from scratch; until the human runs it the task is recorded failed:blocked with the exact steps. npx tsc --noEmit and npm test stay green; nothing under data/ is committed.",
+      "spec": ".harness/tasks/T111.md",
       "reviewed": false
     },
     {
@@ -3033,8 +2922,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "ROOT-CAUSED from the live logs on 2026-06-23 (perfumes run 64cbdf8c). Two related symptoms. (1) SELF-LOOPING / never reaches 'stable': perfumes is repeatUntilStable (maxCycles=40, cycleSleepMs=5000, minAttempts=maxAttempts=4). The cycle stop-condition is workflowRetryableCount(memberNames, minAttempts)==0 (store.ts: COUNT work_items WHERE status='failed' AND attempts < minAttempts). ONE genuinely-unfindable item — perfumes-find-url key 'amouage-jubilation-40', status=failed, attempts=2, detail 'no Fragrantica page found' — is counted as retryable (failed AND attempts<4) EVERY cycle, yet its attempts stay FROZEN at 2 (it is not actually re-attempted/incremented across cycles). So the count is permanently 1, the workflow never settles, and EVERY perfumes run burns all 40 cycles (re-running all 4 stages 40x) for nothing. FIX: make the stop-condition robust — add a NO-FORWARD-PROGRESS early stop (if a whole cycle changes nothing — retryable count didn't drop AND no work_item was updated/attempted this cycle — break instead of spinning to maxCycles), AND/OR align workflowRetryableCount with what will actually be retried (exclude items that won't be re-attempted — e.g. no longer in the job's current input, or effectively unprocessable). Also investigate why perfumes-find-url leaves the item at attempts=2 rather than retrying it up to maxAttempts so it becomes 'stuck' and naturally drops out of the retryable set. (2) STATUS FLICKER: when perfumes runs, each stage first shows 'succeeded', flips to 'running', then back to 'succeeded'. Investigate the per-stage status derivation — statusByJob feeding Dag.tsx + the stage grouping in workflow-runs/[id]/page.tsx may use the LATEST run per job across ALL history (a prior run's success) instead of scoping to THIS run's member runs; also check repeatUntilStable cycle separation and any initial-render/poll race. (3) NOTIFICATION SPAM: the logs show 'notification FAILED (ntfy HTTP 429)' on nearly every stage — per-stage success notifications fire on every cycle (~40x4=160 pushes) and ntfy rate-limits. Suppress/dedupe per-stage notifications during repeatUntilStable cycling (e.g. only notify on the final cycle or on a meaningful state change). Add regression tests for the no-progress stop condition and the status derivation.",
-      "doneWhen": "A perfumes run no longer burns all 40 cycles: the repeatUntilStable loop stops once there is no forward progress (a genuinely-unfindable item like amouage-jubilation-40 no longer causes perpetual cycling), proven by a regression test; the per-stage status shows correct states with no initial false 'succeeded' and no succeeded→running→succeeded flicker (scoped to the current run + correct cycle); per-stage notifications no longer spam ntfy during cycling (no 429 storm); regression tests cover the stop-condition + status derivation; npx tsc --noEmit, npm test, and the dashboard build are all green.",
+      "spec": ".harness/tasks/T112.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -3064,8 +2952,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The expand/collapse caret added to the Backlog section headers by T78 is not very visible. Produce FIVE distinct, clearly MORE VISIBLE caret/disclosure-indicator styles for the collapsible section headers (the <details>/<summary className=\"section-heading-summary\"> blocks on /backlog — 'Harness-buildable', 'Needs a human', 'Done') and let the user toggle between them live so they can choose a favourite (persist the choice, e.g. localStorage, and add a small style selector — same pattern as T99's gate-style chooser). Use best judgement on the five; suggested directions (mix/refine): (1) a larger, bolder, higher-contrast chevron (▸/▾) that rotates with state; (2) a filled triangle in an accent colour; (3) a circled +/− (⊕/⊖) toggle; (4) a chevron inside a small bordered box/pill that flips; (5) an animated rotating chevron with a subtle highlight on the whole summary row on hover/open. EVERY style must clearly distinguish collapsed vs expanded, apply consistently across all three section headers, be keyboard-accessible, and not break phone-width layout. This is an EVALUATION aid — note that once the user picks a winner a FOLLOW-UP task will hardcode it and remove the toggle + unused styles.",
-      "doneWhen": "On /backlog the user can switch between five distinct, clearly-visible caret/disclosure styles via a persisted toggle; each clearly indicates collapsed vs expanded on all three section headers and is more prominent than the current T78 caret; keyboard-accessible; no phone-width overflow; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T113.md",
       "reviewed": false
     },
     {
@@ -3094,8 +2981,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The ntfy notifications API keeps returning HTTP 429 because we hammered it (e.g. per-stage notifications during repeatUntilStable cycling) and we keep trying anyway. Add backoff to the ntfy sender (sendNtfy in src/core/notifier.ts) so that after a 429 we STOP attempting sends until a cooldown elapses. Use EXPONENTIAL backoff WITH A HARD CAP: on each consecutive 429 increase the cooldown (e.g. start ~30s, double each time, cap at ~10-15 min); HONOR ntfy's Retry-After response header as the cooldown when present (prefer it over the computed value); while within the cooldown window, SKIP the ntfy send entirely (don't even hit the API) and log that it's suppressed; RESET the backoff on the next successful send. Keep the backoff state in-memory in the long-lived daemon process (module-level in notifier.ts — resetting on restart is fine). This must NOT affect the macOS notification path (not rate-limited), and the notifier must still NEVER throw (a broken notifier must not affect job execution). Make the backoff knobs (base, cap) env-overridable via config.ts. Add unit tests: a 429 sets a cooldown, subsequent sends within the window are skipped (no fetch), Retry-After is honored, and a success resets the backoff. NOTE: complements T112 (which reduces per-stage notification volume during cycling) — together they stop the 429 storm.",
-      "doneWhen": "After the ntfy API returns 429, further ntfy sends are skipped until a cooldown elapses (exponential backoff with a hard cap, honoring Retry-After when present), and a successful send resets the backoff; the macOS notification path is unaffected and the notifier never throws; backoff base/cap are env-overridable; unit tests cover 429→cooldown→skip→reset (including Retry-After); npx tsc --noEmit and npm test are green.",
+      "spec": ".harness/tasks/T114.md",
       "reviewed": false
     },
     {
@@ -3124,8 +3010,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On a workflow run, the input-to-output mapping (T110) opens the output markdown in a popover but currently shows it as RAW markdown text in a <pre> (T110 did this deliberately to avoid a dependency). Render it AS markdown instead. Add a small, well-maintained markdown renderer to the dashboard (e.g. react-markdown, or marked) — the repo prefers few dependencies, so choose one focused library and note the choice in the worklog/README. SECURITY (important): the markdown is LLM-generated / scraped content, so rendering MUST be XSS-safe — do NOT execute raw HTML embedded in the content (use a renderer that escapes HTML by default, e.g. react-markdown WITHOUT rehype-raw, or sanitize the output). Render the full markdown in the MarkdownModal with sensible styling (headings, lists, links, code, blockquotes), and handle the YAML frontmatter block tidily (strip it or render it as a small key/value header rather than dumping raw '---' lines). Keep the modal scrollable and mobile-responsive. The preview excerpt in the table cell can stay plain text. Update README/CLAUDE.md to note the new dashboard dependency. NOTE: builds on T110 (the popover) — replace its raw <pre> rendering.",
-      "doneWhen": "Opening an output markdown from the workflow-run IO mapping renders it as formatted markdown (headings, lists, links, etc.) instead of raw text; rendering is XSS-safe (no raw HTML execution from LLM/scraped content); YAML frontmatter is handled tidily; the modal stays scrollable and mobile-responsive; any added dependency is recorded in the docs; the dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T115.md",
       "reviewed": false
     },
     {
@@ -3153,8 +3038,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On a workflow run, the output column of the input-to-output mapping (the OutputCell from T110) currently renders an inline preview (📄 title · excerpt · file), and it's unclear what it should look like. Produce FIVE distinct presentations of the output LINE ITEM and let the user toggle between them live to choose a favourite (persist the choice, e.g. localStorage, with a small style selector — same chooser pattern as T99/T113). Use best judgement; suggested directions (mix/refine): (1) FILENAME ONLY + a 'Preview' button that opens the popover; (2) a file icon + the document title (no excerpt), whole row clickable to preview; (3) title + short excerpt (the current style); (4) filename as a link plus small metadata (size/date); (5) a compact chip (file icon + filename) that shows the excerpt on hover and opens the full popover on click. EVERY style must keep the click-to-preview popover working (the T110 popover / T115 markdown render), handle the no-artifact fallback gracefully, work for the perfumes + places workflows, and stay mobile-responsive. This is an EVALUATION aid — note that once the user picks a winner a FOLLOW-UP task will hardcode it and remove the toggle + unused styles.",
-      "doneWhen": "On a workflow-run page the user can switch between five distinct output line-item styles via a persisted toggle; each keeps the click-to-preview popover working and handles the no-output fallback; it works for the perfumes and places workflows and stays mobile-responsive; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T116.md",
       "reviewed": false
     },
     {
@@ -3180,8 +3064,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the workflow-run page the progress summary line (page.tsx ~line 271) renders `{run.progress_msg} · {run.progress}% · {duration}`, where progress_msg includes the name of the last succeeded stage (e.g. 'perfumes-build'). Drop the stage name. Instead show 'X of N stages · {progress}% · {duration}', where N is the workflow's total stage count and X is the number of COMPLETED stages — derive these from the run's member runs (N = distinct member jobs in the workflow; X = distinct stages whose latest run is terminal/succeeded), consistent with the T081 completed-stages progress roll-up. Keep the percentage and the duration; just remove the per-stage name. Handle the running vs finished states sensibly.",
-      "doneWhen": "The workflow-run header summary reads 'X of N stages · P% · <duration>' with NO stage name shown; X and N reflect completed vs total stages (consistent with the progress roll-up); the percentage and duration are retained; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T117.md",
       "reviewed": false
     },
     {
@@ -3215,8 +3098,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Clearing stuck items one-by-one is tedious. Build a REUSABLE stuck-items POPOVER/modal that lists stuck items, each with its own ↻ Unstick and ✕ Ignore button, PLUS 'Unstick all' and 'Ignore all' bulk actions (require a CONFIRMATION before a bulk action, especially Ignore-all which permanently parks). Back the bulk actions with store functions in src/db/store.ts (bulk-unstick = delete all currently-failed stuck rows IN SCOPE so they retry fresh; bulk-ignore = mark them 'ignored') and bulk API endpoints in src/api/server.ts (mutating — use the existing loopback/token authoriseMutation guard), mirroring the single-item /api/stuck/unstick + /api/stuck/ignore semantics EXACTLY: act ONLY on currently-'failed' rows; ignore = the permanent manual-park (off the stuck list, never reprocessed); unstick = delete the ledger row to retry fresh. The popover AND the bulk endpoints must accept an optional SCOPE — all stuck items, a given job, or a given WORKFLOW (resolve to its member jobs) — so the component is reusable from multiple places (Overview now; the Workflows view in T119). Wire it into the Overview page (dashboard/app/page.tsx) — open the popover from the stuck tile/section — and keep the existing per-row controls working. Add unit tests (bulk affects only currently-failed rows, respects job/workflow scope, returns correct counts) and document the popover + bulk controls in CLAUDE.md (stuck/ignored section) + README (Overview).",
-      "doneWhen": "A reusable stuck-items popover lists stuck items with per-item Unstick/Ignore and 'Unstick all'/'Ignore all' (confirmed) bulk actions; the bulk endpoints/store act ONLY on currently-failed rows, support an all/job/workflow scope, and return correct counts; the popover is opened from the Overview and the existing per-row controls still work; unit tests cover the bulk operations + scoping; CLAUDE.md + README updated; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T118.md",
       "reviewed": false
     },
     {
@@ -3245,8 +3127,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Workflows view (/workflows) each workflow shows a count of stuck items next to its name, but it isn't clickable. Make the stuck count a clickable control that opens the REUSABLE stuck-items popover from T118, SCOPED to that workflow (its member jobs), so the user can see and unstick/ignore (including the bulk 'Unstick all' / 'Ignore all') that workflow's stuck items in place. When the count is zero, keep it non-interactive (no empty popover). Reuse the T118 popover component + its workflow-scoped API; don't reimplement the controls.",
-      "doneWhen": "On /workflows clicking a workflow's stuck count opens the T118 stuck-items popover scoped to that workflow's stuck items, with per-item and bulk controls working; a zero count is not clickable; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T119.md",
       "reviewed": false
     },
     {
@@ -3274,8 +3155,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Services page the 'Edit limits' text boxes (services/page.tsx) use basic styling the user dislikes. Restyle them to match the workflow-run limit input — the nicer text box on the workflow detail Run UI (workflows/[name]/page.tsx, polished by T100), which the user likes. Make the three Services edit inputs (rate/min, rate/day, rate/month) use that same look; ideally EXTRACT A SHARED input class/component used by both the run-limit input and the Services inputs so they stay consistent going forward. Keep all existing behaviour: blank = null/no-limit, the non-negative-integer validation, the per-field ✕ clear buttons, and the 'no limit' wording (from T106). NOTE: harmonise with T106 (services wording) which also touches these inputs.",
-      "doneWhen": "The Services edit-limits inputs visually match the workflow-run limit input styling (ideally via a shared class/component); their behaviour is unchanged (blank = null, validation, ✕ clear buttons, 'no limit' wording); dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T120.md",
       "reviewed": false
     },
     {
@@ -3305,8 +3185,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Remove the DAG view from the Backlog page entirely — there are few inter-task dependencies so it isn't useful; the Backlog should be LIST-ONLY. Remove: the List/DAG view toggle and the DAG render branch + its legend/help text + the selectedId/onSelect node-selection state in dashboard/app/backlog/page.tsx (make /backlog show the list directly); and the now-unused BacklogDag component + computeBacklogWaves helper from dashboard/app/components/Dag.tsx (BacklogDag is only used by the backlog page — confirm with grep). KEEP the workflow Dag export (used by the workflow pages) and the shared .dag* CSS it relies on — remove only backlog-DAG-specific CSS (e.g. .backlog-dag-scroll, .dag-legend / .dag-legend.next etc. if not used elsewhere; verify before deleting). Update the docs that describe the backlog list/DAG views: README (Backlog page) + CLAUDE.md. NOTE: this supersedes the now-DONE T076 and T103 (which improved the backlog DAG) — that work is being removed deliberately; the LIST view (incl. T077 clickable done items and T113 section-header carets) stays.",
-      "doneWhen": "/backlog renders list-only with no DAG view and no List/DAG toggle; BacklogDag + its backlog-only helpers, state, and CSS are removed; the workflow Dag component and the shared DAG CSS remain intact (workflow pages unaffected); README + CLAUDE.md backlog-page descriptions updated to list-only; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T121.md",
       "reviewed": false
     },
     {
@@ -3332,8 +3211,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Overview page (dashboard/app/page.tsx), the workflow cards/list show a per-workflow 'stuck items' count pill. This is redundant now that stuck items have their own dedicated section/header (and the Stuck stat tile) on the same page. Remove that stuck-count pill from the Overview's workflow cards. KEEP the dedicated stuck-items section and the Stuck stat tile intact. This only affects the Overview page (/) — do NOT touch the /workflows page's stuck count (handled separately by T119).",
-      "doneWhen": "The Overview workflow cards no longer show a per-workflow stuck-items count pill; the dedicated stuck-items section and the Stuck tile remain; the /workflows page is unaffected; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T122.md",
       "reviewed": false
     },
     {
@@ -3360,8 +3238,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Backlog LIST view, harness-buildable task cards (TaskCard in backlog/page.tsx) are plain grey with a grey status pill, whereas needs-human cards are more interesting (a blue/accent border via borderColor var(--accent) + a '🔒 needs human' pill). Give harness-buildable cards a comparable treatment: add a 'buildable' pill (mirroring the needs-human pill, e.g. '🤖 buildable') AND an orangey-yellow (amber) colour scheme for the card border + that pill. Add an amber/orange colour token to globals.css (the palette is CSS custom properties like --accent/--green/--red — add e.g. --amber) and apply it to the buildable cards' border + pill, analogous to how needs-human uses --accent. Keep it legible in the dark theme, and don't disturb the existing status pills, the done styling, or the needs-human styling.",
-      "doneWhen": "On /backlog harness-buildable task cards show a 'buildable' pill and an orangey-yellow (amber) border/pill scheme comparable to the needs-human blue treatment; needs-human and done styling are unchanged; it's legible in the theme; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T123.md",
       "reviewed": false
     },
     {
@@ -3389,8 +3266,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Add a human-review tracking feature so the owner can mark done tasks as checked. (1) DATA: add a `reviewed` boolean to each task in .harness/TASKS.json and BACKFILL every existing task to reviewed:false (safely — preserve every other field, incl. status); treat an absent value as false defensively. (2) API: GET /api/backlog must include each task's `reviewed` (default false); add a MUTATING endpoint POST /api/backlog/:id/reviewed { reviewed: bool } (use the existing loopback/token authoriseMutation guard) that does a SAFE, ATOMIC read-modify-write of .harness/TASKS.json — set ONLY that task's `reviewed` field, preserve all other fields and all other tasks, validate the JSON, and write via temp-file + rename. THIS IS THE FIRST dashboard->harness-file WRITE (the dashboard is otherwise strictly read-only), and the harness loop ALSO read-modify-writes TASKS.json (it sets `status` to done), so the write must be atomic + field-scoped and must not clobber concurrent status edits; confirm the loop's status-write (jq setting .status) preserves the `reviewed` field. (3) UI (Backlog Done section): on each DONE task add a 'Mark as reviewed' toggle button that calls the endpoint; show a coloured 'Reviewed' pill when reviewed:true and a 'Not reviewed' pill when false; add a filter on the Done list for Reviewed / Not reviewed / All. (4) DOCS: document the `reviewed` field + the dashboard write path in CLAUDE.md, .harness/HARNESS.md, and README — explicitly noting this is the deliberate, owner-authorized EXCEPTION to the read-only-dashboard / shell-owns-the-file rules (status remains shell-owned; only `reviewed` is human/dashboard-owned). (5) TESTS: cover the endpoint (sets only the target task's reviewed, preserves all other fields/tasks, atomic, rejects unknown id) and that GET /api/backlog surfaces reviewed.",
-      "doneWhen": "Every task in .harness/TASKS.json has a `reviewed` boolean (all backfilled to false with all other fields preserved); GET /api/backlog returns `reviewed`; POST /api/backlog/:id/reviewed atomically sets ONLY that task's `reviewed` (preserving all other fields/tasks, validating before write, loopback/token-guarded); on /backlog each Done task has a 'Mark as reviewed' toggle, a coloured 'Reviewed' vs 'Not reviewed' pill, and the Done list has a Reviewed/Not-reviewed/All filter; the harness loop's status edits preserve `reviewed`; CLAUDE.md + HARNESS.md + README document the field and the dashboard-write exception; unit tests cover the endpoint + GET; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "spec": ".harness/tasks/T124.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "reviewed": false
@@ -3422,8 +3298,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "The perfumes and places workflow descriptions (the `description` field in src/jobs/perfumes/perfumes.workflow.ts and src/jobs/places/places.workflow.ts) are terse — effectively just the stage/job names with arrows. Rewrite each `description` to be EXPRESSIVE: 1-3 sentences, maximum one paragraph, explaining at a high level what the workflow achieves, what input it takes, what output it produces, and the steps it goes through. Base each on what the workflow ACTUALLY does — PLACES: ingest Google-Takeout saved-place CSVs → resolve each CID to a Google place_id via a headless browser → enrich via the Google Places API → generate Gemini LLM summaries + write markdown profiles; PERFUMES: find each perfume's Fragrantica URL → fetch the page with a headless real-Chrome browser (Cloudflare clearance) → parse structured notes/accords → build a markdown profile via the Claude CLI. Keep them accurate and concise. These descriptions render on the dashboard (workflows list + workflow detail), so they should read well there. Update the README worked-example blurbs to stay consistent if needed.",
-      "doneWhen": "Each of the perfumes + places workflow manifests has an expressive one-paragraph (1-3 sentence) `description` covering the workflow's goal, inputs, outputs, and steps; it is accurate to the actual stages and reads well on the dashboard workflows/detail views; README stays consistent; npx tsc --noEmit and npm test are green (and the dashboard build if any UI changed).",
+      "spec": ".harness/tasks/T125.md",
       "reviewed": false
     },
     {
@@ -3444,8 +3319,7 @@
       "scope": [],
       "design": null,
       "verify": [],
-      "do": "NEEDS-HUMAN review of the five toggleable validation-gate display styles built by T099 (on the workflow-run DAG + structure graph). Open the dashboard, switch between the five styles using the persisted selector, and CHOOSE your preferred one. Record the chosen style (e.g. in this task's worklog) so a follow-up buildable task can hardcode it and remove the toggle + the unused styles. The loop skips this — it's a manual visual review.",
-      "doneWhen": "You have reviewed all five validation-gate styles and recorded which one to keep; a follow-up can then hardcode the winner and drop the toggle + unused styles.",
+      "spec": ".harness/tasks/T126.md",
       "reviewed": false
     },
     {
@@ -3466,8 +3340,7 @@
       "scope": [],
       "design": null,
       "verify": [],
-      "do": "NEEDS-HUMAN review of the five toggleable, more-visible caret/disclosure styles for the backlog section headers built by T113. Open /backlog, switch between the five styles via the persisted selector, and CHOOSE your favourite. Record the chosen style (e.g. in this task's worklog) so a follow-up buildable task can hardcode it and remove the toggle + unused styles. The loop skips this — manual visual review.",
-      "doneWhen": "You have reviewed all five caret styles and recorded which one to keep; a follow-up can then hardcode the winner and drop the toggle + unused styles.",
+      "spec": ".harness/tasks/T127.md",
       "reviewed": false
     },
     {
@@ -3488,8 +3361,7 @@
       "scope": [],
       "design": null,
       "verify": [],
-      "do": "NEEDS-HUMAN review of the five toggleable output line-item styles for the workflow-run input→output mapping built by T116. Open a workflow-run page, switch between the five styles via the persisted selector, and CHOOSE your favourite. Record the chosen style (e.g. in this task's worklog) so a follow-up buildable task can hardcode it and remove the toggle + unused styles. The loop skips this — manual visual review.",
-      "doneWhen": "You have reviewed all five output line-item styles and recorded which one to keep; a follow-up can then hardcode the winner and drop the toggle + unused styles.",
+      "spec": ".harness/tasks/T128.md",
       "reviewed": false
     },
     {
@@ -3517,8 +3389,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Add a backlog-authoring CONVENTION so the owner never has to manually create review tasks. In CLAUDE.md (Conventions section) — and cross-referenced in .harness/HARNESS.md — state: whenever a backlog task is authored that BUILDS MULTIPLE OPTIONS for the human to choose between (a chooser/toggle task, e.g. 'N toggleable styles to pick from'), a PAIRED needs-human review task MUST also be created that dependsOn the chooser task and tracks the human reviewing the options and recording their choice (so a follow-up can hardcode the winner + remove the toggle/unused styles). Keep the wording concise and actionable. (Examples to reference: T099/T113/T116 choosers and their T126/T127/T128 review tasks.)",
-      "doneWhen": "CLAUDE.md (and a cross-reference in .harness/HARNESS.md) documents the convention that any human-choice 'options/chooser' backlog task must be paired with a needs-human review task (dependsOn the chooser) that tracks the review + choice; the wording is concise and references the existing examples; npx tsc --noEmit and npm test stay green (doc-only).",
+      "spec": ".harness/tasks/T129.md",
       "reviewed": false
     },
     {
@@ -3545,8 +3416,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "On the Backlog page each task card shows the model + the full escalation path (escalationPath/resolveRung → e.g. 'sonnet/medium → opus/high', backlog/page.tsx ~line 59) — it's hard to parse and not useful to the reader. Replace it with a single colour-coded DIFFICULTY pill derived from the FIRST-ATTEMPT model+effort (the task's model/effort, falling back to defaults.model/effort), and HIDE the escalation path entirely. Difficulty buckets: easy | medium | hard | very hard, mapped from the initial rung — suggested mapping (use best judgement for a clean rule): sonnet@medium → easy; opus@high → medium; opus@xhigh → hard; opus@max → very hard. Colour-code them: easy=green, medium=yellow, hard=red, very hard=black/near-black — but ensure ALL are READABLE on the dark theme (a pure-black pill would vanish, so use a dark pill with a light border/label for 'very hard'). Apply to the task cards (TaskCard, and DagDetailPanel if it still exists), remove the escalation-path display, and drop now-unused helpers (escalationPath/resolveRung) if nothing else uses them. Harmonise with T123's 'buildable' pill so the pills sit nicely together.",
-      "doneWhen": "Each backlog task card shows a single colour-coded difficulty pill (easy/medium/hard/very hard → green/yellow/red/black, all legible on the dark theme) derived from the first-attempt model+effort; the model string and escalation path are no longer shown anywhere on the backlog; dashboard build passes and mobile-check stays green.",
+      "spec": ".harness/tasks/T130.md",
       "reviewed": false
     },
     {
@@ -3574,8 +3444,7 @@
       ],
       "design": null,
       "verify": [],
-      "do": "Restructure the harness so each task's `do` and `doneWhen` live in a per-task MARKDOWN file referenced from TASKS.json — more expressive than flat JSON strings, and far easier to render on the backlog. DECISIONS (interview 2026-06-23): (a) MIGRATE ALL existing tasks now and make the MD the SOLE source — REMOVE `do` and `doneWhen` from TASKS.json entirely; (b) each MD file has TWO sections, '## Do' and '## Done when'; (c) files live at .harness/tasks/TNNN.md, referenced by an explicit `spec` field on each JSON task object. These changes are COUPLED — removing do/doneWhen from JSON breaks the loop AND the backlog unless they ALL land together, so implement all of: (1) MIGRATION — for every existing task create .harness/tasks/TNNN.md containing '## Do' + the do text then '## Done when' + the doneWhen text (verbatim, NO rewriting — just push the content in), add `spec: \".harness/tasks/TNNN.md\"` to its JSON object, and REMOVE the do/doneWhen fields from JSON via a safe atomic field-scoped rewrite that PRESERVES every other field (status, dependsOn, model, gate, reviewed, etc.) and validates the JSON. (2) LOOP — update .harness/loop.sh (and any prompt-building helper) so the per-task PROMPT reads do/doneWhen from the referenced spec MD, while STILL reading every orchestration field (id, status, dependsOn, gate, model, effort, escalation, scope, tags, verify, design) from TASKS.json; the prompt content must match what the loop fed before. (3) BACKLOG API — GET /api/backlog reads each task's spec MD and returns its content (the Do + Done-when sections). (4) BACKLOG PAGE — render the task MD (reuse the T115 markdown renderer if landed) instead of flat do/doneWhen strings. (5) DOCS + CONVENTION — update .harness/HARNESS.md §8 schema + CLAUDE.md for the new shape (do/doneWhen in .harness/tasks/TNNN.md as ## Do / ## Done when; `spec` path in JSON; loop feeds the MD; all else stays JSON), and update the backlog-authoring convention so a NEW task = a JSON object with a `spec` field PLUS a matching MD file (no do/doneWhen in JSON). (6) TESTS — cover the loop building a prompt from the MD and the backlog API returning MD content. If this genuinely can't fit one context window, record a worklog note proposing a split (e.g. migration+loop first, then API+rendering) rather than half-applying. Harmonise with the other backlog-page tasks (T115 markdown render, T123 buildable pill, T124 reviewed flag, T130 difficulty pill).",
-      "doneWhen": "Every task's do/doneWhen content lives in .harness/tasks/TNNN.md (two sections: ## Do / ## Done when), each JSON task has a `spec` path to its file, and do/doneWhen no longer appear in TASKS.json (all other fields preserved); .harness/loop.sh builds each task's prompt from the spec MD while reading all orchestration fields from JSON; GET /api/backlog returns the MD content and the backlog page renders it as readable markdown (not a flat string); HARNESS.md §8 + CLAUDE.md document the new shape + authoring convention; unit tests cover the loop prompt-from-MD and the backlog API; the loop still selects + builds tasks end-to-end; npx tsc --noEmit, npm test, and the dashboard build are all green.",
+      "spec": ".harness/tasks/T131.md",
       "model": "claude-opus-4-8",
       "effort": "high",
       "escalation": [

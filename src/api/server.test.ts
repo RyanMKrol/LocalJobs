@@ -4,10 +4,11 @@
 // ephemeral real server exercises the CORS reflection and the 401 guard end-to-end.
 // `opts.isLoopback` lets us simulate a remote (non-loopback) caller without a second host.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { jobs, workflows } from '../jobs/registry.js';
@@ -19,6 +20,7 @@ import {
   isLoopbackAddress,
   isWithin,
   originAllowed,
+  readTaskSpec,
   safeOutputMarkdown,
   setTaskReviewed,
 } from './server.js';
@@ -516,6 +518,97 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
 
   rmSync(dir, { recursive: true, force: true });
+}
+
+// ── T131: per-task Markdown spec — readTaskSpec + GET inlines specContent + loop prompt ──
+{
+  // readTaskSpec resolves a JSON `spec` path (relative to the repo root) against the
+  // backlog file's dir, confined to <baseDir>/tasks/*.md. Mirror the real layout:
+  // baseDir = <root>/<harnessDir>, spec = "<harnessDir>/tasks/<file>.md".
+  const root = mkdtempSync(join(tmpdir(), 'localjobs-spec-'));
+  const baseDir = join(root, '.harness');
+  const tasksDir = join(baseDir, 'tasks');
+  mkdirSync(tasksDir, { recursive: true });
+  const harnessName = basename(baseDir);
+  writeFileSync(join(tasksDir, 't-a.md'), '## Do\n\nbuild it\n\n## Done when\n\ngreen\n');
+
+  await test('readTaskSpec: reads the spec markdown for a valid in-tree path', () => {
+    const md = readTaskSpec(`${harnessName}/tasks/t-a.md`, baseDir);
+    assert.ok(md && md.includes('## Do') && md.includes('## Done when') && md.includes('build it'));
+  });
+
+  await test('readTaskSpec: null for absent/non-string/non-md/traversal/missing', () => {
+    assert.equal(readTaskSpec(undefined, baseDir), null);
+    assert.equal(readTaskSpec(42, baseDir), null);
+    assert.equal(readTaskSpec(`${harnessName}/tasks/t-a.txt`, baseDir), null);
+    // A traversal that climbs out of <baseDir>/tasks/ is rejected even if the file exists.
+    assert.equal(readTaskSpec(`${harnessName}/tasks/../../escape.md`, baseDir), null);
+    assert.equal(readTaskSpec(`${harnessName}/tasks/missing.md`, baseDir), null);
+  });
+
+  // GET /api/backlog must inline each task's spec markdown as `specContent` (T131),
+  // and must NOT carry the removed flat do/doneWhen fields.
+  const backlogPath = join(baseDir, 'TASKS.json');
+  writeFileSync(
+    backlogPath,
+    JSON.stringify(
+      {
+        version: 1,
+        tasks: [
+          { id: 't-a', title: 'A', status: 'pending', spec: `${harnessName}/tasks/t-a.md` },
+          { id: 't-b', title: 'B', status: 'pending', spec: `${harnessName}/tasks/nope.md` },
+        ],
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+
+  await test('GET /api/backlog: inlines specContent (and omits it when the file is missing)', async () => {
+    await withServer({ backlogPath }, async (base) => {
+      const res = await fetch(`${base}/api/backlog`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { tasks: Array<Record<string, unknown>> };
+      const a = body.tasks.find((t) => t.id === 't-a')!;
+      const b = body.tasks.find((t) => t.id === 't-b')!;
+      assert.ok(typeof a.specContent === 'string' && (a.specContent as string).includes('## Done when'));
+      assert.equal(a.do, undefined, 'no flat do field');
+      assert.equal(a.doneWhen, undefined, 'no flat doneWhen field');
+      assert.equal(b.specContent, undefined, 'missing spec file → no specContent');
+      assert.equal(a.reviewed, false, 'reviewed still defaults to false');
+    });
+  });
+
+  rmSync(root, { recursive: true, force: true });
+}
+
+// The loop builds each task's prompt from the referenced spec MD (T131). Source ONLY
+// loop.sh's helpers (LOOP_SOURCE_ONLY=1) and call `prompt <id>`; the output must embed
+// the task's ## Do / ## Done when from .harness/tasks/<id>.md. Skipped if jq is absent.
+{
+  const loopSh = fileURLToPath(new URL('../../.harness/loop.sh', import.meta.url));
+  const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+  let hasJq = true;
+  try {
+    execFileSync('bash', ['-c', 'command -v jq'], { stdio: 'ignore' });
+  } catch {
+    hasJq = false;
+  }
+
+  await test('loop.sh prompt(): embeds the task spec markdown (## Do / ## Done when)', () => {
+    if (!hasJq) {
+      console.log('    (skipped — jq not available)');
+      return;
+    }
+    const out = execFileSync(
+      'bash',
+      ['-c', `LOOP_SOURCE_ONLY=1 source ${JSON.stringify(loopSh)}; prompt T001`],
+      { cwd: repoRoot, encoding: 'utf8' },
+    );
+    assert.ok(out.includes('## Do'), 'prompt contains the ## Do section');
+    assert.ok(out.includes('## Done when'), 'prompt contains the ## Done when section');
+    assert.ok(out.includes('.harness/tasks/T001.md'), 'prompt names the spec file');
+  });
 }
 
 console.log(`\n  ${passed} assertions passed`);

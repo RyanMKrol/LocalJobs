@@ -1,8 +1,25 @@
 'use client';
 
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { api, type BacklogTask, type BacklogDefaults } from '../lib/api';
 import { usePoll, useCaretStyle, CARET_STYLES } from '../ui';
+
+/**
+ * Render a task's Markdown spec (## Do / ## Done when, T131) as readable markdown.
+ * XSS-safe — react-markdown with no rehype-raw, so any raw HTML is escaped, not
+ * executed. Falls back to a muted note when the spec content is unavailable.
+ */
+function TaskSpec({ t, small }: { t: BacklogTask; small?: boolean }) {
+  if (!t.specContent) {
+    return <p className="muted" style={{ fontSize: small ? 12 : 13 }}>No spec available{t.spec ? ` (${t.spec})` : ''}.</p>;
+  }
+  return (
+    <div className="task-spec md-body" style={{ fontSize: small ? 13 : 14 }}>
+      <ReactMarkdown>{t.specContent}</ReactMarkdown>
+    </div>
+  );
+}
 
 type Difficulty = 'easy' | 'medium' | 'hard' | 'very-hard';
 
@@ -53,10 +70,7 @@ function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults |
           depends on: <span className="mono">{t.dependsOn.join(', ')}</span>
         </div>
       )}
-      <p style={{ margin: '8px 0 4px', lineHeight: 1.5 }}>{t.do}</p>
-      <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
-        <strong>Done when:</strong> {t.doneWhen}
-      </div>
+      <TaskSpec t={t} />
       <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
         {t.tags?.map((tag) => (
           <span key={tag} className="pill" style={{ marginRight: 4 }}>{tag}</span>
@@ -102,10 +116,7 @@ function DoneRow({ t, onToggleReviewed }: { t: BacklogTask; onToggleReviewed: (t
               depends on: <span className="mono">{t.dependsOn.join(', ')}</span>
             </div>
           )}
-          <p style={{ margin: '0 0 6px', fontSize: 13, lineHeight: 1.5 }}>{t.do}</p>
-          <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 6 }}>
-            <strong>Done when:</strong> {t.doneWhen}
-          </div>
+          <TaskSpec t={t} small />
           {t.tags && t.tags.length > 0 && (
             <div>
               {t.tags.map((tag) => (

@@ -285,10 +285,13 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   without building a bespoke endpoint per question. No write/mutation path is exposed.
 - **Backlog** — a human-readable render of the harness task list
   (`.harness/TASKS.json`): each task as a card (id, title, depends-on, tags,
-  model, what to do + done-when), split into collapsible **harness-buildable**,
+  difficulty), with its **Do** + **Done when** rendered as markdown from the
+  task's per-task spec file (`.harness/tasks/TNNN.md`, referenced by the JSON
+  `spec` field — T131), split into collapsible **harness-buildable**,
   **🔒 needs-a-human**, and **done** sections. Done items are collapsed by
-  default and expand individually on click. Served via `GET /api/backlog` (each
-  task carries a `reviewed` flag, defaulting to false). Each **done** task also
+  default and expand individually on click. Served via `GET /api/backlog`, which
+  inlines each task's spec markdown as `specContent` for rendering (each task also
+  carries a `reviewed` flag, defaulting to false). Each **done** task also
   has a **human-review toggle**: a "Mark as reviewed" button, a green **Reviewed**
   / muted **Not reviewed** pill, and a **Reviewed / Not-reviewed / All** filter on
   the done list. The toggle is the **one place the dashboard writes back to the

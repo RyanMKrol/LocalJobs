@@ -1,6 +1,6 @@
 import { readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { relative as relativePath, resolve as resolvePath, sep } from 'node:path';
+import { dirname, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
@@ -64,14 +64,45 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 // Task `status` stays shell-owned (the loop's `jq` status-write preserves `reviewed`).
 const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/TASKS.json', import.meta.url));
 
-/** Read the backlog, defaulting each task's `reviewed` to false when absent. */
+/**
+ * Read a task's Markdown spec (its `## Do` / `## Done when` sections — the SOLE
+ * source of do/doneWhen since T131). `specRel` is the JSON `spec` path, relative
+ * to the repo root; `baseDir` is the backlog file's directory so it resolves the
+ * same regardless of cwd. Confined to a `.harness/tasks/*.md` file (no traversal,
+ * markdown only) — a local file read, never a network/paid call. Returns the file
+ * text, or null if the field is absent / unreadable / outside the allowed dir.
+ */
+export function readTaskSpec(specRel: unknown, baseDir: string): string | null {
+  if (typeof specRel !== 'string' || !specRel) return null;
+  // The repo root is the backlog file's parent's parent (.harness/TASKS.json).
+  const repoRoot = dirname(baseDir);
+  const abs = resolvePath(repoRoot, specRel);
+  if (!abs.toLowerCase().endsWith('.md')) return null;
+  const tasksDir = joinPath(baseDir, 'tasks');
+  if (!isWithin(tasksDir, abs)) return null; // must live under .harness/tasks/
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the backlog, defaulting each task's `reviewed` to false when absent and
+ * inlining each task's Markdown spec content (`spec` → `specContent`, T131) so the
+ * dashboard can render the Do / Done-when sections without a second request.
+ */
 function readBacklog(path: string = BACKLOG_PATH): { tasks: unknown[]; defaults?: unknown; error?: string } {
   try {
+    const baseDir = dirname(path);
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as { tasks?: unknown[]; defaults?: unknown };
     const tasks = Array.isArray(parsed.tasks)
-      ? parsed.tasks.map((t) =>
-          t && typeof t === 'object' && !Array.isArray(t) ? { reviewed: false, ...(t as object) } : t,
-        )
+      ? parsed.tasks.map((t) => {
+          if (!(t && typeof t === 'object' && !Array.isArray(t))) return t;
+          const task = t as { spec?: unknown };
+          const specContent = readTaskSpec(task.spec, baseDir);
+          return { reviewed: false, ...(t as object), ...(specContent !== null ? { specContent } : {}) };
+        })
       : [];
     return { tasks, defaults: parsed.defaults };
   } catch (e) {

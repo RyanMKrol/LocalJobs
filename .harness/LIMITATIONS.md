@@ -55,6 +55,22 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   and the scheduler/throttle tests are mildly timing-sensitive (generous margins keep them stable).
   *Revisit:* inject a clock + a `spawn` factory if these ever flake or the suite gets too slow.
 
+- **Task do/doneWhen split across two files (JSON + per-task MD).** (T131)
+  *Why:* Markdown specs (`.harness/tasks/TNNN.md`) are far more expressive and render cleanly on the
+  dashboard than a flat JSON string; orchestration fields stay in `TASKS.json`.
+  *Impact:* a new task is now two coupled files — a JSON object with a `spec` path PLUS its MD — and
+  a missing/renamed spec file leaves the task with an empty body (the loop prompt warns, the backlog
+  page shows "No spec available"). The two can drift if edited carelessly.
+  *Mitigation / revisit:* `readTaskSpec` is path-confined to `.harness/tasks/*.md`; if drift becomes
+  a problem, add a backlog linter asserting every task has a readable spec with both sections.
+
+- **The loop-prompt unit test spawns `bash` and needs `jq`.** (T131)
+  *Why:* `loop.sh prompt()` is shell; the test sources it (`LOOP_SOURCE_ONLY=1`) and runs `prompt`,
+  which calls `jq` to resolve the `spec` path.
+  *Impact:* on a host without `bash`/`jq` the test self-skips (logged) rather than failing — so that
+  one assertion wouldn't run there. CI (ubuntu) and the Mac Mini both have them.
+  *Revisit:* port the prompt assembly to a tiny Node helper if a shell dependency ever bites.
+
 ---
 
 ## Project

@@ -103,7 +103,7 @@ agent must not edit it.
       "model": "claude-opus-4-8", "effort": "high",       // optional per-task override
       "escalation": [ … ],                                // optional per-task ladder
       "scope": ["src/…"], "verify": [],
-      "do": "what to build", "doneWhen": "the bar for done"
+      "spec": ".harness/tasks/T001.md"                    // do/doneWhen live in this MD (T131)
     }
   ]
 }
@@ -111,6 +111,17 @@ agent must not edit it.
 
 `gate:"gate"` = a human reviews the deliverable before dependents run; `gate:"needs-human"` = a
 one-time human step (the agent prepares around it and records `failed:blocked`).
+
+**`do`/`doneWhen` live in a per-task Markdown spec (T131).** Each task's *what to build* and *the
+bar for done* are NOT flat strings in TASKS.json — they live in a per-task Markdown file at
+`.harness/tasks/TNNN.md` with exactly two sections, `## Do` and `## Done when`, referenced by the
+task's `spec` field (a repo-relative path). This is more expressive than a JSON string and renders
+cleanly on the dashboard. TASKS.json keeps **every other field** (the orchestration fields above —
+`status`, `dependsOn`, `gate`, `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design`,
+`reviewed`). The loop's per-task prompt reads all orchestration fields from JSON and **appends the
+spec MD's full text** (`task_spec_rel` + `cat` in `loop.sh prompt()`); `GET /api/backlog` inlines
+the file as `specContent` (`readTaskSpec`, confined to `.harness/tasks/*.md`) and the Backlog page
+renders it as markdown.
 
 **`reviewed` — the one human/dashboard-owned field (T124).** Separate from the shell-owned
 `status`, each task carries a `reviewed` boolean for tracking whether the OWNER has personally
@@ -123,6 +134,14 @@ other field and every other task, and validates the JSON before writing. Because
 edit is itself field-scoped (`jq` sets only `.status`), the two writers never clobber each other.
 An absent `reviewed` is treated as `false`. The agent must NOT hand-edit `reviewed` — it is an
 owner UI action, just as `status` is a shell action.
+
+### Backlog authoring: a new task = JSON object + spec MD (T131)
+
+Authoring a NEW backlog task is now **two coupled files**: (1) a JSON object in `TASKS.json` with a
+`spec` field (`.harness/tasks/TNNN.md`) and the orchestration fields — but **no** `do`/`doneWhen`;
+(2) the matching `.harness/tasks/TNNN.md` with `## Do` and `## Done when` sections. A task whose
+`spec` file is missing renders with no body and feeds the loop a warning, so always create both in
+the same backlog edit.
 
 ### Backlog authoring: pair chooser tasks with review tasks (T129)
 

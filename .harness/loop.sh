@@ -87,6 +87,9 @@ task_done()    { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="done"'
 deps_for()     { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.dependsOn[]?' | tr '\n' ' '; }
 task_gated()   { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.gate!=null' >/dev/null; }
 task_blocked() { [ -f "$WORKLOG/$1.md" ] && grep -qiE 'failed:blocked|needs-human' "$WORKLOG/$1.md"; }
+# A task's do/doneWhen live in a per-task Markdown spec (T131), referenced by the
+# JSON `spec` field (path relative to the repo root, e.g. .harness/tasks/T001.md).
+task_spec_rel() { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.spec // empty'; }
 
 # Shell owns task status: set it done, then commit+push the one-line change (no CI needed).
 mark_done() {
@@ -189,10 +192,13 @@ Do NOT create/switch branches. Do NOT push. Do NOT merge. The loop pushes + gate
 You run head-less and unattended. Obey CLAUDE.md and .harness/HARNESS.md exactly.
 
 1. ORIENT & RESUME. Read CLAUDE.md and README.md (current state). Find this task:
-   `jq '.tasks[]|select(.id=="<TASK>")' .harness/TASKS.json` (read its scope/doneWhen/verify). Read
-   .harness/worklog/<TASK>.md if present (prior attempts — don't repeat dead ends). The working tree
-   MAY hold partial work from an interrupted attempt — RECONCILE: do ONLY the outstanding work vs
-   `doneWhen`, trusting the code over the worklog. Stay within the task's `scope`.
+   `jq '.tasks[]|select(.id=="<TASK>")' .harness/TASKS.json` (read its scope/verify and all other
+   orchestration fields). The task's `do` + `done-when` live in the Markdown spec at the JSON `spec`
+   path (.harness/tasks/<TASK>.md, sections '## Do' / '## Done when') — its FULL TEXT is also
+   appended at the end of this prompt. Read .harness/worklog/<TASK>.md if present (prior attempts —
+   don't repeat dead ends). The working tree MAY hold partial work from an interrupted attempt —
+   RECONCILE: do ONLY the outstanding work vs the spec's '## Done when', trusting the code over the
+   worklog. Stay within the task's `scope`.
 
 2. DEFINITION OF DONE — all must hold before you report `done`:
    a. Run the FULL local suite (it MIRRORS CI), all must pass:
@@ -227,7 +233,24 @@ You run head-less and unattended. Obey CLAUDE.md and .harness/HARNESS.md exactly
      waiting <TASK> <unmet-deps>     # a dependency is not done yet
      idle                            # nothing to do
 EOF
+  # Append the task's Markdown spec (## Do / ## Done when) verbatim — this is the
+  # SOLE source of do/doneWhen since T131 (they no longer live in TASKS.json).
+  local rel="" path
+  rel="$(task_spec_rel "$tid")"
+  if [ -n "$rel" ]; then
+    path="$ROOT/$rel"
+    if [ -f "$path" ]; then
+      printf '\n\n--- Task %s spec (%s) ---\n' "$tid" "$rel"
+      cat "$path"
+    else
+      printf '\n\n(WARNING: spec file %s referenced by %s is missing — read the task via jq.)\n' "$rel" "$tid"
+    fi
+  fi
 }
+
+# Allow a test (or another script) to source ONLY the helper functions — set
+# LOOP_SOURCE_ONLY=1 before sourcing to return here, before the loop runs.
+[ -n "${LOOP_SOURCE_ONLY:-}" ] && return 0 2>/dev/null || true
 
 # --- Dry run ----------------------------------------------------------------
 if [ "${DRY_RUN:-0}" = "1" ]; then
