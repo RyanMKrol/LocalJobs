@@ -78,6 +78,23 @@ function parseFrontmatter(content: string): { fields: [string, string][]; body: 
   return { fields, body };
 }
 
+/** Returns true if a raw frontmatter value string should be hidden (empty/null/blank). */
+function isFmEmpty(v: string): boolean {
+  if (!v || v === 'null' || v === '~') return true;
+  try { const p = JSON.parse(v); return Array.isArray(p) && p.length === 0; } catch { return false; }
+}
+
+/** Render a raw frontmatter value: JSON arrays become comma-separated text; others pass through. */
+function renderFmValue(v: string): React.ReactNode {
+  try {
+    const p = JSON.parse(v);
+    if (Array.isArray(p) && p.every((x) => x === null || typeof x !== 'object')) {
+      return p.join(', ');
+    }
+  } catch { /* not a JSON array — render as-is */ }
+  return v;
+}
+
 /** Full-markdown popover — renders LLM/scraped markdown via react-markdown (XSS-safe:
  *  no rehype-raw, raw HTML in the content is escaped, not executed). YAML frontmatter
  *  is stripped and shown as a compact key-value header above the body. */
@@ -91,6 +108,7 @@ function MarkdownModal(
   }, [onClose]);
 
   const { fields, body } = parseFrontmatter(content);
+  const visibleFields = fields.filter(([, v]) => !isFmEmpty(v));
 
   return (
     <div className="db-modal-overlay" onClick={onClose}>
@@ -101,12 +119,12 @@ function MarkdownModal(
         </div>
         <div className="db-modal-body">
           {truncated && <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>⚠ Output is large — showing the first part only.</p>}
-          {fields.length > 0 && (
+          {visibleFields.length > 0 && (
             <dl className="md-fm">
-              {fields.map(([k, v]) => (
+              {visibleFields.map(([k, v]) => (
                 <div key={k} className="md-fm-row">
                   <dt className="md-fm-key">{k}</dt>
-                  <dd className="md-fm-val">{v}</dd>
+                  <dd className="md-fm-val">{renderFmValue(v)}</dd>
                 </div>
               ))}
             </dl>

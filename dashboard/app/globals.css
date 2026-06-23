@@ -253,16 +253,16 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 /* Markdown modal: wider than the generic db-modal so prose reads comfortably. */
 .md-modal { width: min(780px, 100%); }
 
-/* YAML frontmatter key-value header (T115). */
+/* YAML frontmatter key-value header (T115, grid alignment T140). */
 .md-fm {
   margin: 0; padding: 8px 10px; border-radius: 6px;
   background: var(--panel-2); border: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 3px;
+  display: grid; grid-template-columns: max-content 1fr; column-gap: 12px; row-gap: 3px;
 }
-.md-fm-row { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-.md-fm-key { flex: 0 0 auto; font-size: 11px; color: var(--muted); font-weight: 600;
-  text-transform: uppercase; letter-spacing: .04em; }
-.md-fm-val { font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+.md-fm-row { display: contents; }
+.md-fm-key { font-size: 11px; color: var(--muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; align-self: baseline; }
+.md-fm-val { font-size: 12px; overflow-wrap: anywhere; min-width: 0; align-self: baseline; }
 
 /* Rendered markdown body (T115). */
 .md-body { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
@@ -392,6 +392,10 @@ input[type="text"]:focus { border-color: var(--accent); }
   .kv { grid-template-columns: 1fr; gap: 1px 0; }
   .kv .k { margin-top: 9px; }
   .kv .k:first-child { margin-top: 0; }
+
+  /* Frontmatter grid: stack to single column so long keys don't overflow. */
+  .md-fm { grid-template-columns: 1fr; }
+  .md-fm-row:not(:first-child) .md-fm-key { margin-top: 6px; }
 
   /* DAG: switch to top-down layout on mobile — waves stack vertically, nodes flow
      horizontally within each wave, and the → arrow becomes ↓. */
