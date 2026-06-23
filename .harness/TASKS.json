@@ -3487,6 +3487,35 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T136.md"
+    },
+    {
+      "id": "T137",
+      "title": "Backlog: section-header hover should highlight the whole section (header + expanded tasks), not just the title",
+      "status": "pending",
+      "dependsOn": [
+        "T132"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/backlog/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T137.md",
+      "reviewed": false
     }
   ]
 }
