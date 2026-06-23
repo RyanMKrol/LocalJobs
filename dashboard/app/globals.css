@@ -165,39 +165,6 @@ a.dag-gate.gs-dot:hover { border-color: var(--accent); }
 .dag-arrow-glyph.gate-conn.pending { color: var(--grey); opacity: .8; }
 .dag-arrow-glyph.gate-conn.structural { color: var(--muted); }
 a.dag-arrow-glyph.gate-conn:hover { color: var(--accent); }
-/* backlog dag node states */
-.dag-node.done { border-left-color: var(--green); }
-.dag-node.done .dag-node-status { color: var(--green); }
-.dag-node.needs-human { border-left-color: var(--accent); }
-.dag-node.needs-human .dag-node-status { color: var(--accent); }
-.dag-node.selected { border-color: var(--accent); border-left-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,.35); }
-button.dag-node:hover { border-color: var(--accent); border-left-color: var(--accent); }
-/* backlog DAG (T103): a real directed graph — absolutely-positioned node cards
-   over an SVG edge layer. Container is sized in JS; the parent panel scrolls it
-   horizontally on narrow/phone widths. */
-.backlog-graph { position: relative; margin: 0 auto; }
-.backlog-graph-edges { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; }
-.backlog-edge { fill: none; stroke: var(--grey); stroke-width: 1.5; opacity: .5; }
-.backlog-edge.hi { stroke: var(--accent); stroke-width: 2; opacity: 1; }
-/* backlog DAG node card: fixed-size, status-coloured, id + badge header then title */
-.backlog-gnode {
-  position: absolute; box-sizing: border-box; z-index: 1; overflow: hidden;
-  padding: 10px 13px; border-radius: 9px; background: var(--panel);
-  border: 1px solid var(--border); border-left-width: 3px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.3); cursor: pointer; text-align: left;
-  font: inherit; color: var(--text); transition: border-color .15s, box-shadow .15s;
-}
-.backlog-gnode.done { border-left-color: var(--green); }
-.backlog-gnode.needs-human { border-left-color: var(--accent); }
-.backlog-gnode:hover { border-color: var(--accent); border-left-color: var(--accent); box-shadow: 0 0 0 1px rgba(88,166,255,.2), 0 1px 3px rgba(0,0,0,.3); }
-.backlog-gnode.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,.35); }
-.backlog-gnode .backlog-node-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.backlog-node-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.backlog-node-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 12px; color: var(--muted); letter-spacing: .02em; }
-.backlog-node-badge { flex-shrink: 0; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); }
-.backlog-node-badge.done { border-color: rgba(63,185,80,.5); background: rgba(63,185,80,.14); color: var(--green); }
-.backlog-node-badge.needs-human { border-color: rgba(88,166,255,.5); background: rgba(88,166,255,.12); color: var(--accent); }
-.backlog-node-title { font-size: 13px; font-weight: 600; line-height: 1.35; color: var(--text); white-space: normal; }
 /* collapsible section heading (used on /backlog for all three sections) */
 .section-heading-summary { font-size: 16px; margin: 0 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; }
 .section-heading-summary::-webkit-details-marker { display: none; }
@@ -231,16 +198,6 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .caret-style-btn:hover { border-color: var(--accent); color: var(--text); }
 .caret-style-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.12); }
 
-/* legend dots */
-.dag-legend { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--border); background: var(--panel-2); vertical-align: middle; }
-.dag-legend.done { border-color: rgba(63,185,80,.5); background: rgba(63,185,80,.15); }
-.dag-legend.needs-human { border-color: rgba(88,166,255,.5); background: rgba(88,166,255,.1); }
-.dag-legend.pending { border-color: var(--border); background: var(--panel-2); }
-/* list/dag view toggle */
-.view-toggle { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-.view-toggle button { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px 14px; font-size: 13px; }
-.view-toggle button.active { background: var(--panel-2); color: var(--text); }
-.view-toggle button:hover:not(.active) { background: var(--panel); color: var(--text); }
 
 /* service usage bars */
 .ubar { height: 7px; background: var(--panel-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); margin-top: 5px; max-width: 220px; }
@@ -504,8 +461,6 @@ input[type="text"]:focus { border-color: var(--accent); }
   .dag { flex-direction: column; align-items: stretch; padding: 14px; gap: 8px; }
   .dag-wave { flex-direction: row; flex-wrap: wrap; justify-content: center; }
   .dag-node { min-width: 0; }
-  /* The backlog DAG (.backlog-graph) is a fixed-size SVG graph; on phone widths it
-     scrolls horizontally inside its panel rather than reflowing. */
   .dag-arrow { text-align: center; justify-content: center; }
   .dag-arrow-glyph { font-size: 0; }
   .dag-arrow-glyph::after { content: '↓'; font-size: 22px; color: var(--grey); }
