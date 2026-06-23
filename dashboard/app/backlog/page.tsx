@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { api, type BacklogTask, type BacklogDefaults } from '../lib/api';
-import { usePoll } from '../ui';
+import { usePoll, useCaretStyle, CARET_STYLES } from '../ui';
 import { BacklogDag } from '../components/Dag';
 
 function resolveRung(model: string | undefined, effort: string | undefined, defaults: BacklogDefaults | undefined): string {
@@ -137,6 +137,7 @@ export default function Backlog() {
   const { data, error } = usePoll(() => api.backlog(), 5000);
   const [view, setView] = useState<'list' | 'dag'>('list');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [caretStyle, setCaretStyle] = useCaretStyle();
 
   const tasks = data?.tasks ?? [];
   const defaults = data?.defaults;
@@ -147,9 +148,25 @@ export default function Backlog() {
 
   return (
     <>
-      <div className="row" style={{ alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
+      <div className="row" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
         <h1 style={{ margin: 0 }}>Backlog</h1>
         <div className="spacer" />
+        {view === 'list' && (
+          <div className="caret-style-bar" style={{ margin: 0 }}>
+            <span className="caret-style-label">Caret</span>
+            {CARET_STYLES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`caret-style-btn${caretStyle === s.id ? ' active' : ''}`}
+                onClick={() => setCaretStyle(s.id)}
+                title={s.hint}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="view-toggle">
           <button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>List</button>
           <button className={view === 'dag' ? 'active' : ''} onClick={() => { setView('dag'); setSelectedId(null); }}>DAG</button>
@@ -187,7 +204,7 @@ export default function Backlog() {
           )}
         </>
       ) : (
-        <>
+        <div className={`caret-${caretStyle}`}>
           <details open>
             <summary className="section-heading-summary">
               🤖 Harness-buildable ({buildable.length})
@@ -214,7 +231,7 @@ export default function Backlog() {
               {done.map((t) => <DoneRow key={t.id} t={t} />)}
             </div>
           </details>
-        </>
+        </div>
       )}
     </>
   );

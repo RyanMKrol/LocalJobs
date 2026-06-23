@@ -202,6 +202,34 @@ button.dag-node:hover { border-color: var(--accent); border-left-color: var(--ac
 .section-heading-summary::-webkit-details-marker { display: none; }
 .section-heading-summary::before { content: '▾ '; font-size: 12px; opacity: .7; }
 details:not([open]) .section-heading-summary::before { content: '▸ '; }
+
+/* ── Caret style: 5 toggleable disclosure indicators for Backlog section headers (T113) ── */
+/* Style 1: bold — large bold ▸/▾, full contrast */
+.caret-bold details[open] .section-heading-summary::before { content: '▾'; font-size: 18px; opacity: 1; color: var(--text); }
+.caret-bold details:not([open]) .section-heading-summary::before { content: '▸'; font-size: 18px; opacity: 1; color: var(--text); }
+/* Style 2: accent — ▶/▼ in the dashboard accent colour */
+.caret-accent details[open] .section-heading-summary::before { content: '▼'; font-size: 13px; opacity: 1; color: var(--accent); }
+.caret-accent details:not([open]) .section-heading-summary::before { content: '▶'; font-size: 13px; opacity: 1; color: var(--accent); }
+/* Style 3: circle — ⊕/⊖ circled toggle */
+.caret-circle details[open] .section-heading-summary::before { content: '⊖'; font-size: 18px; opacity: 1; color: var(--accent); }
+.caret-circle details:not([open]) .section-heading-summary::before { content: '⊕'; font-size: 18px; opacity: 1; color: var(--accent); }
+/* Style 4: boxed — chevron in a small accent-bordered pill */
+.caret-boxed .section-heading-summary::before { display: inline-block; font-size: 12px; font-weight: 900; opacity: 1; color: var(--accent); border: 1.5px solid var(--accent); border-radius: 4px; padding: 0 4px 1px; line-height: 1.4; margin-right: 5px; background: rgba(88,166,255,.08); }
+.caret-boxed details[open] .section-heading-summary::before { content: '▾'; }
+.caret-boxed details:not([open]) .section-heading-summary::before { content: '▸'; }
+/* Style 5: spin — animated rotating ›, hover highlight on the whole row */
+.caret-spin .section-heading-summary { padding: 3px 6px; margin-left: -6px; border-radius: 6px; transition: background 0.15s; }
+.caret-spin details .section-heading-summary:hover { background: rgba(255,255,255,.06); }
+.caret-spin details[open] .section-heading-summary { color: var(--text); }
+.caret-spin .section-heading-summary::before { content: '›'; display: inline-block; font-size: 22px; font-weight: 900; line-height: 1; opacity: 1; color: var(--accent); margin-right: 4px; transform: rotate(90deg); transition: transform 0.2s ease; vertical-align: middle; }
+.caret-spin details:not([open]) .section-heading-summary::before { content: '›'; transform: rotate(0deg); }
+/* Caret style selector bar (mirrors .gate-style-bar) */
+.caret-style-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.caret-style-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.caret-style-btn { font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
+.caret-style-btn:hover { border-color: var(--accent); color: var(--text); }
+.caret-style-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.12); }
+
 /* legend dots */
 .dag-legend { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--border); background: var(--panel-2); vertical-align: middle; }
 .dag-legend.done { border-color: rgba(63,185,80,.5); background: rgba(63,185,80,.15); }
