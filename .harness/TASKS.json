@@ -1014,7 +1014,7 @@
     {
       "id": "T042",
       "title": "More intuitive remote dashboard access (alias)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
