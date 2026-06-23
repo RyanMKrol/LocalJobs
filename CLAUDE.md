@@ -664,6 +664,13 @@ this in addition to everything above:
     read-only-dashboard rule and the shell-owns-the-file rule. `status` stays shell-owned; only
     `reviewed` is human-owned, and the loop's `jq` status-write preserves it. The agent still must
     not hand-edit `reviewed` in TASKS.json — it's a UI action. (Absent values default to false.)
+- **Backlog authoring: pair every "options/chooser" task with a review task (T129).** Whenever
+  a backlog task builds MULTIPLE OPTIONS for the owner to choose between (toggleable styles, strategy
+  variants, etc.), a PAIRED `needs-human` review task **must** also be authored that: (a)
+  `dependsOn` the chooser task, (b) records the owner reviewing the options and committing to a
+  choice, and (c) unblocks a follow-up that hardcodes the winner and removes the toggle + unused
+  paths. Example chains: T099/T113/T116 (choosers) → T126/T127/T128 (review tasks). Never author
+  a chooser task alone; always add the paired review task in the same backlog edit.
 - **Definition of Done mirrors CI** (`.harness/HARNESS.md` §5): `npx tsc --noEmit`, `npm test`, and
   `npm --prefix dashboard run build` for any `dashboard/` change — all green before you commit.
 - **Verify correctness — paid calls allowed, frugally.** The ONE hard rule is **never exceed a

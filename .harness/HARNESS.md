@@ -124,6 +124,15 @@ edit is itself field-scoped (`jq` sets only `.status`), the two writers never cl
 An absent `reviewed` is treated as `false`. The agent must NOT hand-edit `reviewed` — it is an
 owner UI action, just as `status` is a shell action.
 
+### Backlog authoring: pair chooser tasks with review tasks (T129)
+
+Whenever you add a task that builds **multiple options for the owner to pick between** (toggleable
+styles, strategy variants, etc.), you MUST also add a paired `"gate":"needs-human"` review task
+that: (1) `dependsOn` the chooser, (2) has the owner record their choice, and (3) gates a
+follow-up that hardcodes the winner and removes the toggle/unused variants. Authoring the chooser
+without the review task is a backlog error. (See CLAUDE.md "Autonomous build harness" for wording +
+examples: T099/T113/T116 choosers → T126/T127/T128 review tasks.)
+
 ## 9. Result protocol
 
 The agent's final action writes one line to `.harness/worklog/.result`: `done <T>` /
