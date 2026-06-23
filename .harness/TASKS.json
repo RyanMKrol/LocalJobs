@@ -3578,7 +3578,7 @@
     {
       "id": "T139",
       "title": "Run-scope the workflow-run Input→Output panel (work_item_runs linkage); fix the \"first cut\" caveat styling",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
