@@ -3801,6 +3801,33 @@
       "verify": [],
       "spec": ".harness/tasks/T146.md",
       "reviewed": false
+    },
+    {
+      "id": "T147",
+      "title": "Gate detail page: back link should name the workflow run, not the generic \"workflow run\"",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/workflows/[name]/gates/[producer]/[key]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T147.md",
+      "reviewed": false
     }
   ]
 }
