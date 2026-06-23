@@ -60,6 +60,19 @@ export const config = {
   /** Base URL of the ntfy server (default the public ntfy.sh). */
   ntfyServer: process.env.LOCALJOBS_NTFY_SERVER ?? 'https://ntfy.sh',
 
+  /**
+   * ntfy exponential-backoff base delay (ms) after the first 429.
+   * Each consecutive 429 doubles the cooldown until ntfyBackoffCapMs is reached.
+   * A successful send resets the backoff entirely.
+   */
+  ntfyBackoffBaseMs: Number(process.env.LOCALJOBS_NTFY_BACKOFF_BASE_MS ?? 30_000),
+
+  /**
+   * ntfy exponential-backoff hard cap (ms) — the maximum cooldown that can
+   * ever be applied between ntfy sends regardless of how many consecutive 429s occur.
+   */
+  ntfyBackoffCapMs: Number(process.env.LOCALJOBS_NTFY_BACKOFF_CAP_MS ?? 600_000),
+
   /** Absolute path to the child job-runner entrypoint. */
   runJobScript: resolve(__dirname, 'runJob.ts'),
 };

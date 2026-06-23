@@ -4,6 +4,38 @@ import type { LogLevel, WorkflowRunStatus, RunStatus } from './types.js';
 
 type LogFn = (message: string, level?: LogLevel) => void;
 
+// ---------------------------------------------------------------------------
+// ntfy backoff state (module-level; resetting on daemon restart is fine)
+// ---------------------------------------------------------------------------
+
+/** Epoch ms before which ntfy sends are suppressed. 0 = not backing off. */
+let ntfyBackoffUntil = 0;
+/** Current cooldown duration ms (doubles on each consecutive 429, capped). */
+let ntfyBackoffMs = 0;
+/** Injectable fetch for unit tests; defaults to the global. */
+let _fetch: typeof fetch = globalThis.fetch;
+
+/** Reset the in-process ntfy backoff state (exported for tests only). */
+export function _resetNtfyBackoff(): void {
+  ntfyBackoffUntil = 0;
+  ntfyBackoffMs = 0;
+}
+
+/** Inspect current backoff state (exported for tests only). */
+export function _ntfyBackoffState(): { until: number; cooldownMs: number } {
+  return { until: ntfyBackoffUntil, cooldownMs: ntfyBackoffMs };
+}
+
+/** Swap the fetch implementation (exported for tests only). */
+export function _setFetchForTest(fn: typeof fetch): void {
+  _fetch = fn;
+}
+
+/** Restore the real fetch after tests. */
+export function _resetFetchForTest(): void {
+  _fetch = globalThis.fetch;
+}
+
 /**
  * Make a string safe to use as an HTTP header value. ntfy header fields (Title,
  * X-Job) must be Latin-1, so strip any non-printable-ASCII (emoji/Unicode) and
@@ -115,6 +147,59 @@ export async function notifyWorkflow(
   log(res.ok ? `notification sent — ${title}` : `notification FAILED (${res.error}) — ${title}`, res.ok ? 'info' : 'error');
 }
 
+/**
+ * Low-level ntfy POST with exponential backoff on 429. Exported for tests so
+ * callers can pass an arbitrary URL (bypassing the config.ntfyTopic guard).
+ * Never throws — a broken notifier must not affect job execution.
+ */
+export async function _sendNtfyToUrl(
+  url: string,
+  title: string,
+  body: string,
+  jobName: string,
+  priority: string,
+  tags: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const now = Date.now();
+  if (ntfyBackoffUntil > now) {
+    const remaining = Math.ceil((ntfyBackoffUntil - now) / 1000);
+    return { ok: false, error: `ntfy suppressed — rate-limit cooldown (${remaining}s remaining)` };
+  }
+  try {
+    const res = await _fetch(url, {
+      method: 'POST',
+      headers: { Title: sanitizeHeader(title) || 'localjobs', Priority: priority, Tags: tags, 'X-Job': sanitizeHeader(jobName) },
+      body,
+    });
+
+    if (res.status === 429) {
+      const base = config.ntfyBackoffBaseMs;
+      const cap = config.ntfyBackoffCapMs;
+      const retryAfterRaw = res.headers.get('Retry-After');
+      let cooldown: number;
+      if (retryAfterRaw !== null) {
+        const secs = parseInt(retryAfterRaw, 10);
+        cooldown = Math.min(isNaN(secs) ? base : secs * 1000, cap);
+      } else {
+        cooldown = Math.min(ntfyBackoffMs === 0 ? base : ntfyBackoffMs * 2, cap);
+      }
+      ntfyBackoffMs = cooldown;
+      ntfyBackoffUntil = Date.now() + cooldown;
+      return { ok: false, error: `ntfy HTTP 429 — backing off ${Math.round(cooldown / 1000)}s` };
+    }
+
+    if (res.ok) {
+      ntfyBackoffUntil = 0;
+      ntfyBackoffMs = 0;
+      return { ok: true };
+    }
+
+    return { ok: false, error: `ntfy HTTP ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 async function sendNtfy(
   title: string,
   body: string,
@@ -123,16 +208,7 @@ async function sendNtfy(
   tags: string,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!config.ntfyTopic) return { ok: true }; // not configured — nothing to fail
-  try {
-    const res = await fetch(`${config.ntfyServer}/${config.ntfyTopic}`, {
-      method: 'POST',
-      headers: { Title: sanitizeHeader(title) || 'localjobs', Priority: priority, Tags: tags, 'X-Job': sanitizeHeader(jobName) },
-      body,
-    });
-    return res.ok ? { ok: true } : { ok: false, error: `ntfy HTTP ${res.status}` };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
+  return _sendNtfyToUrl(`${config.ntfyServer}/${config.ntfyTopic}`, title, body, jobName, priority, tags);
 }
 
 async function sendMacNotification(title: string, body: string): Promise<void> {
