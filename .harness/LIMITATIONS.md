@@ -438,20 +438,14 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   small grace (e.g. stop only after K consecutive no-progress cycles) rather than the immediate
   single-cycle break.
 
-- **The dashboard's `reviewed` write now lives in its own file + commits/pushes under the loop
-  lock (T136 — supersedes the T124 note).** *Why:* T124 wrote `reviewed` into `.harness/TASKS.json`
-  via atomic rename but with NO file lock and NO commit — so a click could (a) race the loop's `jq`
-  status rewrite (last-writer-wins on the whole file) and (b) never reach GitHub (a working-tree
-  reset silently lost it). T136 fixes both: `reviewed` moved OUT of TASKS.json into the owner-owned
-  `.harness/reviews.json`, the daemon writes it atomically AND commits+pushes it under the SAME
-  mkdir lock loop.sh uses (`src/core/repo-lock.ts`). Because reviews.json is a DISJOINT git path
-  from everything the loop commits (TASKS.json / worklog), merges are always clean and the two
-  writers can never clobber each other. *Impact:* the push is **best-effort** — if the box is
-  offline or has no remote, the endpoint returns `{ committed: true, pushed: false, warning }` and
-  the commit syncs on the next successful push (the local commit is the durability guarantee). The
-  daemon's git phase is bounded by a timeout and always releases the lock in a `finally`, so a hung
-  network can't pin the loop lock. The lock path MUST stay byte-identical between `loop.sh`'s
-  `acquire_lock` and `repo-lock.ts` — if one changes the derivation without the other, the two
-  could run git concurrently. *Revisit:* if the daemon and loop ever diverge on the lock path,
-  reviews + status commits could interleave; keep the two derivations in sync (both documented in
-  `repo-lock.ts`'s header).
+- **The dashboard now writes ONE field of `.harness/TASKS.json` (`reviewed`), via atomic
+  rename, with no file lock (T124).** *Why:* the human-review toggle persists `reviewed` from the
+  dashboard. The write is field-scoped (sets only that task's `reviewed`) and atomic (temp-file +
+  `rename`), and the loop's status edit is likewise field-scoped (`jq` sets only `.status`), so the
+  two writers don't logically conflict. *Impact:* there is no cross-process lock — if a human clicks
+  the toggle in the exact instant the loop is mid-`jq`-rewrite, last-writer-wins on the WHOLE file,
+  so one of the two edits (the `reviewed` flip OR that run's `status=done` flip) could be lost.
+  Both are atomic-rename writes so the file is never corrupted, only one edit is dropped. In
+  practice the window is milliseconds and a dropped `reviewed` is re-toggled trivially; a dropped
+  `status` is re-applied on the loop's next tick. *Revisit:* if this ever bites, add an advisory
+  lock-file (or fold `reviewed` into a separate sidecar file the loop never touches).

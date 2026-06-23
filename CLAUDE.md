@@ -165,14 +165,9 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   status flicker. Keep any "latest run" derivation ordering by `(started_at, rowid)`.
 - **The dashboard is a pure read/refresh client of the API.** It never touches
   SQLite directly and is not required for jobs to run. There is **exactly ONE
-  deliberate write exception** (T136, was T124): the human-owned `reviewed` flag on
-  a backlog task. It lives in its OWN owner-owned file `.harness/reviews.json` (a
-  committed `id → { reviewed, at }` map — NOT in TASKS.json, which the loop owns).
-  `POST /api/backlog/:id/reviewed` atomically writes that file (temp-file + rename)
-  AND, under the SAME mkdir lock loop.sh uses (`src/core/repo-lock.ts`), commits it
-  `[skip ci]` + pushes it to GitHub (fetch+rebase+retry; a failed push is a non-fatal
-  warning). Because reviews.json is a disjoint git path from everything the loop
-  commits, the two writers never conflict (see the harness section below).
+  deliberate write exception** (T124): the human-owned `reviewed` flag on a backlog
+  task — `POST /api/backlog/:id/reviewed` does a field-scoped, atomic
+  read-modify-write of `.harness/TASKS.json` (see the harness section below).
   Everything else stays read-only.
 
 ## File map
@@ -190,7 +185,6 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification. `notifyStage` is fired per-stage by the executor, which DEDUPES it during `repeatUntilStable` cycling (status-change-only) so cycling can't trip ntfy's 429 |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
-| `src/core/repo-lock.ts` | The shared mkdir-based repo lock (`acquireRepoLock`/`resolveRepoPaths`) the daemon's reviews commit+push uses to be mutually exclusive with the autonomous loop (T136). The lock path MUST stay byte-identical to `loop.sh`'s `acquire_lock` (`<git-common-dir>/<basename(repo-root)>-loop.lock` + `pid` file + stale-pid reclaim) |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage` |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
@@ -678,23 +672,19 @@ this in addition to everything above:
   loop sets a task's `status` to `done` (via a `jq` field-scoped edit that preserves every other
   field) — **never edit `status` (or any field) of `.harness/TASKS.json` yourself.** Write your
   attempt notes to `.harness/worklog/<TASK>.md` and the result line to `.harness/worklog/.result`.
-  - **The ONE owner-authorized exception is the `reviewed` flag (T136, was T124).** Human-review
-    tracking is **human/dashboard-owned, not shell-owned** — and since T136 it lives in its OWN
-    owner-owned file `.harness/reviews.json` (a committed `id → { reviewed, at }` map), NOT in
-    TASKS.json. A new backlog task therefore **no longer carries a `reviewed` field in its JSON**.
-    The owner toggles it from the Backlog page via `POST /api/backlog/:id/reviewed`, which the
-    DAEMON handles: it atomically writes reviews.json (temp-file + rename, field-scoped to that id)
-    AND, under the SAME mkdir lock loop.sh uses (`src/core/repo-lock.ts`), commits + pushes that one
-    file `[skip ci]` (fetch+rebase+retry; failed push = non-fatal warning). The loop NEVER writes
-    reviews.json (only TASKS.json `status` + the worklog), so the two writers are fully decoupled —
-    disjoint git paths, never a conflict. `GET /api/backlog` overlays `reviewed` from the file
-    (absent → false). The agent still must not hand-edit `reviewed`/reviews.json — it's a UI action.
+  - **The ONE owner-authorized exception is the `reviewed` flag (T124).** Each task carries a
+    `reviewed` boolean (human-review tracking) that is **human/dashboard-owned, not shell-owned**:
+    the owner toggles it from the Backlog page via `POST /api/backlog/:id/reviewed`, which does a
+    field-scoped, atomic (temp-file + rename) read-modify-write that sets ONLY that task's
+    `reviewed` and preserves all other fields/tasks. This is the deliberate exception to both the
+    read-only-dashboard rule and the shell-owns-the-file rule. `status` stays shell-owned; only
+    `reviewed` is human-owned, and the loop's `jq` status-write preserves it. The agent still must
+    not hand-edit `reviewed` in TASKS.json — it's a UI action. (Absent values default to false.)
 - **Task `do`/`doneWhen` live in a per-task Markdown spec (T131).** A task's *what to build* and
   *bar for done* are NOT flat strings in `.harness/TASKS.json` — they live in `.harness/tasks/TNNN.md`
   with two sections, `## Do` and `## Done when`, referenced by the JSON task's `spec` field (a
   repo-relative path). TASKS.json keeps every OTHER field (`status`, `dependsOn`, `gate`,
-  `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design` — but NOT `reviewed`, which
-  lives in `.harness/reviews.json` since T136). The loop's prompt
+  `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design`, `reviewed`). The loop's prompt
   reads the orchestration fields from JSON and appends the spec MD verbatim; `GET /api/backlog`
   inlines it as `specContent` (`readTaskSpec`, confined to `.harness/tasks/*.md`) and the Backlog
   page renders it as markdown. **Authoring a NEW task = a JSON object with a `spec` field PLUS its

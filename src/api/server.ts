@@ -1,11 +1,8 @@
-import { execFile } from 'node:child_process';
 import { readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { config } from '../config.js';
-import { acquireRepoLock, resolveRepoPaths } from '../core/repo-lock.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress } from '../core/workflow-executor.js';
@@ -62,24 +59,12 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 }
 
 // The harness backlog (.harness/TASKS.json), resolved relative to this file so it
-// works regardless of the daemon's cwd. This is a READ-ONLY pass-through for the
-// dashboard — the loop owns `status`, and the human-owned `reviewed` flag now lives
-// in its OWN owner-owned file (`.harness/reviews.json`, T136), NOT in TASKS.json.
+// works regardless of the daemon's cwd. This is almost entirely a read-only
+// pass-through for the dashboard — the ONE exception is the human/dashboard-owned
+// `reviewed` flag (T124), which `POST /api/backlog/:id/reviewed` writes back via a
+// field-scoped, atomic read-modify-write (see `setTaskReviewed`/`writeTaskReviewed`).
+// Task `status` stays shell-owned (the loop's `jq` status-write preserves `reviewed`).
 const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/TASKS.json', import.meta.url));
-
-// The owner-owned reviews store (T136). `reviewed` is the ONE human/dashboard-owned
-// piece of backlog state, and it is the SOLE source of truth here — it no longer
-// lives in TASKS.json (which the loop owns). The file is a committed JSON map
-// `id → { reviewed: bool, at: ISO-8601 }`. `POST /api/backlog/:id/reviewed`
-// atomically writes it AND, under the SAME lock loop.sh uses, commits + pushes it
-// (see `commitReviewsFile`). Because reviews.json is a DISJOINT git path from
-// everything the loop commits (TASKS.json / worklog), the two writers never conflict.
-const REVIEWS_PATH = fileURLToPath(new URL('../../.harness/reviews.json', import.meta.url));
-
-/** Default the reviews-store path to sit beside a given backlog file. */
-function reviewsPathFor(backlogPath: string): string {
-  return joinPath(dirname(backlogPath), 'reviews.json');
-}
 
 /**
  * Read a task's Markdown spec (its `## Do` / `## Done when` sections — the SOLE
@@ -104,50 +89,21 @@ export function readTaskSpec(specRel: unknown, baseDir: string): string | null {
   }
 }
 
-/** An entry in the owner-owned reviews store (`.harness/reviews.json`, T136). */
-export interface ReviewEntry {
-  reviewed: boolean;
-  at?: string;
-}
-
 /**
- * Read the reviews store (`id → { reviewed, at }`). Returns `{}` when the file is
- * absent, empty, or unparseable — so a fresh repo (no reviews yet) reads cleanly.
- * Exported for unit testing.
+ * Read the backlog, defaulting each task's `reviewed` to false when absent and
+ * inlining each task's Markdown spec content (`spec` → `specContent`, T131) so the
+ * dashboard can render the Do / Done-when sections without a second request.
  */
-export function readReviews(path: string = REVIEWS_PATH): Record<string, ReviewEntry> {
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8'));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, ReviewEntry>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Read the backlog and OVERLAY the owner-owned reviews store: each task's
- * `reviewed` is `reviews[id]?.reviewed ?? false` (the task objects no longer carry
- * the field, T136). Also inlines each task's Markdown spec content (`spec` →
- * `specContent`, T131) so the dashboard renders Do / Done-when without a second
- * request. `reviewsPath` defaults to `reviews.json` beside the backlog file.
- */
-function readBacklog(
-  path: string = BACKLOG_PATH,
-  reviewsPath: string = reviewsPathFor(path),
-): { tasks: unknown[]; defaults?: unknown; error?: string } {
+function readBacklog(path: string = BACKLOG_PATH): { tasks: unknown[]; defaults?: unknown; error?: string } {
   try {
     const baseDir = dirname(path);
-    const reviews = readReviews(reviewsPath);
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as { tasks?: unknown[]; defaults?: unknown };
     const tasks = Array.isArray(parsed.tasks)
       ? parsed.tasks.map((t) => {
           if (!(t && typeof t === 'object' && !Array.isArray(t))) return t;
-          const task = t as { id?: unknown; spec?: unknown };
+          const task = t as { spec?: unknown };
           const specContent = readTaskSpec(task.spec, baseDir);
-          const reviewed = typeof task.id === 'string' ? reviews[task.id]?.reviewed === true : false;
-          return { ...(t as object), reviewed, ...(specContent !== null ? { specContent } : {}) };
+          return { reviewed: false, ...(t as object), ...(specContent !== null ? { specContent } : {}) };
         })
       : [];
     return { tasks, defaults: parsed.defaults };
@@ -157,183 +113,37 @@ function readBacklog(
 }
 
 /**
- * Pure, field-scoped edit of the reviews-store TEXT: parse `raw` (may be empty →
- * treated as `{}`), set ONLY the entry for `id` to `{ reviewed, at }`, and return
- * the re-serialised JSON (2-space, trailing newline). Every other id is preserved
- * verbatim. Exported for unit testing.
+ * Pure, field-scoped backlog edit: parse `raw` (the TASKS.json text), set ONLY the
+ * `reviewed` flag on the task whose `id` matches, and return the re-serialised JSON
+ * (2-space, trailing newline — matching the file's `jq` formatting). Every other
+ * field of that task and every other task is preserved verbatim. Returns null if
+ * the id isn't found (→ 404). Exported for unit testing.
  */
-export function setReviewEntry(raw: string, id: string, reviewed: boolean, at: string): string {
-  let map: Record<string, ReviewEntry> = {};
-  if (raw.trim()) {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed as Record<string, ReviewEntry>;
-  }
-  map[id] = { reviewed, at };
-  return `${JSON.stringify(map, null, 2)}\n`;
+export function setTaskReviewed(raw: string, id: string, reviewed: boolean): string | null {
+  const parsed = JSON.parse(raw) as { tasks?: Array<Record<string, unknown>> };
+  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  const task = tasks.find((t) => t && typeof t === 'object' && (t as { id?: unknown }).id === id);
+  if (!task) return null;
+  task.reviewed = reviewed;
+  return `${JSON.stringify(parsed, null, 2)}\n`;
 }
 
 /**
- * Atomically persist a single id's review entry to the reviews store. Reads the
- * current file (absent → `{}`), applies the field-scoped edit ({@link setReviewEntry}),
- * validates the result parses, then writes via temp-file + rename so a concurrent
- * reader never observes a half-written file. This is the durability floor — the
- * caller commits + pushes the file separately.
+ * Atomically persist a single task's `reviewed` flag to the backlog file. Reads the
+ * current file, applies the field-scoped edit ({@link setTaskReviewed}), validates the
+ * result parses, then writes via temp-file + rename so a concurrent shell status-write
+ * (the loop's `jq` edit) can never observe a half-written file. Returns false (no write)
+ * when the id isn't found.
  */
-function writeReviewEntry(path: string, id: string, reviewed: boolean, at: string): void {
-  let raw = '';
-  try {
-    raw = readFileSync(path, 'utf8');
-  } catch {
-    raw = ''; // absent → start from {}
-  }
-  const updated = setReviewEntry(raw, id, reviewed, at);
+function writeTaskReviewed(path: string, id: string, reviewed: boolean): boolean {
+  const raw = readFileSync(path, 'utf8');
+  const updated = setTaskReviewed(raw, id, reviewed);
+  if (updated === null) return false;
   JSON.parse(updated); // validate before we touch disk
   const tmp = `${path}.tmp-${process.pid}`;
   writeFileSync(tmp, updated);
   renameSync(tmp, path); // atomic replace
-}
-
-/**
- * One-time migration (T136): move `reviewed` OUT of TASKS.json into the owner-owned
- * reviews store. Given the TASKS.json text, returns the rewritten TASKS.json (every
- * task's `reviewed` field stripped, all other fields/tasks preserved) and the seeded
- * reviews.json (every task that was `reviewed:true` becomes `{ reviewed:true, at }`).
- * Pure + generic so it round-trips regardless of how many tasks were reviewed.
- * Exported for unit testing.
- */
-export function migrateReviewsOut(tasksRaw: string, at: string): { tasksJson: string; reviewsJson: string } {
-  const parsed = JSON.parse(tasksRaw) as { tasks?: Array<Record<string, unknown>> };
-  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
-  const reviews: Record<string, ReviewEntry> = {};
-  for (const t of tasks) {
-    if (!(t && typeof t === 'object')) continue;
-    if (t.reviewed === true && typeof t.id === 'string') reviews[t.id] = { reviewed: true, at };
-    delete t.reviewed;
-  }
-  return {
-    tasksJson: `${JSON.stringify(parsed, null, 2)}\n`,
-    reviewsJson: `${JSON.stringify(reviews, null, 2)}\n`,
-  };
-}
-
-const pexecFile = promisify(execFile);
-
-/** Run a git command (arg array, never a shell string) in `repoRoot`. Never throws —
- *  returns `{ ok, stdout, stderr }` so callers can branch on non-zero exits. */
-async function git(
-  repoRoot: string,
-  args: string[],
-  timeoutMs: number,
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  try {
-    const { stdout, stderr } = await pexecFile('git', args, {
-      cwd: repoRoot,
-      timeout: timeoutMs,
-      encoding: 'utf8',
-      // Never let a push block on an interactive credential/SSH prompt — that would
-      // pin the loop lock until the timeout. Belt-and-braces with the timeout bound.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: 'ssh -oBatchMode=yes' },
-    });
-    return { ok: true, stdout, stderr };
-  } catch (e) {
-    const err = e as { stdout?: string; stderr?: string; message?: string };
-    return { ok: false, stdout: err.stdout ?? '', stderr: (err.stderr || err.message || '').toString() };
-  }
-}
-
-export interface CommitReviewsResult {
-  committed: boolean;
-  pushed: boolean;
-  warning?: string;
-}
-
-/**
- * Commit + push the reviews file under the SAME mkdir lock loop.sh uses, so the
- * daemon's git ops are mutually exclusive with the autonomous loop (T136). The
- * reviews file has ALREADY been written to disk by the caller (durability floor);
- * this stages ONLY that file explicitly, commits it `[skip ci]`, then
- * fetch + rebase + push with a bounded retry on a non-fast-forward race (clean,
- * because reviews.json is disjoint from every path the loop commits). A failed push
- * is a NON-FATAL warning, not an error — the commit will go out on the next push.
- * The lock is always released in a `finally`. The whole git phase is bounded by a
- * timeout so a hung network can't pin the loop lock indefinitely.
- */
-export async function commitReviewsFile(opts: {
-  repoRoot: string;
-  reviewsAbsPath: string;
-  id: string;
-  reviewed: boolean;
-  mainBranch?: string;
-  lockDir?: string;
-  push?: boolean;
-  timeoutMs?: number;
-}): Promise<CommitReviewsResult> {
-  const { repoRoot, reviewsAbsPath, id, reviewed } = opts;
-  const mainBranch = opts.mainBranch ?? process.env.MAIN_BRANCH ?? 'main';
-  const push = opts.push ?? true;
-  const timeoutMs = opts.timeoutMs ?? 30_000;
-  const relPath = relativePath(repoRoot, reviewsAbsPath);
-
-  const release = await acquireRepoLock({ lockDir: opts.lockDir, cwd: repoRoot, timeoutMs });
-  try {
-    await git(repoRoot, ['add', '--', relPath], timeoutMs); // stage ONLY reviews.json, explicitly
-    const noChanges = await git(repoRoot, ['diff', '--cached', '--quiet', '--', relPath], timeoutMs);
-    if (noChanges.ok) return { committed: false, pushed: false }; // nothing staged (idempotent re-write)
-
-    const commit = await git(
-      repoRoot,
-      ['commit', '-m', `reviews: ${id} reviewed=${reviewed} [skip ci]`],
-      timeoutMs,
-    );
-    if (!commit.ok) return { committed: false, pushed: false, warning: commit.stderr.trim().slice(0, 300) };
-    if (!push) return { committed: true, pushed: false };
-
-    let warning: string | undefined;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await git(repoRoot, ['fetch', 'origin'], timeoutMs);
-      const rebase = await git(repoRoot, ['rebase', `origin/${mainBranch}`], timeoutMs);
-      if (!rebase.ok) await git(repoRoot, ['rebase', '--abort'], timeoutMs); // no upstream / conflict → push as-is
-      const pushed = await git(repoRoot, ['push', 'origin', `HEAD:${mainBranch}`], timeoutMs);
-      if (pushed.ok) return { committed: true, pushed: true };
-      warning = pushed.stderr.trim().slice(0, 300) || 'push failed';
-    }
-    return { committed: true, pushed: false, warning: warning ?? 'push failed' };
-  } finally {
-    release();
-  }
-}
-
-/**
- * Default reviews-commit wiring for the live daemon: write is done by the caller;
- * here we resolve the repo root from the reviews file's directory and commit+push.
- * If the path is not inside a git repo (e.g. unit-test temp dir), the git phase is
- * skipped with a non-fatal warning — the atomic file write is still the durability
- * guarantee.
- */
-async function defaultCommitReviews(reviewsPath: string, id: string, reviewed: boolean): Promise<CommitReviewsResult> {
-  let repoRoot: string;
-  try {
-    repoRoot = resolveRepoPaths(dirname(reviewsPath)).root;
-  } catch {
-    return { committed: false, pushed: false, warning: 'not a git repo — wrote locally only' };
-  }
-  try {
-    return await commitReviewsFile({ repoRoot, reviewsAbsPath: reviewsPath, id, reviewed });
-  } catch (e) {
-    return { committed: false, pushed: false, warning: e instanceof Error ? e.message : 'commit failed' };
-  }
-}
-
-// Serialize concurrent in-daemon `reviewed` POSTs so two requests can't interleave
-// the write+commit (the mkdir lock guards cross-process; this guards in-process).
-let reviewChain: Promise<unknown> = Promise.resolve();
-function serializeReview<T>(fn: () => Promise<T>): Promise<T> {
-  const next = reviewChain.then(fn, fn);
-  reviewChain = next.then(
-    () => undefined,
-    () => undefined,
-  );
-  return next;
+  return true;
 }
 
 // The jobs tree (src/jobs), resolved relative to this file. Job output artifacts
@@ -536,19 +346,10 @@ function memberWorkflowMap(): Map<string, string> {
  * simulate a non-loopback (remote) caller to exercise the mutation guard.
  */
 export function createApiServer(
-  opts: {
-    isLoopback?: (addr: string | undefined) => boolean;
-    backlogPath?: string;
-    reviewsPath?: string;
-    // Injectable for tests: commit+push the reviews file. Defaults to the real git
-    // path (resolves the repo from the reviews dir; no-ops outside a git repo).
-    commitReviews?: (reviewsPath: string, id: string, reviewed: boolean) => Promise<CommitReviewsResult>;
-  } = {},
+  opts: { isLoopback?: (addr: string | undefined) => boolean; backlogPath?: string } = {},
 ) {
   const isLoopback = opts.isLoopback ?? isLoopbackAddress;
   const backlogPath = opts.backlogPath ?? BACKLOG_PATH;
-  const reviewsPath = opts.reviewsPath ?? reviewsPathFor(backlogPath);
-  const commitReviews = opts.commitReviews ?? defaultCommitReviews;
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${config.apiPort}`);
     const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','jobs','demo','runs']
@@ -1015,38 +816,23 @@ export function createApiServer(
         return json(res, 200, result);
       }
 
-      // GET /api/backlog — the harness TASKS.json backlog (read-only). Each task's
-      // human-review flag `reviewed` is OVERLAID from the owner-owned reviews store
-      // (.harness/reviews.json, T136), defaulting to false when absent.
+      // GET /api/backlog — the harness TASKS.json backlog (read-only; each task
+      // carries its human-review flag `reviewed`, defaulting to false when absent)
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'backlog' && parts.length === 2) {
-        return json(res, 200, readBacklog(backlogPath, reviewsPath));
+        return json(res, 200, readBacklog(backlogPath));
       }
 
       // POST /api/backlog/:id/reviewed  { reviewed: bool } — the ONE dashboard→harness
-      // write (T136): atomically set ONLY this id's entry in the owner-owned reviews
-      // store AND, under the SAME lock loop.sh uses, commit + push it `[skip ci]`. The
-      // commit is the durability guarantee; the push is best-effort (a failed push is a
-      // non-fatal `warning`, not an error). Guarded by the global loopback/token
-      // mutation check above + a `T\d+`-style id validation. In-process POSTs are
-      // serialized so two requests can't interleave the write+commit.
+      // write (T124): atomically set ONLY that task's human-owned `reviewed` flag,
+      // preserving all other fields/tasks. Status stays shell-owned. Guarded by the
+      // global loopback/token mutation check above. 404 on an unknown task id.
       if (method === 'POST' && parts[0] === 'api' && parts[1] === 'backlog' && parts[3] === 'reviewed' && parts.length === 4) {
         const id = decodeURIComponent(parts[2]);
-        if (!/^T\d+$/.test(id)) return json(res, 400, { error: 'invalid task id' });
         const body = await readBody(req);
         if (typeof body.reviewed !== 'boolean') return json(res, 400, { error: 'reviewed (boolean) is required' });
-        const reviewed = body.reviewed as boolean;
-        const result = await serializeReview(async () => {
-          writeReviewEntry(reviewsPath, id, reviewed, new Date().toISOString());
-          return commitReviews(reviewsPath, id, reviewed);
-        });
-        return json(res, 200, {
-          ok: true,
-          id,
-          reviewed,
-          committed: result.committed,
-          pushed: result.pushed,
-          ...(result.warning ? { warning: result.warning } : {}),
-        });
+        const ok = writeTaskReviewed(backlogPath, id, body.reviewed);
+        if (!ok) return json(res, 404, { error: `unknown task: ${id}` });
+        return json(res, 200, { ok: true, id, reviewed: body.reviewed });
       }
 
       return json(res, 404, { error: 'not found' });
