@@ -3524,7 +3524,7 @@
     {
       "id": "T130",
       "title": "Backlog: replace model/escalation display with a colour-coded difficulty pill",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
