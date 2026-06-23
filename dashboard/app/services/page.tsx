@@ -98,15 +98,15 @@ export default function Services() {
                   {isEditing ? (
                     <>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <input className="mono" style={{ width: 70 }} value={draft.rate} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))} />
+                        <input type="text" className="mono limit-input" value={draft.rate} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))} />
                         {draft.rate !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, rate: '' }))}>✕</button>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <input className="mono" style={{ width: 70 }} value={draft.daily} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, daily: e.target.value }))} />
+                        <input type="text" className="mono limit-input" value={draft.daily} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, daily: e.target.value }))} />
                         {draft.daily !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, daily: '' }))}>✕</button>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <input className="mono" style={{ width: 70 }} value={draft.monthly} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, monthly: e.target.value }))} />
+                        <input type="text" className="mono limit-input" value={draft.monthly} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, monthly: e.target.value }))} />
                         {draft.monthly !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, monthly: '' }))}>✕</button>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>

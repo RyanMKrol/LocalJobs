@@ -451,10 +451,12 @@ input[type="text"] {
 input[type="number"]:focus,
 input[type="text"]:focus { border-color: var(--accent); }
 
+/* Shared limit input class — used by the workflow run-limit and Services edit-limits fields */
+.limit-input { width: 4.5rem; }
+
 /* Run-limit control (workflow detail page) — label + number input grouped with ▶ Run now */
 .run-limit-control { display: flex; align-items: center; gap: 6px; }
 .run-limit-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
-.run-limit-input { width: 4.5rem; }
 
 /* ── Stuck-items popover (T118) ────────────────────────────────────────────── */
 /* Reuses the db-modal overlay/chrome; just a wider width + bulk-action footer. */

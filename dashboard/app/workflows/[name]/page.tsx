@@ -30,7 +30,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
             <label htmlFor="run-limit" className="run-limit-label">Limit</label>
             <input
               id="run-limit"
-              className="mono run-limit-input"
+              className="mono limit-input"
               type="number"
               min={1}
               value={limit}
