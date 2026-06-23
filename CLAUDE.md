@@ -246,6 +246,16 @@ load.
   loops do this — match it in new jobs.
 - Keep secrets in `.env` (read via `process.env`); never hardcode. The child
   inherits the daemon's env.
+- **Record a produced markdown artifact's path in the work item's `detail.markdown`
+  (T110).** A job whose final output is a markdown file should pass the file's
+  absolute path as `markWorkItem(…, { detail: { name, markdown: mdPath } })`
+  (places-llm-enrich and perfumes-build both do). The dashboard's workflow-run
+  **Input → Output** panel reads it via `workItemMarkdownPath` and the read-only,
+  path-safe `GET /api/workflow-runs/:id/output?job=&key=` endpoint to preview the
+  artifact + open the full markdown in a popover. The endpoint confines reads to a
+  `.md` file inside a job's own `data/out/` tree (`safeOutputMarkdown` in
+  `server.ts` — resolve + realpath + prefix + `/data/out/` checks; no traversal,
+  files only, no paid/remote calls), so keep output artifacts under `data/out/`.
 - Long jobs: set a realistic `timeoutMs` so a hang is killed, not left forever.
 - Heavy external calls (Places API, headless browser): rate-limit inside the
   job, and make progress observable.

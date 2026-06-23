@@ -393,3 +393,14 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Revisit:* only if multi-daemon is ever introduced — then the claim would need to move into the DB
   (e.g. a conditional `INSERT … WHERE NOT EXISTS (running row)` or a unique partial index on
   `workflow_name WHERE status='running'`).
+
+- **The workflow-run output preview fetches one request per output row (T110).**
+  *Why:* the IO panel's output cell (`OutputCell`) lazily fetches each row's produced markdown via
+  `GET /api/workflow-runs/:id/output` once on mount (deduped per row), to show a title/excerpt and
+  cache the full content for the click-to-open popover. There is no batch endpoint.
+  *Impact:* for a workflow with many first-stage inputs (the panel reflects the GLOBAL work-item
+  ledger, not just this run — the inherited T095 limitation), the page issues one cheap local
+  file-read request per output row. Fine for a personal, loopback dashboard; the browser caps
+  concurrency and reads are local-file-fast, but it is N requests, not one.
+  *Revisit:* if a workflow's ledger grows large enough to make the panel sluggish, add a batched
+  `outputs` endpoint or render previews only for visible rows (IntersectionObserver).

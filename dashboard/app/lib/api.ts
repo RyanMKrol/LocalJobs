@@ -175,6 +175,19 @@ export interface WorkflowIo {
   note: string;
 }
 
+/** Response from GET /api/workflow-runs/:id/output (T110) — a job's produced
+ *  markdown artifact for one work item. `found` is false when the item has no
+ *  recorded/accessible markdown (so the UI falls back to showing the key). */
+export interface WorkflowRunOutput {
+  found: boolean;
+  job: string;
+  key: string;
+  file?: string;
+  bytes?: number;
+  truncated?: boolean;
+  content?: string;
+}
+
 export interface Service {
   name: string;
   description: string;
@@ -312,6 +325,10 @@ export const api = {
       `/api/workflows/${encodeURIComponent(name)}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
     ),
   workflowRunIo: (id: string) => get<WorkflowIo>(`/api/workflow-runs/${id}/io`),
+  workflowRunOutput: (id: string, job: string, key: string) =>
+    get<WorkflowRunOutput>(
+      `/api/workflow-runs/${id}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,
+    ),
   runWorkflow: (name: string, limit?: number) =>
     post<{ ok: boolean; limit: number | null }>(`/api/workflows/${name}/run`, limit !== undefined ? { limit } : undefined),
   toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${name}/toggle`, { enabled }),

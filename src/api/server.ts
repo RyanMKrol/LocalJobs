@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { relative as relativePath, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
@@ -31,6 +32,7 @@ import {
   orphanedWorkItems,
   pruneOrphanedWorkItems,
   workItemIoRows,
+  workItemMarkdownPath,
   serviceCallsInLastSeconds,
   serviceCallsThisMonth,
   serviceCallsToday,
@@ -61,6 +63,50 @@ function readBacklog(): { tasks: unknown[]; defaults?: unknown; error?: string }
   } catch (e) {
     return { tasks: [], error: e instanceof Error ? e.message : 'cannot read backlog' };
   }
+}
+
+// The jobs tree (src/jobs), resolved relative to this file. Job output artifacts
+// (e.g. the markdown profiles the places/perfumes final stages write) live in
+// each job's own `data/out/` folder under here. The output endpoint confines its
+// reads to this tree so a recorded path can never escape it. `realpathSync` so
+// the prefix check survives platform symlinks (e.g. macOS /var → /private/var).
+const JOBS_ROOT = realpathSync(fileURLToPath(new URL('../jobs', import.meta.url)));
+
+/** Whether `child` is the same as, or nested under, `parent` (path-prefix safe). */
+export function isWithin(parent: string, child: string): boolean {
+  const rel = relativePath(parent, child);
+  // Inside iff the relative path doesn't climb out (`..`) and isn't absolute.
+  return rel === '' || (!rel.startsWith('..') && !rel.startsWith(sep));
+}
+
+/**
+ * Resolve a job-recorded output path to a safe, real, absolute path — or null if
+ * it isn't a readable markdown artifact inside a job's `data/out/` tree. This is
+ * the path-traversal guard for the read-only output endpoint:
+ *  - resolved + symlink-followed (realpath) so `..`/symlink escapes are caught,
+ *  - must stay under {@link JOBS_ROOT},
+ *  - must live inside a job-local `data/out/` directory,
+ *  - must be a regular `.md` file that exists.
+ * No network/paid calls — a local file stat + realpath only.
+ */
+export function safeOutputMarkdown(candidate: string | null): string | null {
+  if (!candidate) return null;
+  const abs = resolvePath(candidate);
+  if (!abs.toLowerCase().endsWith('.md')) return null;
+  let real: string;
+  try {
+    real = realpathSync(abs); // follows symlinks; throws if the file is missing
+  } catch {
+    return null;
+  }
+  if (!isWithin(JOBS_ROOT, real)) return null; // escaped the jobs tree
+  if (!real.includes(`${sep}data${sep}out${sep}`)) return null; // not a job output artifact
+  try {
+    if (!statSync(real).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return real;
 }
 
 /** True if `origin` is one of the configured allowlist entries. */
@@ -504,6 +550,42 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
           lastWave,
           // Surface the limitation so the UI can label the panel clearly.
           note: 'First-cut mapping: reflects the global work-item ledger, not scoped to this run. Fan-out collapses to one output per input.',
+        });
+      }
+
+      // GET /api/workflow-runs/:id/output?job=<job>&key=<key>  (T110)
+      // Read-only: return the markdown artifact a job produced for one work item,
+      // for the workflow-run IO panel's output preview + full popover. The path
+      // comes from the work item's recorded detail.markdown and is confined by
+      // safeOutputMarkdown() to a `.md` file inside a job's own data/out/ tree —
+      // no path traversal, files only, and a pure local file read (never a
+      // paid/remote call), so it's safe to load on demand. "No artifact" is a
+      // benign 200 { found: false } (not every item has produced output yet).
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'output' && parts.length === 4) {
+        const run = getWorkflowRun(parts[2]);
+        if (!run) return json(res, 404, { error: 'workflow run not found' });
+        const jobName = url.searchParams.get('job');
+        const key = url.searchParams.get('key');
+        if (!jobName || !key) return json(res, 400, { error: 'job and key query params are required' });
+        const safe = safeOutputMarkdown(workItemMarkdownPath(jobName, key));
+        if (!safe) return json(res, 200, { found: false, job: jobName, key });
+        let content: string;
+        try {
+          content = readFileSync(safe, 'utf8');
+        } catch {
+          return json(res, 200, { found: false, job: jobName, key });
+        }
+        const MAX = 512 * 1024; // cap the payload; markdown profiles are tiny, this is a safety belt
+        const truncated = content.length > MAX;
+        return json(res, 200, {
+          found: true,
+          job: jobName,
+          key,
+          // A jobs-tree-relative path (e.g. perfumes/data/out/markdown/<id>.md) — readable, leaks no machine topology.
+          file: relativePath(JOBS_ROOT, safe),
+          bytes: Buffer.byteLength(content),
+          truncated,
+          content: truncated ? content.slice(0, MAX) : content,
         });
       }
 

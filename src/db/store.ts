@@ -355,6 +355,27 @@ export function workItemIoRows(firstWaveJobs: string[], lastWaveJobs: string[]):
   });
 }
 
+/**
+ * The output-markdown file path a job recorded for one work item, if any.
+ * Jobs that write a markdown profile store its absolute path in the work item's
+ * `detail.markdown` (places-llm-enrich, perfumes-build). Returns null when the
+ * item has no recorded markdown artifact (or the detail isn't parseable).
+ *
+ * This is a DB read only — it does NOT touch the filesystem. The caller (the API
+ * output endpoint) is responsible for path-safety + reading the file, confining
+ * reads to the jobs' own data directories.
+ */
+export function workItemMarkdownPath(jobName: string, itemKey: string): string | null {
+  const row = getWorkItem(jobName, itemKey);
+  if (!row?.detail) return null;
+  try {
+    const d = JSON.parse(row.detail) as Record<string, unknown>;
+    return typeof d.markdown === 'string' && d.markdown ? d.markdown : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Count of work items per status for a job, e.g. { success: 1700, failed: 3 }. */
 export function workItemCounts(jobName: string): Record<string, number> {
   const rows = db.prepare('SELECT status, COUNT(*) AS n FROM work_items WHERE job_name = ? GROUP BY status')

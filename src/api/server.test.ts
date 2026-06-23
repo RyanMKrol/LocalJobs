@@ -4,16 +4,20 @@
 // ephemeral real server exercises the CORS reflection and the 401 guard end-to-end.
 // `opts.isLoopback` lets us simulate a remote (non-loopback) caller without a second host.
 import assert from 'node:assert/strict';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { jobs, workflows } from '../jobs/registry.js';
-import { createWorkflowRun, finishWorkflowRun, syncJob, syncWorkflow } from '../db/store.js';
+import { createWorkflowRun, finishWorkflowRun, markWorkItem, syncJob, syncWorkflow } from '../db/store.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,
   createApiServer,
   isLoopbackAddress,
+  isWithin,
   originAllowed,
+  safeOutputMarkdown,
 } from './server.js';
 
 let passed = 0;
@@ -275,6 +279,80 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
 
   for (const d of [upstream, downstream]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
   { const i = workflows.indexOf(gw); if (i >= 0) workflows.splice(i, 1); }
+}
+
+// ── T110: workflow-run output preview / path-safety ──
+await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', () => {
+  assert.equal(isWithin('/a/b', '/a/b'), true);
+  assert.equal(isWithin('/a/b', '/a/b/c/d.md'), true);
+  assert.equal(isWithin('/a/b', '/a/c/d.md'), false);
+  assert.equal(isWithin('/a/b', '/a/b/../c'), false);
+  assert.equal(isWithin('/a/b', '/etc/passwd'), false);
+});
+
+{
+  // A real .md under a job's data/out tree (the only place reads are allowed).
+  const jobsRoot = fileURLToPath(new URL('../jobs', import.meta.url));
+  const outDir = `${jobsRoot}/perfumes/data/out/markdown`;
+  const okFile = `${outDir}/__t110-test__.md`;
+  const wrongDir = `${jobsRoot}/perfumes/data/raw/__t110-test__.md`; // not under data/out
+  const txtFile = `${outDir}/__t110-test__.txt`; // not markdown
+  mkdirSync(outDir, { recursive: true });
+  mkdirSync(`${jobsRoot}/perfumes/data/raw`, { recursive: true });
+  writeFileSync(okFile, '# Hi\n');
+  writeFileSync(wrongDir, '# Hi\n');
+  writeFileSync(txtFile, 'hi\n');
+
+  await test('safeOutputMarkdown: accepts a real .md inside a job data/out tree', () => {
+    assert.ok(safeOutputMarkdown(okFile), 'a real .md under data/out is allowed');
+  });
+  await test('safeOutputMarkdown: rejects null / traversal / outside / non-md / missing', () => {
+    assert.equal(safeOutputMarkdown(null), null, 'null');
+    assert.equal(safeOutputMarkdown('/etc/passwd'), null, 'outside the jobs tree');
+    assert.equal(safeOutputMarkdown(`${outDir}/../../../../../../etc/passwd`), null, 'traversal escapes');
+    assert.equal(safeOutputMarkdown(wrongDir), null, 'not under data/out');
+    assert.equal(safeOutputMarkdown(txtFile), null, 'not a .md file');
+    assert.equal(safeOutputMarkdown(`${outDir}/__does_not_exist__.md`), null, 'missing file');
+  });
+
+  // End-to-end: a run + a work item carrying detail.markdown → endpoint serves it.
+  syncJob({ name: 't110-in', run: async () => {} });
+  syncJob({ name: 't110-out', run: async () => {} });
+  syncWorkflow({ name: 't110-wf', jobs: [{ job: 't110-in' }, { job: 't110-out', dependsOn: ['t110-in'] }] });
+  markWorkItem('t110-out', 'item-1', 'success', { detail: { name: 'Sample', markdown: okFile } });
+  markWorkItem('t110-out', 'item-noart', 'success', { detail: { name: 'NoFile', markdown: '/etc/passwd' } });
+  const runId = createWorkflowRun('t110-wf', 'manual');
+
+  await test('output endpoint: serves the produced markdown for a work item', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${runId}/output?job=t110-out&key=item-1`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { found: boolean; content?: string; file?: string };
+      assert.equal(body.found, true);
+      assert.equal(body.content, '# Hi\n');
+      assert.match(body.file ?? '', /perfumes\/data\/out\/markdown\/__t110-test__\.md$/);
+    });
+  });
+  await test('output endpoint: found:false for an unsafe / missing artifact (never serves it)', async () => {
+    await withServer({}, async (base) => {
+      const r1 = await fetch(`${base}/api/workflow-runs/${runId}/output?job=t110-out&key=item-noart`);
+      assert.equal(r1.status, 200);
+      assert.equal(((await r1.json()) as { found: boolean }).found, false, 'an outside path is never served');
+      const r2 = await fetch(`${base}/api/workflow-runs/${runId}/output?job=t110-out&key=nope`);
+      assert.equal(((await r2.json()) as { found: boolean }).found, false, 'an item with no artifact');
+    });
+  });
+  await test('output endpoint: 400 without job/key; 404 for an unknown run', async () => {
+    await withServer({}, async (base) => {
+      assert.equal((await fetch(`${base}/api/workflow-runs/${runId}/output`)).status, 400);
+      assert.equal((await fetch(`${base}/api/workflow-runs/__no_run__/output?job=t110-out&key=item-1`)).status, 404);
+    });
+  });
+
+  finishWorkflowRun(runId, 'success');
+  rmSync(okFile, { force: true });
+  rmSync(wrongDir, { force: true });
+  rmSync(txtFile, { force: true });
 }
 
 console.log(`\n  ${passed} assertions passed`);

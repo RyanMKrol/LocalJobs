@@ -280,6 +280,25 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .db-modal-key { color: var(--muted); font-size: 12px; padding-top: 2px; word-break: break-all; flex-shrink: 0; }
 .db-modal-val { font-size: 12px; white-space: pre-wrap; word-break: break-all; }
 
+/* ── Workflow-run IO output preview (T110) ────────────────────────────────── */
+/* Clickable preview of a produced markdown artifact in the IO panel's output
+   cell; opens the full markdown in the db-modal popover. */
+.md-preview {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  width: 100%; text-align: left;
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  padding: 4px 6px; margin: -4px -6px; cursor: pointer; color: inherit; font: inherit;
+}
+.md-preview:hover { border-color: var(--border); background: var(--panel-2); }
+.md-preview-title { font-size: 0.9em; font-weight: 600; }
+.md-preview-excerpt { font-size: 0.82em; color: var(--muted); overflow-wrap: anywhere; }
+.md-preview-file { font-size: 0.74em; color: var(--muted); opacity: .8; overflow-wrap: anywhere; }
+/* Full markdown as readable monospace text (no markdown-renderer dependency). */
+.md-preview-full {
+  margin: 0; font-size: 12px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+}
+
 /* ── Validation-gate flow (output → gate → input) ─────────────────────────── */
 .gate-flow { display: flex; align-items: stretch; gap: 10px; margin: 8px 0 16px; }
 .gate-card {

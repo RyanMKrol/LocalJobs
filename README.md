@@ -250,7 +250,16 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   first member finishes, then steps in 100/N increments per completed stage).
   While the run is `running`, a **✕ Cancel** button appears next to the status
   badge; clicking it calls the cancel endpoint, disables itself during the
-  request, and the next poll reflects the `cancelled` status.
+  request, and the next poll reflects the `cancelled` status. It also shows an
+  **Input → Output mapping** panel pairing each first-stage input with its final
+  output (joined by `root_key`). The **output side is expressive**: it previews
+  the produced markdown artifact (title + a short excerpt) and **clicking it opens
+  the full markdown in a popover** (shown as readable monospace text — no
+  markdown-renderer dependency). The content is served by a read-only,
+  path-safe endpoint `GET /api/workflow-runs/:id/output?job=&key=` that resolves
+  the file from the work item's recorded `detail.markdown` and only ever reads a
+  `.md` file inside a job's own `data/out/` tree (no path traversal, files only,
+  no paid/remote calls). Works for the places + perfumes example workflows.
 - **Job detail** — a **read-only member view**: timeout/retries, full run history,
   and per-job stuck items. A job has no schedule, enable toggle, instructions or
   run-now of its own (you run + enable its *workflow*). Reached via links from the

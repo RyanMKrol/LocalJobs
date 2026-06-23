@@ -56,8 +56,11 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
       if (!res.ok) throw new Error(res.error ?? 'claude error');
       const md = unfenceMarkdown(res.text);
       if (!md.startsWith('---') || !md.includes('## Sources')) throw new Error('output is not a template-shaped markdown file');
-      writeFileSync(join(perfumesConfig.markdownDir, `${p.id}.md`), md);
-      markWorkItem(BUILD_JOB, p.id, 'success', { attempts, detail: { name: label(p) } });
+      const mdPath = join(perfumesConfig.markdownDir, `${p.id}.md`);
+      writeFileSync(mdPath, md);
+      // Record the artifact path so the dashboard's IO panel can preview it
+      // (mirrors places-llm-enrich's detail.markdown — see workItemMarkdownPath).
+      markWorkItem(BUILD_JOB, p.id, 'success', { attempts, detail: { name: label(p), markdown: mdPath } });
       ok++;
       ctx.log(`[build] ✓ ${label(p)}`);
     } catch (e) {

@@ -6,7 +6,7 @@ import {
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   ignoreWorkItem, ignoredItems, isWorkItemDone,
-  listRunsForWorkflowRun, listServices, markWorkItem, orphanedWorkItems, selectPendingRoots, workflowRetryableCount,
+  listRunsForWorkflowRun, listServices, markWorkItem, orphanedWorkItems, selectPendingRoots, workflowRetryableCount, workItemMarkdownPath,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, usageThisMonth,
@@ -259,6 +259,19 @@ console.log('  ✓ ignoreWorkItem parks a stuck item (manual, persists, off stuc
   assert.equal(getWorkItem('lin-child', 'orphanC')?.root_key, 'no-such-parent', 'fallback to parentKey when parent absent');
 }
 console.log('  ✓ markWorkItem lineage resolution (explicit / inherit / default-to-key)');
+
+// workItemMarkdownPath: returns the recorded detail.markdown, else null (T110)
+{
+  syncJob({ name: 'md-job', run: async () => {} });
+  markWorkItem('md-job', 'with-md', 'success', { detail: { name: 'X', markdown: '/some/where/data/out/markdown/x.md' } });
+  markWorkItem('md-job', 'no-md', 'success', { detail: { name: 'Y' } });
+  markWorkItem('md-job', 'no-detail', 'success');
+  assert.equal(workItemMarkdownPath('md-job', 'with-md'), '/some/where/data/out/markdown/x.md', 'returns recorded markdown path');
+  assert.equal(workItemMarkdownPath('md-job', 'no-md'), null, 'no markdown key → null');
+  assert.equal(workItemMarkdownPath('md-job', 'no-detail'), null, 'no detail → null');
+  assert.equal(workItemMarkdownPath('md-job', 'missing'), null, 'missing item → null');
+}
+console.log('  ✓ workItemMarkdownPath (recorded path / null)');
 
 {
   // selectPendingRoots: fresh DB → first N candidates in input order

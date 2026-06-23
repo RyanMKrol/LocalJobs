@@ -1,9 +1,9 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useCallback, useEffect, useState } from 'react';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
-import type { IoRow, Run, WorkflowIo } from '../../lib/api';
+import type { IoRow, Run, WorkflowIo, WorkflowRunOutput } from '../../lib/api';
 import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
 
 function latestByStage(members: Run[]): Run[] {
@@ -23,15 +23,144 @@ function itemLabel(key: string, detail: IoRow['inputDetail']): string {
 }
 
 /**
- * Input → Output mapping panel (T095 first cut).
+ * Derive a human title + a short excerpt from a produced markdown profile, so
+ * the IO panel can show a meaningful preview of the output without rendering the
+ * whole file. Title: the YAML frontmatter `name:` if present, else the first
+ * `# ` heading, else null. Excerpt: the first couple of body lines (skipping
+ * frontmatter, headings and blank lines), trimmed to a short snippet.
+ */
+function mdPreview(content: string): { title: string | null; excerpt: string | null } {
+  let body = content;
+  let title: string | null = null;
+
+  // Strip leading YAML frontmatter (--- … ---) and mine it for `name:`.
+  if (body.startsWith('---')) {
+    const end = body.indexOf('\n---', 3);
+    if (end !== -1) {
+      const fm = body.slice(3, end);
+      const m = fm.match(/^\s*name:\s*(.+?)\s*$/m);
+      if (m) title = m[1].replace(/^["']|["']$/g, '').trim() || null;
+      body = body.slice(end + 4);
+    }
+  }
+
+  const lines = body.split('\n').map((l) => l.trim());
+  if (!title) {
+    const h = lines.find((l) => /^#{1,6}\s+/.test(l));
+    if (h) title = h.replace(/^#{1,6}\s+/, '').trim() || null;
+  }
+
+  const bodyLine = lines.find((l) => l !== '' && !/^#{1,6}\s+/.test(l) && l !== '---');
+  let excerpt = bodyLine ?? null;
+  if (excerpt && excerpt.length > 140) excerpt = `${excerpt.slice(0, 140)}…`;
+  return { title, excerpt };
+}
+
+/** Full-markdown popover — reuses the DB browser's modal styling (db-modal). The
+ *  content is shown as readable monospace text (no markdown-renderer dependency;
+ *  the repo is deliberately dependency-light). */
+function MarkdownModal(
+  { title, content, truncated, onClose }: { title: string; content: string; truncated?: boolean; onClose: () => void },
+) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="db-modal-overlay" onClick={onClose}>
+      <div className="db-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="db-modal-header">
+          <span>{title}</span>
+          <button className="db-modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="db-modal-body">
+          {truncated && <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>⚠ Output is large — showing the first part only.</p>}
+          <pre className="md-preview-full mono">{content}</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Output cell for one IO row: lazily fetches the produced markdown ONCE, shows a
+ * preview (title + excerpt), and opens the full markdown in a popover on click.
+ * Falls back to the bare output key/detail when the item has no markdown
+ * artifact (`found: false`) — e.g. a non-markdown-producing workflow.
+ */
+function OutputCell(
+  { runId, row, onOpen }: { runId: string; row: IoRow; onOpen: (title: string, content: string, truncated: boolean) => void },
+) {
+  const [out, setOut] = useState<WorkflowRunOutput | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!row.outputJob || !row.outputKey) return;
+    let alive = true;
+    setLoading(true);
+    api.workflowRunOutput(runId, row.outputJob, row.outputKey)
+      .then((o) => { if (alive) setOut(o); })
+      .catch(() => { if (alive) setOut(null); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [runId, row.outputJob, row.outputKey]);
+
+  if (!row.outputKey) return <span className="muted">—</span>;
+
+  const detailName =
+    row.outputDetail && typeof (row.outputDetail as Record<string, unknown>).name === 'string'
+      ? itemLabel(row.outputKey, row.outputDetail)
+      : null;
+
+  // Markdown artifact available → expressive, clickable preview.
+  if (out?.found && out.content) {
+    const { title, excerpt } = mdPreview(out.content);
+    const heading = title ?? detailName ?? row.outputKey;
+    const content = out.content;
+    const truncated = !!out.truncated;
+    return (
+      <button
+        type="button"
+        className="md-preview"
+        title="Open full markdown"
+        onClick={() => onOpen(heading, content, truncated)}
+      >
+        <span className="md-preview-title">📄 {heading}</span>
+        {excerpt && <span className="md-preview-excerpt">{excerpt}</span>}
+        <span className="md-preview-file mono">{out.file ?? row.outputKey}</span>
+      </button>
+    );
+  }
+
+  // No markdown (or still loading) → fall back to the bare key + detail name.
+  return (
+    <>
+      <div className="mono" style={{ fontSize: '0.82em' }}>{row.outputKey}</div>
+      {detailName && <div className="muted" style={{ fontSize: '0.88em' }}>{detailName}</div>}
+      {loading && <div className="muted" style={{ fontSize: '0.78em' }}>loading preview…</div>}
+    </>
+  );
+}
+
+/**
+ * Input → Output mapping panel (T095 first cut; T110 expressive output).
  *
  * Joins first-stage work items to last-stage work items by root_key so each
  * input can be paired with its final output. Not scoped to this run — reflects
  * the workflow's global work-item ledger. Fan-out collapses to one output per
- * input. These limitations are noted in the panel header.
+ * input. These limitations are noted in the panel header. The OUTPUT side shows
+ * a preview of the produced markdown artifact (title + excerpt) and opens the
+ * full markdown in a popover on click (T110).
  */
-function IoPanel({ data }: { data: WorkflowIo }) {
+function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
   const { io, firstWave, lastWave, note } = data;
+  const [modal, setModal] = useState<{ title: string; content: string; truncated: boolean } | null>(null);
+  const openModal = useCallback(
+    (title: string, content: string, truncated: boolean) => setModal({ title, content, truncated }),
+    [],
+  );
   if (io.length === 0 && firstWave.length === 0) return null;
   const singleStage = firstWave.length > 0 && firstWave[0] === lastWave?.[0];
   return (
@@ -61,18 +190,7 @@ function IoPanel({ data }: { data: WorkflowIo }) {
                   </td>
                   <td><span className={`badge ${row.inputStatus}`}>{row.inputStatus}</span></td>
                   {!singleStage && (
-                    <td>
-                      {row.outputKey ? (
-                        <>
-                          <div className="mono" style={{ fontSize: '0.82em' }}>{row.outputKey}</div>
-                          {row.outputDetail && typeof (row.outputDetail as Record<string, unknown>).name === 'string' && (
-                            <div className="muted" style={{ fontSize: '0.88em' }}>{itemLabel(row.outputKey, row.outputDetail)}</div>
-                          )}
-                        </>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
+                    <td><OutputCell runId={runId} row={row} onOpen={openModal} /></td>
                   )}
                   {!singleStage && (
                     <td>
@@ -90,6 +208,7 @@ function IoPanel({ data }: { data: WorkflowIo }) {
           ⚠ First cut — {note}
         </p>
       </div>
+      {modal && <MarkdownModal title={modal.title} content={modal.content} truncated={modal.truncated} onClose={() => setModal(null)} />}
     </>
   );
 }
@@ -153,7 +272,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {ioData && <IoPanel data={ioData} />}
+      {ioData && <IoPanel runId={id} data={ioData} />}
 
       <h2>Member runs</h2>
       <div className="panel">
