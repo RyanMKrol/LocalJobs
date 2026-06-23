@@ -3488,7 +3488,7 @@
     {
       "id": "T133",
       "title": "Workflow-run IO: hardcode the chosen \"meta\" output line-item style, remove the toggle + 4 unused styles",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T128"
       ],
