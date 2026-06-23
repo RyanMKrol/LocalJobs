@@ -137,35 +137,8 @@ a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent
 a.dag-gate:hover { border-color: var(--accent); }
 a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.22); }
 .dag-gate.structural { border-style: dashed; }
-/* T099: compact, toggleable validation-gate display styles (evaluation aid — a
-   follow-up will hardcode the winner). The selector bar lives above the graph; each
-   style is a `.gs-*` variant of `.dag-gate` (or, for the connector style, a coloured
-   `.gate-conn` arrow glyph). All keep the state colours inherited from the rules above. */
-.gate-style-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
-.gate-style-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.gate-style-btn { font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
-.gate-style-btn:hover { border-color: var(--accent); color: var(--text); }
-.gate-style-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.12); }
-/* (1) icon — bare ⛒ glyph, no chip frame; state colour inherited, detail on hover. */
-.dag-gate.gs-icon { border: none; background: none; padding: 0 2px; font-size: 14px; line-height: 1; }
-/* (5) lock — bare 🔒 glyph, no chip frame; state colour inherited, detail on hover. */
-.dag-gate.gs-lock { border: none; background: none; padding: 0 2px; font-size: 13px; line-height: 1; }
-/* (3) key — tiny pill showing only the artifact key (no producer name). */
+/* key pill — tiny pill showing only the artifact key (no producer name). */
 .dag-gate.gs-key { font-size: 9px; padding: 1px 5px; }
-/* (2) dot — bare state-coloured dot, the most minimal; detail on hover. */
-.dag-gate.gs-dot { width: 9px; height: 9px; padding: 0; border-radius: 50%; background: var(--grey); border: 1px solid var(--border); }
-.dag-gate.gs-dot.passed { background: var(--green); border-color: var(--green); }
-.dag-gate.gs-dot.failed { background: var(--red); border-color: var(--red); }
-.dag-gate.gs-dot.pending { background: var(--grey); opacity: .6; }
-.dag-gate.gs-dot.structural { background: transparent; border-style: dashed; }
-a.dag-gate.gs-dot:hover { border-color: var(--accent); }
-/* (4) connector — no chip; the arrow glyph itself is state-coloured + clickable. */
-.dag-arrow-glyph.gate-conn { text-decoration: none; }
-.dag-arrow-glyph.gate-conn.passed { color: var(--green); }
-.dag-arrow-glyph.gate-conn.failed { color: var(--red); }
-.dag-arrow-glyph.gate-conn.pending { color: var(--grey); opacity: .8; }
-.dag-arrow-glyph.gate-conn.structural { color: var(--muted); }
-a.dag-arrow-glyph.gate-conn:hover { color: var(--accent); }
 /* collapsible section heading (used on /backlog for all three sections) */
 /* ── Backlog section header: spin caret (T132, chosen in T127) ── */
 .section-heading-summary { font-size: 16px; margin: 0 0 12px -8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; display: flex; align-items: center; padding: 4px 8px; border-radius: 6px; transition: background 0.15s; }
@@ -413,11 +386,6 @@ input[type="text"]:focus { border-color: var(--accent); }
   .dag-arrow { text-align: center; justify-content: center; }
   .dag-arrow-glyph { font-size: 0; }
   .dag-arrow-glyph::after { content: '↓'; font-size: 22px; color: var(--grey); }
-  /* Connector gate style: keep the state colour on the swapped-in ↓ glyph (T099). */
-  .dag-arrow-glyph.gate-conn.passed::after { color: var(--green); }
-  .dag-arrow-glyph.gate-conn.failed::after { color: var(--red); }
-  .dag-arrow-glyph.gate-conn.pending::after { color: var(--grey); }
-  .dag-arrow-glyph.gate-conn.structural::after { color: var(--muted); }
 
   /* DB row modal: full-width key column on narrow screens. */
   .db-modal-row { grid-template-columns: 1fr; gap: 2px; }

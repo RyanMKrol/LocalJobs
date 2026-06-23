@@ -21,47 +21,6 @@ export function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
-/**
- * The five compact validation-gate display styles the graph views can switch
- * between (T099). This is an EVALUATION aid: once a favourite is chosen a
- * FOLLOW-UP task will hardcode the winner and remove this toggle + the unused
- * styles. Each entry: stable `id` (persisted), short `label` for the toggle, and
- * a `hint` tooltip describing the style.
- */
-export const GATE_STYLES = [
-  { id: 'icon',      label: 'Icon',  hint: 'Icon-only ⛒ chip, coloured by state — hover for full detail.' },
-  { id: 'dot',       label: 'Dot',   hint: 'Bare state-coloured dot — the most minimal; hover for detail.' },
-  { id: 'key',       label: 'Key',   hint: 'Tiny pill showing just the artifact key (no producer name).' },
-  { id: 'connector', label: 'Arrow', hint: 'No chip — the connecting arrow itself is coloured by state and clickable.' },
-  { id: 'lock',      label: 'Lock',  hint: 'Compact 🔒 badge, coloured by state — hover for full detail.' },
-] as const;
-
-export type GateStyle = (typeof GATE_STYLES)[number]['id'];
-
-const GATE_STYLE_KEY = 'localjobs.gateStyle';
-const DEFAULT_GATE_STYLE: GateStyle = 'icon';
-
-/**
- * Read/write the user's chosen gate display style, persisted to localStorage so it
- * survives polling re-renders and navigation between the two graph views. Starts at
- * the default on first render (SSR-safe — localStorage is read in an effect after
- * mount to avoid a hydration mismatch).
- */
-export function useGateStyle(): [GateStyle, (s: GateStyle) => void] {
-  const [style, setStyle] = useState<GateStyle>(DEFAULT_GATE_STYLE);
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(GATE_STYLE_KEY);
-      if (saved && GATE_STYLES.some((s) => s.id === saved)) setStyle(saved as GateStyle);
-    } catch { /* localStorage unavailable — keep default */ }
-  }, []);
-  const set = (s: GateStyle) => {
-    setStyle(s);
-    try { localStorage.setItem(GATE_STYLE_KEY, s); } catch { /* ignore persistence failure */ }
-  };
-  return [style, set];
-}
-
 
 export function StatusBadge({ status }: { status: RunStatus }) {
   return <span className={`badge ${status}`}>{statusLabel(status)}</span>;
