@@ -374,6 +374,20 @@ doubt, log it.
   (resolver by CID, enrich + LLM by place_id); the rich output still goes to the
   job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
   "skip if it's in the JSON file" checks.
+  - **The FIRST stage owns the per-item list (convention).** A multi-stage
+    workflow's first stage must record the canonical per-item work-item list that
+    the rest of the pipeline keys on — one `markWorkItem` per input item, keyed by
+    the stable id every downstream stage uses (e.g. places-ingest records one item
+    per CID-bearing place, keyed by CID). Do this **even for a bulk-prep first stage**
+    that produces a single file: it parses the CSVs into `places.json` *and* emits the
+    ledger list (`recordIngestLedger`). Why: the work-item ledger — and the
+    workflow-run **Input → Output mapping**, which pairs the FIRST stage's work_items
+    with the LAST stage's by `root_key` — is anchored from stage one. If the first
+    stage records nothing, the IO panel has no input side and renders **empty**
+    (the places bug: ingest used to produce only a file, so the panel was blank). A
+    bulk first stage re-records the full current list each run (idempotent upsert; it
+    doesn't skip). Keep the first stage's item key == the downstream `root_key` so the
+    mapping joins cleanly.
   - **Pruning orphaned ledger rows (manual only).** When a job's input keys
     change (e.g. a source id is corrected), the old keys leave orphaned
     `work_items` behind. A job can expose its current input key-set via an

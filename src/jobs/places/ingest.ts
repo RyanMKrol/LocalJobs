@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { JobContext } from '../../core/types.js';
+import { markWorkItem } from '../../db/store.js';
 import { placesConfig } from './config.js';
 import { extractFeatureId, nameFromUrl, parseListFile } from './parse.js';
 import type {
@@ -10,6 +11,24 @@ import type {
   ValidationIssue,
   ValidationReport,
 } from './types.js';
+
+/** This job's name — the workflow's first stage, which owns the per-item ledger list. */
+const INGEST_JOB = 'places-ingest';
+
+/**
+ * Record the canonical per-item work-item list for the workflow: one ledger entry
+ * per CID-bearing place, keyed by its CID (the id every downstream stage keys on).
+ * Name-only places (no CID) can't be resolved, so they don't enter the pipeline and
+ * aren't recorded. This is what makes ingest — the FIRST stage — the owner of the
+ * idempotency list (so the run's Input→Output mapping has an input side). A bulk
+ * prep step re-records the full current list each run (upsert; no skip). Exported so
+ * it can be unit-tested against the scratch DB without disk I/O.
+ */
+export function recordIngestLedger(places: NormalizedPlace[]): void {
+  for (const p of places) {
+    if (p.cid) markWorkItem(INGEST_JOB, p.cid, 'success', { detail: { name: p.name } });
+  }
+}
 
 /**
  * Ingest every saved-list CSV (places-data/raw/Saved) into one normalized,
@@ -151,6 +170,14 @@ export async function runIngest(ctx: JobContext): Promise<ValidationReport> {
 
   writeFileSync(placesConfig.placesOut, JSON.stringify(output, null, 2));
   writeFileSync(placesConfig.reportOut, JSON.stringify(report, null, 2));
+
+  // Convention (first stage owns the per-item list): as the workflow's first stage,
+  // ingest records the canonical work-item list every later stage keys on — one
+  // ledger item per CID-bearing place, keyed by CID. This anchors idempotency AND
+  // the run's Input→Output mapping from stage one (a bulk-prep first stage that
+  // records nothing leaves the IO panel with no input side). Only on a valid run.
+  if (report.ok) recordIngestLedger(places);
+
   ctx.progress(100, `${places.length} places (${withCid} with CID)`);
 
   // ── Detailed summary ──────────────────────────────────────────────
