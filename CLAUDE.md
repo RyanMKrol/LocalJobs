@@ -452,11 +452,10 @@ doubt, log it.
   structural state colouring distinguishable, and work at desktop and phone widths.
   Once a favourite is picked, a FOLLOW-UP task will hardcode the winner and remove
   the toggle + unused styles. EVERY mark (passed/failed/pending
-  alike) links to that gate's row in the
-  **Validation gates** panel on the workflow-run page (`gateAnchor` gives the
-  shared DOM id) — the panel shows what each gate validates (key + description,
-  producer→consumer), its outcome, and links to the producer/consumer/violation
-  run logs. Gates render ONLY when a run's `gates` prop is passed — the
+  alike) links directly to that gate's dedicated detail page
+  (`/workflow-runs/<id>/gates/<producer>/<key>`), which shows what the gate
+  validates (key + description, producer→consumer), its outcome, and links to the
+  producer/consumer/violation run logs. Gates render ONLY when a run's `gates` prop is passed — the
   structure-only `/workflows/[name]` graph omits it. The executor also LOGS each
   gate check to the workflow run's framework logs: a `⛒ checking gate …` line
   naming the boundary, artifact, and both contracts' assertions

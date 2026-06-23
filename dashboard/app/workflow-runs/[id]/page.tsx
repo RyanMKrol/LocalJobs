@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
-import type { GateStatus, IoRow, Run, WorkflowIo } from '../../lib/api';
+import type { IoRow, Run, WorkflowIo } from '../../lib/api';
 import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
 
 function latestByStage(members: Run[]): Run[] {
@@ -15,41 +15,6 @@ function latestByStage(members: Run[]): Run[] {
   return [...latest.values()];
 }
 
-/**
- * Summary of all validation gates for this workflow run. Each row links to that
- * gate's dedicated detail page (navigating there like a job node does), so the
- * panel is a quick overview rather than the canonical detail view.
- */
-function GatePanel({ id, gates }: { id: string; gates: GateStatus[] }) {
-  if (gates.length === 0) return null;
-  return (
-    <>
-      <h2>Validation gates</h2>
-      <div className="panel">
-        <table>
-          <thead><tr><th>State</th><th>Gate</th><th>Asserts</th><th></th></tr></thead>
-          <tbody>
-            {gates.map((g) => (
-              <tr key={`${g.producer}:${g.key}`}>
-                <td><span className={`badge ${g.state}`}>{statusLabel(g.state)}</span></td>
-                <td>
-                  <div><strong>{g.producer}</strong> → <strong>{g.consumer}</strong></div>
-                  <div className="muted mono">artifact &ldquo;{g.key}&rdquo;</div>
-                </td>
-                <td className="muted">{g.description ?? <span className="mono">no contract description</span>}</td>
-                <td>
-                  <a style={{ whiteSpace: 'nowrap' }} href={`/workflow-runs/${id}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`}>
-                    detail →
-                  </a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
 
 /** Extract a display label from a work-item detail blob: prefers `detail.name`, falls back to `key`. */
 function itemLabel(key: string, detail: IoRow['inputDetail']): string {
@@ -187,8 +152,6 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
           <Dag members={workflow.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/workflow-runs/${id}`} workflowRunId={id} />
         </div>
       )}
-
-      <GatePanel id={id} gates={gates} />
 
       {ioData && <IoPanel data={ioData} />}
 

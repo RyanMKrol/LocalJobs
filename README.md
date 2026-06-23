@@ -331,7 +331,7 @@ contracts (`contracts.ts` in each workflow). A shape violation at a gate fails
 LOUD — recording a failed run and firing an alert — instead of silently feeding
 bad data downstream. Gates surface as chips on the workflow-run DAG in the
 dashboard (green/pending/red) — every chip is clickable and opens that gate's
-row in the **Validation gates** panel, which shows what the gate validates
+dedicated detail page, which shows what the gate validates
 (contract key + description, producer→consumer) and its outcome, with links to
 the producer/consumer/violation run logs. The executor also logs each gate check
 (what it asserted + the pass/fail result) into the workflow run's framework logs.
