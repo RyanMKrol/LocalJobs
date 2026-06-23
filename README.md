@@ -324,6 +324,23 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   non-fatal note — the commit still persists and syncs on the next push. Everything
   else on the dashboard remains read-only.
 
+**Appearance switcher (🎨 in the header — T142, an evaluation aid).** A compact
+header control opens a popover to mix-and-match three persisted (localStorage)
+axes that apply live across **every** page: a **theme** (6 — 2 dark
+*Default Dark* / *Midnight Neon* + 4 bright *Pixel Picnic* / *Candy Bright* /
+*Sunny 8-bit* / *Soft Pastel*, each a full palette/texture/accent package), a
+**display+body font pair** (8 — pixel/retro display faces like Pixelify, Silkscreen,
+VT323, Press Start paired with readable body faces like Nunito, Quicksand, Fredoka,
+Baloo, plus Space Mono / JetBrains; pixel faces only ever land on brand/headings,
+never on tables/logs), and a **reduce-motion / minimise-emoji** toggle (defaults to
+the OS `prefers-reduced-motion`). Joyful accents (a signature yellow-spark flash on
+a succeeding run, hover-lift, animated progress fills, emoji status badges, friendlier
+empty states) are baked into the non-default themes and dampened by the toggle. The
+**untouched default stays the current dark + system-font look**, so nothing regresses.
+A pre-paint script in `layout.tsx` applies the saved choices before first paint (no
+theme flash). This is an evaluation aid — a follow-up (gated by review task T143)
+hardcodes the chosen theme/font/motion and removes the switcher + unused options.
+
 Every page is **responsive down to a phone-width (~402px) viewport**: wide tables
 scroll sideways within their panel (the page itself never scrolls horizontally),
 stat tiles collapse to two columns, key/value blocks stack, and the header nav

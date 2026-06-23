@@ -468,3 +468,27 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   cosmetic — both messages explain why the panel is empty and neither dumps the global ledger.
   *Revisit:* if exact pre-feature detection ever matters, stamp each run with a feature-version flag
   at creation; not worth a column today.
+
+- **The joyful theme/font switcher is auto-tested only on the DEFAULT look; non-default themes are
+  spot-checked manually (T142).** *Why:* `dashboard/scripts/mobile-check.mjs` loads pages with a
+  fresh browser context that sets no localStorage, so it always exercises the default theme +
+  system font. The 6 themes × 8 font pairs combinatorial space is validated by a throwaway
+  spot-check script (run during the build, not committed) that sets `localjobs.theme`/`localjobs.font`
+  via `addInitScript` across the demanding combos (Press Start / Silkscreen / VT323 pixel fonts ×
+  each bright theme) and asserts the same 402px no-overflow / no-boundary-crossing invariant.
+  *Impact:* a future theme/font edit could regress a non-default combo at phone width without the
+  committed check catching it; the default look IS guarded by CI-adjacent `mobile-check`. To keep
+  non-default combos safe, the signature success "spark" is a box-shadow glow + emoji transform
+  (neither affects layout, so it can never spill a badge box) rather than an absolutely-positioned
+  overflowing pseudo-element — an earlier `::after { content:'✨'; right:-7px }` spilled the badge
+  and tripped the boundary rule. *Revisit:* if theme regressions recur, fold a small matrix of
+  theme+font combos into `mobile-check.mjs` itself (it already has the fixture harness).
+
+- **Stat-tile "count-up" is a CSS entrance pop, not a JS number animation (T142).** *Why:* the
+  joyful-accents brief lists animated count-ups, but the stat tiles render in `dashboard/app/page.tsx`
+  which is OUT of T142's scope (`globals.css` / `ui.tsx` / `layout.tsx` / `package.json`). A true
+  count-up needs JS that owns the number. *Impact:* on joyful themes the stat numbers do a one-shot
+  scale-in "pop" (`joy-pop` keyframe on `.statcard .n`) rather than ticking up from 0 — a lively
+  entrance without touching the out-of-scope page component or adding JS. *Revisit:* if the owner
+  picks a theme and wants real count-ups, the T143 hardcode follow-up (or a separate task) can add a
+  small `<CountUp>` in `page.tsx`/`ui.tsx`.

@@ -21,9 +21,31 @@ export function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+// Emoji status glyphs (T142). Always rendered in a `.badge-emoji` span but hidden
+// by default — globals.css only reveals them on a joyful (non-default) theme, and
+// the reduce-motion / minimal-emoji toggle hides them again. So the default look
+// is unchanged and the emoji are a purely additive, reversible accent.
+const STATUS_EMOJI: Record<string, string> = {
+  success:   '✅',
+  failed:    '❌',
+  timeout:   '⏳',
+  running:   '🔄',
+  queued:    '🕒',
+  cancelled: '🚫',
+  skipped:   '⤼',
+  partial:   '◐',
+  passed:    '✅',
+  pending:   '⏳',
+};
 
 export function StatusBadge({ status }: { status: RunStatus }) {
-  return <span className={`badge ${status}`}>{statusLabel(status)}</span>;
+  const emoji = STATUS_EMOJI[status];
+  return (
+    <span className={`badge ${status}`}>
+      {emoji && <span className="badge-emoji" aria-hidden="true">{emoji}</span>}
+      {statusLabel(status)}
+    </span>
+  );
 }
 
 export function ProgressBar({ pct }: { pct: number }) {
@@ -256,7 +278,7 @@ export function StuckPopover({
         </div>
         <div className="db-modal-body" style={{ padding: 0 }}>
           {items.length === 0 ? (
-            <p className="muted" style={{ padding: '16px' }}>No stuck items.</p>
+            <p className="muted empty-joy" style={{ padding: '16px' }}>Nothing stuck — nice <span className="joy-emoji" aria-hidden="true">✨</span></p>
           ) : (
             <>
               <div style={{ overflowX: 'auto' }}>
@@ -294,6 +316,178 @@ export function StuckPopover({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Joyful theme / font / motion switcher (T142, an evaluation aid)
+
+   Mirrors the existing persisted-chooser pattern: small `use…()` hooks back
+   each axis with localStorage and apply it to `document.documentElement`
+   (`data-theme` / `data-font` / `data-motion`), so every page reacts live and
+   the choice survives reloads. A pre-paint script in layout.tsx sets the same
+   attributes BEFORE first paint (no theme flash). The DEFAULT (untouched) is the
+   current dark + system-font look so nothing regresses.
+
+   A FOLLOW-UP (gated by the review task T143) will hardcode the chosen theme +
+   font + motion preference and delete this switcher + the unused options.
+   ────────────────────────────────────────────────────────────────────────── */
+
+export type ThemeId =
+  | 'default' | 'midnight-neon'
+  | 'pixel-picnic' | 'candy-bright' | 'sunny-8bit' | 'soft-pastel';
+
+export const THEMES: { id: ThemeId; label: string; emoji: string; group: 'Dark' | 'Bright' }[] = [
+  { id: 'default',       label: 'Default Dark',  emoji: '🌙', group: 'Dark' },
+  { id: 'midnight-neon', label: 'Midnight Neon', emoji: '🌃', group: 'Dark' },
+  { id: 'pixel-picnic',  label: 'Pixel Picnic',  emoji: '🧺', group: 'Bright' },
+  { id: 'candy-bright',  label: 'Candy Bright',   emoji: '🍬', group: 'Bright' },
+  { id: 'sunny-8bit',    label: 'Sunny 8-bit',    emoji: '🕹️', group: 'Bright' },
+  { id: 'soft-pastel',   label: 'Soft Pastel',    emoji: '🌸', group: 'Bright' },
+];
+
+export type FontId =
+  | 'system' | 'pixelify-nunito' | 'silkscreen-quicksand' | 'vt323-fredoka'
+  | 'pressstart-baloo' | 'fredoka-nunito' | 'spacemono' | 'jetbrains-quicksand';
+
+export const FONTS: { id: FontId; label: string }[] = [
+  { id: 'system',               label: 'System (default)' },
+  { id: 'pixelify-nunito',      label: 'Pixelify + Nunito' },
+  { id: 'silkscreen-quicksand', label: 'Silkscreen + Quicksand' },
+  { id: 'vt323-fredoka',        label: 'VT323 + Fredoka' },
+  { id: 'pressstart-baloo',     label: 'Press Start + Baloo' },
+  { id: 'fredoka-nunito',       label: 'Fredoka + Nunito' },
+  { id: 'spacemono',            label: 'Space Mono' },
+  { id: 'jetbrains-quicksand',  label: 'JetBrains + Quicksand' },
+];
+
+const prefersReducedMotion = () => {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+};
+
+/** Back a single `data-*` html attribute with localStorage. `fallback` is the
+ *  "untouched" value: it removes the attribute + key (so the default look wins). */
+function useHtmlPref<T extends string>(key: string, attr: string, fallback: T) {
+  const [val, setVal] = useState<T>(fallback);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(key) as T | null;
+    if (stored) setVal(stored);
+  }, [key]);
+
+  const update = (v: T) => {
+    setVal(v);
+    const root = document.documentElement;
+    if (v === fallback) {
+      window.localStorage.removeItem(key);
+      root.removeAttribute(attr);
+    } else {
+      window.localStorage.setItem(key, v);
+      root.setAttribute(attr, v);
+    }
+  };
+
+  return [val, update] as const;
+}
+
+export function useTheme() { return useHtmlPref<ThemeId>('localjobs.theme', 'data-theme', 'default'); }
+export function useFont() { return useHtmlPref<FontId>('localjobs.font', 'data-font', 'system'); }
+
+/** Reduce-motion / minimal-emoji toggle. Tri-state storage: explicit 'reduced' /
+ *  'full', or absent = follow the OS `prefers-reduced-motion`. The returned
+ *  boolean is the EFFECTIVE state; setting it persists an explicit choice. */
+export function useMotion() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem('localjobs.motion');
+    setReduced(stored === 'reduced' || (stored == null && prefersReducedMotion()));
+  }, []);
+
+  const update = (v: boolean) => {
+    setReduced(v);
+    window.localStorage.setItem('localjobs.motion', v ? 'reduced' : 'full');
+    if (v) document.documentElement.setAttribute('data-motion', 'reduced');
+    else document.documentElement.removeAttribute('data-motion');
+  };
+
+  return [reduced, update] as const;
+}
+
+/**
+ * Compact, unobtrusive settings control rendered in the header on EVERY page: a
+ * single 🎨 button that opens a small popover offering Theme · Font · Reduce
+ * motion. Built as a fixed-position modal so it never widens the header (keeps
+ * the mobile check green) and is reachable at phone width.
+ */
+export function ThemeControls() {
+  const [open, setOpen] = useState(false);
+  const [theme, setTheme] = useTheme();
+  const [font, setFont] = useFont();
+  const [reduced, setReduced] = useMotion();
+
+  return (
+    <div className="theme-controls">
+      <button
+        className="theme-trigger"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="Theme & font"
+      >
+        🎨<span className="theme-trigger-label"> Theme</span>
+      </button>
+      {open && (
+        <div className="db-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div className="db-modal theme-modal" role="dialog" aria-modal="true" aria-label="Theme settings">
+            <div className="db-modal-header">
+              <span>🎨 Appearance</span>
+              <button className="db-modal-close" onClick={() => setOpen(false)} aria-label="Close">×</button>
+            </div>
+            <div className="db-modal-body">
+              <div className="theme-section">
+                <div className="theme-section-label">Theme</div>
+                <div className="theme-grid">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      className={`theme-opt${theme === t.id ? ' active' : ''}`}
+                      onClick={() => setTheme(t.id)}
+                      title={`${t.group} theme`}
+                    >
+                      <span aria-hidden="true">{t.emoji}</span> {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="theme-section">
+                <div className="theme-section-label">Font</div>
+                <div className="theme-grid">
+                  {FONTS.map((f) => (
+                    <button
+                      key={f.id}
+                      className={`theme-opt${font === f.id ? ' active' : ''}`}
+                      onClick={() => setFont(f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="theme-section">
+                <label className="toggle theme-motion">
+                  <input type="checkbox" checked={reduced} onChange={(e) => setReduced(e.target.checked)} />
+                  Reduce motion &amp; minimise emoji
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -743,6 +743,29 @@ doubt, log it.
   blocks stack). After any dashboard UI change, build it and run
   `node dashboard/scripts/mobile-check.mjs` (hermetic — no daemon, synthetic API
   fixtures) and keep it green. The check is local-only, not part of CI.
+  ⚠️ The mobile check only exercises the DEFAULT theme/font (it sets no
+  localStorage), so it guards the default look; non-default themes are
+  mobile-safe by design + spot-checked manually at phone width.
+- **Dashboard appearance is CSS-variable-driven + has a live theme/font switcher
+  (T142, an evaluation aid).** All colours/fonts come from `:root` custom
+  properties; a header **🎨** control (`ThemeControls` in `dashboard/app/ui.tsx`)
+  flips three persisted (localStorage) html attributes applied to
+  `document.documentElement`: `data-theme` (6 themes — 2 dark + 4 bright, each a
+  full palette/texture/accent var-set in `globals.css`), `data-font` (8
+  display+body pairs remapping `--font-display`/`--font-body`/`--font-mono`), and
+  `data-motion="reduced"` (dampens animations + hides emoji; defaults to the OS
+  `prefers-reduced-motion`). A pre-paint inline script in `layout.tsx` sets these
+  BEFORE first paint (no flash; fonts load via `next/font/google`). Hard rules to
+  preserve: the **untouched default** (no attributes) must render exactly as the
+  pre-T142 dark/system look — so joyful accents are gated by
+  `html[data-theme]:not([data-theme="default"])`; **pixel/retro display faces only
+  ever map to `--font-display`** (brand/headings), never body/table/log text; and
+  **logs keep a fixed dark-terminal palette** (`--logs-*` in `:root`, never
+  overridden by a theme) so streaming logs stay legible on bright themes. Confine
+  theme/font/accent CSS to `globals.css`, the switcher+hooks to `ui.tsx`, and font
+  loading + the pre-paint script to `layout.tsx`. A follow-up gated by review task
+  **T143** will hardcode the chosen theme/font/motion and remove the switcher +
+  unused options (the same chooser→review→hardcode pattern as the gate-style T099).
 - **Commit + push as you go.** Make small, atomized commits as each coherent change
   lands (one per layer/feature — not a big-bang), and **push each commit immediately**
   — don't wait to be asked. (Respect the git hygiene rules above: never commit
