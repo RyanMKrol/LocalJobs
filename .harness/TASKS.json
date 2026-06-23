@@ -3422,7 +3422,7 @@
     {
       "id": "T131",
       "title": "Harness: move task do/doneWhen into per-task Markdown files referenced from TASKS.json",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
