@@ -3495,7 +3495,7 @@
     {
       "id": "T129",
       "title": "Convention: pair every human-choice 'options' task with a needs-human review task",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
