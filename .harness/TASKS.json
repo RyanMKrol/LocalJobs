@@ -2926,6 +2926,534 @@
       "doneWhen": "A perfumes run no longer burns all 40 cycles: the repeatUntilStable loop stops once there is no forward progress (a genuinely-unfindable item like amouage-jubilation-40 no longer causes perpetual cycling), proven by a regression test; the per-stage status shows correct states with no initial false 'succeeded' and no succeeded→running→succeeded flicker (scoped to the current run + correct cycle); per-stage notifications no longer spam ntfy during cycling (no 429 storm); regression tests cover the stop-condition + status derivation; npx tsc --noEmit, npm test, and the dashboard build are all green.",
       "model": "claude-opus-4-8",
       "effort": "high"
+    },
+    {
+      "id": "T113",
+      "title": "Backlog section headers: 5 toggleable, more-visible caret styles to pick from",
+      "status": "done",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The expand/collapse caret added to the Backlog section headers by T78 is not very visible. Produce FIVE distinct, clearly MORE VISIBLE caret/disclosure-indicator styles for the collapsible section headers (the <details>/<summary className=\"section-heading-summary\"> blocks on /backlog — 'Harness-buildable', 'Needs a human', 'Done') and let the user toggle between them live so they can choose a favourite (persist the choice, e.g. localStorage, and add a small style selector — same pattern as T99's gate-style chooser). Use best judgement on the five; suggested directions (mix/refine): (1) a larger, bolder, higher-contrast chevron (▸/▾) that rotates with state; (2) a filled triangle in an accent colour; (3) a circled +/− (⊕/⊖) toggle; (4) a chevron inside a small bordered box/pill that flips; (5) an animated rotating chevron with a subtle highlight on the whole summary row on hover/open. EVERY style must clearly distinguish collapsed vs expanded, apply consistently across all three section headers, be keyboard-accessible, and not break phone-width layout. This is an EVALUATION aid — note that once the user picks a winner a FOLLOW-UP task will hardcode it and remove the toggle + unused styles.",
+      "doneWhen": "On /backlog the user can switch between five distinct, clearly-visible caret/disclosure styles via a persisted toggle; each clearly indicates collapsed vs expanded on all three section headers and is more prominent than the current T78 caret; keyboard-accessible; no phone-width overflow; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T114",
+      "title": "ntfy notifications: back off on 429 (exponential, hard-capped) and stop hammering",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "backend",
+        "notifier"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/core/notifier.ts",
+        "src/core/notifier.test.ts",
+        "src/config.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The ntfy notifications API keeps returning HTTP 429 because we hammered it (e.g. per-stage notifications during repeatUntilStable cycling) and we keep trying anyway. Add backoff to the ntfy sender (sendNtfy in src/core/notifier.ts) so that after a 429 we STOP attempting sends until a cooldown elapses. Use EXPONENTIAL backoff WITH A HARD CAP: on each consecutive 429 increase the cooldown (e.g. start ~30s, double each time, cap at ~10-15 min); HONOR ntfy's Retry-After response header as the cooldown when present (prefer it over the computed value); while within the cooldown window, SKIP the ntfy send entirely (don't even hit the API) and log that it's suppressed; RESET the backoff on the next successful send. Keep the backoff state in-memory in the long-lived daemon process (module-level in notifier.ts — resetting on restart is fine). This must NOT affect the macOS notification path (not rate-limited), and the notifier must still NEVER throw (a broken notifier must not affect job execution). Make the backoff knobs (base, cap) env-overridable via config.ts. Add unit tests: a 429 sets a cooldown, subsequent sends within the window are skipped (no fetch), Retry-After is honored, and a success resets the backoff. NOTE: complements T112 (which reduces per-stage notification volume during cycling) — together they stop the 429 storm.",
+      "doneWhen": "After the ntfy API returns 429, further ntfy sends are skipped until a cooldown elapses (exponential backoff with a hard cap, honoring Retry-After when present), and a successful send resets the backoff; the macOS notification path is unaffected and the notifier never throws; backoff base/cap are env-overridable; unit tests cover 429→cooldown→skip→reset (including Retry-After); npx tsc --noEmit and npm test are green."
+    },
+    {
+      "id": "T115",
+      "title": "Workflow-run IO: render the output markdown as markdown (not raw text)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/package.json",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On a workflow run, the input-to-output mapping (T110) opens the output markdown in a popover but currently shows it as RAW markdown text in a <pre> (T110 did this deliberately to avoid a dependency). Render it AS markdown instead. Add a small, well-maintained markdown renderer to the dashboard (e.g. react-markdown, or marked) — the repo prefers few dependencies, so choose one focused library and note the choice in the worklog/README. SECURITY (important): the markdown is LLM-generated / scraped content, so rendering MUST be XSS-safe — do NOT execute raw HTML embedded in the content (use a renderer that escapes HTML by default, e.g. react-markdown WITHOUT rehype-raw, or sanitize the output). Render the full markdown in the MarkdownModal with sensible styling (headings, lists, links, code, blockquotes), and handle the YAML frontmatter block tidily (strip it or render it as a small key/value header rather than dumping raw '---' lines). Keep the modal scrollable and mobile-responsive. The preview excerpt in the table cell can stay plain text. Update README/CLAUDE.md to note the new dashboard dependency. NOTE: builds on T110 (the popover) — replace its raw <pre> rendering.",
+      "doneWhen": "Opening an output markdown from the workflow-run IO mapping renders it as formatted markdown (headings, lists, links, etc.) instead of raw text; rendering is XSS-safe (no raw HTML execution from LLM/scraped content); YAML frontmatter is handled tidily; the modal stays scrollable and mobile-responsive; any added dependency is recorded in the docs; the dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T116",
+      "title": "Workflow-run IO: 5 toggleable output line-item styles to pick from",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On a workflow run, the output column of the input-to-output mapping (the OutputCell from T110) currently renders an inline preview (📄 title · excerpt · file), and it's unclear what it should look like. Produce FIVE distinct presentations of the output LINE ITEM and let the user toggle between them live to choose a favourite (persist the choice, e.g. localStorage, with a small style selector — same chooser pattern as T99/T113). Use best judgement; suggested directions (mix/refine): (1) FILENAME ONLY + a 'Preview' button that opens the popover; (2) a file icon + the document title (no excerpt), whole row clickable to preview; (3) title + short excerpt (the current style); (4) filename as a link plus small metadata (size/date); (5) a compact chip (file icon + filename) that shows the excerpt on hover and opens the full popover on click. EVERY style must keep the click-to-preview popover working (the T110 popover / T115 markdown render), handle the no-artifact fallback gracefully, work for the perfumes + places workflows, and stay mobile-responsive. This is an EVALUATION aid — note that once the user picks a winner a FOLLOW-UP task will hardcode it and remove the toggle + unused styles.",
+      "doneWhen": "On a workflow-run page the user can switch between five distinct output line-item styles via a persisted toggle; each keeps the click-to-preview popover working and handles the no-output fallback; it works for the perfumes and places workflows and stays mobile-responsive; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T117",
+      "title": "Workflow-run header: show 'X of N stages · % · time' (drop the stage name)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the workflow-run page the progress summary line (page.tsx ~line 271) renders `{run.progress_msg} · {run.progress}% · {duration}`, where progress_msg includes the name of the last succeeded stage (e.g. 'perfumes-build'). Drop the stage name. Instead show 'X of N stages · {progress}% · {duration}', where N is the workflow's total stage count and X is the number of COMPLETED stages — derive these from the run's member runs (N = distinct member jobs in the workflow; X = distinct stages whose latest run is terminal/succeeded), consistent with the T081 completed-stages progress roll-up. Keep the percentage and the duration; just remove the per-stage name. Handle the running vs finished states sensibly.",
+      "doneWhen": "The workflow-run header summary reads 'X of N stages · P% · <duration>' with NO stage name shown; X and N reflect completed vs total stages (consistent with the progress roll-up); the percentage and duration are retained; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T118",
+      "title": "Reusable stuck-items popover with per-item + bulk unstick/ignore",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "backend",
+        "api"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts",
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/api/server.test.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Clearing stuck items one-by-one is tedious. Build a REUSABLE stuck-items POPOVER/modal that lists stuck items, each with its own ↻ Unstick and ✕ Ignore button, PLUS 'Unstick all' and 'Ignore all' bulk actions (require a CONFIRMATION before a bulk action, especially Ignore-all which permanently parks). Back the bulk actions with store functions in src/db/store.ts (bulk-unstick = delete all currently-failed stuck rows IN SCOPE so they retry fresh; bulk-ignore = mark them 'ignored') and bulk API endpoints in src/api/server.ts (mutating — use the existing loopback/token authoriseMutation guard), mirroring the single-item /api/stuck/unstick + /api/stuck/ignore semantics EXACTLY: act ONLY on currently-'failed' rows; ignore = the permanent manual-park (off the stuck list, never reprocessed); unstick = delete the ledger row to retry fresh. The popover AND the bulk endpoints must accept an optional SCOPE — all stuck items, a given job, or a given WORKFLOW (resolve to its member jobs) — so the component is reusable from multiple places (Overview now; the Workflows view in T119). Wire it into the Overview page (dashboard/app/page.tsx) — open the popover from the stuck tile/section — and keep the existing per-row controls working. Add unit tests (bulk affects only currently-failed rows, respects job/workflow scope, returns correct counts) and document the popover + bulk controls in CLAUDE.md (stuck/ignored section) + README (Overview).",
+      "doneWhen": "A reusable stuck-items popover lists stuck items with per-item Unstick/Ignore and 'Unstick all'/'Ignore all' (confirmed) bulk actions; the bulk endpoints/store act ONLY on currently-failed rows, support an all/job/workflow scope, and return correct counts; the popover is opened from the Overview and the existing per-row controls still work; unit tests cover the bulk operations + scoping; CLAUDE.md + README updated; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green."
+    },
+    {
+      "id": "T119",
+      "title": "Workflows view: click a workflow's stuck count to open its stuck-items popover",
+      "status": "pending",
+      "dependsOn": [
+        "T118"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/lib/api.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Workflows view (/workflows) each workflow shows a count of stuck items next to its name, but it isn't clickable. Make the stuck count a clickable control that opens the REUSABLE stuck-items popover from T118, SCOPED to that workflow (its member jobs), so the user can see and unstick/ignore (including the bulk 'Unstick all' / 'Ignore all') that workflow's stuck items in place. When the count is zero, keep it non-interactive (no empty popover). Reuse the T118 popover component + its workflow-scoped API; don't reimplement the controls.",
+      "doneWhen": "On /workflows clicking a workflow's stuck count opens the T118 stuck-items popover scoped to that workflow's stuck items, with per-item and bulk controls working; a zero count is not clickable; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T120",
+      "title": "Services edit-limits: adopt the workflow-run limit input styling",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Services page the 'Edit limits' text boxes (services/page.tsx) use basic styling the user dislikes. Restyle them to match the workflow-run limit input — the nicer text box on the workflow detail Run UI (workflows/[name]/page.tsx, polished by T100), which the user likes. Make the three Services edit inputs (rate/min, rate/day, rate/month) use that same look; ideally EXTRACT A SHARED input class/component used by both the run-limit input and the Services inputs so they stay consistent going forward. Keep all existing behaviour: blank = null/no-limit, the non-negative-integer validation, the per-field ✕ clear buttons, and the 'no limit' wording (from T106). NOTE: harmonise with T106 (services wording) which also touches these inputs.",
+      "doneWhen": "The Services edit-limits inputs visually match the workflow-run limit input styling (ideally via a shared class/component); their behaviour is unchanged (blank = null, validation, ✕ clear buttons, 'no limit' wording); dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T121",
+      "title": "Backlog: remove the DAG view entirely (list-only)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/globals.css",
+        "README.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Remove the DAG view from the Backlog page entirely — there are few inter-task dependencies so it isn't useful; the Backlog should be LIST-ONLY. Remove: the List/DAG view toggle and the DAG render branch + its legend/help text + the selectedId/onSelect node-selection state in dashboard/app/backlog/page.tsx (make /backlog show the list directly); and the now-unused BacklogDag component + computeBacklogWaves helper from dashboard/app/components/Dag.tsx (BacklogDag is only used by the backlog page — confirm with grep). KEEP the workflow Dag export (used by the workflow pages) and the shared .dag* CSS it relies on — remove only backlog-DAG-specific CSS (e.g. .backlog-dag-scroll, .dag-legend / .dag-legend.next etc. if not used elsewhere; verify before deleting). Update the docs that describe the backlog list/DAG views: README (Backlog page) + CLAUDE.md. NOTE: this supersedes the now-DONE T076 and T103 (which improved the backlog DAG) — that work is being removed deliberately; the LIST view (incl. T077 clickable done items and T113 section-header carets) stays.",
+      "doneWhen": "/backlog renders list-only with no DAG view and no List/DAG toggle; BacklogDag + its backlog-only helpers, state, and CSS are removed; the workflow Dag component and the shared DAG CSS remain intact (workflow pages unaffected); README + CLAUDE.md backlog-page descriptions updated to list-only; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green."
+    },
+    {
+      "id": "T122",
+      "title": "Overview: remove the redundant per-workflow stuck-count pill",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Overview page (dashboard/app/page.tsx), the workflow cards/list show a per-workflow 'stuck items' count pill. This is redundant now that stuck items have their own dedicated section/header (and the Stuck stat tile) on the same page. Remove that stuck-count pill from the Overview's workflow cards. KEEP the dedicated stuck-items section and the Stuck stat tile intact. This only affects the Overview page (/) — do NOT touch the /workflows page's stuck count (handled separately by T119).",
+      "doneWhen": "The Overview workflow cards no longer show a per-workflow stuck-items count pill; the dedicated stuck-items section and the Stuck tile remain; the /workflows page is unaffected; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T123",
+      "title": "Backlog list: give harness-buildable cards an amber pill + colour scheme",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Backlog LIST view, harness-buildable task cards (TaskCard in backlog/page.tsx) are plain grey with a grey status pill, whereas needs-human cards are more interesting (a blue/accent border via borderColor var(--accent) + a '🔒 needs human' pill). Give harness-buildable cards a comparable treatment: add a 'buildable' pill (mirroring the needs-human pill, e.g. '🤖 buildable') AND an orangey-yellow (amber) colour scheme for the card border + that pill. Add an amber/orange colour token to globals.css (the palette is CSS custom properties like --accent/--green/--red — add e.g. --amber) and apply it to the buildable cards' border + pill, analogous to how needs-human uses --accent. Keep it legible in the dark theme, and don't disturb the existing status pills, the done styling, or the needs-human styling.",
+      "doneWhen": "On /backlog harness-buildable task cards show a 'buildable' pill and an orangey-yellow (amber) border/pill scheme comparable to the needs-human blue treatment; needs-human and done styling are unchanged; it's legible in the theme; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T124",
+      "title": "Backlog: human-reviewed flag on tasks (button, pills, filter, persisted to TASKS.json)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "backend",
+        "api",
+        "harness"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        ".harness/TASKS.json",
+        "CLAUDE.md",
+        ".harness/HARNESS.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Add a human-review tracking feature so the owner can mark done tasks as checked. (1) DATA: add a `reviewed` boolean to each task in .harness/TASKS.json and BACKFILL every existing task to reviewed:false (safely — preserve every other field, incl. status); treat an absent value as false defensively. (2) API: GET /api/backlog must include each task's `reviewed` (default false); add a MUTATING endpoint POST /api/backlog/:id/reviewed { reviewed: bool } (use the existing loopback/token authoriseMutation guard) that does a SAFE, ATOMIC read-modify-write of .harness/TASKS.json — set ONLY that task's `reviewed` field, preserve all other fields and all other tasks, validate the JSON, and write via temp-file + rename. THIS IS THE FIRST dashboard->harness-file WRITE (the dashboard is otherwise strictly read-only), and the harness loop ALSO read-modify-writes TASKS.json (it sets `status` to done), so the write must be atomic + field-scoped and must not clobber concurrent status edits; confirm the loop's status-write (jq setting .status) preserves the `reviewed` field. (3) UI (Backlog Done section): on each DONE task add a 'Mark as reviewed' toggle button that calls the endpoint; show a coloured 'Reviewed' pill when reviewed:true and a 'Not reviewed' pill when false; add a filter on the Done list for Reviewed / Not reviewed / All. (4) DOCS: document the `reviewed` field + the dashboard write path in CLAUDE.md, .harness/HARNESS.md, and README — explicitly noting this is the deliberate, owner-authorized EXCEPTION to the read-only-dashboard / shell-owns-the-file rules (status remains shell-owned; only `reviewed` is human/dashboard-owned). (5) TESTS: cover the endpoint (sets only the target task's reviewed, preserves all other fields/tasks, atomic, rejects unknown id) and that GET /api/backlog surfaces reviewed.",
+      "doneWhen": "Every task in .harness/TASKS.json has a `reviewed` boolean (all backfilled to false with all other fields preserved); GET /api/backlog returns `reviewed`; POST /api/backlog/:id/reviewed atomically sets ONLY that task's `reviewed` (preserving all other fields/tasks, validating before write, loopback/token-guarded); on /backlog each Done task has a 'Mark as reviewed' toggle, a coloured 'Reviewed' vs 'Not reviewed' pill, and the Done list has a Reviewed/Not-reviewed/All filter; the harness loop's status edits preserve `reviewed`; CLAUDE.md + HARNESS.md + README document the field and the dashboard-write exception; unit tests cover the endpoint + GET; npx tsc --noEmit, npm test, the dashboard build, and mobile-check are all green.",
+      "model": "claude-opus-4-8",
+      "effort": "high"
+    },
+    {
+      "id": "T125",
+      "title": "Expressive workflow descriptions for perfumes + places",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "docs",
+        "places",
+        "perfumes"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/jobs/perfumes/perfumes.workflow.ts",
+        "src/jobs/places/places.workflow.ts",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "The perfumes and places workflow descriptions (the `description` field in src/jobs/perfumes/perfumes.workflow.ts and src/jobs/places/places.workflow.ts) are terse — effectively just the stage/job names with arrows. Rewrite each `description` to be EXPRESSIVE: 1-3 sentences, maximum one paragraph, explaining at a high level what the workflow achieves, what input it takes, what output it produces, and the steps it goes through. Base each on what the workflow ACTUALLY does — PLACES: ingest Google-Takeout saved-place CSVs → resolve each CID to a Google place_id via a headless browser → enrich via the Google Places API → generate Gemini LLM summaries + write markdown profiles; PERFUMES: find each perfume's Fragrantica URL → fetch the page with a headless real-Chrome browser (Cloudflare clearance) → parse structured notes/accords → build a markdown profile via the Claude CLI. Keep them accurate and concise. These descriptions render on the dashboard (workflows list + workflow detail), so they should read well there. Update the README worked-example blurbs to stay consistent if needed.",
+      "doneWhen": "Each of the perfumes + places workflow manifests has an expressive one-paragraph (1-3 sentence) `description` covering the workflow's goal, inputs, outputs, and steps; it is accurate to the actual stages and reads well on the dashboard workflows/detail views; README stays consistent; npx tsc --noEmit and npm test are green (and the dashboard build if any UI changed)."
+    },
+    {
+      "id": "T126",
+      "title": "Review + choose: validation-gate graph style (from T099)",
+      "status": "pending",
+      "dependsOn": [
+        "T099"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "review",
+        "dashboard"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "do": "NEEDS-HUMAN review of the five toggleable validation-gate display styles built by T099 (on the workflow-run DAG + structure graph). Open the dashboard, switch between the five styles using the persisted selector, and CHOOSE your preferred one. Record the chosen style (e.g. in this task's worklog) so a follow-up buildable task can hardcode it and remove the toggle + the unused styles. The loop skips this — it's a manual visual review.",
+      "doneWhen": "You have reviewed all five validation-gate styles and recorded which one to keep; a follow-up can then hardcode the winner and drop the toggle + unused styles."
+    },
+    {
+      "id": "T127",
+      "title": "Review + choose: backlog section-header caret style (from T113)",
+      "status": "pending",
+      "dependsOn": [
+        "T113"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "review",
+        "dashboard"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "do": "NEEDS-HUMAN review of the five toggleable, more-visible caret/disclosure styles for the backlog section headers built by T113. Open /backlog, switch between the five styles via the persisted selector, and CHOOSE your favourite. Record the chosen style (e.g. in this task's worklog) so a follow-up buildable task can hardcode it and remove the toggle + unused styles. The loop skips this — manual visual review.",
+      "doneWhen": "You have reviewed all five caret styles and recorded which one to keep; a follow-up can then hardcode the winner and drop the toggle + unused styles."
+    },
+    {
+      "id": "T128",
+      "title": "Review + choose: workflow-run output line-item style (from T116)",
+      "status": "pending",
+      "dependsOn": [
+        "T116"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "review",
+        "dashboard"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "do": "NEEDS-HUMAN review of the five toggleable output line-item styles for the workflow-run input→output mapping built by T116. Open a workflow-run page, switch between the five styles via the persisted selector, and CHOOSE your favourite. Record the chosen style (e.g. in this task's worklog) so a follow-up buildable task can hardcode it and remove the toggle + unused styles. The loop skips this — manual visual review.",
+      "doneWhen": "You have reviewed all five output line-item styles and recorded which one to keep; a follow-up can then hardcode the winner and drop the toggle + unused styles."
+    },
+    {
+      "id": "T129",
+      "title": "Convention: pair every human-choice 'options' task with a needs-human review task",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "docs",
+        "harness",
+        "convention"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "CLAUDE.md",
+        ".harness/HARNESS.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Add a backlog-authoring CONVENTION so the owner never has to manually create review tasks. In CLAUDE.md (Conventions section) — and cross-referenced in .harness/HARNESS.md — state: whenever a backlog task is authored that BUILDS MULTIPLE OPTIONS for the human to choose between (a chooser/toggle task, e.g. 'N toggleable styles to pick from'), a PAIRED needs-human review task MUST also be created that dependsOn the chooser task and tracks the human reviewing the options and recording their choice (so a follow-up can hardcode the winner + remove the toggle/unused styles). Keep the wording concise and actionable. (Examples to reference: T099/T113/T116 choosers and their T126/T127/T128 review tasks.)",
+      "doneWhen": "CLAUDE.md (and a cross-reference in .harness/HARNESS.md) documents the convention that any human-choice 'options/chooser' backlog task must be paired with a needs-human review task (dependsOn the chooser) that tracks the review + choice; the wording is concise and references the existing examples; npx tsc --noEmit and npm test stay green (doc-only)."
+    },
+    {
+      "id": "T130",
+      "title": "Backlog: replace model/escalation display with a colour-coded difficulty pill",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "On the Backlog page each task card shows the model + the full escalation path (escalationPath/resolveRung → e.g. 'sonnet/medium → opus/high', backlog/page.tsx ~line 59) — it's hard to parse and not useful to the reader. Replace it with a single colour-coded DIFFICULTY pill derived from the FIRST-ATTEMPT model+effort (the task's model/effort, falling back to defaults.model/effort), and HIDE the escalation path entirely. Difficulty buckets: easy | medium | hard | very hard, mapped from the initial rung — suggested mapping (use best judgement for a clean rule): sonnet@medium → easy; opus@high → medium; opus@xhigh → hard; opus@max → very hard. Colour-code them: easy=green, medium=yellow, hard=red, very hard=black/near-black — but ensure ALL are READABLE on the dark theme (a pure-black pill would vanish, so use a dark pill with a light border/label for 'very hard'). Apply to the task cards (TaskCard, and DagDetailPanel if it still exists), remove the escalation-path display, and drop now-unused helpers (escalationPath/resolveRung) if nothing else uses them. Harmonise with T123's 'buildable' pill so the pills sit nicely together.",
+      "doneWhen": "Each backlog task card shows a single colour-coded difficulty pill (easy/medium/hard/very hard → green/yellow/red/black, all legible on the dark theme) derived from the first-attempt model+effort; the model string and escalation path are no longer shown anywhere on the backlog; dashboard build passes and mobile-check stays green."
+    },
+    {
+      "id": "T131",
+      "title": "Harness: move task do/doneWhen into per-task Markdown files referenced from TASKS.json",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "harness",
+        "backend",
+        "dashboard",
+        "docs"
+      ],
+      "scope": [
+        ".harness/TASKS.json",
+        ".harness/tasks",
+        ".harness/loop.sh",
+        ".harness/HARNESS.md",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "do": "Restructure the harness so each task's `do` and `doneWhen` live in a per-task MARKDOWN file referenced from TASKS.json — more expressive than flat JSON strings, and far easier to render on the backlog. DECISIONS (interview 2026-06-23): (a) MIGRATE ALL existing tasks now and make the MD the SOLE source — REMOVE `do` and `doneWhen` from TASKS.json entirely; (b) each MD file has TWO sections, '## Do' and '## Done when'; (c) files live at .harness/tasks/TNNN.md, referenced by an explicit `spec` field on each JSON task object. These changes are COUPLED — removing do/doneWhen from JSON breaks the loop AND the backlog unless they ALL land together, so implement all of: (1) MIGRATION — for every existing task create .harness/tasks/TNNN.md containing '## Do' + the do text then '## Done when' + the doneWhen text (verbatim, NO rewriting — just push the content in), add `spec: \".harness/tasks/TNNN.md\"` to its JSON object, and REMOVE the do/doneWhen fields from JSON via a safe atomic field-scoped rewrite that PRESERVES every other field (status, dependsOn, model, gate, reviewed, etc.) and validates the JSON. (2) LOOP — update .harness/loop.sh (and any prompt-building helper) so the per-task PROMPT reads do/doneWhen from the referenced spec MD, while STILL reading every orchestration field (id, status, dependsOn, gate, model, effort, escalation, scope, tags, verify, design) from TASKS.json; the prompt content must match what the loop fed before. (3) BACKLOG API — GET /api/backlog reads each task's spec MD and returns its content (the Do + Done-when sections). (4) BACKLOG PAGE — render the task MD (reuse the T115 markdown renderer if landed) instead of flat do/doneWhen strings. (5) DOCS + CONVENTION — update .harness/HARNESS.md §8 schema + CLAUDE.md for the new shape (do/doneWhen in .harness/tasks/TNNN.md as ## Do / ## Done when; `spec` path in JSON; loop feeds the MD; all else stays JSON), and update the backlog-authoring convention so a NEW task = a JSON object with a `spec` field PLUS a matching MD file (no do/doneWhen in JSON). (6) TESTS — cover the loop building a prompt from the MD and the backlog API returning MD content. If this genuinely can't fit one context window, record a worklog note proposing a split (e.g. migration+loop first, then API+rendering) rather than half-applying. Harmonise with the other backlog-page tasks (T115 markdown render, T123 buildable pill, T124 reviewed flag, T130 difficulty pill).",
+      "doneWhen": "Every task's do/doneWhen content lives in .harness/tasks/TNNN.md (two sections: ## Do / ## Done when), each JSON task has a `spec` path to its file, and do/doneWhen no longer appear in TASKS.json (all other fields preserved); .harness/loop.sh builds each task's prompt from the spec MD while reading all orchestration fields from JSON; GET /api/backlog returns the MD content and the backlog page renders it as readable markdown (not a flat string); HARNESS.md §8 + CLAUDE.md document the new shape + authoring convention; unit tests cover the loop prompt-from-MD and the backlog API; the loop still selects + builds tasks end-to-end; npx tsc --noEmit, npm test, and the dashboard build are all green.",
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ]
     }
   ]
 }
