@@ -1033,7 +1033,7 @@
     {
       "id": "T043",
       "title": "Joint review of the perfumes pipeline",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
