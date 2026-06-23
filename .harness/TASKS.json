@@ -2567,7 +2567,7 @@
     {
       "id": "T099",
       "title": "Graph view: 5 toggleable validation-gate styles to reduce footprint",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
