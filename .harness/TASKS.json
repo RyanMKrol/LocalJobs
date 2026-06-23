@@ -2720,7 +2720,7 @@
     {
       "id": "T108",
       "title": "New workflow: notify when new seasons of Plex TV shows are available",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -3699,6 +3699,36 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T142.md",
+      "reviewed": false
+    },
+    {
+      "id": "T144",
+      "title": "Build the Plex new-seasons audit workflow (GUID match, complete-season filter, weekly digest)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "plex",
+        "coding"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/jobs/plex",
+        "src/services",
+        ".env.example",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T144.md",
       "reviewed": false
     }
   ]
