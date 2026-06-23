@@ -2721,7 +2721,7 @@
     {
       "id": "T105",
       "title": "Enforce one active run per workflow (UI + API + executor)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
