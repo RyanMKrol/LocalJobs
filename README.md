@@ -254,8 +254,9 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   **Input → Output mapping** panel pairing each first-stage input with its final
   output (joined by `root_key`). The **output side is expressive**: it previews
   the produced markdown artifact (title + a short excerpt) and **clicking it opens
-  the full markdown in a popover** (shown as readable monospace text — no
-  markdown-renderer dependency). The content is served by a read-only,
+  the full markdown in a popover** (rendered as formatted markdown via
+  `react-markdown`; XSS-safe — no raw HTML execution; YAML frontmatter is stripped
+  and shown as a compact key-value header). The content is served by a read-only,
   path-safe endpoint `GET /api/workflow-runs/:id/output?job=&key=` that resolves
   the file from the work item's recorded `detail.markdown` and only ever reads a
   `.md` file inside a job's own `data/out/` tree (no path traversal, files only,

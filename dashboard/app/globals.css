@@ -321,11 +321,43 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .md-preview-title { font-size: 0.9em; font-weight: 600; }
 .md-preview-excerpt { font-size: 0.82em; color: var(--muted); overflow-wrap: anywhere; }
 .md-preview-file { font-size: 0.74em; color: var(--muted); opacity: .8; overflow-wrap: anywhere; }
-/* Full markdown as readable monospace text (no markdown-renderer dependency). */
-.md-preview-full {
-  margin: 0; font-size: 12px; line-height: 1.5;
-  white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+/* Markdown modal: wider than the generic db-modal so prose reads comfortably. */
+.md-modal { width: min(780px, 100%); }
+
+/* YAML frontmatter key-value header (T115). */
+.md-fm {
+  margin: 0; padding: 8px 10px; border-radius: 6px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 3px;
 }
+.md-fm-row { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.md-fm-key { flex: 0 0 auto; font-size: 11px; color: var(--muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; }
+.md-fm-val { font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+
+/* Rendered markdown body (T115). */
+.md-body { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
+.md-body h1 { font-size: 1.25em; margin: 0.8em 0 0.3em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.md-body h2 { font-size: 1.1em; margin: 0.8em 0 0.25em; }
+.md-body h3,.md-body h4,.md-body h5,.md-body h6 { font-size: 1em; margin: 0.6em 0 0.2em; }
+.md-body p { margin: 0.5em 0; }
+.md-body ul,.md-body ol { margin: 0.4em 0; padding-left: 1.4em; }
+.md-body li { margin: 0.15em 0; }
+.md-body blockquote {
+  margin: 0.5em 0; padding: 2px 10px;
+  border-left: 3px solid var(--border); color: var(--muted);
+}
+.md-body code {
+  font-family: var(--mono, monospace); font-size: 0.88em;
+  background: var(--panel-2); border-radius: 3px; padding: 1px 4px;
+}
+.md-body pre { background: var(--panel-2); border-radius: 6px; padding: 10px 12px; overflow-x: auto; margin: 0.5em 0; }
+.md-body pre code { background: none; padding: 0; font-size: 0.85em; }
+.md-body a { color: var(--accent, #58a6ff); word-break: break-all; }
+.md-body hr { border: none; border-top: 1px solid var(--border); margin: 1em 0; }
+.md-body table { border-collapse: collapse; width: 100%; font-size: 0.9em; margin: 0.5em 0; }
+.md-body th,.md-body td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+.md-body th { background: var(--panel-2); }
 
 /* ── Validation-gate flow (output → gate → input) ─────────────────────────── */
 .gate-flow { display: flex; align-items: stretch; gap: 10px; margin: 8px 0 16px; }

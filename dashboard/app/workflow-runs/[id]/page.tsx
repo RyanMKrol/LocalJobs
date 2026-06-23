@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
 import type { IoRow, Run, WorkflowIo, WorkflowRunOutput } from '../../lib/api';
@@ -59,9 +60,27 @@ function mdPreview(content: string): { title: string | null; excerpt: string | n
   return { title, excerpt };
 }
 
-/** Full-markdown popover — reuses the DB browser's modal styling (db-modal). The
- *  content is shown as readable monospace text (no markdown-renderer dependency;
- *  the repo is deliberately dependency-light). */
+/**
+ * Strip YAML frontmatter from markdown and return the parsed fields + body.
+ * Returns `{ fields: [key, value][], body: string }`.
+ */
+function parseFrontmatter(content: string): { fields: [string, string][]; body: string } {
+  if (!content.startsWith('---')) return { fields: [], body: content };
+  const end = content.indexOf('\n---', 3);
+  if (end === -1) return { fields: [], body: content };
+  const fm = content.slice(3, end);
+  const body = content.slice(end + 4).replace(/^\n/, '');
+  const fields: [string, string][] = [];
+  for (const line of fm.split('\n')) {
+    const m = line.match(/^(\w[\w-]*):\s*(.*)$/);
+    if (m) fields.push([m[1], m[2].replace(/^["']|["']$/g, '').trim()]);
+  }
+  return { fields, body };
+}
+
+/** Full-markdown popover — renders LLM/scraped markdown via react-markdown (XSS-safe:
+ *  no rehype-raw, raw HTML in the content is escaped, not executed). YAML frontmatter
+ *  is stripped and shown as a compact key-value header above the body. */
 function MarkdownModal(
   { title, content, truncated, onClose }: { title: string; content: string; truncated?: boolean; onClose: () => void },
 ) {
@@ -71,16 +90,30 @@ function MarkdownModal(
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const { fields, body } = parseFrontmatter(content);
+
   return (
     <div className="db-modal-overlay" onClick={onClose}>
-      <div className="db-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="db-modal md-modal" onClick={(e) => e.stopPropagation()}>
         <div className="db-modal-header">
           <span>{title}</span>
           <button className="db-modal-close" onClick={onClose} aria-label="Close">✕</button>
         </div>
         <div className="db-modal-body">
           {truncated && <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>⚠ Output is large — showing the first part only.</p>}
-          <pre className="md-preview-full mono">{content}</pre>
+          {fields.length > 0 && (
+            <dl className="md-fm">
+              {fields.map(([k, v]) => (
+                <div key={k} className="md-fm-row">
+                  <dt className="md-fm-key">{k}</dt>
+                  <dd className="md-fm-val">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          <div className="md-body">
+            <ReactMarkdown>{body}</ReactMarkdown>
+          </div>
         </div>
       </div>
     </div>
