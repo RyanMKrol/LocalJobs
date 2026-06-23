@@ -63,6 +63,11 @@ command -v jq >/dev/null 2>&1 || { log "jq is required to parse TASKS.json — i
 SENSITIVE_RE='(^|/)data/|(^|/)\.env($|\.)|chrome-profile|\.pem$|\.key$|\.p12$|service-account|credentials\.json'
 
 # --- Concurrency guard: only one loop at a time (exit, don't queue) ----------
+# ⚠️ The lock path below ($GIT_COMMON/${NAME}-loop.lock + a `pid` file + stale-pid
+# reclaim) MUST stay byte-identical to src/core/repo-lock.ts, which the daemon uses
+# to serialize its `.harness/reviews.json` commit+push against this loop (T136). If
+# you change the derivation here (GIT_COMMON / NAME / lock name / pid protocol),
+# change repo-lock.ts in the same commit, and vice-versa.
 acquire_lock() {
   LOCK="$GIT_COMMON/${NAME}-loop.lock"
   while ! mkdir "$LOCK" 2>/dev/null; do
