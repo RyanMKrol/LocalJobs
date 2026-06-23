@@ -2619,7 +2619,7 @@
     {
       "id": "T101",
       "title": "Gate detail: apply the side-card code styling to the middle Gate container",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
