@@ -3104,7 +3104,7 @@
     {
       "id": "T119",
       "title": "Workflows view: click a workflow's stuck count to open its stuck-items popover",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T118"
       ],
