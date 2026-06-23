@@ -33,8 +33,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "spec": ".harness/tasks/T001.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T001.md"
     },
     {
       "id": "T002",
@@ -61,8 +60,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "spec": ".harness/tasks/T002.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T002.md"
     },
     {
       "id": "T003",
@@ -87,8 +85,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "spec": ".harness/tasks/T003.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T003.md"
     },
     {
       "id": "T004",
@@ -115,8 +112,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "spec": ".harness/tasks/T004.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T004.md"
     },
     {
       "id": "T005",
@@ -141,8 +137,7 @@
       "verify": [
         "npm test"
       ],
-      "spec": ".harness/tasks/T005.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T005.md"
     },
     {
       "id": "T006",
@@ -168,8 +163,7 @@
         "npx tsc --noEmit",
         "npm test"
       ],
-      "spec": ".harness/tasks/T006.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T006.md"
     },
     {
       "id": "T007",
@@ -191,8 +185,7 @@
       "verify": [
         "npx tsc --noEmit"
       ],
-      "spec": ".harness/tasks/T007.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T007.md"
     },
     {
       "id": "T008",
@@ -214,8 +207,7 @@
       "verify": [
         "npm --prefix dashboard run build"
       ],
-      "spec": ".harness/tasks/T008.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T008.md"
     },
     {
       "id": "T009",
@@ -237,8 +229,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T009.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T009.md"
     },
     {
       "id": "T010",
@@ -259,8 +250,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T010.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T010.md"
     },
     {
       "id": "T011",
@@ -282,8 +272,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T011.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T011.md"
     },
     {
       "id": "T012",
@@ -305,8 +294,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T012.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T012.md"
     },
     {
       "id": "T013",
@@ -331,8 +319,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T013.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T013.md"
     },
     {
       "id": "T014",
@@ -354,8 +341,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T014.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T014.md"
     },
     {
       "id": "T015",
@@ -377,8 +363,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T015.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T015.md"
     },
     {
       "id": "T016",
@@ -400,8 +385,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T016.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T016.md"
     },
     {
       "id": "T017",
@@ -426,8 +410,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T017.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T017.md"
     },
     {
       "id": "T018",
@@ -449,8 +432,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T018.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T018.md"
     },
     {
       "id": "T019",
@@ -472,8 +454,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T019.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T019.md"
     },
     {
       "id": "T020",
@@ -503,8 +484,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T020.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T020.md"
     },
     {
       "id": "T021",
@@ -532,8 +512,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T021.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T021.md"
     },
     {
       "id": "T022",
@@ -561,8 +540,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T022.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T022.md"
     },
     {
       "id": "T023",
@@ -583,8 +561,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T023.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T023.md"
     },
     {
       "id": "T024",
@@ -605,8 +582,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T024.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T024.md"
     },
     {
       "id": "T025",
@@ -633,8 +609,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T025.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T025.md"
     },
     {
       "id": "T026",
@@ -687,8 +662,7 @@
       "verify": [
         "npx tsc --noEmit"
       ],
-      "spec": ".harness/tasks/T026.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T026.md"
     },
     {
       "id": "T027",
@@ -708,8 +682,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T027.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T027.md"
     },
     {
       "id": "T028",
@@ -732,8 +705,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T028.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T028.md"
     },
     {
       "id": "T029",
@@ -753,8 +725,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T029.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T029.md"
     },
     {
       "id": "T030",
@@ -782,8 +753,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T030.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T030.md"
     },
     {
       "id": "T031",
@@ -807,8 +777,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T031.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T031.md"
     },
     {
       "id": "T032",
@@ -833,8 +802,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T032.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T032.md"
     },
     {
       "id": "T033",
@@ -859,8 +827,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T033.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T033.md"
     },
     {
       "id": "T034",
@@ -884,8 +851,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T034.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T034.md"
     },
     {
       "id": "T035",
@@ -910,8 +876,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T035.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T035.md"
     },
     {
       "id": "T036",
@@ -938,8 +903,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T036.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T036.md"
     },
     {
       "id": "T037",
@@ -963,8 +927,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T037.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T037.md"
     },
     {
       "id": "T038",
@@ -987,8 +950,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T038.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T038.md"
     },
     {
       "id": "T039",
@@ -1010,8 +972,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T039.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T039.md"
     },
     {
       "id": "T040",
@@ -1031,8 +992,7 @@
       "verify": [
         "run-app"
       ],
-      "spec": ".harness/tasks/T040.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T040.md"
     },
     {
       "id": "T041",
@@ -1049,8 +1009,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T041.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T041.md"
     },
     {
       "id": "T042",
@@ -1069,8 +1028,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T042.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T042.md"
     },
     {
       "id": "T043",
@@ -1087,8 +1045,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T043.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T043.md"
     },
     {
       "id": "T044",
@@ -1105,8 +1062,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T044.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T044.md"
     },
     {
       "id": "T045",
@@ -1124,8 +1080,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T045.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T045.md"
     },
     {
       "id": "T046",
@@ -1142,8 +1097,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T046.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T046.md"
     },
     {
       "id": "T047",
@@ -1169,8 +1123,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T047.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T047.md"
     },
     {
       "id": "T048",
@@ -1195,8 +1148,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T048.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T048.md"
     },
     {
       "id": "T049",
@@ -1226,8 +1178,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T049.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T049.md"
     },
     {
       "id": "T050",
@@ -1254,8 +1205,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T050.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T050.md"
     },
     {
       "id": "T051",
@@ -1281,8 +1231,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T051.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T051.md"
     },
     {
       "id": "T052",
@@ -1308,8 +1257,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T052.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T052.md"
     },
     {
       "id": "T053",
@@ -1331,8 +1279,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T053.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T053.md"
     },
     {
       "id": "T054",
@@ -1358,8 +1305,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T054.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T054.md"
     },
     {
       "id": "T055",
@@ -1386,8 +1332,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T055.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T055.md"
     },
     {
       "id": "T056",
@@ -1413,8 +1358,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T056.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T056.md"
     },
     {
       "id": "T057",
@@ -1438,8 +1382,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T057.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T057.md"
     },
     {
       "id": "T058",
@@ -1465,8 +1408,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T058.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T058.md"
     },
     {
       "id": "T059",
@@ -1491,8 +1433,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T059.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T059.md"
     },
     {
       "id": "T060",
@@ -1518,8 +1459,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T060.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T060.md"
     },
     {
       "id": "T061",
@@ -1546,8 +1486,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T061.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T061.md"
     },
     {
       "id": "T062",
@@ -1565,8 +1504,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T062.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T062.md"
     },
     {
       "id": "T063",
@@ -1594,8 +1532,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T063.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T063.md"
     },
     {
       "id": "T064",
@@ -1623,8 +1560,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T064.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T064.md"
     },
     {
       "id": "T065",
@@ -1650,8 +1586,7 @@
       ],
       "design": "Clarification (interview 2026-06-22): Design for a BLACK BOX — a user must understand the data from the dashboard alone, with no knowledge of system internals. Show the contract's expected shape AND a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation, worded for a non-expert reader.",
       "verify": [],
-      "spec": ".harness/tasks/T065.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T065.md"
     },
     {
       "id": "T066",
@@ -1680,8 +1615,7 @@
       "verify": [
         "run-app"
       ],
-      "spec": ".harness/tasks/T066.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T066.md"
     },
     {
       "id": "T067",
@@ -1707,8 +1641,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T067.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T067.md"
     },
     {
       "id": "T068",
@@ -1734,8 +1667,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T068.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T068.md"
     },
     {
       "id": "T069",
@@ -1761,8 +1693,7 @@
       ],
       "design": "Clarification (interview 2026-06-22): Style = subtle bordered cards: 1px border, rounded corners, padding, and a COLOURED STATUS ACCENT (a left accent bar or dot) — NOT whole-card status tinting. Keep it understated and scannable.",
       "verify": [],
-      "spec": ".harness/tasks/T069.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T069.md"
     },
     {
       "id": "T070",
@@ -1789,8 +1720,7 @@
       ],
       "design": "Clarification (interview 2026-06-22): Remove ALL job-level properties — schedule, enabled toggle, next-run, the instructions panel, AND the per-job Run-now button. The job page becomes a read-only member view (status, run history, logs). You run a workflow, never a job.",
       "verify": [],
-      "spec": ".harness/tasks/T070.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T070.md"
     },
     {
       "id": "T071",
@@ -1818,8 +1748,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T071.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T071.md"
     },
     {
       "id": "T072",
@@ -1844,8 +1773,7 @@
       "verify": [
         "run-app"
       ],
-      "spec": ".harness/tasks/T072.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T072.md"
     },
     {
       "id": "T073",
@@ -1870,8 +1798,7 @@
       ],
       "design": "Clarification (interview 2026-06-22): This was implemented in commit 2e65bbb then reverted in e37e40c; re-apply EXACTLY as that commit did and make it stick — the list shows 'pending' (no '▶ in progress'), drop the next-task list highlight/border, and keep the DAG view's accurately-labelled 'next' node highlight as-is.",
       "verify": [],
-      "spec": ".harness/tasks/T073.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T073.md"
     },
     {
       "id": "T074",
@@ -1896,8 +1823,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T074.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T074.md"
     },
     {
       "id": "T075",
@@ -1923,8 +1849,7 @@
       ],
       "spec": ".harness/tasks/T075.md",
       "design": null,
-      "verify": [],
-      "reviewed": false
+      "verify": []
     },
     {
       "id": "T076",
@@ -1945,8 +1870,7 @@
       "verify": [],
       "spec": ".harness/tasks/T076.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T077",
@@ -1972,8 +1896,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T077.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T077.md"
     },
     {
       "id": "T078",
@@ -1999,8 +1922,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T078.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T078.md"
     },
     {
       "id": "T079",
@@ -2027,8 +1949,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T079.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T079.md"
     },
     {
       "id": "T080",
@@ -2054,8 +1975,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T080.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T080.md"
     },
     {
       "id": "T081",
@@ -2078,8 +1998,7 @@
       "verify": [],
       "spec": ".harness/tasks/T081.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T082",
@@ -2105,8 +2024,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T082.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T082.md"
     },
     {
       "id": "T083",
@@ -2131,8 +2049,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T083.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T083.md"
     },
     {
       "id": "T084",
@@ -2157,8 +2074,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T084.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T084.md"
     },
     {
       "id": "T085",
@@ -2184,8 +2100,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T085.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T085.md"
     },
     {
       "id": "T086",
@@ -2210,8 +2125,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T086.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T086.md"
     },
     {
       "id": "T087",
@@ -2247,8 +2161,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T087.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T087.md"
     },
     {
       "id": "T088",
@@ -2274,8 +2187,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T088.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T088.md"
     },
     {
       "id": "T089",
@@ -2301,8 +2213,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T089.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T089.md"
     },
     {
       "id": "T090",
@@ -2323,8 +2234,7 @@
       "verify": [],
       "spec": ".harness/tasks/T090.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T091",
@@ -2354,8 +2264,7 @@
       "verify": [],
       "spec": ".harness/tasks/T091.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T092",
@@ -2385,8 +2294,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T092.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T092.md"
     },
     {
       "id": "T093",
@@ -2406,8 +2314,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T093.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T093.md"
     },
     {
       "id": "T094",
@@ -2447,8 +2354,7 @@
       ],
       "design": ".harness/designs/T093-workflow-run-limits.md",
       "verify": [],
-      "spec": ".harness/tasks/T094.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T094.md"
     },
     {
       "id": "T095",
@@ -2480,8 +2386,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T095.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T095.md"
     },
     {
       "id": "T096",
@@ -2510,8 +2415,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T096.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T096.md"
     },
     {
       "id": "T097",
@@ -2538,8 +2442,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T097.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T097.md"
     },
     {
       "id": "T098",
@@ -2561,8 +2464,7 @@
       "verify": [],
       "spec": ".harness/tasks/T098.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T099",
@@ -2585,8 +2487,7 @@
       "verify": [],
       "spec": ".harness/tasks/T099.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T100",
@@ -2613,8 +2514,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T100.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T100.md"
     },
     {
       "id": "T101",
@@ -2640,8 +2540,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T101.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T101.md"
     },
     {
       "id": "T102",
@@ -2665,8 +2564,7 @@
       "verify": [],
       "spec": ".harness/tasks/T102.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T103",
@@ -2687,8 +2585,7 @@
       "verify": [],
       "spec": ".harness/tasks/T103.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T104",
@@ -2715,8 +2612,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T104.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T104.md"
     },
     {
       "id": "T105",
@@ -2746,8 +2642,7 @@
       "verify": [],
       "spec": ".harness/tasks/T105.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T106",
@@ -2772,8 +2667,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T106.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T106.md"
     },
     {
       "id": "T107",
@@ -2801,8 +2695,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T107.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T107.md"
     },
     {
       "id": "T108",
@@ -2826,8 +2719,7 @@
       "verify": [
         "live-api"
       ],
-      "spec": ".harness/tasks/T108.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T108.md"
     },
     {
       "id": "T109",
@@ -2852,8 +2744,7 @@
       "verify": [
         "live-api"
       ],
-      "spec": ".harness/tasks/T109.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T109.md"
     },
     {
       "id": "T110",
@@ -2877,8 +2768,7 @@
       "verify": [],
       "spec": ".harness/tasks/T110.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T111",
@@ -2899,8 +2789,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T111.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T111.md"
     },
     {
       "id": "T112",
@@ -2924,8 +2813,7 @@
       "verify": [],
       "spec": ".harness/tasks/T112.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T113",
@@ -2952,8 +2840,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T113.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T113.md"
     },
     {
       "id": "T114",
@@ -2981,8 +2868,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T114.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T114.md"
     },
     {
       "id": "T115",
@@ -3010,8 +2896,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T115.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T115.md"
     },
     {
       "id": "T116",
@@ -3038,8 +2923,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T116.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T116.md"
     },
     {
       "id": "T117",
@@ -3064,8 +2948,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T117.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T117.md"
     },
     {
       "id": "T118",
@@ -3098,8 +2981,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T118.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T118.md"
     },
     {
       "id": "T119",
@@ -3127,8 +3009,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T119.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T119.md"
     },
     {
       "id": "T120",
@@ -3155,8 +3036,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T120.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T120.md"
     },
     {
       "id": "T121",
@@ -3185,8 +3065,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T121.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T121.md"
     },
     {
       "id": "T122",
@@ -3211,8 +3090,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T122.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T122.md"
     },
     {
       "id": "T123",
@@ -3238,8 +3116,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T123.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T123.md"
     },
     {
       "id": "T124",
@@ -3268,8 +3145,7 @@
       "verify": [],
       "spec": ".harness/tasks/T124.md",
       "model": "claude-opus-4-8",
-      "effort": "high",
-      "reviewed": false
+      "effort": "high"
     },
     {
       "id": "T125",
@@ -3298,8 +3174,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T125.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T125.md"
     },
     {
       "id": "T126",
@@ -3319,8 +3194,7 @@
       "scope": [],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T126.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T126.md"
     },
     {
       "id": "T127",
@@ -3340,8 +3214,7 @@
       "scope": [],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T127.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T127.md"
     },
     {
       "id": "T128",
@@ -3361,8 +3234,7 @@
       "scope": [],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T128.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T128.md"
     },
     {
       "id": "T129",
@@ -3389,8 +3261,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T129.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T129.md"
     },
     {
       "id": "T130",
@@ -3416,8 +3287,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T130.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T130.md"
     },
     {
       "id": "T131",
@@ -3452,8 +3322,7 @@
           "model": "claude-opus-4-8",
           "effort": "xhigh"
         }
-      ],
-      "reviewed": false
+      ]
     },
     {
       "id": "T132",
@@ -3482,8 +3351,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T132.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T132.md"
     },
     {
       "id": "T133",
@@ -3512,8 +3380,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T133.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T133.md"
     },
     {
       "id": "T134",
@@ -3542,8 +3409,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T134.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T134.md"
     },
     {
       "id": "T135",
@@ -3582,8 +3448,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T135.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T135.md"
     },
     {
       "id": "T136",
@@ -3621,8 +3486,7 @@
       ],
       "design": null,
       "verify": [],
-      "spec": ".harness/tasks/T136.md",
-      "reviewed": false
+      "spec": ".harness/tasks/T136.md"
     }
   ]
 }
