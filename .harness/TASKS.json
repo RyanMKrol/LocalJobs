@@ -2858,7 +2858,7 @@
     {
       "id": "T110",
       "title": "Workflow-run IO: expressive output — markdown preview + full popover",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
