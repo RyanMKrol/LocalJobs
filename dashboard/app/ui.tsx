@@ -96,39 +96,6 @@ export function useOutputStyle(): [OutputStyle, (s: OutputStyle) => void] {
   return [style, set];
 }
 
-/**
- * The five distinct caret/disclosure-indicator styles for the collapsible Backlog
- * section headers (T113). EVALUATION AID: once the user picks a favourite, a
- * follow-up task will hardcode it and remove this toggle + unused styles.
- */
-export const CARET_STYLES = [
-  { id: 'bold',   label: 'Bold',   hint: 'Large bold ▸/▾ at full contrast — a simple more-visible upgrade.' },
-  { id: 'accent', label: 'Accent', hint: 'Filled ▶/▼ in the dashboard accent colour.' },
-  { id: 'circle', label: 'Circle', hint: '⊕/⊖ circled add/remove toggle indicator.' },
-  { id: 'boxed',  label: 'Boxed',  hint: 'Chevron inside a small accent-bordered pill that flips on open/close.' },
-  { id: 'spin',   label: 'Spin',   hint: 'Animated rotating › with a subtle hover highlight on the whole header row.' },
-] as const;
-
-export type CaretStyle = (typeof CARET_STYLES)[number]['id'];
-
-const CARET_STYLE_KEY = 'localjobs.caretStyle';
-const DEFAULT_CARET_STYLE: CaretStyle = 'bold';
-
-/** Read/write the user's chosen backlog section caret style, persisted to localStorage. */
-export function useCaretStyle(): [CaretStyle, (s: CaretStyle) => void] {
-  const [style, setStyle] = useState<CaretStyle>(DEFAULT_CARET_STYLE);
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(CARET_STYLE_KEY);
-      if (saved && CARET_STYLES.some((s) => s.id === saved)) setStyle(saved as CaretStyle);
-    } catch { /* localStorage unavailable — keep default */ }
-  }, []);
-  const set = (s: CaretStyle) => {
-    setStyle(s);
-    try { localStorage.setItem(CARET_STYLE_KEY, s); } catch { /* ignore */ }
-  };
-  return [style, set];
-}
 
 export function StatusBadge({ status }: { status: RunStatus }) {
   return <span className={`badge ${status}`}>{statusLabel(status)}</span>;

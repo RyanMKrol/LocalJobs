@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api, type BacklogTask, type BacklogDefaults } from '../lib/api';
-import { usePoll, useCaretStyle, CARET_STYLES } from '../ui';
+import { usePoll } from '../ui';
 
 /**
  * Render a task's Markdown spec (## Do / ## Done when, T131) as readable markdown.
@@ -140,7 +140,6 @@ const REVIEW_FILTERS: { id: ReviewFilter; label: string }[] = [
 export default function Backlog() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const { data, error } = usePoll(() => api.backlog(), 5000, [refreshNonce]);
-  const [caretStyle, setCaretStyle] = useCaretStyle();
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
 
   const toggleReviewed = async (t: BacklogTask) => {
@@ -166,21 +165,6 @@ export default function Backlog() {
     <>
       <div className="row" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
         <h1 style={{ margin: 0 }}>Backlog</h1>
-        <div className="spacer" />
-        <div className="caret-style-bar" style={{ margin: 0 }}>
-          <span className="caret-style-label">Caret</span>
-          {CARET_STYLES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`caret-style-btn${caretStyle === s.id ? ' active' : ''}`}
-              onClick={() => setCaretStyle(s.id)}
-              title={s.hint}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
       </div>
       <p className="sub">
         The harness task list (<span className="mono">.harness/TASKS.json</span>), rendered.
@@ -189,7 +173,7 @@ export default function Backlog() {
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {data?.error && <p className="muted">⚠ Cannot read the backlog ({data.error}).</p>}
 
-      <div className={`caret-${caretStyle}`}>
+      <div>
         <details open>
           <summary className="section-heading-summary">
             🤖 Harness-buildable ({buildable.length})

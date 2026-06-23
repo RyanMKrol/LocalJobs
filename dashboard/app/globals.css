@@ -167,33 +167,13 @@ a.dag-gate.gs-dot:hover { border-color: var(--accent); }
 .dag-arrow-glyph.gate-conn.structural { color: var(--muted); }
 a.dag-arrow-glyph.gate-conn:hover { color: var(--accent); }
 /* collapsible section heading (used on /backlog for all three sections) */
-.section-heading-summary { font-size: 16px; margin: 0 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; }
+/* ── Backlog section header: spin caret (T132, chosen in T127) ── */
+.section-heading-summary { font-size: 16px; margin: 0 0 12px -8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; display: flex; align-items: center; padding: 4px 8px; border-radius: 6px; transition: background 0.15s; }
 .section-heading-summary::-webkit-details-marker { display: none; }
-.section-heading-summary::before { content: '▾ '; font-size: 12px; opacity: .7; }
-details:not([open]) .section-heading-summary::before { content: '▸ '; }
-
-/* ── Caret style: 5 toggleable disclosure indicators for Backlog section headers (T113) ── */
-/* Style 1: bold — large bold ▸/▾, full contrast */
-.caret-bold details[open] .section-heading-summary::before { content: '▾'; font-size: 18px; opacity: 1; color: var(--text); }
-.caret-bold details:not([open]) .section-heading-summary::before { content: '▸'; font-size: 18px; opacity: 1; color: var(--text); }
-/* Style 2: accent — ▶/▼ in the dashboard accent colour */
-.caret-accent details[open] .section-heading-summary::before { content: '▼'; font-size: 13px; opacity: 1; color: var(--accent); }
-.caret-accent details:not([open]) .section-heading-summary::before { content: '▶'; font-size: 13px; opacity: 1; color: var(--accent); }
-/* Style 3: circle — ⊕/⊖ circled toggle */
-.caret-circle details[open] .section-heading-summary::before { content: '⊖'; font-size: 18px; opacity: 1; color: var(--accent); }
-.caret-circle details:not([open]) .section-heading-summary::before { content: '⊕'; font-size: 18px; opacity: 1; color: var(--accent); }
-/* Style 4: boxed — chevron in a small accent-bordered pill */
-.caret-boxed .section-heading-summary::before { display: inline-block; font-size: 12px; font-weight: 900; opacity: 1; color: var(--accent); border: 1.5px solid var(--accent); border-radius: 4px; padding: 0 4px 1px; line-height: 1.4; margin-right: 5px; background: rgba(88,166,255,.08); }
-.caret-boxed details[open] .section-heading-summary::before { content: '▾'; }
-.caret-boxed details:not([open]) .section-heading-summary::before { content: '▸'; }
-/* Style 5: spin — animated rotating ›, hover highlight on the whole row */
-.caret-spin .section-heading-summary { padding: 3px 6px; margin-left: -6px; border-radius: 6px; transition: background 0.15s; }
-.caret-spin details .section-heading-summary:hover { background: rgba(255,255,255,.06); }
-.caret-spin details[open] .section-heading-summary { color: var(--text); }
-.caret-spin .section-heading-summary::before { content: '›'; display: inline-block; font-size: 22px; font-weight: 900; line-height: 1; opacity: 1; color: var(--accent); margin-right: 4px; transform: rotate(90deg); transition: transform 0.2s ease; vertical-align: middle; }
-.caret-spin details:not([open]) .section-heading-summary::before { content: '›'; transform: rotate(0deg); }
-/* Caret style selector bar (mirrors .gate-style-bar) */
-.caret-style-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+details .section-heading-summary:hover { background: rgba(255,255,255,.06); }
+details[open] .section-heading-summary { color: var(--text); }
+.section-heading-summary::before { content: '›'; display: inline-block; font-size: 22px; font-weight: 900; line-height: 1; opacity: 1; color: var(--accent); flex-shrink: 0; margin-right: 6px; transform: rotate(90deg); transition: transform 0.2s ease; }
+details:not([open]) .section-heading-summary::before { transform: rotate(0deg); }
 .caret-style-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .caret-style-btn { font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
 .caret-style-btn:hover { border-color: var(--accent); color: var(--text); }
