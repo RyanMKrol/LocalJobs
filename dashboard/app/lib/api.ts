@@ -374,16 +374,10 @@ export const api = {
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
 
   // Harness backlog (.harness/TASKS.json). Read-only EXCEPT the human-owned
-  // `reviewed` flag, which lives in the owner-owned .harness/reviews.json (T136).
-  // `markReviewed` writes it AND the daemon commits + pushes it to GitHub under the
-  // loop lock; the response reports whether the push succeeded (`pushed`) and a
-  // non-fatal `warning` if it didn't (e.g. offline) — the commit still persists.
+  // `reviewed` flag, which `markReviewed` writes back (T124).
   backlog: () => get<{ tasks: BacklogTask[]; defaults?: BacklogDefaults; error?: string }>('/api/backlog'),
   markReviewed: (id: string, reviewed: boolean) =>
-    post<{ ok: boolean; id: string; reviewed: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
-      `/api/backlog/${encodeURIComponent(id)}/reviewed`,
-      { reviewed },
-    ),
+    post<{ ok: boolean; id: string; reviewed: boolean }>(`/api/backlog/${encodeURIComponent(id)}/reviewed`, { reviewed }),
 
   // Read-only DB browser
   dbTables: () => get<{ tables: string[] }>('/api/db/tables'),

@@ -5,7 +5,7 @@
 // `opts.isLoopback` lets us simulate a remote (non-loopback) caller without a second host.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -17,16 +17,13 @@ import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,
-  commitReviewsFile,
   createApiServer,
   isLoopbackAddress,
   isWithin,
-  migrateReviewsOut,
   originAllowed,
-  readReviews,
   readTaskSpec,
   safeOutputMarkdown,
-  setReviewEntry,
+  setTaskReviewed,
 } from './server.js';
 
 let passed = 0;
@@ -500,196 +497,90 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   { const i = workflows.findIndex((w) => w.name === 'bulk-api-wf'); if (i >= 0) workflows.splice(i, 1); }
 }
 
-// ── T136: owner-owned reviews store — overlay + atomic write + migration + commit/push ──
+// ── T124: backlog `reviewed` flag — pure setter + GET surfaces it + atomic POST ──
 {
-  // A fixture backlog whose tasks no longer carry `reviewed` (it lives in reviews.json).
+  // A fixture backlog: t-b has no `reviewed` field (must default to false), the
+  // others carry an explicit flag. extra/nested fields must survive edits verbatim.
   const fixture = () =>
     JSON.stringify(
       {
         version: 1,
         defaults: { model: 'm', effort: 'e' },
         tasks: [
-          { id: 'T1', title: 'A', status: 'done', tags: ['x'], nested: { keep: 1 } },
-          { id: 'T2', title: 'B', status: 'done' },
-          { id: 'T3', title: 'C', status: 'pending' },
+          { id: 't-a', title: 'A', status: 'done', reviewed: false, tags: ['x'], nested: { keep: 1 } },
+          { id: 't-b', title: 'B', status: 'done' },
+          { id: 't-c', title: 'C', status: 'pending', reviewed: true },
         ],
       },
       null,
       2,
     ) + '\n';
 
-  await test('setReviewEntry: sets ONLY the target id, preserves the rest; empty raw → {}', () => {
-    const seeded = setReviewEntry('', 'T1', true, '2026-06-23T00:00:00.000Z');
-    let map = JSON.parse(seeded) as Record<string, { reviewed: boolean; at: string }>;
-    assert.deepEqual(Object.keys(map), ['T1'], 'empty raw starts from {}');
-    assert.equal(map.T1.reviewed, true);
-    assert.equal(map.T1.at, '2026-06-23T00:00:00.000Z');
-
-    const out = setReviewEntry(seeded, 'T2', false, '2026-06-23T01:00:00.000Z');
-    map = JSON.parse(out) as Record<string, { reviewed: boolean; at: string }>;
-    assert.equal(map.T1.reviewed, true, 'sibling id preserved');
-    assert.equal(map.T2.reviewed, false, 'target set');
-
-    // Flip an existing id; others untouched.
-    const flipped = JSON.parse(setReviewEntry(out, 'T1', false, '2026-06-23T02:00:00.000Z')) as Record<
-      string,
-      { reviewed: boolean }
-    >;
-    assert.equal(flipped.T1.reviewed, false);
-    assert.equal(flipped.T2.reviewed, false);
+  await test('setTaskReviewed: sets ONLY the target task, preserves every other field/task', () => {
+    const out = setTaskReviewed(fixture(), 't-a', true);
+    assert.ok(out, 'returns updated JSON');
+    const parsed = JSON.parse(out!) as { defaults: unknown; tasks: Array<Record<string, unknown>> };
+    const a = parsed.tasks.find((t) => t.id === 't-a')!;
+    const b = parsed.tasks.find((t) => t.id === 't-b')!;
+    const c = parsed.tasks.find((t) => t.id === 't-c')!;
+    assert.equal(a.reviewed, true, 'target flipped');
+    assert.deepEqual(a.nested, { keep: 1 }, 'nested fields preserved');
+    assert.equal(a.title, 'A');
+    assert.equal(b.reviewed, undefined, 'other task untouched');
+    assert.equal(c.reviewed, true, 'other task untouched');
+    assert.deepEqual(parsed.defaults, { model: 'm', effort: 'e' }, 'top-level fields preserved');
   });
 
-  await test('migrateReviewsOut: strips reviewed from tasks; seeds reviews from reviewed:true', () => {
-    const tasksRaw =
-      JSON.stringify({
-        version: 1,
-        tasks: [
-          { id: 'T1', title: 'A', status: 'done', reviewed: true, nested: { keep: 1 } },
-          { id: 'T2', title: 'B', status: 'done', reviewed: false },
-          { id: 'T3', title: 'C', status: 'pending' },
-        ],
-      }) + '\n';
-    const { tasksJson, reviewsJson } = migrateReviewsOut(tasksRaw, '2026-06-23T00:00:00.000Z');
-    const tasks = (JSON.parse(tasksJson) as { tasks: Array<Record<string, unknown>> }).tasks;
-    for (const t of tasks) assert.equal('reviewed' in t, false, `reviewed stripped from ${t.id}`);
-    assert.deepEqual(tasks.find((t) => t.id === 'T1')!.nested, { keep: 1 }, 'other fields preserved');
-    assert.equal(tasks.find((t) => t.id === 'T2')!.status, 'done', 'status preserved');
-    const reviews = JSON.parse(reviewsJson) as Record<string, { reviewed: boolean; at: string }>;
-    assert.deepEqual(Object.keys(reviews), ['T1'], 'only reviewed:true seeded');
-    assert.equal(reviews.T1.reviewed, true);
-    assert.equal(reviews.T1.at, '2026-06-23T00:00:00.000Z');
+  await test('setTaskReviewed: returns null for an unknown id (no mutation)', () => {
+    assert.equal(setTaskReviewed(fixture(), 't-zzz', true), null);
   });
 
-  // A throwaway backlog + reviews dir the endpoint reads/writes (no git → push no-ops).
+  // A throwaway backlog file the endpoint reads + atomically rewrites.
   const dir = mkdtempSync(join(tmpdir(), 'localjobs-backlog-'));
   const backlogPath = join(dir, 'TASKS.json');
-  const reviewsPath = join(dir, 'reviews.json');
-  // Inject a commitReviews that does NOT touch git (this temp dir isn't a repo).
-  const noGit = async () => ({ committed: false, pushed: false });
 
-  await test('readReviews: absent file → {}, present file overlays', () => {
-    assert.deepEqual(readReviews(join(dir, 'does-not-exist.json')), {});
-    writeFileSync(reviewsPath, JSON.stringify({ T1: { reviewed: true } }) + '\n');
-    assert.equal(readReviews(reviewsPath).T1?.reviewed, true);
-    rmSync(reviewsPath, { force: true });
-  });
-
-  await test('GET /api/backlog: overlays reviewed from reviews.json (absent → false)', async () => {
+  await test('GET /api/backlog: surfaces reviewed (absent → false)', async () => {
     writeFileSync(backlogPath, fixture());
-    writeFileSync(reviewsPath, JSON.stringify({ T1: { reviewed: true }, T3: { reviewed: false } }) + '\n');
-    await withServer({ backlogPath, reviewsPath, commitReviews: noGit }, async (base) => {
+    await withServer({ backlogPath }, async (base) => {
       const res = await fetch(`${base}/api/backlog`);
       assert.equal(res.status, 200);
       const body = (await res.json()) as { tasks: Array<{ id: string; reviewed: boolean }> };
       const byId = Object.fromEntries(body.tasks.map((t) => [t.id, t.reviewed]));
-      assert.equal(byId['T1'], true, 'overlaid from reviews.json');
-      assert.equal(byId['T2'], false, 'absent in reviews → false');
-      assert.equal(byId['T3'], false, 'explicit false');
+      assert.equal(byId['t-a'], false);
+      assert.equal(byId['t-b'], false, 'absent reviewed defaults to false');
+      assert.equal(byId['t-c'], true);
     });
-    rmSync(reviewsPath, { force: true });
   });
 
-  await test('POST /api/backlog/:id/reviewed: atomically writes ONLY that id to reviews.json', async () => {
+  await test('POST /api/backlog/:id/reviewed: atomically sets ONLY that task; preserves the rest', async () => {
     writeFileSync(backlogPath, fixture());
-    writeFileSync(reviewsPath, JSON.stringify({ T1: { reviewed: true, at: 'x' } }) + '\n');
-    await withServer({ backlogPath, reviewsPath, commitReviews: noGit }, async (base) => {
-      const res = await fetch(`${base}/api/backlog/T2/reviewed`, {
+    await withServer({ backlogPath }, async (base) => {
+      const res = await fetch(`${base}/api/backlog/t-b/reviewed`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: true }),
       });
       assert.equal(res.status, 200);
-      const body = (await res.json()) as { ok: boolean; id: string; reviewed: boolean; committed: boolean; pushed: boolean };
-      assert.equal(body.ok, true);
-      assert.equal(body.id, 'T2');
-      assert.equal(body.reviewed, true);
-      assert.equal(body.pushed, false, 'no git in temp dir → push false');
-      // TASKS.json is NEVER written by this endpoint anymore.
-      const tasksOnDisk = JSON.parse(readFileSync(backlogPath, 'utf8')) as { tasks: Array<Record<string, unknown>> };
-      for (const t of tasksOnDisk.tasks) assert.equal('reviewed' in t, false, 'TASKS.json untouched (no reviewed field)');
-      // reviews.json carries both ids, the existing one preserved.
-      const reviews = JSON.parse(readFileSync(reviewsPath, 'utf8')) as Record<string, { reviewed: boolean }>;
-      assert.equal(reviews.T1.reviewed, true, 'sibling id preserved');
-      assert.equal(reviews.T2.reviewed, true, 'new id written');
+      assert.deepEqual(await res.json(), { ok: true, id: 't-b', reviewed: true });
+      // The on-disk file must reflect only that change, with all else preserved.
+      const onDisk = JSON.parse(readFileSync(backlogPath, 'utf8')) as { tasks: Array<Record<string, unknown>> };
+      assert.equal(onDisk.tasks.find((t) => t.id === 't-b')!.reviewed, true);
+      assert.equal(onDisk.tasks.find((t) => t.id === 't-a')!.reviewed, false, 'sibling unchanged');
+      assert.deepEqual(onDisk.tasks.find((t) => t.id === 't-a')!.nested, { keep: 1 }, 'nested preserved on disk');
+      assert.equal(onDisk.tasks.find((t) => t.id === 't-c')!.status, 'pending', 'status untouched');
     });
-    rmSync(reviewsPath, { force: true });
   });
 
-  await test('POST /api/backlog/:id/reviewed: 400 for a bad id format and a non-boolean', async () => {
+  await test('POST /api/backlog/:id/reviewed: 404 for an unknown id, 400 for a non-boolean', async () => {
     writeFileSync(backlogPath, fixture());
-    await withServer({ backlogPath, reviewsPath, commitReviews: noGit }, async (base) => {
-      const rBadId = await fetch(`${base}/api/backlog/__nope__/reviewed`, {
+    await withServer({ backlogPath }, async (base) => {
+      const r404 = await fetch(`${base}/api/backlog/__nope__/reviewed`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: true }),
       });
-      assert.equal(rBadId.status, 400, 'non T\\d+ id rejected');
-      const r400 = await fetch(`${base}/api/backlog/T1/reviewed`, {
+      assert.equal(r404.status, 404);
+      const r400 = await fetch(`${base}/api/backlog/t-a/reviewed`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: 'yes' }),
       });
       assert.equal(r400.status, 400);
     });
-    rmSync(reviewsPath, { force: true });
-  });
-
-  // Integration: commit+push the reviews file against a LOCAL BARE remote (no network).
-  // Skips cleanly if git is unavailable.
-  await test('commitReviewsFile: commits ONLY reviews.json + pushes to a local bare remote', async () => {
-    let haveGit = true;
-    try {
-      execFileSync('git', ['--version'], { stdio: 'ignore' });
-    } catch {
-      haveGit = false;
-    }
-    if (!haveGit) {
-      console.log('    (skipped — git not available)');
-      return;
-    }
-    const gitRoot = mkdtempSync(join(tmpdir(), 'localjobs-gitrepo-'));
-    const bare = mkdtempSync(join(tmpdir(), 'localjobs-bare-'));
-    const g = (args: string[], cwd = gitRoot) => execFileSync('git', args, { cwd, stdio: 'ignore' });
-    try {
-      execFileSync('git', ['init', '--bare', '-b', 'main', bare], { stdio: 'ignore' });
-      g(['init', '-b', 'main']);
-      g(['config', 'user.email', 'test@example.com']);
-      g(['config', 'user.name', 'Test']);
-      g(['config', 'commit.gpgsign', 'false']);
-      const harnessDir = join(gitRoot, '.harness');
-      mkdirSync(harnessDir, { recursive: true });
-      writeFileSync(join(harnessDir, 'TASKS.json'), '{"tasks":[]}\n');
-      writeFileSync(join(gitRoot, 'README.md'), '# test\n');
-      g(['add', '-A']);
-      g(['commit', '-m', 'init']);
-      g(['remote', 'add', 'origin', bare]);
-      g(['push', 'origin', 'HEAD:main']);
-
-      // The endpoint's durability floor: write the reviews file first.
-      const revPath = join(harnessDir, 'reviews.json');
-      writeFileSync(revPath, JSON.stringify({ T9: { reviewed: true, at: '2026-06-23T00:00:00.000Z' } }, null, 2) + '\n');
-
-      const result = await commitReviewsFile({
-        repoRoot: gitRoot,
-        reviewsAbsPath: revPath,
-        id: 'T9',
-        reviewed: true,
-        mainBranch: 'main',
-        timeoutMs: 20_000,
-      });
-      assert.equal(result.committed, true, 'committed');
-      assert.equal(result.pushed, true, `pushed (warning: ${result.warning ?? ''})`);
-
-      // The HEAD commit must touch ONLY .harness/reviews.json.
-      const changed = execFileSync('git', ['diff', '--name-only', 'HEAD~1', 'HEAD'], { cwd: gitRoot, encoding: 'utf8' })
-        .trim()
-        .split('\n')
-        .filter(Boolean);
-      assert.deepEqual(changed, ['.harness/reviews.json'], 'commit touches ONLY reviews.json');
-
-      // The bare remote must have received it.
-      const remoteContent = execFileSync('git', ['show', 'main:.harness/reviews.json'], { cwd: bare, encoding: 'utf8' });
-      assert.match(remoteContent, /"T9"/, 'reviews.json reached the bare remote');
-      // The lock dir must be released (not left behind).
-      assert.equal(existsSync(join(gitRoot, '.git', `${basename(gitRoot)}-loop.lock`)), false, 'lock released');
-    } finally {
-      rmSync(gitRoot, { recursive: true, force: true });
-      rmSync(bare, { recursive: true, force: true });
-    }
   });
 
   rmSync(dir, { recursive: true, force: true });
