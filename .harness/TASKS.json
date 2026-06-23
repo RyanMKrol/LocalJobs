@@ -3453,7 +3453,7 @@
     {
       "id": "T136",
       "title": "Durable reviews: move reviewed into owner-owned .harness/reviews.json, commit+push under the loop lock",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
