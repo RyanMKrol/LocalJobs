@@ -3511,7 +3511,7 @@
     {
       "id": "T137",
       "title": "Backlog: section-header hover should highlight the whole section (header + expanded tasks), not just the title",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T132"
       ],
