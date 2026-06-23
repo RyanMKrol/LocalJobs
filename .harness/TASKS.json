@@ -3304,7 +3304,7 @@
     {
       "id": "T126",
       "title": "Review + choose: validation-gate graph style (from T099)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T099"
       ],
@@ -3346,7 +3346,7 @@
     {
       "id": "T128",
       "title": "Review + choose: workflow-run output line-item style (from T116)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T116"
       ],
@@ -3483,6 +3483,66 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T132.md",
+      "reviewed": false
+    },
+    {
+      "id": "T133",
+      "title": "Workflow-run IO: hardcode the chosen \"meta\" output line-item style, remove the toggle + 4 unused styles",
+      "status": "pending",
+      "dependsOn": [
+        "T128"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T133.md",
+      "reviewed": false
+    },
+    {
+      "id": "T134",
+      "title": "Graph view: hardcode the chosen \"key\" validation-gate style, remove the toggle + 4 unused styles",
+      "status": "pending",
+      "dependsOn": [
+        "T126"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T134.md",
       "reviewed": false
     }
   ]
