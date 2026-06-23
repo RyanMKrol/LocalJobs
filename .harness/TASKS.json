@@ -3217,7 +3217,7 @@
     {
       "id": "T123",
       "title": "Backlog list: give harness-buildable cards an amber pill + colour scheme",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
