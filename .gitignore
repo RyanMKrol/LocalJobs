@@ -46,5 +46,7 @@ TODO.md
 .harness/worklog/.claude-out
 .harness/worklog/STATUS.md
 
-# harness: atomic-write temp for TASKS.json
+# harness: atomic-write temps for TASKS.json + the owner-owned reviews store (T136).
+# .harness/reviews.json itself IS committed (owner-owned; the daemon commits+pushes it).
 .harness/TASKS.json.tmp
+.harness/reviews.json.tmp*

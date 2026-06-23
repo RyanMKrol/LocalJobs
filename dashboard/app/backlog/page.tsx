@@ -141,10 +141,14 @@ export default function Backlog() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const { data, error } = usePoll(() => api.backlog(), 5000, [refreshNonce]);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
+  // Non-fatal warning when the review was saved + committed locally but the push
+  // to GitHub didn't go through (offline / no remote). The commit still persists.
+  const [pushWarning, setPushWarning] = useState<string | null>(null);
 
   const toggleReviewed = async (t: BacklogTask) => {
     try {
-      await api.markReviewed(t.id, !(t.reviewed === true));
+      const res = await api.markReviewed(t.id, !(t.reviewed === true));
+      setPushWarning(res.committed && res.pushed === false ? (res.warning ?? 'saved locally, push pending') : null);
     } catch {
       // ignore — the next poll reflects the true file state
     }
@@ -172,6 +176,7 @@ export default function Backlog() {
       </p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {data?.error && <p className="muted">⚠ Cannot read the backlog ({data.error}).</p>}
+      {pushWarning && <p className="muted" style={{ fontSize: 12 }}>⚠ Review saved locally but not pushed to GitHub ({pushWarning}). It will sync on the next successful push.</p>}
 
       <div>
         <details open>
