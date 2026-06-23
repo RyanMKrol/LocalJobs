@@ -1,4 +1,4 @@
-import type { ServiceDefinition } from '../../core/types.js';
+import type { ServiceDefinition } from '../core/types.js';
 
 /** The Claude Code CLI worker — $0 under the user's plan. No hard quota; a gentle
  *  per-minute rate just avoids bursting many concurrent `claude -p` processes. */

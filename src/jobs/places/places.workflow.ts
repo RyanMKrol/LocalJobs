@@ -13,8 +13,9 @@ import type { WorkflowDefinition } from '../../core/types.js';
  *
  * Runs DAILY at 03:00 (the old per-job crons are suppressed now that these jobs
  * are workflow members). The cost of the paid stages is bounded by the per-stage
- * daily spend cap (= monthly free allowance / 30, see config.ts DAILY_SPEND_DIVISOR),
- * so a daily run drains the backlog steadily and can never blow the month.
+ * daily spend cap (= monthly free allowance / 30, see src/services/lib.ts
+ * DAILY_SPEND_DIVISOR — the caps live on the paid services), so a daily run drains
+ * the backlog steadily and can never blow the month.
  */
 const workflow: WorkflowDefinition = {
   name: 'places',

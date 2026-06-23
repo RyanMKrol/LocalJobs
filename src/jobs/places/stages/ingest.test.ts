@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { recordIngestLedger } from './ingest.js';
-import { isWorkItemDone, workItemCounts } from '../../db/store.js';
-import type { NormalizedPlace } from './types.js';
+import { isWorkItemDone, workItemCounts } from '../../../db/store.js';
+import type { NormalizedPlace } from '../types.js';
 
 // Convention: the FIRST workflow stage owns the per-item ledger list. places-ingest
 // records one work_item per CID-bearing place (keyed by CID) so idempotency + the

@@ -194,10 +194,12 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage` |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
-| `src/jobs/registry.ts` | Auto-discovers `*.job.ts`, `*.workflow.ts`, and `*.service.ts` files (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
-| `src/jobs/*.job.ts` | One job per file, default-exporting a `JobDefinition` (root-level files gitignored; subfolder jobs in `places/`+`perfumes/` are tracked) |
-| `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs) |
-| `src/jobs/*.service.ts` | Service definitions, default-exporting a `ServiceDefinition` (shared rate-limited dependencies) |
+| `src/jobs/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/jobs/` AND `*.service.ts` under BOTH `src/services/` and `src/jobs/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
+| `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
+| `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
+| `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
+| `src/jobs/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
+| `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the job-folder root |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
 | `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`); all responsive CSS lives in `app/globals.css` |
 | `dashboard/scripts/mobile-check.mjs` | Hermetic phone-viewport (402px) styling check — headless Chromium + synthetic API fixtures; local only, not in CI |
@@ -251,6 +253,25 @@ load.
    glob (`*.job.ts` / `*.workflow.ts`). There is **no registry to edit**.
 4. Tell the user to restart the daemon (jobs are loaded at startup):
    `launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs`
+
+**Multi-stage workflow layout (the example folders).** A workflow folder keeps its
+shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`,
+`contracts.ts`, any helper modules + the template + `data/`) and groups its
+per-stage code under a flat `stages/` subfolder — one `<stage>.job.ts` +
+`<stage>.ts` impl (+ `<stage>.test.ts`) per stage. **Adding a new stage** = drop
+its files in `<workflow>/stages/` and add the member to the `*.workflow.ts` — jobs
+are discovered **recursively**, so a `*.job.ts` in `stages/` is picked up
+automatically. A stage file imports root-level shared modules one level up
+(`../config.js`, `../types.js`, `../contracts.js`, …) and framework code two more
+(`../../../core/…`, `../../../db/…`); sibling stages stay `./`. Keep config/data
+resolution (`resolve(here, …)`) anchored at the job root, so `config.ts`/`data/`
+stay at the root, not in `stages/`.
+
+**Adding a service** = create `src/services/<name>.service.ts` (top-level,
+daemon-wide), default-exporting a self-contained `ServiceDefinition` that reads its
+own limits from env and imports nothing from any workflow. The registry discovers
+it from `src/services/` automatically (it also still scans `src/jobs/` so a private
+job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/jobs/*.job.ts` files are gitignored. The
@@ -476,25 +497,40 @@ doubt, log it.
   when `!allowed`. Convention: daily cap = monthly cap / 10 (so manual re-runs
   don't blow the month) — but a **daily-scheduled** job/workflow must use daily =
   monthly / 30, so a full month of daily runs exactly fits the monthly ceiling and
-  a single day's run can never blow it (see the places workflow's
-  `DAILY_SPEND_DIVISOR`). Caps live in the job's config, env-overridable.
+  a single day's run can never blow it (see `src/services/lib.ts`'s
+  `DAILY_SPEND_DIVISOR`). Caps live in the job's config (or, for service-governed
+  paid calls, on the service), env-overridable.
   **One governor only:** if a paid call already goes through a shared **service**
   (below), the service quota is the SINGLE source of truth — do NOT also stack a
   per-job `job_usage` cap on the same calls (it shadows the service's
   `QuotaExceededError` soft-fail and double-meters). The places paid jobs
   (`places-enrich`→`google-places`, `enrich-with-llm`→`gemini`) govern spend
-  purely via their service quota; `DAILY_SPEND_DIVISOR` feeds the *service* caps.
+  purely via their service quota; `src/services/lib.ts`'s `DAILY_SPEND_DIVISOR`
+  feeds the *service* caps.
   Use the per-job `job_usage` meter only when the metered call is NOT routed
   through a service.
+- **Services are a TOP-LEVEL, daemon-wide concern (`src/services/`).** A service's
+  rate-limit/quota is coordinated GLOBALLY by service NAME (via the SQLite
+  `service_usage` meter), so a service is NOT owned by any one workflow — it lives
+  in the top-level `src/services/` folder (sibling of `src/core`/`src/jobs`),
+  default-exporting a `ServiceDefinition` from `src/services/<name>.service.ts`.
+  Each service is **self-contained**: it owns its limits, reading them from env
+  with sensible defaults, and imports **NOTHING from any workflow's `config.ts`**.
+  The `daily = monthly / 30` spend-cap math for paid daily-scheduled services lives
+  with the services (`src/services/lib.ts`'s `DAILY_SPEND_DIVISOR` /
+  `dailyFromMonthly`), NOT in a workflow config. The registry discovers services
+  from `src/services/` (and still scans `src/jobs/` so a private job MAY colocate a
+  service it owns).
 - **Services (cross-job shared APIs).** For an external dependency called from
   multiple jobs (e.g. Gemini, Google Places, Fragrantica, Claude CLI), define a
-  `ServiceDefinition` in a `*.service.ts` file and call the API through
-  `callService(name, fn)` from `src/core/services.ts`. This coordinates rate
+  self-contained `ServiceDefinition` in `src/services/<name>.service.ts` and call
+  the API through `callService(name, fn)` from `src/core/services.ts`. This
+  coordinates rate
   limits and quotas across all job processes via the SQLite `service_usage` meter,
   and is the SOLE spend governor for those calls — a hit day/month quota throws
   `QuotaExceededError`, which the caller catches to stop the run gracefully (the
-  item is left un-done and the next run resumes). See `places/gemini.service.ts`
-  and `perfumes/fragrantica.service.ts` for worked examples. The simpler per-job
+  item is left un-done and the next run resumes). See `src/services/gemini.service.ts`
+  and `src/services/fragrantica.service.ts` for worked examples. The simpler per-job
   `recordUsage`/`capStatus` on `job_usage` still exists for single-job-only
   metering when cross-job coordination isn't needed. (When migrating an existing
   job onto a service, top up `service_usage` from its historical `job_usage` once

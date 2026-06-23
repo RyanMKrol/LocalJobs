@@ -356,7 +356,13 @@ See `.env.example`:
 
 ## Worked example workflows
 
-Both are published under `src/jobs/`; their `data/` stays gitignored.
+Both are published under `src/jobs/`; their `data/` stays gitignored. Each folder
+keeps its shared files at the root (`*.workflow.ts`, `config.ts`, `types.ts`,
+`contracts.ts`, helpers + template + `data/`) and groups its per-stage code under a
+flat `stages/` subfolder. Shared **services** (the rate-limited / quota'd external
+dependencies) are NOT inside a workflow — they're a daemon-wide concern, so they
+live self-contained in the top-level `src/services/` (`gemini`, `google-places`,
+`fragrantica`, `claude-cli`), each owning its own limits from env.
 
 **places** — Google Places enrichment. Four stages: `places-ingest` (parse
 saved-place CSVs) → `cid-to-place-id-resolver` (headless CID→place_id) →

@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { GoogleGenAI } from '@google/genai';
-import type { JobContext } from '../../core/types.js';
-import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../db/store.js';
-import { QuotaExceededError, callService, getServiceDef } from '../../core/services.js';
-import { llmConfig, placesConfig } from './config.js';
-import type { EnrichedFile, EnrichedPlace } from './types.js';
+import type { JobContext } from '../../../core/types.js';
+import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../../db/store.js';
+import { QuotaExceededError, callService, getServiceDef } from '../../../core/services.js';
+import { llmConfig, placesConfig } from '../config.js';
+import type { EnrichedFile, EnrichedPlace } from '../types.js';
 
 /** The unit-of-work key space in the work_items ledger. */
 const JOB_NAME = 'enrich-with-llm';

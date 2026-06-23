@@ -1,5 +1,5 @@
-import type { JobDefinition } from '../../core/types.js';
-import { normalizedPlacesContract, resolvedPlacesContract } from './contracts.js';
+import type { JobDefinition } from '../../../core/types.js';
+import { normalizedPlacesContract, resolvedPlacesContract } from '../contracts.js';
 import { resolveInputKeys, runResolve } from './resolve.js';
 
 /**

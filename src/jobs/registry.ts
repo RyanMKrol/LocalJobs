@@ -1,5 +1,5 @@
-import { readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildDag, DagError } from '../core/dag.js';
 import { registerService } from '../core/services.js';
@@ -22,6 +22,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const isJobFile = (f: string) => f.endsWith('.job.ts') || f.endsWith('.job.js');
 const isWorkflowFile = (f: string) => f.endsWith('.workflow.ts') || f.endsWith('.workflow.js');
 const isServiceFile = (f: string) => f.endsWith('.service.ts') || f.endsWith('.service.js');
+
+// Services are a daemon-wide, top-level concern (their rate-limit/quota is
+// coordinated globally by service NAME), so they live in a sibling `src/services/`
+// rather than buried in one workflow folder. We still scan `src/jobs` too, so a
+// private job MAY colocate a service it owns.
+const servicesDir = resolve(__dirname, '..', 'services');
 
 function findFiles(dir: string, pred: (f: string) => boolean): string[] {
   const out: string[] = [];
@@ -54,7 +60,11 @@ export function getJobDefinition(name: string): JobDefinition | undefined {
 
 // ──────────────────────────────── services ────────────────────────────────
 const loadedServices: ServiceDefinition[] = [];
-for (const file of findFiles(__dirname, isServiceFile).sort()) {
+const serviceFiles = [
+  ...findFiles(__dirname, isServiceFile),
+  ...(existsSync(servicesDir) ? findFiles(servicesDir, isServiceFile) : []),
+].sort();
+for (const file of serviceFiles) {
   const def = await loadDefault<ServiceDefinition>(file);
   if (def && typeof def.name === 'string') {
     loadedServices.push(def);

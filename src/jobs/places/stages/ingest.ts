@@ -1,16 +1,16 @@
 import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { JobContext } from '../../core/types.js';
-import { markWorkItem } from '../../db/store.js';
-import { placesConfig } from './config.js';
-import { extractFeatureId, nameFromUrl, parseListFile } from './parse.js';
+import type { JobContext } from '../../../core/types.js';
+import { markWorkItem } from '../../../db/store.js';
+import { placesConfig } from '../config.js';
+import { extractFeatureId, nameFromUrl, parseListFile } from '../parse.js';
 import type {
   IngestOutput,
   NormalizedPlace,
   PerListStat,
   ValidationIssue,
   ValidationReport,
-} from './types.js';
+} from '../types.js';
 
 /** This job's name — the workflow's first stage, which owns the per-item ledger list. */
 const INGEST_JOB = 'places-ingest';

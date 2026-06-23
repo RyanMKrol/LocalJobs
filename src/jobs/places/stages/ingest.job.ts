@@ -1,5 +1,5 @@
-import type { JobDefinition } from '../../core/types.js';
-import { normalizedPlacesContract } from './contracts.js';
+import type { JobDefinition } from '../../../core/types.js';
+import { normalizedPlacesContract } from '../contracts.js';
 import { runIngest } from './ingest.js';
 
 /**

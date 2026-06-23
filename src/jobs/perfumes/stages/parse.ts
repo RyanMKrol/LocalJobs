@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { JobContext } from '../../core/types.js';
-import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
-import { extractJson, runClaude } from './claude.js';
-import { perfumesConfig } from './config.js';
-import { ensureDirs, label, loadPerfumes, reportItemProgress } from './lib.js';
-import type { Accord, PerfumeInput, StageResult } from './types.js';
+import type { JobContext } from '../../../core/types.js';
+import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { extractJson, runClaude } from '../claude.js';
+import { perfumesConfig } from '../config.js';
+import { ensureDirs, label, loadPerfumes, reportItemProgress } from '../lib.js';
+import type { Accord, PerfumeInput, StageResult } from '../types.js';
 
 export const PARSE_JOB = 'perfumes-parse';
 

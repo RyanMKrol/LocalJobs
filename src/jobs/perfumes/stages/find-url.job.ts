@@ -1,7 +1,7 @@
-import type { JobDefinition } from '../../core/types.js';
-import { fragranticaUrlsContract } from './contracts.js';
+import type { JobDefinition } from '../../../core/types.js';
+import { fragranticaUrlsContract } from '../contracts.js';
 import { runFindUrl } from './find-url.js';
-import { loadPerfumes } from './lib.js';
+import { loadPerfumes } from '../lib.js';
 
 const job: JobDefinition = {
   name: 'perfumes-find-url',

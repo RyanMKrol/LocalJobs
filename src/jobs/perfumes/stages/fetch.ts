@@ -1,13 +1,13 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BrowserContext } from 'playwright';
-import type { JobContext } from '../../core/types.js';
-import { launchPersistentBrowser } from '../../core/browser.js';
-import { getWorkItem, isWorkItemDone, markWorkItem } from '../../db/store.js';
-import { callService } from '../../core/services.js';
-import { perfumesConfig } from './config.js';
-import { ensureDirs, label, loadPerfumes, readJsonFile, reportItemProgress } from './lib.js';
-import type { StageResult } from './types.js';
+import type { JobContext } from '../../../core/types.js';
+import { launchPersistentBrowser } from '../../../core/browser.js';
+import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { callService } from '../../../core/services.js';
+import { perfumesConfig } from '../config.js';
+import { ensureDirs, label, loadPerfumes, readJsonFile, reportItemProgress } from '../lib.js';
+import type { StageResult } from '../types.js';
 
 export const FETCH_JOB = 'perfumes-fetch';
 

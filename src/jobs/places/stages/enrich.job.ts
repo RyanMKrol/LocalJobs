@@ -1,5 +1,5 @@
-import type { JobDefinition } from '../../core/types.js';
-import { enrichedPlacesContract, resolvedPlacesContract } from './contracts.js';
+import type { JobDefinition } from '../../../core/types.js';
+import { enrichedPlacesContract, resolvedPlacesContract } from '../contracts.js';
 import { runEnrich } from './enrich.js';
 
 /**

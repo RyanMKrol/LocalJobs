@@ -1,5 +1,5 @@
-import type { JobDefinition } from '../../core/types.js';
-import { fragranticaDataContract, fragranticaPagesContract } from './contracts.js';
+import type { JobDefinition } from '../../../core/types.js';
+import { fragranticaDataContract, fragranticaPagesContract } from '../contracts.js';
 import { runParse } from './parse.js';
 
 const job: JobDefinition = {

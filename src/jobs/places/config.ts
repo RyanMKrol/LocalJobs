@@ -20,18 +20,18 @@ export const placesConfig = {
 };
 
 /**
- * The places workflow runs on a DAILY cron, so the daily spend cap must be the
- * monthly free allowance spread evenly across the month: daily ≈ monthly / 30.
- * That way a daily run can NEVER blow the month — 30 capped days exactly fits the
- * monthly ceiling — while still draining the backlog steadily. (Contrast the
- * generic CLAUDE.md "daily = monthly/10" rule, which suits a weekly/manual cadence
- * where you want headroom for a few re-runs per day; a *daily* schedule needs /30.)
+ * Spend caps for the paid stages (Gemini, Google Places) NO LONGER live here.
+ * Because a service's quota is the single source of truth for shared spend, those
+ * caps + the `daily = monthly / 30` math moved to the self-contained top-level
+ * services (`src/services/gemini.service.ts`, `src/services/google-places.service.ts`,
+ * and `src/services/lib.ts`'s `DAILY_SPEND_DIVISOR`/`dailyFromMonthly`). The enrich
+ * stages read the effective caps off the SERVICE object (`svc.dailyCap` /
+ * `svc.monthlyCap`), not these config blocks. Only the (free, `job_usage`-governed)
+ * resolver keeps its own caps below.
  */
-export const DAILY_SPEND_DIVISOR = 30;
 
-const llmMonthlyCap = Number(process.env.PLACES_LLM_MONTHLY_CAP ?? 2000);
-
-/** LLM enrichment (Gemini) knobs. Key from .env (GEMINI_API_KEY). */
+/** LLM enrichment (Gemini) knobs. Key from .env (GEMINI_API_KEY). Spend caps live
+ *  on the `gemini` service, not here. */
 export const llmConfig = {
   apiKey: process.env.GEMINI_API_KEY ?? '',
   /** Default to the CHEAPEST model (Flash-Lite); it still supports Google Search
@@ -42,14 +42,6 @@ export const llmConfig = {
   dryRun: process.env.PLACES_LLM_DRY_RUN === '1',
   /** Max items per run (0 = no cap). */
   runLimit: Number(process.env.PLACES_LLM_RUN_LIMIT ?? 0),
-  /**
-   * Spend caps (Gemini is paid, ~$0.002/call). Monthly is the real ceiling
-   * (~$4/mo at 2000); daily defaults to monthly/30 (≈66) so the daily-scheduled
-   * workflow spreads the month's budget evenly and can't blow it. Both enforced;
-   * whichever hits first stops.
-   */
-  monthlyCap: llmMonthlyCap,
-  dailyCap: Number(process.env.PLACES_LLM_DAILY_CAP ?? Math.floor(llmMonthlyCap / DAILY_SPEND_DIVISOR)),
   /** Give up on a place after this many failed attempts. */
   maxAttempts: Number(process.env.PLACES_LLM_MAX_ATTEMPTS ?? 4),
   /** Delay between calls, ms (free tier is rate-limited per minute). */
@@ -62,20 +54,10 @@ export const llmConfig = {
   thinkingLevel: process.env.GEMINI_THINKING_LEVEL ?? 'high',
 };
 
-const enrichMonthlyCap = Number(process.env.PLACES_ENRICH_MONTHLY_CAP ?? 1000);
-
-/** Enrichment knobs. The Places API key comes from .env (GOOGLE_MAPS_API_KEY). */
+/** Enrichment knobs. The Places API key comes from .env (GOOGLE_MAPS_API_KEY).
+ *  Spend caps live on the `google-places` service, not here. */
 export const enrichConfig = {
   apiKey: process.env.GOOGLE_MAPS_API_KEY ?? '',
-  /**
-   * Spend caps. Monthly 1000 = the free Enterprise+Atmosphere tier, so a default
-   * run never incurs charges; daily defaults to monthly/30 (≈33) so the
-   * daily-scheduled workflow spreads the free allowance evenly and a daily run
-   * can never exhaust the month. Both enforced. (The separate Google Cloud daily
-   * quota on GetPlaceRequest is an external belt-and-braces.)
-   */
-  monthlyCap: enrichMonthlyCap,
-  dailyCap: Number(process.env.PLACES_ENRICH_DAILY_CAP ?? Math.floor(enrichMonthlyCap / DAILY_SPEND_DIVISOR)),
   /** Max calls in a single run (0 = no per-run cap). */
   runLimit: Number(process.env.PLACES_ENRICH_RUN_LIMIT ?? 0),
   /** Stop retrying a place after this many failed attempts across runs. */

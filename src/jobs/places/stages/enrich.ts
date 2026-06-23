@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import type { JobContext } from '../../core/types.js';
-import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../db/store.js';
-import { QuotaExceededError, callService, getServiceDef } from '../../core/services.js';
-import { enrichConfig, placesConfig } from './config.js';
-import type { EnrichedFile, EnrichedPlace, ResolvedFile } from './types.js';
+import type { JobContext } from '../../../core/types.js';
+import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../../db/store.js';
+import { QuotaExceededError, callService, getServiceDef } from '../../../core/services.js';
+import { enrichConfig, placesConfig } from '../config.js';
+import type { EnrichedFile, EnrichedPlace, ResolvedFile } from '../types.js';
 
 const JOB_NAME = 'places-enrich';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
