@@ -188,7 +188,7 @@ export default function Overview() {
             <div className="muted" style={{ fontSize: 12, margin: '6px 0' }}>
               {p.jobs.length} stages · {p.schedule
                 ? <CronBadge expr={p.schedule} />
-                : 'manual'}{p.stuck > 0 ? ` · ⛔ ${p.stuck} stuck` : ''}
+                : 'manual'}
             </div>
             {p.last_run?.status === 'running' && <ProgressBar pct={p.last_run.progress} />}
             <div style={{ marginTop: 10 }}>
