@@ -342,6 +342,34 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, { workflow: { ...p, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
       }
 
+      // GET /api/workflows/:name/gates/:producer/:key
+      // Run-AGNOSTIC, definition-level inspection of ONE validation gate for the
+      // definition view's gate detail page: the structural gate (key, enriched
+      // description, producer→consumer) plus each side's declared `shape` — the
+      // EXPECTED side only. It does NOT run the contracts' `check()`, so there are
+      // NO per-run actuals and NO file/paid/remote reads at all (purely the
+      // statically-declared contract metadata) — safe to load freely. The
+      // run-scoped GET /api/workflow-runs/:id/gates/... endpoint is the one that
+      // layers a specific run's actual-vs-expected on top.
+      if (
+        method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' &&
+        parts[3] === 'gates' && parts.length === 6
+      ) {
+        const name = parts[2];
+        if (!getWorkflow(name)) return json(res, 404, { error: 'workflow not found' });
+        const producer = decodeURIComponent(parts[4]);
+        const key = decodeURIComponent(parts[5]);
+        const gate = gatesForWorkflow(name).find((g) => g.producer === producer && g.key === key);
+        if (!gate) return json(res, 404, { error: 'gate not found' });
+        const sideShape = (jobName: string, field: 'produces' | 'consumes') =>
+          getJobDefinition(jobName)?.[field]?.find((c) => c.key === key)?.shape ?? null;
+        return json(res, 200, {
+          gate,
+          produced: { shape: sideShape(gate.producer, 'produces') },
+          consumed: { shape: sideShape(gate.consumer, 'consumes') },
+        });
+      }
+
       // POST /api/workflows/:name/run   (optional body { limit })
       // A positive-integer `limit` caps the manual run to N originating inputs and
       // runs all their fan-out (T094); omit it for an unlimited run. A limit is

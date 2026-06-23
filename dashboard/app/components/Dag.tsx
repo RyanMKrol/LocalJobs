@@ -37,7 +37,7 @@ function computeWaves(members: WorkflowMember[]): string[][] {
  * run (`GateStatus`) or the structural definition view (`StructuralGate`). `state`
  * gains a `structural` variant for the definition view (no run state). `href` is the
  * gate's detail page when one can be linked (always for run gates; for structural
- * gates only when a `lastRunId` exists), else undefined → a non-interactive marker.
+ * gates only when a `workflowName` is given), else undefined → a non-interactive marker.
  */
 type GateState = 'passed' | 'failed' | 'pending' | 'structural';
 interface RenderGate {
@@ -130,7 +130,7 @@ export function Dag({
   runIdByJob,
   gates,
   structuralGates,
-  lastRunId,
+  workflowName,
   from,
   workflowRunId,
 }: {
@@ -141,8 +141,9 @@ export function Dag({
   gates?: GateStatus[];
   /** Structural gates for the definition view (no run state). */
   structuralGates?: StructuralGate[];
-  /** Last workflow run id; when provided, structural gate chips link to that run's gate detail. */
-  lastRunId?: string;
+  /** Workflow name; when provided, structural gate chips link to that workflow's
+   *  run-AGNOSTIC, definition-level gate detail (NOT any specific run). */
+  workflowName?: string;
   /** Path of the page rendering this DAG, threaded onto node links as `?from=`
    *  so the job/run page can send the back-link to where you actually came from. */
   from?: string;
@@ -178,16 +179,21 @@ export function Dag({
   const structGates = partition(structuralGates ?? []);
 
   // Normalise either gate source into the render shape, attaching the detail-page
-  // href (run gates always link; structural gates link only when a `lastRunId` exists).
-  const gateHref = (runId: string, g: { producer: string; key: string }) =>
+  // href. Run gates link to THIS run's actual-vs-expected gate page; structural
+  // (definition-view) gates link to the run-AGNOSTIC, definition-level gate detail
+  // — so a definition-view chip behaves like a job node there (a read-only view of
+  // the gate itself), never jumping into one arbitrary run.
+  const runGateHref = (runId: string, g: { producer: string; key: string }) =>
     `/workflow-runs/${runId}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`;
+  const defGateHref = (name: string, g: { producer: string; key: string }) =>
+    `/workflows/${encodeURIComponent(name)}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`;
   const normRun = (g: GateStatus): RenderGate => ({
     key: g.key, producer: g.producer, consumer: g.consumer, description: g.description,
-    state: g.state, href: workflowRunId ? gateHref(workflowRunId, g) : undefined,
+    state: g.state, href: workflowRunId ? runGateHref(workflowRunId, g) : undefined,
   });
   const normStruct = (g: StructuralGate): RenderGate => ({
     key: g.key, producer: g.producer, consumer: g.consumer, description: g.description,
-    state: 'structural', href: lastRunId ? gateHref(lastRunId, g) : undefined,
+    state: 'structural', href: workflowName ? defGateHref(workflowName, g) : undefined,
   });
   const arrowGates = (i: number): RenderGate[] =>
     workflowRunId ? (runGates.onArrow.get(i) ?? []).map(normRun) : (structGates.onArrow.get(i) ?? []).map(normStruct);

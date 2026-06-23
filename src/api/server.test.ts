@@ -8,7 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { config } from '../config.js';
 import { jobs, workflows } from '../jobs/registry.js';
 import { syncJob, syncWorkflow } from '../db/store.js';
-import type { JobDefinition, WorkflowDefinition } from '../core/types.js';
+import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,
   createApiServer,
@@ -191,6 +191,60 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
 
   for (const d of [limRoot, plain]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
   for (const w of [limWf, plainWf]) { const i = workflows.indexOf(w); if (i >= 0) workflows.splice(i, 1); }
+}
+
+// ── definition-level gate detail (T102): the run-AGNOSTIC
+// GET /api/workflows/:name/gates/:producer/:key returns the structural gate
+// (key, enriched description, producer→consumer) plus each side's declared
+// expected shape — no run state, no actuals, no contract check() runs. A fake
+// two-stage workflow with a producer→consumer artifact contract, registered then
+// cleaned up. ──
+{
+  const shapeA: ArtifactShape = {
+    summary: 'rows of stuff', format: 'csv',
+    expectations: [{ label: 'non-empty', detail: 'has at least one row' }],
+  };
+  let checkCalls = 0;
+  const upstream: JobDefinition = {
+    name: 'gate-up', run: async () => {},
+    produces: [{ key: 'artA', description: 'the A artifact', shape: shapeA, check: () => { checkCalls++; return { ok: true }; } }],
+  };
+  const downstream: JobDefinition = {
+    name: 'gate-down', run: async () => {},
+    consumes: [{ key: 'artA', description: 'needs A', shape: { summary: 'consumes A', expectations: [{ label: 'parseable' }] }, check: () => { checkCalls++; return { ok: true }; } }],
+  };
+  for (const d of [upstream, downstream]) { syncJob(d); jobs.push(d); }
+  const gw: WorkflowDefinition = { name: 'gate-wf', jobs: [{ job: 'gate-up' }, { job: 'gate-down', dependsOn: ['gate-up'] }] };
+  syncWorkflow(gw); workflows.push(gw);
+
+  await test('definition gate: endpoint returns structural gate + both sides expected shape, never runs check()', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/gate-wf/gates/gate-up/artA`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as {
+        gate: { producer: string; consumer: string; key: string; description?: string };
+        produced: { shape: ArtifactShape | null };
+        consumed: { shape: ArtifactShape | null };
+      };
+      assert.equal(body.gate.producer, 'gate-up');
+      assert.equal(body.gate.consumer, 'gate-down');
+      assert.equal(body.gate.key, 'artA');
+      assert.match(body.gate.description ?? '', /the A artifact/);
+      assert.equal(body.produced.shape?.summary, 'rows of stuff');
+      assert.equal(body.consumed.shape?.summary, 'consumes A');
+      assert.equal(checkCalls, 0, 'definition-level endpoint must NOT run any contract check()');
+    });
+  });
+
+  await test('definition gate: unknown gate 404s; unknown workflow 404s', async () => {
+    await withServer({}, async (base) => {
+      assert.equal((await fetch(`${base}/api/workflows/gate-wf/gates/gate-up/nope`)).status, 404);
+      assert.equal((await fetch(`${base}/api/workflows/__no_such__/gates/gate-up/artA`)).status, 404);
+    });
+  });
+
+  for (const d of [upstream, downstream]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
+  { const i = workflows.indexOf(gw); if (i >= 0) workflows.splice(i, 1); }
 }
 
 console.log(`\n  ${passed} assertions passed`);

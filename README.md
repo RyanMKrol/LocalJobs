@@ -344,3 +344,10 @@ flowed plus a small sample/summary. A contract opts into this by adding an
 `checks[]` (per-expectation pass/fail, aligned by label) and a `sample`. Served
 by `GET /api/workflow-runs/:id/gates/:producer/:key` (reads files only — never a
 paid/remote call, so it's safe to poll).
+
+From a workflow's **definition** view (`/workflows/<name>`) — where there's no run
+in scope — a gate chip instead opens a **run-agnostic** gate page that explains the
+gate itself: the contract's artifact key, description, producer→consumer, and each
+side's *expected shape*, with no per-run actuals. It's served by the read-only
+`GET /api/workflows/:name/gates/:producer/:key`, which returns the static contract
+metadata only and never runs a contract `check()` (no file/paid/remote access).

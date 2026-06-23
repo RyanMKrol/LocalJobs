@@ -481,6 +481,20 @@ doubt, log it.
     producer's `produces[key]`, consumed = consumer's `consumes[key]`). That endpoint
     reads `data/` files only — NEVER a paid/remote call — so it is safe to poll;
     keep any future contract `check()` cheap + side-effect-free for the same reason.
+  - **Definition-level (run-agnostic) gate page (T102).** The run-scoped page above
+    belongs to a SPECIFIC run. The workflow DEFINITION view (`/workflows/[name]`)
+    instead links each structural gate chip to a run-AGNOSTIC gate page at
+    `dashboard/app/workflows/[name]/gates/[producer]/[key]/page.tsx` — mirroring how a
+    job node there links to the read-only `/jobs/<name>` rather than into one run. It
+    explains the gate ITSELF (the contract: artifact key, enriched description,
+    producer→consumer, and each side's declared **expected shape**) with NO run state
+    and NO actuals. It's served by `GET /api/workflows/:name/gates/:producer/:key`,
+    which returns the structural gate from `gatesForWorkflow` (`deriveGates` +
+    contract descriptions) plus each side's `shape` ONLY — it does **NOT** run any
+    contract `check()`, so it touches no `data/` files and makes no paid/remote calls
+    at all (purely static contract metadata). `Dag`'s structural gate chips take a
+    `workflowName` prop (replacing the old `lastRunId`) to build these definition-view
+    links; run-view chips still use `workflowRunId` → the run-scoped page, UNCHANGED.
 - **Workflow progress is rolled up from member jobs (don't set it by hand).** A
   workflow run's `progress` is a first-class roll-up that counts **only completed
   stages** over the workflow's total stage count — a member in a terminal state

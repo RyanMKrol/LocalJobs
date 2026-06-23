@@ -139,6 +139,21 @@ export interface GateInspection {
   consumed: GateSide | null;
 }
 
+/** One side (produced/consumed) of a gate's DEFINITION-level view: declared shape
+ *  only, no run actuals. */
+export interface GateShapeSide {
+  shape: ArtifactShape | null;
+}
+
+/** Run-AGNOSTIC, definition-level inspection of a gate (from the workflow
+ *  definition view): the structural gate + each side's declared expected shape.
+ *  No run state, no actuals — purely what the contract asserts. */
+export interface StructuralGateDetail {
+  gate: StructuralGate;
+  produced: GateShapeSide | null;
+  consumed: GateShapeSide | null;
+}
+
 /** One row in the first-cut input→output mapping for a workflow run (T095). */
 export interface IoRow {
   inputJob: string;
@@ -291,6 +306,10 @@ export const api = {
   gateInspection: (id: string, producer: string, key: string) =>
     get<GateInspection>(
       `/api/workflow-runs/${id}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
+    ),
+  workflowGate: (name: string, producer: string, key: string) =>
+    get<StructuralGateDetail>(
+      `/api/workflows/${encodeURIComponent(name)}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
     ),
   workflowRunIo: (id: string) => get<WorkflowIo>(`/api/workflow-runs/${id}/io`),
   runWorkflow: (name: string, limit?: number) =>
