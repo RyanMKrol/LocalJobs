@@ -333,6 +333,7 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
         gate: { producer: string; consumer: string; key: string; description?: string };
         produced: { shape: ArtifactShape | null };
         consumed: { shape: ArtifactShape | null };
+        identical: boolean;
       };
       assert.equal(body.gate.producer, 'gate-up');
       assert.equal(body.gate.consumer, 'gate-down');
@@ -340,6 +341,8 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
       assert.match(body.gate.description ?? '', /the A artifact/);
       assert.equal(body.produced.shape?.summary, 'rows of stuff');
       assert.equal(body.consumed.shape?.summary, 'consumes A');
+      // This gate is ASYMMETRIC (produces shape ≠ consumes shape) → not collapsible.
+      assert.equal(body.identical, false, 'differing shapes must report identical:false');
       assert.equal(checkCalls, 0, 'definition-level endpoint must NOT run any contract check()');
     });
   });
@@ -353,6 +356,53 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
 
   for (const d of [upstream, downstream]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
   { const i = workflows.indexOf(gw); if (i >= 0) workflows.splice(i, 1); }
+}
+
+// ── T138: the gate inspection endpoints report `identical` so the detail page can
+// collapse the duplicated producer/consumer panels when both sides declare the
+// SAME shape (the normal one-factory-per-key case). Asymmetric is covered above. ──
+{
+  const sharedShape: ArtifactShape = {
+    summary: 'the shared artifact', format: 'json file',
+    expectations: [{ label: 'non-empty', detail: 'at least one entry' }],
+  };
+  const idProd: JobDefinition = {
+    name: 'id-prod', run: async () => {},
+    produces: [{ key: 'shared', description: 'emits shared', shape: sharedShape, check: () => ({ ok: true, sample: '3 entries' }) }],
+  };
+  const idCons: JobDefinition = {
+    name: 'id-cons', run: async () => {},
+    // A SEPARATE but DEEP-EQUAL shape value on the consume side — the one-factory
+    // case after JSON round-trips; `identical` is a structural compare, not ===.
+    consumes: [{ key: 'shared', description: 'needs shared', shape: { summary: 'the shared artifact', format: 'json file', expectations: [{ label: 'non-empty', detail: 'at least one entry' }] }, check: () => ({ ok: true }) }],
+  };
+  for (const d of [idProd, idCons]) { syncJob(d); jobs.push(d); }
+  const idWf: WorkflowDefinition = { name: 'identical-wf', jobs: [{ job: 'id-prod' }, { job: 'id-cons', dependsOn: ['id-prod'] }] };
+  syncWorkflow(idWf); workflows.push(idWf);
+  const idRunId = createWorkflowRun('identical-wf', 'manual');
+
+  await test('definition gate: identical:true when both sides declare the same shape (collapsible)', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/identical-wf/gates/id-prod/shared`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { identical: boolean; produced: { shape: ArtifactShape | null }; consumed: { shape: ArtifactShape | null } };
+      assert.equal(body.identical, true);
+      assert.ok(body.produced.shape && body.consumed.shape, 'both sides still returned (page chooses how to render)');
+    });
+  });
+
+  await test('run-scoped gate: identical:true with both sides still present (page collapses)', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${idRunId}/gates/id-prod/shared`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { identical: boolean; produced: unknown; consumed: unknown };
+      assert.equal(body.identical, true);
+      assert.ok(body.produced && body.consumed, 'both sides still returned even when collapsible');
+    });
+  });
+
+  for (const d of [idProd, idCons]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
+  { const i = workflows.indexOf(idWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
 // ── T110: workflow-run output preview / path-safety ──

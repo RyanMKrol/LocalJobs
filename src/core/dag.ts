@@ -1,4 +1,4 @@
-import type { WorkflowJobRef, RunStatus } from './types.js';
+import type { ArtifactShape, WorkflowJobRef, RunStatus } from './types.js';
 
 /** Thrown when a workflow's `jobs` cannot form a valid DAG. */
 export class DagError extends Error {}
@@ -103,6 +103,34 @@ export interface Gate {
  */
 export function gateFailurePrefix(gate: Gate): string {
   return `Gate violation [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"`;
+}
+
+/**
+ * Whether two DECLARED artifact shapes are identical — a deep compare of
+ * `summary`, `format`, and the `expectations` array (each by `label` + `detail`,
+ * order-sensitive). Used by the gate inspection endpoints to decide whether a
+ * gate's producer (`produces[key]`) and consumer (`consumes[key]`) sides assert
+ * the SAME contract, so the detail page can collapse the two identical panels
+ * into one. A missing/absent shape on either side is treated as NOT identical —
+ * we never claim a match we can't confirm (so a side with no declared shape is
+ * always shown in full). Pure: compares only the static declared shapes, never
+ * any per-run actuals.
+ */
+export function shapesIdentical(
+  a: ArtifactShape | null | undefined,
+  b: ArtifactShape | null | undefined,
+): boolean {
+  if (!a || !b) return false; // can't confirm a match for an absent shape
+  if ((a.summary ?? '') !== (b.summary ?? '')) return false;
+  if ((a.format ?? '') !== (b.format ?? '')) return false;
+  const ea = a.expectations ?? [];
+  const eb = b.expectations ?? [];
+  if (ea.length !== eb.length) return false;
+  for (let i = 0; i < ea.length; i++) {
+    if (ea[i].label !== eb[i].label) return false;
+    if ((ea[i].detail ?? '') !== (eb[i].detail ?? '')) return false;
+  }
+  return true;
 }
 
 /** A gate's outcome within one workflow run, derived from member runs. */

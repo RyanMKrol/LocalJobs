@@ -28,33 +28,21 @@ function Mark({ actual }: { actual?: ExpectationResult }) {
 }
 
 /**
- * One side of the gate flow — the upstream 'Produced →' or downstream '→ Consumed'.
- * Shows the stage name, the artifact's declared shape (what's expected) and, when the
- * stage has run, the per-expectation pass/fail against what actually flowed plus
- * a small sample.
+ * The body of one contract panel: the declared shape (summary · format ·
+ * per-expectation list) plus, when the stage has run, the per-expectation
+ * pass/fail against what actually flowed and a small sample. Shared by the
+ * two-sided `SideCard` and the collapsed single-panel view so they stay in sync.
  */
-function SideCard({
-  role,
-  logLabel,
-  jobName,
-  side,
-  runId,
+function ShapeBody({
+  shape,
+  result,
 }: {
-  role: 'Produced →' | '→ Consumed';
-  logLabel: string;
-  jobName: string;
-  side: { shape: ArtifactShape | null; result: GateResult | null } | null;
-  runId?: string;
+  shape: ArtifactShape | null;
+  result: GateResult | null;
 }) {
-  const shape = side?.shape ?? null;
-  const result = side?.result ?? null;
   const rows = pairExpectations(shape, result);
   return (
-    <div className="gate-card">
-      <div className="gate-card-head">
-        <span className="gate-role">{role}</span>
-        <strong>{jobName}</strong>
-      </div>
+    <>
       {shape?.summary && <p className="gate-summary">{shape.summary}</p>}
       {shape?.format && <code className="code-block gate-format">{shape.format}</code>}
       {rows.length > 0 ? (
@@ -85,6 +73,36 @@ function SideCard({
         </div>
       )}
       {!result && <p className="muted">This stage hasn&apos;t run yet — showing the expected shape only.</p>}
+    </>
+  );
+}
+
+/**
+ * One side of the gate flow — the upstream 'Produced →' or downstream '→ Consumed'.
+ * Shows the stage name, the artifact's declared shape (what's expected) and, when the
+ * stage has run, the per-expectation pass/fail against what actually flowed plus
+ * a small sample.
+ */
+function SideCard({
+  role,
+  logLabel,
+  jobName,
+  side,
+  runId,
+}: {
+  role: 'Produced →' | '→ Consumed';
+  logLabel: string;
+  jobName: string;
+  side: { shape: ArtifactShape | null; result: GateResult | null } | null;
+  runId?: string;
+}) {
+  return (
+    <div className="gate-card">
+      <div className="gate-card-head">
+        <span className="gate-role">{role}</span>
+        <strong>{jobName}</strong>
+      </div>
+      <ShapeBody shape={side?.shape ?? null} result={side?.result ?? null} />
       {runId && <p className="gate-card-foot"><a href={`/runs/${runId}`}>view {logLabel} logs →</a></p>}
     </div>
   );
@@ -144,30 +162,70 @@ export default function GateDetail({
             <strong>{gate.producer}</strong> to <strong>{gate.consumer}</strong>.
           </p>
 
-          {/* Left-to-right flow: 'Produced →' → the gate (what it checks) → '→ Consumed' */}
-          <div className="gate-flow">
-            <SideCard role="Produced →" logLabel="producer" jobName={gate.producer} side={inspect?.produced ?? null} runId={producerRunId} />
-
-            <div className="gate-arrow" aria-hidden>→</div>
-
-            <div className="gate-card gate-center">
-              <div className="gate-card-head">
-                <span className="gate-role">Gate</span>
-                <span className={`badge ${gate.state}`}>{statusLabel(gate.state)}</span>
+          {/* Gate center block — key + description + state + violation link. Shared
+              by both the two-sided and the collapsed (identical-contract) layouts. */}
+          {(() => {
+            const gateCenter = (
+              <div className="gate-card gate-center">
+                <div className="gate-card-head">
+                  <span className="gate-role">Gate</span>
+                  <span className={`badge ${gate.state}`}>{statusLabel(gate.state)}</span>
+                </div>
+                <code className="code-block gate-format">{gate.key}</code>
+                <p className="muted">
+                  {gate.description ?? 'Validates the artifact above is well-formed before the next stage runs.'}
+                </p>
+                {gate.state === 'failed' && consumerRunId && (
+                  <p className="gate-card-foot"><a href={`/runs/${consumerRunId}`}>view violation logs →</a></p>
+                )}
               </div>
-              <code className="code-block gate-format">{gate.key}</code>
-              <p className="muted">
-                {gate.description ?? 'Validates the artifact above is well-formed before the next stage runs.'}
-              </p>
-              {gate.state === 'failed' && consumerRunId && (
-                <p className="gate-card-foot"><a href={`/runs/${consumerRunId}`}>view violation logs →</a></p>
-              )}
-            </div>
+            );
 
-            <div className="gate-arrow" aria-hidden>→</div>
+            // Collapsed view (T138): when the producer's `produces[key]` and the
+            // consumer's `consumes[key]` declare the SAME shape (the normal case —
+            // one factory wired on both sides), the two side panels are redundant,
+            // so show ONE consolidated contract panel. The boundary above already
+            // states producer→consumer; the per-side log links live in the footer.
+            if (inspect?.identical) {
+              const side = inspect.produced ?? inspect.consumed ?? null;
+              return (
+                <div className="gate-flow">
+                  {gateCenter}
+                  <div className="gate-arrow" aria-hidden>→</div>
+                  <div className="gate-card">
+                    <div className="gate-card-head">
+                      <span className="gate-role">Contract</span>
+                      <strong className="mono">{gate.key}</strong>
+                    </div>
+                    <p className="muted gate-collapsed-note">
+                      {gate.producer} and {gate.consumer} agree on one shape.
+                    </p>
+                    <ShapeBody shape={side?.shape ?? null} result={side?.result ?? null} />
+                    <p className="gate-card-foot">
+                      {producerRunId && <a href={`/runs/${producerRunId}`}>producer logs →</a>}
+                      {producerRunId && consumerRunId && gate.state !== 'failed' && <span className="muted"> · </span>}
+                      {consumerRunId && gate.state !== 'failed' && <a href={`/runs/${consumerRunId}`}>consumer logs →</a>}
+                    </p>
+                  </div>
+                </div>
+              );
+            }
 
-            <SideCard role="→ Consumed" logLabel="consumer" jobName={gate.consumer} side={inspect?.consumed ?? null} runId={gate.state === 'failed' ? undefined : consumerRunId} />
-          </div>
+            // Asymmetric gate: keep the full two-sided 'Produced → | Gate | → Consumed' diff.
+            return (
+              <div className="gate-flow">
+                <SideCard role="Produced →" logLabel="producer" jobName={gate.producer} side={inspect?.produced ?? null} runId={producerRunId} />
+
+                <div className="gate-arrow" aria-hidden>→</div>
+
+                {gateCenter}
+
+                <div className="gate-arrow" aria-hidden>→</div>
+
+                <SideCard role="→ Consumed" logLabel="consumer" jobName={gate.consumer} side={inspect?.consumed ?? null} runId={gate.state === 'failed' ? undefined : consumerRunId} />
+              </div>
+            );
+          })()}
         </>
       )}
     </>

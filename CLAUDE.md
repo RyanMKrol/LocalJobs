@@ -640,6 +640,27 @@ doubt, log it.
     producer's `produces[key]`, consumed = consumer's `consumes[key]`). That endpoint
     reads `data/` files only — NEVER a paid/remote call — so it is safe to poll;
     keep any future contract `check()` cheap + side-effect-free for the same reason.
+  - **Collapse identical producer/consumer sides to ONE panel (T138).** In this
+    codebase every gate references the SAME contract factory on both sides
+    (`fragranticaDataContract()` is both parse's `produces` and build's `consumes`),
+    so the **Produced →** and **→ Consumed** `SideCard`s show an IDENTICAL shape +
+    identical actuals — pure redundancy. Both gate detail pages therefore COLLAPSE
+    to a single consolidated panel (boundary + ONE **Expected shape** + the run's
+    actual ✓/✗ + sample, keeping the centre **Gate** block and the producer/consumer/
+    violation log links) whenever the two sides are identical, and fall back to the
+    full two-sided `Produced → | Gate | → Consumed` diff when they DIFFER. "Identical"
+    is decided server-side: BOTH gate inspection endpoints return an `identical:
+    boolean` computed by `shapesIdentical(a, b)` (pure, in `src/core/dag.ts`,
+    unit-tested) — a deep compare of the two sides' DECLARED `shape` (`summary` +
+    `format` + the `expectations` array by `label`+`detail`); a missing shape on
+    either side is treated as NOT identical (never hide a side we can't confirm).
+    The framework genuinely supports **asymmetric / fan-in** gates — `deriveGates`
+    is edge-scoped (one gate per producer→consumer edge, so ≥2 producers feeding one
+    consumer derive one gate each) and the executor's `enforceGate` checks the
+    producer's `produces[key]` and the consumer's `consumes[key]` INDEPENDENTLY, so
+    differing shapes both run + are enforced. The places/perfumes jobs keep the
+    one-factory-per-key convention (so they always collapse); asymmetry is exercised
+    only by test fixtures (`dag.test.ts`, `server.test.ts`, `workflow-executor.test.ts`).
   - **Definition-level (run-agnostic) gate page (T102).** The run-scoped page above
     belongs to a SPECIFIC run. The workflow DEFINITION view (`/workflows/[name]`)
     instead links each structural gate chip to a run-AGNOSTIC gate page at

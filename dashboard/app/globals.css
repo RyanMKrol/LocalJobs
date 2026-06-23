@@ -314,6 +314,8 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 .gate-sample { margin: 12px 0 0; }
 .gate-sample-label { font-size: 12px; margin: 0 0 4px; }
 .gate-card-foot { margin: 12px 0 0; font-size: 13px; }
+/* Collapsed (identical-contract) gate panel: a small note above the single shared shape. */
+.gate-collapsed-note { margin: 0 0 10px; font-size: 12px; }
 
 /* Base styling for text/number inputs — dark-theme native look */
 input[type="number"],

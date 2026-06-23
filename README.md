@@ -409,9 +409,21 @@ flowed plus a small sample/summary. A contract opts into this by adding an
 by `GET /api/workflow-runs/:id/gates/:producer/:key` (reads files only — never a
 paid/remote call, so it's safe to poll).
 
+In practice a gate references the **same contract** on both sides (e.g.
+`fragranticaDataContract()` is both the producer's `produces` and the consumer's
+`consumes`), so the Output and Input panels are identical. The page detects this
+(the inspection endpoints return an `identical` flag — a deep compare of the two
+sides' declared shapes) and **collapses to a single consolidated panel** (boundary
++ one expected shape + the actual ✓/✗ + sample), keeping every producer/consumer/
+violation log link. An **asymmetric** gate — where the producer's `produces[key]`
+and the consumer's `consumes[key]` declare *different* shapes (e.g. a fan-in DAG
+with several producers feeding one consumer) — still renders the full two-sided
+diff, and both sides' contracts are derived + enforced independently.
+
 From a workflow's **definition** view (`/workflows/<name>`) — where there's no run
 in scope — a gate chip instead opens a **run-agnostic** gate page that explains the
 gate itself: the contract's artifact key, description, producer→consumer, and each
-side's *expected shape*, with no per-run actuals. It's served by the read-only
+side's *expected shape*, with no per-run actuals (and the same identical-shape
+collapse). It's served by the read-only
 `GET /api/workflows/:name/gates/:producer/:key`, which returns the static contract
 metadata only and never runs a contract `check()` (no file/paid/remote access).

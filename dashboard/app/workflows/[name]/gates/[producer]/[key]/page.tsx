@@ -6,6 +6,35 @@ import type { ArtifactShape } from '../../../../../lib/api';
 import { usePoll } from '../../../../../ui';
 
 /**
+ * The body of a definition-level contract panel: ONLY the declared expected shape
+ * (summary · format · expectations) — never per-run actuals (no run in scope).
+ * Shared by the two-sided `SideCard` and the collapsed single-panel view.
+ */
+function ShapeBody({ shape }: { shape: ArtifactShape | null }) {
+  return (
+    <>
+      {shape?.summary && <p className="gate-summary">{shape.summary}</p>}
+      {shape?.format && <code className="code-block gate-format">{shape.format}</code>}
+      {shape?.expectations?.length ? (
+        <ul className="gate-expects">
+          {shape.expectations.map((e) => (
+            <li key={e.label}>
+              <span className="gate-mark pending" title="expected (no run in scope)">•</span>
+              <span className="gate-expect-text">
+                <span className="gate-expect-label">{e.label}</span>
+                {e.detail && <span className="muted gate-expect-detail">{e.detail}</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">No declared shape for this side.</p>
+      )}
+    </>
+  );
+}
+
+/**
  * One side of the gate flow — the upstream 'Produced →' or downstream '→ Consumed'.
  * This is the DEFINITION-level view: it shows ONLY the contract's declared expected
  * shape (summary · format · expectations), never any per-run actuals — there is no
@@ -26,23 +55,7 @@ function SideCard({
         <span className="gate-role">{role}</span>
         <strong>{jobName}</strong>
       </div>
-      {shape?.summary && <p className="gate-summary">{shape.summary}</p>}
-      {shape?.format && <code className="code-block gate-format">{shape.format}</code>}
-      {shape?.expectations?.length ? (
-        <ul className="gate-expects">
-          {shape.expectations.map((e) => (
-            <li key={e.label}>
-              <span className="gate-mark pending" title="expected (no run in scope)">•</span>
-              <span className="gate-expect-text">
-                <span className="gate-expect-label">{e.label}</span>
-                {e.detail && <span className="muted gate-expect-detail">{e.detail}</span>}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="muted">No declared shape for this side.</p>
-      )}
+      <ShapeBody shape={shape} />
       <p className="gate-card-foot"><a href={`/jobs/${jobName}`}>view {jobName} →</a></p>
     </div>
   );
@@ -90,26 +103,64 @@ export default function StructuralGateDetail({
             <strong>{gate.producer}</strong> to <strong>{gate.consumer}</strong>.
           </p>
 
-          {/* Left-to-right flow: 'Produced →' → the gate (what it checks) → '→ Consumed' */}
-          <div className="gate-flow">
-            <SideCard role="Produced →" jobName={gate.producer} shape={data?.produced?.shape ?? null} />
-
-            <div className="gate-arrow" aria-hidden>→</div>
-
-            <div className="gate-card gate-center">
-              <div className="gate-card-head">
-                <span className="gate-role">Gate</span>
+          {(() => {
+            const gateCenter = (
+              <div className="gate-card gate-center">
+                <div className="gate-card-head">
+                  <span className="gate-role">Gate</span>
+                </div>
+                <code className="code-block gate-format">{gate.key}</code>
+                <p className="muted">
+                  {gate.description ?? 'Validates the artifact above is well-formed before the next stage runs.'}
+                </p>
               </div>
-              <code className="code-block gate-format">{gate.key}</code>
-              <p className="muted">
-                {gate.description ?? 'Validates the artifact above is well-formed before the next stage runs.'}
-              </p>
-            </div>
+            );
 
-            <div className="gate-arrow" aria-hidden>→</div>
+            // Collapsed view (T138): when both sides declare the SAME shape (the
+            // normal case — one contract factory wired as both produces[key] and
+            // consumes[key]), the two side panels are redundant, so show ONE
+            // consolidated contract panel. The boundary above already states
+            // producer→consumer; member-page links live in the footer.
+            if (data?.identical) {
+              const shape = data.produced?.shape ?? data.consumed?.shape ?? null;
+              return (
+                <div className="gate-flow">
+                  {gateCenter}
+                  <div className="gate-arrow" aria-hidden>→</div>
+                  <div className="gate-card">
+                    <div className="gate-card-head">
+                      <span className="gate-role">Contract</span>
+                      <strong className="mono">{gate.key}</strong>
+                    </div>
+                    <p className="muted gate-collapsed-note">
+                      {gate.producer} and {gate.consumer} agree on one shape.
+                    </p>
+                    <ShapeBody shape={shape} />
+                    <p className="gate-card-foot">
+                      <a href={`/jobs/${gate.producer}`}>view {gate.producer} →</a>
+                      <span className="muted"> · </span>
+                      <a href={`/jobs/${gate.consumer}`}>view {gate.consumer} →</a>
+                    </p>
+                  </div>
+                </div>
+              );
+            }
 
-            <SideCard role="→ Consumed" jobName={gate.consumer} shape={data?.consumed?.shape ?? null} />
-          </div>
+            // Asymmetric gate: keep the full two-sided 'Produced → | Gate | → Consumed' view.
+            return (
+              <div className="gate-flow">
+                <SideCard role="Produced →" jobName={gate.producer} shape={data?.produced?.shape ?? null} />
+
+                <div className="gate-arrow" aria-hidden>→</div>
+
+                {gateCenter}
+
+                <div className="gate-arrow" aria-hidden>→</div>
+
+                <SideCard role="→ Consumed" jobName={gate.consumer} shape={data?.consumed?.shape ?? null} />
+              </div>
+            );
+          })()}
 
           <p className="muted" style={{ marginTop: 16 }}>
             This is the gate&apos;s definition — what it checks, independent of any run. To see a

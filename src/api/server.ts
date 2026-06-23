@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { config } from '../config.js';
 import { acquireRepoLock, resolveRepoPaths } from '../core/repo-lock.js';
-import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
+import { type Gate, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress } from '../core/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
@@ -750,10 +750,16 @@ export function createApiServer(
         if (!gate) return json(res, 404, { error: 'gate not found' });
         const sideShape = (jobName: string, field: 'produces' | 'consumes') =>
           getJobDefinition(jobName)?.[field]?.find((c) => c.key === key)?.shape ?? null;
+        const producedShape = sideShape(gate.producer, 'produces');
+        const consumedShape = sideShape(gate.consumer, 'consumes');
         return json(res, 200, {
           gate,
-          produced: { shape: sideShape(gate.producer, 'produces') },
-          consumed: { shape: sideShape(gate.consumer, 'consumes') },
+          produced: { shape: producedShape },
+          consumed: { shape: consumedShape },
+          // When both sides declare the SAME contract shape (the normal case —
+          // one factory wired as both produces[key] and consumes[key]), the detail
+          // page collapses to a single panel; an asymmetric gate keeps both sides.
+          identical: shapesIdentical(producedShape, consumedShape),
         });
       }
 
@@ -887,7 +893,11 @@ export function createApiServer(
         };
         const produced = await inspectSide(gate.producer, 'produces');
         const consumed = await inspectSide(gate.consumer, 'consumes');
-        return json(res, 200, { gate, produced, consumed });
+        // `identical` is a deep compare of the DECLARED shapes only (not the live
+        // actuals), so the page can collapse the duplicated producer/consumer
+        // panels when both sides assert the same contract (the normal case).
+        const identical = shapesIdentical(produced?.shape ?? null, consumed?.shape ?? null);
+        return json(res, 200, { gate, produced, consumed, identical });
       }
 
       // GET /api/workflow-runs/:id/io

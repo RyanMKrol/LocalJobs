@@ -139,6 +139,11 @@ export interface GateInspection {
   gate: GateStatus;
   produced: GateSide | null;
   consumed: GateSide | null;
+  /** True when both sides declare the SAME contract shape (T138) — the page then
+   *  collapses the duplicated producer/consumer panels into one. False for an
+   *  asymmetric gate (different produces[key] vs consumes[key] shapes) or when a
+   *  side has no declared shape. */
+  identical: boolean;
 }
 
 /** One side (produced/consumed) of a gate's DEFINITION-level view: declared shape
@@ -154,6 +159,9 @@ export interface StructuralGateDetail {
   gate: StructuralGate;
   produced: GateShapeSide | null;
   consumed: GateShapeSide | null;
+  /** True when both sides declare the SAME contract shape (T138) — the definition
+   *  page then collapses to one panel; false for an asymmetric gate / absent shape. */
+  identical: boolean;
 }
 
 /** One row in the first-cut input→output mapping for a workflow run (T095). */

@@ -81,6 +81,25 @@ for (const d of gateMembers) {
   pushed.push(d);
 }
 
+// Asymmetric-gate members (T138): the producer's `produces[key]` and the
+// consumer's `consumes[key]` declare DIFFERENT shapes and SEPARATE checks. The
+// counters prove the executor runs BOTH sides independently at the boundary, so
+// fan-in / asymmetric DAGs are genuinely supported (not just the one-factory case).
+let asymProdChecks = 0;
+let asymConsChecks = 0;
+const asymProdShape = { summary: 'raw producer view', format: 'csv', expectations: [{ label: 'has header row' }] };
+const asymConsShape = { summary: 'parsed consumer view', format: 'objects', expectations: [{ label: 'every row has an id' }] };
+const asymMembers: JobDefinition[] = [
+  { name: 'asym-prod', produces: [{ key: 'sym', shape: asymProdShape, check: () => { asymProdChecks++; return { ok: true }; } }], run: async () => {} },
+  { name: 'asym-cons-ok', consumes: [{ key: 'sym', shape: asymConsShape, check: () => { asymConsChecks++; return { ok: true }; } }], run: async () => {} },
+  { name: 'asym-cons-bad', consumes: [{ key: 'sym', shape: asymConsShape, check: () => { asymConsChecks++; return { ok: false, violations: ['row 2 has no id'] }; } }], run: async () => {} },
+];
+for (const d of asymMembers) {
+  syncJob(d);
+  jobs.push(d);
+  pushed.push(d);
+}
+
 // Run-limit members (T094): a root stage that declares inputKeys() + a consumer.
 // The fake child just succeeds — selection happens in the PARENT at run start, so
 // these prove run_limit + selected_roots are frozen on the run row correctly.
@@ -262,6 +281,32 @@ try {
     assert.equal(runs.find((r) => r.job_name === 'g-cons-bad')?.status, 'failed');
     assert.equal(runs.find((r) => r.job_name === 'pp-dep')?.status, 'skipped'); // downstream of the gated stage
   });
+  await test('asymmetric gate: producer/consumer declare DIFFERENT shapes → BOTH checks run and the consumer passes', async () => {
+    asymProdChecks = 0; asymConsChecks = 0;
+    const def: WorkflowDefinition = {
+      name: 'asym-pass', jobs: [{ job: 'asym-prod' }, { job: 'asym-cons-ok', dependsOn: ['asym-prod'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success');
+    assert.equal(asymProdChecks, 1, 'producer-side contract was checked');
+    assert.equal(asymConsChecks, 1, 'consumer-side (different shape) contract was checked');
+  });
+
+  await test('asymmetric gate: a consumer-side drift fails the gate independently of the (ok) producer side', async () => {
+    asymProdChecks = 0; asymConsChecks = 0;
+    const def: WorkflowDefinition = {
+      name: 'asym-fail', jobs: [{ job: 'asym-prod' }, { job: 'asym-cons-bad', dependsOn: ['asym-prod'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    const cons = listRunsForWorkflowRun(workflowRunId!).find((r) => r.job_name === 'asym-cons-bad');
+    assert.equal(cons?.status, 'failed');
+    assert.match(cons!.error ?? '', /Gate violation/);
+    assert.match(cons!.error ?? '', /row 2 has no id/);
+    assert.equal(asymProdChecks, 1, 'producer-side still checked even though the consumer drifted');
+  });
+
   await test('run-limit: a manual limit selects the first N roots and freezes them on the run row', async () => {
     const def: WorkflowDefinition = {
       name: 'lim-wf', jobs: [{ job: 'lim-root' }, { job: 'lim-cons', dependsOn: ['lim-root'] }],
