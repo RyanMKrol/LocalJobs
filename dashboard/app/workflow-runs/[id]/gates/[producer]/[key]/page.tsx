@@ -155,7 +155,7 @@ export default function GateDetail({
                 <span className="gate-role">Gate</span>
                 <span className={`badge ${gate.state}`}>{statusLabel(gate.state)}</span>
               </div>
-              <p className="gate-summary"><span className="mono">{gate.key}</span></p>
+              <code className="code-block gate-format">{gate.key}</code>
               <p className="muted">
                 {gate.description ?? 'Validates the artifact above is well-formed before the next stage runs.'}
               </p>
