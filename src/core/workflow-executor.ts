@@ -5,10 +5,12 @@ import {
   finishWorkflowRun,
   hasActiveWorkflowRun,
   selectPendingRoots,
-  workflowRetryableCount,
+  workflowProgressSignature,
+  noForwardProgress,
   recordGateFailure,
   recordSkippedRun,
   rollUpWorkflowProgress,
+  type WorkflowProgressSignature,
 } from '../db/store.js';
 import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
 import { runJobForWorkflow } from './executor.js';
@@ -235,6 +237,23 @@ async function runWorkflowInner(
 
   log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
 
+  // Per-stage notification dedup (T112): the LAST status we pushed a notification
+  // for, per member. During repeatUntilStable cycling we re-run every stage each
+  // cycle; without this, a stage that succeeds every cycle would push a "success"
+  // notification on EVERY cycle (40 cycles × 4 stages) and ntfy rate-limits (429).
+  // We only notify when a stage's status CHANGES from the last one we sent (a
+  // meaningful transition), so the steady state is quiet. Single-cycle workflows
+  // start with an empty map → still notify each stage exactly once (unchanged).
+  const lastNotifiedStatus = new Map<string, RunStatus>();
+  const maybeNotifyStage = async (job: string, s: RunStatus) => {
+    if (def.repeatUntilStable && lastNotifiedStatus.get(job) === s) return;
+    lastNotifiedStatus.set(job, s);
+    await notifyStage(def.name, workflowRunId, job, s, log);
+  };
+
+  // No-forward-progress detection across repeatUntilStable cycles (T112).
+  let prevSig: WorkflowProgressSignature | null = null;
+
   let lastStatuses = new Map<string, RunStatus>();
   try {
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
@@ -275,14 +294,14 @@ async function runWorkflowInner(
         settled++;
         rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} ${s})`);
         log(`${s === 'success' ? '✓' : '✗'} ${job} → ${s}`, s === 'success' ? 'info' : 'warn');
-        await notifyStage(def.name, workflowRunId, job, s, log);
+        await maybeNotifyStage(job, s);
       },
       onSkip: async (job, reason) => {
         settled++;
         recordSkippedRun(job, workflowRunId, `skipped: ${reason}`);
         rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} skipped)`);
         log(`⊘ ${job} skipped — ${reason}`, 'warn');
-        await notifyStage(def.name, workflowRunId, job, 'skipped', log);
+        await maybeNotifyStage(job, 'skipped');
       },
     });
 
@@ -291,12 +310,29 @@ async function runWorkflowInner(
     if (controller.signal.aborted) break;
 
     if (!def.repeatUntilStable) break;
-    const retryable = workflowRetryableCount(memberNames, minAttempts);
-    log(`cycle ${cycle} complete · retryable work left = ${retryable}`);
-    if (retryable === 0) {
+    const sig = workflowProgressSignature(memberNames, minAttempts);
+    log(`cycle ${cycle} complete · retryable work left = ${sig.retryable}`);
+    if (sig.retryable === 0) {
       log('Stable — no retryable work remaining.');
       break;
     }
+    // No-forward-progress early stop (T112): if a whole cycle changed NOTHING in
+    // the member work-item ledger (same row count, same total attempts) and the
+    // retryable count didn't drop, the remaining "retryable" items aren't actually
+    // advancing — e.g. a genuinely-unfindable input frozen below maxAttempts. Spinning
+    // to maxCycles would just re-run every stage for nothing (and, before the
+    // notification dedup, spam ntfy). Stop here and surface that the items need
+    // attention.
+    if (noForwardProgress(prevSig, sig)) {
+      log(
+        `No forward progress this cycle — ${sig.retryable} item(s) still flagged retryable but nothing advanced ` +
+          `(no work item attempted/succeeded/failed). Stopping early rather than spinning to maxCycles=${maxCycles}; ` +
+          `the remaining item(s) need attention (e.g. an unfindable input) — unstick or ignore them from the dashboard.`,
+        'warn',
+      );
+      break;
+    }
+    prevSig = sig;
     if (cycle < maxCycles && (def.cycleSleepMs ?? 0) > 0) {
       log(`sleeping ${Math.round((def.cycleSleepMs ?? 0) / 1000)}s before next cycle…`);
       await sleep(def.cycleSleepMs ?? 0);

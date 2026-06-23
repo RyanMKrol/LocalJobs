@@ -6,12 +6,13 @@ import {
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   ignoreWorkItem, ignoredItems, isWorkItemDone,
-  listRunsForWorkflowRun, listServices, markWorkItem, orphanedWorkItems, selectPendingRoots, workflowRetryableCount, workItemMarkdownPath,
+  listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemMarkdownPath,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, usageThisMonth,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
+import { db } from './index.js';
 
 // member jobs must exist (runs.job_name FK → jobs.name)
 for (const n of ['t-a', 't-b', 't-c']) syncJob({ name: n, run: async () => {} });
@@ -539,3 +540,77 @@ console.log('  ✓ read-only DB browser lists tables + pages rows, rejects unkno
   assert.equal(runCannedQuery("recent-failed-runs'; DROP TABLE runs;--"), null, 'injection-y id → null');
 }
 console.log('  ✓ canned read-only queries: catalogue + each query returns expected shape, rejects unknown ids');
+
+// ── T112: no-forward-progress stop condition for repeatUntilStable ──
+// A genuinely-unfindable item frozen below maxAttempts is counted retryable every
+// cycle yet never advances; the loop must detect "this cycle changed nothing" and
+// stop instead of spinning to maxCycles.
+{
+  for (const n of ['p-find', 'p-fetch']) syncJob({ name: n, run: async () => {} });
+  const members = ['p-find', 'p-fetch'];
+  const MIN = 4;
+
+  // pure decision helper: first cycle (no prev) is never "no progress"
+  assert.equal(noForwardProgress(null, { items: 1, attempts: 2, retryable: 1 }), false);
+
+  // a real attempt landed (one success), nothing retryable left
+  markWorkItem('p-find', 'good-1', 'success', { attempts: 1 });
+  // one genuinely-unfindable item, frozen below maxAttempts → retryable forever
+  markWorkItem('p-find', 'amouage-jubilation-40', 'failed', { attempts: 2, detail: { error: 'no Fragrantica page found' } });
+
+  const sigA = workflowProgressSignature(members, MIN);
+  assert.equal(sigA.items, 2, 'two ledger rows');
+  assert.equal(sigA.attempts, 3, 'attempts summed (1 + 2)');
+  assert.equal(sigA.retryable, 1, 'the frozen failed item is retryable');
+
+  // a cycle that re-runs but advances NOTHING produces an identical signature →
+  // noForwardProgress is true (this is what stops the loop early).
+  const sigB = workflowProgressSignature(members, MIN);
+  assert.deepEqual(sigB, sigA, 'unchanged cycle → identical signature');
+  assert.equal(noForwardProgress(sigA, sigB), true, 'no work advanced → stop early');
+
+  // but if an item actually advances (its attempts increment), it is NOT a stop:
+  markWorkItem('p-find', 'amouage-jubilation-40', 'failed', { attempts: 3, detail: { error: 'no Fragrantica page found' } });
+  const sigC = workflowProgressSignature(members, MIN);
+  assert.equal(sigC.attempts, 4, 'attempts advanced (2 → 3)');
+  assert.equal(noForwardProgress(sigB, sigC), false, 'a real re-attempt is forward progress → keep cycling');
+
+  // once the item exhausts its retry budget it stops being retryable (drops out
+  // naturally), so the loop ends via the retryable===0 / dropped-count path.
+  markWorkItem('p-find', 'amouage-jubilation-40', 'failed', { attempts: MIN });
+  const sigD = workflowProgressSignature(members, MIN);
+  assert.equal(sigD.retryable, 0, 'exhausted item no longer retryable');
+  // retryable dropped vs sigC → not a no-progress stop (genuine progress)
+  assert.equal(noForwardProgress(sigC, sigD), false, 'retryable dropped → progress, not a stall');
+}
+console.log('  ✓ T112 no-forward-progress: signature + stop decision (frozen item halts cycling, real attempts continue)');
+
+// ── T112: deterministic latest-run-per-stage ordering (status-flicker fix) ──
+// During fast repeatUntilStable cycling two runs of the same job can share a
+// second; listRunsForWorkflowRun must order by (started_at, rowid) so the genuinely
+// latest run sorts last and the dashboard's last-write-wins status is correct.
+{
+  syncJob({ name: 'flick-a', run: async () => {} });
+  syncWorkflow({ name: 'flick-wf', jobs: [{ job: 'flick-a' }] });
+  const wr = createWorkflowRun('flick-wf', 'manual');
+
+  // cycle 1: a settled (success) run, then cycle 2: a fresh still-running run.
+  const older = createRun('flick-a', 'workflow', 1, wr);
+  finishRun(older, 'success', { exitCode: 0 });
+  const newer = createRun('flick-a', 'workflow', 2, wr); // running
+
+  // Force BOTH started_at to the SAME timestamp so ordering MUST fall back to the
+  // rowid tiebreaker (reproduces the colliding-second flicker deterministically).
+  db.prepare("UPDATE runs SET started_at = '2026-06-23 02:00:00' WHERE id IN (?, ?)").run(older, newer);
+
+  const members = listRunsForWorkflowRun(wr);
+  const last = members[members.length - 1];
+  assert.equal(last.id, newer, 'the newer (higher-rowid) run sorts last despite the tied timestamp');
+  assert.equal(last.status, 'running', 'so the latest-per-stage status is the running run, not the stale success');
+
+  // mirror the dashboard derivation (last write wins) to prove no false "succeeded"
+  const statusByJob: Record<string, string> = {};
+  for (const r of members) statusByJob[r.job_name] = r.status;
+  assert.equal(statusByJob['flick-a'], 'running', 'dashboard status derivation picks the running run');
+}
+console.log('  ✓ T112 status flicker: listRunsForWorkflowRun orders by (started_at, rowid) so latest stage status is correct');

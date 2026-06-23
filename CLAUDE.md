@@ -139,6 +139,30 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   executor would silently skip — so the caller knows it didn't start. The dashboard's
   Run buttons (Workflows LIST + workflow DETAIL) disable and show **"Running…"** while
   `last_run.status === 'running'`, so the UI never lets you click into a duplicate.
+- **`repeatUntilStable` cycling stops on no forward progress (T112).** A workflow
+  with `repeatUntilStable` re-runs its DAG in cycles until `workflowRetryableCount`
+  hits 0 OR a whole cycle advances NOTHING. The framework snapshots the member
+  work-item ledger each cycle via `workflowProgressSignature` (row count + summed
+  attempts + retryable count); if a cycle leaves the signature unchanged AND the
+  retryable count didn't drop (`noForwardProgress`), the loop **breaks early** rather
+  than spinning to `maxCycles`. This is the robust fix for a genuinely-unfindable
+  input (e.g. a perfume with no Fragrantica page) that is counted "retryable" every
+  cycle yet never actually re-attempts/increments — without it EVERY scheduled run
+  burned all 40 cycles re-running all stages for nothing. The early stop logs a warn
+  telling you to unstick/ignore the stuck item.
+- **Per-stage notifications are deduped during cycling (T112).** `runWorkflow`
+  notifies a stage (`notifyStage`) only when its status **changes** from the last
+  push for that stage — so a `repeatUntilStable` run that re-runs 4 stages × 40
+  cycles no longer fires ~160 pushes and trips ntfy's 429 rate-limit. Single-cycle
+  workflows (the dedup map starts empty) still notify each stage exactly once —
+  unchanged. The aggregate `notifyWorkflow` at the end is always sent.
+- **Latest-run-per-stage ordering is rowid-deterministic (T112).**
+  `listRunsForWorkflowRun` orders by `(started_at, rowid)`, NOT `started_at` alone.
+  `started_at` is second-granularity, so during fast cycling an earlier cycle's
+  settled run and the current cycle's fresh `running` run can share a second; without
+  the `rowid` tiebreaker the dashboard's last-write-wins "latest per stage" could
+  pick the stale settled run over the live one — the succeeded→running→succeeded
+  status flicker. Keep any "latest run" derivation ordering by `(started_at, rowid)`.
 - **The dashboard is a pure read/refresh client of the API.** It never touches
   SQLite directly and is not required for jobs to run.
 
@@ -153,8 +177,8 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
 | `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled` |
 | `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
-| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below) |
-| `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
+| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; `repeatUntilStable` cycling with a **no-forward-progress early stop** (T112, via `workflowProgressSignature`/`noForwardProgress`) + **per-stage notification dedup** (only push on a status change while cycling); owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below) |
+| `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification. `notifyStage` is fired per-stage by the executor, which DEDUPES it during `repeatUntilStable` cycling (status-change-only) so cycling can't trip ntfy's 429 |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage` |

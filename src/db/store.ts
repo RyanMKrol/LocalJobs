@@ -703,9 +703,19 @@ export function lastWorkflowRunForWorkflow(name: string): WorkflowRunRow | undef
     .get(name) as WorkflowRunRow | undefined;
 }
 
-/** Member job runs of a workflow run, in start order (for drill-down). */
+/**
+ * Member job runs of a workflow run, in creation order (for drill-down).
+ * Ordered by `started_at, rowid` — the `rowid` tiebreaker is essential (T112):
+ * `started_at` is only second-granularity, so during fast `repeatUntilStable`
+ * cycling two runs of the SAME job (an earlier cycle's settled run and the current
+ * cycle's fresh `running` run) can share a second. Without the tiebreaker their
+ * order is undefined and the dashboard's "latest run per stage" (last-write-wins)
+ * could pick the OLD settled run over the new running one — the succeeded→running→
+ * succeeded status flicker. `rowid` increases monotonically with creation, so the
+ * genuinely-latest run always sorts last.
+ */
 export function listRunsForWorkflowRun(workflowRunId: string): RunRow[] {
-  return db.prepare('SELECT * FROM runs WHERE workflow_run_id = ? ORDER BY started_at')
+  return db.prepare('SELECT * FROM runs WHERE workflow_run_id = ? ORDER BY started_at, rowid')
     .all(workflowRunId) as RunRow[];
 }
 
@@ -729,6 +739,42 @@ export function workflowRetryableCount(jobNames: string[], minAttempts: number):
   return (db.prepare(
     `SELECT COUNT(*) AS n FROM work_items WHERE job_name IN (${ph}) AND status = 'failed' AND attempts < ?`,
   ).get(...jobNames, minAttempts) as { n: number }).n;
+}
+
+/** A cheap snapshot of a workflow's member work-item ledger (T112), used to decide
+ *  whether a `repeatUntilStable` cycle actually advanced anything: total ledger
+ *  rows, the SUM of their attempt counts, and how many are still retryable. */
+export interface WorkflowProgressSignature {
+  items: number;
+  attempts: number;
+  retryable: number;
+}
+
+/** Snapshot the member work-item ledger for no-forward-progress detection (T112). */
+export function workflowProgressSignature(jobNames: string[], minAttempts: number): WorkflowProgressSignature {
+  if (jobNames.length === 0) return { items: 0, attempts: 0, retryable: 0 };
+  const ph = jobNames.map(() => '?').join(',');
+  const row = db.prepare(
+    `SELECT COUNT(*) AS items, COALESCE(SUM(attempts), 0) AS attempts FROM work_items WHERE job_name IN (${ph})`,
+  ).get(...jobNames) as { items: number; attempts: number };
+  return { items: row.items, attempts: row.attempts, retryable: workflowRetryableCount(jobNames, minAttempts) };
+}
+
+/**
+ * Whether a `repeatUntilStable` cycle made NO forward progress versus the previous
+ * cycle (T112): the ledger row count and total attempts are unchanged AND the
+ * retryable count did not drop. When true, continuing to cycle would just re-run
+ * every stage to `maxCycles` for nothing — e.g. a genuinely-unfindable input frozen
+ * below `maxAttempts` that is counted retryable every cycle yet never actually
+ * advances. Pure (no DB) so it's directly unit-testable. `null` prev (first cycle)
+ * is never "no progress".
+ */
+export function noForwardProgress(
+  prev: WorkflowProgressSignature | null,
+  cur: WorkflowProgressSignature,
+): boolean {
+  if (!prev) return false;
+  return cur.items === prev.items && cur.attempts === prev.attempts && cur.retryable >= prev.retryable;
 }
 
 // ---- workflow framework logs ----

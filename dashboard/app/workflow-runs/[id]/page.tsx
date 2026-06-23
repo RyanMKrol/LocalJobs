@@ -8,9 +8,12 @@ import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../
 
 function latestByStage(members: Run[]): Run[] {
   const latest = new Map<string, Run>();
-  // members are ordered by start time ascending; later writes overwrite earlier ones
-  // so the final value per key is the latest run. Map preserves first-insertion order
-  // (updating an existing key keeps its position), so stage order is maintained.
+  // members arrive ordered by (started_at, rowid) — the rowid tiebreaker (T112) is
+  // what makes "last write wins" correct during fast repeatUntilStable cycling,
+  // where an earlier cycle's settled run and the current cycle's running run can
+  // share a clock second. The final value per key is the genuinely-latest run, so
+  // a stale "succeeded" never overwrites the live "running" (no status flicker).
+  // Map preserves first-insertion order, so stage order is maintained.
   for (const r of members) latest.set(r.job_name, r);
   return [...latest.values()];
 }
@@ -239,7 +242,8 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   );
   const workflow = pdata?.workflow;
 
-  // Latest member run per stage (members are ordered by start time).
+  // Latest member run per stage (members are ordered by (started_at, rowid), so the
+  // last write per job is the genuinely-latest run — see latestByStage / T112).
   const statusByJob: Record<string, string> = {};
   const runIdByJob: Record<string, string> = {};
   for (const r of members) { statusByJob[r.job_name] = r.status; runIdByJob[r.job_name] = r.id; }

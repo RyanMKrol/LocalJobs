@@ -341,9 +341,14 @@ Cloudflare clearance — saves both the page text *and* the raw HTML so the pars
 stage can read the accord-bar widths) → `perfumes-parse` (extract structured
 notes/accords, lifting each accord's strength % off the saved HTML's bar widths) →
 `perfumes-build` (research + write a markdown profile). Uses `repeatUntilStable`
-cycling. Drives the local `claude` CLI. See `perfumes/config.ts` for models,
-pacing, headless toggle, and dry-run options. See `.harness/LIMITATIONS.md` for
-scraping trade-offs.
+cycling — it re-runs the DAG until no retryable work remains OR a whole cycle makes
+**no forward progress** (a genuinely-unfindable input frozen below `maxAttempts`
+would otherwise be counted "retryable" every cycle and spin the loop to `maxCycles`
+for nothing; the run now stops early and flags the item for unstick/ignore). During
+cycling, a stage's success/failed notification fires only when its status **changes**
+from the last push, so a steady run no longer floods ntfy. Drives the local `claude`
+CLI. See `perfumes/config.ts` for models, pacing, headless toggle, and dry-run
+options. See `.harness/LIMITATIONS.md` for scraping trade-offs.
 
 **Typed-artifact contracts.** Each stage boundary declares `produces`/`consumes`
 contracts (`contracts.ts` in each workflow). A shape violation at a gate fails

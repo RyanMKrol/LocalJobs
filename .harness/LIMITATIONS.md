@@ -404,3 +404,20 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   concurrency and reads are local-file-fast, but it is N requests, not one.
   *Revisit:* if a workflow's ledger grows large enough to make the panel sluggish, add a batched
   `outputs` endpoint or render previews only for visible rows (IntersectionObserver).
+
+- **`repeatUntilStable` no-forward-progress stop is heuristic, not a true fixpoint (T112).**
+  *Why:* the loop stops early when a whole cycle leaves the member work-item ledger signature
+  unchanged (row count + summed attempts) AND the retryable count didn't drop (`noForwardProgress`).
+  This robustly kills the perpetual-cycling case (a genuinely-unfindable input frozen below
+  `maxAttempts`, counted retryable every cycle yet never re-attempting) without depending on WHY a
+  given stage failed to advance it.
+  *Impact:* a cycle that legitimately makes NO ledger change but WOULD progress on a later cycle —
+  e.g. an external dependency that's momentarily unavailable and a job that neither increments
+  attempts nor records anything that pass — is treated as "no progress" and the run stops early
+  (resumes fine on the next scheduled/manual run, since idempotency means outstanding work is
+  retried). Jobs SHOULD advance the ledger (increment attempts / mark failed) on every real
+  attempt; a job that swallows a transient failure without touching the ledger can be stopped one
+  cycle sooner than strictly necessary.
+  *Revisit:* if a workflow needs in-run retry across a transient outage, give the stop condition a
+  small grace (e.g. stop only after K consecutive no-progress cycles) rather than the immediate
+  single-cycle break.
