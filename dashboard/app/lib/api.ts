@@ -65,6 +65,8 @@ export interface Workflow {
   description: string;
   schedule: string | null;
   enabled: number;
+  /** 1 when the owner has edited the schedule from the dashboard (T135); code-sync then preserves it. */
+  schedule_overridden?: number;
   created_at: string;
   last_run: WorkflowRun | null;
   next_run: string | null;
@@ -353,6 +355,19 @@ export const api = {
   runWorkflow: (name: string, limit?: number) =>
     post<{ ok: boolean; limit: number | null }>(`/api/workflows/${name}/run`, limit !== undefined ? { limit } : undefined),
   toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${name}/toggle`, { enabled }),
+  // Persist + live-apply a user override of a workflow's cron schedule (T135). An
+  // empty string clears it to manual-only. Surfaces the server's 400 validation
+  // error (its `error` body) as the thrown message so the page can show it inline.
+  updateWorkflowSchedule: async (name: string, schedule: string) => {
+    const res = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schedule }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; schedule?: string | null; next_run?: string | null };
+    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+    return data as { ok: boolean; schedule: string | null; next_run: string | null };
+  },
   cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>

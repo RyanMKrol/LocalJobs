@@ -9,7 +9,7 @@ import {
   listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemMarkdownPath,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
-  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, usageThisMonth,
+  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, usageThisMonth,
   bulkUnstickItems, bulkIgnoreItems,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
@@ -26,6 +26,34 @@ assert.deepEqual(getWorkflowJobs('t-pipe'), [{ job_name: 't-a', depends_on: [] }
 // re-sync replaces membership/edges
 syncWorkflow({ name: 't-pipe', jobs: [{ job: 't-a' }, { job: 't-b' }, { job: 't-c', dependsOn: ['t-a'] }] });
 assert.equal(getWorkflowJobs('t-pipe').length, 3);
+
+// ── editable schedule (T135): user-owned override reconciled across code-sync ──
+{
+  syncWorkflow({ name: 't-sched', schedule: '0 2 * * *', jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-sched')?.schedule, '0 2 * * *', 'code schedule seeded');
+  assert.equal(getWorkflow('t-sched')?.schedule_overridden, 0, 'not overridden initially');
+
+  // user edits the schedule → flips schedule_overridden
+  const updated = updateWorkflowSchedule('t-sched', '30 4 * * *');
+  assert.equal(updated?.schedule, '30 4 * * *', 'updateWorkflowSchedule sets the value');
+  assert.equal(updated?.schedule_overridden, 1, 'updateWorkflowSchedule flips schedule_overridden');
+
+  // a CODE-sync now PRESERVES the user's schedule (the reconcile, like enabled)
+  syncWorkflow({ name: 't-sched', schedule: '0 2 * * *', jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-sched')?.schedule, '30 4 * * *', 'overridden schedule survives re-sync');
+  assert.equal(getWorkflow('t-sched')?.schedule_overridden, 1, 'override flag survives re-sync');
+
+  // an empty/blank value clears to NULL = manual-only (still overridden)
+  const cleared = updateWorkflowSchedule('t-sched', '   ');
+  assert.equal(cleared?.schedule, null, 'blank input clears schedule to manual-only');
+  assert.equal(cleared?.schedule_overridden, 1, 'still overridden after clear');
+  syncWorkflow({ name: 't-sched', schedule: '0 2 * * *', jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-sched')?.schedule, null, 'cleared-to-null override survives re-sync');
+
+  // unknown workflow → undefined (no row touched)
+  assert.equal(updateWorkflowSchedule('t-no-such-wf', '0 1 * * *'), undefined, 'unknown workflow → undefined');
+}
+console.log('  ✓ updateWorkflowSchedule: set/clear + schedule_overridden reconcile across sync (T135)');
 
 // workflow run + linked member runs + skip + logs
 const pr = createWorkflowRun('t-pipe', 'manual');

@@ -579,15 +579,21 @@ export function backfillMonthlyUsage(jobName: string, count: number): void {
 
 // ════════════════════════════════ workflows ════════════════════════════════
 
+// On re-sync, code re-seeds the cron `schedule` ONLY while the user hasn't taken it
+// over. Once `schedule_overridden = 1` (a dashboard edit, see updateWorkflowSchedule),
+// the schedule is preserved from the existing row so code-sync never clobbers a user
+// override — the same reconcile the user-owned `enabled` flag and the service limits
+// get. description is code-owned and always refreshed.
 const upsertWorkflowStmt = db.prepare(`
   INSERT INTO workflows (name, description, schedule, enabled)
   VALUES (@name, @description, @schedule, 1)
   ON CONFLICT(name) DO UPDATE SET
     description = excluded.description,
-    schedule    = excluded.schedule
+    schedule    = CASE WHEN schedule_overridden = 1 THEN schedule ELSE excluded.schedule END
 `);
 
-/** Upsert a workflow + REPLACE its membership/edges. `enabled` is preserved. */
+/** Upsert a workflow + REPLACE its membership/edges. `enabled` and an overridden
+ *  `schedule` are preserved across the sync. */
 export function syncWorkflow(def: WorkflowDefinition): void {
   const tx = db.transaction(() => {
     upsertWorkflowStmt.run({
@@ -607,6 +613,7 @@ export interface WorkflowRow {
   description: string;
   schedule: string | null;
   enabled: number;
+  schedule_overridden: number;
   created_at: string;
 }
 
@@ -620,6 +627,22 @@ export function listWorkflows(): WorkflowRow[] {
 
 export function setWorkflowEnabled(name: string, enabled: boolean): void {
   db.prepare('UPDATE workflows SET enabled = ? WHERE name = ?').run(enabled ? 1 : 0, name);
+}
+
+/**
+ * Persist a USER override of a workflow's cron schedule (from the dashboard, T135).
+ * Sets `schedule` and flips `schedule_overridden = 1` so a later code-sync keeps the
+ * user's value — the same ownership reconcile `enabled`/service limits get. An
+ * empty/blank schedule clears it to NULL = manual-only. Returns the updated row, or
+ * undefined if the workflow doesn't exist (no row touched).
+ */
+export function updateWorkflowSchedule(name: string, schedule: string | null): WorkflowRow | undefined {
+  const normalised = schedule && schedule.trim() !== '' ? schedule.trim() : null;
+  const info = db
+    .prepare('UPDATE workflows SET schedule = ?, schedule_overridden = 1 WHERE name = ?')
+    .run(normalised, name);
+  if (info.changes === 0) return undefined;
+  return getWorkflow(name);
 }
 
 export function getWorkflowJobs(name: string): { job_name: string; depends_on: string[] }[] {

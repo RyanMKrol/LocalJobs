@@ -6,7 +6,8 @@ import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress } from '../core/workflow-executor.js';
-import { nextWorkflowRun } from '../core/scheduler.js';
+import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
+import { Cron } from 'croner';
 import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
 import {
   browseTable,
@@ -38,6 +39,7 @@ import {
   serviceCallsToday,
   updateServiceLimits,
   setWorkflowEnabled,
+  updateWorkflowSchedule,
   stuckCount,
   stuckItems,
   unstickWorkItem,
@@ -585,6 +587,32 @@ export function createApiServer(
         const body = await readBody(req);
         setWorkflowEnabled(parts[2], !!body.enabled);
         return json(res, 200, { ok: true, enabled: !!body.enabled });
+      }
+
+      // POST /api/workflows/:name/schedule  { schedule }
+      // Persist a USER override of the workflow's cron schedule (T135) and apply it
+      // to the live scheduler WITHOUT a daemon restart — the user-owned schedule is
+      // preserved across code-syncs (via `schedule_overridden`, like `enabled`). An
+      // empty/blank value clears it to manual-only (null). A non-empty value MUST be
+      // a valid croner pattern — validated by attempting `new Cron(expr, {paused})`
+      // — else 400 (never crashing the daemon). Unknown workflow → 404. Mutating, so
+      // it goes through the same loopback/token guard as /toggle, /run, /limits above.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'schedule') {
+        const name = parts[2];
+        if (!getWorkflow(name)) return json(res, 404, { error: 'workflow not found' });
+        const body = await readBody(req);
+        const raw = typeof body.schedule === 'string' ? body.schedule.trim() : '';
+        const schedule = raw === '' ? null : raw;
+        if (schedule !== null) {
+          try {
+            new Cron(schedule, { paused: true }).stop();
+          } catch (e) {
+            return json(res, 400, { error: `invalid cron expression: ${e instanceof Error ? e.message : String(e)}` });
+          }
+        }
+        updateWorkflowSchedule(name, schedule);
+        rescheduleWorkflow(name, schedule);
+        return json(res, 200, { ok: true, schedule, next_run: nextWorkflowRun(name) });
       }
 
       // GET /api/workflow-runs?limit=

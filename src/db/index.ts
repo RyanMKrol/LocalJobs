@@ -44,6 +44,14 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec('ALTER TABLE services ADD COLUMN limits_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Additive migration: user-owned schedule override flag on workflows (T135).
+  // Like `limits_overridden` on services, this lets a dashboard edit take ownership
+  // of the cron `schedule` so a later code-sync preserves it (see upsertWorkflowStmt).
+  const wfCols = db.prepare('PRAGMA table_info(workflows)').all() as { name: string }[];
+  if (!wfCols.some((c) => c.name === 'schedule_overridden')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN schedule_overridden INTEGER NOT NULL DEFAULT 0');
+  }
+
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
 

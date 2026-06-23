@@ -12,7 +12,8 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { jobs, workflows } from '../jobs/registry.js';
-import { createWorkflowRun, finishWorkflowRun, markWorkItem, syncJob, syncWorkflow } from '../db/store.js';
+import { createWorkflowRun, finishWorkflowRun, getWorkflow, markWorkItem, syncJob, syncWorkflow } from '../db/store.js';
+import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,
@@ -200,6 +201,71 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
 
   for (const d of [limRoot, plain]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
   for (const w of [limWf, plainWf]) { const i = workflows.indexOf(w); if (i >= 0) workflows.splice(i, 1); }
+}
+
+// ── editable schedule (T135): POST /api/workflows/:name/schedule validates the cron
+// server-side, persists a user override, and live-reschedules. A self-contained fake
+// workflow registered then cleaned up (and its cron cleared) so other tests are
+// unaffected. ──
+{
+  const schedJob: JobDefinition = { name: 'sched-api-job', run: async () => {} };
+  syncJob(schedJob); jobs.push(schedJob);
+  const schedWf: WorkflowDefinition = { name: 'sched-api-wf', schedule: '0 3 * * *', jobs: [{ job: 'sched-api-job' }] };
+  syncWorkflow(schedWf); workflows.push(schedWf); // registry resolves rescheduleWorkflow's def lookup via this array
+
+  await test('schedule: a valid cron is accepted (200), persisted + overridden, returns next_run', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/sched-api-wf/schedule`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule: '30 4 * * *' }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; schedule: string | null; next_run: string | null };
+      assert.equal(body.schedule, '30 4 * * *');
+      assert.ok(body.next_run, 'a next_run is computed for the new cron');
+      assert.equal(getWorkflow('sched-api-wf')?.schedule, '30 4 * * *', 'persisted to the DB');
+      assert.equal(getWorkflow('sched-api-wf')?.schedule_overridden, 1, 'flagged as user-overridden');
+      assert.ok(nextWorkflowRun('sched-api-wf'), 'live scheduler re-registered the cron');
+    });
+  });
+
+  await test('schedule: an empty value clears to manual-only (null schedule, null next_run)', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/sched-api-wf/schedule`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule: '   ' }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { schedule: string | null; next_run: string | null };
+      assert.equal(body.schedule, null, 'blank → manual-only');
+      assert.equal(body.next_run, null, 'no next run when manual-only');
+      assert.equal(getWorkflow('sched-api-wf')?.schedule, null);
+      assert.equal(nextWorkflowRun('sched-api-wf'), null, 'cron removed from the live scheduler');
+    });
+  });
+
+  await test('schedule: an invalid cron is rejected 400 and never reaches the scheduler', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/sched-api-wf/schedule`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule: 'not a cron' }),
+      });
+      assert.equal(res.status, 400);
+      assert.match(((await res.json()) as { error?: string }).error ?? '', /invalid cron/);
+      assert.equal(getWorkflow('sched-api-wf')?.schedule, null, 'bad value not persisted (still manual-only from prior test)');
+      assert.equal(nextWorkflowRun('sched-api-wf'), null, 'no cron registered for the bad value');
+    });
+  });
+
+  await test('schedule: unknown workflow → 404', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/__no_such_wf__/schedule`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule: '0 1 * * *' }),
+      });
+      assert.equal(res.status, 404);
+    });
+  });
+
+  rescheduleWorkflow('sched-api-wf', null); // clear any live cron this test left registered
+  { const i = jobs.indexOf(schedJob); if (i >= 0) jobs.splice(i, 1); }
+  { const i = workflows.indexOf(schedWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
 // ── one active run per workflow (T105): POST /api/workflows/:name/run must reject

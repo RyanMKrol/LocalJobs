@@ -11,7 +11,7 @@
 // (observable via the scheduler's own console.log) — nothing is spawned.
 import { workflows } from '../jobs/registry.js';
 import { createWorkflowRun, listWorkflowRunsForWorkflow, setWorkflowEnabled, syncWorkflow } from '../db/store.js';
-import { nextWorkflowRun, startScheduler, stopScheduler } from './scheduler.js';
+import { nextWorkflowRun, rescheduleWorkflow, startScheduler, stopScheduler } from './scheduler.js';
 import type { WorkflowDefinition } from './types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -53,6 +53,19 @@ try {
   ok('manual-only workflow has no schedule', nextWorkflowRun(MANUAL.name) === null);
   // Jobs are NEVER scheduled on their own — there are no standalone crons (the
   // scheduler exposes no per-job next-run; only `nextWorkflowRun` exists).
+
+  // Live reschedule (T135): registering a cron for a previously manual-only workflow,
+  // and clearing one to manual-only, both take effect WITHOUT a restart.
+  rescheduleWorkflow(MANUAL.name, EVERY_SECOND);
+  ok('rescheduleWorkflow registers a cron for a manual-only workflow', nextWorkflowRun(MANUAL.name) !== null);
+  rescheduleWorkflow(MANUAL.name, null);
+  ok('rescheduleWorkflow(null) clears the cron (back to manual-only)', nextWorkflowRun(MANUAL.name) === null);
+  // Changing an existing schedule re-registers a fresh cron with a new next-run.
+  const before = nextWorkflowRun(ON.name);
+  rescheduleWorkflow(ON.name, '0 0 1 1 *'); // once a year → a far-future next run, distinct from EVERY_SECOND
+  const after = nextWorkflowRun(ON.name);
+  ok('rescheduleWorkflow swaps an existing cron (next-run changes)', after !== null && after !== before, `before=${before} after=${after}`);
+  rescheduleWorkflow(ON.name, EVERY_SECOND); // restore so the fire assertions below still hold
 
   await sleep(2500); // cross ≥2 one-second boundaries → ≥2 fires each
   stopScheduler();

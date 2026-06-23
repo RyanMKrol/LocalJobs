@@ -337,6 +337,16 @@ input[type="text"]:focus { border-color: var(--accent); }
 .run-limit-control { display: flex; align-items: center; gap: 6px; }
 .run-limit-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
 
+/* Editable workflow schedule (T135) — understated inline edit on the detail page. */
+.schedule-view { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.schedule-edit-link { font-size: 12px; color: var(--muted); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; }
+.schedule-edit-link:hover { color: var(--text); }
+.schedule-edit { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.schedule-input { width: 16rem; max-width: 100%; padding: 6px 8px; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+.schedule-err { color: var(--red); font-size: 12px; flex-basis: 100%; }
+
 /* ── Stuck-items popover (T118) ────────────────────────────────────────────── */
 /* Reuses the db-modal overlay/chrome; just a wider width + bulk-action footer. */
 .stuck-popover { width: min(760px, 100%); }

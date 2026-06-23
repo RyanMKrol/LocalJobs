@@ -136,6 +136,16 @@ inside its workflow.
 - **Manual:** dashboard → **Workflows → [workflow] → ▶ Run now**. To run a single
   stage ad-hoc, make it (or wrap it in) its own one-stage workflow and run that.
 
+**Edit a workflow's schedule from its detail page.** The **Workflows → [workflow]**
+page's **Schedule** row has an **Edit** affordance: type a new cron expression (croner
+syntax) and **Save**, or leave it blank to make the workflow **manual-only**. The
+change is persisted, takes effect on the live scheduler **without a daemon restart**
+(the `CronBadge` and **Next run** update on the next refresh), and — like the enable
+toggle — is **user-owned**: a later code-sync preserves your edit instead of reverting
+to the manifest's `schedule`. An invalid cron expression is rejected with a clear error
+and never reaches the scheduler. Via the API: `POST /api/workflows/:name/schedule` with
+`{ "schedule": "30 4 * * *" }` (empty string → manual-only; invalid → `400`).
+
 **Limit a manual run to N originating inputs.** Beside ▶ Run now, a *limitable*
 workflow shows a small number box (blank = all). Enter `N` to process only the
 **first N originating inputs** — and **all** the fan-out work they spawn runs to
@@ -246,7 +256,9 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
 - **Workflows** — every workflow with schedule, enabled state, member-job count,
   and last/next run. Every job belongs to a workflow, so there is no separate
   standalone-jobs list; drill into a workflow to reach its member jobs.
-- **Workflow detail** — ▶ Run now, enable toggle, full run history
+- **Workflow detail** — ▶ Run now, enable toggle, an **editable cron schedule**
+  (Edit → type a croner expression or blank for manual-only → Save; persisted,
+  user-owned, applied to the live scheduler with no restart), full run history
 - **Workflow run detail** — live framework logs, per-stage job outcomes and
   statuses, **grouped by stage with older cycles collapsed** (click to expand),
   overall progress bar (counts completed stages only — stays at 0% until the

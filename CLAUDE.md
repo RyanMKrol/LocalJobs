@@ -179,7 +179,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
 | `src/core/types.ts` | `JobDefinition`, `WorkflowDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
-| `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled` |
+| `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled`; registers each cron from the **effective** (DB) schedule, and `rescheduleWorkflow(name, schedule)` re-registers it LIVE after a dashboard edit — no restart (T135) |
 | `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
 | `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; `repeatUntilStable` cycling with a **no-forward-progress early stop** (T112, via `workflowProgressSignature`/`noForwardProgress`) + **per-stage notification dedup** (only push on a status change while cycling); owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below) |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification. `notifyStage` is fired per-stage by the executor, which DEDUPES it during `repeatUntilStable` cycling (status-change-only) so cycling can't trip ntfy's 429 |
@@ -318,6 +318,22 @@ doubt, log it.
   cron. The registry enforces this at load via `orphanJobNames` and **throws** (the
   daemon refuses to start) if any discovered job has no workflow. When you add a
   job, add its manifest in the same change.
+- **A workflow's `schedule` is user-editable + code-reconciled (T135).** Like the
+  `enabled` toggle and the editable service limits, the cron `schedule` is
+  **user-owned**: `POST /api/workflows/:name/schedule { schedule }`
+  (`updateWorkflowSchedule` in `store.ts`) persists an override and flips
+  `schedule_overridden = 1`, so a later `syncWorkflow` PRESERVES it
+  (`schedule = CASE WHEN schedule_overridden = 1 THEN schedule ELSE excluded.schedule END`
+  in `upsertWorkflowStmt`) instead of reverting to the manifest value. An empty/blank
+  value clears it to `null` = manual-only. The scheduler registers each cron from the
+  **EFFECTIVE** (DB) schedule — override when set, else the synced code default — and
+  `rescheduleWorkflow(name, schedule)` re-registers the live `Cron` after an edit so it
+  takes effect **without a daemon restart** (mirroring the fire-time `enabled` check).
+  The API VALIDATES the cron server-side (`new Cron(expr, { paused: true })`) and
+  rejects an invalid expression with **400** before it ever reaches the scheduler;
+  it's a mutating endpoint behind the same loopback/token guard as `/toggle`, `/run`,
+  `/limits`. `schedule_overridden` is added by `schema.sql` (fresh DBs) + an additive
+  `ALTER TABLE` migration in `index.ts` (existing DBs, per the T098 rule).
 - **No workflow-level properties on a job (T070).** Because a job is only ever a
   workflow member, ALL workflow-level concerns live on the workflow, never the job:
   a job has NO `schedule`, NO `enabled` toggle, NO `instructions`, and NO run-now.

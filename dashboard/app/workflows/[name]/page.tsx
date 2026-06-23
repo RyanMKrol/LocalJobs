@@ -13,6 +13,36 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
   const p = data?.workflow;
   const runs = p?.runs ?? [];
 
+  // Inline schedule editor (T135).
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [scheduleDraft, setScheduleDraft] = useState('');
+  const [scheduleErr, setScheduleErr] = useState<string | null>(null);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
+  function startEditSchedule() {
+    setScheduleDraft(p?.schedule ?? '');
+    setScheduleErr(null);
+    setEditingSchedule(true);
+  }
+  function cancelEditSchedule() {
+    setEditingSchedule(false);
+    setScheduleErr(null);
+  }
+  async function saveSchedule() {
+    setSavingSchedule(true);
+    setScheduleErr(null);
+    try {
+      await api.updateWorkflowSchedule(name, scheduleDraft);
+      // The 3s poll refetches the workflow, so the CronBadge + Next run update on
+      // the next tick; close the editor immediately on success.
+      setEditingSchedule(false);
+    } catch (e) {
+      setScheduleErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+
   async function run() {
     setBusy(true);
     try { await api.runWorkflow(name, limit ? Number(limit) : undefined); } finally { setTimeout(() => setBusy(false), 1200); }
@@ -49,10 +79,32 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
         <div className="kv">
           <div className="k">Schedule</div>
-          <div className="mono" style={{ whiteSpace: 'nowrap' }}>
-            {p?.schedule
-              ? <CronBadge expr={p.schedule} />
-              : 'manual-only'}
+          <div>
+            {editingSchedule ? (
+              <div className="schedule-edit">
+                <input
+                  className="mono schedule-input"
+                  type="text"
+                  value={scheduleDraft}
+                  onChange={(e) => setScheduleDraft(e.target.value)}
+                  placeholder="cron (blank = manual-only)"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveSchedule(); if (e.key === 'Escape') cancelEditSchedule(); }}
+                />
+                <button className="btn btn-sm" onClick={saveSchedule} disabled={savingSchedule}>
+                  {savingSchedule ? 'Saving…' : 'Save'}
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={cancelEditSchedule} disabled={savingSchedule}>Cancel</button>
+                {scheduleErr && <span className="schedule-err">{scheduleErr}</span>}
+              </div>
+            ) : (
+              <span className="schedule-view">
+                <span className="mono" style={{ whiteSpace: 'nowrap' }}>
+                  {p?.schedule ? <CronBadge expr={p.schedule} /> : 'manual-only'}
+                </span>
+                <span className="schedule-edit-link" onClick={startEditSchedule}>Edit</span>
+              </span>
+            )}
           </div>
           <div className="k">Enabled</div>
           <div>

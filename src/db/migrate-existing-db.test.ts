@@ -180,6 +180,14 @@ test('services ends migrated: limits_overridden column (defaults 0 = code-owned)
   assert.equal(s.limits_overridden, 0);
 });
 
+test('workflows ends migrated: schedule_overridden column (defaults 0 = code-owned) (T135)', () => {
+  assert.ok(cols('workflows').includes('schedule_overridden'), 'schedule_overridden column added');
+  const w = migrated.prepare('SELECT schedule_overridden FROM workflows WHERE name = ?').get('places') as {
+    schedule_overridden: number;
+  };
+  assert.equal(w.schedule_overridden, 0, 'pre-existing workflow defaults to NOT overridden');
+});
+
 test('jobs ends migrated: legacy schedule + enabled columns dropped (T070)', () => {
   assert.ok(!cols('jobs').includes('schedule'), 'schedule column dropped');
   assert.ok(!cols('jobs').includes('enabled'), 'enabled column dropped');
