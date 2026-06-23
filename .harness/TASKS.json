@@ -2671,7 +2671,7 @@
     {
       "id": "T103",
       "title": "Backlog DAG: render as a real directed graph (node shapes + drawn edges)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
