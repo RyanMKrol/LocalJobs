@@ -11,7 +11,7 @@ import { perfumesConfig } from './config.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'perfumes',
-  description: 'Find Fragrantica URL → headless fetch → parse → research + write markdown.',
+  description: 'Builds a rich markdown profile for each perfume in your collection. Starting from a list of fragrance names, it discovers each one\'s Fragrantica page, fetches it via a headless real-Chrome browser (to pass Cloudflare clearance), parses out structured notes and accords from the saved HTML, then researches and writes the final profile using the Claude CLI — cycling until no retryable items remain.',
   schedule: '0 2 * * *',
   maxConcurrency: 1,
   repeatUntilStable: true,
