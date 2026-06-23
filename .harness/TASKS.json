@@ -2958,7 +2958,7 @@
     {
       "id": "T114",
       "title": "ntfy notifications: back off on 429 (exponential, hard-capped) and stop hammering",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
