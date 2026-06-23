@@ -3673,7 +3673,7 @@
     {
       "id": "T142",
       "title": "Joyful dashboard: 6 toggleable themes (2 dark + 4 bright) + 5-10 display+body font pairs, mobile-safe",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
