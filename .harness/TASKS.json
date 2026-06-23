@@ -1086,7 +1086,9 @@
       "id": "T045",
       "title": "Dashboard styling — make it more joyful",
       "status": "pending",
-      "dependsOn": [],
+      "dependsOn": [
+        "T142"
+      ],
       "gate": "needs-human",
       "tags": [
         "dashboard",
@@ -3697,28 +3699,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T142.md",
-      "reviewed": false
-    },
-    {
-      "id": "T143",
-      "title": "Review + choose: joyful dashboard theme + font (from T142)",
-      "status": "pending",
-      "dependsOn": [
-        "T142"
-      ],
-      "gate": "needs-human",
-      "tags": [
-        "needs-human",
-        "review",
-        "dashboard",
-        "design"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "scope": [],
-      "design": null,
-      "verify": [],
-      "spec": ".harness/tasks/T143.md",
       "reviewed": false
     }
   ]
