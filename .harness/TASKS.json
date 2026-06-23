@@ -3458,7 +3458,7 @@
     {
       "id": "T132",
       "title": "Backlog: hardcode the chosen \"spin\" section-header caret, remove the toggle + 4 unused styles, centre & pad it",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T127"
       ],
