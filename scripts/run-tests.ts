@@ -5,6 +5,11 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+// Defence-in-depth: mark this as a test process BEFORE any test file (and thus the
+// DB/config) is dynamically imported below, so config.ts's guard refuses the
+// production DB even if this runner is invoked without `LOCALJOBS_DB` set.
+process.env.LOCALJOBS_TEST = '1';
+
 function walk(dir: string): string[] {
   const out: string[] = [];
   for (const e of readdirSync(dir, { withFileTypes: true })) {

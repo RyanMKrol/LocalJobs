@@ -1,14 +1,68 @@
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Project root (one level up from src/). */
 export const ROOT = resolve(__dirname, '..');
 
+/** The real production database path (used as the guard's reference point). */
+const PROD_DB = resolve(ROOT, 'data', 'jobs.db');
+
+/**
+ * Whether this process is running the unit tests. Load-bearing for one reason:
+ * a test must NEVER open the real production DB. `npm test` already points
+ * `LOCALJOBS_DB` at a scratch file, but a DIRECT run — `tsx --test src/x.test.ts`
+ * or `tsx src/x.test.ts` — sets no such env, so without a guard it falls back to
+ * `data/jobs.db` and pollutes production (this once leaked test-fixture workflows
+ * into the live dashboard). Detection ORs several robust signals so every test
+ * invocation path is covered. Pure (env/argv injectable) for unit testing.
+ */
+export function isTestEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  argv: readonly string[] = process.argv,
+): boolean {
+  if (env.LOCALJOBS_TEST === '1') return true;        // explicit — set by scripts/run-tests.ts
+  if (env.NODE_TEST_CONTEXT) return true;             // node --test / tsx --test worker processes
+  if (argv.includes('--test')) return true;           // tsx --test …
+  // npm-test runner entry, or any test file passed directly (tsx src/x.test.ts).
+  return argv.some((a) => /(?:^|[\\/])run-tests\.[tj]s$|\.test\.[tj]s$/.test(a));
+}
+
+/**
+ * Resolve the DB path with a production-safety guard. In a test context, if the
+ * path would be the real production DB (no `LOCALJOBS_DB` override, or one that
+ * explicitly points AT the prod file), redirect to a unique per-process scratch
+ * DB so a test can never write to `data/jobs.db`. Outside tests, use the explicit
+ * override or the production default unchanged (the daemon path). Pure for tests.
+ */
+export function resolveDbPath(opts: {
+  explicit?: string;
+  prodDefault?: string;
+  isTest?: boolean;
+  pid?: number;
+  tmp?: string;
+  warn?: boolean;
+} = {}): string {
+  const prodDefault = opts.prodDefault ?? PROD_DB;
+  const path = opts.explicit ?? prodDefault;
+  const isTest = opts.isTest ?? isTestEnv();
+  if (isTest && path === prodDefault) {
+    const scratch = join(opts.tmp ?? tmpdir(), `lj-test-guard-${opts.pid ?? process.pid}.db`);
+    if (opts.warn ?? true) {
+      console.warn(
+        `[config] test context detected with no scratch LOCALJOBS_DB — refusing the production DB; using ${scratch}`,
+      );
+    }
+    return scratch;
+  }
+  return path;
+}
+
 export const config = {
-  /** Path to the SQLite database file. */
-  dbPath: process.env.LOCALJOBS_DB ?? resolve(ROOT, 'data', 'jobs.db'),
+  /** Path to the SQLite database file (guarded so tests never hit production). */
+  dbPath: resolveDbPath({ explicit: process.env.LOCALJOBS_DB }),
 
   /**
    * Shared persistent Chrome profile used by all headless-browser scrape jobs.

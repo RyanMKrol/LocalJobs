@@ -627,6 +627,17 @@ doubt, log it.
   changes — before declaring done. Keep the suite green; **add unit tests for new
   behaviour as you build it** (tests live in `*.test.ts`; `npm test` discovers + runs
   them against a scratch DB). Never declare done on red.
+- **Tests can NEVER touch the production DB (guarded).** `npm test` points
+  `LOCALJOBS_DB` at a scratch file, but a DIRECT run (`tsx --test src/x.test.ts` or
+  `tsx src/x.test.ts`) sets no such env and would otherwise fall back to
+  `data/jobs.db` and pollute production — this once leaked test-fixture workflows
+  (`bulk-api-wf`, `t110-wf`, …) into the live dashboard. `src/config.ts` now guards
+  this: `isTestEnv()` detects any test invocation (the `LOCALJOBS_TEST=1` flag
+  `run-tests.ts` sets, `NODE_TEST_CONTEXT`, a `--test` arg, or a `*.test.ts` /
+  `run-tests` entry in argv) and `resolveDbPath()` refuses the production default in
+  that case, redirecting to a unique per-process scratch DB (with a warning).
+  `config.dbPath` goes through this. Don't bypass it — never hardcode
+  `data/jobs.db` in a test, and keep new test invocations covered by `isTestEnv`.
 - **Dashboard must stay mobile-responsive.** Every page has to survive a phone-width
   (~402px) viewport with no horizontal page overflow and nothing crossing an
   element's boundary. Responsive rules live in one place — the `@media (max-width:
