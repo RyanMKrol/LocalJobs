@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
-import { runWorkflow, cancelWorkflowRun } from '../core/workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, workflowRunInProgress } from '../core/workflow-executor.js';
 import { nextWorkflowRun } from '../core/scheduler.js';
 import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
 import {
@@ -387,6 +387,13 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
           if (!def.jobs.some((j) => getJobDefinition(j.job)?.inputKeys)) {
             return json(res, 400, { error: `workflow "${def.name}" cannot be limited (no stage declares input keys)` });
           }
+        }
+        // One active run per workflow (T105): reject a duplicate start with 409
+        // rather than appearing to start a second run. This check + the fire below
+        // run with no await between them, and `runWorkflow` claims the name
+        // synchronously, so the executor remains the authoritative atomic guard.
+        if (workflowRunInProgress(def.name)) {
+          return json(res, 409, { error: `workflow "${def.name}" already has an active run`, running: true });
         }
         runWorkflow(def, 'manual', { limit }).catch((e) => console.error('[api] workflow run error', e));
         return json(res, 202, { ok: true, message: 'workflow run started', limit: limit ?? null });

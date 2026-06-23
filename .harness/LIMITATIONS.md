@@ -380,3 +380,16 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   data — extra surface that is intentionally temporary, not a permanent feature.
   *Revisit:* a FOLLOW-UP task hardcodes the chosen winner and deletes the toggle + the four unused
   styles (and the `useGateStyle`/`GATE_STYLES` machinery in `app/ui.tsx`).
+
+- **The "one active run per workflow" guard is in-process (single-daemon), not DB-locking (T105).**
+  *Why:* the authoritative guard is a synchronous check-and-claim in `runWorkflow` (an in-process
+  `startingWorkflows` Set) combined with the DB's `status='running'` check — race-safe because the
+  daemon is the single writer/scheduler and Node is single-threaded. There is no SQL-level unique
+  constraint forbidding two `running` rows for one workflow.
+  *Impact:* correct for this architecture (ONE daemon owns all scheduling + manual runs). If the
+  framework ever ran TWO daemon processes against the same DB, two near-simultaneous starts could
+  each pass their own in-process claim and both create a `running` row. The API's 409 likewise relies
+  on the same single-process guard.
+  *Revisit:* only if multi-daemon is ever introduced — then the claim would need to move into the DB
+  (e.g. a conditional `INSERT … WHERE NOT EXISTS (running row)` or a unique partial index on
+  `workflow_name WHERE status='running'`).

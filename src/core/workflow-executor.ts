@@ -80,6 +80,30 @@ export interface WorkflowRunResult {
 const activeWorkflowRuns = new Map<string, AbortController>();
 
 /**
+ * Per-workflow start guard (T105): the NAMES of workflows that have a run either
+ * actively executing OR mid-start (claimed but whose DB row isn't written yet).
+ * This is the in-process half of the atomic "one active run per workflow" check —
+ * `runWorkflow` claims the name SYNCHRONOUSLY (before its first await) so two
+ * near-simultaneous starts can't both pass the guard, even across the `await
+ * inputKeys()` window before the run row exists. `hasActiveWorkflowRun` (DB) is the
+ * other half, catching a still-running run from a prior tick. The set is keyed by
+ * workflow NAME (a workflow may have only one active run); different workflows are
+ * independent and may run concurrently.
+ */
+const startingWorkflows = new Set<string>();
+
+/**
+ * Whether the named workflow currently has a run in progress — either claimed/
+ * starting in THIS process or recorded `running` in the DB. The authoritative,
+ * race-safe predicate behind the "one active run per workflow" constraint (T105);
+ * the API uses it to reject a duplicate start with 409 and `runWorkflow` uses it as
+ * its own start guard.
+ */
+export function workflowRunInProgress(name: string): boolean {
+  return startingWorkflows.has(name) || hasActiveWorkflowRun(name);
+}
+
+/**
  * Cancel a running workflow run by aborting its execution: in-flight member
  * children are hard-killed and no further stages launch (see `runWorkflow` /
  * `executeDag`). Returns false if the id isn't an active run in this process
@@ -131,10 +155,28 @@ export async function runWorkflow(
   trigger: 'schedule' | 'manual',
   opts: { limit?: number } = {},
 ): Promise<WorkflowRunResult> {
-  if (hasActiveWorkflowRun(def.name)) {
+  // Atomic per-workflow start guard (T105): check + claim run SYNCHRONOUSLY with no
+  // await between them, so two near-simultaneous starts of the SAME workflow can't
+  // both pass — the second sees the claimed name and bails. The claim is held for the
+  // whole run (released in the finally) so the window before the DB row exists (the
+  // `await inputKeys()` for a limited run) is also covered. DIFFERENT workflows have
+  // independent names and still run concurrently.
+  if (workflowRunInProgress(def.name)) {
     return { workflowRunId: null, skipped: true, reason: 'already running' };
   }
+  startingWorkflows.add(def.name);
+  try {
+    return await runWorkflowInner(def, trigger, opts);
+  } finally {
+    startingWorkflows.delete(def.name);
+  }
+}
 
+async function runWorkflowInner(
+  def: WorkflowDefinition,
+  trigger: 'schedule' | 'manual',
+  opts: { limit?: number } = {},
+): Promise<WorkflowRunResult> {
   let dag: Dag;
   try {
     dag = buildDag(def.jobs);

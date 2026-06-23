@@ -152,6 +152,16 @@ badge.
 
 You can also **pause** a workflow (the enable toggle on its page) without deleting it.
 
+**One run per workflow at a time.** A given workflow can only have **one active run**
+at once (different workflows still run concurrently — it's per-workflow, not a global
+lock). While a run is in flight its **▶ Run** button (on the Workflows list) and **▶ Run
+now** button (on the workflow's page) are disabled and read **"Running…"**. Via the API,
+`POST /api/workflows/:name/run` returns **409 Conflict** (`already has an active run`)
+rather than appearing to start a second run, and the executor itself atomically refuses a
+concurrent start of the same workflow — so even two near-simultaneous requests can't both
+launch one. (Idempotency means there's nothing to gain from a second concurrent run — the
+in-flight one is already doing the work.)
+
 **Cancel a running workflow.** A workflow run that's mid-flight can be stopped via
 `POST /api/workflow-runs/:id/cancel` (a mutating endpoint, so loopback or a token).
 Cancelling **hard-kills the in-flight member's child process** (SIGTERM→SIGKILL — no

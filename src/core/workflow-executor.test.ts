@@ -15,7 +15,7 @@ import {
   lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,
   rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow,
 } from '../db/store.js';
-import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive } from './workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress } from './workflow-executor.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 
 let passed = 0;
@@ -50,7 +50,7 @@ config.runJobScript = fakePath;
 config.ntfyTopic = ''; // never POST to ntfy during tests
 
 // Member jobs must be discoverable (getJobDefinition) AND exist in the jobs table (FK).
-const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d', 'timeout-cancel-pp', 'pp-after-cancel'];
+const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d', 'timeout-cancel-pp', 'pp-after-cancel', 'timeout-guard-a', 'timeout-guard-b'];
 const pushed: JobDefinition[] = [];
 for (const name of members) {
   const d: JobDefinition = { name, run: async () => {} };
@@ -329,6 +329,51 @@ try {
     assert.equal(isWorkflowRunActive(workflowRunId!), false, 'registry entry removed on settle');
     // A second cancel of a now-terminal run is a no-op (returns false).
     assert.equal(cancelWorkflowRun(workflowRunId!), false, 'cancelling a settled run returns false');
+  });
+
+  await test('one active run per workflow (T105): a second start of the SAME workflow is refused; a DIFFERENT workflow still starts', async () => {
+    const wfA: WorkflowDefinition = { name: 'guard-wf-a', jobs: [{ job: 'timeout-guard-a' }] };
+    const wfB: WorkflowDefinition = { name: 'guard-wf-b', jobs: [{ job: 'timeout-guard-b' }] };
+    syncWorkflow(wfA);
+    syncWorkflow(wfB);
+
+    // Start A but don't await — its only stage hangs (timeout-* fake), so the run
+    // stays 'running'.
+    const runA = runWorkflow(wfA, 'manual');
+    const deadline = Date.now() + 5000;
+    let aid: string | undefined;
+    while (Date.now() < deadline) {
+      const r = lastWorkflowRunForWorkflow('guard-wf-a');
+      if (r && r.status === 'running' && isWorkflowRunActive(r.id)) { aid = r.id; break; }
+      await new Promise((res) => setTimeout(res, 25));
+    }
+    assert.ok(aid, 'workflow A became active');
+    assert.equal(workflowRunInProgress('guard-wf-a'), true, 'guard reports A in progress');
+
+    // A second start of the SAME workflow is refused (skipped), no new run row.
+    const dup = await runWorkflow(wfA, 'manual');
+    assert.equal(dup.workflowRunId, null, 'duplicate start returns no run id');
+    assert.equal(dup.skipped, true, 'duplicate start is skipped');
+    assert.equal(lastWorkflowRunForWorkflow('guard-wf-a')!.id, aid, 'no second run row was created for A');
+
+    // A DIFFERENT workflow can still start while A is running (per-workflow, not global).
+    assert.equal(workflowRunInProgress('guard-wf-b'), false, 'B is not in progress before its start');
+    const runB = runWorkflow(wfB, 'manual');
+    let bid: string | undefined;
+    while (Date.now() < deadline) {
+      const r = lastWorkflowRunForWorkflow('guard-wf-b');
+      if (r && r.status === 'running' && isWorkflowRunActive(r.id)) { bid = r.id; break; }
+      await new Promise((res) => setTimeout(res, 25));
+    }
+    assert.ok(bid, 'a DIFFERENT workflow started while A was still running');
+
+    // Clean up: cancel both hanging runs and await their settlement.
+    cancelWorkflowRun(aid!);
+    cancelWorkflowRun(bid!);
+    await Promise.all([runA, runB]);
+    // Guard released once each run settled.
+    assert.equal(workflowRunInProgress('guard-wf-a'), false, 'A guard released after settle');
+    assert.equal(workflowRunInProgress('guard-wf-b'), false, 'B guard released after settle');
   });
 
 } finally {

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { config } from '../config.js';
 import { jobs, workflows } from '../jobs/registry.js';
-import { syncJob, syncWorkflow } from '../db/store.js';
+import { createWorkflowRun, finishWorkflowRun, syncJob, syncWorkflow } from '../db/store.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,
@@ -191,6 +191,36 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
 
   for (const d of [limRoot, plain]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
   for (const w of [limWf, plainWf]) { const i = workflows.indexOf(w); if (i >= 0) workflows.splice(i, 1); }
+}
+
+// ── one active run per workflow (T105): POST /api/workflows/:name/run must reject
+// a duplicate start with 409 while a run is already active, instead of appearing to
+// start a second run. A seeded 'running' workflow_run row makes the guard observe an
+// active run WITHOUT spawning a child; it's cleaned up afterwards so other tests are
+// unaffected. ──
+{
+  const guardJob: JobDefinition = { name: 'guard-api-job', run: async () => {} };
+  syncJob(guardJob); jobs.push(guardJob);
+  const guardWf: WorkflowDefinition = { name: 'guard-api-wf', jobs: [{ job: 'guard-api-job' }] };
+  syncWorkflow(guardWf); workflows.push(guardWf);
+
+  await test('one active run per workflow: POST /run is rejected 409 while a run is active (no second run started)', async () => {
+    const wrid = createWorkflowRun('guard-api-wf', 'manual'); // status 'running'
+    try {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/workflows/guard-api-wf/run`, { method: 'POST' });
+        assert.equal(res.status, 409, 'duplicate start rejected with 409 Conflict');
+        const body = (await res.json()) as { error?: string; running?: boolean };
+        assert.match(body.error ?? '', /already has an active run/);
+        assert.equal(body.running, true, 'response flags the workflow as running');
+      });
+    } finally {
+      finishWorkflowRun(wrid, 'cancelled'); // release the active run for other tests
+    }
+  });
+
+  const i = jobs.indexOf(guardJob); if (i >= 0) jobs.splice(i, 1);
+  const j = workflows.indexOf(guardWf); if (j >= 0) workflows.splice(j, 1);
 }
 
 // ── definition-level gate detail (T102): the run-AGNOSTIC

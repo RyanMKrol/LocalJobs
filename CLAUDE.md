@@ -122,6 +122,23 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   writer) records the workflow run + killed member run `cancelled`. A cancelled member
   is terminal (not retried); not-yet-started stages simply never spawn. Idempotency
   means the next run resumes outstanding work.
+- **One active run per workflow (T105).** A given workflow may have only ONE run
+  active at a time — but DIFFERENT workflows still run concurrently (this is
+  per-workflow, NOT a global lock). The executor is the **authoritative, race-safe
+  guard**: `runWorkflow` does a check-and-claim with NO await between them
+  (`workflowRunInProgress(name)` → claim `name` in an in-process `startingWorkflows`
+  set) BEFORE its first await, so two near-simultaneous starts of the same workflow
+  can't both pass — the loser returns `{ skipped: true, reason: 'already running' }`.
+  The claim is held for the whole run (released in a `finally`) so the window before
+  the DB run row exists (the `await inputKeys()` of a limited run) is also covered.
+  `workflowRunInProgress(name) = startingWorkflows.has(name) || hasActiveWorkflowRun(name)`
+  — the in-process claim PLUS the DB's `running` check (the latter catches a run still
+  going from a prior tick). The API mirrors this: `POST /api/workflows/:name/run`
+  returns **409 Conflict** (`{ error: '… already has an active run', running: true }`)
+  when `workflowRunInProgress` is true, instead of firing-and-forgetting a 202 that the
+  executor would silently skip — so the caller knows it didn't start. The dashboard's
+  Run buttons (Workflows LIST + workflow DETAIL) disable and show **"Running…"** while
+  `last_run.status === 'running'`, so the UI never lets you click into a duplicate.
 - **The dashboard is a pure read/refresh client of the API.** It never touches
   SQLite directly and is not required for jobs to run.
 
@@ -136,7 +153,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
 | `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled` |
 | `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
-| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation |
+| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below) |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
