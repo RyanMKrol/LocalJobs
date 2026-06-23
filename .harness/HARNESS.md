@@ -98,7 +98,7 @@ agent must not edit it.
   "tasks": [
     {
       "id": "T001", "title": "…", "status": "pending",   // pending | done  (SHELL-owned)
-      "reviewed": false,                                  // human-review flag (HUMAN/dashboard-owned)
+      // NOTE: NO `reviewed` field — since T136 it lives in owner-owned .harness/reviews.json
       "dependsOn": [], "gate": null,                      // gate: null | "gate" | "needs-human"
       "model": "claude-opus-4-8", "effort": "high",       // optional per-task override
       "escalation": [ … ],                                // optional per-task ladder
@@ -117,23 +117,34 @@ bar for done* are NOT flat strings in TASKS.json — they live in a per-task Mar
 `.harness/tasks/TNNN.md` with exactly two sections, `## Do` and `## Done when`, referenced by the
 task's `spec` field (a repo-relative path). This is more expressive than a JSON string and renders
 cleanly on the dashboard. TASKS.json keeps **every other field** (the orchestration fields above —
-`status`, `dependsOn`, `gate`, `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design`,
-`reviewed`). The loop's per-task prompt reads all orchestration fields from JSON and **appends the
-spec MD's full text** (`task_spec_rel` + `cat` in `loop.sh prompt()`); `GET /api/backlog` inlines
-the file as `specContent` (`readTaskSpec`, confined to `.harness/tasks/*.md`) and the Backlog page
-renders it as markdown.
+`status`, `dependsOn`, `gate`, `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design` —
+but NOT `reviewed`, which lives in `.harness/reviews.json`, see below). The loop's per-task prompt reads all orchestration fields from JSON and
+**appends the spec MD's full text** (`task_spec_rel` + `cat` in `loop.sh prompt()`);
+`GET /api/backlog` inlines the file as `specContent` (`readTaskSpec`, confined to
+`.harness/tasks/*.md`) and the Backlog page renders it as markdown.
 
-**`reviewed` — the one human/dashboard-owned field (T124).** Separate from the shell-owned
-`status`, each task carries a `reviewed` boolean for tracking whether the OWNER has personally
-reviewed a `done` task. It is set from the dashboard Backlog page (a "Mark as reviewed" toggle on
-each done task, a Reviewed/Not-reviewed pill, and a Reviewed/Not-reviewed/All filter), which calls
-`POST /api/backlog/:id/reviewed { reviewed }` — the **single deliberate exception** to the
-otherwise read-only dashboard. That endpoint does a field-scoped, ATOMIC (temp-file + rename)
-read-modify-write of `.harness/TASKS.json`: it sets ONLY that task's `reviewed`, preserves every
-other field and every other task, and validates the JSON before writing. Because the loop's status
-edit is itself field-scoped (`jq` sets only `.status`), the two writers never clobber each other.
-An absent `reviewed` is treated as `false`. The agent must NOT hand-edit `reviewed` — it is an
-owner UI action, just as `status` is a shell action.
+**`reviewed` — owner-owned, in its OWN file (T136, was T124).** Whether the OWNER has personally
+reviewed a `done` task is the ONE human/dashboard-owned piece of backlog state — and since T136 it
+lives **entirely outside TASKS.json**, in its own committed file `.harness/reviews.json`: a JSON map
+`id → { "reviewed": bool, "at": <ISO-8601> }`. TASKS.json tasks carry **no** `reviewed` field, and
+**the loop NEVER writes reviews.json** (it only ever writes TASKS.json `status` + the worklog). This
+makes the two writers fully decoupled — different files, so the loop's `jq` status write and the
+daemon's review write can never conflict, and a merge is always clean.
+
+`GET /api/backlog` (`readBacklog`) OVERLAYS the file: each task's `reviewed = reviews[id]?.reviewed
+?? false`. The Backlog page's "Mark as reviewed" toggle calls `POST /api/backlog/:id/reviewed
+{ reviewed }` — the **single deliberate dashboard→harness write** — which (a) ATOMICALLY writes the
+entry (read-modify-write, temp-file + rename, field-scoped, stamping `at`) as the durability floor,
+then (b) under the **SAME mkdir lock loop.sh uses** (`src/core/repo-lock.ts`, the
+`<git-common-dir>/<basename(repo-root)>-loop.lock` dir with the stale-pid-reclaim protocol — so the
+daemon's git ops are mutually exclusive with the loop) stages ONLY `.harness/reviews.json`, commits
+it `reviews: <id> reviewed=<bool> [skip ci]`, and `fetch`+rebase+`push`es with a bounded retry. The
+local commit is the guarantee; the push is **best-effort** — a failed push (offline / no remote)
+returns `{ ok, reviewed, committed, pushed: false, warning }` (non-fatal), and the lock is always
+released in a `finally`. So a review survives a daemon restart AND a working-tree reset, and reaches
+GitHub. An absent entry reads as `false`. The agent must NOT hand-edit `reviewed`/reviews.json — it
+is an owner UI action, just as `status` is a shell action. **loop.sh and the daemon must agree on
+the lock path byte-for-byte** (see `repo-lock.ts`'s header + loop.sh's `acquire_lock`).
 
 ### Backlog authoring: a new task = JSON object + spec MD (T131)
 
