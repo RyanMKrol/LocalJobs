@@ -10,6 +10,7 @@
   --red: #f85149;
   --yellow: #d29922;
   --grey: #6e7681;
+  --amber: #e8a020;
 }
 
 * { box-sizing: border-box; }
@@ -209,6 +210,7 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .pill.free { color: var(--green); border-color: rgba(80,200,120,.4); }
 .pill.done { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.in-progress { color: var(--accent); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
+.pill.buildable { color: var(--amber); background: rgba(232,160,32,.12); border-color: rgba(232,160,32,.35); }
 
 /* Long unbroken tokens (URLs, file paths, item keys) must not push the page wide. */
 .mono { overflow-wrap: anywhere; }

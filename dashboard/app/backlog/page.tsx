@@ -32,13 +32,15 @@ function statusPill(t: BacklogTask) {
 
 function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults | undefined }) {
   const human = t.gate === 'needs-human' || t.gate === 'gate';
+  const buildable = t.status !== 'done' && !human;
   const ladder = escalationPath(t, defaults);
   return (
-    <div className="panel" style={{ padding: 14, marginBottom: 8, borderColor: human ? 'var(--accent)' : undefined }}>
+    <div className="panel" style={{ padding: 14, marginBottom: 8, borderColor: human ? 'var(--accent)' : buildable ? 'var(--amber)' : undefined }}>
       <div className="row" style={{ gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <span className="mono" style={{ fontWeight: 700 }}>{t.id}</span>
         <strong>{t.title}</strong>
         <div className="spacer" />
+        {buildable && <span className="pill buildable">🤖 buildable</span>}
         {human && <span className="pill" style={{ background: 'var(--accent)', color: '#fff' }}>🔒 needs human</span>}
         {statusPill(t)}
       </div>
