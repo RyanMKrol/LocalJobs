@@ -1050,7 +1050,7 @@
     {
       "id": "T044",
       "title": "Reorganize jobs into stages/ + pull services out to a self-contained top-level src/services/",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
