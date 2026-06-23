@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { api } from './lib/api';
-import { CronBadge, ProgressBar, StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
+import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
 
 type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | 'ignored' | null;
 
 export default function Overview() {
-  const { data: stuckData } = usePoll(() => api.stuck(), 5000);
+  const [stuckPollTick, setStuckPollTick] = useState(0);
+  const { data: stuckData } = usePoll(() => api.stuck(), 5000, [stuckPollTick]);
   const { data: ignoredData } = usePoll(() => api.ignored(), 5000);
   const { data: pipeData } = usePoll(() => api.workflows(), 3000);
   const { data: pipeRunData, error } = usePoll(() => api.recentWorkflowRuns(50), 2000);
@@ -17,6 +18,7 @@ export default function Overview() {
   const workflowRuns = pipeRunData?.runs ?? [];
 
   const [activeFilter, setActiveFilter] = useState<Filter>(null);
+  const [stuckPopoverOpen, setStuckPopoverOpen] = useState(false);
 
   function toggleFilter(f: Filter) {
     setActiveFilter((prev) => (prev === f ? null : f));
@@ -77,6 +79,13 @@ export default function Overview() {
 
   return (
     <>
+      {stuckPopoverOpen && (
+        <StuckPopover
+          items={stuck}
+          onClose={() => setStuckPopoverOpen(false)}
+          onAction={() => setStuckPollTick((t) => t + 1)}
+        />
+      )}
       <h1>Overview</h1>
       <p className="sub">Recent workflow activity. Auto-refreshes every 2s.</p>
       {error && <p className="muted">⚠ Cannot reach daemon at the API ({error}). Is it running?</p>}
@@ -119,8 +128,8 @@ export default function Overview() {
         </button>
         <button
           className={`statcard${activeFilter === 'stuck' ? ' active' : ''}`}
-          onClick={() => toggleFilter('stuck')}
-          title="Click to filter by stuck"
+          onClick={() => { if (stuck.length > 0) setStuckPopoverOpen(true); else toggleFilter('stuck'); }}
+          title={stuck.length > 0 ? 'Click to manage stuck items' : 'Click to filter by stuck'}
         >
           <div className="n" style={{ color: stuck.length ? 'var(--red)' : undefined }}>{stuck.length}</div><div className="l">Stuck items</div>
         </button>
@@ -191,7 +200,11 @@ export default function Overview() {
 
       {stuck.length > 0 && (
       <>
-      <h2>⛔ Stuck items <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>— gave up, will NOT retry</span></h2>
+      <h2>
+        ⛔ Stuck items <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>— gave up, will NOT retry</span>
+        {' '}
+        <button className="btn secondary" style={{ fontSize: 12, padding: '2px 10px', verticalAlign: 'middle' }} onClick={() => setStuckPopoverOpen(true)}>Manage all…</button>
+      </h2>
       <div className="panel" style={{ borderColor: 'var(--red)' }}>
         <table>
           <thead>

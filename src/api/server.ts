@@ -43,6 +43,9 @@ import {
   unstickWorkItem,
   ignoreWorkItem,
   ignoredItems,
+  bulkUnstickItems,
+  bulkIgnoreItems,
+  type BulkStuckScope,
 } from '../db/store.js';
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -107,6 +110,30 @@ export function safeOutputMarkdown(candidate: string | null): string | null {
     return null;
   }
   return real;
+}
+
+/**
+ * Resolve a bulk-stuck-action request body to a `BulkStuckScope`, or null if
+ * the body specifies an unknown workflow. Accepts:
+ *   {} or { scope: 'all' }           → all stuck items
+ *   { scope: 'job', job: 'name' }    → one job
+ *   { scope: 'workflow', workflow }   → member jobs of the named workflow
+ */
+function resolveBulkScope(body: Record<string, unknown>): BulkStuckScope | null {
+  const scope = body.scope as string | undefined;
+  if (!scope || scope === 'all') return { type: 'all' };
+  if (scope === 'job') {
+    const jobName = body.job as string | undefined;
+    return { type: 'job', jobName: jobName ?? '' };
+  }
+  if (scope === 'workflow') {
+    const wfName = body.workflow as string | undefined;
+    if (!wfName) return { type: 'all' }; // no name → all
+    const members = getWorkflowJobs(wfName);
+    if (members.length === 0) return null; // unknown workflow
+    return { type: 'workflow', jobNames: members.map((m) => m.job_name) };
+  }
+  return { type: 'all' };
 }
 
 /** True if `origin` is one of the configured allowlist entries. */
@@ -300,6 +327,27 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         const body = await readBody(req);
         if (!body.job || !body.key) return json(res, 400, { error: 'job and key are required' });
         const ignored = ignoreWorkItem(String(body.job), String(body.key));
+        return json(res, 200, { ok: true, ignored });
+      }
+
+      // POST /api/stuck/unstick-bulk  { scope?: 'all'|{job}|{workflow} }
+      // Bulk-unstick: delete all currently-failed rows in scope so they retry fresh.
+      // scope omitted / 'all' → every stuck item; { job } → one job; { workflow } → its members.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'stuck' && parts[2] === 'unstick-bulk') {
+        const body = await readBody(req);
+        const scope = resolveBulkScope(body);
+        if (scope === null) return json(res, 400, { error: 'invalid scope: workflow must be a known workflow name' });
+        const unstuck = bulkUnstickItems(scope);
+        return json(res, 200, { ok: true, unstuck });
+      }
+
+      // POST /api/stuck/ignore-bulk  { scope?: 'all'|{job}|{workflow} }
+      // Bulk-ignore: permanently mark all currently-failed rows in scope as 'ignored'.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'stuck' && parts[2] === 'ignore-bulk') {
+        const body = await readBody(req);
+        const scope = resolveBulkScope(body);
+        if (scope === null) return json(res, 400, { error: 'invalid scope: workflow must be a known workflow name' });
+        const ignored = bulkIgnoreItems(scope);
         return json(res, 200, { ok: true, ignored });
       }
 

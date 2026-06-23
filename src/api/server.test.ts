@@ -355,4 +355,75 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   rmSync(txtFile, { force: true });
 }
 
+// ── T118: bulk stuck endpoints — scope validation + only-failed semantics ──
+{
+  syncJob({ name: 'bulk-api-j1', run: async () => {} });
+  syncJob({ name: 'bulk-api-j2', run: async () => {} });
+  syncWorkflow({ name: 'bulk-api-wf', description: 'd', schedule: null, jobs: [{ job: 'bulk-api-j1' }, { job: 'bulk-api-j2' }] });
+  jobs.push({ name: 'bulk-api-j1', run: async () => {} });
+  jobs.push({ name: 'bulk-api-j2', run: async () => {} });
+  workflows.push({ name: 'bulk-api-wf', description: 'd', schedule: null, jobs: [{ job: 'bulk-api-j1' }, { job: 'bulk-api-j2' }] });
+
+  await test('bulk unstick-bulk: all scope removes all failed rows', async () => {
+    markWorkItem('bulk-api-j1', 'bapi-f1', 'failed', { attempts: 4 });
+    markWorkItem('bulk-api-j2', 'bapi-f2', 'failed', { attempts: 4 });
+    markWorkItem('bulk-api-j1', 'bapi-ok', 'success');
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/stuck/unstick-bulk`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; unstuck: number };
+      assert.equal(body.ok, true);
+      assert.ok(body.unstuck >= 2, `expected ≥2 unstuck, got ${body.unstuck}`);
+    });
+  });
+
+  await test('bulk ignore-bulk: job scope only ignores that job\'s failed rows', async () => {
+    markWorkItem('bulk-api-j1', 'bapi-ig1', 'failed', { attempts: 4 });
+    markWorkItem('bulk-api-j2', 'bapi-ig2', 'failed', { attempts: 4 });
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/stuck/ignore-bulk`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'job', job: 'bulk-api-j1' }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; ignored: number };
+      assert.equal(body.ok, true);
+      assert.equal(body.ignored, 1, 'only the job-scoped row was ignored');
+    });
+  });
+
+  await test('bulk ignore-bulk: workflow scope only ignores member jobs', async () => {
+    markWorkItem('bulk-api-j1', 'bapi-wf1', 'failed', { attempts: 4 });
+    markWorkItem('bulk-api-j2', 'bapi-wf2', 'failed', { attempts: 4 });
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/stuck/ignore-bulk`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'workflow', workflow: 'bulk-api-wf' }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; ignored: number };
+      assert.equal(body.ok, true);
+      assert.ok(body.ignored >= 2, `workflow scope should ignore both member jobs' rows`);
+    });
+  });
+
+  await test('bulk ignore-bulk: unknown workflow returns 400', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/stuck/ignore-bulk`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'workflow', workflow: '__no_such_wf__' }),
+      });
+      assert.equal(res.status, 400);
+    });
+  });
+
+  // Cleanup registry entries
+  for (const name of ['bulk-api-j1', 'bulk-api-j2']) {
+    const i = jobs.findIndex((j) => j.name === name); if (i >= 0) jobs.splice(i, 1);
+  }
+  { const i = workflows.findIndex((w) => w.name === 'bulk-api-wf'); if (i >= 0) workflows.splice(i, 1); }
+}
+
 console.log(`\n  ${passed} assertions passed`);

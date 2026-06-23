@@ -281,6 +281,18 @@ export interface BacklogTask {
   doneWhen: string;
 }
 
+/** Scope for bulk stuck-item operations passed to the bulk API endpoints. */
+export type BulkScope =
+  | { type: 'all' }
+  | { type: 'job'; job: string }
+  | { type: 'workflow'; workflow: string };
+
+function scopeBody(scope: BulkScope): Record<string, string> {
+  if (scope.type === 'all') return { scope: 'all' };
+  if (scope.type === 'job') return { scope: 'job', job: scope.job };
+  return { scope: 'workflow', workflow: scope.workflow };
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -308,6 +320,8 @@ export const api = {
   ignored: (job?: string) => get<{ ignored: StuckItem[] }>(`/api/ignored${job ? `?job=${job}` : ''}`),
   unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),
   ignore: (job: string, key: string) => post<{ ok: boolean; ignored: number }>(`/api/stuck/ignore`, { job, key }),
+  unstickBulk: (scope?: BulkScope) => post<{ ok: boolean; unstuck: number }>('/api/stuck/unstick-bulk', scope ? scopeBody(scope) : {}),
+  ignoreBulk: (scope?: BulkScope) => post<{ ok: boolean; ignored: number }>('/api/stuck/ignore-bulk', scope ? scopeBody(scope) : {}),
 
   recentWorkflowRuns: (limit = 50) => get<{ runs: WorkflowRun[] }>(`/api/workflow-runs?limit=${limit}`),
   workflows: () => get<{ workflows: Workflow[] }>('/api/workflows'),

@@ -399,6 +399,29 @@ doubt, log it.
     are **never automatic** — nothing in the run/schedule path ignores anything.
     (DB note: the legacy `dismissed` status is migrated to `ignored` on startup
     in `src/db/index.ts`.)
+  - **Bulk unstick/ignore with scope (T118).** The per-item controls above are
+    complemented by bulk operations: `bulkUnstickItems(scope)` /
+    `bulkIgnoreItems(scope)` in `src/db/store.ts`, backed by
+    `POST /api/stuck/unstick-bulk` and `POST /api/stuck/ignore-bulk` in
+    `src/api/server.ts`. Both act ONLY on currently-`failed` rows (same semantic as
+    the single-item operations). The scope parameter limits the action to a subset:
+    `{ type: 'all' }` (default — every stuck item), `{ type: 'job', jobName }` (one
+    job), or `{ type: 'workflow', jobNames }` (member jobs of a named workflow; the
+    API resolves the workflow name to its member list via `getWorkflowJobs`).
+    The API request body is `{}` / `{ scope: 'all' }` for all, `{ scope: 'job', job
+    }` for one job, or `{ scope: 'workflow', workflow: 'name' }` — the server
+    returns `{ ok, unstuck }` / `{ ok, ignored }` with the count of rows affected.
+    An unknown workflow name returns **400**. The bulk endpoints obey the same
+    global loopback/token mutation guard as all other POST endpoints.
+    The **`StuckPopover`** component in `dashboard/app/ui.tsx` is the reusable UI:
+    it takes `items: StuckItem[]`, an optional `scope?: BulkScope`, `onClose`, and
+    `onAction`. It renders the item table with per-item ↻ Unstick / ✕ Ignore
+    buttons plus "Unstick all" / "Ignore all" bulk actions — bulk actions prompt a
+    confirmation before calling the API. The Overview page opens it from the Stuck
+    tile and the "Manage all…" header button; T119 wires it from the Workflows view.
+    The `StuckPopover` reuses the existing `.db-modal-overlay` / `.db-modal`
+    chrome and adds only `.stuck-popover` (wider width) and `.stuck-popover-bulk`
+    (footer action row) in `dashboard/app/globals.css`.
 - **Spend / usage caps.** For jobs that make metered external calls (paid APIs),
   enforce per-day AND per-month caps via the `job_usage` meter in `src/db/store.ts`
   (`recordUsage`, `capStatus`). Call `recordUsage(jobName)` once per real action;

@@ -10,6 +10,7 @@ import {
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, usageThisMonth,
+  bulkUnstickItems, bulkIgnoreItems,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 import { db } from './index.js';
@@ -230,6 +231,56 @@ console.log('  ✓ pruneOrphanedWorkItems removes orphaned keys, keeps current (
   assert.equal(getWorkItem('t-ignore', 'bad-2'), undefined, 'unstick removed the stuck row');
 }
 console.log('  ✓ ignoreWorkItem parks a stuck item (manual, persists, off stuck list, on Ignored list)');
+
+// ── bulkUnstickItems / bulkIgnoreItems: scope + only-failed guard (T118) ──
+// Bulk operations act ONLY on currently-'failed' rows; success/ignored rows are
+// untouched. Scopes: 'all' (no filter), 'job' (one job), 'workflow' (member jobs).
+{
+  syncJob({ name: 'bk-j1', run: async () => {} });
+  syncJob({ name: 'bk-j2', run: async () => {} });
+  syncWorkflow({ name: 'bk-wf', description: 'd', schedule: null, jobs: [{ job: 'bk-j1' }, { job: 'bk-j2' }] });
+
+  function seedBulk() {
+    markWorkItem('bk-j1', 'bk-f1', 'failed', { attempts: 4 });
+    markWorkItem('bk-j1', 'bk-f2', 'failed', { attempts: 4 });
+    markWorkItem('bk-j1', 'bk-ok', 'success');
+    markWorkItem('bk-j2', 'bk-f3', 'failed', { attempts: 4 });
+    markWorkItem('bk-j2', 'bk-ig', 'ignored');
+  }
+
+  // -- bulk-unstick: job scope removes only that job's failed rows --
+  seedBulk();
+  assert.equal(bulkUnstickItems({ type: 'job', jobName: 'bk-j1' }), 2, 'job scope removes 2 failed rows');
+  assert.equal(getWorkItem('bk-j1', 'bk-f1'), undefined, 'bk-f1 deleted');
+  assert.equal(getWorkItem('bk-j1', 'bk-f2'), undefined, 'bk-f2 deleted');
+  assert.equal(getWorkItem('bk-j1', 'bk-ok')?.status, 'success', 'success row untouched');
+  assert.ok(getWorkItem('bk-j2', 'bk-f3'), 'bk-j2 rows untouched by job scope');
+
+  // -- bulk-ignore: workflow scope acts only on member jobs --
+  seedBulk(); // re-seed (bk-j1 rows were deleted)
+  const wfJobNames = getWorkflowJobs('bk-wf').map((m) => m.job_name);
+  assert.equal(bulkIgnoreItems({ type: 'workflow', jobNames: wfJobNames }), 3, 'workflow scope ignores 3 failed rows (2 bk-j1 + 1 bk-j2)');
+  assert.equal(getWorkItem('bk-j1', 'bk-f1')?.status, 'ignored', 'bk-f1 ignored');
+  assert.equal(getWorkItem('bk-j1', 'bk-f2')?.status, 'ignored', 'bk-f2 ignored');
+  assert.equal(getWorkItem('bk-j2', 'bk-f3')?.status, 'ignored', 'bk-f3 ignored');
+  assert.equal(getWorkItem('bk-j2', 'bk-ig')?.status, 'ignored', 'already-ignored row untouched (still ignored, 0 updates)');
+  assert.equal(getWorkItem('bk-j1', 'bk-ok')?.status, 'success', 'success row untouched by bulk-ignore');
+
+  // -- bulk-unstick: 'all' scope across all jobs --
+  // Reset: re-seed bk-j1 with fresh failed rows; bk-j2 rows are now ignored → not touched
+  markWorkItem('bk-j1', 'bk-f1', 'failed', { attempts: 4 });
+  markWorkItem('bk-j1', 'bk-f2', 'failed', { attempts: 4 });
+  markWorkItem('bk-j2', 'bk-f4', 'failed', { attempts: 4 });
+  assert.equal(bulkUnstickItems({ type: 'all' }), 3, 'all scope removes all failed rows across all jobs');
+  assert.equal(getWorkItem('bk-j1', 'bk-f1'), undefined, 'bk-f1 gone');
+  assert.equal(getWorkItem('bk-j2', 'bk-f4'), undefined, 'bk-f4 gone');
+  assert.equal(getWorkItem('bk-j2', 'bk-f3')?.status, 'ignored', 'ignored row untouched by all-scope unstick');
+
+  // -- empty jobNames: workflow scope with no members is a no-op --
+  assert.equal(bulkUnstickItems({ type: 'workflow', jobNames: [] }), 0, 'empty jobNames → 0 changes');
+  assert.equal(bulkIgnoreItems({ type: 'workflow', jobNames: [] }), 0, 'empty jobNames → 0 changes');
+}
+console.log('  ✓ bulkUnstickItems/bulkIgnoreItems: scope (all/job/workflow), only-failed guard');
 
 // ── input lineage + run-limit root selection (T094) ──
 // The framework tracks each work item's originating-input root_key so a manual

@@ -475,6 +475,54 @@ export function pruneOrphanedWorkItems(jobName: string, currentKeys: Iterable<st
   return orphans;
 }
 
+/**
+ * Scope for bulk stuck-item operations: a single job, all jobs in a workflow,
+ * or no scope (every stuck item across all jobs).
+ */
+export type BulkStuckScope =
+  | { type: 'all' }
+  | { type: 'job'; jobName: string }
+  | { type: 'workflow'; jobNames: string[] };
+
+/**
+ * Bulk-unstick: delete all currently-'failed' ledger rows in scope (so they
+ * retry fresh on the next run). Returns the number of rows removed. MANUAL ONLY.
+ */
+export function bulkUnstickItems(scope: BulkStuckScope, minAttempts = 4): number {
+  if (scope.type === 'all') {
+    return db.prepare("DELETE FROM work_items WHERE status = 'failed' AND attempts >= ?")
+      .run(minAttempts).changes;
+  }
+  if (scope.type === 'job') {
+    return db.prepare("DELETE FROM work_items WHERE job_name = ? AND status = 'failed' AND attempts >= ?")
+      .run(scope.jobName, minAttempts).changes;
+  }
+  if (scope.jobNames.length === 0) return 0;
+  const ph = scope.jobNames.map(() => '?').join(',');
+  return db.prepare(`DELETE FROM work_items WHERE job_name IN (${ph}) AND status = 'failed' AND attempts >= ?`)
+    .run(...scope.jobNames, minAttempts).changes;
+}
+
+/**
+ * Bulk-ignore: permanently mark all currently-'failed' ledger rows in scope as
+ * 'ignored', so they drop off the stuck list and are never reprocessed. Returns
+ * the number of rows updated. MANUAL ONLY.
+ */
+export function bulkIgnoreItems(scope: BulkStuckScope, minAttempts = 4): number {
+  if (scope.type === 'all') {
+    return db.prepare("UPDATE work_items SET status = 'ignored', updated_at = datetime('now') WHERE status = 'failed' AND attempts >= ?")
+      .run(minAttempts).changes;
+  }
+  if (scope.type === 'job') {
+    return db.prepare("UPDATE work_items SET status = 'ignored', updated_at = datetime('now') WHERE job_name = ? AND status = 'failed' AND attempts >= ?")
+      .run(scope.jobName, minAttempts).changes;
+  }
+  if (scope.jobNames.length === 0) return 0;
+  const ph = scope.jobNames.map(() => '?').join(',');
+  return db.prepare(`UPDATE work_items SET status = 'ignored', updated_at = datetime('now') WHERE job_name IN (${ph}) AND status = 'failed' AND attempts >= ?`)
+    .run(...scope.jobNames, minAttempts).changes;
+}
+
 /** How many items have given up for one job (failed, out of retries). */
 export function stuckCount(jobName: string, minAttempts = 4): number {
   return (db.prepare(

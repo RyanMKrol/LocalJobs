@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { RunStatus } from './lib/api';
+import { api } from './lib/api';
+import type { BulkScope, RunStatus, StuckItem } from './lib/api';
 
 const STATUS_LABELS: Record<string, string> = {
   success:   'Succeeded',
@@ -309,4 +310,98 @@ export function usePoll<T>(fn: () => Promise<T>, intervalMs: number, deps: unkno
   }, deps);
 
   return { data, error };
+}
+
+/**
+ * Reusable modal that lists stuck items with per-item Unstick/Ignore controls
+ * and 'Unstick all' / 'Ignore all' bulk actions (with confirmation). Accepts an
+ * optional `scope` to limit the view and bulk actions to a job or workflow's
+ * member jobs — pass nothing for "all stuck items".
+ *
+ * On any action the `onAction` callback is called so the parent can force a
+ * data refresh.
+ */
+export function StuckPopover({
+  items,
+  scope,
+  onClose,
+  onAction,
+}: {
+  items: StuckItem[];
+  scope?: BulkScope;
+  onClose: () => void;
+  onAction: () => void;
+}) {
+  async function handleUnstick(job: string, key: string) {
+    try { await api.unstick(job, key); } catch { /* parent poll will reconcile */ }
+    onAction();
+  }
+
+  async function handleIgnore(job: string, key: string) {
+    if (!window.confirm(`Permanently ignore "${key}"?\n\nIt will never be retried and drops off the stuck list. Use Unstick instead if you want it retried.`)) return;
+    try { await api.ignore(job, key); } catch { /* parent poll will reconcile */ }
+    onAction();
+  }
+
+  async function handleUnstickAll() {
+    if (!window.confirm(`Unstick all ${items.length} item${items.length === 1 ? '' : 's'}?\n\nThey will be retried fresh on the next run.`)) return;
+    try { await api.unstickBulk(scope); } catch { /* parent poll will reconcile */ }
+    onAction();
+  }
+
+  async function handleIgnoreAll() {
+    if (!window.confirm(`Permanently ignore all ${items.length} item${items.length === 1 ? '' : 's'}?\n\nThey will never be retried and drop off the stuck list. This cannot be undone automatically.`)) return;
+    try { await api.ignoreBulk(scope); } catch { /* parent poll will reconcile */ }
+    onAction();
+  }
+
+  return (
+    <div className="db-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="db-modal stuck-popover" role="dialog" aria-modal="true" aria-label="Stuck items">
+        <div className="db-modal-header">
+          <span>⛔ Stuck items ({items.length})</span>
+          <button className="db-modal-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className="db-modal-body" style={{ padding: 0 }}>
+          {items.length === 0 ? (
+            <p className="muted" style={{ padding: '16px' }}>No stuck items.</p>
+          ) : (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%' }}>
+                  <thead>
+                    <tr><th>Item</th><th>Job</th><th>Att</th><th>Reason</th><th>When</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {items.map((s) => (
+                      <tr key={`${s.job_name}:${s.item_key}`}>
+                        <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {s.detail?.name ?? <span className="mono">{s.item_key}</span>}
+                        </td>
+                        <td><a href={`/jobs/${s.job_name}`}>{s.job_name}</a></td>
+                        <td>{s.attempts}</td>
+                        <td className="muted" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {s.detail?.error ?? s.detail?.status ?? '—'}
+                          {s.detail?.pageTitle ? ` · "${s.detail.pageTitle}"` : ''}
+                        </td>
+                        <td className="muted">{fmtRelative(s.updated_at)}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn" onClick={() => handleUnstick(s.job_name, s.item_key)}>↻</button>{' '}
+                          <button className="btn" onClick={() => handleIgnore(s.job_name, s.item_key)} title="Permanently ignore">✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="stuck-popover-bulk">
+                <button className="btn secondary" onClick={handleUnstickAll}>↻ Unstick all ({items.length})</button>
+                <button className="btn" onClick={handleIgnoreAll} title="Permanently ignore all — cannot be undone">✕ Ignore all ({items.length})</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }

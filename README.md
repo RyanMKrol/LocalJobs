@@ -236,10 +236,13 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   run table below to that category. Also shows the **stuck items** list (items
   that gave up, won't retry), each with two manual controls: **↻ Unstick**
   (delete the ledger row so it retries fresh next run) and **✕ Ignore**
-  (permanently park genuinely-bad-data items). Ignored items are the ONE
-  manual-park concept: they drop off the stuck list, are **never counted as
-  stuck**, are never reprocessed, and appear ONLY here — under the **Ignored**
-  tile (click it to list them).
+  (permanently park genuinely-bad-data items). Clicking the **Stuck tile** (or
+  the **"Manage all…"** button beside the stuck-items heading) opens a modal
+  popover that lists stuck items with per-item ↻ / ✕ controls PLUS **"Unstick
+  all"** and **"Ignore all"** bulk actions (each confirmed before executing).
+  Ignored items are the ONE manual-park concept: they drop off the stuck list,
+  are **never counted as stuck**, are never reprocessed, and appear ONLY here —
+  under the **Ignored** tile (click it to list them).
 - **Workflows** — every workflow with schedule, enabled state, member-job count,
   and last/next run. Every job belongs to a workflow, so there is no separate
   standalone-jobs list; drill into a workflow to reach its member jobs.
