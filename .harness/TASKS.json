@@ -3367,7 +3367,7 @@
     {
       "id": "T124",
       "title": "Backlog: human-reviewed flag on tasks (button, pills, filter, persisted to TASKS.json)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
