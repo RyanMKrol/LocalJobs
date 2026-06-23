@@ -3544,6 +3544,46 @@
       "verify": [],
       "spec": ".harness/tasks/T134.md",
       "reviewed": false
+    },
+    {
+      "id": "T135",
+      "title": "Editable workflow schedule: change a workflow's cron from its detail page (persisted, live, reconciled)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "scheduler",
+        "backend",
+        "dashboard"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/core/scheduler.ts",
+        "src/core/scheduler.test.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "src/db/store.test.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        "README.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T135.md",
+      "reviewed": false
     }
   ]
 }
