@@ -3584,6 +3584,45 @@
       "verify": [],
       "spec": ".harness/tasks/T135.md",
       "reviewed": false
+    },
+    {
+      "id": "T136",
+      "title": "Durable reviews: move reviewed into owner-owned .harness/reviews.json, commit+push under the loop lock",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "harness",
+        "backend",
+        "durability",
+        "git"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        ".harness/TASKS.json",
+        ".harness/reviews.json",
+        ".harness/loop.sh",
+        ".harness/HARNESS.md",
+        "src/core/repo-lock.ts",
+        "src/core/repo-lock.test.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T136.md",
+      "reviewed": false
     }
   ]
 }
