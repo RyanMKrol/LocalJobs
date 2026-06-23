@@ -387,7 +387,14 @@ doubt, log it.
     (the places bug: ingest used to produce only a file, so the panel was blank). A
     bulk first stage re-records the full current list each run (idempotent upsert; it
     doesn't skip). Keep the first stage's item key == the downstream `root_key` so the
-    mapping joins cleanly.
+    mapping joins cleanly. **It must still filter by `ctx.rootAllowed`** like every stage
+    (T094) — on a *limited* manual run only the selected roots are recorded, so the ledger
+    + IO mapping reflect the limited subset (the full catalog file is still written; only
+    the ledger is scoped). This is SEPARATE from the **root stage** (the first member
+    declaring `inputKeys()`, which drives the limit): that stays the first stage whose
+    ledger *meaningfully tracks per-item completion* (for places that's the resolver, not
+    ingest — ingest marks every item `success` at once, which would break the limit's
+    "pick the first N not-yet-done roots" logic if ingest were the root).
   - **Pruning orphaned ledger rows (manual only).** When a job's input keys
     change (e.g. a source id is corrected), the old keys leave orphaned
     `work_items` behind. A job can expose its current input key-set via an

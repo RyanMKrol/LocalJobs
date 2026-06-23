@@ -21,12 +21,21 @@ const INGEST_JOB = 'places-ingest';
  * Name-only places (no CID) can't be resolved, so they don't enter the pipeline and
  * aren't recorded. This is what makes ingest — the FIRST stage — the owner of the
  * idempotency list (so the run's Input→Output mapping has an input side). A bulk
- * prep step re-records the full current list each run (upsert; no skip). Exported so
- * it can be unit-tested against the scratch DB without disk I/O.
+ * prep step re-records the full current list each run (upsert; no skip).
+ *
+ * Like every stage, it filters by `ctx.rootAllowed` (T094): on a *limited* manual
+ * run only the selected originating roots are recorded, so the ledger — and the IO
+ * mapping's input side — reflects the limited subset, not the whole catalog. The
+ * full `places.json` is still written either way (downstream needs the catalog);
+ * it's only the per-item ledger that's scoped. Unlimited runs allow everything
+ * (no-op filter). Exported (with an injectable predicate) for unit testing.
  */
-export function recordIngestLedger(places: NormalizedPlace[]): void {
+export function recordIngestLedger(
+  places: NormalizedPlace[],
+  rootAllowed: (cid: string) => boolean = () => true,
+): void {
   for (const p of places) {
-    if (p.cid) markWorkItem(INGEST_JOB, p.cid, 'success', { detail: { name: p.name } });
+    if (p.cid && rootAllowed(p.cid)) markWorkItem(INGEST_JOB, p.cid, 'success', { detail: { name: p.name } });
   }
 }
 
@@ -176,7 +185,7 @@ export async function runIngest(ctx: JobContext): Promise<ValidationReport> {
   // ledger item per CID-bearing place, keyed by CID. This anchors idempotency AND
   // the run's Input→Output mapping from stage one (a bulk-prep first stage that
   // records nothing leaves the IO panel with no input side). Only on a valid run.
-  if (report.ok) recordIngestLedger(places);
+  if (report.ok) recordIngestLedger(places, ctx.rootAllowed);
 
   ctx.progress(100, `${places.length} places (${withCid} with CID)`);
 
