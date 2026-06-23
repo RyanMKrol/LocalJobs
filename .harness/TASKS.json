@@ -2744,7 +2744,7 @@
     {
       "id": "T109",
       "title": "New monthly workflow: notify about movie gaps in my Plex library",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -3729,6 +3729,77 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T144.md",
+      "reviewed": false
+    },
+    {
+      "id": "T145",
+      "title": "Movie workflow: deterministic franchise-gap audit (TMDB collections) + monthly digest + ignore-to-suppress",
+      "status": "pending",
+      "dependsOn": [
+        "T144"
+      ],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "plex",
+        "movies",
+        "coding"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/jobs/movies",
+        "src/jobs/plex",
+        "src/services",
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "dashboard/app",
+        ".env.example",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T145.md",
+      "reviewed": false
+    },
+    {
+      "id": "T146",
+      "title": "Movie workflow: 8-branch Claude recommendation layer (3 random + 5 targeted) with TMDB-verified merge",
+      "status": "pending",
+      "dependsOn": [
+        "T145"
+      ],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "plex",
+        "movies",
+        "llm",
+        "coding"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/jobs/movies",
+        "src/services",
+        ".env.example",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T146.md",
       "reviewed": false
     }
   ]
