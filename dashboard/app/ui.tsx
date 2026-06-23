@@ -184,6 +184,39 @@ export function cronToEnglish(expr: string): string {
   return expr; // unrecognised — fall back to raw, never show wrong description
 }
 
+/**
+ * Renders a cron expression with an explicit ⓘ icon that shows the human-readable
+ * description instantly on hover, focus, or tap — no native-title delay.
+ * When cronToEnglish can't translate the expression it falls back to plain text
+ * (no icon, since there's nothing useful to show).
+ */
+export function CronBadge({ expr }: { expr: string }) {
+  const english = cronToEnglish(expr);
+  const [open, setOpen] = useState(false);
+  if (english === expr) return <span className="mono">{expr}</span>;
+  return (
+    <span className="cron-badge">
+      <span className="mono">{expr}</span>
+      <span
+        className="cron-help"
+        tabIndex={0}
+        role="button"
+        aria-label={`Schedule description: ${english}`}
+        aria-haspopup="true"
+        aria-expanded={open}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
+      >
+        ?
+        {open && <span className="cron-tooltip" role="tooltip">{english}</span>}
+      </span>
+    </span>
+  );
+}
+
 /** Poll an async function on an interval; returns latest data + error. */
 export function usePoll<T>(fn: () => Promise<T>, intervalMs: number, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);

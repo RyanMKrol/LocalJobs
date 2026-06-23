@@ -1,7 +1,7 @@
 'use client';
 
 import { api } from '../lib/api';
-import { cronToEnglish, fmtRelative, fmtTime, statusLabel, usePoll } from '../ui';
+import { CronBadge, fmtRelative, fmtTime, statusLabel, usePoll } from '../ui';
 
 export default function Workflows() {
   const { data, error } = usePoll(() => api.workflows(), 3000);
@@ -35,7 +35,7 @@ export default function Workflows() {
                 <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
                 <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
                   {p.schedule
-                    ? <span title={cronToEnglish(p.schedule)}>{p.schedule}</span>
+                    ? <CronBadge expr={p.schedule} />
                     : <span className="muted">manual</span>}
                   {p.enabled ? '' : ' (off)'}
                 </td>

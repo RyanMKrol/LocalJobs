@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { api } from './lib/api';
-import { ProgressBar, StatusBadge, cronToEnglish, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
+import { CronBadge, ProgressBar, StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
 
 type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | 'ignored' | null;
 
@@ -178,7 +178,7 @@ export default function Overview() {
             </div>
             <div className="muted" style={{ fontSize: 12, margin: '6px 0' }}>
               {p.jobs.length} stages · {p.schedule
-                ? <span title={cronToEnglish(p.schedule)}>{p.schedule}</span>
+                ? <CronBadge expr={p.schedule} />
                 : 'manual'}{p.stuck > 0 ? ` · ⛔ ${p.stuck} stuck` : ''}
             </div>
             {p.last_run?.status === 'running' && <ProgressBar pct={p.last_run.progress} />}

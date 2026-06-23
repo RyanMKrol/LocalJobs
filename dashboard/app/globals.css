@@ -228,6 +228,27 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .mono { overflow-wrap: anywhere; }
 .logs { overflow-wrap: anywhere; }
 
+/* ── Cron badge: cron expression + instant '?' tooltip (T107) ─────────────── */
+.cron-badge { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.cron-help {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+  border: 1px solid var(--muted); color: var(--muted);
+  font-size: 9px; font-weight: 700; font-family: -apple-system, sans-serif;
+  cursor: pointer; user-select: none; line-height: 1;
+}
+.cron-help:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cron-help:hover, .cron-help:focus { border-color: var(--accent); color: var(--accent); }
+.cron-tooltip {
+  position: absolute; bottom: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 10px; font-size: 12px; color: var(--text); white-space: normal;
+  width: max-content; max-width: min(220px, 80vw);
+  box-shadow: 0 3px 10px rgba(0,0,0,.4); z-index: 200; pointer-events: none;
+  text-align: center; font-family: inherit; font-weight: 400;
+}
+
 /* ── Database row-detail modal ─────────────────────────────────────────────── */
 .db-row-clickable { cursor: pointer; }
 .db-row-clickable:hover { background: var(--panel-2); }

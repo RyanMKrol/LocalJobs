@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
-import { cronToEnglish, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
+import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
 
 export default function WorkflowDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
@@ -51,7 +51,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
           <div className="k">Schedule</div>
           <div className="mono" style={{ whiteSpace: 'nowrap' }}>
             {p?.schedule
-              ? <span title={cronToEnglish(p.schedule)}>{p.schedule}</span>
+              ? <CronBadge expr={p.schedule} />
               : 'manual-only'}
           </div>
           <div className="k">Enabled</div>
