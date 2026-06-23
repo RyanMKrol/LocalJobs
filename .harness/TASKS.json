@@ -2778,7 +2778,7 @@
     {
       "id": "T107",
       "title": "Cron: explicit '?'-icon tooltip with instant human-readable text",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
