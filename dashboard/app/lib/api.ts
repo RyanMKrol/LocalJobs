@@ -279,6 +279,9 @@ export interface BacklogTask {
   verify?: string[];
   do: string;
   doneWhen: string;
+  // Human-review flag (T124): owner-set via the dashboard, not the harness loop.
+  // Defaults to false (the API normalises absent values).
+  reviewed?: boolean;
 }
 
 /** Scope for bulk stuck-item operations passed to the bulk API endpoints. */
@@ -352,8 +355,11 @@ export const api = {
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
 
-  // Read-only harness backlog (.harness/TASKS.json)
+  // Harness backlog (.harness/TASKS.json). Read-only EXCEPT the human-owned
+  // `reviewed` flag, which `markReviewed` writes back (T124).
   backlog: () => get<{ tasks: BacklogTask[]; defaults?: BacklogDefaults; error?: string }>('/api/backlog'),
+  markReviewed: (id: string, reviewed: boolean) =>
+    post<{ ok: boolean; id: string; reviewed: boolean }>(`/api/backlog/${encodeURIComponent(id)}/reviewed`, { reviewed }),
 
   // Read-only DB browser
   dbTables: () => get<{ tables: string[] }>('/api/db/tables'),

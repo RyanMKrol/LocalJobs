@@ -97,7 +97,8 @@ agent must not edit it.
                 "escalation": [ { "model": "claude-opus-4-8", "effort": "xhigh" } ] },
   "tasks": [
     {
-      "id": "T001", "title": "…", "status": "pending",   // pending | done
+      "id": "T001", "title": "…", "status": "pending",   // pending | done  (SHELL-owned)
+      "reviewed": false,                                  // human-review flag (HUMAN/dashboard-owned)
       "dependsOn": [], "gate": null,                      // gate: null | "gate" | "needs-human"
       "model": "claude-opus-4-8", "effort": "high",       // optional per-task override
       "escalation": [ … ],                                // optional per-task ladder
@@ -110,6 +111,18 @@ agent must not edit it.
 
 `gate:"gate"` = a human reviews the deliverable before dependents run; `gate:"needs-human"` = a
 one-time human step (the agent prepares around it and records `failed:blocked`).
+
+**`reviewed` — the one human/dashboard-owned field (T124).** Separate from the shell-owned
+`status`, each task carries a `reviewed` boolean for tracking whether the OWNER has personally
+reviewed a `done` task. It is set from the dashboard Backlog page (a "Mark as reviewed" toggle on
+each done task, a Reviewed/Not-reviewed pill, and a Reviewed/Not-reviewed/All filter), which calls
+`POST /api/backlog/:id/reviewed { reviewed }` — the **single deliberate exception** to the
+otherwise read-only dashboard. That endpoint does a field-scoped, ATOMIC (temp-file + rename)
+read-modify-write of `.harness/TASKS.json`: it sets ONLY that task's `reviewed`, preserves every
+other field and every other task, and validates the JSON before writing. Because the loop's status
+edit is itself field-scoped (`jq` sets only `.status`), the two writers never clobber each other.
+An absent `reviewed` is treated as `false`. The agent must NOT hand-edit `reviewed` — it is an
+owner UI action, just as `status` is a shell action.
 
 ## 9. Result protocol
 

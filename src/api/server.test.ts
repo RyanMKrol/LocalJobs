@@ -4,8 +4,10 @@
 // ephemeral real server exercises the CORS reflection and the 401 guard end-to-end.
 // `opts.isLoopback` lets us simulate a remote (non-loopback) caller without a second host.
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { jobs, workflows } from '../jobs/registry.js';
@@ -18,6 +20,7 @@ import {
   isWithin,
   originAllowed,
   safeOutputMarkdown,
+  setTaskReviewed,
 } from './server.js';
 
 let passed = 0;
@@ -424,6 +427,95 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
     const i = jobs.findIndex((j) => j.name === name); if (i >= 0) jobs.splice(i, 1);
   }
   { const i = workflows.findIndex((w) => w.name === 'bulk-api-wf'); if (i >= 0) workflows.splice(i, 1); }
+}
+
+// ── T124: backlog `reviewed` flag — pure setter + GET surfaces it + atomic POST ──
+{
+  // A fixture backlog: t-b has no `reviewed` field (must default to false), the
+  // others carry an explicit flag. extra/nested fields must survive edits verbatim.
+  const fixture = () =>
+    JSON.stringify(
+      {
+        version: 1,
+        defaults: { model: 'm', effort: 'e' },
+        tasks: [
+          { id: 't-a', title: 'A', status: 'done', reviewed: false, tags: ['x'], nested: { keep: 1 } },
+          { id: 't-b', title: 'B', status: 'done' },
+          { id: 't-c', title: 'C', status: 'pending', reviewed: true },
+        ],
+      },
+      null,
+      2,
+    ) + '\n';
+
+  await test('setTaskReviewed: sets ONLY the target task, preserves every other field/task', () => {
+    const out = setTaskReviewed(fixture(), 't-a', true);
+    assert.ok(out, 'returns updated JSON');
+    const parsed = JSON.parse(out!) as { defaults: unknown; tasks: Array<Record<string, unknown>> };
+    const a = parsed.tasks.find((t) => t.id === 't-a')!;
+    const b = parsed.tasks.find((t) => t.id === 't-b')!;
+    const c = parsed.tasks.find((t) => t.id === 't-c')!;
+    assert.equal(a.reviewed, true, 'target flipped');
+    assert.deepEqual(a.nested, { keep: 1 }, 'nested fields preserved');
+    assert.equal(a.title, 'A');
+    assert.equal(b.reviewed, undefined, 'other task untouched');
+    assert.equal(c.reviewed, true, 'other task untouched');
+    assert.deepEqual(parsed.defaults, { model: 'm', effort: 'e' }, 'top-level fields preserved');
+  });
+
+  await test('setTaskReviewed: returns null for an unknown id (no mutation)', () => {
+    assert.equal(setTaskReviewed(fixture(), 't-zzz', true), null);
+  });
+
+  // A throwaway backlog file the endpoint reads + atomically rewrites.
+  const dir = mkdtempSync(join(tmpdir(), 'localjobs-backlog-'));
+  const backlogPath = join(dir, 'TASKS.json');
+
+  await test('GET /api/backlog: surfaces reviewed (absent → false)', async () => {
+    writeFileSync(backlogPath, fixture());
+    await withServer({ backlogPath }, async (base) => {
+      const res = await fetch(`${base}/api/backlog`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { tasks: Array<{ id: string; reviewed: boolean }> };
+      const byId = Object.fromEntries(body.tasks.map((t) => [t.id, t.reviewed]));
+      assert.equal(byId['t-a'], false);
+      assert.equal(byId['t-b'], false, 'absent reviewed defaults to false');
+      assert.equal(byId['t-c'], true);
+    });
+  });
+
+  await test('POST /api/backlog/:id/reviewed: atomically sets ONLY that task; preserves the rest', async () => {
+    writeFileSync(backlogPath, fixture());
+    await withServer({ backlogPath }, async (base) => {
+      const res = await fetch(`${base}/api/backlog/t-b/reviewed`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: true }),
+      });
+      assert.equal(res.status, 200);
+      assert.deepEqual(await res.json(), { ok: true, id: 't-b', reviewed: true });
+      // The on-disk file must reflect only that change, with all else preserved.
+      const onDisk = JSON.parse(readFileSync(backlogPath, 'utf8')) as { tasks: Array<Record<string, unknown>> };
+      assert.equal(onDisk.tasks.find((t) => t.id === 't-b')!.reviewed, true);
+      assert.equal(onDisk.tasks.find((t) => t.id === 't-a')!.reviewed, false, 'sibling unchanged');
+      assert.deepEqual(onDisk.tasks.find((t) => t.id === 't-a')!.nested, { keep: 1 }, 'nested preserved on disk');
+      assert.equal(onDisk.tasks.find((t) => t.id === 't-c')!.status, 'pending', 'status untouched');
+    });
+  });
+
+  await test('POST /api/backlog/:id/reviewed: 404 for an unknown id, 400 for a non-boolean', async () => {
+    writeFileSync(backlogPath, fixture());
+    await withServer({ backlogPath }, async (base) => {
+      const r404 = await fetch(`${base}/api/backlog/__nope__/reviewed`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: true }),
+      });
+      assert.equal(r404.status, 404);
+      const r400 = await fetch(`${base}/api/backlog/t-a/reviewed`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: 'yes' }),
+      });
+      assert.equal(r400.status, 400);
+    });
+  });
+
+  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(`\n  ${passed} assertions passed`);

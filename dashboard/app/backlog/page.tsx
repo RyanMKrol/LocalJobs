@@ -63,8 +63,9 @@ function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults |
   );
 }
 
-function DoneRow({ t }: { t: BacklogTask }) {
+function DoneRow({ t, onToggleReviewed }: { t: BacklogTask; onToggleReviewed: (t: BacklogTask) => void }) {
   const [expanded, setExpanded] = useState(false);
+  const reviewed = t.reviewed === true;
   return (
     <div>
       <div
@@ -77,6 +78,18 @@ function DoneRow({ t }: { t: BacklogTask }) {
         <span className="muted" style={{ fontSize: 10, minWidth: 10 }}>{expanded ? '▾' : '▸'}</span>
         <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
         <span style={{ flex: 1 }}>{t.title}</span>
+        <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`} style={{ flexShrink: 0 }}>
+          {reviewed ? '👁 reviewed' : 'not reviewed'}
+        </span>
+        <button
+          type="button"
+          className="review-toggle"
+          style={{ flexShrink: 0 }}
+          onClick={(e) => { e.stopPropagation(); onToggleReviewed(t); }}
+          title={reviewed ? 'Mark this task as not reviewed' : 'Mark this task as reviewed'}
+        >
+          {reviewed ? 'Mark not reviewed' : 'Mark as reviewed'}
+        </button>
         <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
       </div>
       {expanded && (
@@ -103,13 +116,35 @@ function DoneRow({ t }: { t: BacklogTask }) {
   );
 }
 
+type ReviewFilter = 'all' | 'reviewed' | 'not';
+const REVIEW_FILTERS: { id: ReviewFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'reviewed', label: 'Reviewed' },
+  { id: 'not', label: 'Not reviewed' },
+];
+
 export default function Backlog() {
-  const { data, error } = usePoll(() => api.backlog(), 5000);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const { data, error } = usePoll(() => api.backlog(), 5000, [refreshNonce]);
   const [caretStyle, setCaretStyle] = useCaretStyle();
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
+
+  const toggleReviewed = async (t: BacklogTask) => {
+    try {
+      await api.markReviewed(t.id, !(t.reviewed === true));
+    } catch {
+      // ignore — the next poll reflects the true file state
+    }
+    setRefreshNonce((n) => n + 1); // refetch immediately so the pill flips
+  };
 
   const tasks = data?.tasks ?? [];
   const defaults = data?.defaults;
-  const done = tasks.filter((t) => t.status === 'done').sort((a, b) => a.id.localeCompare(b.id));
+  const allDone = tasks.filter((t) => t.status === 'done').sort((a, b) => a.id.localeCompare(b.id));
+  const reviewedCount = allDone.filter((t) => t.reviewed === true).length;
+  const done = allDone.filter((t) =>
+    reviewFilter === 'all' ? true : reviewFilter === 'reviewed' ? t.reviewed === true : t.reviewed !== true,
+  );
   const buildable = tasks.filter((t) => t.status !== 'done' && t.gate == null);
   const human = tasks.filter((t) => t.status !== 'done' && t.gate != null);
 
@@ -135,7 +170,7 @@ export default function Backlog() {
       </div>
       <p className="sub">
         The harness task list (<span className="mono">.harness/TASKS.json</span>), rendered.
-        {' '}{tasks.length} task(s) · {buildable.length} harness-buildable · {human.length} need a human · {done.length} done. Auto-refreshes.
+        {' '}{tasks.length} task(s) · {buildable.length} harness-buildable · {human.length} need a human · {allDone.length} done ({reviewedCount} reviewed). Auto-refreshes.
       </p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {data?.error && <p className="muted">⚠ Cannot read the backlog ({data.error}).</p>}
@@ -160,11 +195,24 @@ export default function Backlog() {
 
         <details style={{ marginTop: 28 }}>
           <summary className="section-heading-summary muted">
-            ✅ Done ({done.length})
+            ✅ Done ({allDone.length})
           </summary>
+          <div className="review-filter-bar">
+            <span className="caret-style-label">Show</span>
+            {REVIEW_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={`caret-style-btn${reviewFilter === f.id ? ' active' : ''}`}
+                onClick={() => setReviewFilter(f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
           <div className="panel" style={{ padding: '0 14px' }}>
-            {done.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None yet.</p>}
-            {done.map((t) => <DoneRow key={t.id} t={t} />)}
+            {done.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None{reviewFilter !== 'all' ? ' matching this filter' : ' yet'}.</p>}
+            {done.map((t) => <DoneRow key={t.id} t={t} onToggleReviewed={toggleReviewed} />)}
           </div>
         </details>
       </div>

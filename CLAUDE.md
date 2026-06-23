@@ -164,7 +164,11 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   pick the stale settled run over the live one — the succeeded→running→succeeded
   status flicker. Keep any "latest run" derivation ordering by `(started_at, rowid)`.
 - **The dashboard is a pure read/refresh client of the API.** It never touches
-  SQLite directly and is not required for jobs to run.
+  SQLite directly and is not required for jobs to run. There is **exactly ONE
+  deliberate write exception** (T124): the human-owned `reviewed` flag on a backlog
+  task — `POST /api/backlog/:id/reviewed` does a field-scoped, atomic
+  read-modify-write of `.harness/TASKS.json` (see the harness section below).
+  Everything else stays read-only.
 
 ## File map
 
@@ -648,9 +652,18 @@ this in addition to everything above:
 
 - **You work directly on `main` in this checkout** — NO worktree, NO new branches, NO push,
   NO merge. Build ONE task, commit it, and stop. The loop pushes and gates on CI.
-- **The backlog is shell-owned.** `.harness/TASKS.json` is committed; the loop sets a task's
-  `status` to `done` — **never edit `.harness/TASKS.json` yourself.** Write your attempt notes
-  to `.harness/worklog/<TASK>.md` and the result line to `.harness/worklog/.result`.
+- **The backlog is shell-owned — `status` especially.** `.harness/TASKS.json` is committed; the
+  loop sets a task's `status` to `done` (via a `jq` field-scoped edit that preserves every other
+  field) — **never edit `status` (or any field) of `.harness/TASKS.json` yourself.** Write your
+  attempt notes to `.harness/worklog/<TASK>.md` and the result line to `.harness/worklog/.result`.
+  - **The ONE owner-authorized exception is the `reviewed` flag (T124).** Each task carries a
+    `reviewed` boolean (human-review tracking) that is **human/dashboard-owned, not shell-owned**:
+    the owner toggles it from the Backlog page via `POST /api/backlog/:id/reviewed`, which does a
+    field-scoped, atomic (temp-file + rename) read-modify-write that sets ONLY that task's
+    `reviewed` and preserves all other fields/tasks. This is the deliberate exception to both the
+    read-only-dashboard rule and the shell-owns-the-file rule. `status` stays shell-owned; only
+    `reviewed` is human-owned, and the loop's `jq` status-write preserves it. The agent still must
+    not hand-edit `reviewed` in TASKS.json — it's a UI action. (Absent values default to false.)
 - **Definition of Done mirrors CI** (`.harness/HARNESS.md` §5): `npx tsc --noEmit`, `npm test`, and
   `npm --prefix dashboard run build` for any `dashboard/` change — all green before you commit.
 - **Verify correctness — paid calls allowed, frugally.** The ONE hard rule is **never exceed a

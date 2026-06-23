@@ -211,6 +211,13 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .pill.done { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.in-progress { color: var(--accent); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
 .pill.buildable { color: var(--amber); background: rgba(232,160,32,.12); border-color: rgba(232,160,32,.35); }
+/* Human-review flag (T124): a green "reviewed" vs a muted "not reviewed" pill. */
+.pill.reviewed { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
+.pill.unreviewed { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
+/* "Mark as reviewed" toggle on each done row + the Reviewed/Not-reviewed/All filter. */
+.review-toggle { font-size: 11px; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
+.review-toggle:hover { border-color: var(--accent); color: var(--text); }
+.review-filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 
 /* Long unbroken tokens (URLs, file paths, item keys) must not push the page wide. */
 .mono { overflow-wrap: anywhere; }

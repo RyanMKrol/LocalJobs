@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { relative as relativePath, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,15 +57,60 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 }
 
 // The harness backlog (.harness/TASKS.json), resolved relative to this file so it
-// works regardless of the daemon's cwd. Read-only pass-through for the dashboard.
+// works regardless of the daemon's cwd. This is almost entirely a read-only
+// pass-through for the dashboard — the ONE exception is the human/dashboard-owned
+// `reviewed` flag (T124), which `POST /api/backlog/:id/reviewed` writes back via a
+// field-scoped, atomic read-modify-write (see `setTaskReviewed`/`writeTaskReviewed`).
+// Task `status` stays shell-owned (the loop's `jq` status-write preserves `reviewed`).
 const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/TASKS.json', import.meta.url));
-function readBacklog(): { tasks: unknown[]; defaults?: unknown; error?: string } {
+
+/** Read the backlog, defaulting each task's `reviewed` to false when absent. */
+function readBacklog(path: string = BACKLOG_PATH): { tasks: unknown[]; defaults?: unknown; error?: string } {
   try {
-    const parsed = JSON.parse(readFileSync(BACKLOG_PATH, 'utf8')) as { tasks?: unknown[]; defaults?: unknown };
-    return { tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [], defaults: parsed.defaults };
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { tasks?: unknown[]; defaults?: unknown };
+    const tasks = Array.isArray(parsed.tasks)
+      ? parsed.tasks.map((t) =>
+          t && typeof t === 'object' && !Array.isArray(t) ? { reviewed: false, ...(t as object) } : t,
+        )
+      : [];
+    return { tasks, defaults: parsed.defaults };
   } catch (e) {
     return { tasks: [], error: e instanceof Error ? e.message : 'cannot read backlog' };
   }
+}
+
+/**
+ * Pure, field-scoped backlog edit: parse `raw` (the TASKS.json text), set ONLY the
+ * `reviewed` flag on the task whose `id` matches, and return the re-serialised JSON
+ * (2-space, trailing newline — matching the file's `jq` formatting). Every other
+ * field of that task and every other task is preserved verbatim. Returns null if
+ * the id isn't found (→ 404). Exported for unit testing.
+ */
+export function setTaskReviewed(raw: string, id: string, reviewed: boolean): string | null {
+  const parsed = JSON.parse(raw) as { tasks?: Array<Record<string, unknown>> };
+  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  const task = tasks.find((t) => t && typeof t === 'object' && (t as { id?: unknown }).id === id);
+  if (!task) return null;
+  task.reviewed = reviewed;
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
+
+/**
+ * Atomically persist a single task's `reviewed` flag to the backlog file. Reads the
+ * current file, applies the field-scoped edit ({@link setTaskReviewed}), validates the
+ * result parses, then writes via temp-file + rename so a concurrent shell status-write
+ * (the loop's `jq` edit) can never observe a half-written file. Returns false (no write)
+ * when the id isn't found.
+ */
+function writeTaskReviewed(path: string, id: string, reviewed: boolean): boolean {
+  const raw = readFileSync(path, 'utf8');
+  const updated = setTaskReviewed(raw, id, reviewed);
+  if (updated === null) return false;
+  JSON.parse(updated); // validate before we touch disk
+  const tmp = `${path}.tmp-${process.pid}`;
+  writeFileSync(tmp, updated);
+  renameSync(tmp, path); // atomic replace
+  return true;
 }
 
 // The jobs tree (src/jobs), resolved relative to this file. Job output artifacts
@@ -267,8 +312,11 @@ function memberWorkflowMap(): Map<string, string> {
  * tests can drive it on an ephemeral port. `opts.isLoopback` lets a test
  * simulate a non-loopback (remote) caller to exercise the mutation guard.
  */
-export function createApiServer(opts: { isLoopback?: (addr: string | undefined) => boolean } = {}) {
+export function createApiServer(
+  opts: { isLoopback?: (addr: string | undefined) => boolean; backlogPath?: string } = {},
+) {
   const isLoopback = opts.isLoopback ?? isLoopbackAddress;
+  const backlogPath = opts.backlogPath ?? BACKLOG_PATH;
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${config.apiPort}`);
     const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','jobs','demo','runs']
@@ -709,9 +757,23 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, result);
       }
 
-      // GET /api/backlog — the harness TASKS.json backlog (read-only)
+      // GET /api/backlog — the harness TASKS.json backlog (read-only; each task
+      // carries its human-review flag `reviewed`, defaulting to false when absent)
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'backlog' && parts.length === 2) {
-        return json(res, 200, readBacklog());
+        return json(res, 200, readBacklog(backlogPath));
+      }
+
+      // POST /api/backlog/:id/reviewed  { reviewed: bool } — the ONE dashboard→harness
+      // write (T124): atomically set ONLY that task's human-owned `reviewed` flag,
+      // preserving all other fields/tasks. Status stays shell-owned. Guarded by the
+      // global loopback/token mutation check above. 404 on an unknown task id.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'backlog' && parts[3] === 'reviewed' && parts.length === 4) {
+        const id = decodeURIComponent(parts[2]);
+        const body = await readBody(req);
+        if (typeof body.reviewed !== 'boolean') return json(res, 400, { error: 'reviewed (boolean) is required' });
+        const ok = writeTaskReviewed(backlogPath, id, body.reviewed);
+        if (!ok) return json(res, 404, { error: `unknown task: ${id}` });
+        return json(res, 200, { ok: true, id, reviewed: body.reviewed });
       }
 
       return json(res, 404, { error: 'not found' });

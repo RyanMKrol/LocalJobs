@@ -421,3 +421,15 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Revisit:* if a workflow needs in-run retry across a transient outage, give the stop condition a
   small grace (e.g. stop only after K consecutive no-progress cycles) rather than the immediate
   single-cycle break.
+
+- **The dashboard now writes ONE field of `.harness/TASKS.json` (`reviewed`), via atomic
+  rename, with no file lock (T124).** *Why:* the human-review toggle persists `reviewed` from the
+  dashboard. The write is field-scoped (sets only that task's `reviewed`) and atomic (temp-file +
+  `rename`), and the loop's status edit is likewise field-scoped (`jq` sets only `.status`), so the
+  two writers don't logically conflict. *Impact:* there is no cross-process lock — if a human clicks
+  the toggle in the exact instant the loop is mid-`jq`-rewrite, last-writer-wins on the WHOLE file,
+  so one of the two edits (the `reviewed` flip OR that run's `status=done` flip) could be lost.
+  Both are atomic-rename writes so the file is never corrupted, only one edit is dropped. In
+  practice the window is milliseconds and a dropped `reviewed` is re-toggled trivially; a dropped
+  `status` is re-applied on the loop's next tick. *Revisit:* if this ever bites, add an advisory
+  lock-file (or fold `reviewed` into a separate sidecar file the loop never touches).
