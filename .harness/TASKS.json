@@ -3191,7 +3191,7 @@
     {
       "id": "T122",
       "title": "Overview: remove the redundant per-workflow stuck-count pill",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
