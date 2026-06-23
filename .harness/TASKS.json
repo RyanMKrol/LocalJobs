@@ -3594,6 +3594,33 @@
       "verify": [],
       "spec": ".harness/tasks/T139.md",
       "reviewed": false
+    },
+    {
+      "id": "T140",
+      "title": "Output preview: align frontmatter key/value columns + render arrays readably + hide null/empty fields",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T140.md",
+      "reviewed": false
     }
   ]
 }
