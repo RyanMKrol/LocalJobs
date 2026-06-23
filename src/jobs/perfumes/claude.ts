@@ -23,7 +23,7 @@ const RATE_LIMIT_RE = /claude usage limit reached|rate.?limit|usage limit|429|to
  * repo's CLAUDE.md. Never throws — returns a result object.
  */
 export function runClaude(prompt: string, model: string): Promise<ClaudeResult> {
-  // Gate every Claude call through the shared 'claude-cli' service (rate-limited, $0).
+  // Gate every Claude call through the shared 'claude-cli' service (metered, $0).
   return callService('claude-cli', () => spawnClaude(prompt, model));
 }
 
