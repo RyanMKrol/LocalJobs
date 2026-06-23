@@ -3667,6 +3667,59 @@
       "verify": [],
       "spec": ".harness/tasks/T141.md",
       "reviewed": false
+    },
+    {
+      "id": "T142",
+      "title": "Joyful dashboard: 6 toggleable themes (2 dark + 4 bright) + 5-10 display+body font pairs, mobile-safe",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "design",
+        "theming"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/layout.tsx",
+        "dashboard/package.json"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T142.md",
+      "reviewed": false
+    },
+    {
+      "id": "T143",
+      "title": "Review + choose: joyful dashboard theme + font (from T142)",
+      "status": "pending",
+      "dependsOn": [
+        "T142"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "review",
+        "dashboard",
+        "design"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T143.md",
+      "reviewed": false
     }
   ]
 }
