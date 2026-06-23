@@ -282,7 +282,12 @@ export async function commitReviewsFile(opts: {
 
     const commit = await git(
       repoRoot,
-      ['commit', '-m', `reviews: ${id} reviewed=${reviewed} [skip ci]`],
+      // `--no-gpg-sign`: the daemon commits headlessly under launchd (no TTY /
+      // pinentry / reachable gpg-agent), so if the user's git config has
+      // `commit.gpgsign=true` an ordinary commit would FAIL to sign and leave
+      // reviews.json staged-but-uncommitted. These are automated housekeeping
+      // commits — never sign them, regardless of the ambient config.
+      ['commit', '--no-gpg-sign', '-m', `reviews: ${id} reviewed=${reviewed} [skip ci]`],
       timeoutMs,
     );
     if (!commit.ok) return { committed: false, pushed: false, warning: commit.stderr.trim().slice(0, 300) };

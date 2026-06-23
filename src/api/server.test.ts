@@ -659,6 +659,13 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       g(['remote', 'add', 'origin', bare]);
       g(['push', 'origin', 'HEAD:main']);
 
+      // Reproduce production: the owner's global git config forces signing on
+      // every commit. The daemon runs headlessly (launchd — no TTY/pinentry), so
+      // an ordinary commit would FAIL to sign and silently leave reviews.json
+      // staged-but-uncommitted. commitReviewsFile MUST pass `--no-gpg-sign` to
+      // succeed here despite gpgsign=true with no signing key available.
+      g(['config', 'commit.gpgsign', 'true']);
+
       // The endpoint's durability floor: write the reviews file first.
       const revPath = join(harnessDir, 'reviews.json');
       writeFileSync(revPath, JSON.stringify({ T9: { reviewed: true, at: '2026-06-23T00:00:00.000Z' } }, null, 2) + '\n');
