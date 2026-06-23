@@ -455,3 +455,16 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   could run git concurrently. *Revisit:* if the daemon and loop ever diverge on the lock path,
   reviews + status commits could interleave; keep the two derivations in sync (both documented in
   `repo-lock.ts`'s header).
+
+- **The run-IO panel's "no new items" vs "pre-feature" empty state is a heuristic (T139).** *Why:*
+  the new `work_item_runs` linkage records which workflow run advanced each item, so the run-page
+  Input→Output panel is genuinely run-scoped. But a run that recorded NO linkage rows is ambiguous:
+  it could be an OLD run created before this feature existed, OR a re-run that simply advanced
+  nothing new (every item was already done). Both look identical at the row level (zero linkage).
+  The API distinguishes them with `workflowHasRunLinkage(name)`: if the WORKFLOW has linkage from
+  ANY run → "processed no new items"; if it has none at all → "pre-feature". *Impact:* a genuinely
+  pre-feature run on a workflow that has SINCE had new linked runs is mislabelled "processed no new
+  items" (the workflow now has linkage, so the heuristic can't tell it predates the table). This is
+  cosmetic — both messages explain why the panel is empty and neither dumps the global ledger.
+  *Revisit:* if exact pre-feature detection ever matters, stamp each run with a feature-version flag
+  at creation; not worth a column today.

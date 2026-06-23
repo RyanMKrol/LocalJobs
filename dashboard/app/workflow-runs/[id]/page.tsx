@@ -193,17 +193,18 @@ function OutputCell(
 }
 
 /**
- * Input → Output mapping panel (T095 first cut; T110 expressive output).
+ * Input → Output mapping panel (T095; T110 expressive output; T139 run-scoped).
  *
- * Joins first-stage work items to last-stage work items by root_key so each
- * input can be paired with its final output. Not scoped to this run — reflects
- * the workflow's global work-item ledger. Fan-out collapses to one output per
- * input. These limitations are noted in the panel header. The OUTPUT side shows
- * a preview of the produced markdown artifact (title + excerpt) and opens the
- * full markdown in a popover on click (T110).
+ * Shows the inputs THIS run actually advanced (driven by the `work_item_runs`
+ * linkage) paired with their final outputs, resolved from the first/last-stage
+ * work items by root_key. A run that advanced nothing new, or an old run created
+ * before per-run IO was recorded, renders an honest explanatory empty state
+ * instead of dumping the whole ledger. The OUTPUT side shows a preview of the
+ * produced markdown artifact (title + excerpt) and opens the full markdown in a
+ * popover on click (T110).
  */
 function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
-  const { io, firstWave, lastWave, note } = data;
+  const { io, firstWave, lastWave, emptyReason, note } = data;
   const [modal, setModal] = useState<{ title: string; content: string; truncated: boolean } | null>(null);
   const openModal = useCallback(
     (title: string, content: string, truncated: boolean) => setModal({ title, content, truncated }),
@@ -211,50 +212,53 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
   );
   if (io.length === 0 && firstWave.length === 0) return null;
   const singleStage = firstWave.length > 0 && firstWave[0] === lastWave?.[0];
+  const emptyMessage = emptyReason === 'pre-feature'
+    ? "Per-run input/output isn't recorded for runs created before this feature."
+    : 'This run processed no new items.';
   return (
     <>
       <h2>Input → Output mapping</h2>
       <div className="panel">
         {io.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>No work items recorded yet for this workflow.</p>
+          <p className="muted" style={{ margin: 0 }}>{emptyMessage}</p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Input</th>
-                <th>Input status</th>
-                {!singleStage && <th>Output</th>}
-                {!singleStage && <th>Output status</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {io.map((row) => (
-                <tr key={row.inputKey}>
-                  <td>
-                    <div className="mono" style={{ fontSize: '0.82em' }}>{row.inputKey}</div>
-                    {row.inputDetail && typeof (row.inputDetail as Record<string, unknown>).name === 'string' && (
-                      <div className="muted" style={{ fontSize: '0.88em' }}>{itemLabel(row.inputKey, row.inputDetail)}</div>
-                    )}
-                  </td>
-                  <td><span className={`badge ${row.inputStatus}`}>{row.inputStatus}</span></td>
-                  {!singleStage && (
-                    <td><OutputCell runId={runId} row={row} onOpen={openModal} /></td>
-                  )}
-                  {!singleStage && (
-                    <td>
-                      {row.outputStatus
-                        ? <span className={`badge ${row.outputStatus}`}>{row.outputStatus}</span>
-                        : <span className="muted">—</span>}
-                    </td>
-                  )}
+          <>
+            <table>
+              <thead>
+                <tr>
+                  <th>Input</th>
+                  <th>Input status</th>
+                  {!singleStage && <th>Output</th>}
+                  {!singleStage && <th>Output status</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {io.map((row) => (
+                  <tr key={row.inputKey}>
+                    <td>
+                      <div className="mono" style={{ fontSize: '0.82em' }}>{row.inputKey}</div>
+                      {row.inputDetail && typeof (row.inputDetail as Record<string, unknown>).name === 'string' && (
+                        <div className="muted" style={{ fontSize: '0.88em' }}>{itemLabel(row.inputKey, row.inputDetail)}</div>
+                      )}
+                    </td>
+                    <td><span className={`badge ${row.inputStatus}`}>{row.inputStatus}</span></td>
+                    {!singleStage && (
+                      <td><OutputCell runId={runId} row={row} onOpen={openModal} /></td>
+                    )}
+                    {!singleStage && (
+                      <td>
+                        {row.outputStatus
+                          ? <span className={`badge ${row.outputStatus}`}>{row.outputStatus}</span>
+                          : <span className="muted">—</span>}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!singleStage && <p className="io-footnote">{note}</p>}
+          </>
         )}
-        <p className="muted" style={{ fontSize: '0.82em', margin: '8px 0 0' }}>
-          ⚠ First cut — {note}
-        </p>
       </div>
       {modal && <MarkdownModal title={modal.title} content={modal.content} truncated={modal.truncated} onClose={() => setModal(null)} />}
     </>

@@ -843,4 +843,37 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
 }
 
+// ── T139: GET /api/workflow-runs/:id/io is run-scoped ──
+// A run that advanced items returns only those items + scoped:true; a sibling run
+// with no linkage returns empty + scoped:false + an honest emptyReason (NOT the
+// global ledger dump).
+{
+  syncJob({ name: 'io-first', run: async () => {} });
+  syncJob({ name: 'io-last', run: async () => {} });
+  syncWorkflow({ name: 'io-api-wf', jobs: [{ job: 'io-first' }, { job: 'io-last', dependsOn: ['io-first'] }] });
+
+  const ioRunA = createWorkflowRun('io-api-wf', 'manual');
+  markWorkItem('io-first', 'k1', 'success', { workflowRunId: ioRunA });
+  markWorkItem('io-last', 'k1', 'success', { rootKey: 'k1', workflowRunId: ioRunA });
+  const ioRunEmpty = createWorkflowRun('io-api-wf', 'manual'); // advanced nothing
+
+  await test('GET /api/workflow-runs/:id/io is run-scoped (T139)', async () => {
+    await withServer({}, async (base) => {
+      const a = (await (await fetch(`${base}/api/workflow-runs/${ioRunA}/io`)).json()) as {
+        io: { inputKey: string }[]; scoped: boolean; emptyReason: string | null; note: string;
+      };
+      assert.equal(a.scoped, true, 'run with linkage is scoped');
+      assert.deepEqual(a.io.map((r) => r.inputKey), ['k1'], 'only this run\'s input');
+      assert.ok(!/first cut/i.test(a.note), 'note no longer says "first cut"');
+
+      const empty = (await (await fetch(`${base}/api/workflow-runs/${ioRunEmpty}/io`)).json()) as {
+        io: unknown[]; scoped: boolean; emptyReason: string | null;
+      };
+      assert.equal(empty.scoped, false, 'no-linkage run is not scoped');
+      assert.equal(empty.io.length, 0, 'no global ledger dump');
+      assert.equal(empty.emptyReason, 'no-new', 'workflow has linkage elsewhere → no-new (not pre-feature)');
+    });
+  });
+}
+
 console.log(`\n  ${passed} assertions passed`);

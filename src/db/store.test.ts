@@ -6,7 +6,7 @@ import {
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   ignoreWorkItem, ignoredItems, isWorkItemDone,
-  listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemMarkdownPath,
+  listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, usageThisMonth,
@@ -693,3 +693,61 @@ console.log('  ✓ T112 no-forward-progress: signature + stop decision (frozen i
   assert.equal(statusByJob['flick-a'], 'running', 'dashboard status derivation picks the running run');
 }
 console.log('  ✓ T112 status flicker: listRunsForWorkflowRun orders by (started_at, rowid) so latest stage status is correct');
+
+// ── T139: run-scoped Input→Output mapping via the work_item_runs linkage ──
+// markWorkItem records WHICH workflow run advanced each item (from an explicit
+// workflowRunId here; in production from LOCALJOBS_WORKFLOW_RUN_ID), and
+// workItemIoRows(run) returns ONLY the roots that run advanced — never the global
+// ledger. A run with no linkage (old/pre-feature or a re-run that did nothing new)
+// returns empty + scoped:false instead of dumping everything.
+{
+  syncJob({ name: 't139-first', run: async () => {} });
+  syncJob({ name: 't139-last', run: async () => {} });
+  syncWorkflow({ name: 't139-wf', jobs: [{ job: 't139-first' }, { job: 't139-last', dependsOn: ['t139-first'] }] });
+
+  const runA = createWorkflowRun('t139-wf', 'manual');
+  const runB = createWorkflowRun('t139-wf', 'manual');
+
+  // Run A advances roots r1, r2 through both stages; run B advances only r3.
+  markWorkItem('t139-first', 'r1', 'success', { workflowRunId: runA });
+  markWorkItem('t139-last', 'r1', 'success', { rootKey: 'r1', workflowRunId: runA, detail: { name: 'One' } });
+  markWorkItem('t139-first', 'r2', 'success', { workflowRunId: runA });
+  markWorkItem('t139-last', 'r2', 'success', { rootKey: 'r2', workflowRunId: runA });
+  markWorkItem('t139-first', 'r3', 'success', { workflowRunId: runB });
+  markWorkItem('t139-last', 'r3', 'success', { rootKey: 'r3', workflowRunId: runB });
+
+  // 1. linkage rows recorded under the right run, keyed by the resolved root_key
+  const linkA = db.prepare('SELECT DISTINCT root_key FROM work_item_runs WHERE workflow_run_id = ? ORDER BY root_key')
+    .all(runA) as { root_key: string }[];
+  assert.deepEqual(linkA.map((r) => r.root_key), ['r1', 'r2'], 'run A linkage holds exactly its two roots');
+
+  // 2. NO linkage row when there is no run id (a standalone / non-workflow mark)
+  markWorkItem('t139-first', 'standalone', 'success', { workflowRunId: null });
+  const none = db.prepare("SELECT COUNT(*) AS n FROM work_item_runs WHERE item_key = 'standalone'").get() as { n: number };
+  assert.equal(none.n, 0, 'a null-run mark records no linkage row');
+
+  // 3. run-scoped query returns ONLY that run's roots (two runs see only their own)
+  const ioA = workItemIoRows(['t139-first'], ['t139-last'], runA);
+  assert.equal(ioA.scoped, true, 'run A result is scoped');
+  assert.deepEqual(ioA.rows.map((r) => r.inputKey), ['r1', 'r2'], 'run A sees only r1, r2');
+  assert.equal(ioA.rows[0].outputKey, 'r1', 'output resolved from the last-wave ledger by root');
+  const ioB = workItemIoRows(['t139-first'], ['t139-last'], runB);
+  assert.deepEqual(ioB.rows.map((r) => r.inputKey), ['r3'], 'run B sees only r3');
+
+  // 4. a run with NO linkage (advanced nothing new / pre-feature) → empty, scoped:false, NO global dump
+  const emptyRun = createWorkflowRun('t139-wf', 'manual');
+  const ioEmpty = workItemIoRows(['t139-first'], ['t139-last'], emptyRun);
+  assert.equal(ioEmpty.scoped, false, 'no-linkage run is not scoped');
+  assert.equal(ioEmpty.rows.length, 0, 'no-linkage run does NOT dump the global ledger');
+
+  // 5. legacy un-scoped call (no run id) still lists every first-wave input
+  const ioAll = workItemIoRows(['t139-first'], ['t139-last']);
+  assert.equal(ioAll.scoped, false, 'un-scoped call reports scoped:false');
+  assert.ok(ioAll.rows.length >= 4, 'un-scoped lists all first-wave inputs (r1,r2,r3,standalone)');
+
+  // 6. workflowHasRunLinkage distinguishes a workflow with linkage from a fresh one
+  assert.equal(workflowHasRunLinkage('t139-wf'), true, 'workflow with linkage → true');
+  syncWorkflow({ name: 't139-fresh', jobs: [{ job: 't139-first' }] });
+  assert.equal(workflowHasRunLinkage('t139-fresh'), false, 'workflow with no runs/linkage → false');
+}
+console.log('  ✓ T139 run-scoped IO: work_item_runs linkage scopes workItemIoRows to the run');

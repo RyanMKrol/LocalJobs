@@ -66,6 +66,27 @@ CREATE TABLE IF NOT EXISTS work_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(job_name, status);
+
+-- Run→work-item attribution (T139). work_items above is a CUMULATIVE, idempotent
+-- ledger keyed by (job_name, item_key) with NO run linkage — so the run-page
+-- Input→Output panel could only ever dump the GLOBAL ledger, not the items a
+-- specific run advanced. This append-only table records WHICH workflow run advanced
+-- each work item: markWorkItem inserts a row whenever it runs inside a workflow run
+-- (LOCALJOBS_WORKFLOW_RUN_ID present in the child's env), using the SAME resolved
+-- root_key. A standalone (non-workflow) run records nothing. Unlike the work_items
+-- root_key index (which an additive migration adds — the T098 trap), this is a
+-- BRAND-NEW table whose columns exist on creation for BOTH fresh and existing DBs,
+-- so its index may safely live here in the schema bootstrap.
+CREATE TABLE IF NOT EXISTS work_item_runs (
+  workflow_run_id TEXT NOT NULL,
+  job_name        TEXT NOT NULL,
+  item_key        TEXT NOT NULL,
+  root_key        TEXT,
+  at              TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(workflow_run_id, job_name, item_key)
+);
+CREATE INDEX IF NOT EXISTS idx_work_item_runs_run ON work_item_runs(workflow_run_id);
+
 -- NOTE: the (job_name, root_key) index is created by migrateRunLimitLineage() in
 -- index.ts, NOT here. On an already-existing DB the root_key column is added by
 -- that migration, which runs AFTER this schema bootstrap; creating the index here

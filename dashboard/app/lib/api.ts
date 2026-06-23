@@ -164,7 +164,7 @@ export interface StructuralGateDetail {
   identical: boolean;
 }
 
-/** One row in the first-cut input→output mapping for a workflow run (T095). */
+/** One row in the run-scoped input→output mapping for a workflow run (T095, T139). */
 export interface IoRow {
   inputJob: string;
   inputKey: string;
@@ -182,6 +182,13 @@ export interface WorkflowIo {
   io: IoRow[];
   firstWave: string[];
   lastWave: string[];
+  /** True when the rows are scoped to the items THIS run advanced (T139). */
+  scoped: boolean;
+  /**
+   * Why the mapping is empty when not scoped (T139): `no-new` = this run advanced
+   * nothing new; `pre-feature` = an old run created before per-run IO was recorded.
+   */
+  emptyReason: 'no-new' | 'pre-feature' | null;
   note: string;
 }
 

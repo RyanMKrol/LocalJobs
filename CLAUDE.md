@@ -191,7 +191,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
 | `src/core/repo-lock.ts` | The shared mkdir-based repo lock (`acquireRepoLock`/`resolveRepoPaths`) the daemon's reviews commit+push uses to be mutually exclusive with the autonomous loop (T136). The lock path MUST stay byte-identical to `loop.sh`'s `acquire_lock` (`<git-common-dir>/<basename(repo-root)>-loop.lock` + `pid` file + stale-pid reclaim) |
-| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage` |
+| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage` |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
 | `src/jobs/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/jobs/` AND `*.service.ts` under BOTH `src/services/` and `src/jobs/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
@@ -395,6 +395,25 @@ doubt, log it.
   (resolver by CID, enrich + LLM by place_id); the rich output still goes to the
   job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
   "skip if it's in the JSON file" checks.
+  - **Run→work-item attribution (`work_item_runs`, T139).** `work_items` stays the
+    CUMULATIVE, idempotent ledger keyed by `(job_name, item_key)` with NO run
+    linkage. The separate append-only `work_item_runs` table
+    (`(workflow_run_id, job_name, item_key, root_key, at)`, UNIQUE per run+item)
+    attributes WHICH workflow run advanced each item: `markWorkItem` records a
+    linkage row (using the SAME resolved `root_key`) whenever it runs inside a
+    workflow run — it reads the run id from its optional `workflowRunId` param,
+    defaulting to `process.env.LOCALJOBS_WORKFLOW_RUN_ID` (set by the executor for
+    every child), so existing call sites are UNCHANGED and a standalone run records
+    nothing. This powers the **genuinely run-scoped** workflow-run Input→Output
+    panel: `workItemIoRows(first, last, runId)` lists ONLY the roots that run
+    advanced (resolving each one's input + output from the cumulative ledger), and
+    returns `{ rows, scoped }`. A run with NO linkage (an OLD run created before
+    this feature, or a re-run that advanced nothing new) returns empty + `scoped:
+    false` — it does NOT fall back to dumping the global ledger; the API
+    distinguishes the two cases via `workflowHasRunLinkage(name)` (workflow has
+    linkage elsewhere → "processed no new items"; none at all → "pre-feature").
+    Being a brand-new table, its index lives in `schema.sql` (the columns exist on
+    creation for fresh AND existing DBs, so it does NOT hit the T098 trap).
   - **The FIRST stage owns the per-item list (convention).** A multi-stage
     workflow's first stage must record the canonical per-item work-item list that
     the rest of the pipeline keys on — one `markWorkItem` per input item, keyed by

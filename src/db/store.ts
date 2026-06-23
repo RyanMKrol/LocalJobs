@@ -233,7 +233,22 @@ export function markWorkItem(
   jobName: string,
   itemKey: string,
   status: WorkStatus,
-  opts: { attempts?: number; detail?: unknown; rootKey?: string; parentKey?: string; parentJob?: string } = {},
+  opts: {
+    attempts?: number;
+    detail?: unknown;
+    rootKey?: string;
+    parentKey?: string;
+    parentJob?: string;
+    /**
+     * The workflow run advancing this item (T139). Defaults to the child's
+     * `LOCALJOBS_WORKFLOW_RUN_ID` env (set by the executor for every workflow
+     * member), so existing job call sites need no change. When present, a
+     * `work_item_runs` linkage row is recorded so the run page can scope its
+     * Input→Output panel to this run; `null` (a standalone run) records nothing.
+     * Pass explicitly only for testing.
+     */
+    workflowRunId?: string | null;
+  } = {},
 ): void {
   const detail = opts.detail === undefined ? null : JSON.stringify(opts.detail);
   const rootKey = resolveRootKey(jobName, itemKey, opts);
@@ -249,6 +264,22 @@ export function markWorkItem(
       parent_key = excluded.parent_key,
       updated_at = datetime('now')
   `).run({ job: jobName, key: itemKey, status, attempts: opts.attempts ?? 1, detail, root: rootKey, parent: parentKey });
+
+  // Run→work-item attribution (T139): when this item was advanced inside a
+  // workflow run, record which run touched it (idempotent per run+item) so the
+  // run-page IO panel can be scoped to THIS run rather than the global ledger.
+  const workflowRunId = opts.workflowRunId === undefined
+    ? (process.env.LOCALJOBS_WORKFLOW_RUN_ID || null)
+    : opts.workflowRunId;
+  if (workflowRunId) {
+    db.prepare(`
+      INSERT INTO work_item_runs (workflow_run_id, job_name, item_key, root_key)
+      VALUES (@run, @job, @key, @root)
+      ON CONFLICT(workflow_run_id, job_name, item_key) DO UPDATE SET
+        root_key = excluded.root_key,
+        at = datetime('now')
+    `).run({ run: workflowRunId, job: jobName, key: itemKey, root: rootKey });
+  }
 }
 
 /**
@@ -295,19 +326,23 @@ export function selectPendingRoots(
 }
 
 /**
- * Input→output mapping across a workflow's first and last stages (T095).
+ * Input→output mapping across a workflow's first and last stages (T095, T139).
  *
- * Fetches all work_items for `firstWaveJobs` (inputs) and `lastWaveJobs`
- * (outputs), then joins them: each last-wave item whose `root_key` matches a
- * first-wave `item_key` is the output row for that input.
+ * When `workflowRunId` is given the mapping is genuinely RUN-SCOPED: it lists only
+ * the originating roots THIS run advanced (from the `work_item_runs` linkage —
+ * recorded by {@link markWorkItem}), then resolves each root's input (first-wave
+ * ledger row) and output (last-wave ledger row) from the cumulative `work_items`
+ * ledger. Resolving outputs from the ledger means an output produced in an EARLIER
+ * run still shows for a root this run touched. If the run has NO linkage rows (an
+ * OLD run created before this feature, or a re-run that advanced nothing new) the
+ * result is empty with `scoped: false` — it does NOT fall back to the global ledger.
  *
- * KNOWN LIMITATIONS (first-cut, not per-run-scoped):
- *  - work_items is global — reflects the workflow's current ledger, not strictly
- *    this run's items. Per-run scoping arrives with further lineage work (T093/T094).
- *  - Fan-out (1 input → many outputs) is collapsed to the first matching output.
+ * With NO `workflowRunId` (or `null`) it keeps the legacy un-scoped behaviour:
+ * every first-wave input joined to its output by root_key, `scoped: false`.
  *
- * For the current example workflows (perfumes: all stages share item_key;
- * places: later stages use root_key = CID from first stage) this join is exact.
+ * Fan-out (1 input → many outputs) is collapsed to the first matching output.
+ * For the example workflows (perfumes: all stages share item_key; places: later
+ * stages use root_key = CID from the first stage) this join is exact.
  */
 export interface IoRow {
   inputJob: string;
@@ -320,39 +355,98 @@ export interface IoRow {
   outputDetail: unknown;
 }
 
-export function workItemIoRows(firstWaveJobs: string[], lastWaveJobs: string[]): IoRow[] {
-  if (firstWaveJobs.length === 0) return [];
-  const ph1 = firstWaveJobs.map(() => '?').join(',');
-  const inputs = db.prepare(
-    `SELECT job_name, item_key, status, detail FROM work_items WHERE job_name IN (${ph1}) ORDER BY item_key`,
-  ).all(...firstWaveJobs) as { job_name: string; item_key: string; status: string; detail: string | null }[];
+export interface IoResult {
+  rows: IoRow[];
+  /** True when the rows are scoped to a specific run's advanced items. */
+  scoped: boolean;
+}
 
-  // Build a root_key → first matching output map from the last wave.
-  const byRoot = new Map<string, { job_name: string; item_key: string; status: string; detail: string | null }>();
+type LedgerRow = { job_name: string; item_key: string; status: string; detail: string | null; root_key: string | null };
+
+function toIoRow(input: LedgerRow | undefined, out: LedgerRow | undefined, rootFallback: string, firstJob: string): IoRow {
+  return {
+    inputJob: input?.job_name ?? firstJob,
+    inputKey: input?.item_key ?? rootFallback,
+    inputStatus: input?.status ?? 'unknown',
+    inputDetail: input?.detail != null ? (JSON.parse(input.detail) as unknown) : null,
+    outputJob: out?.job_name ?? null,
+    outputKey: out?.item_key ?? null,
+    outputStatus: out?.status ?? null,
+    outputDetail: out?.detail != null ? (JSON.parse(out.detail) as unknown) : null,
+  };
+}
+
+export function workItemIoRows(
+  firstWaveJobs: string[],
+  lastWaveJobs: string[],
+  workflowRunId?: string | null,
+): IoResult {
+  if (firstWaveJobs.length === 0) return { rows: [], scoped: false };
+
+  // Build a root_key → first matching output map from the last wave (cumulative).
+  const outputByRoot = new Map<string, LedgerRow>();
   if (lastWaveJobs.length > 0) {
     const ph2 = lastWaveJobs.map(() => '?').join(',');
     const outputs = db.prepare(
       `SELECT job_name, item_key, status, detail, root_key FROM work_items WHERE job_name IN (${ph2}) ORDER BY item_key`,
-    ).all(...lastWaveJobs) as { job_name: string; item_key: string; status: string; detail: string | null; root_key: string | null }[];
+    ).all(...lastWaveJobs) as LedgerRow[];
     for (const o of outputs) {
       const rk = o.root_key ?? o.item_key;
-      if (!byRoot.has(rk)) byRoot.set(rk, o);
+      if (!outputByRoot.has(rk)) outputByRoot.set(rk, o);
     }
   }
 
-  return inputs.map((r) => {
-    const out = byRoot.get(r.item_key);
-    return {
-      inputJob: r.job_name,
-      inputKey: r.item_key,
-      inputStatus: r.status,
-      inputDetail: r.detail != null ? (JSON.parse(r.detail) as unknown) : null,
-      outputJob: out?.job_name ?? null,
-      outputKey: out?.item_key ?? null,
-      outputStatus: out?.status ?? null,
-      outputDetail: out?.detail != null ? (JSON.parse(out.detail) as unknown) : null,
-    };
-  });
+  const ph1 = firstWaveJobs.map(() => '?').join(',');
+
+  // Run-scoped (T139): only the roots THIS run advanced.
+  if (workflowRunId != null) {
+    const roots = db.prepare(
+      'SELECT DISTINCT root_key FROM work_item_runs WHERE workflow_run_id = ? AND root_key IS NOT NULL ORDER BY root_key',
+    ).all(workflowRunId) as { root_key: string }[];
+    if (roots.length === 0) return { rows: [], scoped: false };
+
+    // Resolve each root's first-wave input row from the cumulative ledger.
+    const inputByRoot = new Map<string, LedgerRow>();
+    const firstInputs = db.prepare(
+      `SELECT job_name, item_key, status, detail, root_key FROM work_items WHERE job_name IN (${ph1}) ORDER BY item_key`,
+    ).all(...firstWaveJobs) as LedgerRow[];
+    for (const i of firstInputs) {
+      const rk = i.root_key ?? i.item_key;
+      if (!inputByRoot.has(rk)) inputByRoot.set(rk, i);
+    }
+
+    const rows: IoRow[] = [];
+    for (const { root_key: root } of roots) {
+      const input = inputByRoot.get(root);
+      const out = outputByRoot.get(root);
+      if (!input && !out) continue; // root with neither input nor output ledger row — skip
+      rows.push(toIoRow(input, out, root, firstWaveJobs[0]));
+    }
+    return { rows, scoped: true };
+  }
+
+  // Legacy un-scoped: every first-wave input joined to its output by root_key.
+  const inputs = db.prepare(
+    `SELECT job_name, item_key, status, detail, root_key FROM work_items WHERE job_name IN (${ph1}) ORDER BY item_key`,
+  ).all(...firstWaveJobs) as LedgerRow[];
+  const rows = inputs.map((r) => toIoRow(r, outputByRoot.get(r.item_key), r.item_key, firstWaveJobs[0]));
+  return { rows, scoped: false };
+}
+
+/**
+ * Whether ANY workflow run of `workflowName` has ever recorded `work_item_runs`
+ * linkage (T139). Used to distinguish, for a run with no linkage of its own, an
+ * OLD run created before the feature (the workflow has NO linkage at all) from a
+ * re-run that simply advanced nothing new (the workflow HAS linkage from other runs).
+ */
+export function workflowHasRunLinkage(workflowName: string): boolean {
+  const row = db.prepare(`
+    SELECT 1 FROM work_item_runs r
+     JOIN workflow_runs w ON w.id = r.workflow_run_id
+     WHERE w.workflow_name = ?
+     LIMIT 1
+  `).get(workflowName);
+  return !!row;
 }
 
 /**

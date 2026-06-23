@@ -36,6 +36,7 @@ import {
   orphanedWorkItems,
   pruneOrphanedWorkItems,
   workItemIoRows,
+  workflowHasRunLinkage,
   workItemMarkdownPath,
   serviceCallsInLastSeconds,
   serviceCallsThisMonth,
@@ -901,11 +902,12 @@ export function createApiServer(
       }
 
       // GET /api/workflow-runs/:id/io
-      // First-cut input→output mapping for a workflow run (T095). Reads the
-      // first- and last-wave jobs' work_items and joins them by root_key so
-      // each input key is paired with its output. DB/file reads only — safe to
-      // poll. Known limitation: work_items is not scoped per run; this reflects
-      // the workflow's global ledger. Fan-out collapses to the first match.
+      // Run-scoped input→output mapping for a workflow run (T095, T139). Lists the
+      // originating inputs THIS run advanced (from the work_item_runs linkage) and
+      // resolves each one's output from the first/last-wave work_items. DB reads
+      // only — safe to poll. A run with no linkage (pre-feature or a re-run that
+      // advanced nothing new) returns an empty, honestly-explained result rather
+      // than dumping the global ledger.
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'io' && parts.length === 4) {
         const run = getWorkflowRun(parts[2]);
         if (!run) return json(res, 404, { error: 'workflow run not found' });
@@ -918,15 +920,22 @@ export function createApiServer(
           lastWave = dag.waves[dag.waves.length - 1] ?? [];
           // If the workflow is a single stage, first == last — show it as both input and output.
         } catch {
-          return json(res, 200, { io: [], firstWave: [], lastWave: [], note: 'workflow DAG could not be parsed' });
+          return json(res, 200, { io: [], firstWave: [], lastWave: [], scoped: false, emptyReason: null, note: 'workflow DAG could not be parsed' });
         }
-        const io = workItemIoRows(firstWave, lastWave);
+        const { rows, scoped } = workItemIoRows(firstWave, lastWave, run.id);
+        // Distinguish an old pre-feature run (workflow has NO linkage at all) from a
+        // re-run that simply advanced nothing new (the workflow HAS linkage elsewhere).
+        const emptyReason = scoped || rows.length > 0
+          ? null
+          : workflowHasRunLinkage(run.workflow_name) ? 'no-new' : 'pre-feature';
         return json(res, 200, {
-          io,
+          io: rows,
           firstWave,
           lastWave,
-          // Surface the limitation so the UI can label the panel clearly.
-          note: 'First-cut mapping: reflects the global work-item ledger, not scoped to this run. Fan-out collapses to one output per input.',
+          scoped,
+          emptyReason,
+          // Honest caveat shown as a footnote when there ARE rows.
+          note: 'One output is shown per input (fan-out is collapsed to its first output).',
         });
       }
 

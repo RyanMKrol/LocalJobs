@@ -266,8 +266,14 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   While the run is `running`, a **✕ Cancel** button appears next to the status
   badge; clicking it calls the cancel endpoint, disables itself during the
   request, and the next poll reflects the `cancelled` status. It also shows an
-  **Input → Output mapping** panel pairing each first-stage input with its final
-  output (joined by `root_key`). The **output side is expressive**: it previews
+  **Input → Output mapping** panel that is **genuinely scoped to THIS run** — it
+  lists only the originating inputs this run actually advanced (driven by the
+  `work_item_runs` linkage `markWorkItem` records from `LOCALJOBS_WORKFLOW_RUN_ID`),
+  each paired with its final output (joined by `root_key`). A run that advanced
+  nothing new shows "This run processed no new items", and an old run created before
+  this feature shows an honest "per-run input/output isn't recorded" note rather than
+  dumping the whole work-item ledger; the one-output-per-input caveat is a subtle
+  footnote. The **output side is expressive**: it previews
   the produced markdown artifact (title + a short excerpt) and **clicking it opens
   the full markdown in a popover** (rendered as formatted markdown via
   `react-markdown`; XSS-safe — no raw HTML execution; YAML frontmatter is stripped
