@@ -263,7 +263,11 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
 - **Backlog** — a read-only, human-readable render of the harness task list
   (`.harness/TASKS.json`): each task as a card (id, title, depends-on, tags,
   model, what to do + done-when), split into **harness-buildable** and
-  **🔒 needs-a-human** groups. Served via `GET /api/backlog`.
+  **🔒 needs-a-human** groups. A **DAG view** renders the same tasks as a genuine
+  directed graph — every task is a status-coloured node card positioned by its
+  topological wave, with real directed edges (SVG curves + arrowheads) drawn from
+  each task to its dependents; selecting a node highlights its incident edges and
+  shows the task detail below. Served via `GET /api/backlog`.
 
 Every page is **responsive down to a phone-width (~402px) viewport**: wide tables
 scroll sideways within their panel (the page itself never scrolls horizontally),
