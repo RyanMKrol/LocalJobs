@@ -3645,7 +3645,7 @@
     {
       "id": "T141",
       "title": "Remove the inert per-minute rate limit from the claude-cli service",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
