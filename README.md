@@ -302,21 +302,15 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   `spec` field — T131), split into collapsible **harness-buildable**,
   **🔒 needs-a-human**, and **done** sections. Done items are collapsed by
   default and expand individually on click. Served via `GET /api/backlog`, which
-  inlines each task's spec markdown as `specContent` for rendering, and **overlays**
-  each task's `reviewed` flag from the owner-owned reviews store (defaulting to
-  false). Each **done** task also has a **human-review toggle**: a "Mark as reviewed"
-  button, a green **Reviewed** / muted **Not reviewed** pill, and a **Reviewed /
-  Not-reviewed / All** filter on the done list. The toggle is the **one place the
-  dashboard writes back to the harness**, and it now **persists durably** (T136):
-  `reviewed` lives in its own committed file `.harness/reviews.json` (a
-  `id → { reviewed, at }` map — separate from `.harness/TASKS.json`). Clicking it
-  atomically writes that file AND the daemon **commits + pushes it to GitHub**
-  immediately (under the same lock the autonomous loop uses), so a review **survives
-  a daemon restart and a working-tree reset** and appears on the remote. Because the
-  reviews file is a separate path from everything the loop commits, it **never
-  conflicts** with the autonomous loop. A failed push (offline / no remote) is a
-  non-fatal note — the commit still persists and syncs on the next push. Everything
-  else on the dashboard remains read-only.
+  inlines each task's spec markdown as `specContent` for rendering (each task also
+  carries a `reviewed` flag, defaulting to false). Each **done** task also
+  has a **human-review toggle**: a "Mark as reviewed" button, a green **Reviewed**
+  / muted **Not reviewed** pill, and a **Reviewed / Not-reviewed / All** filter on
+  the done list. The toggle is the **one place the dashboard writes back to the
+  harness**: `POST /api/backlog/:id/reviewed` does a field-scoped, atomic
+  read-modify-write of `.harness/TASKS.json`, setting only that task's owner-owned
+  `reviewed` flag while leaving the shell-owned `status` (and every other field)
+  untouched. Everything else on the dashboard remains read-only.
 
 Every page is **responsive down to a phone-width (~402px) viewport**: wide tables
 scroll sideways within their panel (the page itself never scrolls horizontally),
