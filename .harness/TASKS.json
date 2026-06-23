@@ -2752,7 +2752,7 @@
     {
       "id": "T106",
       "title": "Services: use 'no limit' wording everywhere (table view says 'no cap')",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
