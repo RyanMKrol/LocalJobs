@@ -34,8 +34,10 @@ const llmMonthlyCap = Number(process.env.PLACES_LLM_MONTHLY_CAP ?? 2000);
 /** LLM enrichment (Gemini) knobs. Key from .env (GEMINI_API_KEY). */
 export const llmConfig = {
   apiKey: process.env.GEMINI_API_KEY ?? '',
-  /** A Gemini 3.x Flash gives free Google Search grounding (5k/month). */
-  model: process.env.GEMINI_MODEL ?? 'gemini-flash-latest',
+  /** Default to the CHEAPEST model (Flash-Lite); it still supports Google Search
+   *  grounding + URL context + thinking (minimal|low|medium|high). Override with
+   *  GEMINI_MODEL for a more capable/expensive model when needed. */
+  model: process.env.GEMINI_MODEL ?? 'gemini-flash-lite-latest',
   /** Test the harness without calling Gemini (fabricates a result). */
   dryRun: process.env.PLACES_LLM_DRY_RUN === '1',
   /** Max items per run (0 = no cap). */
