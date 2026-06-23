@@ -3548,7 +3548,7 @@
     {
       "id": "T135",
       "title": "Editable workflow schedule: change a workflow's cron from its detail page (persisted, live, reconciled)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
