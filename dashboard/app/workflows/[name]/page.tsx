@@ -26,16 +26,19 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
         <h1 style={{ margin: 0 }}>{name}</h1>
         <div className="spacer" />
         {p?.limitable && (
-          <input
-            className="mono"
-            type="number"
-            min={1}
-            value={limit}
-            onChange={(e) => setLimit(e.target.value)}
-            placeholder="all"
-            title="Limit this run to N originating inputs (blank = all). All fan-out of the selected inputs runs."
-            style={{ width: '4.5rem' }}
-          />
+          <div className="run-limit-control">
+            <label htmlFor="run-limit" className="run-limit-label">Limit</label>
+            <input
+              id="run-limit"
+              className="mono run-limit-input"
+              type="number"
+              min={1}
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              placeholder="all"
+              title="Limit this run to N originating inputs (blank = all). All fan-out of the selected inputs runs."
+            />
+          </div>
         )}
         <button className="btn" onClick={run} disabled={busy}>{busy ? 'Started…' : '▶ Run now'}</button>
       </div>

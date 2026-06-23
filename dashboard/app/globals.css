@@ -272,6 +272,27 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .gate-sample-label { font-size: 12px; margin: 0 0 4px; }
 .gate-card-foot { margin: 12px 0 0; font-size: 13px; }
 
+/* Base styling for text/number inputs — dark-theme native look */
+input[type="number"],
+input[type="text"] {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s;
+}
+input[type="number"]:focus,
+input[type="text"]:focus { border-color: var(--accent); }
+
+/* Run-limit control (workflow detail page) — label + number input grouped with ▶ Run now */
+.run-limit-control { display: flex; align-items: center; gap: 6px; }
+.run-limit-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.run-limit-input { width: 4.5rem; }
+
 /* ──────────────────────────────────────────────────────────────────────────
    Mobile / narrow-viewport styling (≤640px — covers iPhone-17-class ~402px).
    Goal: no horizontal overflow, nothing crossing the viewport edge. Wide tables
