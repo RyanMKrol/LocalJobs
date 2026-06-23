@@ -4,20 +4,24 @@ import { useState } from 'react';
 import { api, type BacklogTask, type BacklogDefaults } from '../lib/api';
 import { usePoll, useCaretStyle, CARET_STYLES } from '../ui';
 
-function resolveRung(model: string | undefined, effort: string | undefined, defaults: BacklogDefaults | undefined): string {
-  const m = (model ?? defaults?.model ?? 'unknown').replace('claude-', '');
+type Difficulty = 'easy' | 'medium' | 'hard' | 'very-hard';
+
+function resolveDifficulty(model: string | undefined, effort: string | undefined, defaults: BacklogDefaults | undefined): Difficulty {
+  const m = (model ?? defaults?.model ?? '').replace(/^claude-/, '');
   const e = effort ?? defaults?.effort ?? '';
-  return e ? `${m}/${e}` : m;
+  // Mapping: sonnet@any or @low/medium → easy; opus@high → medium; opus@xhigh → hard; opus@max → very hard
+  if (m.includes('opus')) {
+    if (e === 'max') return 'very-hard';
+    if (e === 'xhigh') return 'hard';
+    return 'medium'; // opus@high or unspecified
+  }
+  return 'easy'; // sonnet or unknown
 }
 
-function escalationPath(t: BacklogTask, defaults: BacklogDefaults | undefined): string {
-  const rungs: string[] = [];
-  rungs.push(resolveRung(t.model, t.effort, defaults));
-  const escalation = t.escalation ?? defaults?.escalation ?? [];
-  for (const rung of escalation) {
-    rungs.push(resolveRung(rung.model, rung.effort, defaults));
-  }
-  return rungs.join(' → ');
+function difficultyPill(t: BacklogTask, defaults: BacklogDefaults | undefined) {
+  const d = resolveDifficulty(t.model, t.effort, defaults);
+  const labels: Record<Difficulty, string> = { easy: 'easy', medium: 'medium', hard: 'hard', 'very-hard': 'very hard' };
+  return <span className={`pill diff-${d}`}>{labels[d]}</span>;
 }
 
 function statusPill(t: BacklogTask) {
@@ -33,7 +37,6 @@ function statusPill(t: BacklogTask) {
 function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults | undefined }) {
   const human = t.gate === 'needs-human' || t.gate === 'gate';
   const buildable = t.status !== 'done' && !human;
-  const ladder = escalationPath(t, defaults);
   return (
     <div className="panel" style={{ padding: 14, marginBottom: 8, borderColor: human ? 'var(--accent)' : buildable ? 'var(--amber)' : undefined }}>
       <div className="row" style={{ gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
@@ -42,6 +45,7 @@ function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults |
         <div className="spacer" />
         {buildable && <span className="pill buildable">🤖 buildable</span>}
         {human && <span className="pill" style={{ background: 'var(--accent)', color: '#fff' }}>🔒 needs human</span>}
+        {difficultyPill(t, defaults)}
         {statusPill(t)}
       </div>
       {t.dependsOn && t.dependsOn.length > 0 && (
@@ -57,7 +61,6 @@ function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults |
         {t.tags?.map((tag) => (
           <span key={tag} className="pill" style={{ marginRight: 4 }}>{tag}</span>
         ))}
-        <span className="mono" title="escalation path">{ladder}</span>
       </div>
     </div>
   );
