@@ -3554,6 +3554,46 @@
       "verify": [],
       "spec": ".harness/tasks/T138.md",
       "reviewed": false
+    },
+    {
+      "id": "T139",
+      "title": "Run-scope the workflow-run Input→Output panel (work_item_runs linkage); fix the \"first cut\" caveat styling",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "backend",
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/runJob.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T139.md",
+      "reviewed": false
     }
   ]
 }
