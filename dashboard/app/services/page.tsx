@@ -5,7 +5,7 @@ import { api, type Service } from '../lib/api';
 import { usePoll } from '../ui';
 
 function Bar({ used, cap }: { used: number; cap: number | null }) {
-  if (cap == null) return <span className="muted">no cap</span>;
+  if (cap == null) return <span className="muted">no limit</span>;
   const pct = Math.min(100, (used / cap) * 100);
   const cls = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
   return (
