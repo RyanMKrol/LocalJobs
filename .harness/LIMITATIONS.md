@@ -371,3 +371,12 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Impact:* a limited places run still does the full (cheap, idempotent) bulk ingest each time; only
   resolve/enrich/llm are bounded to N CIDs. This is intended, not a bug.
   *Revisit:* only if a pre-root stage ever becomes expensive — then it would need its own bounding.
+
+- **Validation-gate display on the graph views is a TOGGLEABLE evaluation aid (T099).**
+  *Why:* the original single chip-per-gate (T090) took too much space, so five compact styles
+  (`icon`/`dot`/`key`/`connector`/`lock`) were added behind a live, `localStorage`-persisted
+  selector so the user can pick a favourite on the real site.
+  *Impact:* the graph views carry a "Gate style" selector and five code paths for the same gate
+  data — extra surface that is intentionally temporary, not a permanent feature.
+  *Revisit:* a FOLLOW-UP task hardcodes the chosen winner and deletes the toggle + the four unused
+  styles (and the `useGateStyle`/`GATE_STYLES` machinery in `app/ui.tsx`).

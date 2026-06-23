@@ -437,11 +437,21 @@ doubt, log it.
   — each gate carries its `description` (what the producer's `produces[key]` and
   consumer's `consumes[key]` contracts ASSERT, enriched in the API's
   `gatesForWorkflow`), so a gate is inspectable, not just coloured.
-  `dashboard/.../Dag.tsx` renders a chip per gate ON THE CONNECTING ARROW between
+  `dashboard/.../Dag.tsx` renders a gate mark per gate ON THE CONNECTING ARROW between
   the producer and consumer waves it guards (not under either node) — at both
   desktop (`→`) and phone (`↓`) widths; a non-adjacent producer→consumer edge that
   can't sit on a single inter-wave arrow falls back to rendering under the consumer
-  node rather than being dropped or mis-placed. EVERY chip (passed/failed/pending
+  node rather than being dropped or mis-placed. **Gate display is currently
+  TOGGLEABLE (T099, an evaluation aid).** Both graph views show a small "Gate style"
+  selector and the user can switch live between five compact styles — `icon` (bare
+  ⛒ glyph), `dot` (bare state-coloured dot), `key` (tiny pill of just the artifact
+  key), `connector` (no chip — the arrow glyph itself is state-coloured + clickable),
+  `lock` (bare 🔒 glyph) — persisted to `localStorage` (`localjobs.gateStyle`) via
+  `useGateStyle()` in `app/ui.tsx` (`GATE_STYLES` is the source of truth). All five
+  keep every gate clickable to its detail page, keep the passed/failed/pending +
+  structural state colouring distinguishable, and work at desktop and phone widths.
+  Once a favourite is picked, a FOLLOW-UP task will hardcode the winner and remove
+  the toggle + unused styles. EVERY mark (passed/failed/pending
   alike) links to that gate's row in the
   **Validation gates** panel on the workflow-run page (`gateAnchor` gives the
   shared DOM id) — the panel shows what each gate validates (key + description,

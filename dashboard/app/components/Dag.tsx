@@ -2,7 +2,8 @@
 
 import { Fragment } from 'react';
 import type { BacklogTask, GateStatus, StructuralGate, WorkflowMember } from '../lib/api';
-import { statusLabel } from '../ui';
+import { GATE_STYLES, statusLabel, useGateStyle } from '../ui';
+import type { GateStyle } from '../ui';
 
 /** Topologically order members into waves (jobs in a wave have no ordering). */
 function computeWaves(members: WorkflowMember[]): string[][] {
@@ -32,32 +33,59 @@ function computeWaves(members: WorkflowMember[]): string[][] {
 
 
 /**
- * Render structural (no-run-state) gate chips for the workflow definition view.
- * Each chip marks that a validation gate exists on this edge. When `lastRunId` is
- * provided the chip links to that run's gate detail page so the contract can be
- * inspected; otherwise it renders as a non-interactive marker.
+ * A validation gate normalised for rendering, independent of whether it came from a
+ * run (`GateStatus`) or the structural definition view (`StructuralGate`). `state`
+ * gains a `structural` variant for the definition view (no run state). `href` is the
+ * gate's detail page when one can be linked (always for run gates; for structural
+ * gates only when a `lastRunId` exists), else undefined → a non-interactive marker.
  */
-function StructuralGateChips({ gates, lastRunId }: { gates: StructuralGate[]; lastRunId?: string }) {
+type GateState = 'passed' | 'failed' | 'pending' | 'structural';
+interface RenderGate {
+  key: string;
+  producer: string;
+  consumer: string;
+  description?: string | null;
+  state: GateState;
+  href?: string;
+}
+
+function gateTitle(g: RenderGate): string {
+  const base = `${g.producer} → ${g.consumer} (artifact "${g.key}")`;
+  const desc = g.description ? ` — ${g.description}` : '';
+  return g.state === 'structural'
+    ? `gate: ${base}${desc}`
+    : `gate ${g.state}: ${base}${desc} — click for detail`;
+}
+
+/** The visible glyph/text for a gate under each style (connector is drawn on the arrow). */
+function gateContent(style: GateStyle, g: RenderGate): string {
+  if (style === 'icon') return '⛒';
+  if (style === 'key') return g.key;
+  if (style === 'lock') return '🔒';
+  return ''; // dot — drawn purely in CSS
+}
+
+/**
+ * Render a set of validation gates as compact marks in the chosen `style`. Every
+ * mark stays clickable through to its detail page (when it has an `href`) and stays
+ * state-coloured (passed/failed/pending, plus the structural variant), so no style
+ * loses what the original chip provided. The `connector` style is drawn on the arrow
+ * itself, so here it falls back to dots — used only for the non-adjacent
+ * consumer-node fallback, which has no single arrow to colour.
+ */
+function GateMarks({ gates, style }: { gates: RenderGate[]; style: GateStyle }) {
   if (gates.length === 0) return null;
+  const eff: GateStyle = style === 'connector' ? 'dot' : style;
   return (
-    <div className="dag-gates">
+    <div className={`dag-gates gs-${eff}`}>
       {gates.map((g) => {
-        const label = `⛒ ${g.producer} · ${g.key}`;
-        const title = g.description
-          ? `gate: ${g.producer} → ${g.consumer} (artifact "${g.key}") — ${g.description}`
-          : `gate: ${g.producer} → ${g.consumer} (artifact "${g.key}")`;
-        if (lastRunId) {
-          const href = `/workflow-runs/${lastRunId}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`;
-          return (
-            <a key={`${g.producer}:${g.key}`} href={href} className="dag-gate structural" title={title}>
-              {label}
-            </a>
-          );
-        }
-        return (
-          <span key={`${g.producer}:${g.key}`} className="dag-gate structural" title={title}>
-            {label}
-          </span>
+        const cls = `dag-gate gs-${eff} ${g.state}`;
+        const content = gateContent(eff, g);
+        const title = gateTitle(g);
+        return g.href ? (
+          <a key={`${g.producer}:${g.key}`} href={g.href} className={cls} title={title}>{content}</a>
+        ) : (
+          <span key={`${g.producer}:${g.key}`} className={cls} title={title}>{content}</span>
         );
       })}
     </div>
@@ -65,27 +93,25 @@ function StructuralGateChips({ gates, lastRunId }: { gates: StructuralGate[]; la
 }
 
 /**
- * Render a set of validation gates as small chips, each naming its producer +
- * artifact key and coloured by state. Used both on the inter-wave arrow (the gates
- * guarding that edge) and as the consumer-node fallback for non-adjacent edges.
- * EVERY chip (passed, failed, or pending) links to that gate's dedicated detail
- * page, so any gate can be inspected — not just failures. `workflowRunId` is
- * required to build the URL.
+ * Small live selector letting the user switch between the five compact gate display
+ * styles (T099). The choice is persisted (see `useGateStyle`); this only renders the
+ * buttons. Shown on both graph views whenever the DAG has any gates.
  */
-function GateChips({ gates, workflowRunId }: { gates: GateStatus[]; workflowRunId: string }) {
-  if (gates.length === 0) return null;
+function GateStyleBar({ value, onChange }: { value: GateStyle; onChange: (s: GateStyle) => void }) {
   return (
-    <div className="dag-gates">
-      {gates.map((g) => {
-        const label = `⛒ ${g.producer} · ${g.key}`;
-        const title = `gate ${g.state}: ${g.producer} → ${g.consumer} (artifact "${g.key}") — click for detail`;
-        const href = `/workflow-runs/${workflowRunId}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`;
-        return (
-          <a key={`${g.producer}:${g.key}`} href={href} className={`dag-gate ${g.state}`} title={title}>
-            {label}
-          </a>
-        );
-      })}
+    <div className="gate-style-bar">
+      <span className="gate-style-label">Gate style</span>
+      {GATE_STYLES.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          className={`gate-style-btn${value === s.id ? ' active' : ''}`}
+          onClick={() => onChange(s.id)}
+          title={s.hint}
+        >
+          {s.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -123,6 +149,7 @@ export function Dag({
   /** Workflow run id, required when `gates` is provided to build gate-detail URLs. */
   workflowRunId?: string;
 }) {
+  const [style, setStyle] = useGateStyle();
   const waves = computeWaves(members);
   // Wave index of each job, so a gate's (producer, consumer) can be placed on the
   // arrow that bridges them.
@@ -150,8 +177,29 @@ export function Dag({
   const runGates = partition(gates ?? []);
   const structGates = partition(structuralGates ?? []);
 
+  // Normalise either gate source into the render shape, attaching the detail-page
+  // href (run gates always link; structural gates link only when a `lastRunId` exists).
+  const gateHref = (runId: string, g: { producer: string; key: string }) =>
+    `/workflow-runs/${runId}/gates/${encodeURIComponent(g.producer)}/${encodeURIComponent(g.key)}`;
+  const normRun = (g: GateStatus): RenderGate => ({
+    key: g.key, producer: g.producer, consumer: g.consumer, description: g.description,
+    state: g.state, href: workflowRunId ? gateHref(workflowRunId, g) : undefined,
+  });
+  const normStruct = (g: StructuralGate): RenderGate => ({
+    key: g.key, producer: g.producer, consumer: g.consumer, description: g.description,
+    state: 'structural', href: lastRunId ? gateHref(lastRunId, g) : undefined,
+  });
+  const arrowGates = (i: number): RenderGate[] =>
+    workflowRunId ? (runGates.onArrow.get(i) ?? []).map(normRun) : (structGates.onArrow.get(i) ?? []).map(normStruct);
+  const nodeGates = (job: string): RenderGate[] =>
+    workflowRunId ? (runGates.onConsumer.get(job) ?? []).map(normRun) : (structGates.onConsumer.get(job) ?? []).map(normStruct);
+
+  const hasGates = (gates?.length ?? 0) > 0 || (structuralGates?.length ?? 0) > 0;
+
   return (
-    <div className="dag">
+    <>
+      {hasGates && <GateStyleBar value={style} onChange={setStyle} />}
+      <div className="dag">
       {waves.map((wave, i) => (
         <Fragment key={i}>
           <div className="dag-wave">
@@ -168,23 +216,38 @@ export function Dag({
               return (
                 <div key={job}>
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
-                  {/* Fallback chips for non-adjacent edges that can't sit on an arrow. */}
-                  {workflowRunId && <GateChips gates={runGates.onConsumer.get(job) ?? []} workflowRunId={workflowRunId} />}
-                  {!workflowRunId && <StructuralGateChips gates={structGates.onConsumer.get(job) ?? []} lastRunId={lastRunId} />}
+                  {/* Fallback marks for non-adjacent edges that can't sit on an arrow. */}
+                  <GateMarks gates={nodeGates(job)} style={style} />
                 </div>
               );
             })}
           </div>
-          {i < waves.length - 1 && (
-            <div className="dag-arrow">
-              <span className="dag-arrow-glyph">→</span>
-              {workflowRunId && <GateChips gates={runGates.onArrow.get(i) ?? []} workflowRunId={workflowRunId} />}
-              {!workflowRunId && <StructuralGateChips gates={structGates.onArrow.get(i) ?? []} lastRunId={lastRunId} />}
-            </div>
-          )}
+          {i < waves.length - 1 && (() => {
+            const ag = arrowGates(i);
+            // Connector style: colour the arrow itself per gate (each a clickable,
+            // state-coloured glyph) instead of a separate chip.
+            if (style === 'connector' && ag.length > 0) {
+              return (
+                <div className="dag-arrow">
+                  {ag.map((g) => g.href ? (
+                    <a key={`${g.producer}:${g.key}`} className={`dag-arrow-glyph gate-conn ${g.state}`} href={g.href} title={gateTitle(g)}>→</a>
+                  ) : (
+                    <span key={`${g.producer}:${g.key}`} className={`dag-arrow-glyph gate-conn ${g.state}`} title={gateTitle(g)}>→</span>
+                  ))}
+                </div>
+              );
+            }
+            return (
+              <div className="dag-arrow">
+                <span className="dag-arrow-glyph">→</span>
+                <GateMarks gates={ag} style={style} />
+              </div>
+            );
+          })()}
         </Fragment>
       ))}
-    </div>
+      </div>
+    </>
   );
 }
 
