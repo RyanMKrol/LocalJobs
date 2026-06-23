@@ -359,6 +359,9 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
 
   const latestRuns = latestByStage(members);
 
+  const totalStages = workflow?.jobs.length ?? latestRuns.length;
+  const completedStages = latestRuns.filter(r => r.status !== 'queued' && r.status !== 'running').length;
+
   return (
     <>
       <p className="muted"><a href={run ? `/workflows/${run.workflow_name}` : '/workflows'}>← {run?.workflow_name ?? 'workflows'}</a></p>
@@ -377,7 +380,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
           </button>
         )}
       </div>
-      <p className="sub">{run?.progress_msg}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}</p>
+      <p className="sub">{run ? `${completedStages} of ${totalStages} stages` : ''}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}</p>
 
       {workflow && (
         <div className="panel" style={{ marginBottom: 16 }}>
