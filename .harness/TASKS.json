@@ -1103,7 +1103,7 @@
     {
       "id": "T046",
       "title": "Investigate why the Claude CLI service has a per-minute rate limit",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -3638,6 +3638,34 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T140.md",
+      "reviewed": false
+    },
+    {
+      "id": "T141",
+      "title": "Remove the inert per-minute rate limit from the claude-cli service",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "services",
+        "cleanup",
+        "coding"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/jobs/perfumes/claude-cli.service.ts",
+        "src/services"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T141.md",
       "reviewed": false
     }
   ]
