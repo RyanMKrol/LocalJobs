@@ -10,7 +10,11 @@ export interface ClaudeResult {
   error?: string;
 }
 
-const RATE_LIMIT_RE = /rate.?limit|usage limit|429|too many requests|quota|exceeded your|reached your|limit reached|overloaded/i;
+// Best-effort detection of a usage/rate limit from the CLI's error text (there's no
+// structured signal). `claude -p`'s known exact phrase is "Claude Usage Limit Reached"
+// — matched explicitly here (and already covered by `usage limit`/`limit reached`), kept
+// alongside a wide net so a reworded limit message still trips it.
+const RATE_LIMIT_RE = /claude usage limit reached|rate.?limit|usage limit|429|too many requests|quota|exceeded your|reached your|limit reached|overloaded/i;
 
 /**
  * Run a one-shot Claude Code CLI query. The prompt is piped via stdin (so large
