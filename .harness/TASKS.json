@@ -3016,7 +3016,7 @@
     {
       "id": "T116",
       "title": "Workflow-run IO: 5 toggleable output line-item styles to pick from",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
