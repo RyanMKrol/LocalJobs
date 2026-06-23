@@ -317,6 +317,7 @@ export const api = {
   run: (id: string, after = 0) => get<{ run: Run; logs: LogLine[] }>(`/api/runs/${id}?after=${after}`),
   // No runNow/toggle for a job (T070): you run + enable a WORKFLOW, never a job.
   stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${job}` : ''}`),
+  stuckForWorkflow: (workflow: string) => get<{ stuck: StuckItem[] }>(`/api/stuck?workflow=${encodeURIComponent(workflow)}`),
   ignored: (job?: string) => get<{ ignored: StuckItem[] }>(`/api/ignored${job ? `?job=${job}` : ''}`),
   unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),
   ignore: (job: string, key: string) => post<{ ok: boolean; ignored: number }>(`/api/stuck/ignore`, { job, key }),

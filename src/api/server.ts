@@ -305,10 +305,18 @@ export function createApiServer(opts: { isLoopback?: (addr: string | undefined) 
         return json(res, 200, { run, logs: getLogs(parts[2], after) });
       }
 
-      // GET /api/stuck  (optionally ?job=<name>) — items that gave up, won't retry
+      // GET /api/stuck  (optionally ?job=<name> or ?workflow=<name>) — items that gave up, won't retry
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'stuck' && parts.length === 2) {
         const jobFilter = url.searchParams.get('job');
-        const items = stuckItems().filter((i) => !jobFilter || i.job_name === jobFilter);
+        const wfFilter = url.searchParams.get('workflow');
+        let items = stuckItems();
+        if (jobFilter) {
+          items = items.filter((i) => i.job_name === jobFilter);
+        } else if (wfFilter) {
+          if (!getWorkflow(wfFilter)) return json(res, 404, { error: 'workflow not found' });
+          const memberJobs = new Set(getWorkflowJobs(wfFilter).map((m) => m.job_name));
+          items = items.filter((i) => memberJobs.has(i.job_name));
+        }
         return json(res, 200, { stuck: items });
       }
 

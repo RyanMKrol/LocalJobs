@@ -1,18 +1,45 @@
 'use client';
 
+import { useState } from 'react';
 import { api } from '../lib/api';
-import { CronBadge, fmtRelative, fmtTime, statusLabel, usePoll } from '../ui';
+import type { StuckItem } from '../lib/api';
+import { CronBadge, StuckPopover, fmtRelative, fmtTime, statusLabel, usePoll } from '../ui';
 
 export default function Workflows() {
   const { data, error } = usePoll(() => api.workflows(), 3000);
   const workflows = data?.workflows ?? [];
+  const [openWorkflow, setOpenWorkflow] = useState<string | null>(null);
+  const [popoverItems, setPopoverItems] = useState<StuckItem[]>([]);
 
   async function run(name: string) {
     try { await api.runWorkflow(name); } catch { /* next poll reflects reality */ }
   }
 
+  async function openStuck(workflowName: string) {
+    try {
+      const result = await api.stuckForWorkflow(workflowName);
+      setPopoverItems(result.stuck);
+      setOpenWorkflow(workflowName);
+    } catch { /* ignore — stuck count still visible in table */ }
+  }
+
+  async function refreshStuck(workflowName: string) {
+    try {
+      const result = await api.stuckForWorkflow(workflowName);
+      setPopoverItems(result.stuck);
+    } catch { /* ignore */ }
+  }
+
   return (
     <>
+      {openWorkflow && (
+        <StuckPopover
+          items={popoverItems}
+          scope={{ type: 'workflow', workflow: openWorkflow }}
+          onClose={() => setOpenWorkflow(null)}
+          onAction={() => refreshStuck(openWorkflow)}
+        />
+      )}
       <h1>Workflows</h1>
       <p className="sub">DAGs of jobs the framework runs as a unit. Auto-refreshes every 3s.</p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
@@ -29,7 +56,16 @@ export default function Workflows() {
               <tr key={p.name}>
                 <td>
                   <a href={`/workflows/${p.name}`}><strong>{p.name}</strong></a>
-                  {p.stuck > 0 && <span style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}>⛔ {p.stuck} stuck</span>}
+                  {p.stuck > 0 && (
+                    <button
+                      className="btn-link"
+                      style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}
+                      onClick={() => openStuck(p.name)}
+                      title={`${p.stuck} stuck item${p.stuck === 1 ? '' : 's'} — click to manage`}
+                    >
+                      ⛔ {p.stuck} stuck
+                    </button>
+                  )}
                   <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
                 </td>
                 <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
