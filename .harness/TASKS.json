@@ -2646,7 +2646,7 @@
     {
       "id": "T102",
       "title": "Workflow definition view: gate chips open a run-agnostic gate detail",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
