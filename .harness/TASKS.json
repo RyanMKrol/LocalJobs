@@ -3070,7 +3070,7 @@
     {
       "id": "T118",
       "title": "Reusable stuck-items popover with per-item + bulk unstick/ignore",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
