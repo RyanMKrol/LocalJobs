@@ -3540,7 +3540,7 @@
     {
       "id": "T138",
       "title": "Gate page: collapse identical producer/consumer sides to one panel; keep + prove asymmetric (fan-in) gate support",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
