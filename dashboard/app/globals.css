@@ -141,9 +141,10 @@ a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.
 .dag-gate.gs-key { font-size: 9px; padding: 1px 5px; }
 /* collapsible section heading (used on /backlog for all three sections) */
 /* ── Backlog section header: spin caret (T132, chosen in T127) ── */
-.section-heading-summary { font-size: 16px; margin: 0 0 12px -8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; display: flex; align-items: center; padding: 4px 8px; border-radius: 6px; transition: background 0.15s; }
+.section-heading-summary { font-size: 16px; margin: 0 0 12px -8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; display: flex; align-items: center; padding: 4px 8px; }
 .section-heading-summary::-webkit-details-marker { display: none; }
-details .section-heading-summary:hover { background: rgba(255,255,255,.06); }
+details:has(> summary.section-heading-summary) { border-radius: 8px; transition: background 0.15s; padding-bottom: 6px; }
+details:has(> summary.section-heading-summary:hover) { background: rgba(255,255,255,.06); }
 details[open] .section-heading-summary { color: var(--text); }
 .section-heading-summary::before { content: '›'; display: inline-block; font-size: 22px; font-weight: 900; line-height: 1; opacity: 1; color: var(--accent); flex-shrink: 0; margin-right: 6px; transform: rotate(90deg); transition: transform 0.2s ease; }
 details:not([open]) .section-heading-summary::before { transform: rotate(0deg); }
