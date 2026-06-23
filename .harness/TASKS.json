@@ -3828,6 +3828,33 @@
       "verify": [],
       "spec": ".harness/tasks/T147.md",
       "reviewed": false
+    },
+    {
+      "id": "T148",
+      "title": "Workflow-run Input→Output panel: hard-cap height + make the table scrollable (sticky header)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T148.md",
+      "reviewed": false
     }
   ]
 }
