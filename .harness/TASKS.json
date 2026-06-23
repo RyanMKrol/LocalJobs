@@ -2987,7 +2987,7 @@
     {
       "id": "T115",
       "title": "Workflow-run IO: render the output markdown as markdown (not raw text)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
