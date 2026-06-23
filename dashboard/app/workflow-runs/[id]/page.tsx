@@ -5,7 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
 import type { IoRow, Run, WorkflowIo, WorkflowRunOutput } from '../../lib/api';
-import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
+import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll, OUTPUT_STYLES, useOutputStyle } from '../../ui';
+import type { OutputStyle } from '../../ui';
 
 function latestByStage(members: Run[]): Run[] {
   const latest = new Map<string, Run>();
@@ -120,14 +121,25 @@ function MarkdownModal(
   );
 }
 
+/** Format byte count as a human-readable string (e.g. "4.2 KB"). */
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /**
- * Output cell for one IO row: lazily fetches the produced markdown ONCE, shows a
- * preview (title + excerpt), and opens the full markdown in a popover on click.
- * Falls back to the bare output key/detail when the item has no markdown
- * artifact (`found: false`) — e.g. a non-markdown-producing workflow.
+ * Output cell for one IO row: lazily fetches the produced markdown ONCE, then
+ * renders it in one of five user-selectable styles (T116). Falls back to the
+ * bare output key/detail when the item has no markdown artifact.
  */
 function OutputCell(
-  { runId, row, onOpen }: { runId: string; row: IoRow; onOpen: (title: string, content: string, truncated: boolean) => void },
+  { runId, row, onOpen, outputStyle }: {
+    runId: string;
+    row: IoRow;
+    onOpen: (title: string, content: string, truncated: boolean) => void;
+    outputStyle: OutputStyle;
+  },
 ) {
   const [out, setOut] = useState<WorkflowRunOutput | null>(null);
   const [loading, setLoading] = useState(false);
@@ -150,33 +162,82 @@ function OutputCell(
       ? itemLabel(row.outputKey, row.outputDetail)
       : null;
 
-  // Markdown artifact available → expressive, clickable preview.
-  if (out?.found && out.content) {
-    const { title, excerpt } = mdPreview(out.content);
-    const heading = title ?? detailName ?? row.outputKey;
-    const content = out.content;
-    const truncated = !!out.truncated;
+  // Fallback when no markdown artifact (or still loading).
+  if (!out?.found || !out.content) {
     return (
-      <button
-        type="button"
-        className="md-preview"
-        title="Open full markdown"
-        onClick={() => onOpen(heading, content, truncated)}
-      >
-        <span className="md-preview-title">📄 {heading}</span>
-        {excerpt && <span className="md-preview-excerpt">{excerpt}</span>}
-        <span className="md-preview-file mono">{out.file ?? row.outputKey}</span>
+      <>
+        <div className="mono" style={{ fontSize: '0.82em' }}>{row.outputKey}</div>
+        {detailName && <div className="muted" style={{ fontSize: '0.88em' }}>{detailName}</div>}
+        {loading && <div className="muted" style={{ fontSize: '0.78em' }}>loading preview…</div>}
+      </>
+    );
+  }
+
+  const { title, excerpt } = mdPreview(out.content);
+  const heading = title ?? detailName ?? row.outputKey;
+  const filename = out.file ?? row.outputKey;
+  const content = out.content;
+  const truncated = !!out.truncated;
+  const open = () => onOpen(heading, content, truncated);
+
+  // ── Style 1: filename + separate Preview button ──────────────────────────
+  if (outputStyle === 'filename') {
+    return (
+      <div className="out-filename">
+        <span className="mono out-filename-name" title={filename}>{filename.split('/').pop() ?? filename}</span>
+        <button type="button" className="btn out-filename-btn" onClick={open}>Preview</button>
+      </div>
+    );
+  }
+
+  // ── Style 2: icon + title only, whole row clickable ──────────────────────
+  if (outputStyle === 'title') {
+    return (
+      <button type="button" className="out-title" onClick={open} title="Open full markdown">
+        <span className="out-title-icon">📄</span>
+        <span className="out-title-text">{heading}</span>
       </button>
     );
   }
 
-  // No markdown (or still loading) → fall back to the bare key + detail name.
+  // ── Style 3: title + excerpt + filename (the original / current style) ───
+  if (outputStyle === 'excerpt') {
+    return (
+      <button type="button" className="md-preview" title="Open full markdown" onClick={open}>
+        <span className="md-preview-title">📄 {heading}</span>
+        {excerpt && <span className="md-preview-excerpt">{excerpt}</span>}
+        <span className="md-preview-file mono">{filename}</span>
+      </button>
+    );
+  }
+
+  // ── Style 4: filename + file-size metadata ───────────────────────────────
+  if (outputStyle === 'meta') {
+    const shortName = filename.split('/').pop() ?? filename;
+    return (
+      <div className="out-meta">
+        <button type="button" className="out-meta-link" onClick={open} title={filename}>{shortName}</button>
+        <span className="out-meta-info muted">
+          {out.bytes != null ? fmtBytes(out.bytes) : null}
+          {out.bytes != null && ' · '}
+          click to preview
+        </span>
+      </div>
+    );
+  }
+
+  // ── Style 5: compact chip, excerpt in tooltip, click to preview ──────────
   return (
-    <>
-      <div className="mono" style={{ fontSize: '0.82em' }}>{row.outputKey}</div>
-      {detailName && <div className="muted" style={{ fontSize: '0.88em' }}>{detailName}</div>}
-      {loading && <div className="muted" style={{ fontSize: '0.78em' }}>loading preview…</div>}
-    </>
+    <button
+      type="button"
+      className="out-chip"
+      onClick={open}
+      title={excerpt ?? heading}
+      aria-label={`Preview ${heading}`}
+    >
+      <span className="out-chip-icon">📄</span>
+      <span className="out-chip-name">{(filename.split('/').pop() ?? filename)}</span>
+    </button>
   );
 }
 
@@ -193,6 +254,7 @@ function OutputCell(
 function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
   const { io, firstWave, lastWave, note } = data;
   const [modal, setModal] = useState<{ title: string; content: string; truncated: boolean } | null>(null);
+  const [outputStyle, setOutputStyle] = useOutputStyle();
   const openModal = useCallback(
     (title: string, content: string, truncated: boolean) => setModal({ title, content, truncated }),
     [],
@@ -203,6 +265,20 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
     <>
       <h2>Input → Output mapping</h2>
       <div className="panel">
+        {!singleStage && (
+          <div className="output-style-bar">
+            <span className="output-style-label">Output style</span>
+            {OUTPUT_STYLES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`output-style-btn${outputStyle === s.id ? ' active' : ''}`}
+                title={s.hint}
+                onClick={() => setOutputStyle(s.id)}
+              >{s.label}</button>
+            ))}
+          </div>
+        )}
         {io.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>No work items recorded yet for this workflow.</p>
         ) : (
@@ -226,7 +302,7 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
                   </td>
                   <td><span className={`badge ${row.inputStatus}`}>{row.inputStatus}</span></td>
                   {!singleStage && (
-                    <td><OutputCell runId={runId} row={row} onOpen={openModal} /></td>
+                    <td><OutputCell runId={runId} row={row} onOpen={openModal} outputStyle={outputStyle} /></td>
                   )}
                   {!singleStage && (
                     <td>

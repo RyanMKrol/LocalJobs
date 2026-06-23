@@ -308,9 +308,33 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .db-modal-key { color: var(--muted); font-size: 12px; padding-top: 2px; word-break: break-all; flex-shrink: 0; }
 .db-modal-val { font-size: 12px; white-space: pre-wrap; word-break: break-all; }
 
-/* ── Workflow-run IO output preview (T110) ────────────────────────────────── */
+/* ── Workflow-run IO output preview (T110 / T116) ─────────────────────────── */
 /* Clickable preview of a produced markdown artifact in the IO panel's output
    cell; opens the full markdown in the db-modal popover. */
+
+/* Output style selector bar (T116, mirrors .gate-style-bar) */
+.output-style-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.output-style-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.output-style-btn { font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
+.output-style-btn:hover { border-color: var(--accent); color: var(--text); }
+.output-style-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.12); }
+
+/* Style 1: filename-only + Preview button */
+.out-filename { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.out-filename-name { font-size: 0.82em; overflow-wrap: anywhere; color: var(--muted); }
+.out-filename-btn { font-size: 11px; padding: 2px 8px; }
+
+/* Style 2: icon + title, whole row clickable */
+.out-title {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  padding: 4px 6px; margin: -4px -6px; cursor: pointer; color: inherit; font: inherit;
+}
+.out-title:hover { border-color: var(--border); background: var(--panel-2); }
+.out-title-icon { flex-shrink: 0; }
+.out-title-text { font-size: 0.9em; font-weight: 600; overflow-wrap: anywhere; }
+
+/* Style 3: excerpt (original md-preview style) */
 .md-preview {
   display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
   width: 100%; text-align: left;
@@ -321,6 +345,28 @@ details:not([open]) .section-heading-summary::before { content: '▸ '; }
 .md-preview-title { font-size: 0.9em; font-weight: 600; }
 .md-preview-excerpt { font-size: 0.82em; color: var(--muted); overflow-wrap: anywhere; }
 .md-preview-file { font-size: 0.74em; color: var(--muted); opacity: .8; overflow-wrap: anywhere; }
+
+/* Style 4: filename + file-size metadata */
+.out-meta { display: flex; flex-direction: column; gap: 2px; }
+.out-meta-link {
+  font-size: 0.82em; font-family: var(--mono, monospace);
+  background: none; border: none; padding: 0; cursor: pointer; color: var(--accent, #58a6ff);
+  text-align: left; overflow-wrap: anywhere; text-decoration: underline;
+}
+.out-meta-link:hover { opacity: 0.8; }
+.out-meta-info { font-size: 0.74em; }
+
+/* Style 5: compact chip */
+.out-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 2px 8px 2px 6px; cursor: pointer; color: inherit; font: inherit;
+  max-width: 100%; overflow: hidden;
+}
+.out-chip:hover { border-color: var(--accent); background: rgba(88,166,255,.08); }
+.out-chip-icon { flex-shrink: 0; font-size: 0.82em; }
+.out-chip-name { font-size: 0.78em; font-family: var(--mono, monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* Markdown modal: wider than the generic db-modal so prose reads comfortably. */
 .md-modal { width: min(780px, 100%); }
 

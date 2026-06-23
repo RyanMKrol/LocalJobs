@@ -62,6 +62,40 @@ export function useGateStyle(): [GateStyle, (s: GateStyle) => void] {
 }
 
 /**
+ * The five distinct output line-item styles for the workflow-run IO panel (T116).
+ * EVALUATION AID: once the user picks a favourite, a follow-up task will
+ * hardcode the winner and remove this toggle + unused styles.
+ */
+export const OUTPUT_STYLES = [
+  { id: 'filename', label: 'Filename', hint: 'Filename only + a separate "Preview" button to open the popover.' },
+  { id: 'title',    label: 'Title',    hint: 'File icon + document title (no excerpt), whole row clickable.' },
+  { id: 'excerpt',  label: 'Excerpt',  hint: 'Title + short excerpt + filename path (the original style).' },
+  { id: 'meta',     label: 'Meta',     hint: 'Filename link + file size — for quick at-a-glance metadata.' },
+  { id: 'chip',     label: 'Chip',     hint: 'Compact inline chip; excerpt shown in tooltip, click to preview.' },
+] as const;
+
+export type OutputStyle = (typeof OUTPUT_STYLES)[number]['id'];
+
+const OUTPUT_STYLE_KEY = 'localjobs.outputStyle';
+const DEFAULT_OUTPUT_STYLE: OutputStyle = 'excerpt';
+
+/** Read/write the user's chosen output line-item style, persisted to localStorage. */
+export function useOutputStyle(): [OutputStyle, (s: OutputStyle) => void] {
+  const [style, setStyle] = useState<OutputStyle>(DEFAULT_OUTPUT_STYLE);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(OUTPUT_STYLE_KEY);
+      if (saved && OUTPUT_STYLES.some((s) => s.id === saved)) setStyle(saved as OutputStyle);
+    } catch { /* localStorage unavailable — keep default */ }
+  }, []);
+  const set = (s: OutputStyle) => {
+    setStyle(s);
+    try { localStorage.setItem(OUTPUT_STYLE_KEY, s); } catch { /* ignore */ }
+  };
+  return [style, set];
+}
+
+/**
  * The five distinct caret/disclosure-indicator styles for the collapsible Backlog
  * section headers (T113). EVALUATION AID: once the user picks a favourite, a
  * follow-up task will hardcode it and remove this toggle + unused styles.
