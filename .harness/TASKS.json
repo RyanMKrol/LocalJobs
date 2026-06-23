@@ -3044,7 +3044,7 @@
     {
       "id": "T117",
       "title": "Workflow-run header: show 'X of N stages · % · time' (drop the stage name)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
