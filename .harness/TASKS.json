@@ -3618,7 +3618,7 @@
     {
       "id": "T140",
       "title": "Output preview: align frontmatter key/value columns + render arrays readably + hide null/empty fields",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
