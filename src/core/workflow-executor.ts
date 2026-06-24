@@ -19,6 +19,22 @@ import type { LogLevel, WorkflowDefinition, WorkflowRunStatus, RunStatus } from 
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Default bounded parallelism for a workflow's independent stages (T156). When a
+ * DAG has stages with no `dependsOn` edge between them (e.g. the movies
+ * `franchise-gaps` + 8 recommender branches all hanging off `movie-snapshot`),
+ * they become ready together and run concurrently up to this cap instead of
+ * one-after-another. A workflow can override it via `maxConcurrency` (raise it for
+ * a wide fan-out, or set `1` to force strict sequential order). Kept modest — each
+ * parallel stage spawns its OWN child process, so this is a safe ceiling for a Mac
+ * Mini; `executeDag` queues the excess. Strictly-linear workflows are unaffected
+ * (only ever one stage is ready at a time anyway). Cross-process rate/quota
+ * coordination is independent of this: paid stages still go through `callService`
+ * → the shared SQLite `service_usage` meter, so concurrency can't let them
+ * over-spend (the service quota is the governor regardless).
+ */
+const DEFAULT_WORKFLOW_CONCURRENCY = 4;
+
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
@@ -261,7 +277,7 @@ async function runWorkflowInner(
     let settled = 0;
 
     lastStatuses = await executeDag(dag, {
-      concurrency: def.maxConcurrency ?? 1,
+      concurrency: def.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY,
       signal: controller.signal,
       runOne: async (job) => {
         const jd = getJobDefinition(job);

@@ -23,14 +23,21 @@ import type { WorkflowDefinition } from '../../core/types.js';
  *    suggestion (real, un-owned, not previously recommended), dedupes, and balances
  *    per genre. `movie-gaps-notify` consumes BOTH and pushes one combined digest.
  *
- * Serial (maxConcurrency 1): Claude CLI is sequential, so the 8 branches — though
- * a true DAG fan-out for legibility — execute one at a time.
+ * Fan-out (maxConcurrency 4, T156): franchise-gaps + the 8 recommender branches
+ * all depend ONLY on movie-snapshot, so once it finishes they're all ready and run
+ * up to 4 at a time instead of one-after-another. Each branch is its own child
+ * process invoking the Claude CLI; capping at 4 protects the Mac Mini while still
+ * collapsing the run's wall-time. Cross-process coordination is unaffected — every
+ * branch routes its Claude calls through the shared `claude-cli` service
+ * (`callService` → the SQLite `service_usage` meter), so the rate limit + monthly
+ * quota are enforced GLOBALLY regardless of how many branches run at once; the
+ * service is the spend governor, not the concurrency cap.
  */
 const workflow: WorkflowDefinition = {
   name: 'movies',
   description: 'Audits your Plex movie library for FRANCHISE GAPS (films you own some-but-not-all of, via the TMDB Collections API — no quality filter) AND surfaces taste-based RECOMMENDATIONS: 8 Claude recommender branches (3 stratified-random + 5 targeted: auteur-completion, top-genre-canon, thin-genre round-out, older-era classics, world cinema) over a stratified library sample, merged with code-side TMDB verification (real, un-owned, never re-recommended), cross-branch dedup, and per-genre balancing. Pushes ONE monthly digest with separate Gaps + Recommendations sections. Both halves dedupe per tmdb id so nothing repeats; the owner can ignore-to-suppress either a gap or a recommendation.',
   schedule: '0 9 1 * *',
-  maxConcurrency: 1,
+  maxConcurrency: 4,
   jobs: [
     { job: 'movie-snapshot' },
     { job: 'franchise-gaps', dependsOn: ['movie-snapshot'] },

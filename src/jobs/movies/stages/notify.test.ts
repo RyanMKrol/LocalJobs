@@ -46,6 +46,11 @@ const dir = mkdtempSync(join(tmpdir(), 'movies-notify-'));
 const gapsFile = join(dir, 'gaps.json');
 const reportDir = dir;
 const reportPath = join(dir, 'franchise-gaps.md');
+// Isolate the recs side so these GAPS-only tests don't read the real production
+// recommendations/history files (which would make the digest recs-aware and the
+// counts machine-dependent). Non-existent paths → runNotify sees zero recs.
+const noRecsFile = join(dir, 'no-recs.json');
+const noHistoryFile = join(dir, 'no-history.json');
 const NOW = new Date('2026-06-24T00:00:00Z');
 
 function writeGaps(gaps: FranchiseGap[]) {
@@ -62,7 +67,7 @@ const backlog: FranchiseGap[] = [
 {
   const sent: CapturedPush[] = [];
   writeGaps(backlog);
-  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, reportDir });
+  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, recsFile: noRecsFile, historyFile: noHistoryFile, reportDir });
   assert.equal(sent.length, 1, 'first run sends exactly ONE digest');
   assert.match(sent[0].title, /2 franchise gaps detected/);
   assert.match(sent[0].body, /Saw X/);
@@ -80,7 +85,7 @@ const backlog: FranchiseGap[] = [
 // Run 2 — same backlog, nothing new → NO push.
 {
   const sent: CapturedPush[] = [];
-  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, reportDir });
+  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, recsFile: noRecsFile, historyFile: noHistoryFile, reportDir });
   assert.equal(sent.length, 0, 'a re-run with no new gaps sends nothing (dedup)');
   console.log('  ✓ re-run with nothing new sends no push (dedup)');
 }
@@ -90,7 +95,7 @@ const backlog: FranchiseGap[] = [
   const sent: CapturedPush[] = [];
   const grown = [...backlog, { collectionId: 9, collectionName: 'Jurassic Park Collection', tmdbId: 9990013, title: 'Jurassic World Rebirth', year: 2025, tmdbRating: 6.8 }];
   writeGaps(grown);
-  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, reportDir });
+  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, recsFile: noRecsFile, historyFile: noHistoryFile, reportDir });
   assert.equal(sent.length, 1, 'one digest for the new gap');
   assert.match(sent[0].title, /1 franchise gap detected/);
   assert.match(sent[0].body, /Jurassic World Rebirth/);
@@ -112,7 +117,7 @@ const backlog: FranchiseGap[] = [
   ignoreSurfacedItem(NOTIFY_JOB, gapKey(IGNORED));
   assert.ok(isWorkItemDone(NOTIFY_JOB, gapKey(IGNORED), 1), 'ignored gap counts as done');
 
-  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, reportDir });
+  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, recsFile: noRecsFile, historyFile: noHistoryFile, reportDir });
   assert.equal(sent.length, 0, 'the only candidate was ignored → no push');
   const md = readFileSync(reportPath, 'utf8');
   assert.doesNotMatch(md, /Ghostbusters/, 'ignored gap is excluded from the report');
@@ -124,7 +129,7 @@ const backlog: FranchiseGap[] = [
 {
   const sent: CapturedPush[] = [];
   ignoreSurfacedItem(NOTIFY_JOB, gapKey(SAW_X)); // was notified in run 1
-  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, reportDir });
+  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile, recsFile: noRecsFile, historyFile: noHistoryFile, reportDir });
   assert.equal(sent.length, 0);
   const md = readFileSync(reportPath, 'utf8');
   assert.doesNotMatch(md, /Saw X/, 'a previously-notified gap, once ignored, leaves the report');

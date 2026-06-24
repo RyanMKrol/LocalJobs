@@ -198,7 +198,13 @@ export interface WorkflowDefinition {
   schedule?: string | null;
   /** Member jobs and their ordering edges. */
   jobs: WorkflowJobRef[];
-  /** Bounded parallelism for independent branches. Default 1 (serial topo order). */
+  /**
+   * Bounded parallelism for independent branches (no `dependsOn` between them).
+   * Default 4 (T156): same-wave stages whose deps are satisfied run concurrently
+   * up to this cap. Set higher for a wide fan-out, or `1` to force strict
+   * sequential order. Each parallel stage spawns its own child process, so keep it
+   * modest. Strictly-linear workflows are unaffected (one ready stage at a time).
+   */
   maxConcurrency?: number;
   /** Re-run the whole pass in cycles until no retryable work remains. Default false. */
   repeatUntilStable?: boolean;

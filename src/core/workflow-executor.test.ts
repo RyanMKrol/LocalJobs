@@ -31,12 +31,16 @@ async function test(name: string, fn: () => Promise<void>) {
 }
 
 // Minimal fake child: names starting 'timeout' HANG (wait to be killed), names
-// starting 'fail' emit a failed result; anything else succeeds.
+// starting 'fail' emit a failed result, names starting 'slow' succeed after a
+// fixed delay (so concurrency can be observed by wall-time overlap); anything else
+// succeeds immediately.
+const SLOW_MS = 250;
 const FAKE = `
 const name = process.argv[2] ?? '';
 const done = (o, code) => process.stdout.write(JSON.stringify(o) + '\\n', () => process.exit(code));
 if (name.startsWith('timeout')) setTimeout(() => {}, 60000); // hang until killed
 else if (name.startsWith('fail')) done({ type: 'result', status: 'failed', error: 'planned failure' }, 1);
+else if (name.startsWith('slow')) setTimeout(() => done({ type: 'result', status: 'success' }, 0), ${SLOW_MS});
 else done({ type: 'result', status: 'success' }, 0);
 `;
 
@@ -50,7 +54,7 @@ config.runJobScript = fakePath;
 config.ntfyTopic = ''; // never POST to ntfy during tests
 
 // Member jobs must be discoverable (getJobDefinition) AND exist in the jobs table (FK).
-const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d', 'timeout-cancel-pp', 'pp-after-cancel', 'timeout-guard-a', 'timeout-guard-b'];
+const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d', 'timeout-cancel-pp', 'pp-after-cancel', 'timeout-guard-a', 'timeout-guard-b', 'slow-a', 'slow-b', 'slow-c', 'slow-d'];
 const pushed: JobDefinition[] = [];
 for (const name of members) {
   const d: JobDefinition = { name, run: async () => {} };
@@ -439,6 +443,64 @@ try {
     // Guard released once each run settled.
     assert.equal(workflowRunInProgress('guard-wf-a'), false, 'A guard released after settle');
     assert.equal(workflowRunInProgress('guard-wf-b'), false, 'B guard released after settle');
+  });
+
+  await test('parallelism (T156): independent stages run concurrently by DEFAULT; maxConcurrency:1 forces sequential; a dependent still waits', async () => {
+    // We compare wall-times of the SAME 4 slow stages under three shapes. Absolute
+    // ms is machine-dependent (each child pays a `--import tsx` startup cost), so we
+    // assert RELATIONSHIPS between the measured times, which are robust to speed:
+    // the constant per-process startup inflates the serial run ~4× but the
+    // concurrent run only ~1×.
+    const time = async (def: WorkflowDefinition) => {
+      syncWorkflow(def);
+      const t0 = Date.now();
+      const { workflowRunId } = await runWorkflow(def, 'manual');
+      const elapsed = Date.now() - t0;
+      assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success', `${def.name} succeeded`);
+      assert.equal(
+        listRunsForWorkflowRun(workflowRunId!).filter((r) => r.status === 'success').length,
+        def.jobs.length,
+        `${def.name}: all ${def.jobs.length} stages succeeded`,
+      );
+      return elapsed;
+    };
+
+    // Default (cap 4): all four independent stages ready at once → run together.
+    const parDefault = await time({
+      name: 'par-default',
+      jobs: [{ job: 'slow-a' }, { job: 'slow-b' }, { job: 'slow-c' }, { job: 'slow-d' }],
+    });
+    // Override cap 1: the SAME four stages, forced one-at-a-time.
+    const parSerial = await time({
+      name: 'par-serial',
+      jobs: [{ job: 'slow-a' }, { job: 'slow-b' }, { job: 'slow-c' }, { job: 'slow-d' }],
+      maxConcurrency: 1,
+    });
+    // Dependency gate: three parallel deps + one dependent that must wait for all
+    // three → two sequential waves.
+    const parDep = await time({
+      name: 'par-dep',
+      jobs: [
+        { job: 'slow-a' }, { job: 'slow-b' }, { job: 'slow-c' },
+        { job: 'slow-d', dependsOn: ['slow-a', 'slow-b', 'slow-c'] },
+      ],
+    });
+
+    // The override is honoured: forcing sequential is MUCH slower than the default
+    // concurrent run (≈4 stacked stages vs ≈1) — proving the default overlaps and
+    // `maxConcurrency:1` serialises. Generous ratio to stay robust under CI load.
+    assert.ok(
+      parDefault * 1.8 < parSerial,
+      `default-concurrency run (${parDefault}ms) should be far faster than serial (${parSerial}ms)`,
+    );
+    // The serial run took roughly the SUM of all four slow stages — at least three
+    // of them clearly did NOT overlap.
+    assert.ok(parSerial > SLOW_MS * 3, `serial run should be ≥ ~4 stacked stages, took ${parSerial}ms`);
+    // The dependent waits: two waves (parallel deps, then the dependent) takes
+    // measurably longer than the single-wave default, yet stays well under the
+    // fully-serial run — so the three deps overlapped AND the dependent waited.
+    assert.ok(parDep > parDefault, `dependent must add a second wave (${parDep}ms > ${parDefault}ms)`);
+    assert.ok(parDep < parSerial, `the three deps must still overlap (${parDep}ms < serial ${parSerial}ms)`);
   });
 
 } finally {

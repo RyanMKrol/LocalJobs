@@ -115,6 +115,22 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   member jobs in topological order (respecting `dependsOn` edges and bounded
   parallelism) via the same executor. A workflow run is a first-class DB record
   distinct from each member job's own run.
+- **Independent stages run in PARALLEL by default (T156).** `executeDag` launches
+  every ready stage (deps all succeeded) up to a concurrency cap; `runWorkflow`
+  passes `def.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY` where the default is
+  **4** (raised from 1). So a DAG with independent same-wave stages — e.g. the
+  movies `franchise-gaps` + 8 recommender branches all hanging off `movie-snapshot`
+  — runs them concurrently (up to 4) once their shared dependency finishes, instead
+  of one-after-another. Strictly-linear workflows (places, perfumes, the TV `plex`
+  workflow) are unaffected: only ever one stage is ready at a time. A workflow
+  overrides the cap with **`maxConcurrency`** on its `WorkflowDefinition` — raise it
+  for a wider fan-out, or set **`1`** to force strict sequential order (the movies
+  workflow sets `4` so its branches fan out; the cap is kept modest because each
+  parallel stage spawns its OWN child process, and `executeDag` queues the excess).
+  Parallelism does NOT loosen spend governance: paid stages still route through
+  `callService` → the shared SQLite `service_usage` meter, so rate limits + monthly
+  quotas are enforced GLOBALLY across processes regardless of concurrency — the
+  service quota is the spend governor, not the cap.
 - **The child only emits events; the parent (executor) is the sole DB writer.**
 - **A running workflow run is cancellable.** `runWorkflow` registers each run in an
   in-process `workflowRunId → AbortController` map (so BOTH the scheduler and the
