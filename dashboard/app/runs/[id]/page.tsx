@@ -38,12 +38,14 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
       {error && <p className="muted">⚠ {error}</p>}
       {run && (
         <>
-          <div className="row">
+          <div className="row" style={{ alignItems: 'flex-start' }}>
             <div>
-              <h1 style={{ margin: 0 }}>{run.job_name}</h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <h1 style={{ margin: 0 }}>{run.job_name}</h1>
+                <StatusBadge status={run.status} />
+              </div>
               <span className="muted" style={{ fontSize: 12 }}>run</span>
             </div>
-            <StatusBadge status={run.status} />
             <div className="spacer" />
             <span className="muted mono">{run.id}</span>
           </div>
