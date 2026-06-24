@@ -968,14 +968,11 @@ this in addition to everything above:
   choice, and (c) unblocks a follow-up that hardcodes the winner and removes the toggle + unused
   paths. Example chains: T099/T113/T116 (choosers) → T126/T127/T128 (review tasks). Never author
   a chooser task alone; always add the paired review task in the same backlog edit.
-- **Backlog authoring: every BUILDABLE task MUST carry `facets` (difficulty auto-tuning).** When you
-  add or author a backlog task — whether through the add-to-backlog skill OR by editing `TASKS.json`
-  directly — assign `"facets": { "layer": …, "workType": …, "risk": [...] }`, picking values ONLY
-  from `.harness/facets.json`'s controlled vocabulary (use the task's `scope` paths to choose the
-  `layer`). The loop's policy reads facets to pick the starting difficulty, so `model`/`effort` are
-  just a cold-start prior. `needs-human` tasks are CARVED OUT — they get **no** `facets`. Do NOT
-  author a buildable task without facets: the loop pre-flight warns about facet-less buildable tasks,
-  and an un-tagged task gets no auto-tuning. (See `.harness/designs/difficulty-autotune.md`.)
+- **Backlog authoring → invoke the `ralph-loop-add-to-backlog` skill (see `.harness/CLAUDE.md`).**
+  Adding tasks goes through that skill (it assigns facets, pairs chooser/review tasks, runs the
+  poor-fit/layer gate). Floor even on a direct `TASKS.json` edit: every BUILDABLE task carries
+  `facets` from `.harness/facets.json` (`needs-human` tasks omit them); the loop pre-flight warns
+  about misses. Full rule lives in `.harness/CLAUDE.md` (loaded when you work in `.harness/`).
 - **Definition of Done mirrors CI** (`.harness/HARNESS.md` §5): `npx tsc --noEmit`, `npm test`, and
   `npm --prefix dashboard run build` for any `dashboard/` change — all green before you commit.
 - **Verify correctness — paid calls allowed, frugally.** The ONE hard rule is **never exceed a
