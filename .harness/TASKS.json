@@ -3859,7 +3859,7 @@
     {
       "id": "T149",
       "title": "Plex client: LAN-scan fallback so a changed DHCP IP doesn't break the workflow",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T144"
       ],
