@@ -3954,7 +3954,7 @@
     {
       "id": "T153",
       "title": "Services page: sort by type (Free then Paid), then alphabetically",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
