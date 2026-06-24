@@ -3805,7 +3805,7 @@
     {
       "id": "T147",
       "title": "Gate detail page: back link should name the workflow run, not the generic \"workflow run\"",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
