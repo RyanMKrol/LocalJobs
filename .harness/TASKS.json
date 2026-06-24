@@ -4121,7 +4121,7 @@
     {
       "id": "T159",
       "title": "Backlog: make buildable + needs-human lists compact rows that expand on click (like Done)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
