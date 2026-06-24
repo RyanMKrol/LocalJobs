@@ -4148,7 +4148,7 @@
     {
       "id": "T160",
       "title": "Backlog: needs-human marker should be a stable blue, not the theme accent (green under Pixel Picnic)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
