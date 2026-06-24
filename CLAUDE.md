@@ -71,8 +71,9 @@ work** that doesn't fit serverless or a web request. The repo ships four
 worked-example workflows: **places** (headless CID→place_id resolution → Google
 Places API enrichment → Gemini LLM summaries, writing enriched JSON + markdown
 profiles to local files), **perfumes** (Fragrantica scrape → headless Chrome
-fetch → parse → Claude CLI profile build), **plex** (snapshot the Plex TV
-library by GUID → check TMDB for complete missing seasons → weekly digest push),
+fetch → parse → Claude CLI profile build), **missing-tv-seasons** (snapshot the Plex TV
+library by GUID → check TMDB for complete missing seasons → weekly digest push;
+the `src/jobs/plex/` folder, formerly the `plex` workflow),
 and **movies** (snapshot the Plex movie library by GUID → detect franchise gaps
 via the TMDB Collections API AND fan out 8 Claude recommender branches over a
 stratified library sample → a `rec-merge` stage that TMDB-verifies/dedupes/balances
@@ -122,8 +123,8 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   **4** (raised from 1). So a DAG with independent same-wave stages — e.g. the
   movies `franchise-gaps` + 8 recommender branches all hanging off `movie-snapshot`
   — runs them concurrently (up to 4) once their shared dependency finishes, instead
-  of one-after-another. Strictly-linear workflows (places, perfumes, the TV `plex`
-  workflow) are unaffected: only ever one stage is ready at a time. A workflow
+  of one-after-another. Strictly-linear workflows (places, perfumes, the TV
+  `missing-tv-seasons` workflow) are unaffected: only ever one stage is ready at a time. A workflow
   overrides the cap with **`maxConcurrency`** on its `WorkflowDefinition` — raise it
   for a wider fan-out, or set **`1`** to force strict sequential order (the movies
   workflow sets `4` so its branches fan out; the cap is kept modest because each
@@ -419,8 +420,8 @@ doubt, log it.
   (resolver by CID, enrich + LLM by place_id); the rich output still goes to the
   job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
   "skip if it's in the JSON file" checks.
-  - **Variant — "re-scan + notification-log" idempotency (the `plex` workflow,
-    T144).** Some workflows have NO static input list to skip-against: their inputs
+  - **Variant — "re-scan + notification-log" idempotency (the `missing-tv-seasons`
+    workflow, T144; folder `src/jobs/plex/`).** Some workflows have NO static input list to skip-against: their inputs
     are DISCOVERED live each run (the plex audit re-reads the whole Plex library +
     re-checks TMDB every time). Such a workflow **declares no `inputKeys()`** (so it
     is NOT limitable — scheduled-only, always unlimited) and its scan/check stages
@@ -561,7 +562,7 @@ doubt, log it.
     (DB note: the legacy `dismissed` status is migrated to `ignored` on startup
     in `src/db/index.ts`.)
   - **Ignore-to-suppress a SURFACED (non-failed) item (T145).** The audit-style
-    workflows (`plex`/`movies`) whose ledger tracks "have I notified this?" rather
+    workflows (`missing-tv-seasons`/`movies`) whose ledger tracks "have I notified this?" rather
     than work-done need to ignore a still-VALID surfaced item (a franchise film the
     owner owns some-but-not-all of and deliberately doesn't want) — NOT a `failed`
     one. `ignoreSurfacedItem(jobName, itemKey)` in `store.ts` EXTENDS ignore to this

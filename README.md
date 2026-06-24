@@ -226,7 +226,7 @@ and the daemon **refuses to start** (it fails loud at load).
 It then appears in the dashboard automatically with history tracked from run one.
 
 > **Your jobs stay private by default.** This repo is public; it ships the
-> framework and the **places**, **perfumes**, **plex**, and **movies** workflows as
+> framework and the **places**, **perfumes**, **missing-tv-seasons**, and **movies** workflows as
 > worked examples. Every other `src/jobs/*.job.ts` (and any private subfolder you
 > add) is gitignored, so the jobs you add stay local-only unless you choose to
 > publish them. Every job's `data/` folder is **always** gitignored
@@ -409,7 +409,8 @@ from the last push, so a steady run no longer floods ntfy. Drives the local `cla
 CLI. See `perfumes/config.ts` for models, pacing, headless toggle, and dry-run
 options. See `.harness/LIMITATIONS.md` for scraping trade-offs.
 
-**plex** — Plex TV new-seasons audit. Three stages: `plex-tv-snapshot` (snapshot
+**missing-tv-seasons** — Plex TV new-seasons audit (served at
+`/workflows/missing-tv-seasons`; was the `plex` workflow before T151). Three stages: `plex-tv-snapshot` (snapshot
 the TV section by `tmdb://` GUID — each show + its highest owned regular season) →
 `tmdb-season-check` (check TMDB for COMPLETE seasons you're missing; ended/canceled
 shows included — revivals happen) → `plex-seasons-notify` (ONE weekly digest of the
@@ -431,7 +432,7 @@ genres/directors/decades/countries, written as a separate taste profile) →
 each owned film, resolve its `belongs_to_collection`, fetch each DISTINCT
 collection's `parts[]`, and surface every RELEASED part you don't own — e.g. owning
 9/10 Saw films flags Saw X) → `movie-gaps-notify` (ONE **monthly** digest of the
-newly-detected gaps). Same connectivity as **plex** (`PLEX_HOST`/`PLEX_API_TOKEN`/
+newly-detected gaps). Same connectivity as **missing-tv-seasons** (`PLEX_HOST`/`PLEX_API_TOKEN`/
 `TMDB_API_TOKEN`, plus `PLEX_MOVIE_SECTION`, default 4) and the same inverted
 idempotency (no `inputKeys()`, re-computes fresh, ledger only in notify). There is
 **no quality filter and no skip heuristics** — every factual gap is surfaced; the

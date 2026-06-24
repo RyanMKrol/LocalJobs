@@ -118,6 +118,12 @@ for (const suffix of ['', '-wal', '-shm']) rmSync(dbPath + suffix, { force: true
     INSERT INTO workflow_jobs (workflow_name, job_name) VALUES ('places', 'resolve');
     INSERT INTO runs (id, job_name, status, trigger) VALUES ('run-1', 'resolve', 'success', 'manual');
     INSERT INTO workflow_runs (id, workflow_name, status, trigger) VALUES ('wr-1', 'places', 'success', 'manual');
+    -- Pre-T151 TV-season workflow under its old 'plex' slug, with member links + run
+    -- history — the migration must rename it to 'missing-tv-seasons' preserving these.
+    INSERT INTO jobs (name, description) VALUES ('plex-tv-snapshot', 's');
+    INSERT INTO workflows (name, schedule) VALUES ('plex', '0 9 * * 1');
+    INSERT INTO workflow_jobs (workflow_name, job_name) VALUES ('plex', 'plex-tv-snapshot');
+    INSERT INTO workflow_runs (id, workflow_name, status, trigger) VALUES ('wr-plex-1', 'plex', 'success', 'scheduled');
     INSERT INTO work_items (job_name, item_key, status, attempts) VALUES
       ('resolve', 'cid-1', 'success', 1),
       ('resolve', 'cid-2', 'failed', 2),
@@ -200,11 +206,34 @@ test("legacy 'dismissed' work_item is migrated to 'ignored' (T033)", () => {
   assert.equal(dismissed.c, 0, 'no dismissed rows remain');
 });
 
+test('plex workflow is renamed to missing-tv-seasons, run history + member links preserved (T151)', () => {
+  // The old `plex` workflow + job-link + run rows must carry over under the new name.
+  assert.equal(
+    (migrated.prepare("SELECT COUNT(*) c FROM workflows WHERE name = 'plex'").get() as { c: number }).c,
+    0,
+    'no orphaned `plex` workflow row lingers',
+  );
+  assert.equal(
+    (migrated.prepare("SELECT COUNT(*) c FROM workflows WHERE name = 'missing-tv-seasons'").get() as { c: number }).c,
+    1,
+    'workflow renamed to missing-tv-seasons',
+  );
+  const job = migrated
+    .prepare("SELECT job_name FROM workflow_jobs WHERE workflow_name = 'missing-tv-seasons'")
+    .get() as { job_name: string } | undefined;
+  assert.equal(job?.job_name, 'plex-tv-snapshot', 'member job link carried over (job name unchanged)');
+  const run = migrated
+    .prepare("SELECT workflow_name, status FROM workflow_runs WHERE id = 'wr-plex-1'")
+    .get() as { workflow_name: string; status: string } | undefined;
+  assert.equal(run?.workflow_name, 'missing-tv-seasons', 'historical run re-pointed to the new name');
+  assert.equal(run?.status, 'success', 'historical run status preserved');
+});
+
 test('all seeded rows are preserved (no data loss across the bootstrap+migration)', () => {
   assert.equal((migrated.prepare('SELECT COUNT(*) c FROM work_items').get() as { c: number }).c, 3);
   assert.equal((migrated.prepare('SELECT COUNT(*) c FROM runs').get() as { c: number }).c, 1);
-  assert.equal((migrated.prepare('SELECT COUNT(*) c FROM workflow_runs').get() as { c: number }).c, 1);
-  assert.equal((migrated.prepare('SELECT COUNT(*) c FROM workflows').get() as { c: number }).c, 1);
+  assert.equal((migrated.prepare('SELECT COUNT(*) c FROM workflow_runs').get() as { c: number }).c, 2);
+  assert.equal((migrated.prepare('SELECT COUNT(*) c FROM workflows').get() as { c: number }).c, 2);
 });
 
 test('idempotent: a SECOND openDb() against the now-migrated file is a clean no-op', () => {

@@ -54,6 +54,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
 
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
+  migrateRenamePlexWorkflow(db);
 
   // Data migration: unify the manual-park concept on a single name (T033).
   // The old `dismissed` status is renamed to `ignored` — same semantics
@@ -152,6 +153,48 @@ export function migrateRunLimitLineage(db: Database.Database): void {
     const wrCols = db.prepare('PRAGMA table_info(workflow_runs)').all() as { name: string }[];
     if (!wrCols.some((c) => c.name === 'run_limit')) db.exec('ALTER TABLE workflow_runs ADD COLUMN run_limit INTEGER');
     if (!wrCols.some((c) => c.name === 'selected_roots')) db.exec('ALTER TABLE workflow_runs ADD COLUMN selected_roots TEXT');
+  }
+}
+
+/**
+ * Idempotent rename (T151) of the TV-season workflow from the un-intuitive `plex`
+ * slug to the descriptive `missing-tv-seasons`. The workflow `name` is the id, the
+ * URL slug, AND the DB key, so renaming only the manifest would orphan the old
+ * `plex` workflow row + its historical runs under a now-manifest-less name. This
+ * carries them over: rename the `workflows` row plus the `workflow_jobs` /
+ * `workflow_runs` rows that reference it. Member JOB names are unchanged (their
+ * `work_items` are keyed by job name), so `workflow_jobs.job_name` is untouched.
+ *
+ * Guarded on the old `plex` row existing, so it's a no-op once migrated (and on a
+ * fresh DB the new name is synced from the manifest directly). Runs with
+ * `foreign_keys = ON`; updating the parent `workflows.name` first would orphan the
+ * children mid-statement, so we update the child references first, then the parent.
+ */
+export function migrateRenamePlexWorkflow(db: Database.Database): void {
+  const tableExists = (name: string): boolean =>
+    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name);
+  if (!tableExists('workflows')) return; // fresh DB before schema bootstrap — never happens here
+  const hasOld = !!db.prepare("SELECT 1 FROM workflows WHERE name = 'plex'").get();
+  if (!hasOld) return; // already migrated, or never existed
+
+  const fkWasOn = db.pragma('foreign_keys', { simple: true }) === 1;
+  // Defer FK enforcement so we can rewrite the parent + children atomically without
+  // a transient orphan tripping the constraint. PRAGMA foreign_keys is a no-op
+  // inside a transaction, so toggle it OUTSIDE one, then wrap the updates.
+  if (fkWasOn) db.pragma('foreign_keys = OFF');
+  try {
+    const rename = db.transaction(() => {
+      if (tableExists('workflow_jobs')) {
+        db.prepare("UPDATE workflow_jobs SET workflow_name = 'missing-tv-seasons' WHERE workflow_name = 'plex'").run();
+      }
+      if (tableExists('workflow_runs')) {
+        db.prepare("UPDATE workflow_runs SET workflow_name = 'missing-tv-seasons' WHERE workflow_name = 'plex'").run();
+      }
+      db.prepare("UPDATE workflows SET name = 'missing-tv-seasons' WHERE name = 'plex'").run();
+    });
+    rename();
+  } finally {
+    if (fkWasOn) db.pragma('foreign_keys = ON');
   }
 }
 
