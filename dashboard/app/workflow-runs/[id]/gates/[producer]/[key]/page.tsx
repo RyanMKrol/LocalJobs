@@ -141,8 +141,11 @@ export default function GateDetail({
   return (
     <>
       <p className="muted">
-        <a href={run ? `/workflow-runs/${id}` : '/workflows'}>
-          ← {run ? `${run.workflow_name} run` : 'workflows'}
+        <a
+          href={run ? `/workflow-runs/${id}` : '/workflows'}
+          title={run ? id : undefined}
+        >
+          ← {run ? `${run.workflow_name} run · ${id.split('-')[0]}` : 'workflows'}
         </a>
       </p>
       <div className="row">
