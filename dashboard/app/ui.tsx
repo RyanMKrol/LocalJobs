@@ -113,6 +113,38 @@ export function backFrom(
   return fallback;
 }
 
+/**
+ * Shared back link for pages that navigate up to a workflow run.
+ * Renders "← {workflow} run · {shortId}" (full id in the title tooltip) when
+ * both workflowRunId and workflowName are known; falls back to a plain link
+ * (e.g. "← runs" or "← workflows") when there is no workflow-run context.
+ */
+export function WorkflowRunBackLink({
+  workflowRunId,
+  workflowName,
+  fallback = { href: '/runs', label: 'runs' },
+}: {
+  workflowRunId?: string | null;
+  workflowName?: string | null;
+  fallback?: { href: string; label: string };
+}) {
+  if (workflowRunId && workflowName) {
+    const shortId = workflowRunId.split('-')[0];
+    return (
+      <p className="muted">
+        <a href={`/workflow-runs/${workflowRunId}`} title={workflowRunId}>
+          ← {workflowName} run · {shortId}
+        </a>
+      </p>
+    );
+  }
+  return (
+    <p className="muted">
+      <a href={fallback.href}>← {fallback.label}</a>
+    </p>
+  );
+}
+
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /** Convert a 5-field cron expression to a short English phrase.

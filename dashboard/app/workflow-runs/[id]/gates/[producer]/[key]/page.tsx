@@ -3,7 +3,7 @@
 import { use } from 'react';
 import { api } from '../../../../../lib/api';
 import type { ArtifactShape, ExpectationResult, GateResult } from '../../../../../lib/api';
-import { statusLabel, usePoll } from '../../../../../ui';
+import { WorkflowRunBackLink, statusLabel, usePoll } from '../../../../../ui';
 
 /** Pair each declared expectation with its actual result (matched by label). */
 function pairExpectations(shape: ArtifactShape | null, result: GateResult | null) {
@@ -140,14 +140,11 @@ export default function GateDetail({
 
   return (
     <>
-      <p className="muted">
-        <a
-          href={run ? `/workflow-runs/${id}` : '/workflows'}
-          title={run ? id : undefined}
-        >
-          ← {run ? `${run.workflow_name} run · ${id.split('-')[0]}` : 'workflows'}
-        </a>
-      </p>
+      <WorkflowRunBackLink
+        workflowRunId={run ? id : null}
+        workflowName={run?.workflow_name}
+        fallback={{ href: '/workflows', label: 'workflows' }}
+      />
       <div className="row">
         <h1 style={{ margin: 0 }}>Validation gate</h1>
         <div className="spacer" />

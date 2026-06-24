@@ -1,27 +1,25 @@
 'use client';
 
 import { use, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { api } from '../../lib/api';
-import { ProgressBar, StatusBadge, backFrom, exitCodeLabel, fmtDuration, fmtTime, usePoll } from '../../ui';
+import { ProgressBar, StatusBadge, WorkflowRunBackLink, exitCodeLabel, fmtDuration, fmtTime, usePoll } from '../../ui';
 
 type LevelFilter = 'all' | 'info' | 'warn' | 'error';
 
 export default function RunDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [filter, setFilter] = useState<LevelFilter>('all');
-  const fromParam = useSearchParams().get('from');
   const { data, error } = usePoll(() => api.run(id), 1000, [id]);
   const run = data?.run;
   const logs = data?.logs ?? [];
 
-  // Back to where we came from (?from=), else: the parent workflow run (shown by id),
-  // else the job this run belongs to.
-  const back = backFrom(fromParam, run?.workflow_run_id
-    ? { href: `/workflow-runs/${run.workflow_run_id}`, label: run.workflow_run_id }
-    : run
-    ? { href: `/jobs/${run.job_name}`, label: run.job_name }
-    : { href: '/', label: 'back' });
+  // Fetch the parent workflow run to get its name for the back link.
+  const { data: wfRunData } = usePoll(
+    () => run?.workflow_run_id ? api.workflowRun(run.workflow_run_id) : Promise.resolve(null),
+    5000,
+    [run?.workflow_run_id],
+  );
+  const wfRun = wfRunData?.run;
 
   const counts = {
     info: logs.filter((l) => l.level === 'info').length,
@@ -32,9 +30,11 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
 
   return (
     <>
-      <p className="muted">
-        <a href={back.href}>← {back.label}</a>
-      </p>
+      <WorkflowRunBackLink
+        workflowRunId={run?.workflow_run_id}
+        workflowName={wfRun?.workflow_name}
+        fallback={run ? { href: `/jobs/${run.job_name}`, label: run.job_name } : { href: '/', label: 'back' }}
+      />
       {error && <p className="muted">⚠ {error}</p>}
       {run && (
         <>
