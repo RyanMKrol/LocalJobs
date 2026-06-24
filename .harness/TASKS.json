@@ -4397,6 +4397,39 @@
       "verify": [],
       "spec": ".harness/tasks/T151.md",
       "reviewed": false
+    },
+    {
+      "id": "T168",
+      "title": "Rename the movies workflow to movie-recommendations (+ DB migration)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "movies",
+        "framework",
+        "cleanup"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/jobs/movies/movies.workflow.ts",
+        "src/db/index.ts",
+        "src/db/migrate-existing-db.test.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "README.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T168.md",
+      "reviewed": false
     }
   ]
 }
