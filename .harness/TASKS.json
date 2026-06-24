@@ -4175,7 +4175,7 @@
     {
       "id": "T161",
       "title": "Movies franchise-gaps report: show one example owned film per collection",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
