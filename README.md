@@ -416,7 +416,10 @@ shows included — revivals happen) → `plex-seasons-notify` (ONE weekly digest
 newly-detected missing seasons). Scheduled weekly. Needs `PLEX_HOST` +
 `PLEX_API_TOKEN` (Plex uses a self-signed cert — the TLS bypass is scoped to Plex
 requests only) and `TMDB_API_TOKEN` (free), routed through the rate-limited `tmdb`
-service. INVERTS the usual idempotency: it declares no `inputKeys()` (not limitable,
+service. The Plex client **self-heals a changed DHCP IP**: if `PLEX_HOST` is
+unset/stale it confirms the host (and, when `PLEX_MACHINE_ID` is set, that it's the
+RIGHT Plex) and otherwise scans the local subnet for a Plex on `:32400`, caching the
+resolved host for the daemon run and logging a heads-up to set `PLEX_HOST`. INVERTS the usual idempotency: it declares no `inputKeys()` (not limitable,
 scheduled-only) and re-scans fresh every run — the `work_items` ledger lives ONLY in
 the notify stage, as a "have I already notified this (show, season)?" log, so each
 backlog season is announced exactly once.

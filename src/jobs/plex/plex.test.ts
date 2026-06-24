@@ -4,6 +4,7 @@
 // whose last episode airs in the future is excluded; a fully-aired one included),
 // and that ENDED shows are NOT skipped.
 import assert from 'node:assert/strict';
+import { resetPlexHostCacheForTests, resolvePlexHost, type PlexProbe } from './client.js';
 import { buildShowSnapshots, extractTmdbId, highestOwnedSeasonMap } from './plex.js';
 import {
   candidateSeasons,
@@ -130,5 +131,125 @@ assert.equal(formatSeasonRanges([4, 6]), 'S4, S6');
 assert.equal(formatSeasonRanges([4, 5, 7]), 'S4–S5, S7');
 assert.equal(formatSeasonRanges([10, 8, 9]), 'S8–S10', 'unsorted input is sorted');
 console.log('  ✓ formatSeasonRanges compacts contiguous seasons');
+
+// ── resolvePlexHost: DHCP-resilient host resolution (injected probe, no network) ──
+// A fake probe maps host → machineIdentifier; everything else is unreachable (null).
+function fakeProbe(plexHosts: Record<string, string>): { probe: PlexProbe; calls: () => number } {
+  let calls = 0;
+  const probe: PlexProbe = async (host) => {
+    calls++;
+    return host in plexHosts ? plexHosts[host] : null;
+  };
+  return { probe, calls: () => calls };
+}
+const SILENT = () => {};
+
+await (async () => {
+  // configured-host-wins: the configured host answers as a Plex → used, no scan.
+  resetPlexHostCacheForTests();
+  {
+    const { probe, calls } = fakeProbe({ 'https://config:32400': 'MID-1' });
+    const host = await resolvePlexHost({
+      configuredHost: 'https://config:32400',
+      machineId: '',
+      probe,
+      candidateHosts: () => {
+        throw new Error('scan must not run when the configured host wins');
+      },
+      log: SILENT,
+    });
+    assert.equal(host, 'https://config:32400', 'reachable configured host is used as-is');
+    assert.equal(calls(), 1, 'only the configured host is probed');
+  }
+  console.log('  ✓ resolvePlexHost uses a reachable configured PLEX_HOST');
+
+  // scan-fallback: configured host dead → scan finds the live Plex on the subnet.
+  resetPlexHostCacheForTests();
+  {
+    const { probe } = fakeProbe({ 'https://10.0.0.7:32400': 'MID-9' });
+    const host = await resolvePlexHost({
+      configuredHost: 'https://stale:32400', // unreachable
+      machineId: '',
+      probe,
+      candidateHosts: () => ['https://10.0.0.5:32400', 'https://10.0.0.7:32400', 'http://10.0.0.7:32400'],
+      log: SILENT,
+    });
+    assert.equal(host, 'https://10.0.0.7:32400', 'scan returns the first answering Plex');
+  }
+  console.log('  ✓ resolvePlexHost falls back to a LAN scan when PLEX_HOST is stale');
+
+  // machine-id gating: scan rejects a Plex whose id ≠ PLEX_MACHINE_ID, accepts the match.
+  resetPlexHostCacheForTests();
+  {
+    const { probe } = fakeProbe({
+      'https://10.0.0.5:32400': 'OTHER-PLEX', // a different Plex — must be rejected
+      'https://10.0.0.8:32400': 'WANTED-ID', // the right one
+    });
+    const host = await resolvePlexHost({
+      configuredHost: '',
+      machineId: 'WANTED-ID',
+      probe,
+      candidateHosts: () => ['https://10.0.0.5:32400', 'https://10.0.0.8:32400'],
+      log: SILENT,
+    });
+    assert.equal(host, 'https://10.0.0.8:32400', 'only the matching machineIdentifier is accepted');
+  }
+  // and a configured host that is the WRONG Plex is not latched onto.
+  resetPlexHostCacheForTests();
+  {
+    const { probe } = fakeProbe({
+      'https://config:32400': 'WRONG', // configured host is a Plex, but the wrong one
+      'https://10.0.0.8:32400': 'WANTED-ID',
+    });
+    const host = await resolvePlexHost({
+      configuredHost: 'https://config:32400',
+      machineId: 'WANTED-ID',
+      probe,
+      candidateHosts: () => ['https://10.0.0.8:32400'],
+      log: SILENT,
+    });
+    assert.equal(host, 'https://10.0.0.8:32400', 'a wrong-machine configured host is rejected, scan wins');
+  }
+  console.log('  ✓ resolvePlexHost respects PLEX_MACHINE_ID (rejects the wrong Plex)');
+
+  // caching: resolve once per process — a second call probes nothing further.
+  resetPlexHostCacheForTests();
+  {
+    const { probe, calls } = fakeProbe({ 'https://config:32400': 'MID-1' });
+    const first = await resolvePlexHost({ configuredHost: 'https://config:32400', machineId: '', probe, log: SILENT });
+    const callsAfterFirst = calls();
+    const second = await resolvePlexHost({
+      configuredHost: 'https://config:32400',
+      machineId: '',
+      probe,
+      candidateHosts: () => {
+        throw new Error('cached resolve must not re-scan');
+      },
+      log: SILENT,
+    });
+    assert.equal(second, first, 'second resolve returns the cached host');
+    assert.equal(calls(), callsAfterFirst, 'cached resolve probes nothing further');
+  }
+  console.log('  ✓ resolvePlexHost caches the resolved host for the process');
+
+  // not-found: nothing answers → the clear, actionable "set PLEX_HOST" error.
+  resetPlexHostCacheForTests();
+  {
+    const { probe } = fakeProbe({});
+    await assert.rejects(
+      resolvePlexHost({
+        configuredHost: 'https://dead:32400',
+        machineId: '',
+        probe,
+        candidateHosts: () => ['https://10.0.0.1:32400', 'https://10.0.0.2:32400'],
+        log: SILENT,
+      }),
+      /set PLEX_HOST/,
+      'no Plex anywhere → clear set-PLEX_HOST error',
+    );
+  }
+  resetPlexHostCacheForTests();
+  console.log('  ✓ resolvePlexHost throws the clear error when no Plex is found');
+})();
 
 console.log('  ✓ plex pure-logic tests passed');

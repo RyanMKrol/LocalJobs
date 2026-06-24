@@ -22,7 +22,12 @@ export const plexConfig = {
   /** e.g. https://192.168.1.x:32400 — Plex uses a self-signed cert (see client). */
   host: process.env.PLEX_HOST ?? '',
   token: process.env.PLEX_API_TOKEN ?? '',
-  /** Optional — only used if a future LAN host-scan is added. */
+  /**
+   * Optional Plex server machine identifier. When set, the client's host
+   * resolution (PLEX_HOST check + LAN scan, see client.ts) only accepts a server
+   * with THIS identifier — so a DHCP IP change is self-healed without ever
+   * latching onto a different Plex on the network.
+   */
   machineId: process.env.PLEX_MACHINE_ID ?? '',
   /** The TV library section to audit. Default 5 (the owner's "TV shows"). */
   tvSection: process.env.PLEX_TV_SECTION ?? '5',

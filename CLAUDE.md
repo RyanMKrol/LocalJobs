@@ -416,6 +416,23 @@ doubt, log it.
     rows ONLY for actionable items so the IO panel highlights those, not the 600+
     "up to date" rows. Same-key stages → `root_key = item_key` naturally (no lineage
     args). Use this shape when the work is a periodic audit/alert, not a build.
+  - **Plex client self-heals a changed DHCP IP (T149).** The owner's Plex server
+    gets its IP via DHCP, so a hardcoded `PLEX_HOST` goes stale and used to break
+    the whole workflow at the snapshot stage. `src/jobs/plex/client.ts` resolves the
+    base URL via a cached `resolvePlexHost()` (resolve at most once per daemon run;
+    `plexGet` uses the result, not `plexConfig.host` directly): it first confirms the
+    configured `PLEX_HOST` is a live Plex by GETting `/identity` (and, when
+    `PLEX_MACHINE_ID` is set, that the returned `machineIdentifier` matches — so it
+    never latches onto a different Plex), and otherwise **scans the local IPv4 /24
+    subnet(s)** (from `os.networkInterfaces()`) probing each host on `:32400` at
+    `/identity` (http + https via the existing scoped `rejectUnauthorized:false`
+    agent — never a global TLS disable), bounded by per-probe timeout + concurrency +
+    an overall wall-clock cap so a no-Plex LAN fails fast. On a scan hit it logs
+    "found Plex at <host> — set PLEX_HOST …"; when nothing answers it throws the clear
+    "set PLEX_HOST" error. The network probe is **injectable** (`PlexProbe`) so a
+    hermetic test (`plex.test.ts`) covers configured-wins / scan-fallback /
+    machine-id-match / caching / not-found without a network. `PLEX_MACHINE_ID` is
+    optional but documented in `.env.example` (it makes the scan safe).
   - **Run→work-item attribution (`work_item_runs`, T139).** `work_items` stays the
     CUMULATIVE, idempotent ledger keyed by `(job_name, item_key)` with NO run
     linkage. The separate append-only `work_item_runs` table
