@@ -31,7 +31,9 @@ const validField = (s: string): boolean => {
 
 export default function Services() {
   const { data, error } = usePoll(() => api.services(), 3000);
-  const services = data?.services ?? [];
+  const services = [...(data?.services ?? [])].sort(
+    (a, b) => (a.paid ? 1 : 0) - (b.paid ? 1 : 0) || a.name.localeCompare(b.name)
+  );
 
   // The row currently being edited, plus its draft values (kept local so polling
   // doesn't clobber typing).
