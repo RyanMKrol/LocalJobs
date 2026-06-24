@@ -31,6 +31,7 @@ case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$ROOT/$GIT_COMMON" ;; esac   # make 
 
 BACKLOG="$HARNESS_DIR/TASKS.json"
 WORKLOG="$HARNESS_DIR/worklog"
+OUTCOMES="$HARNESS_DIR/outcomes.jsonl"             # append-only escalation ledger — the SOLE input to difficulty calibration (forward-only)
 NAME="$(basename "$ROOT")"
 MODEL="${MODEL:-claude-opus-4-8}"                 # pin EXACTLY — the bare alias drifts
 EFFORT="${EFFORT:-high}"                           # low|medium|high|xhigh|max
@@ -96,12 +97,36 @@ task_blocked() { [ -f "$WORKLOG/$1.md" ] && grep -qiE 'failed:blocked|needs-huma
 # JSON `spec` field (path relative to the repo root, e.g. .harness/tasks/T001.md).
 task_spec_rel() { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.spec // empty'; }
 
+# record_outcome <id> <blocked:true|false> [reason] — append ONE escalation-outcome row to the
+# ledger (the sole input to difficulty calibration). FORWARD-ONLY: only fires for tasks the loop
+# actually builds, so gated/needs-human tasks (never selected) are excluded by construction.
+# cur_rung/cur_attempts are the live success (or top) rung at call time; each escalation = exactly
+# MAX_ATTEMPTS soft failures, so totalSoftFails is derivable. Best-effort — never fails the caller.
+record_outcome() {
+  local id="$1" blocked="$2" reason="${3:-}" line ts sm se fm fe
+  local total=$(( cur_rung * MAX_ATTEMPTS + cur_attempts ))
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  read -r sm se <<<"$(rung_at "$id" 0)"             # authored start rung (the prior)
+  read -r fm fe <<<"$(rung_at "$id" "$cur_rung")"   # final rung actually used
+  line="$(tj --arg id "$id" --argjson blocked "$blocked" --arg reason "$reason" \
+      --argjson rung "$cur_rung" --argjson atr "$cur_attempts" --argjson total "$total" \
+      --arg sm "$sm" --arg se "$se" --arg fm "$fm" --arg fe "$fe" --arg ts "$ts" \
+      -c '.tasks[]|select(.id==$id)|{
+        id:$id, ts:$ts, facets:(.facets // null), scopeSize:(.scope|length),
+        startModel:$sm, startEffort:$se, finalModel:$fm, finalEffort:$fe,
+        succeededRung:(if $blocked then null else $rung end), topRung:$rung,
+        attemptsAtRung:$atr, totalSoftFails:$total, blocked:$blocked, reason:$reason
+      }')"
+  if [ -n "$line" ]; then printf '%s\n' "$line" >>"$OUTCOMES"; else log "WARN: couldn't record outcome for $id"; fi
+}
+
 # Shell owns task status: set it done, then commit+push the one-line change (no CI needed).
 mark_done() {
   local id="$1" tmp="$BACKLOG.tmp"   # same-dir temp → mv is an atomic rename (no cross-fs partial reads)
   jq --arg id "$id" '(.tasks[]|select(.id==$id)|.status)="done"' "$BACKLOG" >"$tmp" \
     && mv "$tmp" "$BACKLOG" || { rm -f "$tmp"; log "WARN: failed to mark $id done"; return 1; }
-  git -C "$ROOT" add "$BACKLOG" "$WORKLOG" 2>/dev/null || true
+  record_outcome "$id" false                        # success → ledger row (succeededRung=cur_rung)
+  git -C "$ROOT" add "$BACKLOG" "$WORKLOG" "$OUTCOMES" 2>/dev/null || true
   git -C "$ROOT" commit -q -m "$id: mark done [skip ci]" 2>/dev/null || true
   git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push status update for $id"
 }
@@ -279,7 +304,8 @@ block_task() {
   git -C "$ROOT" reset --hard "origin/$MAIN_BRANCH" 2>/dev/null || true
   mkdir -p "$WORKLOG"
   printf '\n---\nfailed:blocked %s — %s\n' "$id" "$reason" >>"$WORKLOG/$id.md"
-  git -C "$ROOT" add "$WORKLOG/$id.md" 2>/dev/null || true
+  record_outcome "$id" true "$reason"               # blocked → ledger row (succeededRung=null, topRung=cur_rung, reason kept)
+  git -C "$ROOT" add "$WORKLOG/$id.md" "$OUTCOMES" 2>/dev/null || true
   git -C "$ROOT" commit -q -m "$id: blocked, needs human — skipping [skip ci]" 2>/dev/null || true
   git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push block marker for $id"
   log "BLOCKED $id ($reason) — recorded for a human; moving on to the next task."
