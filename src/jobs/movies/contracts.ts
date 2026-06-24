@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
 import { moviesConfig } from './config.js';
-import type { FranchiseGapsFile, MovieSnapshotFile } from './types.js';
+import type { FranchiseGapsFile, MovieSnapshotFile, RecommendationsFile } from './types.js';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -119,6 +119,59 @@ export function franchiseGapsContract(file: string = moviesConfig.gapsOut): Arti
         actual: bad ? `a gap is missing collectionName/tmdbId` : 'all gaps well-formed',
       });
       return fromChecks(checks, `${gaps.length} gap(s)`);
+    },
+  };
+}
+
+const RECS_EXP = {
+  json: 'A readable recommendations JSON object',
+  recs: 'Contains the recommendations array',
+  fields: 'Each recommendation carries a numeric tmdbId and a title',
+};
+
+/**
+ * rec-merge → notify boundary: the TMDB-verified recommendation list. The list
+ * may legitimately be EMPTY (every branch may have failed / all picks already
+ * owned), so the gate checks SHAPE only — never non-empty — so an empty recs run
+ * still lets the notify stage fire its franchise-gap digest.
+ */
+export function recommendationsContract(file: string = moviesConfig.recsOut): ArtifactContract {
+  return {
+    key: 'recommendations',
+    description: 'recommendation output: { recommendations: [{ tmdbId, title, year, reason, lens, genre }] } — readable; TMDB-verified, deduped, balanced (may be empty).',
+    shape: {
+      summary: 'The merge stage\'s verified/deduped/balanced film recommendations.',
+      format: 'JSON object { generatedAt, pooled, recommendations[] }',
+      expectations: [
+        { label: RECS_EXP.json, detail: 'The hand-off file exists and parses as a JSON object.' },
+        { label: RECS_EXP.recs, detail: 'It has a `recommendations` array (may be empty when nothing survived verification).' },
+        { label: RECS_EXP.fields, detail: 'Every recommendation carries a numeric tmdbId and a title.' },
+      ],
+    },
+    check(): GateResult {
+      const checks: ExpectationResult[] = [];
+      if (!existsSync(file)) {
+        checks.push({ label: RECS_EXP.json, ok: false, actual: `recommendations file missing: ${file}` });
+        return fromChecks(checks);
+      }
+      let parsed: RecommendationsFile;
+      try {
+        parsed = JSON.parse(readFileSync(file, 'utf8')) as RecommendationsFile;
+      } catch (e) {
+        checks.push({ label: RECS_EXP.json, ok: false, actual: `not valid JSON — ${errMsg(e)}` });
+        return fromChecks(checks);
+      }
+      checks.push({ label: RECS_EXP.json, ok: true, actual: 'valid JSON object' });
+      const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations : null;
+      checks.push({ label: RECS_EXP.recs, ok: !!recs, actual: recs ? `${recs.length} recommendation(s)` : 'no recommendations array' });
+      if (!recs) return fromChecks(checks);
+      const bad = recs.find((r) => typeof r.tmdbId !== 'number' || !r.title);
+      checks.push({
+        label: RECS_EXP.fields,
+        ok: !bad,
+        actual: bad ? 'a recommendation is missing tmdbId/title' : 'all recommendations well-formed',
+      });
+      return fromChecks(checks, `${recs.length} recommendation(s)`);
     },
   };
 }

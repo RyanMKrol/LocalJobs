@@ -11,7 +11,8 @@ import { join } from 'node:path';
 import { ignoreSurfacedItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { NOTIFY_JOB, buildDigest, gapKey, runNotify } from './notify.js';
-import type { FranchiseGap, FranchiseGapsFile } from '../types.js';
+import { RECS_JOB, recKey } from '../recs.js';
+import type { FranchiseGap, FranchiseGapsFile, Recommendation, RecommendationsFile, RecsHistoryFile } from '../types.js';
 
 function fakeCtx(): JobContext {
   return { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
@@ -128,6 +129,81 @@ const backlog: FranchiseGap[] = [
   const md = readFileSync(reportPath, 'utf8');
   assert.doesNotMatch(md, /Saw X/, 'a previously-notified gap, once ignored, leaves the report');
   console.log('  ✓ ignoring a previously-notified gap removes it from the report');
+}
+
+// ── Recommendation layer (T146): combined digest, recs report section, ignore ──
+
+// buildDigest combines gaps + recs, and is recs-aware in its title.
+{
+  const rec = (id: number, title: string): Recommendation =>
+    ({ tmdbId: id, title, year: 2001, reason: 'great', lens: 'serendipity', genre: 'Drama', tmdbRating: 7 });
+  const both = buildDigest([gap(1, 'GapFilm')], [rec(2, 'RecFilm'), rec(3, 'RecTwo')]);
+  assert.match(both.title, /1 franchise gap/);
+  assert.match(both.title, /2 recommendation/);
+  assert.match(both.body, /GapFilm/);
+  assert.match(both.body, /RecFilm/);
+  const recsOnly = buildDigest([], [rec(4, 'Solo')]);
+  assert.equal(recsOnly.title, '🍿 1 film recommendation', 'recs-only digest title');
+  console.log('  ✓ buildDigest combines gaps + recs and titles recs-only/both');
+}
+
+const REC_A = 7770001;
+const REC_B = 7770002;
+const REC_IGN = 7770003;
+
+const rdir = mkdtempSync(join(tmpdir(), 'movies-recs-notify-'));
+const rGapsFile = join(rdir, 'gaps.json');
+const rRecsFile = join(rdir, 'recs.json');
+const rHistory = join(rdir, 'history.json');
+const rReportPath = join(rdir, 'franchise-gaps.md');
+// Empty gaps so the digest is recommendations-only (isolated from the gaps tests).
+writeFileSync(rGapsFile, JSON.stringify({ generatedAt: NOW.toISOString(), collectionsChecked: 0, gaps: [] } as FranchiseGapsFile));
+
+const rec = (id: number, title: string, genre: string): Recommendation =>
+  ({ tmdbId: id, title, year: 1979, reason: `pick ${title}`, lens: 'world-cinema', genre, tmdbRating: 8.1 });
+function writeRecs(recs: Recommendation[]) {
+  writeFileSync(rRecsFile, JSON.stringify({ generatedAt: NOW.toISOString(), pooled: recs.length, recommendations: recs } as RecommendationsFile));
+}
+
+// Run R1 — first recs run sends ONE digest, writes the report section, marks the
+// ledger, and appends history.
+{
+  const sent: CapturedPush[] = [];
+  writeRecs([rec(REC_A, 'Stalker', 'Science Fiction'), rec(REC_B, 'Ran', 'Drama')]);
+  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile: rGapsFile, recsFile: rRecsFile, historyFile: rHistory, reportDir: rdir });
+  assert.equal(sent.length, 1, 'one combined digest');
+  assert.match(sent[0].title, /2 film recommendations/);
+  assert.match(sent[0].body, /Stalker/);
+  assert.ok(isWorkItemDone(RECS_JOB, recKey(REC_A), 1), 'rec marked in the recs ledger');
+  const md = readFileSync(rReportPath, 'utf8');
+  assert.match(md, /## Recommendations/);
+  assert.match(md, /\[Stalker\]\(https:\/\/www\.themoviedb\.org\/movie\/7770001\)/, 'rec has a TMDB link');
+  assert.match(md, /world-cinema/, 'rec shows its lens');
+  assert.match(md, /pick Stalker/, 'rec shows its reason');
+  const hist = JSON.parse(readFileSync(rHistory, 'utf8')) as RecsHistoryFile;
+  assert.equal(hist.recommended.length, 2, 'both recs appended to history');
+  console.log('  ✓ recs: first run digests, writes the Recommendations section, marks ledger + history');
+}
+
+// Run R2 — nothing new → no push (dedup per recommended tmdb id).
+{
+  const sent: CapturedPush[] = [];
+  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile: rGapsFile, recsFile: rRecsFile, historyFile: rHistory, reportDir: rdir });
+  assert.equal(sent.length, 0, 'already-recommended films are not re-recommended');
+  console.log('  ✓ recs: a re-run never re-recommends (dedup per tmdb id)');
+}
+
+// Run R3 — ignore-to-suppress a recommendation: a NEW rec is ignored before notify →
+// excluded from BOTH the digest AND the report.
+{
+  const sent: CapturedPush[] = [];
+  writeRecs([rec(REC_A, 'Stalker', 'Science Fiction'), rec(REC_B, 'Ran', 'Drama'), rec(REC_IGN, 'Solaris', 'Science Fiction')]);
+  ignoreSurfacedItem(RECS_JOB, recKey(REC_IGN));
+  await runNotify(fakeCtx(), { push: capturePush(sent), now: NOW, gapsFile: rGapsFile, recsFile: rRecsFile, historyFile: rHistory, reportDir: rdir });
+  assert.equal(sent.length, 0, 'the only new rec was ignored → no push');
+  const md = readFileSync(rReportPath, 'utf8');
+  assert.doesNotMatch(md, /Solaris/, 'an ignored recommendation is excluded from the report');
+  console.log('  ✓ recs: ignore-to-suppress excludes a recommendation from report + notifications');
 }
 
 console.log('  ✓ movies notify dedup/digest/ignore tests passed');

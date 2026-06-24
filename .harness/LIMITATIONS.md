@@ -505,3 +505,20 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   by the existing `@media` rules) but is NOT in `mobile-check.mjs`'s hardcoded page list, since
   that harness needs a synthetic `/api/movie-gaps` fixture. *Revisit:* if the page grows custom
   layout, add a `/api/movie-gaps` fixture + the route to `mobile-check.mjs`.
+
+- **movies recommendation layer: branch→merge has NO gate, the rec-ignore is store-only
+  (no API/dashboard wiring), and `claude.ts` is duplicated for now (T146).** *Why:* (1) An
+  empty branch is LEGITIMATE (Claude junk/error/rate-limit → skip), so a producer/consumer
+  gate on each of the 8 branch→merge edges would wrongly fail the run; only the `rec-merge`→
+  notify boundary is gated (`recommendationsContract`, SHAPE-only so an empty recs list still
+  lets the gaps digest fire). (2) The rec **ignore-to-suppress** mechanism is wired at the data
+  layer — `ignoreSurfacedItem('movie-recs', <tmdbId>)` excludes a rec from the merge AND the
+  digest/report, and is hermetically tested — but the owner-facing trigger (a `POST
+  /api/movie-recs/:tmdbId/ignore` + a dashboard control, mirroring T145's movie-gaps page) was
+  OUT OF SCOPE (scope = `src/jobs/movies`, `src/services`, `.env.example`, `CLAUDE.md`). Until a
+  follow-up adds it, a rec is ignored only by inserting the ledger row directly. (3) The shared
+  Claude CLI helper now lives at `src/services/claude.ts`, but `perfumes/claude.ts` still has its
+  own copy of the spawn logic — refactoring perfumes onto the shared helper was out of scope, so
+  the spawn code is briefly duplicated. *Impact:* small; all three are additive follow-ups, none
+  affects correctness. *Revisit:* add the rec-ignore API+UI task, and migrate perfumes onto
+  `src/services/claude.ts`.

@@ -24,6 +24,24 @@ export const moviesConfig = {
   gapsOut: resolve(dataDir, 'out', 'franchise-gaps.json'),
   reportDir: resolve(dataDir, 'out', 'reports'),
 
+  // ── Recommendation layer (T146) ──
+  /** Per-branch raw-suggestion files live here (one JSON per branch). */
+  recsDir: resolve(dataDir, 'out', 'recs'),
+  /** The merge stage's verified/deduped/balanced recommendation list. */
+  recsOut: resolve(dataDir, 'out', 'recommendations.json'),
+  /** Append-only recommended-film history, fed back into branch prompts. */
+  recsHistoryOut: resolve(dataDir, 'out', 'recs-history.json'),
+  /** The (free) Claude model the recommender branches use. */
+  recsModel: process.env.MOVIES_RECS_MODEL ?? 'claude-sonnet-4-6',
+  /** Owned-library sample size each branch shows Claude (stratified). */
+  recsSampleSize: Number(process.env.MOVIES_RECS_SAMPLE ?? 50),
+  /** Target size of the final balanced recommendation list (~10–15). */
+  recsTarget: Number(process.env.MOVIES_RECS_TARGET ?? 12),
+  /** Max recommendations per genre in the final balanced output. */
+  recsGenreCap: Number(process.env.MOVIES_RECS_GENRE_CAP ?? 3),
+  /** How many recent recommendations to feed back into branch prompts. */
+  recsRecentWindow: Number(process.env.MOVIES_RECS_RECENT_WINDOW ?? 40),
+
   /** The movie library section to audit. Default 4 (the owner's "Movies"). */
   movieSection: process.env.PLEX_MOVIE_SECTION ?? '4',
 

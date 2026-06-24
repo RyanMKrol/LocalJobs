@@ -67,6 +67,70 @@ export interface FranchiseGapsFile {
   gaps: FranchiseGap[];
 }
 
+// ── Recommendation layer (T146) ──
+
+/** One raw film suggestion from a recommender branch's Claude call. */
+export interface RawSuggestion {
+  title: string;
+  year: number | null;
+  reason: string;
+  /** Which branch produced it (e.g. "auteur-completion", "world-cinema"). */
+  lens: string;
+}
+
+/** A recommender branch's output artifact (one file per branch). */
+export interface BranchOutputFile {
+  branchId: string;
+  lens: string;
+  generatedAt: string;
+  suggestions: RawSuggestion[];
+  /** Set when the branch was skipped/failed gracefully (junk LLM output, etc.). */
+  error?: string;
+}
+
+/** One TMDB-verified recommendation (the merge stage's output unit). */
+export interface Recommendation {
+  tmdbId: number;
+  title: string;
+  year: number | null;
+  reason: string;
+  /** The branch lens(es) that surfaced it (first wins; merged on dedup). */
+  lens: string;
+  /** Primary TMDB genre name (for balancing + display). */
+  genre: string;
+  /** TMDB vote_average (context only). */
+  tmdbRating: number | null;
+}
+
+/** Merge-stage artifact: the verified, deduped, balanced recommendation list. */
+export interface RecommendationsFile {
+  generatedAt: string;
+  /** How many raw suggestions the branches pooled. */
+  pooled: number;
+  recommendations: Recommendation[];
+}
+
+/** Append-only history of recommended films, fed back into branch prompts so
+ *  successive months vary. Kept in the job's data/ folder (private). */
+export interface RecsHistoryFile {
+  recommended: { tmdbId: number; title: string; year: number | null; at: string }[];
+}
+
+/** One TMDB `/search/movie` result (only the fields we read). */
+export interface TmdbSearchResult {
+  id: number;
+  title?: string;
+  release_date?: string | null;
+  vote_average?: number;
+  genre_ids?: number[];
+  original_language?: string;
+}
+
+/** TMDB `/search/movie` response. */
+export interface TmdbSearchResponse {
+  results?: TmdbSearchResult[];
+}
+
 // ── Minimal Plex / TMDB response shapes (only the fields we read) ──
 
 export interface PlexGuid { id?: string }

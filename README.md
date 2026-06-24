@@ -439,6 +439,26 @@ future reports AND notifications ONLY when the owner manually **ignores** it (th
 TMDB link + rating and an ✕ Ignore button → `POST /api/movie-gaps/:tmdbId/ignore` →
 `ignoreSurfacedItem`, which parks the ledger row `ignored`). Nothing auto-ignores.
 
+The same monthly run ALSO produces taste-based **recommendations** (T146) — the
+subjective half of the audit. Off the snapshot, **8 Claude recommender branches**
+fan out (each calling the free Claude CLI via the shared `claude-cli` service on a
+**stratified**, balanced-not-proportional sample of the owned library, so a 500-horror
+library doesn't just yield more horror): **3 stratified-random** serendipity branches
+(each a different seeded slice) + **5 targeted** — *auteur-completion* (more from
+directors you collect ≥3 of) and *top-genre-canon* (canonical films in your strongest
+genres) for depth, plus *thin-genre round-out*, *older-era classics* (pre-1980), and
+*world cinema* (non-English) for breadth. Each asks for ~5 diverse un-owned films with
+a reason; a branch that returns junk or errors is skipped, never failing the run. The
+`rec-merge` stage then enforces correctness in CODE so the model can't invent or repeat:
+every suggestion is **TMDB-searched** (must resolve to a real id, must not be owned, must
+not already be recommended/ignored — the `movie-recs` ledger keyed by recommended tmdb id),
+deduped across branches, and **balanced per genre** down to ~10–15. The final
+`movie-gaps-notify` digest + markdown report gain a **Recommendations** section separate
+from the gaps, each rec showing its lens + reason + TMDB link; recommendations dedupe per
+tmdb id (never re-recommended), are fed back into next month's prompts so picks vary, and
+can be **ignore-to-suppress**'d like a gap. Tune via `MOVIES_RECS_*` env (model, sample
+size, target count, per-genre cap). Live LLM/TMDB runs are the owner's.
+
 **Typed-artifact contracts.** Each stage boundary declares `produces`/`consumes`
 contracts (`contracts.ts` in each workflow). A shape violation at a gate fails
 LOUD — recording a failed run and firing an alert — instead of silently feeding

@@ -74,8 +74,11 @@ profiles to local files), **perfumes** (Fragrantica scrape → headless Chrome
 fetch → parse → Claude CLI profile build), **plex** (snapshot the Plex TV
 library by GUID → check TMDB for complete missing seasons → weekly digest push),
 and **movies** (snapshot the Plex movie library by GUID → detect franchise gaps
-via the TMDB Collections API → monthly digest push, with owner ignore-to-suppress).
-Private workflows are added as gitignored subfolders.
+via the TMDB Collections API AND fan out 8 Claude recommender branches over a
+stratified library sample → a `rec-merge` stage that TMDB-verifies/dedupes/balances
+the picks → ONE monthly digest with separate franchise-gaps + recommendations
+sections, both with owner ignore-to-suppress). Private workflows are added as
+gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
 distributed system. Do not introduce Docker, external databases, message
@@ -200,6 +203,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/jobs/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/jobs/` AND `*.service.ts` under BOTH `src/services/` and `src/jobs/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
+| `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/LIMITATIONS.md`.) |
 | `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
 | `src/jobs/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the job-folder root |
@@ -516,7 +520,13 @@ doubt, log it.
     Wired for movies via `POST /api/movie-gaps/:tmdbId/ignore` + the **Movie gaps**
     dashboard page; still MANUAL-ONLY (nothing auto-ignores). Reuse this shape for
     any future periodic-audit workflow that needs the owner to permanently silence a
-    factual-but-unwanted finding.
+    factual-but-unwanted finding. The movies **recommendation layer** (T146) reuses
+    it verbatim for recs: `ignoreSurfacedItem('movie-recs', <tmdbId>)` excludes a rec
+    from both the merge (it filters `isWorkItemDone`) and the digest/report — so an
+    ignored ("not interested") rec never resurfaces (its owner-facing API+UI trigger
+    is a follow-up; see `.harness/LIMITATIONS.md`). A `movie-recs` ledger row keyed by
+    the recommended film's tmdb id also serves as the **never-re-recommend** dedup log
+    (`success` = already recommended), distinct from the `movie-gaps-notify` ledger.
   - **Bulk unstick/ignore with scope (T118).** The per-item controls above are
     complemented by bulk operations: `bulkUnstickItems(scope)` /
     `bulkIgnoreItems(scope)` in `src/db/store.ts`, backed by
