@@ -118,7 +118,8 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   ctx.log(`Newly-detected: ${newGaps.length} gap(s) (already notified: ${gaps.length - newGaps.length}), ${newRecs.length} recommendation(s) (already notified: ${recs.length - newRecs.length}).`);
 
   // Always (re)write the combined markdown report of the current active backlog.
-  const reportPath = writeReport(gaps, newGaps, recs, newRecs, now, reportDir);
+  const collectionExamples = file.collectionExamples ?? {};
+  const reportPath = writeReport(gaps, newGaps, recs, newRecs, now, reportDir, collectionExamples);
   ctx.log(`Wrote report ${reportPath}`);
 
   if (newGaps.length === 0 && newRecs.length === 0) {
@@ -167,6 +168,7 @@ function writeReport(
   newRecs: Recommendation[],
   now: Date,
   reportDir: string,
+  collectionExamples: Record<string, { title: string; year: number | null }> = {},
 ): string {
   const newGapKeys = new Set(newGaps.map((g) => gapKey(g.tmdbId)));
   const newRecKeys = new Set(newRecs.map((r) => recKey(r.tmdbId)));
@@ -200,6 +202,10 @@ function writeReport(
     const films = (byCollection.get(name) ?? []).sort(
       (a, b) => (a.year ?? 0) - (b.year ?? 0) || a.title.localeCompare(b.title));
     lines.push(`### ${name}`, '');
+    const example = collectionExamples[name];
+    if (example) {
+      lines.push(`_You own: ${example.title}${example.year != null ? ` (${example.year})` : ''}_`, '');
+    }
     for (const g of films) {
       const isNew = newGapKeys.has(gapKey(g.tmdbId));
       const rating = g.tmdbRating != null ? ` — TMDB ${g.tmdbRating.toFixed(1)}` : '';

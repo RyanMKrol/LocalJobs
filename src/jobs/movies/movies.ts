@@ -103,6 +103,22 @@ export function isReleasedPart(part: { release_date?: string | null }, now: Date
 }
 
 /**
+ * Pick one owned example film from a collection — the earliest owned part by
+ * release year (title + year), or null when the owner has no parts in the set.
+ * Used to show a recognisable anchor alongside the missing-films list.
+ */
+export function collectionOwnedExample(
+  collection: TmdbCollectionDetail,
+  owned: Set<number>,
+): { title: string; year: number | null } | null {
+  const ownedParts = (collection.parts ?? [])
+    .filter((p) => typeof p?.id === 'number' && owned.has(p.id))
+    .map((p) => ({ title: p.title ?? `(tmdb ${p.id})`, year: yearOf(p.release_date) }))
+    .sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
+  return ownedParts[0] ?? null;
+}
+
+/**
  * The gaps for ONE collection: every RELEASED part whose tmdb id is NOT in the
  * owned set. NO quality filter and NO skip heuristics (owner decision, T109):
  * surface EVERY factual gap; `tmdbRating` rides along for context only.

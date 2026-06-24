@@ -65,6 +65,12 @@ export interface FranchiseGapsFile {
   collectionsChecked: number;
   /** Every factual gap — NO quality filter, NO skip heuristics. */
   gaps: FranchiseGap[];
+  /**
+   * Per-collection name → one owned example film (title + year). Present for
+   * each collection that has ≥1 gap AND ≥1 owned part, so the report can show a
+   * recognisable anchor alongside the missing list.
+   */
+  collectionExamples?: Record<string, { title: string; year: number | null }>;
 }
 
 // ── Recommendation layer (T146) ──

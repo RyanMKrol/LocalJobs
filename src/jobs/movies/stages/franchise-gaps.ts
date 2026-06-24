@@ -4,7 +4,7 @@ import type { JobContext } from '../../../core/types.js';
 import { tmdbGet } from '../../plex/client.js';
 import { moviesConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
-import { buildOwnedSet, collectionGaps } from '../movies.js';
+import { buildOwnedSet, collectionGaps, collectionOwnedExample } from '../movies.js';
 import type {
   FranchiseGap,
   FranchiseGapsFile,
@@ -95,6 +95,7 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
 
   // ── Pass 2: for each distinct collection, find released-not-owned parts. ──
   const gaps: FranchiseGap[] = [];
+  const collectionExamples: Record<string, { title: string; year: number | null }> = {};
   const ids = [...collectionIds.keys()];
   if (!quotaHit) {
     ctx.log('Pass 2/2 — fetching each collection\'s parts (TMDB /collection/{id})…');
@@ -107,7 +108,10 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
         const found = collectionGaps(detail, owned, now);
         if (found.length) {
           gaps.push(...found);
-          ctx.log(`  ✓ "${detail.name ?? collectionIds.get(cid)}" — missing ${found.length}: ${found.map((g) => g.title).join(', ')}`);
+          const example = collectionOwnedExample(detail, owned);
+          const collName = detail.name ?? collectionIds.get(cid) ?? `Collection ${cid}`;
+          if (example) collectionExamples[collName] = example;
+          ctx.log(`  ✓ "${collName}" — missing ${found.length}: ${found.map((g) => g.title).join(', ')}${example ? ` (you own: ${example.title}${example.year ? ` ${example.year}` : ''})` : ''}`);
         }
       } catch (err) {
         if (err instanceof QuotaExceededError) {
@@ -130,6 +134,7 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
     generatedAt: new Date().toISOString(),
     collectionsChecked: collectionIds.size,
     gaps,
+    collectionExamples,
   };
   writeJsonFile(gapsFile, out);
 

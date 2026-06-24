@@ -8,6 +8,7 @@ import {
   buildOwnedSet,
   buildTasteProfile,
   collectionGaps,
+  collectionOwnedExample,
   decadeOf,
   extractTmdbId,
   isReleasedPart,
@@ -124,5 +125,24 @@ console.log('  ✓ collectionGaps applies NO quality filter');
 assert.equal(collectionGaps(saw, new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), NOW).length, 0,
   'owning every released part → no gaps');
 console.log('  ✓ collectionGaps is empty when the franchise is complete');
+
+// ── collectionOwnedExample: earliest owned part as the recognisable anchor ──
+// Own parts 1 (2004), 3 (2006) — the earliest owned is Saw (2004).
+const exampleEarliest = collectionOwnedExample(saw, new Set([1, 3]));
+assert.ok(exampleEarliest, 'owned example is returned when owner has parts');
+assert.equal(exampleEarliest!.title, 'Saw', 'picks the earliest owned film');
+assert.equal(exampleEarliest!.year, 2004);
+// Own nothing → null.
+assert.equal(collectionOwnedExample(saw, new Set()), null, 'no owned parts → null');
+// Dateless part: a part with no release_date has year null, which sorts last.
+const withDateless: TmdbCollectionDetail = {
+  id: 99, name: 'X', parts: [
+    { id: 10, title: 'Middle', release_date: '2010-01-01' },
+    { id: 11, title: 'Dateless' }, // no release_date → year null
+  ],
+};
+const exDateless = collectionOwnedExample(withDateless, new Set([10, 11]));
+assert.equal(exDateless!.title, 'Middle', 'dateless parts sort last (year null → 9999)');
+console.log('  ✓ collectionOwnedExample picks the earliest owned film (null when none)');
 
 console.log('  ✓ movies pure-helper tests passed');

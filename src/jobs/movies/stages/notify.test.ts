@@ -53,8 +53,13 @@ const noRecsFile = join(dir, 'no-recs.json');
 const noHistoryFile = join(dir, 'no-history.json');
 const NOW = new Date('2026-06-24T00:00:00Z');
 
-function writeGaps(gaps: FranchiseGap[]) {
-  const file: FranchiseGapsFile = { generatedAt: NOW.toISOString(), collectionsChecked: gaps.length, gaps };
+// Owned example for the Saw Collection (Saw, 2004).
+const SAW_EXAMPLES: FranchiseGapsFile['collectionExamples'] = {
+  'Saw Collection': { title: 'Saw', year: 2004 },
+};
+
+function writeGaps(gaps: FranchiseGap[], collectionExamples: FranchiseGapsFile['collectionExamples'] = SAW_EXAMPLES) {
+  const file: FranchiseGapsFile = { generatedAt: NOW.toISOString(), collectionsChecked: gaps.length, gaps, collectionExamples };
   writeFileSync(gapsFile, JSON.stringify(file));
 }
 
@@ -74,11 +79,12 @@ const backlog: FranchiseGap[] = [
   assert.match(sent[0].body, /Toy Story 5/);
   assert.ok(isWorkItemDone(NOTIFY_JOB, gapKey(SAW_X), 1));
   assert.ok(isWorkItemDone(NOTIFY_JOB, gapKey(TOY5), 1));
-  // Report lists both, grouped by collection, with TMDB links + ratings.
+  // Report lists both, grouped by collection, with TMDB links + ratings + owned example.
   const md = readFileSync(reportPath, 'utf8');
   assert.match(md, /## Saw Collection/);
   assert.match(md, /\[Saw X\]\(https:\/\/www\.themoviedb\.org\/movie\/9990010\)/);
   assert.match(md, /TMDB 7\.3/);
+  assert.match(md, /You own: Saw \(2004\)/, 'owned example anchor appears in the report');
   console.log('  ✓ first run digests the whole backlog, marks the ledger, writes a grouped report');
 }
 

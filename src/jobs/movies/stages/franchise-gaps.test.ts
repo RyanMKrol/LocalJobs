@@ -75,6 +75,11 @@ assert.equal(out.gaps.length, 1, 'exactly one gap — Saw IV (Saw XI is unreleas
 assert.equal(out.gaps[0].tmdbId, 4);
 assert.equal(out.gaps[0].title, 'Saw IV');
 assert.equal(out.gaps[0].collectionName, 'Saw Collection');
+// collectionExamples: the earliest owned Saw film (Saw, 2004) is the anchor.
+assert.ok(out.collectionExamples, 'collectionExamples is present');
+assert.ok('Saw Collection' in (out.collectionExamples ?? {}), 'Saw Collection has an owned example');
+assert.equal(out.collectionExamples!['Saw Collection'].title, 'Saw');
+assert.equal(out.collectionExamples!['Saw Collection'].year, 2004);
 console.log('  ✓ franchise-gaps dedupes collection fetches and detects released-not-owned');
 
 console.log('  ✓ franchise-gaps stage tests passed');
