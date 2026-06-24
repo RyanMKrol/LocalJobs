@@ -4201,7 +4201,7 @@
     {
       "id": "T162",
       "title": "Movies recommendations: enforce quality (TMDB rating ≥7) + target at least 15 recommendations",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
