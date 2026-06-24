@@ -47,7 +47,13 @@
   "policy": {
     "_about": "Difficulty auto-tuning policy knobs. The policy picks, per task, the CHEAPEST tier on the ladder below whose historical first-attempt success rate for the task's (layer × work-type) cell is >= floor, requiring at least minN samples; otherwise it falls back to the authored difficulty (cold start). Bias is toward cheap — the escalation ladder is the safety net.",
     "floor": 0.75,
-    "minN": 6
+    "minN": 6,
+    "_audit": "Verification-aware calibration (the blocking audit gate — .harness/designs/audit-verification.md). Per facet-cell, the loop audits 100% until auditStartN audit-confirmed successes, tapering to auditFloor by auditFloorN. The auditor runs at max(auditorModel/auditorEffort, builder tier). Separate knobs from floor/minN (model selection).",
+    "auditStartN": 3,
+    "auditFloorN": 8,
+    "auditFloor": 0.10,
+    "auditorModel": "claude-opus-4-8",
+    "auditorEffort": "medium"
   },
   "tiers": {
     "_about": "The GLOBAL difficulty ladder, cheapest → most expensive. The policy chooses a START tier from here per task; escalation walks UP it. The authored model/effort is the cold-start start tier. Project-specific (override per project).",
