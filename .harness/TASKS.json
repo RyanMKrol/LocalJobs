@@ -4097,6 +4097,33 @@
       "verify": [],
       "spec": ".harness/tasks/T156.md",
       "reviewed": false
+    },
+    {
+      "id": "T157",
+      "title": "Input→Output panel: render filenames from row data, lazy-load markdown previews (no mount jank)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "performance"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T157.md",
+      "reviewed": false
     }
   ]
 }
