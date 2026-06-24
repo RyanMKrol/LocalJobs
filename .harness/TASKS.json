@@ -3734,7 +3734,7 @@
     {
       "id": "T145",
       "title": "Movie workflow: deterministic franchise-gap audit (TMDB collections) + monthly digest + ignore-to-suppress",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T144"
       ],
