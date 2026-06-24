@@ -4260,7 +4260,7 @@
     {
       "id": "T164",
       "title": "Cron hint missing for monthly schedule (movies): extend cronToEnglish + ensure all schedules use the shared CronBadge",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
