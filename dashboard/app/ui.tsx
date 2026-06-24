@@ -334,32 +334,61 @@ export function StuckPopover({
    font + motion preference and delete this switcher + the unused options.
    ────────────────────────────────────────────────────────────────────────── */
 
+// Iteration 2 (T154): the owner's round-1 review (T045) narrowed the joyful
+// themes to the Pixel Picnic + Sunny 8-bit families. We keep `default` (the dark
+// baseline) and offer each family as its original + 4 variants = 10 themes.
 export type ThemeId =
-  | 'default' | 'midnight-neon'
-  | 'pixel-picnic' | 'candy-bright' | 'sunny-8bit' | 'soft-pastel';
+  | 'default'
+  | 'pixel-picnic' | 'pixel-picnic-meadow' | 'pixel-picnic-dusk' | 'pixel-picnic-berry' | 'pixel-picnic-mint'
+  | 'sunny-8bit' | 'sunny-8bit-sunset' | 'sunny-8bit-lime' | 'sunny-8bit-aqua' | 'sunny-8bit-coral';
 
-export const THEMES: { id: ThemeId; label: string; emoji: string; group: 'Dark' | 'Bright' }[] = [
-  { id: 'default',       label: 'Default Dark',  emoji: '🌙', group: 'Dark' },
-  { id: 'midnight-neon', label: 'Midnight Neon', emoji: '🌃', group: 'Dark' },
-  { id: 'pixel-picnic',  label: 'Pixel Picnic',  emoji: '🧺', group: 'Bright' },
-  { id: 'candy-bright',  label: 'Candy Bright',   emoji: '🍬', group: 'Bright' },
-  { id: 'sunny-8bit',    label: 'Sunny 8-bit',    emoji: '🕹️', group: 'Bright' },
-  { id: 'soft-pastel',   label: 'Soft Pastel',    emoji: '🌸', group: 'Bright' },
+export const THEMES: { id: ThemeId; label: string; emoji: string; group: 'Dark' | 'Pixel Picnic' | 'Sunny 8-bit' }[] = [
+  { id: 'default',              label: 'Default Dark',   emoji: '🌙', group: 'Dark' },
+  { id: 'pixel-picnic',         label: 'Pixel Picnic',   emoji: '🧺', group: 'Pixel Picnic' },
+  { id: 'pixel-picnic-meadow',  label: 'Picnic Meadow',  emoji: '🌿', group: 'Pixel Picnic' },
+  { id: 'pixel-picnic-dusk',    label: 'Picnic Dusk',    emoji: '🌅', group: 'Pixel Picnic' },
+  { id: 'pixel-picnic-berry',   label: 'Picnic Berry',   emoji: '🫐', group: 'Pixel Picnic' },
+  { id: 'pixel-picnic-mint',    label: 'Picnic Mint',    emoji: '🌱', group: 'Pixel Picnic' },
+  { id: 'sunny-8bit',           label: 'Sunny 8-bit',    emoji: '🕹️', group: 'Sunny 8-bit' },
+  { id: 'sunny-8bit-sunset',    label: '8-bit Sunset',   emoji: '🌇', group: 'Sunny 8-bit' },
+  { id: 'sunny-8bit-lime',      label: '8-bit Lime',     emoji: '🍋', group: 'Sunny 8-bit' },
+  { id: 'sunny-8bit-aqua',      label: '8-bit Aqua',     emoji: '🐬', group: 'Sunny 8-bit' },
+  { id: 'sunny-8bit-coral',     label: '8-bit Coral',    emoji: '🐠', group: 'Sunny 8-bit' },
 ];
 
+// Fonts narrowed to the ROUNDED family the owner liked (Fredoka/Nunito + 8 more
+// rounded sans), a few THINNER-HEADER variants (lighter heading weight), a couple
+// pixel-display+rounded pairings for the Pixel Picnic vibe, and a small Space Mono
+// cluster to iterate on. The non-rounded body faces (VT323/JetBrains-as-body) are
+// gone; Pixelify only ever appears as a DISPLAY face.
 export type FontId =
-  | 'system' | 'pixelify-nunito' | 'silkscreen-quicksand' | 'vt323-fredoka'
-  | 'pressstart-baloo' | 'fredoka-nunito' | 'spacemono' | 'jetbrains-quicksand';
+  | 'system'
+  | 'fredoka' | 'nunito' | 'quicksand' | 'baloo' | 'comfortaa'
+  | 'varela' | 'rubik' | 'mulish' | 'poppins' | 'lexend'
+  | 'fredoka-light' | 'nunito-light' | 'poppins-light'
+  | 'pixelify-nunito' | 'pixelify-fredoka'
+  | 'spacemono' | 'spacemono-fredoka' | 'spacemono-light';
 
 export const FONTS: { id: FontId; label: string }[] = [
-  { id: 'system',               label: 'System (default)' },
-  { id: 'pixelify-nunito',      label: 'Pixelify + Nunito' },
-  { id: 'silkscreen-quicksand', label: 'Silkscreen + Quicksand' },
-  { id: 'vt323-fredoka',        label: 'VT323 + Fredoka' },
-  { id: 'pressstart-baloo',     label: 'Press Start + Baloo' },
-  { id: 'fredoka-nunito',       label: 'Fredoka + Nunito' },
-  { id: 'spacemono',            label: 'Space Mono' },
-  { id: 'jetbrains-quicksand',  label: 'JetBrains + Quicksand' },
+  { id: 'system',           label: 'System (default)' },
+  { id: 'fredoka',          label: 'Fredoka' },
+  { id: 'nunito',           label: 'Nunito' },
+  { id: 'quicksand',        label: 'Quicksand' },
+  { id: 'baloo',            label: 'Baloo 2' },
+  { id: 'comfortaa',        label: 'Comfortaa' },
+  { id: 'varela',           label: 'Varela Round' },
+  { id: 'rubik',            label: 'Rubik' },
+  { id: 'mulish',           label: 'Mulish' },
+  { id: 'poppins',          label: 'Poppins' },
+  { id: 'lexend',           label: 'Lexend' },
+  { id: 'fredoka-light',    label: 'Fredoka · thin headers' },
+  { id: 'nunito-light',     label: 'Nunito · thin headers' },
+  { id: 'poppins-light',    label: 'Poppins · thin headers' },
+  { id: 'pixelify-nunito',  label: 'Pixelify + Nunito' },
+  { id: 'pixelify-fredoka', label: 'Pixelify + Fredoka' },
+  { id: 'spacemono',        label: 'Space Mono' },
+  { id: 'spacemono-fredoka',label: 'Fredoka + Space Mono' },
+  { id: 'spacemono-light',  label: 'Space Mono · light' },
 ];
 
 const prefersReducedMotion = () => {

@@ -20,6 +20,9 @@
   --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --mono: var(--font-mono);
+  /* Header weight (T154). 700 = the original bold heading look; the "thin header"
+     font variants drop this to ~400–500 so headings read crisp, not chunky. */
+  --heading-weight: 700;
 
   /* Accents (T142). --on-accent = readable text colour on the accent fill;
      --spark = the signature success flash colour. Themes override these. */
@@ -62,12 +65,12 @@ header.site .inner {
   max-width: 1100px; margin: 0 auto; padding: 14px 20px;
   display: flex; align-items: center; gap: 20px;
 }
-header.site .brand { font-weight: 700; font-size: 16px; color: var(--text); font-family: var(--font-display); overflow-wrap: anywhere; }
+header.site .brand { font-weight: var(--heading-weight, 700); font-size: 16px; color: var(--text); font-family: var(--font-display); overflow-wrap: anywhere; }
 header.site nav a { color: var(--muted); margin-right: 16px; }
 header.site nav a:hover { color: var(--text); }
 
-h1 { font-size: 22px; margin: 0 0 4px; font-family: var(--font-display); overflow-wrap: anywhere; }
-h2 { font-size: 16px; margin: 28px 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-family: var(--font-display); }
+h1 { font-size: 22px; margin: 0 0 4px; font-family: var(--font-display); font-weight: var(--heading-weight, 700); overflow-wrap: anywhere; }
+h2 { font-size: 16px; margin: 28px 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-family: var(--font-display); font-weight: var(--heading-weight, 700); }
 .sub { color: var(--muted); margin: 0 0 20px; }
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
@@ -451,44 +454,61 @@ input[type="text"]:focus { border-color: var(--accent); }
 
    Everything below is driven by three html attributes set live by the switcher
    (ui.tsx) and the pre-paint script (layout.tsx):
-     data-theme="…"   — one of 6 themes (the unset/“default” = current dark look)
-     data-font="…"    — one of 8 display+body font pairs (unset/“system” = current)
+     data-theme="…"   — one of 10 themes: Pixel Picnic + 4 variants and Sunny
+                        8-bit + 4 variants (the unset/“default” = current dark look)
+     data-font="…"    — a rounded body face or Space Mono variant (T154 narrowed
+                        the set to rounded + a Space Mono cluster; unset = system)
      data-motion="reduced" — dampens animations + minimises emoji
-   The UNSET state renders identically to the pre-T142 dashboard. A follow-up
-   (gated by review task T143) will hardcode the winners + delete the rest.
+   The UNSET state renders identically to the pre-T142 dashboard. This is
+   iteration 2 (T142 → owner review T045 → T154); a follow-up gated by T045 will
+   hardcode the winners + delete the rest.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Font pairs (display + body [+ mono]) ──────────────────────────────────── */
-html[data-font="pixelify-nunito"]      { --font-display: var(--font-pixelify); --font-body: var(--font-nunito); }
-html[data-font="silkscreen-quicksand"] { --font-display: var(--font-silkscreen); --font-body: var(--font-quicksand); }
-html[data-font="vt323-fredoka"]        { --font-display: var(--font-vt323); --font-body: var(--font-fredoka); }
-html[data-font="pressstart-baloo"]     { --font-display: var(--font-pressstart); --font-body: var(--font-baloo); }
-html[data-font="fredoka-nunito"]       { --font-display: var(--font-fredoka); --font-body: var(--font-nunito); }
-html[data-font="spacemono"]            { --font-display: var(--font-spacemono); --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); }
-html[data-font="jetbrains-quicksand"]  { --font-display: var(--font-jetbrains); --font-body: var(--font-quicksand); --font-mono: var(--font-jetbrains); }
-/* Some pixel display faces render large; nudge brand/h1 down so they don't crowd. */
-html[data-font="pressstart-baloo"] .brand { font-size: 13px; }
-html[data-font="pressstart-baloo"] h1 { font-size: 18px; line-height: 1.4; }
-html[data-font="silkscreen-quicksand"] .brand,
-html[data-font="vt323-fredoka"] .brand { letter-spacing: 0; }
-html[data-font="vt323-fredoka"] { /* VT323 is small per em — bump body slightly */ }
-html[data-font="vt323-fredoka"] body { font-size: 15px; }
+/* ── Font faces (display + body [+ mono]) — T154 narrowed to ROUNDED + Space Mono
+   Each rounded face is self-paired (display == body) for a clean rounded heading;
+   a few pair a pixel DISPLAY (Pixelify) with a rounded body for the Pixel Picnic
+   vibe; "thin header" variants drop --heading-weight so headings read crisp; the
+   Space Mono cluster keeps a monospace body to iterate on. Logs/code keep the
+   default system --font-mono (legibility) UNLESS the face is a Space Mono one. */
+
+/* Rounded, self-paired (clean rounded headings) */
+html[data-font="fredoka"]    { --font-display: var(--font-fredoka);    --font-body: var(--font-fredoka); }
+html[data-font="nunito"]     { --font-display: var(--font-nunito);     --font-body: var(--font-nunito); }
+html[data-font="quicksand"]  { --font-display: var(--font-quicksand);  --font-body: var(--font-quicksand); }
+html[data-font="baloo"]      { --font-display: var(--font-baloo);      --font-body: var(--font-baloo); }
+html[data-font="comfortaa"]  { --font-display: var(--font-comfortaa);  --font-body: var(--font-comfortaa); }
+html[data-font="varela"]     { --font-display: var(--font-varela);     --font-body: var(--font-varela); --heading-weight: 400; }
+html[data-font="rubik"]      { --font-display: var(--font-rubik);      --font-body: var(--font-rubik); }
+html[data-font="mulish"]     { --font-display: var(--font-mulish);     --font-body: var(--font-mulish); }
+html[data-font="poppins"]    { --font-display: var(--font-poppins);    --font-body: var(--font-poppins); }
+html[data-font="lexend"]     { --font-display: var(--font-lexend);     --font-body: var(--font-lexend); }
+
+/* Thin-header variants: same rounded face, lighter heading weight (crisp headings) */
+html[data-font="fredoka-light"] { --font-display: var(--font-fredoka); --font-body: var(--font-fredoka); --heading-weight: 500; }
+html[data-font="nunito-light"]  { --font-display: var(--font-nunito);  --font-body: var(--font-nunito);  --heading-weight: 400; }
+html[data-font="poppins-light"] { --font-display: var(--font-poppins); --font-body: var(--font-poppins); --heading-weight: 400; }
+
+/* Pixel DISPLAY + rounded body (Pixel Picnic vibe) */
+html[data-font="pixelify-nunito"]  { --font-display: var(--font-pixelify); --font-body: var(--font-nunito); }
+html[data-font="pixelify-fredoka"] { --font-display: var(--font-pixelify); --font-body: var(--font-fredoka); }
+
+/* Space Mono cluster (monospace body to iterate on) */
+html[data-font="spacemono"]         { --font-display: var(--font-spacemono); --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); }
+html[data-font="spacemono-fredoka"] { --font-display: var(--font-fredoka);   --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); }
+html[data-font="spacemono-light"]   { --font-display: var(--font-spacemono); --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); --heading-weight: 400; letter-spacing: -.01em; }
 
 /* ── Theme palettes ────────────────────────────────────────────────────────
-   Each is a full vibe package over :root. The two dark themes keep light text;
-   the four bright themes use dark text on light panels. Logs keep their own
-   fixed dark terminal palette (declared in :root, never overridden) so they
+   T154 narrowed the joyful themes to TWO families the owner liked: Pixel Picnic
+   (cream + dot grid) and Sunny 8-bit (amber arcade + scanlines), each shipped as
+   its original + 4 in-family variants = 10 themes (the `default` dark baseline is
+   kept). Every variant stays a full vibe package over :root with dark text on
+   light panels; `--card-radius` varies the card rounding within the family. Logs
+   keep their own fixed dark terminal palette (in :root, never overridden) so they
    stay legible everywhere. */
 
-/* Midnight Neon — synthwave dark, vivid neon accents */
-html[data-theme="midnight-neon"] {
-  --bg: #0f0a1f; --panel: #1a1235; --panel-2: #251a47; --border: #3a2a63;
-  --text: #ece6ff; --muted: #9a8cc4;
-  --accent: #c14bff; --green: #3ef2a0; --red: #ff5d8f; --yellow: #ffd23e; --grey: #7a6ba8; --amber: #ff9e3e;
-  --on-accent: #150d28; --spark: #ffd23e;
-}
+/* ═══ Pixel Picnic family — cream base, soft dot grid ═══════════════════════ */
 
-/* Pixel Picnic — BASKET-like cream + dot grid + soft green/peach */
+/* Pixel Picnic — BASKET-like cream + dot grid + soft green/peach (round-1 keeper) */
 html[data-theme="pixel-picnic"] {
   --bg: #fbf6ea; --panel: #fffdf7; --panel-2: #f3ecd9; --border: #e3d8bf;
   --text: #3a3326; --muted: #8a7d63;
@@ -498,15 +518,52 @@ html[data-theme="pixel-picnic"] {
   --bg-texture-size: 16px 16px;
 }
 
-/* Candy Bright — white + multi-colour pink/teal/purple */
-html[data-theme="candy-bright"] {
-  --bg: #ffffff; --panel: #fff7fb; --panel-2: #fdeef6; --border: #f3d9e8;
-  --text: #2c2440; --muted: #8a7f9c;
-  --accent: #e0529c; --green: #1fb89a; --red: #f0506e; --yellow: #e09a1f; --grey: #b0a6c0; --amber: #e08a2c;
-  --on-accent: #ffffff; --spark: #1fb89a;
+/* Picnic Meadow — cooler & greener, denser dot grid, teal-green accent */
+html[data-theme="pixel-picnic-meadow"] {
+  --bg: #f2f7ec; --panel: #fbfdf6; --panel-2: #e6efdc; --border: #cfe0c0;
+  --text: #2c3826; --muted: #6f815f;
+  --accent: #4a9e6f; --green: #3f9a4e; --red: #d65a4a; --yellow: #b8901f; --grey: #9aab8a; --amber: #b8821f;
+  --on-accent: #ffffff; --spark: #7bc043;
+  --bg-texture: radial-gradient(circle, rgba(60,100,50,.12) 1.2px, transparent 1.2px);
+  --bg-texture-size: 12px 12px;
+  --card-radius: 12px;
 }
 
-/* Sunny 8-bit — amber/retro arcade + sparkles */
+/* Picnic Dusk — warmer & deeper cream, dusty rose accent, larger softer dots */
+html[data-theme="pixel-picnic-dusk"] {
+  --bg: #f4ece4; --panel: #fcf6f0; --panel-2: #ece0d6; --border: #ddc9bb;
+  --text: #463a36; --muted: #8c7a72;
+  --accent: #b06a8a; --green: #5a9e6a; --red: #d6604a; --yellow: #c2882a; --grey: #ab988e; --amber: #c2782a;
+  --on-accent: #ffffff; --spark: #d68aa6;
+  --bg-texture: radial-gradient(circle, rgba(110,70,90,.10) 1.4px, transparent 1.4px);
+  --bg-texture-size: 18px 18px;
+  --card-radius: 16px;
+}
+
+/* Picnic Berry — berry/plum accent on warm cream */
+html[data-theme="pixel-picnic-berry"] {
+  --bg: #faf3ee; --panel: #fffaf6; --panel-2: #f1e4dc; --border: #e2cfc4;
+  --text: #3d2f30; --muted: #8a7370;
+  --accent: #9c4a72; --green: #4f9a5e; --red: #d6504a; --yellow: #c2861f; --grey: #a8978f; --amber: #c2761f;
+  --on-accent: #ffffff; --spark: #c95a92;
+  --bg-texture: radial-gradient(circle, rgba(120,50,80,.09) 1.3px, transparent 1.3px);
+  --bg-texture-size: 15px 15px;
+}
+
+/* Picnic Mint — minty-cool, lighter & higher contrast, tighter crisp dots */
+html[data-theme="pixel-picnic-mint"] {
+  --bg: #eef7f3; --panel: #f8fdfa; --panel-2: #ddefe6; --border: #c4e0d2;
+  --text: #283832; --muted: #6a847a;
+  --accent: #2f9e8a; --green: #3f9a5e; --red: #d6584a; --yellow: #b8901f; --grey: #93aaa0; --amber: #b8821f;
+  --on-accent: #ffffff; --spark: #3fc0a0;
+  --bg-texture: radial-gradient(circle, rgba(40,110,95,.10) 1.1px, transparent 1.1px);
+  --bg-texture-size: 14px 14px;
+  --card-radius: 10px;
+}
+
+/* ═══ Sunny 8-bit family — warm base, retro scanline texture ════════════════ */
+
+/* Sunny 8-bit — amber/retro arcade + sparkles (round-1 keeper) */
 html[data-theme="sunny-8bit"] {
   --bg: #fff3d6; --panel: #fff9ec; --panel-2: #ffeec2; --border: #f0d49a;
   --text: #4a3613; --muted: #9c7e44;
@@ -516,12 +573,47 @@ html[data-theme="sunny-8bit"] {
   --bg-texture-size: auto;
 }
 
-/* Soft Pastel — airy light pastels */
-html[data-theme="soft-pastel"] {
-  --bg: #f4f6fb; --panel: #ffffff; --panel-2: #eef1f9; --border: #dde3f0;
-  --text: #38415a; --muted: #8b93a8;
-  --accent: #7c83e8; --green: #4fb38a; --red: #ec6a7e; --yellow: #d99a1f; --grey: #aab1c4; --amber: #d99a3c;
-  --on-accent: #ffffff; --spark: #7c83e8;
+/* 8-bit Sunset — sunset orange/red on a peachy base */
+html[data-theme="sunny-8bit-sunset"] {
+  --bg: #ffe9d4; --panel: #fff4e8; --panel-2: #ffdcc0; --border: #f3c499;
+  --text: #4d2c1c; --muted: #a06f4c;
+  --accent: #e85a3c; --green: #5a9e3e; --red: #e0392e; --yellow: #d98a1a; --grey: #bb9678; --amber: #e0701a;
+  --on-accent: #ffffff; --spark: #ff7a4d;
+  --bg-texture: repeating-linear-gradient(0deg, rgba(200,90,40,.06) 0 2px, transparent 2px 4px);
+  --bg-texture-size: auto;
+  --card-radius: 12px;
+}
+
+/* 8-bit Lime — lime/green arcade pop */
+html[data-theme="sunny-8bit-lime"] {
+  --bg: #f6f7d0; --panel: #fcfdec; --panel-2: #eef0bd; --border: #d6da8f;
+  --text: #3e4413; --muted: #82883f;
+  --accent: #7aa81f; --green: #5a9e2e; --red: #e0492e; --yellow: #c2a312; --grey: #a8ac6a; --amber: #b89a1a;
+  --on-accent: #ffffff; --spark: #a8d83e;
+  --bg-texture: repeating-linear-gradient(0deg, rgba(120,150,30,.06) 0 2px, transparent 2px 4px);
+  --bg-texture-size: auto;
+}
+
+/* 8-bit Aqua — aqua/cyan pop on a warm base, crisp small cards */
+html[data-theme="sunny-8bit-aqua"] {
+  --bg: #fff3d6; --panel: #fbfaef; --panel-2: #e4f0e6; --border: #bfe0d4;
+  --text: #2e4438; --muted: #6f9080;
+  --accent: #1f9ea8; --green: #3f9e6e; --red: #e0584a; --yellow: #d99a1a; --grey: #93b3a8; --amber: #2faab0;
+  --on-accent: #ffffff; --spark: #2fc0c8;
+  --bg-texture: repeating-linear-gradient(0deg, rgba(30,140,150,.05) 0 2px, transparent 2px 4px);
+  --bg-texture-size: auto;
+  --card-radius: 8px;
+}
+
+/* 8-bit Coral — coral/pink warm, rounder cards */
+html[data-theme="sunny-8bit-coral"] {
+  --bg: #ffeede; --panel: #fff6ee; --panel-2: #ffe0d2; --border: #f3c4b0;
+  --text: #4d2e28; --muted: #a0746a;
+  --accent: #e85a6a; --green: #5a9e5e; --red: #e0392e; --yellow: #d98a3a; --grey: #bb968e; --amber: #e0705a;
+  --on-accent: #ffffff; --spark: #ff7a8a;
+  --bg-texture: repeating-linear-gradient(0deg, rgba(200,90,100,.06) 0 2px, transparent 2px 4px);
+  --bg-texture-size: auto;
+  --card-radius: 16px;
 }
 
 /* ── Joyful accents (apply to every NON-default theme; the default stays plain) ──
@@ -536,10 +628,10 @@ html[data-theme]:not([data-theme="default"]) .badge-emoji { display: inline; }
 .joy-emoji { display: none; }
 html[data-theme]:not([data-theme="default"]) .joy-emoji { display: inline; }
 
-/* Softer, rounder cards on joyful themes. */
+/* Softer, rounder cards on joyful themes (per-variant via --card-radius, T154). */
 html[data-theme]:not([data-theme="default"]) .panel,
 html[data-theme]:not([data-theme="default"]) .statcard {
-  border-radius: 14px;
+  border-radius: var(--card-radius, 14px);
 }
 
 /* Hover-lift on interactive cards/rows. */
