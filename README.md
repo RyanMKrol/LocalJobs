@@ -226,7 +226,7 @@ and the daemon **refuses to start** (it fails loud at load).
 It then appears in the dashboard automatically with history tracked from run one.
 
 > **Your jobs stay private by default.** This repo is public; it ships the
-> framework and the **places** and **perfumes** workflows as
+> framework and the **places**, **perfumes**, **plex**, and **movies** workflows as
 > worked examples. Every other `src/jobs/*.job.ts` (and any private subfolder you
 > add) is gitignored, so the jobs you add stay local-only unless you choose to
 > publish them. Every job's `data/` folder is **always** gitignored
