@@ -4067,7 +4067,7 @@
     {
       "id": "T157",
       "title": "Input→Output panel: render filenames from row data, lazy-load markdown previews (no mount jank)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
