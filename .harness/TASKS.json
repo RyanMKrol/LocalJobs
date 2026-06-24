@@ -4650,6 +4650,39 @@
       "reviewed": false
     },
     {
+      "id": "T179",
+      "title": "Missing seasons view on the TV-seasons workflow page (mirror the movies gaps/recs section)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex",
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "src/jobs/plex/stages/notify.ts",
+        "src/db/store.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T179.md",
+      "reviewed": false
+    },
+    {
       "id": "T151",
       "title": "Rename the plex workflow to a clearer name (missing-tv-seasons) + DB migration",
       "status": "done",
