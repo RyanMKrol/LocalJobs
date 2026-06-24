@@ -4368,7 +4368,7 @@
     {
       "id": "T151",
       "title": "Rename the plex workflow to a clearer name (missing-tv-seasons) + DB migration",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
