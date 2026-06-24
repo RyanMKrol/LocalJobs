@@ -4228,7 +4228,7 @@
     {
       "id": "T163",
       "title": "Run-limit bug: limited multi-stage run selects 0 roots when downstream work is un-attempted (pending-root selector blind spot)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
