@@ -4366,6 +4366,44 @@
       "reviewed": false
     },
     {
+      "id": "T169",
+      "title": "Make workflow maxConcurrency editable from the workflow detail page (like schedule/enabled)",
+      "status": "pending",
+      "dependsOn": [
+        "T156"
+      ],
+      "gate": null,
+      "tags": [
+        "framework",
+        "backend",
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/core/workflow-executor.ts",
+        "src/api/server.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T169.md",
+      "reviewed": false
+    },
+    {
       "id": "T151",
       "title": "Rename the plex workflow to a clearer name (missing-tv-seasons) + DB migration",
       "status": "done",
