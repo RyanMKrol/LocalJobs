@@ -304,6 +304,27 @@ export interface BacklogTask {
   reviewed?: boolean;
 }
 
+/** One detected franchise gap (movies workflow), overlaid with ledger status. */
+export interface MovieGap {
+  collectionId: number;
+  collectionName: string;
+  tmdbId: number;
+  title: string;
+  year: number | null;
+  /** TMDB vote_average (0–10) — owner CONTEXT only; never used to hide a gap. */
+  tmdbRating: number | null;
+  /** Already digest-notified (deduped) — true once announced. */
+  notified: boolean;
+  /** Owner manually suppressed it — excluded from future reports + notifications. */
+  ignored: boolean;
+}
+
+export interface MovieGaps {
+  generatedAt: string | null;
+  collectionsChecked: number;
+  gaps: MovieGap[];
+}
+
 /** Scope for bulk stuck-item operations passed to the bulk API endpoints. */
 export type BulkScope =
   | { type: 'all' }
@@ -346,6 +367,11 @@ export const api = {
   ignore: (job: string, key: string) => post<{ ok: boolean; ignored: number }>(`/api/stuck/ignore`, { job, key }),
   unstickBulk: (scope?: BulkScope) => post<{ ok: boolean; unstuck: number }>('/api/stuck/unstick-bulk', scope ? scopeBody(scope) : {}),
   ignoreBulk: (scope?: BulkScope) => post<{ ok: boolean; ignored: number }>('/api/stuck/ignore-bulk', scope ? scopeBody(scope) : {}),
+
+  // Movies franchise-gap audit: list current gaps + manually ignore one (T145).
+  movieGaps: () => get<MovieGaps>('/api/movie-gaps'),
+  ignoreMovieGap: (tmdbId: number) =>
+    post<{ ok: boolean; ignored: number }>(`/api/movie-gaps/${tmdbId}/ignore`),
 
   recentWorkflowRuns: (limit = 50) => get<{ runs: WorkflowRun[] }>(`/api/workflow-runs?limit=${limit}`),
   workflows: () => get<{ workflows: Workflow[] }>('/api/workflows'),

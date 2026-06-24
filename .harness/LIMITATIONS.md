@@ -492,3 +492,16 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   entrance without touching the out-of-scope page component or adding JS. *Revisit:* if the owner
   picks a theme and wants real count-ups, the T143 hardcode follow-up (or a separate task) can add a
   small `<CountUp>` in `page.tsx`/`ui.tsx`.
+
+- **movies franchise-gap audit does TWO TMDB passes per run; the new `/movie-gaps` page
+  isn't in the committed mobile-check (T145).** *Why:* the deterministic detector must (1)
+  resolve each owned film's `belongs_to_collection` via `GET /movie/{id}` (~one call per
+  owned movie — ~1,500 on the owner's library) then (2) fetch each DISTINCT collection's
+  `parts[]`. TMDB is free + rate-paced through the `tmdb` service, and collection fetches are
+  deduped, so a monthly run is well within budget (~46s live in T109's validation), but the
+  call count scales with library size. *Impact:* a very large library lengthens the run; the
+  stage's 30-min `timeoutMs` + graceful `QuotaExceededError` stop (next run resumes) bound it.
+  *Also:* the `Movie gaps` dashboard page reuses the proven `.panel`/`table` chrome (mobile-safe
+  by the existing `@media` rules) but is NOT in `mobile-check.mjs`'s hardcoded page list, since
+  that harness needs a synthetic `/api/movie-gaps` fixture. *Revisit:* if the page grows custom
+  layout, add a `/api/movie-gaps` fixture + the route to `mobile-check.mjs`.

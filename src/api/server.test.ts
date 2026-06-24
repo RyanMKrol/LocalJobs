@@ -876,4 +876,71 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
 }
 
+// ── movie-gaps endpoints (T145): GET overlays ignored/notified; POST ignores ──
+{
+  const { moviesConfig } = await import('../jobs/movies/config.js');
+  const { NOTIFY_JOB, gapKey } = await import('../jobs/movies/stages/notify.js');
+  const { markWorkItem: mark, ignoredItemKeys: ignoredKeys } = await import('../db/store.js');
+
+  // Distinct synthetic tmdbIds; back up + restore the real gaps file so a dev box's
+  // audit output is never clobbered.
+  const NOTIFIED = 9970001;
+  const FRESH = 9970002;
+  const TO_IGNORE = 9970003;
+  const gapsPath = moviesConfig.gapsOut;
+  const hadFile = existsSync(gapsPath);
+  const backup = hadFile ? readFileSync(gapsPath, 'utf8') : null;
+  mkdirSync(moviesConfig.outDir, { recursive: true });
+  writeFileSync(gapsPath, JSON.stringify({
+    generatedAt: '2026-06-01T00:00:00Z',
+    collectionsChecked: 2,
+    gaps: [
+      { collectionId: 1, collectionName: 'A', tmdbId: NOTIFIED, title: 'Already Notified', year: 2020, tmdbRating: 7 },
+      { collectionId: 1, collectionName: 'A', tmdbId: FRESH, title: 'Fresh', year: 2021, tmdbRating: 6 },
+      { collectionId: 2, collectionName: 'B', tmdbId: TO_IGNORE, title: 'To Ignore', year: 2022, tmdbRating: 5 },
+    ],
+  }));
+  mark(NOTIFY_JOB, gapKey(NOTIFIED), 'success'); // pretend it was already digested
+
+  try {
+    await test('GET /api/movie-gaps overlays notified + ignored status', async () => {
+      await withServer({}, async (base) => {
+        const data = (await (await fetch(`${base}/api/movie-gaps`)).json()) as {
+          gaps: { tmdbId: number; notified: boolean; ignored: boolean }[];
+        };
+        const byId = new Map(data.gaps.map((g) => [g.tmdbId, g]));
+        assert.equal(byId.get(NOTIFIED)?.notified, true, 'already-digested gap is flagged notified');
+        assert.equal(byId.get(FRESH)?.notified, false, 'a fresh gap is not yet notified');
+        assert.equal(byId.get(FRESH)?.ignored, false);
+      });
+    });
+
+    await test('POST /api/movie-gaps/:id/ignore suppresses a gap (manual ignore)', async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/movie-gaps/${TO_IGNORE}/ignore`, { method: 'POST' });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; ignored: number };
+        assert.equal(body.ok, true);
+        assert.ok(body.ignored >= 1);
+        assert.ok(ignoredKeys(NOTIFY_JOB).has(gapKey(TO_IGNORE)), 'ledger row is now ignored');
+
+        const data = (await (await fetch(`${base}/api/movie-gaps`)).json()) as {
+          gaps: { tmdbId: number; ignored: boolean }[];
+        };
+        assert.equal(data.gaps.find((g) => g.tmdbId === TO_IGNORE)?.ignored, true, 'GET reflects the ignore');
+      });
+    });
+
+    await test('POST /api/movie-gaps/:id/ignore rejects a non-numeric id (400)', async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/movie-gaps/not-a-number/ignore`, { method: 'POST' });
+        assert.equal(res.status, 400);
+      });
+    });
+  } finally {
+    if (backup !== null) writeFileSync(gapsPath, backup);
+    else rmSync(gapsPath, { force: true });
+  }
+}
+
 console.log(`\n  ${passed} assertions passed`);

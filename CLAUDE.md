@@ -67,12 +67,14 @@ and tell the user.
 
 `local-jobs` is a self-hosted job orchestrator + dashboard that runs on an
 always-on **Mac Mini**. Its purpose is to host **long-running / headless local
-work** that doesn't fit serverless or a web request. The repo ships three
+work** that doesn't fit serverless or a web request. The repo ships four
 worked-example workflows: **places** (headless CID→place_id resolution → Google
 Places API enrichment → Gemini LLM summaries, writing enriched JSON + markdown
 profiles to local files), **perfumes** (Fragrantica scrape → headless Chrome
-fetch → parse → Claude CLI profile build), and **plex** (snapshot the Plex TV
-library by GUID → check TMDB for complete missing seasons → weekly digest push).
+fetch → parse → Claude CLI profile build), **plex** (snapshot the Plex TV
+library by GUID → check TMDB for complete missing seasons → weekly digest push),
+and **movies** (snapshot the Plex movie library by GUID → detect franchise gaps
+via the TMDB Collections API → monthly digest push, with owner ignore-to-suppress).
 Private workflows are added as gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
@@ -501,6 +503,20 @@ doubt, log it.
     are **never automatic** — nothing in the run/schedule path ignores anything.
     (DB note: the legacy `dismissed` status is migrated to `ignored` on startup
     in `src/db/index.ts`.)
+  - **Ignore-to-suppress a SURFACED (non-failed) item (T145).** The audit-style
+    workflows (`plex`/`movies`) whose ledger tracks "have I notified this?" rather
+    than work-done need to ignore a still-VALID surfaced item (a franchise film the
+    owner owns some-but-not-all of and deliberately doesn't want) — NOT a `failed`
+    one. `ignoreSurfacedItem(jobName, itemKey)` in `store.ts` EXTENDS ignore to this
+    case: it UPSERTS the ledger row to `ignored` (creating it if absent — a surfaced
+    gap is typically `success` after its one notification, or has no row yet),
+    whereas `ignoreWorkItem` requires a `failed` row. The notify stage then excludes
+    ignored keys from BOTH the report (`ignoredItemKeys(jobName)`) AND notifications
+    (`isWorkItemDone` already treats `ignored` as done, so it's never re-notified).
+    Wired for movies via `POST /api/movie-gaps/:tmdbId/ignore` + the **Movie gaps**
+    dashboard page; still MANUAL-ONLY (nothing auto-ignores). Reuse this shape for
+    any future periodic-audit workflow that needs the owner to permanently silence a
+    factual-but-unwanted finding.
   - **Bulk unstick/ignore with scope (T118).** The per-item controls above are
     complemented by bulk operations: `bulkUnstickItems(scope)` /
     `bulkIgnoreItems(scope)` in `src/db/store.ts`, backed by

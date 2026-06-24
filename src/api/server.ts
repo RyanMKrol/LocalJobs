@@ -12,6 +12,9 @@ import { runWorkflow, cancelWorkflowRun, workflowRunInProgress } from '../core/w
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import { Cron } from 'croner';
 import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
+import { moviesConfig } from '../jobs/movies/config.js';
+import { NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey } from '../jobs/movies/stages/notify.js';
+import type { FranchiseGapsFile } from '../jobs/movies/types.js';
 import {
   browseTable,
   getLogs,
@@ -48,6 +51,9 @@ import {
   stuckItems,
   unstickWorkItem,
   ignoreWorkItem,
+  ignoreSurfacedItem,
+  ignoredItemKeys,
+  isWorkItemDone,
   ignoredItems,
   bulkUnstickItems,
   bulkIgnoreItems,
@@ -651,6 +657,48 @@ export function createApiServer(
         const jobFilter = url.searchParams.get('job');
         const items = ignoredItems().filter((i) => !jobFilter || i.job_name === jobFilter);
         return json(res, 200, { ignored: items });
+      }
+
+      // GET /api/movie-gaps — the current franchise gaps (read from the movies
+      // workflow's franchise-gaps.json), each overlaid with its ledger status:
+      // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
+      // file + DB only — never a paid/remote call. Returns an empty list (not an
+      // error) when the audit hasn't run yet.
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'movie-gaps' && parts.length === 2) {
+        let file: FranchiseGapsFile = { generatedAt: '', collectionsChecked: 0, gaps: [] };
+        try {
+          file = JSON.parse(readFileSync(moviesConfig.gapsOut, 'utf8')) as FranchiseGapsFile;
+        } catch {
+          // No franchise-gaps.json yet (audit hasn't run) — return an empty backlog.
+        }
+        const ignoredKeys = ignoredItemKeys(MOVIE_GAPS_JOB);
+        const gaps = (file.gaps ?? []).map((g) => {
+          const key = gapKey(g.tmdbId);
+          return {
+            ...g,
+            ignored: ignoredKeys.has(key),
+            notified: isWorkItemDone(MOVIE_GAPS_JOB, key, 1) && !ignoredKeys.has(key),
+          };
+        });
+        return json(res, 200, {
+          generatedAt: file.generatedAt || null,
+          collectionsChecked: file.collectionsChecked ?? 0,
+          gaps,
+        });
+      }
+
+      // POST /api/movie-gaps/:tmdbId/ignore — owner manually IGNORES a surfaced
+      // franchise gap so it leaves BOTH future reports AND notifications and never
+      // resurfaces (even though the film is still un-owned). Manual only; guarded by
+      // the global loopback/token mutation check above. Idempotent (re-ignoring is a
+      // no-op upsert).
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'movie-gaps' && parts[3] === 'ignore') {
+        const tmdbId = Number(parts[2]);
+        if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+          return json(res, 400, { error: 'tmdbId must be a positive integer' });
+        }
+        const ignored = ignoreSurfacedItem(MOVIE_GAPS_JOB, gapKey(tmdbId));
+        return json(res, 200, { ok: true, ignored });
       }
 
       // GET /api/jobs  (each flagged with its workflow, if it's a member)

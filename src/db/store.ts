@@ -523,6 +523,39 @@ export function ignoreWorkItem(jobName: string, itemKey: string): number {
 }
 
 /**
+ * "Ignore" a SURFACED (non-failed) item: park an arbitrary ledger key as
+ * `ignored`, upserting the row if it doesn't exist yet. This EXTENDS the
+ * stuck-only {@link ignoreWorkItem} to the audit-style workflows (movies/plex)
+ * whose ledger tracks "have I notified this?" rather than work-done: an owner
+ * ignores a still-VALID gap (a franchise film they own some-but-not-all of and
+ * deliberately don't want) so it leaves BOTH future reports AND notifications and
+ * never resurfaces — even though `isWorkItemDone` already treats `ignored` as
+ * done, so a re-run won't re-notify it. MANUAL ONLY — nothing in the run/schedule
+ * path calls this; it's invoked solely from a dashboard control. Unlike
+ * {@link ignoreWorkItem} it does NOT require a `failed` row (a surfaced gap is
+ * typically `success` after its one notification, or absent if never notified).
+ * Returns the number of rows affected (always ≥1). */
+export function ignoreSurfacedItem(jobName: string, itemKey: string): number {
+  return db.prepare(`
+    INSERT INTO work_items (job_name, item_key, status, attempts, root_key)
+    VALUES (?, ?, 'ignored', 0, ?)
+    ON CONFLICT(job_name, item_key) DO UPDATE SET
+      status = 'ignored',
+      updated_at = datetime('now')
+  `).run(jobName, itemKey, itemKey).changes;
+}
+
+/** The set of `item_key`s a job has manually `ignored` — used to exclude ignored
+ *  gaps from a fresh audit's report (the audit recomputes every run, so it must
+ *  re-filter against this each time). */
+export function ignoredItemKeys(jobName: string): Set<string> {
+  const rows = db.prepare(
+    "SELECT item_key FROM work_items WHERE job_name = ? AND status = 'ignored'",
+  ).all(jobName) as { item_key: string }[];
+  return new Set(rows.map((r) => r.item_key));
+}
+
+/**
  * Manually-ignored items (parked via {@link ignoreWorkItem}). Surfaced ONLY on
  * the overview's Ignored tile — they are deliberately NOT stuck and never count
  * toward stuck. Shares the {@link StuckItem} shape for the dashboard.

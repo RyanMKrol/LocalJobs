@@ -409,6 +409,36 @@ from the last push, so a steady run no longer floods ntfy. Drives the local `cla
 CLI. See `perfumes/config.ts` for models, pacing, headless toggle, and dry-run
 options. See `.harness/LIMITATIONS.md` for scraping trade-offs.
 
+**plex** — Plex TV new-seasons audit. Three stages: `plex-tv-snapshot` (snapshot
+the TV section by `tmdb://` GUID — each show + its highest owned regular season) →
+`tmdb-season-check` (check TMDB for COMPLETE seasons you're missing; ended/canceled
+shows included — revivals happen) → `plex-seasons-notify` (ONE weekly digest of the
+newly-detected missing seasons). Scheduled weekly. Needs `PLEX_HOST` +
+`PLEX_API_TOKEN` (Plex uses a self-signed cert — the TLS bypass is scoped to Plex
+requests only) and `TMDB_API_TOKEN` (free), routed through the rate-limited `tmdb`
+service. INVERTS the usual idempotency: it declares no `inputKeys()` (not limitable,
+scheduled-only) and re-scans fresh every run — the `work_items` ledger lives ONLY in
+the notify stage, as a "have I already notified this (show, season)?" log, so each
+backlog season is announced exactly once.
+
+**movies** — Plex movie franchise-gap audit. Three stages: `movie-snapshot`
+(snapshot the movie section by GUID — each film + the taste metadata Plex returns:
+genres/directors/decades/countries, written as a separate taste profile) →
+`franchise-gaps` (the DETERMINISTIC detector via the TMDB **Collections** API: for
+each owned film, resolve its `belongs_to_collection`, fetch each DISTINCT
+collection's `parts[]`, and surface every RELEASED part you don't own — e.g. owning
+9/10 Saw films flags Saw X) → `movie-gaps-notify` (ONE **monthly** digest of the
+newly-detected gaps). Same connectivity as **plex** (`PLEX_HOST`/`PLEX_API_TOKEN`/
+`TMDB_API_TOKEN`, plus `PLEX_MOVIE_SECTION`, default 4) and the same inverted
+idempotency (no `inputKeys()`, re-computes fresh, ledger only in notify). There is
+**no quality filter and no skip heuristics** — every factual gap is surfaced; the
+TMDB rating rides along for the owner's context only. Deduped per missing film so a
+gap is announced once (first run = one big digest of the whole backlog). A gap leaves
+future reports AND notifications ONLY when the owner manually **ignores** it (the
+**Movie gaps** dashboard page lists every current gap grouped by collection with a
+TMDB link + rating and an ✕ Ignore button → `POST /api/movie-gaps/:tmdbId/ignore` →
+`ignoreSurfacedItem`, which parks the ledger row `ignored`). Nothing auto-ignores.
+
 **Typed-artifact contracts.** Each stage boundary declares `produces`/`consumes`
 contracts (`contracts.ts` in each workflow). A shape violation at a gate fails
 LOUD — recording a failed run and firing an alert — instead of silently feeding
