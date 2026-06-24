@@ -142,7 +142,7 @@ export default function GateDetail({
     <>
       <p className="muted">
         <a href={run ? `/workflow-runs/${id}` : '/workflows'}>
-          ← {run ? `workflow run` : 'workflows'}
+          ← {run ? `${run.workflow_name} run` : 'workflows'}
         </a>
       </p>
       <div className="row">
