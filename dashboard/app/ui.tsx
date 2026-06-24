@@ -120,11 +120,25 @@ export function cronToEnglish(expr: string): string {
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) return expr;
   const [min, hour, dom, month, dow] = parts;
-  if (month !== '*') return expr; // don't attempt month-specific patterns
 
   const isNum = (s: string) => /^\d+$/.test(s);
   const toInt = (s: string) => parseInt(s, 10);
   const pad2   = (n: number) => String(n).padStart(2, '0');
+  const ordinal = (n: number) => {
+    const s = ['th','st','nd','rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+  };
+
+  // Monthly at HH:MM on day D: M H D * *  (month=*, dow=*)
+  if (isNum(min) && isNum(hour) && isNum(dom) && month === '*' && dow === '*') {
+    const h = toInt(hour), m = toInt(min), d = toInt(dom);
+    if (h >= 0 && h < 24 && m >= 0 && m < 60 && d >= 1 && d <= 31)
+      return `At ${pad2(h)}:${pad2(m)} on the ${ordinal(d)} of each month`;
+  }
+
+  // Patterns below require month='*' — bail out for month-specific expressions
+  if (month !== '*') return expr;
 
   // Every minute: * * * * *
   if (min === '*' && hour === '*' && dom === '*' && dow === '*') return 'Every minute';
