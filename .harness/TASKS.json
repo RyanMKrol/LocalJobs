@@ -4314,7 +4314,7 @@
     {
       "id": "T166",
       "title": "Run detail: align the status pill with the job-name title line (not centred against title+subtitle)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
