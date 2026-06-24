@@ -3894,7 +3894,7 @@
     {
       "id": "T150",
       "title": "Workflow run status: report failed (not partial) when no stage succeeded",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
