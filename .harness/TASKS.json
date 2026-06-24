@@ -3704,7 +3704,7 @@
     {
       "id": "T144",
       "title": "Build the Plex new-seasons audit workflow (GUID match, complete-season filter, weekly digest)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
