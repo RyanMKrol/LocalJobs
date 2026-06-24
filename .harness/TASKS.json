@@ -4064,6 +4064,39 @@
       "verify": [],
       "spec": ".harness/tasks/T155.md",
       "reviewed": false
+    },
+    {
+      "id": "T156",
+      "title": "Workflow manager: run independent stages in parallel (raise default concurrency from 1)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "backend",
+        "executor",
+        "performance"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/core/workflow-executor.ts",
+        "src/core/dag.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/core/dag.test.ts",
+        "src/jobs/movies",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T156.md",
+      "reviewed": false
     }
   ]
 }
