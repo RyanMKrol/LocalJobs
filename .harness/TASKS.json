@@ -3832,7 +3832,7 @@
     {
       "id": "T148",
       "title": "Workflow-run Input→Output panel: hard-cap height + make the table scrollable (sticky header)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
