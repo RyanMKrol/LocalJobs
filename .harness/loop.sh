@@ -33,8 +33,8 @@ BACKLOG="$HARNESS_DIR/TASKS.json"
 WORKLOG="$HARNESS_DIR/worklog"
 OUTCOMES="$HARNESS_DIR/outcomes.jsonl"             # append-only escalation ledger — the SOLE input to difficulty calibration (forward-only)
 NAME="$(basename "$ROOT")"
-MODEL="${MODEL:-claude-opus-4-8}"                 # pin EXACTLY — the bare alias drifts
-EFFORT="${EFFORT:-high}"                           # low|medium|high|xhigh|max
+MODEL="${MODEL:-claude-sonnet-4-6}"               # COLD-START FLOOR — cheapest tier; the policy tunes UP from here (pin the full id; the bare alias drifts)
+EFFORT="${EFFORT:-low}"                            # low|medium|high|xhigh|max — cheapest by default (bias-cheap; the ladder escalates on failure)
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-2}"                  # soft failures per rung before escalating (2: the ladder is now fine-grained — 7 global tiers — so fewer tries per rung keeps the total attempt budget bounded)
 MAX_ITERS="${MAX_ITERS:-100}"                      # global iteration backstop
 WAIT_SECONDS="${WAIT_SECONDS:-30}"                 # backoff between retries / CI polls
@@ -138,21 +138,11 @@ run_integrate_hook() {
   ( cd "$ROOT" && eval "$INTEGRATE_HOOK" ) || log "WARN: integrate hook failed (non-fatal)"
 }
 
-# task_ladder <id> — emit "MODEL<TAB>EFFORT" per build rung (rung 0 = primary, then escalations).
-task_ladder() {
-  tj -r --arg id "$1" '
-    (.defaults.model // "") as $dm | (.defaults.effort // "") as $de |
-    (.defaults.escalation // []) as $desc |
-    .tasks[] | select(.id==$id) |
-    ( [ { model:(.model // $dm), effort:(.effort // $de) } ]
-      + ( (.escalation // $desc) | map({ model:(.model // $dm), effort:(.effort // $de) }) )
-    ) | .[] | "\(.model)\t\(.effort)"'
-}
 # --- Difficulty auto-tuning: global tier ladder + the calibration policy --------------------------
-# The loop no longer escalates a PER-TASK ladder; it rides ONE global difficulty ladder
-# (facets.json .tiers.ladder, cheapest→priciest) offset by a policy-chosen START tier (cur_base).
-# rung 0 = the policy's start tier; escalation walks UP the global ladder. The authored model/effort
-# is only the cold-start prior. (task_ladder above is retained but unused.)
+# The loop rides ONE global difficulty ladder (facets.json .tiers.ladder, cheapest→priciest) offset
+# by a policy-chosen START tier (cur_base). rung 0 = the policy's start tier; escalation walks UP the
+# global ladder. Tasks no longer carry per-task model/effort/escalation — the cold-start prior is the
+# global floor (sonnet/low) until the (layer × work-type) cell has enough ledger samples.
 FACETS="$HARNESS_DIR/facets.json"
 TIER_TUPLES=()   # portable (bash 3.2 — no mapfile): read the ladder into an array
 while IFS= read -r _t; do TIER_TUPLES+=("$_t"); done \

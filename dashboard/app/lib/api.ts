@@ -277,17 +277,6 @@ export interface CannedQueryResult extends CannedQueryMeta {
   rows: Record<string, unknown>[];
 }
 
-export interface EscalationRung {
-  model?: string;
-  effort?: string;
-}
-
-export interface BacklogDefaults {
-  model?: string;
-  effort?: string;
-  escalation?: EscalationRung[];
-}
-
 export interface BacklogTask {
   id: string;
   title: string;
@@ -295,9 +284,6 @@ export interface BacklogTask {
   gate: null | 'gate' | 'needs-human';
   dependsOn: string[];
   tags?: string[];
-  model?: string;
-  effort?: string;
-  escalation?: EscalationRung[];
   scope?: string[];
   verify?: string[];
   // The task's do/doneWhen live in a per-task Markdown spec (T131): `spec` is the
@@ -438,7 +424,7 @@ export const api = {
   // `markReviewed` writes it AND the daemon commits + pushes it to GitHub under the
   // loop lock; the response reports whether the push succeeded (`pushed`) and a
   // non-fatal `warning` if it didn't (e.g. offline) — the commit still persists.
-  backlog: () => get<{ tasks: BacklogTask[]; defaults?: BacklogDefaults; error?: string }>('/api/backlog'),
+  backlog: () => get<{ tasks: BacklogTask[]; error?: string }>('/api/backlog'),
   markReviewed: (id: string, reviewed: boolean) =>
     post<{ ok: boolean; id: string; reviewed: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
       `/api/backlog/${encodeURIComponent(id)}/reviewed`,

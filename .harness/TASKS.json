@@ -1,16 +1,6 @@
 {
   "_doc": "LOCAL-ONLY backlog for the in-place Ralph loop (gitignored; the shell owns task status — the agent must NOT edit this file). Schema: docs/HARNESS.md §8. All tasks are verifiable with NO live paid-API calls.",
   "version": 1,
-  "defaults": {
-    "model": "claude-opus-4-8",
-    "effort": "high",
-    "escalation": [
-      {
-        "model": "claude-opus-4-8",
-        "effort": "xhigh"
-      }
-    ]
-  },
   "tasks": [
     {
       "id": "T001",
@@ -22,8 +12,6 @@
         "scaffold",
         "ci"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         "src/jobs/registry.test.ts",
         "src/**/*.test.ts",
@@ -52,8 +40,6 @@
         "coding",
         "privacy"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         "src/jobs/perfumes/config.ts",
         "src/jobs/perfumes/profile.template.md",
@@ -84,8 +70,6 @@
         "publish",
         "privacy"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         ".gitignore",
         "src/jobs/places/",
@@ -115,8 +99,6 @@
         "publish",
         "privacy"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         ".gitignore",
         "src/jobs/perfumes/",
@@ -145,8 +127,6 @@
       "tags": [
         "testing"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         "src/core/executor.test.ts",
         "src/core/pipeline-executor.test.ts",
@@ -178,8 +158,6 @@
         "coding",
         "framework"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         "src/core/types.ts",
         "src/core/pipeline-executor.ts",
@@ -210,8 +188,6 @@
       "tags": [
         "docs"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "high",
       "scope": [
         "README.md",
         "CLAUDE.md"
@@ -238,8 +214,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "high",
       "scope": [
         "dashboard/"
       ],
@@ -580,14 +554,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/jobs/",
         "dashboard/app/layout.tsx",
@@ -615,14 +581,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/page.tsx",
         "dashboard/app/ui.tsx"
@@ -647,14 +605,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/pipeline-runs/[id]/",
@@ -732,14 +682,6 @@
       "tags": [
         "chore"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "package.json",
         "dashboard/package.json"
@@ -787,14 +729,6 @@
       "gate": null,
       "tags": [
         "docs"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "README.md",
@@ -904,14 +838,6 @@
         "coding",
         "framework"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "src/core/browser.ts",
         "src/jobs/perfumes/fetch.ts",
@@ -936,14 +862,6 @@
       "tags": [
         "docs"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "README.md"
       ],
@@ -964,14 +882,6 @@
       "gate": null,
       "tags": [
         "dashboard"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/page.tsx",
@@ -1028,14 +938,6 @@
       "tags": [
         "dashboard"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/services/page.tsx"
       ],
@@ -1056,14 +958,6 @@
       "gate": null,
       "tags": [
         "dashboard"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/services/page.tsx",
@@ -1086,14 +980,6 @@
       "gate": null,
       "tags": [
         "dashboard"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/globals.css",
@@ -1299,14 +1185,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T044.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "facets": {
         "layer": "service",
         "workType": "refactor",
@@ -1362,14 +1240,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
         "dashboard/app/globals.css"
@@ -1393,14 +1263,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/page.tsx"
       ],
@@ -1422,14 +1284,6 @@
       "tags": [
         "refactor",
         "cleanup"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "src/",
@@ -1460,14 +1314,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflows/page.tsx",
         "dashboard/app/page.tsx",
@@ -1492,14 +1338,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflows/page.tsx",
         "dashboard/app/globals.css"
@@ -1522,14 +1360,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflows/page.tsx",
@@ -1583,14 +1413,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/db/page.tsx",
         "dashboard/app/globals.css"
@@ -1613,14 +1435,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "src/api/server.ts",
@@ -1645,14 +1459,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/page.tsx",
@@ -1708,14 +1514,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/ui.tsx",
         "dashboard/app/runs/[id]/page.tsx"
@@ -1739,14 +1537,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/"
       ],
@@ -1768,14 +1558,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -1799,14 +1581,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -1850,14 +1624,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
         "dashboard/app/components/Dag.tsx",
@@ -1885,14 +1651,6 @@
         "dashboard",
         "ui",
         "framework"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/",
@@ -1953,14 +1711,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/components/Dag.tsx",
         "dashboard/app/globals.css",
@@ -1987,14 +1737,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
         "dashboard/app/globals.css"
@@ -2018,14 +1760,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
         "dashboard/app/globals.css"
@@ -2048,14 +1782,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/components/Dag.tsx",
@@ -2116,14 +1842,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "src/api/server.ts",
         "dashboard/app/workflows/[name]/page.tsx",
@@ -2179,14 +1897,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/backlog/page.tsx"
       ],
@@ -2209,14 +1919,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/services/page.tsx"
       ],
@@ -2238,14 +1940,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/db/page.tsx",
@@ -2278,8 +1972,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T076.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "ui",
         "workType": "style",
@@ -2295,14 +1987,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -2326,14 +2010,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/globals.css",
@@ -2359,14 +2035,6 @@
         "cleanup",
         "browser"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "src/jobs/perfumes/config.test.ts",
         "src/jobs/perfumes/config.ts"
@@ -2390,14 +2058,6 @@
         "dashboard",
         "ui",
         "mobile"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/globals.css"
@@ -2431,8 +2091,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T081.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "db",
         "workType": "feature",
@@ -2448,14 +2106,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
@@ -2480,14 +2130,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/runs/[id]/page.tsx"
       ],
@@ -2510,14 +2152,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/ui.tsx"
       ],
@@ -2539,14 +2173,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/ui.tsx",
@@ -2571,14 +2197,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflows/page.tsx"
       ],
@@ -2602,14 +2220,6 @@
         "config",
         "places",
         "perfumes"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "src/jobs/places/ingest.job.ts",
@@ -2642,14 +2252,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
         "dashboard/app/globals.css"
@@ -2672,14 +2274,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
@@ -2712,8 +2306,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T090.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "ui",
         "workType": "style",
@@ -2747,8 +2339,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T091.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "framework",
         "workType": "feature",
@@ -2769,14 +2359,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
@@ -2804,8 +2386,6 @@
         "architecture",
         "workflow"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "max",
       "scope": [
         ".harness/designs/T093-workflow-run-limits.md"
       ],
@@ -2834,8 +2414,6 @@
         "places",
         "perfumes"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         "src/db/schema.sql",
         "src/db/index.ts",
@@ -2879,14 +2457,6 @@
         "workflow",
         "api"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "src/db/store.ts",
         "src/api/server.ts",
@@ -2918,14 +2488,6 @@
         "ui",
         "api"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
         "dashboard/app/lib/api.ts",
@@ -2950,14 +2512,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/ui.tsx",
@@ -2992,8 +2546,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T098.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "db",
         "workType": "migration",
@@ -3022,8 +2574,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T099.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "ui",
         "workType": "component",
@@ -3039,14 +2589,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflows/[name]/page.tsx",
@@ -3071,14 +2613,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
@@ -3114,8 +2648,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T102.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "ui",
         "workType": "feature",
@@ -3142,8 +2674,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T103.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "ui",
         "workType": "component",
@@ -3159,14 +2689,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
@@ -3209,8 +2731,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T105.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "framework",
         "workType": "feature",
@@ -3229,14 +2749,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/services/page.tsx"
@@ -3259,14 +2771,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/ui.tsx",
@@ -3294,8 +2798,6 @@
         "needs-human",
         "plex"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         "src/jobs/plex",
         ".gitignore",
@@ -3319,8 +2821,6 @@
         "plex",
         "movies"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         "src/jobs/plex",
         ".gitignore",
@@ -3353,8 +2853,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T110.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "ui",
         "workType": "feature",
@@ -3375,8 +2873,6 @@
         "cleanup",
         "db"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "scope": [
         "scripts"
       ],
@@ -3405,8 +2901,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T112.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "framework",
         "workType": "bugfix",
@@ -3425,14 +2919,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -3457,14 +2943,6 @@
       "tags": [
         "backend",
         "notifier"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "src/core/notifier.ts",
@@ -3491,14 +2969,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
         "dashboard/app/globals.css",
@@ -3524,14 +2994,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
         "dashboard/app/globals.css",
@@ -3556,14 +3018,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx"
       ],
@@ -3586,14 +3040,6 @@
         "dashboard",
         "backend",
         "api"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/page.tsx",
@@ -3628,14 +3074,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflows/page.tsx",
         "dashboard/app/lib/api.ts"
@@ -3658,14 +3096,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/services/page.tsx",
@@ -3690,14 +3120,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -3725,14 +3147,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/page.tsx"
       ],
@@ -3754,14 +3168,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -3802,8 +3208,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T124.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
       "facets": {
         "layer": "harness",
         "workType": "feature",
@@ -3823,14 +3227,6 @@
         "docs",
         "places",
         "perfumes"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "src/jobs/perfumes/perfumes.workflow.ts",
@@ -3859,8 +3255,6 @@
         "review",
         "dashboard"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
       "scope": [],
       "design": null,
       "verify": [],
@@ -3879,8 +3273,6 @@
         "review",
         "dashboard"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
       "scope": [],
       "design": null,
       "verify": [],
@@ -3899,8 +3291,6 @@
         "review",
         "dashboard"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
       "scope": [],
       "design": null,
       "verify": [],
@@ -3916,14 +3306,6 @@
         "docs",
         "harness",
         "convention"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "CLAUDE.md",
@@ -3947,14 +3329,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -3995,14 +3369,6 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T131.md",
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "facets": {
         "layer": "harness",
         "workType": "refactor",
@@ -4022,14 +3388,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -4057,14 +3415,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
         "dashboard/app/ui.tsx",
@@ -4091,14 +3441,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/components/Dag.tsx",
         "dashboard/app/ui.tsx",
@@ -4124,14 +3466,6 @@
         "scheduler",
         "backend",
         "dashboard"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/db/schema.sql",
@@ -4173,14 +3507,6 @@
         "durability",
         "git"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "scope": [
         ".harness/TASKS.json",
         ".harness/reviews.json",
@@ -4218,14 +3544,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/globals.css",
         "dashboard/app/backlog/page.tsx"
@@ -4251,14 +3569,6 @@
         "backend",
         "framework",
         "ui"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/api/server.ts",
@@ -4296,14 +3606,6 @@
         "backend",
         "dashboard",
         "ui"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/db/schema.sql",
@@ -4343,14 +3645,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
         "dashboard/app/globals.css"
@@ -4375,14 +3669,6 @@
         "services",
         "cleanup",
         "coding"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "src/jobs/perfumes/claude-cli.service.ts",
@@ -4409,14 +3695,6 @@
         "ui",
         "design",
         "theming"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "dashboard/app/globals.css",
@@ -4447,14 +3725,6 @@
         "plex",
         "coding"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "scope": [
         "src/jobs/plex",
         "src/services",
@@ -4484,14 +3754,6 @@
         "plex",
         "movies",
         "coding"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/jobs/movies",
@@ -4530,14 +3792,6 @@
         "llm",
         "coding"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "scope": [
         "src/jobs/movies",
         "src/services",
@@ -4564,14 +3818,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
         "dashboard/app/runs/[id]/page.tsx",
@@ -4597,14 +3843,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
@@ -4634,14 +3872,6 @@
         "coding",
         "robustness"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "scope": [
         "src/jobs/plex/client.ts",
         "src/jobs/plex/config.ts",
@@ -4670,14 +3900,6 @@
         "framework",
         "backend"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "src/core/workflow-executor.ts",
         "src/core/workflow-executor.test.ts"
@@ -4704,14 +3926,6 @@
         "movies",
         "dashboard",
         "ui"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "dashboard/app/movie-gaps",
@@ -4744,14 +3958,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/services/page.tsx",
         "src/db/store.ts"
@@ -4778,8 +3984,6 @@
         "dashboard",
         "movies"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
       "scope": [],
       "design": null,
       "verify": [],
@@ -4797,14 +4001,6 @@
         "backend",
         "executor",
         "performance"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/core/workflow-executor.ts",
@@ -4837,14 +4033,6 @@
         "ui",
         "performance"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx"
       ],
@@ -4867,14 +4055,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
@@ -4900,14 +4080,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
         "dashboard/app/globals.css"
@@ -4931,14 +4103,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
@@ -4964,14 +4128,6 @@
         "movies",
         "coding"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "src/jobs/movies"
       ],
@@ -4996,14 +4152,6 @@
         "llm",
         "coding"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "scope": [
         "src/jobs/movies"
       ],
@@ -5027,14 +4175,6 @@
         "framework",
         "backend",
         "bug"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/db/store.ts",
@@ -5066,14 +4206,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/ui.tsx",
         "dashboard/app/workflows/page.tsx",
@@ -5099,14 +4231,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/globals.css"
       ],
@@ -5129,14 +4253,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/runs/[id]/page.tsx",
@@ -5161,14 +4277,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/globals.css",
@@ -5197,14 +4305,6 @@
         "backend",
         "dashboard",
         "ui"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/db/schema.sql",
@@ -5242,14 +4342,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/workflows/[name]/page.tsx",
         "dashboard/app/globals.css"
@@ -5274,14 +4366,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/backlog/page.tsx"
       ],
@@ -5304,14 +4388,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/workflow-runs/[id]/page.tsx",
@@ -5337,14 +4413,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/backlog/page.tsx",
         "dashboard/app/globals.css"
@@ -5369,14 +4437,6 @@
         "movies",
         "logging"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "src/jobs/movies"
       ],
@@ -5399,14 +4459,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "dashboard/app/components/Dag.tsx",
@@ -5432,14 +4484,6 @@
         "movies",
         "logging"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "src/jobs/movies"
       ],
@@ -5462,14 +4506,6 @@
       "tags": [
         "dashboard",
         "ui"
-      ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
       ],
       "scope": [
         "dashboard/app/runs/[id]/page.tsx",
@@ -5497,14 +4533,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/runs/[id]/page.tsx",
         "dashboard/app/ui.tsx",
@@ -5530,14 +4558,6 @@
         "plex",
         "dashboard",
         "ui"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/api/server.ts",
@@ -5570,14 +4590,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/components/Dag.tsx",
         "dashboard/app/globals.css"
@@ -5604,14 +4616,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "scope": [
         "dashboard/app/components/Dag.tsx",
         "dashboard/app/globals.css"
@@ -5636,14 +4640,6 @@
         "movies",
         "performance"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "scope": [
         "src/jobs/movies"
       ],
@@ -5666,14 +4662,6 @@
       "tags": [
         "movies",
         "llm"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/jobs/movies"
@@ -5698,14 +4686,6 @@
         "dashboard",
         "ui",
         "theming"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "dashboard/app/ui.tsx",
@@ -5735,14 +4715,6 @@
         "dashboard",
         "ui"
       ],
-      "model": "claude-sonnet-4-6",
-      "effort": "medium",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "high"
-        }
-      ],
       "scope": [
         "dashboard/app/page.tsx",
         "dashboard/app/globals.css"
@@ -5767,14 +4739,6 @@
         "dashboard",
         "backend",
         "ui"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/core/services.ts",
@@ -5810,14 +4774,6 @@
         "framework",
         "cleanup"
       ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
       "scope": [
         "src/jobs/plex/plex.workflow.ts",
         "src/db/index.ts",
@@ -5849,14 +4805,6 @@
         "movies",
         "framework",
         "cleanup"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
       ],
       "scope": [
         "src/jobs/movies/movies.workflow.ts",

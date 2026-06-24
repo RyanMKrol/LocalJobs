@@ -144,11 +144,11 @@ export function readReviews(path: string = REVIEWS_PATH): Record<string, ReviewE
 function readBacklog(
   path: string = BACKLOG_PATH,
   reviewsPath: string = reviewsPathFor(path),
-): { tasks: unknown[]; defaults?: unknown; error?: string } {
+): { tasks: unknown[]; error?: string } {
   try {
     const baseDir = dirname(path);
     const reviews = readReviews(reviewsPath);
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { tasks?: unknown[]; defaults?: unknown };
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { tasks?: unknown[] };
     const tasks = Array.isArray(parsed.tasks)
       ? parsed.tasks.map((t) => {
           if (!(t && typeof t === 'object' && !Array.isArray(t))) return t;
@@ -158,7 +158,7 @@ function readBacklog(
           return { ...(t as object), reviewed, ...(specContent !== null ? { specContent } : {}) };
         })
       : [];
-    return { tasks, defaults: parsed.defaults };
+    return { tasks };
   } catch (e) {
     return { tasks: [], error: e instanceof Error ? e.message : 'cannot read backlog' };
   }

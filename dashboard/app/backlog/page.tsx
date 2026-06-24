@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { api, type BacklogTask, type BacklogDefaults } from '../lib/api';
+import { api, type BacklogTask } from '../lib/api';
 import { usePoll } from '../ui';
 
 /**
@@ -21,34 +21,12 @@ function TaskSpec({ t, small }: { t: BacklogTask; small?: boolean }) {
   );
 }
 
-type Difficulty = 'easy' | 'medium' | 'hard' | 'very-hard';
-
-function resolveDifficulty(model: string | undefined, effort: string | undefined, defaults: BacklogDefaults | undefined): Difficulty {
-  const m = (model ?? defaults?.model ?? '').replace(/^claude-/, '');
-  const e = effort ?? defaults?.effort ?? '';
-  // Mapping: sonnet@any or @low/medium → easy; opus@high → medium; opus@xhigh → hard; opus@max → very hard
-  if (m.includes('opus')) {
-    if (e === 'max') return 'very-hard';
-    if (e === 'xhigh') return 'hard';
-    return 'medium'; // opus@high or unspecified
-  }
-  return 'easy'; // sonnet or unknown
-}
-
-function difficultyPill(t: BacklogTask, defaults: BacklogDefaults | undefined) {
-  const d = resolveDifficulty(t.model, t.effort, defaults);
-  const labels: Record<Difficulty, string> = { easy: 'easy', medium: 'medium', hard: 'hard', 'very-hard': 'very hard' };
-  return <span className={`pill diff-${d}`}>{labels[d]}</span>;
-}
-
 /** Shared compact row that collapses/expands for all three backlog sections. */
 function CollapsibleRow({
   t,
-  defaults,
   onToggleReviewed,
 }: {
   t: BacklogTask;
-  defaults: BacklogDefaults | undefined;
   onToggleReviewed?: (t: BacklogTask) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -79,7 +57,6 @@ function CollapsibleRow({
         <span style={{ flex: 1 }}>{t.title}</span>
         {buildable && <span className="pill buildable" style={{ flexShrink: 0 }}>🤖 buildable</span>}
         {human && <span className="pill human" style={{ flexShrink: 0 }}>🔒 needs human</span>}
-        <span style={{ flexShrink: 0 }}>{difficultyPill(t, defaults)}</span>
         {isDone && (
           <>
             <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`} style={{ flexShrink: 0 }}>
@@ -145,7 +122,6 @@ export default function Backlog() {
   };
 
   const tasks = data?.tasks ?? [];
-  const defaults = data?.defaults;
   const allDone = tasks.filter((t) => t.status === 'done').sort((a, b) => a.id.localeCompare(b.id));
   const reviewedCount = allDone.filter((t) => t.reviewed === true).length;
   const done = allDone.filter((t) =>
@@ -174,7 +150,7 @@ export default function Backlog() {
           </summary>
           <div className="panel" style={{ padding: '0 14px' }}>
             {buildable.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
-            {buildable.map((t) => <CollapsibleRow key={t.id} t={t} defaults={defaults} />)}
+            {buildable.map((t) => <CollapsibleRow key={t.id} t={t} />)}
           </div>
         </details>
 
@@ -185,7 +161,7 @@ export default function Backlog() {
           <p className="sub">The loop skips these — work them manually.</p>
           <div className="panel" style={{ padding: '0 14px' }}>
             {human.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
-            {human.map((t) => <CollapsibleRow key={t.id} t={t} defaults={defaults} />)}
+            {human.map((t) => <CollapsibleRow key={t.id} t={t} />)}
           </div>
         </details>
 
@@ -208,7 +184,7 @@ export default function Backlog() {
           </div>
           <div className="panel" style={{ padding: '0 14px' }}>
             {done.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None{reviewFilter !== 'all' ? ' matching this filter' : ' yet'}.</p>}
-            {done.map((t) => <CollapsibleRow key={t.id} t={t} defaults={defaults} onToggleReviewed={toggleReviewed} />)}
+            {done.map((t) => <CollapsibleRow key={t.id} t={t} onToggleReviewed={toggleReviewed} />)}
           </div>
         </details>
       </div>

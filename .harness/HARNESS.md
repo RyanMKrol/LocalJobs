@@ -70,18 +70,17 @@ then with the smallest sample (1–2 items). **Never skip verification to avoid 
 task is not done. (Only a task that would have to *exceed* the monthly cap to verify records
 `failed:blocked`.)
 
-## 6. Models & escalation
+## 6. Model selection (auto-tuned — no per-task models)
 
-Per-task `model`/`effort` in `TASKS.json` (Opus for code/complex, Sonnet for simple), falling back
-to `defaults` then `harness.env`. After `MAX_ATTEMPTS` soft failures on a rung, the loop climbs the
-escalation ladder; past the top rung it stops for a human.
-
-**Difficulty is now auto-tuned (see `designs/difficulty-autotune.md`).** The loop rides ONE global
-tier ladder (`facets.json → .tiers.ladder`) and a policy (`policy.jq`) picks each task's START tier
-from its `(layer × work-type)` facet cell's escalation history (cheapest tier clearing floor 0.75
-with ≥6 samples; else the authored difficulty). Every built task's outcome is captured to
-`.harness/outcomes.jsonl` (the sole calibration input; forward-only). The authored `model`/`effort`
-is now just the cold-start prior. `needs-human` tasks are carved out entirely.
+Tasks do **not** carry per-task `model`/`effort`/`escalation` — difficulty is **auto-tuned** (see
+`designs/difficulty-autotune.md`). The loop rides ONE global tier ladder (`facets.json →
+.tiers.ladder`, cheapest→priciest) and a policy (`policy.jq`) picks each task's START tier from its
+`(layer × work-type)` facet cell's escalation history (the cheapest tier clearing floor 0.75 with ≥6
+samples; else the cold-start floor). After `MAX_ATTEMPTS` soft failures on a tier the loop climbs the
+ladder; past the top tier it stops for a human. Every built task's outcome is captured to
+`.harness/outcomes.jsonl` (the sole calibration input; forward-only). The **cold-start floor** is the
+cheapest tier (`sonnet/low`, set in `harness.env`) — used until a cell has enough samples.
+`needs-human` tasks are carved out entirely (no facets, no calibration).
 
 ## 7. Usage-limit backoff (pause + auto-resume)
 
@@ -100,18 +99,14 @@ agent must not edit it.
 ```jsonc
 {
   "version": 1,
-  "defaults": { "model": "claude-opus-4-8", "effort": "high",
-                "escalation": [ { "model": "claude-opus-4-8", "effort": "xhigh" } ] },
   "tasks": [
     {
       "id": "T001", "title": "…", "status": "pending",   // pending | done  (SHELL-owned)
       // NOTE: NO `reviewed` field — since T136 it lives in owner-owned .harness/reviews.json
       "dependsOn": [], "gate": null,                      // gate: null | "gate" | "needs-human"
-      "model": "claude-sonnet-4-6", "effort": "medium",   // COLD-START PRIOR only — the policy now picks difficulty (see facets below)
-      "escalation": [ … ],                                // legacy/optional — escalation now walks the global tier ladder (facets.json .tiers.ladder)
       "facets": { "layer": "ui", "workType": "style", "risk": [] },  // difficulty auto-tuning (OMIT for needs-human); values from .harness/facets.json
       "scope": ["src/…"], "verify": [],
-      "spec": ".harness/tasks/T001.md"                    // do/doneWhen live in this MD (T131)
+      "spec": ".harness/tasks/T001.md"                    // do/doneWhen live in this MD (T131); NO per-task model/effort/escalation
     }
   ]
 }
@@ -122,21 +117,21 @@ one-time human step (the agent prepares around it and records `failed:blocked`).
 
 **`facets` — difficulty auto-tuning (see `designs/difficulty-autotune.md`).** Each BUILDABLE task
 carries `facets: { layer, workType, risk[] }`, chosen from the controlled vocabulary in
-`.harness/facets.json`. The loop's policy reads them to pick the task's STARTING difficulty from
-escalation history (the outcomes ledger), so `model`/`effort` are now just a **cold-start prior**
-(used only until a `(layer × work-type)` cell has ≥ `minN` samples). `needs-human` tasks are CARVED
-OUT — they get **no** `facets` and never enter calibration. Facets are normally assigned by the
-add-to-backlog skill; a buildable task that's missing them **degrades gracefully** (the policy falls
-back to the prior) but won't benefit from / contribute to calibration until tagged — so prefer
-authoring through the skill, or add `facets` by hand.
+`.harness/facets.json`. The loop's policy reads them to pick the task's STARTING tier from escalation
+history (the outcomes ledger); until a `(layer × work-type)` cell has ≥ `minN` samples it cold-starts
+at the cheapest floor (`sonnet/low`). `needs-human` tasks are CARVED OUT — they get **no** `facets`
+and never enter calibration. Facets are normally assigned by the add-to-backlog skill; a buildable
+task that's missing them **degrades gracefully** (the policy falls back to the cold-start floor) but
+won't benefit from / contribute to calibration until tagged — so prefer authoring through the skill,
+or add `facets` by hand.
 
 **`do`/`doneWhen` live in a per-task Markdown spec (T131).** Each task's *what to build* and *the
 bar for done* are NOT flat strings in TASKS.json — they live in a per-task Markdown file at
 `.harness/tasks/TNNN.md` with exactly two sections, `## Do` and `## Done when`, referenced by the
 task's `spec` field (a repo-relative path). This is more expressive than a JSON string and renders
 cleanly on the dashboard. TASKS.json keeps **every other field** (the orchestration fields above —
-`status`, `dependsOn`, `gate`, `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design` —
-but NOT `reviewed`, which lives in `.harness/reviews.json`, see below). The loop's per-task prompt reads all orchestration fields from JSON and
+`status`, `dependsOn`, `gate`, `facets`, `scope`, `tags`, `verify`, `design` — but NOT `reviewed`,
+which lives in `.harness/reviews.json`, see below). The loop's per-task prompt reads all orchestration fields from JSON and
 **appends the spec MD's full text** (`task_spec_rel` + `cat` in `loop.sh prompt()`);
 `GET /api/backlog` inlines the file as `specContent` (`readTaskSpec`, confined to
 `.harness/tasks/*.md`) and the Backlog page renders it as markdown.
