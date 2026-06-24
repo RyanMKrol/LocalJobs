@@ -3805,7 +3805,7 @@
     {
       "id": "T147",
       "title": "Consistent workflow-run back link across the gate page + run/job page (shared component, readable format)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
