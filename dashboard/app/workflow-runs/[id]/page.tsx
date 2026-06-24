@@ -78,14 +78,16 @@ function parseFrontmatter(content: string): { fields: [string, string][]; body: 
   return { fields, body };
 }
 
-/** Returns true if a raw frontmatter value string should be hidden (empty/null/blank). */
+/** Returns true if a raw frontmatter value string is effectively empty/null. */
 function isFmEmpty(v: string): boolean {
   if (!v || v === 'null' || v === '~') return true;
   try { const p = JSON.parse(v); return Array.isArray(p) && p.length === 0; } catch { return false; }
 }
 
-/** Render a raw frontmatter value: JSON arrays become comma-separated text; others pass through. */
+/** Render a raw frontmatter value: JSON arrays become comma-separated text; empty/null values
+ *  get a highlighted placeholder so missing data is visible rather than silently absent. */
 function renderFmValue(v: string): React.ReactNode {
+  if (isFmEmpty(v)) return <span className="md-fm-null">null</span>;
   try {
     const p = JSON.parse(v);
     if (Array.isArray(p) && p.every((x) => x === null || typeof x !== 'object')) {
@@ -115,7 +117,6 @@ function MarkdownModal(
   }, [onClose]);
 
   const parsed = content ? parseFrontmatter(content) : null;
-  const visibleFields = parsed ? parsed.fields.filter(([, v]) => !isFmEmpty(v)) : [];
 
   return (
     <div className="db-modal-overlay" onClick={onClose}>
@@ -129,9 +130,9 @@ function MarkdownModal(
           {!loading && parsed && (
             <>
               {truncated && <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>⚠ Output is large — showing the first part only.</p>}
-              {visibleFields.length > 0 && (
+              {parsed.fields.length > 0 && (
                 <dl className="md-fm">
-                  {visibleFields.map(([k, v]) => (
+                  {parsed.fields.map(([k, v]) => (
                     <div key={k} className="md-fm-row">
                       <dt className="md-fm-key">{k}</dt>
                       <dd className="md-fm-val">{renderFmValue(v)}</dd>

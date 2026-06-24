@@ -295,6 +295,7 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 .md-fm-key { font-size: 11px; color: var(--muted); font-weight: 600;
   text-transform: uppercase; letter-spacing: .04em; align-self: baseline; }
 .md-fm-val { font-size: 12px; overflow-wrap: anywhere; min-width: 0; align-self: baseline; }
+.md-fm-null { font-weight: 700; color: var(--amber); font-style: italic; }
 
 /* Rendered markdown body (T115). */
 .md-body { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
