@@ -640,15 +640,21 @@ html[data-theme]:not([data-theme="default"]) .statcard {
   border-radius: var(--card-radius, 14px);
 }
 
-/* Hover-lift on interactive cards/rows. */
+/* Hover-lift on interactive cards (not table rows — transform on <tr> sub-pixel jitters). */
 html[data-theme]:not([data-theme="default"]):not([data-motion="reduced"]) .statcard,
 html[data-theme]:not([data-theme="default"]):not([data-motion="reduced"]) .dag-node {
   transition: transform .15s ease, border-color .15s, box-shadow .15s;
 }
 html[data-theme]:not([data-theme="default"]):not([data-motion="reduced"]) .statcard:hover,
-html[data-theme]:not([data-theme="default"]):not([data-motion="reduced"]) tbody tr:hover,
 html[data-theme]:not([data-theme="default"]):not([data-motion="reduced"]) .dag-node:hover {
   transform: translateY(-2px);
+}
+/* Table rows get a non-reflowing inset left-accent instead of a transform. */
+html[data-theme]:not([data-theme="default"]) tbody tr {
+  transition: background .12s, box-shadow .12s;
+}
+html[data-theme]:not([data-theme="default"]) tbody tr:hover {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* The signature yellow-spark flash: a success badge glows once in the theme's
