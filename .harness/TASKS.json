@@ -3919,39 +3919,6 @@
       "reviewed": false
     },
     {
-      "id": "T151",
-      "title": "Rename the plex workflow to a clearer name (missing-tv-seasons) + DB migration",
-      "status": "pending",
-      "dependsOn": [],
-      "gate": null,
-      "tags": [
-        "workflow",
-        "plex",
-        "framework",
-        "cleanup"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
-      "scope": [
-        "src/jobs/plex/plex.workflow.ts",
-        "src/db/index.ts",
-        "src/db/migrate-existing-db.test.ts",
-        "README.md",
-        "CLAUDE.md",
-        ".env.example"
-      ],
-      "design": null,
-      "verify": [],
-      "spec": ".harness/tasks/T151.md",
-      "reviewed": false
-    },
-    {
       "id": "T152",
       "title": "Move the movie-gaps management (ignore recommendations/gaps) into the movies workflow page; remove the top-level page",
       "status": "pending",
@@ -4288,6 +4255,147 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T163.md",
+      "reviewed": false
+    },
+    {
+      "id": "T164",
+      "title": "Cron hint missing for monthly schedule (movies): extend cronToEnglish + ensure all schedules use the shared CronBadge",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T164.md",
+      "reviewed": false
+    },
+    {
+      "id": "T165",
+      "title": "Table row hover jitters — remove the translateY hover-lift on rows (keep a non-reflowing highlight)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T165.md",
+      "reviewed": false
+    },
+    {
+      "id": "T166",
+      "title": "Run detail: align the status pill with the job-name title line (not centred against title+subtitle)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T166.md",
+      "reviewed": false
+    },
+    {
+      "id": "T167",
+      "title": "Progress bar: stop the scrolling barber-pole animation once a run is finished/100%",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T167.md",
+      "reviewed": false
+    },
+    {
+      "id": "T151",
+      "title": "Rename the plex workflow to a clearer name (missing-tv-seasons) + DB migration",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "plex",
+        "framework",
+        "cleanup"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/jobs/plex/plex.workflow.ts",
+        "src/db/index.ts",
+        "src/db/migrate-existing-db.test.ts",
+        "README.md",
+        "CLAUDE.md",
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T151.md",
       "reviewed": false
     }
   ]
