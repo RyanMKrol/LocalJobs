@@ -4337,7 +4337,7 @@
     {
       "id": "T169",
       "title": "Make workflow maxConcurrency editable from the workflow detail page (like schedule/enabled)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T156"
       ],
