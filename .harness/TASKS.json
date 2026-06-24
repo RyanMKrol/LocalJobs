@@ -3981,7 +3981,7 @@
     {
       "id": "T154",
       "title": "Joyful dashboard iteration 2: 10 themes (Pixel Picnic + Sunny 8-bit families) + narrowed rounded fonts",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T142"
       ],
