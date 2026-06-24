@@ -41,53 +41,35 @@ function difficultyPill(t: BacklogTask, defaults: BacklogDefaults | undefined) {
   return <span className={`pill diff-${d}`}>{labels[d]}</span>;
 }
 
-function statusPill(t: BacklogTask) {
-  if (t.status === 'done') {
-    return <span className="pill done">✓ done</span>;
-  }
-  // Pending is pending. Nothing is "in progress" unless a job is actively running, which
-  // TASKS.json does not track — so a not-done task shows its real status. (The DAG view does
-  // not single out a "next" task — T076 dropped that concept.)
-  return <span className="pill">{t.status}</span>;
-}
-
-function TaskCard({ t, defaults }: { t: BacklogTask; defaults: BacklogDefaults | undefined }) {
+/** Shared compact row that collapses/expands for all three backlog sections. */
+function CollapsibleRow({
+  t,
+  defaults,
+  onToggleReviewed,
+}: {
+  t: BacklogTask;
+  defaults: BacklogDefaults | undefined;
+  onToggleReviewed?: (t: BacklogTask) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
   const human = t.gate === 'needs-human' || t.gate === 'gate';
   const buildable = t.status !== 'done' && !human;
-  return (
-    <div className="panel" style={{ padding: 14, marginBottom: 8, borderColor: human ? 'var(--accent)' : buildable ? 'var(--amber)' : undefined }}>
-      <div className="row" style={{ gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <span className="mono" style={{ fontWeight: 700 }}>{t.id}</span>
-        <strong>{t.title}</strong>
-        <div className="spacer" />
-        {buildable && <span className="pill buildable">🤖 buildable</span>}
-        {human && <span className="pill" style={{ background: 'var(--accent)', color: '#fff' }}>🔒 needs human</span>}
-        {difficultyPill(t, defaults)}
-        {statusPill(t)}
-      </div>
-      {t.dependsOn && t.dependsOn.length > 0 && (
-        <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-          depends on: <span className="mono">{t.dependsOn.join(', ')}</span>
-        </div>
-      )}
-      <TaskSpec t={t} />
-      <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-        {t.tags?.map((tag) => (
-          <span key={tag} className="pill" style={{ marginRight: 4 }}>{tag}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DoneRow({ t, onToggleReviewed }: { t: BacklogTask; onToggleReviewed: (t: BacklogTask) => void }) {
-  const [expanded, setExpanded] = useState(false);
+  const isDone = t.status === 'done';
   const reviewed = t.reviewed === true;
+
   return (
     <div>
       <div
         className="row done-row"
-        style={{ gap: 8, padding: '5px 0', borderBottom: expanded ? 'none' : '1px solid var(--border)', alignItems: 'baseline', flexWrap: 'wrap', cursor: 'pointer', userSelect: 'none' }}
+        style={{
+          gap: 8,
+          padding: '5px 0',
+          borderBottom: expanded ? 'none' : '1px solid var(--border)',
+          alignItems: 'baseline',
+          flexWrap: 'wrap',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
         onClick={() => setExpanded((e) => !e)}
         role="button"
         aria-expanded={expanded}
@@ -95,19 +77,26 @@ function DoneRow({ t, onToggleReviewed }: { t: BacklogTask; onToggleReviewed: (t
         <span className="muted" style={{ fontSize: 10, minWidth: 10 }}>{expanded ? '▾' : '▸'}</span>
         <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
         <span style={{ flex: 1 }}>{t.title}</span>
-        <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`} style={{ flexShrink: 0 }}>
-          {reviewed ? '👁 reviewed' : 'not reviewed'}
-        </span>
-        <button
-          type="button"
-          className="review-toggle"
-          style={{ flexShrink: 0 }}
-          onClick={(e) => { e.stopPropagation(); onToggleReviewed(t); }}
-          title={reviewed ? 'Mark this task as not reviewed' : 'Mark this task as reviewed'}
-        >
-          {reviewed ? 'Mark not reviewed' : 'Mark as reviewed'}
-        </button>
-        <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
+        {buildable && <span className="pill buildable" style={{ flexShrink: 0 }}>🤖 buildable</span>}
+        {human && <span className="pill human" style={{ flexShrink: 0 }}>🔒 needs human</span>}
+        <span style={{ flexShrink: 0 }}>{difficultyPill(t, defaults)}</span>
+        {isDone && (
+          <>
+            <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`} style={{ flexShrink: 0 }}>
+              {reviewed ? '👁 reviewed' : 'not reviewed'}
+            </span>
+            <button
+              type="button"
+              className="review-toggle"
+              style={{ flexShrink: 0 }}
+              onClick={(e) => { e.stopPropagation(); onToggleReviewed?.(t); }}
+              title={reviewed ? 'Mark this task as not reviewed' : 'Mark this task as reviewed'}
+            >
+              {reviewed ? 'Mark not reviewed' : 'Mark as reviewed'}
+            </button>
+            <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
+          </>
+        )}
       </div>
       {expanded && (
         <div style={{ padding: '8px 14px 12px', borderBottom: '1px solid var(--border)', background: 'var(--panel-2)', borderRadius: '0 0 4px 4px' }}>
@@ -179,21 +168,25 @@ export default function Backlog() {
       {pushWarning && <p className="muted" style={{ fontSize: 12 }}>⚠ Review saved locally but not pushed to GitHub ({pushWarning}). It will sync on the next successful push.</p>}
 
       <div>
-        <details open>
+        <details>
           <summary className="section-heading-summary">
             🤖 Harness-buildable ({buildable.length})
           </summary>
-          {buildable.length === 0 && <p className="muted">None.</p>}
-          {buildable.map((t) => <TaskCard key={t.id} t={t} defaults={defaults} />)}
+          <div className="panel" style={{ padding: '0 14px' }}>
+            {buildable.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
+            {buildable.map((t) => <CollapsibleRow key={t.id} t={t} defaults={defaults} />)}
+          </div>
         </details>
 
-        <details open style={{ marginTop: 28 }}>
+        <details style={{ marginTop: 28 }}>
           <summary className="section-heading-summary">
             🔒 Needs a human ({human.length})
           </summary>
           <p className="sub">The loop skips these — work them manually.</p>
-          {human.length === 0 && <p className="muted">None.</p>}
-          {human.map((t) => <TaskCard key={t.id} t={t} defaults={defaults} />)}
+          <div className="panel" style={{ padding: '0 14px' }}>
+            {human.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
+            {human.map((t) => <CollapsibleRow key={t.id} t={t} defaults={defaults} />)}
+          </div>
         </details>
 
         <details style={{ marginTop: 28 }}>
@@ -215,7 +208,7 @@ export default function Backlog() {
           </div>
           <div className="panel" style={{ padding: '0 14px' }}>
             {done.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None{reviewFilter !== 'all' ? ' matching this filter' : ' yet'}.</p>}
-            {done.map((t) => <DoneRow key={t.id} t={t} onToggleReviewed={toggleReviewed} />)}
+            {done.map((t) => <CollapsibleRow key={t.id} t={t} defaults={defaults} onToggleReviewed={toggleReviewed} />)}
           </div>
         </details>
       </div>
