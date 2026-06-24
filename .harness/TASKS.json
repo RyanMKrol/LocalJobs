@@ -4231,6 +4231,33 @@
       "verify": [],
       "spec": ".harness/tasks/T161.md",
       "reviewed": false
+    },
+    {
+      "id": "T162",
+      "title": "Movies recommendations: enforce quality (TMDB rating ≥7) + target at least 15 recommendations",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "movies",
+        "llm",
+        "coding"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/jobs/movies"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T162.md",
+      "reviewed": false
     }
   ]
 }
