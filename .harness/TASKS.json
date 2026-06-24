@@ -1087,7 +1087,7 @@
       "title": "Dashboard styling — make it more joyful",
       "status": "pending",
       "dependsOn": [
-        "T154"
+        "T184"
       ],
       "gate": "needs-human",
       "tags": [
@@ -3981,39 +3981,6 @@
       "reviewed": false
     },
     {
-      "id": "T154",
-      "title": "Joyful dashboard iteration 2: 10 themes (Pixel Picnic + Sunny 8-bit families) + narrowed rounded fonts",
-      "status": "done",
-      "dependsOn": [
-        "T142"
-      ],
-      "gate": null,
-      "tags": [
-        "dashboard",
-        "ui",
-        "design",
-        "theming"
-      ],
-      "model": "claude-opus-4-8",
-      "effort": "high",
-      "escalation": [
-        {
-          "model": "claude-opus-4-8",
-          "effort": "xhigh"
-        }
-      ],
-      "scope": [
-        "dashboard/app/globals.css",
-        "dashboard/app/ui.tsx",
-        "dashboard/app/layout.tsx",
-        "dashboard/package.json"
-      ],
-      "design": null,
-      "verify": [],
-      "spec": ".harness/tasks/T154.md",
-      "reviewed": false
-    },
-    {
       "id": "T155",
       "title": "Evaluate: movies graph shows a validation gate under the gaps-notify job, not between two jobs",
       "status": "done",
@@ -4788,6 +4755,97 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T183.md",
+      "reviewed": false
+    },
+    {
+      "id": "T184",
+      "title": "Trim appearance selector to 3 themes (each light+dark, auto time-of-day) + 3 fonts (Baloo 2 / system / Space Mono)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "theming"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/layout.tsx",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T184.md",
+      "reviewed": false
+    },
+    {
+      "id": "T185",
+      "title": "Home page: cap the recent workflow runs table at ~12 rows, scroll the rest",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T185.md",
+      "reviewed": false
+    },
+    {
+      "id": "T186",
+      "title": "Services: click a service to see which workflows/jobs use it (runtime-recorded consumers)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "backend",
+        "ui"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/core/services.ts",
+        "src/db/store.ts",
+        "src/db/schema.sql",
+        "src/api/server.ts",
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T186.md",
       "reviewed": false
     },
     {
