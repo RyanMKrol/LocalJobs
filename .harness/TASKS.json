@@ -4034,7 +4034,7 @@
     {
       "id": "T156",
       "title": "Workflow manager: run independent stages in parallel (raise default concurrency from 1)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
