@@ -534,8 +534,10 @@ doubt, log it.
     whereas `ignoreWorkItem` requires a `failed` row. The notify stage then excludes
     ignored keys from BOTH the report (`ignoredItemKeys(jobName)`) AND notifications
     (`isWorkItemDone` already treats `ignored` as done, so it's never re-notified).
-    Wired for movies via `POST /api/movie-gaps/:tmdbId/ignore` + the **Movie gaps**
-    dashboard page; still MANUAL-ONLY (nothing auto-ignores). Reuse this shape for
+    Wired for movies via `POST /api/movie-gaps/:tmdbId/ignore` + a "Recommendations &
+    gaps" management section on the **movies workflow detail page** (`/workflows/movies`,
+    gated to render only for that workflow — T152 folded it in from the old dedicated
+    top-level `/movie-gaps` page); still MANUAL-ONLY (nothing auto-ignores). Reuse this shape for
     any future periodic-audit workflow that needs the owner to permanently silence a
     factual-but-unwanted finding. The movies **recommendation layer** (T146) reuses
     it verbatim for recs: `ignoreSurfacedItem('movie-recs', <tmdbId>)` excludes a rec

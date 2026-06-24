@@ -75,7 +75,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <nav>
               <a href="/">Overview</a>
               <a href="/workflows">Workflows</a>
-              <a href="/movie-gaps">Movie gaps</a>
               <a href="/services">Services</a>
               <a href="/db">Database</a>
               <a href="/backlog">Backlog</a>

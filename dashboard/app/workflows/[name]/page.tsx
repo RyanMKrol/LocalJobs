@@ -2,8 +2,144 @@
 
 import { use, useState } from 'react';
 import { Dag } from '../../components/Dag';
-import { api } from '../../lib/api';
+import { api, type MovieGap } from '../../lib/api';
 import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
+
+/** Group gaps by collection name, sorted by name; films sorted by year then title. */
+function groupByCollection(gaps: MovieGap[]): [string, MovieGap[]][] {
+  const map = new Map<string, MovieGap[]>();
+  for (const g of gaps) {
+    const arr = map.get(g.collectionName) ?? [];
+    arr.push(g);
+    map.set(g.collectionName, arr);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([name, films]) => [
+      name,
+      films.sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || a.title.localeCompare(b.title)),
+    ] as [string, MovieGap[]]);
+}
+
+/**
+ * Manage-outputs section for the **movies** workflow: lists the current franchise
+ * gaps with a per-item Ignore control so the owner can suppress ones they don't
+ * want surfaced again. Backed by the existing `/api/movie-gaps` endpoints; ignoring
+ * a gap drops it from future reports + notifications (`ignoreSurfacedItem`). This
+ * used to be a dedicated top-level page (T145); T152 folded it into the workflow's
+ * own detail page since it only manages this one workflow's outputs.
+ */
+function MovieGapsManager() {
+  const { data, error } = usePoll(() => api.movieGaps(), 5000);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const all = data?.gaps ?? [];
+  const active = all.filter((g) => !g.ignored);
+  const ignored = all.filter((g) => g.ignored);
+
+  async function ignore(g: MovieGap) {
+    if (!confirm(`Ignore “${g.title}”? It will be excluded from future reports and notifications, even though you don't own it.`)) return;
+    setBusy(g.tmdbId);
+    setErr(null);
+    try {
+      await api.ignoreMovieGap(g.tmdbId);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <h2>Recommendations &amp; gaps</h2>
+      <p className="muted" style={{ fontSize: 13 }}>
+        Films you own <em>some but not all</em> of, detected via the TMDB Collections API. Every
+        factual gap is shown (no quality filter); the TMDB rating is context only. Ignore a gap to
+        suppress it from future reports and notifications.
+      </p>
+
+      {error && <p className="error">Failed to load: {String(error)}</p>}
+      {err && <p className="error">{err}</p>}
+
+      {data && data.generatedAt == null && (
+        <div className="panel">
+          <p className="muted">
+            No audit has run yet. This workflow runs monthly (or run it manually) — the detected
+            franchise gaps will appear here.
+          </p>
+        </div>
+      )}
+
+      {data && data.generatedAt != null && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          {active.length} active gap{active.length === 1 ? '' : 's'} across{' '}
+          {groupByCollection(active).length} collection
+          {groupByCollection(active).length === 1 ? '' : 's'} · {data.collectionsChecked} collections
+          checked{ignored.length ? ` · ${ignored.length} ignored` : ''}.
+        </p>
+      )}
+
+      {groupByCollection(active).map(([cname, films]) => (
+        <div className="panel" key={cname}>
+          <h3 style={{ fontSize: 15, marginTop: 0 }}>{cname}</h3>
+          <table>
+            <thead>
+              <tr><th>Film</th><th>Year</th><th>TMDB</th><th></th></tr>
+            </thead>
+            <tbody>
+              {films.map((g) => (
+                <tr key={g.tmdbId}>
+                  <td>
+                    <a href={`https://www.themoviedb.org/movie/${g.tmdbId}`} target="_blank" rel="noreferrer">
+                      {g.title}
+                    </a>
+                    {g.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
+                  </td>
+                  <td>{g.year ?? '—'}</td>
+                  <td>{g.tmdbRating != null ? g.tmdbRating.toFixed(1) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button onClick={() => ignore(g)} disabled={busy === g.tmdbId}>
+                      {busy === g.tmdbId ? 'Ignoring…' : '✕ Ignore'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+
+      {ignored.length > 0 && (
+        <div className="panel">
+          <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Suppressed by you — never reported or notified, even though you don&apos;t own them.
+          </p>
+          <table>
+            <thead>
+              <tr><th>Film</th><th>Collection</th><th>Year</th></tr>
+            </thead>
+            <tbody>
+              {ignored.map((g) => (
+                <tr key={g.tmdbId} className="muted">
+                  <td>
+                    <a href={`https://www.themoviedb.org/movie/${g.tmdbId}`} target="_blank" rel="noreferrer">
+                      {g.title}
+                    </a>
+                  </td>
+                  <td>{g.collectionName}</td>
+                  <td>{g.year ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function WorkflowDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
@@ -138,6 +274,8 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
           </tbody>
         </table>
       </div>
+
+      {name === 'movies' && <MovieGapsManager />}
     </>
   );
 }

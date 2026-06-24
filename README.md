@@ -437,10 +437,14 @@ idempotency (no `inputKeys()`, re-computes fresh, ledger only in notify). There 
 **no quality filter and no skip heuristics** — every factual gap is surfaced; the
 TMDB rating rides along for the owner's context only. Deduped per missing film so a
 gap is announced once (first run = one big digest of the whole backlog). A gap leaves
-future reports AND notifications ONLY when the owner manually **ignores** it (the
-**Movie gaps** dashboard page lists every current gap grouped by collection with a
-TMDB link + rating and an ✕ Ignore button → `POST /api/movie-gaps/:tmdbId/ignore` →
-`ignoreSurfacedItem`, which parks the ledger row `ignored`). Nothing auto-ignores.
+future reports AND notifications ONLY when the owner manually **ignores** it. That
+manage/ignore UI lives on the **movies workflow detail page** (`/workflows/movies`),
+in a "Recommendations & gaps" section that lists every current gap grouped by
+collection with a TMDB link + rating and an ✕ Ignore button →
+`POST /api/movie-gaps/:tmdbId/ignore` → `ignoreSurfacedItem`, which parks the ledger
+row `ignored`. (It used to be a dedicated top-level `/movie-gaps` page; T152 folded it
+into the workflow's own page since it only manages this one workflow's outputs — the
+section is gated to render only for the movies workflow.) Nothing auto-ignores.
 
 The same monthly run ALSO produces taste-based **recommendations** (T146) — the
 subjective half of the audit. Off the snapshot, **8 Claude recommender branches**
