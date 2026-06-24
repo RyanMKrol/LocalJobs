@@ -4739,6 +4739,32 @@
       "reviewed": false
     },
     {
+      "id": "T182",
+      "title": "rec-merge top-up: re-prompt the recommender branches concurrently (bounded), not sequentially",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "movies",
+        "performance"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/jobs/movies"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T182.md",
+      "reviewed": false
+    },
+    {
       "id": "T151",
       "title": "Rename the plex workflow to a clearer name (missing-tv-seasons) + DB migration",
       "status": "done",
