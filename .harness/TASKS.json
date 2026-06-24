@@ -4514,6 +4514,32 @@
       "reviewed": false
     },
     {
+      "id": "T174",
+      "title": "Movies logs: name the items (e.g. which movies have no tmdb:// GUID), not just counts",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "movies",
+        "logging"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/jobs/movies"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T174.md",
+      "reviewed": false
+    },
+    {
       "id": "T151",
       "title": "Rename the plex workflow to a clearer name (missing-tv-seasons) + DB migration",
       "status": "done",
