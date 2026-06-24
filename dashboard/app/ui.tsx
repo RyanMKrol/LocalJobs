@@ -48,10 +48,12 @@ export function StatusBadge({ status }: { status: RunStatus }) {
   );
 }
 
-export function ProgressBar({ pct }: { pct: number }) {
+export function ProgressBar({ pct, done }: { pct: number; done?: boolean }) {
+  const clampedPct = Math.max(0, Math.min(100, pct));
+  const isDone = done ?? clampedPct >= 100;
   return (
-    <div className="progress">
-      <span style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+    <div className={isDone ? 'progress done' : 'progress'}>
+      <span style={{ width: `${clampedPct}%` }} />
     </div>
   );
 }

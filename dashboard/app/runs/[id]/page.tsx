@@ -51,7 +51,7 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
           </div>
 
           <div style={{ margin: '16px 0' }}>
-            <ProgressBar pct={run.status === 'success' ? 100 : run.progress} />
+            <ProgressBar pct={run.status === 'success' ? 100 : run.progress} done={run.status !== 'running'} />
             <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
               {run.progress}% {run.progress_msg && `· ${run.progress_msg}`}
             </div>
