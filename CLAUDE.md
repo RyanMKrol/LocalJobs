@@ -67,12 +67,13 @@ and tell the user.
 
 `local-jobs` is a self-hosted job orchestrator + dashboard that runs on an
 always-on **Mac Mini**. Its purpose is to host **long-running / headless local
-work** that doesn't fit serverless or a web request. The repo ships two
+work** that doesn't fit serverless or a web request. The repo ships three
 worked-example workflows: **places** (headless CID→place_id resolution → Google
 Places API enrichment → Gemini LLM summaries, writing enriched JSON + markdown
-profiles to local files) and **perfumes** (Fragrantica scrape → headless Chrome
-fetch → parse → Claude CLI profile build). Private workflows are added as
-gitignored subfolders.
+profiles to local files), **perfumes** (Fragrantica scrape → headless Chrome
+fetch → parse → Claude CLI profile build), and **plex** (snapshot the Plex TV
+library by GUID → check TMDB for complete missing seasons → weekly digest push).
+Private workflows are added as gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
 distributed system. Do not introduce Docker, external databases, message
@@ -395,6 +396,20 @@ doubt, log it.
   (resolver by CID, enrich + LLM by place_id); the rich output still goes to the
   job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
   "skip if it's in the JSON file" checks.
+  - **Variant — "re-scan + notification-log" idempotency (the `plex` workflow,
+    T144).** Some workflows have NO static input list to skip-against: their inputs
+    are DISCOVERED live each run (the plex audit re-reads the whole Plex library +
+    re-checks TMDB every time). Such a workflow **declares no `inputKeys()`** (so it
+    is NOT limitable — scheduled-only, always unlimited) and its scan/check stages
+    deliberately **re-compute fresh every run** (no skip-if-done). Idempotency then
+    lives ONLY in the FINAL stage, which uses the `work_items` ledger not as a
+    "work-done" log but as a **"have I already notified this?" log**: it keys each
+    actionable result `(notify-job, "<id>::S<n>")`, treats rows NOT yet `success` as
+    newly-detected, sends ONE digest of just those, and marks them done so each is
+    announced exactly once (first run = the whole current backlog). Record ledger
+    rows ONLY for actionable items so the IO panel highlights those, not the 600+
+    "up to date" rows. Same-key stages → `root_key = item_key` naturally (no lineage
+    args). Use this shape when the work is a periodic audit/alert, not a build.
   - **Run→work-item attribution (`work_item_runs`, T139).** `work_items` stays the
     CUMULATIVE, idempotent ledger keyed by `(job_name, item_key)` with NO run
     linkage. The separate append-only `work_item_runs` table
