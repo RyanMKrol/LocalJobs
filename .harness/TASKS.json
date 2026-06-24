@@ -3855,6 +3855,41 @@
       "verify": [],
       "spec": ".harness/tasks/T148.md",
       "reviewed": false
+    },
+    {
+      "id": "T149",
+      "title": "Plex client: LAN-scan fallback so a changed DHCP IP doesn't break the workflow",
+      "status": "pending",
+      "dependsOn": [
+        "T144"
+      ],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "plex",
+        "coding",
+        "robustness"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/jobs/plex/client.ts",
+        "src/jobs/plex/config.ts",
+        "src/jobs/plex/plex.test.ts",
+        ".env.example",
+        "README.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T149.md",
+      "reviewed": false
     }
   ]
 }
