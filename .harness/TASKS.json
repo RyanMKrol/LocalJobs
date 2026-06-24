@@ -4258,6 +4258,38 @@
       "verify": [],
       "spec": ".harness/tasks/T162.md",
       "reviewed": false
+    },
+    {
+      "id": "T163",
+      "title": "Run-limit bug: limited multi-stage run selects 0 roots when downstream work is un-attempted (pending-root selector blind spot)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "backend",
+        "bug"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/core/workflow-executor.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/jobs/places",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T163.md",
+      "reviewed": false
     }
   ]
 }
