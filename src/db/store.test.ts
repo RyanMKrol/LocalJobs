@@ -354,22 +354,24 @@ console.log('  ✓ markWorkItem lineage resolution (explicit / inherit / default
 console.log('  ✓ workItemMarkdownPath (recorded path / null)');
 
 {
-  // selectPendingRoots: fresh DB → first N candidates in input order
+  // selectPendingRoots: fresh DB → first N candidates in input order.
+  // Pipeline: sel-a (entry) → sel-b (terminal). terminalJobs = ['sel-b'].
   syncJob({ name: 'sel-a', run: async () => {} });
   syncJob({ name: 'sel-b', run: async () => {} });
   const members = ['sel-a', 'sel-b'];
+  const terminal = ['sel-b'];
   const candidates = ['c1', 'c2', 'c3', 'c4', 'c5'];
-  assert.deepEqual(selectPendingRoots(members, 'sel-a', candidates, 2, 4), ['c1', 'c2'], 'fresh → first N in order');
-  assert.deepEqual(selectPendingRoots(members, 'sel-a', candidates, 0, 4), [], 'N=0 → none');
+  assert.deepEqual(selectPendingRoots(members, terminal, candidates, 2, 4), ['c1', 'c2'], 'fresh → first N in order');
+  assert.deepEqual(selectPendingRoots(members, terminal, candidates, 0, 4), [], 'N=0 → none');
 
-  // resumed: c1 fully done (entry success + no outstanding descendant) is skipped;
+  // resumed: c1 fully done (terminal stage reached) is skipped;
   // c2 entry done BUT a descendant still outstanding → re-selected; c3 fresh.
   markWorkItem('sel-a', 'c1', 'success', { rootKey: 'c1' });
   markWorkItem('sel-b', 'c1-child', 'success', { rootKey: 'c1' });
   markWorkItem('sel-a', 'c2', 'success', { rootKey: 'c2' });
   markWorkItem('sel-b', 'c2-child', 'failed', { rootKey: 'c2', attempts: 1 }); // retryable → outstanding
   assert.deepEqual(
-    selectPendingRoots(members, 'sel-a', candidates, 2, 4),
+    selectPendingRoots(members, terminal, candidates, 2, 4),
     ['c2', 'c3'],
     'resumed → skips fully-done c1, re-selects c2 (outstanding descendant), then c3',
   );
@@ -377,12 +379,65 @@ console.log('  ✓ workItemMarkdownPath (recorded path / null)');
   // a stuck descendant (failed past minAttempts) does NOT keep a root pending
   markWorkItem('sel-a', 'c4', 'success', { rootKey: 'c4' });
   markWorkItem('sel-b', 'c4-child', 'failed', { rootKey: 'c4', attempts: 4 }); // exhausted → done
-  assert.deepEqual(selectPendingRoots(members, 'sel-a', ['c4'], 5, 4), [], 'root with only exhausted descendants is done');
+  assert.deepEqual(selectPendingRoots(members, terminal, ['c4'], 5, 4), [], 'root with only exhausted descendants is done');
 
   // N larger than the pending count → all pending (no error)
-  assert.deepEqual(selectPendingRoots(members, 'sel-a', ['c2', 'c3', 'c5'], 99, 4), ['c2', 'c3', 'c5']);
+  assert.deepEqual(selectPendingRoots(members, terminal, ['c2', 'c3', 'c5'], 99, 4), ['c2', 'c3', 'c5']);
 }
 console.log('  ✓ selectPendingRoots (fresh → first N · resumed skips done · N > pending → all)');
+
+{
+  // T163 regression: "pending" must be defined by propagation through the TERMINAL
+  // stage, not merely past the entry stage. Three-stage pipeline:
+  //   t163-entry (entry) → t163-mid → t163-term (terminal).
+  syncJob({ name: 't163-entry', run: async () => {} });
+  syncJob({ name: 't163-mid', run: async () => {} });
+  syncJob({ name: 't163-term', run: async () => {} });
+  const members = ['t163-entry', 't163-mid', 't163-term'];
+  const terminal = ['t163-term'];
+
+  // (1) THE BUG: entry succeeded, but NO row at any downstream/terminal stage
+  // (models resolved-but-not-enriched). Pre-fix this looked "done" and was never
+  // selected; it MUST now be pending.
+  markWorkItem('t163-entry', 'rA', 'success', { rootKey: 'rA' });
+  assert.deepEqual(
+    selectPendingRoots(members, terminal, ['rA'], 5, 4),
+    ['rA'],
+    'entry-done with no downstream row → still pending (resolved-but-not-enriched)',
+  );
+
+  // (2) fully propagated: a done terminal row → NOT selected.
+  markWorkItem('t163-entry', 'rB', 'success', { rootKey: 'rB' });
+  markWorkItem('t163-mid', 'rB-m', 'success', { rootKey: 'rB' });
+  markWorkItem('t163-term', 'rB-t', 'success', { rootKey: 'rB' });
+  assert.deepEqual(selectPendingRoots(members, terminal, ['rB'], 5, 4), [], 'terminal-stage done → fully processed → not selected');
+
+  // (3) an existing retryable-failed DOWNSTREAM row still makes the root pending
+  // (preserve T094 behaviour).
+  markWorkItem('t163-entry', 'rC', 'success', { rootKey: 'rC' });
+  markWorkItem('t163-mid', 'rC-m', 'failed', { rootKey: 'rC', attempts: 1 }); // retryable
+  assert.deepEqual(selectPendingRoots(members, terminal, ['rC'], 5, 4), ['rC'], 'retryable downstream row → pending');
+
+  // (4) EDGE CASE — unprogressable/stuck root must NOT be re-selected forever:
+  // entry succeeded, a MIDDLE stage failed past the budget (can never reach the
+  // terminal), no retryable work left → treated as done.
+  markWorkItem('t163-entry', 'rD', 'success', { rootKey: 'rD' });
+  markWorkItem('t163-mid', 'rD-m', 'failed', { rootKey: 'rD', attempts: 4 }); // exhausted
+  assert.deepEqual(selectPendingRoots(members, terminal, ['rD'], 5, 4), [], 'stuck-below-terminal root → done, not perpetually pending');
+
+  // (4b) likewise a root IGNORED at a downstream stage (parked) is done, not pending.
+  markWorkItem('t163-entry', 'rE', 'success', { rootKey: 'rE' });
+  markWorkItem('t163-mid', 'rE-m', 'ignored', { rootKey: 'rE' });
+  assert.deepEqual(selectPendingRoots(members, terminal, ['rE'], 5, 4), [], 'ignored-downstream root → done, not pending');
+
+  // ordering across a mixed set: only the genuinely-pending roots, in input order.
+  assert.deepEqual(
+    selectPendingRoots(members, terminal, ['rA', 'rB', 'rC', 'rD', 'rE'], 99, 4),
+    ['rA', 'rC'],
+    'mixed set → only the un-propagated-but-progressable roots selected',
+  );
+}
+console.log('  ✓ selectPendingRoots T163 (terminal-propagation pending semantics + unprogressable edge case)');
 
 {
   // createWorkflowRun persists run_limit + selected_roots; getWorkflowRunRoots reads them back
@@ -411,8 +466,8 @@ console.log('  ✓ createWorkflowRun persists run_limit/selected_roots; getWorkf
   const members = ['fan-a', 'fan-b'];
   const roots = ['R1', 'R2'];
 
-  // limit = 1 → select R1 only
-  const selected = selectPendingRoots(members, 'fan-a', roots, 1, 4);
+  // limit = 1 → select R1 only (terminal stage = fan-b)
+  const selected = selectPendingRoots(members, ['fan-b'], roots, 1, 4);
   assert.deepEqual(selected, ['R1']);
   const allow = new Set(selected);
   const rootAllowed = (r: string) => allow.has(r); // limited run → set is non-null

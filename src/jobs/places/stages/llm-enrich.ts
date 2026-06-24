@@ -59,15 +59,24 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
   // Idempotency: skip place_ids already done (success, or failed past retry budget).
   // A manual run-limit (T094) also filters to the selected roots — the root is the
   // originating CID this place descends from.
-  const todo = candidates.filter((p) => ctx.rootAllowed(p.cid) && !isWorkItemDone(JOB_NAME, p.placeId, llmConfig.maxAttempts));
+  // Split exclusion reasons (T163): `notDone` = enriched places still needing an
+  // LLM pass; `todo` = those within the run's selected roots (no-op when unlimited).
+  const notDone = candidates.filter((p) => !isWorkItemDone(JOB_NAME, p.placeId, llmConfig.maxAttempts));
+  const todo = notDone.filter((p) => ctx.rootAllowed(p.cid));
   const ledger = workItemCounts(JOB_NAME);
   ctx.log(`Ledger so far: ${JSON.stringify(ledger)}`);
   ctx.log(`To process this run: ${todo.length} (place_ids not yet done)`);
   ctx.log('Each place is keyed by place_id in the work_items table — re-runs skip completed ones.');
 
   if (todo.length === 0) {
-    ctx.progress(100, 'nothing to do — every enriched place already decorated');
-    ctx.log('Nothing to do — every place is already LLM-enriched. ✓');
+    if (notDone.length > 0) {
+      // Limited run: outstanding LLM work exists, just none in the selected roots.
+      ctx.progress(100, `0 to do this run — ${notDone.length} outstanding but none in this run's selected roots`);
+      ctx.log(`0 to LLM-enrich this run — ${notDone.length} place(s) still need decorating, but none fall within this limited run's selected roots. Re-run unlimited (or with a higher limit) to drain them. ✓`, 'warn');
+    } else {
+      ctx.progress(100, 'nothing to do — every enriched place already decorated');
+      ctx.log('Nothing to do — every place is already LLM-enriched. ✓');
+    }
     return;
   }
 

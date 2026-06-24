@@ -301,16 +301,84 @@ function rootHasOutstandingWork(jobNames: string[], rootKey: string, minAttempts
 }
 
 /**
+ * Has this root propagated all the way to a TERMINAL stage (the last DAG wave)? —
+ * true if any terminal-job row for that root is in a DONE state (success/ignored,
+ * or failed past the retry budget = reached terminal but permanently failed there).
+ * Used by {@link selectPendingRoots} to decide a root is fully processed (T163).
+ */
+function rootReachedTerminal(terminalJobs: string[], rootKey: string, minAttempts: number): boolean {
+  if (terminalJobs.length === 0) return false;
+  const ph = terminalJobs.map(() => '?').join(',');
+  const row = db.prepare(`
+    SELECT 1 FROM work_items
+     WHERE job_name IN (${ph}) AND root_key = ?
+       AND (status IN ('success','ignored') OR (status = 'failed' AND attempts >= ?))
+     LIMIT 1
+  `).get(...terminalJobs, rootKey, minAttempts);
+  return !!row;
+}
+
+/**
+ * Does this root carry a "gave up" marker anywhere — an `ignored` row OR a
+ * retry-exhausted (`failed` past the budget) row at any stage (T163)? Such a root
+ * is stuck/unprogressable BELOW the terminal stage (it can't advance further), so
+ * once it has no retryable outstanding work it is DONE, not perpetually pending —
+ * this is what stops the selector livelocking on a root that can never reach the
+ * terminal. (Distinct from a merely resolved-but-not-yet-attempted downstream
+ * root, which has only success rows and no such marker → genuinely pending.)
+ */
+function rootHasTerminalBlocker(jobNames: string[], rootKey: string, minAttempts: number): boolean {
+  if (jobNames.length === 0) return false;
+  const ph = jobNames.map(() => '?').join(',');
+  const row = db.prepare(`
+    SELECT 1 FROM work_items
+     WHERE job_name IN (${ph}) AND root_key = ?
+       AND (status = 'ignored' OR (status = 'failed' AND attempts >= ?))
+     LIMIT 1
+  `).get(...jobNames, rootKey, minAttempts);
+  return !!row;
+}
+
+/**
+ * Is a root still PENDING for a limited run (T163)? — i.e. has it NOT yet been
+ * fully processed through the pipeline. The corrected semantics (the T163 fix):
+ * "pending" is defined by propagation through the TERMINAL stage, not merely past
+ * the entry stage. In order:
+ *  1. any retryable (not-done) row anywhere → still pending (work to retry);
+ *  2. else if it reached a terminal stage (a done terminal row) → fully done;
+ *  3. else if it carries a gave-up marker (ignored / retry-exhausted at any stage)
+ *     and has no retryable work → stuck below the terminal, treat as done so the
+ *     selector can't livelock on an unprogressable root;
+ *  4. else it has unattempted downstream work (e.g. a resolved-but-not-yet-enriched
+ *     place: entry succeeded, a later stage has NO row at all) → pending.
+ * Step 4 is the bug this fixes: previously a root whose later stages simply hadn't
+ * been attempted (no row) looked "fully done" and was never selected.
+ */
+export function isRootPending(
+  members: string[],
+  terminalJobs: string[],
+  rootKey: string,
+  minAttempts: number,
+): boolean {
+  if (rootHasOutstandingWork(members, rootKey, minAttempts)) return true;     // (1)
+  if (rootReachedTerminal(terminalJobs, rootKey, minAttempts)) return false;  // (2)
+  if (rootHasTerminalBlocker(members, rootKey, minAttempts)) return false;    // (3)
+  return true;                                                                // (4)
+}
+
+/**
  * Select the first `n` PENDING originating-input roots for a limited workflow run
- * (T094), preserving `candidateRootsInOrder` order (the root stage's `inputKeys()`,
- * which is stable input-file order → deterministic selection). A root is pending
- * iff its entry-stage work isn't done OR any descendant across `members` is still
- * outstanding — so a fresh DB selects the first N inputs and a resumed run skips
- * fully-done roots and advances to the next outstanding ones. `n <= 0` selects none.
+ * (T094, corrected by T163), preserving `candidateRootsInOrder` order (the root
+ * stage's `inputKeys()`, which is stable input-file order → deterministic
+ * selection). A root is pending until it has propagated through a TERMINAL stage
+ * (see {@link isRootPending}) — NOT merely past the entry stage — so a root whose
+ * downstream stages simply haven't been attempted yet (e.g. resolved-but-not-
+ * enriched) is correctly selected, while a fully-propagated or unprogressable-stuck
+ * root is skipped. `terminalJobs` is the DAG's last wave. `n <= 0` selects none.
  */
 export function selectPendingRoots(
   members: string[],
-  entryJob: string,
+  terminalJobs: string[],
   candidateRootsInOrder: string[],
   n: number,
   minAttempts: number,
@@ -318,8 +386,7 @@ export function selectPendingRoots(
   if (n <= 0) return [];
   const selected: string[] = [];
   for (const root of candidateRootsInOrder) {
-    const pending = !isWorkItemDone(entryJob, root, minAttempts) || rootHasOutstandingWork(members, root, minAttempts);
-    if (pending) selected.push(root);
+    if (isRootPending(members, terminalJobs, root, minAttempts)) selected.push(root);
     if (selected.length >= n) break;
   }
   return selected;

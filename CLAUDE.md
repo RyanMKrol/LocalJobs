@@ -524,6 +524,25 @@ doubt, log it.
     shows the box) only when some member declares `inputKeys()`. ⚠️ A key-changing
     stage that marks a derived item WITHOUT `rootKey`/`parentKey` makes it its own
     root → silently skipped under a limit; always pass lineage on such stages.
+    - **"Pending" is propagation through the TERMINAL stage, not just past the entry
+      stage (T163).** `selectPendingRoots` takes the DAG's **terminal wave** job names
+      (`dag.waves[last]`, threaded from `runWorkflow`) and `isRootPending` decides a
+      root is pending unless it's *fully processed*: (1) any retryable not-done row
+      anywhere → pending; else (2) a *done* terminal-stage row for that `root_key` →
+      fully done; else (3) a "gave-up" marker (an `ignored` or retry-exhausted
+      `failed` row at any stage) with no retryable work → stuck below the terminal,
+      treated as done so the selector can't **livelock** on an unprogressable root;
+      else (4) it has un-attempted downstream work (entry done, a later stage has NO
+      row at all — e.g. a resolved-but-not-enriched place) → **pending**. Step (4) is
+      the bug fixed: the old logic asked only "is the *entry* stage done OR is there an
+      existing outstanding row", so a root whose later stages simply hadn't been
+      attempted (no row) looked complete and a limited backlog catch-up selected **0
+      roots and silently no-op'd** while reporting success. Guard: when a limited run
+      computes an EMPTY `selected_roots` from a NON-empty candidate set, `runWorkflow`
+      logs a clear **WARN** on the run ("limit N … 0 originating inputs were
+      selectable — N candidate(s), all already complete") instead of quietly
+      succeeding. (Unlimited/scheduled runs never call `selectPendingRoots`; each stage
+      just processes its own not-done items — unaffected.)
   - **Stuck vs ignored: unstick vs ignore (both manual only).** An item that
     failed past `maxAttempts` is **stuck** — it won't retry and surfaces on the
     dashboard front page / alerts (`stuckItems`, `stuckCount`). Two manual

@@ -231,13 +231,24 @@ async function runWorkflowInner(
   let runLimit: number | null = null;
   let selectedRoots: string[] | null = null;
   let limitNote = '';
+  let emptySelectionWarning: string | null = null;
   if (opts.limit && opts.limit > 0) {
     runLimit = opts.limit;
     const rootStage = findRootStage(dag);
     if (rootStage) {
       const candidates = await getJobDefinition(rootStage)!.inputKeys!();
-      selectedRoots = selectPendingRoots(memberNames, rootStage, candidates, runLimit, minAttempts);
+      // "Pending" is propagation through the TERMINAL stage (the last DAG wave),
+      // not merely past the entry stage (T163) — so a root with un-attempted
+      // downstream work (e.g. resolved-but-not-enriched) is correctly selectable.
+      const terminalJobs = dag.waves[dag.waves.length - 1] ?? [];
+      selectedRoots = selectPendingRoots(memberNames, terminalJobs, candidates, runLimit, minAttempts);
       limitNote = ` · limited to ${runLimit} originating input(s): ${selectedRoots.length ? selectedRoots.join(', ') : '(none pending)'}`;
+      // Guard the silent no-op (T163): a limit that selects 0 roots from a
+      // non-empty candidate set would otherwise "succeed" doing nothing. Surface
+      // it loudly so a backlog catch-up run that found nothing selectable is visible.
+      if (selectedRoots.length === 0 && candidates.length > 0) {
+        emptySelectionWarning = `Run limit ${runLimit} requested but 0 originating inputs were selectable — ${candidates.length} candidate(s), all already complete (propagated through the terminal stage, or permanently stuck). Nothing will run this run.`;
+      }
     } else {
       // Defensive: the API rejects a limit on a non-limitable workflow, so this is
       // only reachable if called directly. Fall back to unlimited rather than block.
@@ -252,6 +263,7 @@ async function runWorkflowInner(
   const log = (m: string, level: LogLevel = 'info') => addWorkflowLog(workflowRunId, m, level);
 
   log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
+  if (emptySelectionWarning) log(emptySelectionWarning, 'warn');
 
   // Per-stage notification dedup (T112): the LAST status we pushed a notification
   // for, per member. During repeatUntilStable cycling we re-run every stage each

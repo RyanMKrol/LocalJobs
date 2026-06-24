@@ -110,6 +110,10 @@ for (const d of asymMembers) {
 const limitMembers: JobDefinition[] = [
   { name: 'lim-root', inputKeys: () => ['k1', 'k2', 'k3', 'k4'], run: async () => {} },
   { name: 'lim-cons', run: async () => {} },
+  // T163: a separate entry+terminal pair whose ledger we pre-seed to model a
+  // backlog (entry done, terminal not yet attempted) and an all-complete set.
+  { name: 't163-root', inputKeys: () => ['j1', 'j2', 'j3'], run: async () => {} },
+  { name: 't163-cons', run: async () => {} },
 ];
 for (const d of limitMembers) {
   syncJob(d);
@@ -352,6 +356,38 @@ try {
     const { workflowRunId } = await runWorkflow(def, 'manual');
     assert.equal(getWorkflowRun(workflowRunId!)?.run_limit, null, 'no limit → run_limit null');
     assert.equal(getWorkflowRunRoots(workflowRunId!), null, 'no limit → no allowlist');
+  });
+
+  await test('run-limit T163: a backlog (entry done, terminal un-attempted) selects those roots — not 0', async () => {
+    // Model resolved-but-not-enriched: the entry stage is done for j1/j2 but the
+    // TERMINAL stage has NO row → pre-fix the selector treated them as "done" and
+    // selected 0 (or skipped to fresh roots). They must now be selected.
+    markWorkItem('t163-root', 'j1', 'success', { rootKey: 'j1' });
+    markWorkItem('t163-root', 'j2', 'success', { rootKey: 'j2' });
+    const def: WorkflowDefinition = {
+      name: 't163-backlog', jobs: [{ job: 't163-root' }, { job: 't163-cons', dependsOn: ['t163-root'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual', { limit: 2 });
+    assert.deepEqual(getWorkflowRunRoots(workflowRunId!), ['j1', 'j2'], 'entry-done-but-terminal-un-attempted roots ARE selected');
+    const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
+    assert.doesNotMatch(logText, /0 originating inputs were selectable/, 'no empty-selection warning when work exists');
+  });
+
+  await test('run-limit T163: a limit that selects 0 roots from a non-empty candidate set logs a clear WARNING', async () => {
+    // Make EVERY candidate fully propagated to the terminal stage → nothing selectable.
+    for (const k of ['j1', 'j2', 'j3']) {
+      markWorkItem('t163-root', k, 'success', { rootKey: k });
+      markWorkItem('t163-cons', `${k}-out`, 'success', { rootKey: k });
+    }
+    const def: WorkflowDefinition = {
+      name: 't163-allcomplete', jobs: [{ job: 't163-root' }, { job: 't163-cons', dependsOn: ['t163-root'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual', { limit: 2 });
+    assert.deepEqual(getWorkflowRunRoots(workflowRunId!), [], 'all complete → 0 selected');
+    const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
+    assert.match(logText, /0 originating inputs were selectable — 3 candidate\(s\)/, `empty-selection warning missing: ${logText}`);
   });
 
   await test('run-limit: a SCHEDULED run is never limited even when a root stage exists', async () => {

@@ -56,7 +56,12 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
   // past the retry budget = done). enriched.json still holds the data payload.
   // Idempotent by place_id; a manual run-limit (T094) also filters to the selected
   // roots — here the root is the originating CID this place_id was resolved from.
-  const todo = resolvedOk.filter((r) => ctx.rootAllowed(r.cid) && !isWorkItemDone(JOB_NAME, r.placeId!, enrichConfig.maxAttempts));
+  // Split the two reasons an item is excluded so a "0 to do" run can distinguish
+  // "everything's already enriched" from "outstanding work, but none allowed by
+  // this run's limit" (T163). `notDone` = resolved places still needing enriching;
+  // `todo` = those of them within the run's selected roots (a no-op for unlimited).
+  const notDone = resolvedOk.filter((r) => !isWorkItemDone(JOB_NAME, r.placeId!, enrichConfig.maxAttempts));
+  const todo = notDone.filter((r) => ctx.rootAllowed(r.cid));
   const ledger = workItemCounts(JOB_NAME);
 
   // Spend is governed by the shared 'google-places' service quota (the single
@@ -74,8 +79,14 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
   ctx.log(`Still to enrich: ${todo.length} (new + retryable failures, up to ${enrichConfig.maxAttempts} attempts each)`);
 
   if (todo.length === 0) {
-    ctx.progress(100, 'nothing to do — all resolved places already enriched');
-    ctx.log('Nothing to enrich — every resolved place is already done. ✓');
+    if (notDone.length > 0) {
+      // Limited run: there IS outstanding enrichment, just none in the selected roots.
+      ctx.progress(100, `0 to do this run — ${notDone.length} outstanding but none in this run's selected roots`);
+      ctx.log(`0 to enrich this run — ${notDone.length} resolved place(s) still need enriching, but none fall within this limited run's selected roots. Re-run unlimited (or with a higher limit) to drain them. ✓`, 'warn');
+    } else {
+      ctx.progress(100, 'nothing to do — all resolved places already enriched');
+      ctx.log('Nothing to enrich — every resolved place is already done. ✓');
+    }
     return;
   }
   if (monthLeft <= 0 || dayLeft <= 0) {
