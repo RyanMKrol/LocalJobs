@@ -3953,15 +3953,14 @@
     },
     {
       "id": "T152",
-      "title": "Remove the bespoke movie-gaps page; surface gaps as a data/out artifact like other workflows",
+      "title": "Move the movie-gaps management (ignore recommendations/gaps) into the movies workflow page; remove the top-level page",
       "status": "pending",
       "dependsOn": [],
       "gate": null,
       "tags": [
         "movies",
         "dashboard",
-        "cleanup",
-        "coding"
+        "ui"
       ],
       "model": "claude-opus-4-8",
       "effort": "high",
@@ -3974,9 +3973,9 @@
       "scope": [
         "dashboard/app/movie-gaps",
         "dashboard/app/layout.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
         "dashboard/app/lib/api.ts",
         "src/api/server.ts",
-        "src/jobs/movies",
         "README.md",
         "CLAUDE.md"
       ],
