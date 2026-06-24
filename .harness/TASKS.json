@@ -4341,7 +4341,7 @@
     {
       "id": "T167",
       "title": "Progress bar: stop the scrolling barber-pole animation once a run is finished/100%",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
