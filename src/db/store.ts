@@ -779,21 +779,23 @@ export function backfillMonthlyUsage(jobName: string, count: number): void {
 // override — the same reconcile the user-owned `enabled` flag and the service limits
 // get. description is code-owned and always refreshed.
 const upsertWorkflowStmt = db.prepare(`
-  INSERT INTO workflows (name, description, schedule, enabled)
-  VALUES (@name, @description, @schedule, 1)
+  INSERT INTO workflows (name, description, schedule, enabled, max_concurrency)
+  VALUES (@name, @description, @schedule, 1, @maxConcurrency)
   ON CONFLICT(name) DO UPDATE SET
-    description = excluded.description,
-    schedule    = CASE WHEN schedule_overridden = 1 THEN schedule ELSE excluded.schedule END
+    description     = excluded.description,
+    schedule        = CASE WHEN schedule_overridden = 1 THEN schedule ELSE excluded.schedule END,
+    max_concurrency = CASE WHEN max_concurrency_overridden = 1 THEN max_concurrency ELSE excluded.max_concurrency END
 `);
 
-/** Upsert a workflow + REPLACE its membership/edges. `enabled` and an overridden
- *  `schedule` are preserved across the sync. */
+/** Upsert a workflow + REPLACE its membership/edges. `enabled`, an overridden
+ *  `schedule`, and an overridden `max_concurrency` are preserved across the sync. */
 export function syncWorkflow(def: WorkflowDefinition): void {
   const tx = db.transaction(() => {
     upsertWorkflowStmt.run({
       name: def.name,
       description: def.description ?? '',
       schedule: def.schedule ?? null,
+      maxConcurrency: def.maxConcurrency ?? null,
     });
     db.prepare('DELETE FROM workflow_jobs WHERE workflow_name = ?').run(def.name);
     const ins = db.prepare('INSERT INTO workflow_jobs (workflow_name, job_name, depends_on) VALUES (?, ?, ?)');
@@ -808,6 +810,8 @@ export interface WorkflowRow {
   schedule: string | null;
   enabled: number;
   schedule_overridden: number;
+  max_concurrency: number | null;
+  max_concurrency_overridden: number;
   created_at: string;
 }
 
@@ -835,6 +839,25 @@ export function updateWorkflowSchedule(name: string, schedule: string | null): W
   const info = db
     .prepare('UPDATE workflows SET schedule = ?, schedule_overridden = 1 WHERE name = ?')
     .run(normalised, name);
+  if (info.changes === 0) return undefined;
+  return getWorkflow(name);
+}
+
+/**
+ * Persist a USER override of a workflow's bounded-parallelism cap (from the
+ * dashboard, T169). Sets `max_concurrency` and flips `max_concurrency_overridden = 1`
+ * so a later code-sync keeps the user's value — the same ownership reconcile
+ * `enabled`/`schedule`/service limits get. `n` must be a positive integer ≥ 1
+ * (callers validate; this throws on a bad value as a defensive backstop). Returns the
+ * updated row, or undefined if the workflow doesn't exist (no row touched).
+ */
+export function updateWorkflowConcurrency(name: string, n: number): WorkflowRow | undefined {
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`maxConcurrency must be a positive integer ≥ 1, got ${n}`);
+  }
+  const info = db
+    .prepare('UPDATE workflows SET max_concurrency = ?, max_concurrency_overridden = 1 WHERE name = ?')
+    .run(n, name);
   if (info.changes === 0) return undefined;
   return getWorkflow(name);
 }

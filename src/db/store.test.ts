@@ -9,7 +9,7 @@ import {
   listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
-  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, usageThisMonth,
+  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, usageThisMonth,
   bulkUnstickItems, bulkIgnoreItems,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
@@ -54,6 +54,36 @@ assert.equal(getWorkflowJobs('t-pipe').length, 3);
   assert.equal(updateWorkflowSchedule('t-no-such-wf', '0 1 * * *'), undefined, 'unknown workflow → undefined');
 }
 console.log('  ✓ updateWorkflowSchedule: set/clear + schedule_overridden reconcile across sync (T135)');
+
+// ── editable maxConcurrency (T169): user-owned override reconciled across code-sync ──
+{
+  syncWorkflow({ name: 't-conc', maxConcurrency: 4, jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-conc')?.max_concurrency, 4, 'manifest maxConcurrency seeded');
+  assert.equal(getWorkflow('t-conc')?.max_concurrency_overridden, 0, 'not overridden initially');
+
+  // a non-overridden value is refreshed by a code-sync (manifest changes to 8)
+  syncWorkflow({ name: 't-conc', maxConcurrency: 8, jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-conc')?.max_concurrency, 8, 'non-overridden value refreshes from manifest');
+
+  // user edits → flips max_concurrency_overridden
+  const updated = updateWorkflowConcurrency('t-conc', 2);
+  assert.equal(updated?.max_concurrency, 2, 'updateWorkflowConcurrency sets the value');
+  assert.equal(updated?.max_concurrency_overridden, 1, 'updateWorkflowConcurrency flips the override flag');
+
+  // a CODE-sync now PRESERVES the user's value (the reconcile, like schedule/enabled)
+  syncWorkflow({ name: 't-conc', maxConcurrency: 8, jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-conc')?.max_concurrency, 2, 'overridden value survives re-sync');
+  assert.equal(getWorkflow('t-conc')?.max_concurrency_overridden, 1, 'override flag survives re-sync');
+
+  // invalid values are rejected (≥ 1 integer)
+  assert.throws(() => updateWorkflowConcurrency('t-conc', 0), /positive integer/, 'rejects 0');
+  assert.throws(() => updateWorkflowConcurrency('t-conc', -1), /positive integer/, 'rejects negative');
+  assert.throws(() => updateWorkflowConcurrency('t-conc', 1.5), /positive integer/, 'rejects non-integer');
+
+  // unknown workflow → undefined (no row touched)
+  assert.equal(updateWorkflowConcurrency('t-no-such-wf', 3), undefined, 'unknown workflow → undefined');
+}
+console.log('  ✓ updateWorkflowConcurrency: set + max_concurrency_overridden reconcile across sync (T169)');
 
 // workflow run + linked member runs + skip + logs
 const pr = createWorkflowRun('t-pipe', 'manual');

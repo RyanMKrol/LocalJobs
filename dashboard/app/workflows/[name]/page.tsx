@@ -179,6 +179,35 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
     }
   }
 
+  // Inline max-concurrency editor (T169) — same affordance as the schedule editor.
+  const [editingConc, setEditingConc] = useState(false);
+  const [concDraft, setConcDraft] = useState('');
+  const [concErr, setConcErr] = useState<string | null>(null);
+  const [savingConc, setSavingConc] = useState(false);
+
+  function startEditConc() {
+    setConcDraft(String(p?.effective_max_concurrency ?? ''));
+    setConcErr(null);
+    setEditingConc(true);
+  }
+  function cancelEditConc() {
+    setEditingConc(false);
+    setConcErr(null);
+  }
+  async function saveConc() {
+    setSavingConc(true);
+    setConcErr(null);
+    try {
+      await api.updateWorkflowConcurrency(name, Number(concDraft));
+      // The 3s poll refetches, so the displayed value updates on the next tick.
+      setEditingConc(false);
+    } catch (e) {
+      setConcErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingConc(false);
+    }
+  }
+
   async function run() {
     setBusy(true);
     try { await api.runWorkflow(name, limit ? Number(limit) : undefined); } finally { setTimeout(() => setBusy(false), 1200); }
@@ -247,6 +276,37 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
             <span className="toggle" onClick={toggle}>
               <input type="checkbox" checked={!!p?.enabled} readOnly /> {p?.enabled ? 'enabled' : 'disabled'} (click to toggle)
             </span>
+          </div>
+          <div className="k">Max concurrency</div>
+          <div>
+            {editingConc ? (
+              <div className="schedule-edit">
+                <input
+                  className="mono schedule-input"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={concDraft}
+                  onChange={(e) => setConcDraft(e.target.value)}
+                  placeholder="≥ 1"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveConc(); if (e.key === 'Escape') cancelEditConc(); }}
+                />
+                <button className="btn btn-sm" onClick={saveConc} disabled={savingConc}>
+                  {savingConc ? 'Saving…' : 'Save'}
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={cancelEditConc} disabled={savingConc}>Cancel</button>
+                {concErr && <span className="schedule-err">{concErr}</span>}
+              </div>
+            ) : (
+              <span className="schedule-view">
+                <span className="mono" style={{ whiteSpace: 'nowrap' }}>
+                  {p?.effective_max_concurrency ?? '—'}
+                  {p?.max_concurrency_overridden ? '' : ' (default)'}
+                </span>
+                <span className="schedule-edit-link" onClick={startEditConc}>Edit</span>
+              </span>
+            )}
           </div>
           <div className="k">Next run</div><div className="muted">{p?.next_run ? fmtTime(p.next_run) : '—'}</div>
           <div className="k">Stuck items</div><div style={{ color: p?.stuck ? 'var(--red)' : undefined }}>{p?.stuck ?? 0}</div>

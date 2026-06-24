@@ -109,14 +109,18 @@ CREATE INDEX IF NOT EXISTS idx_job_usage ON job_usage(job_name, ts);
 -- `enabled` is user-owned (dashboard toggle), preserved across code syncs. The
 -- `schedule` is likewise user-editable from the dashboard (T135): once edited,
 -- `schedule_overridden` flips to 1 and a code-sync PRESERVES the user's value —
--- the same reconcile `enabled` and the service limits get.
+-- the same reconcile `enabled` and the service limits get. `max_concurrency` is
+-- the same shape (T169): the manifest's maxConcurrency seeds it on sync, a
+-- dashboard edit flips `max_concurrency_overridden` and code-sync preserves it.
 CREATE TABLE IF NOT EXISTS workflows (
-  name                TEXT PRIMARY KEY,
-  description         TEXT NOT NULL DEFAULT '',
-  schedule            TEXT,                       -- cron, or NULL for manual-only
-  enabled             INTEGER NOT NULL DEFAULT 1,
-  schedule_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited the schedule; code-sync preserves it
-  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+  name                    TEXT PRIMARY KEY,
+  description             TEXT NOT NULL DEFAULT '',
+  schedule                TEXT,                       -- cron, or NULL for manual-only
+  enabled                 INTEGER NOT NULL DEFAULT 1,
+  schedule_overridden     INTEGER NOT NULL DEFAULT 0, -- 1 = user edited the schedule; code-sync preserves it
+  max_concurrency         INTEGER,                    -- bounded parallelism for independent stages; NULL = use code default
+  max_concurrency_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited maxConcurrency; code-sync preserves it
+  created_at              TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Membership + edges, synced (replaced) from each *.workflow.ts manifest.

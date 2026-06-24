@@ -194,6 +194,17 @@ test('workflows ends migrated: schedule_overridden column (defaults 0 = code-own
   assert.equal(w.schedule_overridden, 0, 'pre-existing workflow defaults to NOT overridden');
 });
 
+test('workflows ends migrated: max_concurrency columns added (defaults NULL / 0) (T169)', () => {
+  assert.ok(cols('workflows').includes('max_concurrency'), 'max_concurrency column added');
+  assert.ok(cols('workflows').includes('max_concurrency_overridden'), 'max_concurrency_overridden column added');
+  const w = migrated.prepare('SELECT max_concurrency, max_concurrency_overridden FROM workflows WHERE name = ?').get('places') as {
+    max_concurrency: number | null;
+    max_concurrency_overridden: number;
+  };
+  assert.equal(w.max_concurrency, null, 'pre-existing workflow has NULL max_concurrency (use code default)');
+  assert.equal(w.max_concurrency_overridden, 0, 'pre-existing workflow defaults to NOT overridden');
+});
+
 test('jobs ends migrated: legacy schedule + enabled columns dropped (T070)', () => {
   assert.ok(!cols('jobs').includes('schedule'), 'schedule column dropped');
   assert.ok(!cols('jobs').includes('enabled'), 'enabled column dropped');

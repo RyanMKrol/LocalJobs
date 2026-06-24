@@ -8,7 +8,7 @@ import { config } from '../config.js';
 import { acquireRepoLock, resolveRepoPaths } from '../core/repo-lock.js';
 import { type Gate, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
-import { runWorkflow, cancelWorkflowRun, workflowRunInProgress } from '../core/workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY } from '../core/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import { Cron } from 'croner';
 import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
@@ -47,6 +47,7 @@ import {
   updateServiceLimits,
   setWorkflowEnabled,
   updateWorkflowSchedule,
+  updateWorkflowConcurrency,
   stuckCount,
   stuckItems,
   unstickWorkItem,
@@ -775,7 +776,14 @@ export function createApiServer(
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts.length === 3) {
         const p = getWorkflow(parts[2]);
         if (!p) return json(res, 404, { error: 'workflow not found' });
-        return json(res, 200, { workflow: { ...p, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
+        // Effective bounded parallelism (T169): the user override / synced manifest
+        // value / default — the same number runWorkflow will use — so the detail page
+        // can show the current cap even when `max_concurrency` is NULL (not overridden).
+        const wfDef = getWorkflowDefinition(p.name);
+        const effective_max_concurrency = wfDef
+          ? effectiveWorkflowConcurrency(wfDef)
+          : (p.max_concurrency ?? DEFAULT_WORKFLOW_CONCURRENCY);
+        return json(res, 200, { workflow: { ...p, effective_max_concurrency, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
       }
 
       // GET /api/workflows/:name/gates/:producer/:key
@@ -872,6 +880,26 @@ export function createApiServer(
         updateWorkflowSchedule(name, schedule);
         rescheduleWorkflow(name, schedule);
         return json(res, 200, { ok: true, schedule, next_run: nextWorkflowRun(name) });
+      }
+
+      // POST /api/workflows/:name/concurrency  { maxConcurrency }
+      // Persist a USER override of the workflow's bounded-parallelism cap (T169).
+      // Mirrors the schedule override: user-owned + code-reconciled (via
+      // `max_concurrency_overridden`, like `enabled`/`schedule`). `runWorkflow` reads
+      // the effective value FRESH each run, so an edit takes effect on the NEXT run
+      // with no daemon restart. The value MUST be a positive integer ≥ 1 — else 400,
+      // before it reaches the store. Unknown workflow → 404. Mutating, so it goes
+      // through the same loopback/token guard as /toggle, /run, /schedule, /limits.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'concurrency') {
+        const name = parts[2];
+        if (!getWorkflow(name)) return json(res, 404, { error: 'workflow not found' });
+        const body = await readBody(req);
+        const n = Number(body.maxConcurrency);
+        if (!Number.isInteger(n) || n < 1) {
+          return json(res, 400, { error: 'maxConcurrency must be a positive integer ≥ 1' });
+        }
+        updateWorkflowConcurrency(name, n);
+        return json(res, 200, { ok: true, max_concurrency: n });
       }
 
       // GET /api/workflow-runs?limit=

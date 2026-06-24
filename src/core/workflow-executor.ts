@@ -3,6 +3,7 @@ import {
   addWorkflowLog,
   createWorkflowRun,
   finishWorkflowRun,
+  getWorkflow,
   hasActiveWorkflowRun,
   selectPendingRoots,
   workflowProgressSignature,
@@ -33,7 +34,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * → the shared SQLite `service_usage` meter, so concurrency can't let them
  * over-spend (the service quota is the governor regardless).
  */
-const DEFAULT_WORKFLOW_CONCURRENCY = 4;
+export const DEFAULT_WORKFLOW_CONCURRENCY = 4;
+
+/**
+ * The EFFECTIVE bounded parallelism for a workflow (T169): the DB `max_concurrency`
+ * (user override when set, else the synced manifest value) else the manifest's
+ * `maxConcurrency` else the default. Reading the DB row keeps it user-editable +
+ * code-reconciled. Shared by `runWorkflow` and the API's workflow payload so both
+ * report the same number.
+ */
+export function effectiveWorkflowConcurrency(def: WorkflowDefinition): number {
+  return getWorkflow(def.name)?.max_concurrency ?? def.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY;
+}
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -282,6 +294,13 @@ async function runWorkflowInner(
   // No-forward-progress detection across repeatUntilStable cycles (T112).
   let prevSig: WorkflowProgressSignature | null = null;
 
+  // Effective bounded parallelism (T169): read the DB `max_concurrency` FRESH each
+  // run — it is the user override when set, else the synced manifest value, else
+  // T156's default. Reading it here (not `def.maxConcurrency`) means a dashboard
+  // edit takes effect on the NEXT run with no daemon restart, mirroring the live
+  // schedule/enabled checks.
+  const effectiveConcurrency = effectiveWorkflowConcurrency(def);
+
   let lastStatuses = new Map<string, RunStatus>();
   try {
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
@@ -289,7 +308,7 @@ async function runWorkflowInner(
     let settled = 0;
 
     lastStatuses = await executeDag(dag, {
-      concurrency: def.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY,
+      concurrency: effectiveConcurrency,
       signal: controller.signal,
       runOne: async (job) => {
         const jd = getJobDefinition(job);

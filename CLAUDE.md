@@ -119,7 +119,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   distinct from each member job's own run.
 - **Independent stages run in PARALLEL by default (T156).** `executeDag` launches
   every ready stage (deps all succeeded) up to a concurrency cap; `runWorkflow`
-  passes `def.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY` where the default is
+  passes the **effective** maxConcurrency (see T169 below) where the default is
   **4** (raised from 1). So a DAG with independent same-wave stages — e.g. the
   movies `franchise-gaps` + 8 recommender branches all hanging off `movie-snapshot`
   — runs them concurrently (up to 4) once their shared dependency finishes, instead
@@ -129,6 +129,12 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   for a wider fan-out, or set **`1`** to force strict sequential order (the movies
   workflow sets `4` so its branches fan out; the cap is kept modest because each
   parallel stage spawns its OWN child process, and `executeDag` queues the excess).
+  The cap is also **user-editable from the dashboard + code-reconciled (T169)** —
+  see the `maxConcurrency` editable-property note in Conventions: `runWorkflow`
+  reads the **effective** value (DB `max_concurrency` = override when set, else the
+  synced manifest value, else the default) FRESH each run via
+  `effectiveWorkflowConcurrency(def)`, so an edit takes effect on the next run with
+  no daemon restart.
   Parallelism does NOT loosen spend governance: paid stages still route through
   `callService` → the shared SQLite `service_usage` meter, so rate limits + monthly
   quotas are enforced GLOBALLY across processes regardless of concurrency — the
@@ -386,6 +392,27 @@ doubt, log it.
   it's a mutating endpoint behind the same loopback/token guard as `/toggle`, `/run`,
   `/limits`. `schedule_overridden` is added by `schema.sql` (fresh DBs) + an additive
   `ALTER TABLE` migration in `index.ts` (existing DBs, per the T098 rule).
+- **A workflow's `maxConcurrency` is user-editable + code-reconciled (T169).** The
+  bounded-parallelism cap (T156) joins `schedule` + `enabled` + service limits as a
+  user-owned, override-flagged, code-reconciled workflow property — same mechanism
+  end-to-end. `POST /api/workflows/:name/concurrency { maxConcurrency }`
+  (`updateWorkflowConcurrency` in `store.ts`) persists the value and flips
+  `max_concurrency_overridden = 1`, so a later `syncWorkflow` PRESERVES it
+  (`max_concurrency = CASE WHEN max_concurrency_overridden = 1 THEN max_concurrency ELSE excluded.max_concurrency END`
+  in `upsertWorkflowStmt`) instead of reverting to the manifest value; the manifest's
+  `maxConcurrency` SEEDS `max_concurrency` on sync (a non-overridden value still
+  refreshes from code). `runWorkflow` reads the **EFFECTIVE** value
+  (`effectiveWorkflowConcurrency(def)` = DB `max_concurrency` ?? `def.maxConcurrency`
+  ?? `DEFAULT_WORKFLOW_CONCURRENCY`) FRESH each run, so an edit takes effect on the
+  **next run without a daemon restart** (mirroring the fire-time schedule/enabled
+  checks). The API VALIDATES it server-side (positive integer ≥ 1, else **400**)
+  before it reaches the store and exposes `effective_max_concurrency` on the
+  `GET /api/workflows/:name` payload for the detail page's editable "Max concurrency"
+  row (number input + Save, like Schedule); it's a mutating endpoint behind the same
+  loopback/token guard as `/toggle`, `/run`, `/schedule`, `/limits`. The
+  `max_concurrency` + `max_concurrency_overridden` columns are added by `schema.sql`
+  (fresh DBs) + an additive `ALTER TABLE` migration in `index.ts` (existing DBs, per
+  the T098 rule — no index on the new columns).
 - **No workflow-level properties on a job (T070).** Because a job is only ever a
   workflow member, ALL workflow-level concerns live on the workflow, never the job:
   a job has NO `schedule`, NO `enabled` toggle, NO `instructions`, and NO run-now.

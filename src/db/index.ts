@@ -52,6 +52,18 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec('ALTER TABLE workflows ADD COLUMN schedule_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Additive migration: user-owned maxConcurrency override on workflows (T169).
+  // Same shape as the schedule override: `max_concurrency` is seeded from the
+  // manifest on sync, a dashboard edit flips `max_concurrency_overridden` and a
+  // later code-sync preserves the user's value (see upsertWorkflowStmt). No index
+  // on these columns, so no bootstrap-index trap (T098).
+  if (!wfCols.some((c) => c.name === 'max_concurrency')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN max_concurrency INTEGER');
+  }
+  if (!wfCols.some((c) => c.name === 'max_concurrency_overridden')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN max_concurrency_overridden INTEGER NOT NULL DEFAULT 0');
+  }
+
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
   migrateRenamePlexWorkflow(db);

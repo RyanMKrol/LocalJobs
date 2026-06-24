@@ -146,6 +146,17 @@ to the manifest's `schedule`. An invalid cron expression is rejected with a clea
 and never reaches the scheduler. Via the API: `POST /api/workflows/:name/schedule` with
 `{ "schedule": "30 4 * * *" }` (empty string → manual-only; invalid → `400`).
 
+**Edit a workflow's max concurrency from its detail page.** Independent stages run
+in parallel up to a bounded cap (default **4**); the detail page's **Max concurrency**
+row has the same **Edit → number → Save** affordance as Schedule. Like the schedule
+and enable toggle it is **user-owned**: the edit is persisted, a later code-sync
+preserves it (instead of reverting to the manifest's `maxConcurrency`), and it takes
+effect on the **next run with no daemon restart**. The value must be a positive
+integer ≥ 1 (`1` forces strictly-sequential stages). Via the API:
+`POST /api/workflows/:name/concurrency` with `{ "maxConcurrency": 2 }` (invalid →
+`400`); the effective value is exposed as `effective_max_concurrency` on
+`GET /api/workflows/:name`.
+
 **Limit a manual run to N originating inputs.** Beside ▶ Run now, a *limitable*
 workflow shows a small number box (blank = all). Enter `N` to process only the
 **first N originating inputs** — and **all** the fan-out work they spawn runs to
@@ -258,7 +269,9 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   standalone-jobs list; drill into a workflow to reach its member jobs.
 - **Workflow detail** — ▶ Run now, enable toggle, an **editable cron schedule**
   (Edit → type a croner expression or blank for manual-only → Save; persisted,
-  user-owned, applied to the live scheduler with no restart), full run history
+  user-owned, applied to the live scheduler with no restart), an **editable max
+  concurrency** (Edit → number ≥ 1 → Save; user-owned, takes effect next run with
+  no restart), full run history
 - **Workflow run detail** — live framework logs, per-stage job outcomes and
   statuses, **grouped by stage with older cycles collapsed** (click to expand),
   overall progress bar (counts completed stages only — stays at 0% until the

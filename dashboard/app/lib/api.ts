@@ -67,6 +67,12 @@ export interface Workflow {
   enabled: number;
   /** 1 when the owner has edited the schedule from the dashboard (T135); code-sync then preserves it. */
   schedule_overridden?: number;
+  /** Raw user-override of bounded parallelism, or null when not overridden (T169). */
+  max_concurrency?: number | null;
+  /** 1 when the owner has edited maxConcurrency from the dashboard (T169); code-sync then preserves it. */
+  max_concurrency_overridden?: number;
+  /** Effective bounded parallelism the next run will use — override / manifest / default (T169). */
+  effective_max_concurrency?: number;
   created_at: string;
   last_run: WorkflowRun | null;
   next_run: string | null;
@@ -408,6 +414,19 @@ export const api = {
     const data = (await res.json().catch(() => ({}))) as { error?: string; schedule?: string | null; next_run?: string | null };
     if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
     return data as { ok: boolean; schedule: string | null; next_run: string | null };
+  },
+  // Persist a user override of a workflow's bounded-parallelism cap (T169). Takes
+  // effect on the NEXT run (no daemon restart). Surfaces the server's 400 validation
+  // error as the thrown message so the page can show it inline.
+  updateWorkflowConcurrency: async (name: string, maxConcurrency: number) => {
+    const res = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/concurrency`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maxConcurrency }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; max_concurrency?: number };
+    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+    return data as { ok: boolean; max_concurrency: number };
   },
   cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
   services: () => get<{ services: Service[] }>('/api/services'),

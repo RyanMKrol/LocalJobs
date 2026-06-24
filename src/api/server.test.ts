@@ -271,6 +271,55 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   { const i = workflows.indexOf(schedWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
+// ── editable maxConcurrency (T169): POST /api/workflows/:name/concurrency validates
+// (≥ 1 integer) server-side, persists a user override, and surfaces the effective
+// value on the GET payload. ──
+{
+  const concJob: JobDefinition = { name: 'conc-api-job', run: async () => {} };
+  syncJob(concJob); jobs.push(concJob);
+  const concWf: WorkflowDefinition = { name: 'conc-api-wf', maxConcurrency: 4, jobs: [{ job: 'conc-api-job' }] };
+  syncWorkflow(concWf); workflows.push(concWf);
+
+  await test('concurrency: a valid value is accepted (200), persisted + overridden, surfaced on GET', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/conc-api-wf/concurrency`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxConcurrency: 2 }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(((await res.json()) as { max_concurrency: number }).max_concurrency, 2);
+      assert.equal(getWorkflow('conc-api-wf')?.max_concurrency, 2, 'persisted to the DB');
+      assert.equal(getWorkflow('conc-api-wf')?.max_concurrency_overridden, 1, 'flagged as user-overridden');
+      const get = await fetch(`${base}/api/workflows/conc-api-wf`);
+      const wf = ((await get.json()) as { workflow: { effective_max_concurrency: number } }).workflow;
+      assert.equal(wf.effective_max_concurrency, 2, 'effective value surfaced on the workflow payload');
+    });
+  });
+
+  for (const bad of [0, -1, 1.5, 'x'] as const) {
+    await test(`concurrency: an invalid value (${bad}) is rejected 400`, async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/workflows/conc-api-wf/concurrency`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxConcurrency: bad }),
+        });
+        assert.equal(res.status, 400);
+        assert.match(((await res.json()) as { error?: string }).error ?? '', /positive integer/);
+      });
+    });
+  }
+
+  await test('concurrency: unknown workflow → 404', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/__no_such_wf__/concurrency`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxConcurrency: 2 }),
+      });
+      assert.equal(res.status, 404);
+    });
+  });
+
+  { const i = jobs.indexOf(concJob); if (i >= 0) jobs.splice(i, 1); }
+  { const i = workflows.indexOf(concWf); if (i >= 0) workflows.splice(i, 1); }
+}
+
 // ── one active run per workflow (T105): POST /api/workflows/:name/run must reject
 // a duplicate start with 409 while a run is already active, instead of appearing to
 // start a second run. A seeded 'running' workflow_run row makes the guard observe an
