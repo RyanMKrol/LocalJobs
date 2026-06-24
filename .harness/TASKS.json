@@ -4458,6 +4458,33 @@
       "reviewed": false
     },
     {
+      "id": "T172",
+      "title": "Input→Output mapping panel: fix inconsistent corner radii + footnote hugging the edges",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T172.md",
+      "reviewed": false
+    },
+    {
       "id": "T151",
       "title": "Rename the plex workflow to a clearer name (missing-tv-seasons) + DB migration",
       "status": "done",
