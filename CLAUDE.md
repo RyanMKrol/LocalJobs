@@ -76,9 +76,10 @@ library by GUID → check TMDB for complete missing seasons → weekly digest pu
 and **movies** (snapshot the Plex movie library by GUID → detect franchise gaps
 via the TMDB Collections API AND fan out 8 Claude recommender branches over a
 stratified library sample → a `rec-merge` stage that TMDB-verifies/dedupes/balances
-the picks → ONE monthly digest with separate franchise-gaps + recommendations
-sections, both with owner ignore-to-suppress). Private workflows are added as
-gitignored subfolders.
+the picks, enforces a quality bar (TMDB rating ≥7.0 with ≥50 votes) and targets ≥15
+recs via a bounded re-prompt top-up loop (T162) → ONE monthly digest with separate
+franchise-gaps + recommendations sections, both with owner ignore-to-suppress).
+Private workflows are added as gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
 distributed system. Do not introduce Docker, external databases, message

@@ -454,17 +454,28 @@ library doesn't just yield more horror): **3 stratified-random** serendipity bra
 (each a different seeded slice) + **5 targeted** — *auteur-completion* (more from
 directors you collect ≥3 of) and *top-genre-canon* (canonical films in your strongest
 genres) for depth, plus *thin-genre round-out*, *older-era classics* (pre-1980), and
-*world cinema* (non-English) for breadth. Each asks for ~5 diverse un-owned films with
-a reason; a branch that returns junk or errors is skipped, never failing the run. The
+*world cinema* (non-English) for breadth. Each asks for ~9 diverse un-owned films with
+a reason (a larger ask gives headroom after filtering — T162); a branch that returns junk
+or errors is skipped, never failing the run. The
 `rec-merge` stage then enforces correctness in CODE so the model can't invent or repeat:
 every suggestion is **TMDB-searched** (must resolve to a real id, must not be owned, must
 not already be recommended/ignored — the `movie-recs` ledger keyed by recommended tmdb id),
-deduped across branches, and **balanced per genre** down to ~10–15. The final
+must clear a **quality bar** (TMDB rating **≥ 7.0** with a meaningful **vote count ≥ 50**, so a
+fluke high rating on a handful of votes can't sneak in — T162), then is deduped across
+branches and **balanced per genre**. It targets **≥ 15** final picks: if fewer survive the
+filters, a **bounded top-up loop** re-prompts the branches for ADDITIONAL films (excluding
+everything already collected/owned/recommended this run), verifies + merges again, and
+repeats up to a small capped number of rounds (Claude is free) — stopping early once the
+target is hit or no new titles arrive, and outputting whatever it has if 15 quality picks
+genuinely can't be found. The final
 `movie-gaps-notify` digest + markdown report gain a **Recommendations** section separate
 from the gaps, each rec showing its lens + reason + TMDB link; recommendations dedupe per
 tmdb id (never re-recommended), are fed back into next month's prompts so picks vary, and
-can be **ignore-to-suppress**'d like a gap. Tune via `MOVIES_RECS_*` env (model, sample
-size, target count, per-genre cap). Live LLM/TMDB runs are the owner's.
+can be **ignore-to-suppress**'d like a gap. The quality bar (`MOVIES_RECS_MIN_RATING`,
+`MOVIES_RECS_MIN_VOTES`), target (`MOVIES_RECS_TARGET`), top-up rounds
+(`MOVIES_RECS_TOPUP_ROUNDS`), per-branch ask (`MOVIES_RECS_PER_BRANCH_ASK`), and the rest
+are all `MOVIES_RECS_*` env-overridable (model, sample size, per-genre cap). Live LLM/TMDB
+runs are the owner's.
 
 **Typed-artifact contracts.** Each stage boundary declares `produces`/`consumes`
 contracts (`contracts.ts` in each workflow). A shape violation at a gate fails

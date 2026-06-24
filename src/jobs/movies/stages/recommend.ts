@@ -13,7 +13,7 @@ import type {
   RecsHistoryFile,
   TasteProfileFile,
 } from '../types.js';
-import type { BranchSpec } from './branches.js';
+import type { BranchContext, BranchSpec } from './branches.js';
 
 /** A Claude runner shaped like the shared helper (injectable for tests). */
 export type RunClaudeFn = (prompt: string, model: string) => Promise<ClaudeResult>;
@@ -46,7 +46,7 @@ export function parseSuggestions(text: string, lens: string): RawSuggestion[] {
   return out;
 }
 
-function recentTitles(historyFile: string, window: number): string[] {
+export function recentTitles(historyFile: string, window: number): string[] {
   if (!existsSync(historyFile)) return [];
   try {
     const hist = JSON.parse(readFileSync(historyFile, 'utf8')) as RecsHistoryFile;
@@ -97,7 +97,10 @@ export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchO
   const base: BranchOutputFile = { branchId: spec.id, lens: spec.lens, generatedAt: now.toISOString(), suggestions: [] };
 
   ctx.progress(30, 'building prompt');
-  const prompt = spec.build({ profile: taste.profile, movies, recent, sampleSize: moviesConfig.recsSampleSize });
+  const prompt = spec.build({
+    profile: taste.profile, movies, recent,
+    sampleSize: moviesConfig.recsSampleSize, ask: moviesConfig.recsPerBranchAsk,
+  });
   if (prompt == null) {
     ctx.log('Branch has nothing to target (e.g. no qualifying directors) — skipping gracefully.', 'warn');
     writeBranchFile(recsDir, { ...base, error: 'no targets for this branch' });
@@ -106,7 +109,7 @@ export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchO
   }
 
   ctx.progress(50, 'asking claude');
-  ctx.log(`Calling Claude (${moviesConfig.recsModel}) for ~5 recommendations…`);
+  ctx.log(`Calling Claude (${moviesConfig.recsModel}) for ~${moviesConfig.recsPerBranchAsk} recommendations…`);
   const res = await run(prompt, moviesConfig.recsModel);
   if (!res.ok) {
     const why = res.rateLimited ? 'rate/usage limit' : (res.error ?? 'claude error');
@@ -131,6 +134,29 @@ export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchO
   for (const s of suggestions) ctx.log(`  • ${s.title}${s.year ? ` (${s.year})` : ''} — ${s.reason}`);
   ctx.progress(100, `${suggestions.length} suggestion(s)`);
   ctx.log(`Wrote ${suggestions.length} suggestion(s) → ${path}`);
+}
+
+/**
+ * Run ONE branch IN-MEMORY for the merge top-up loop (T162): build its prompt
+ * (with the top-up `exclude` list folded in), call Claude, parse → raw
+ * suggestions. No file I/O. Resilient: a null prompt (no targets), a Claude
+ * error/rate-limit, or unparseable output all yield `[]` so the loop continues.
+ */
+export async function collectBranchSuggestions(
+  spec: BranchSpec,
+  ctx: BranchContext,
+  run: RunClaudeFn,
+  model: string,
+): Promise<RawSuggestion[]> {
+  const prompt = spec.build(ctx);
+  if (prompt == null) return [];
+  const res = await run(prompt, model);
+  if (!res.ok) return [];
+  try {
+    return parseSuggestions(res.text, spec.lens);
+  } catch {
+    return [];
+  }
 }
 
 /**

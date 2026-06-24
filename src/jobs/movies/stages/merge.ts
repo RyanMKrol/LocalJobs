@@ -12,8 +12,13 @@ import {
   dedupeRawByTitleYear,
   genreNameFromIds,
   mergeLens,
+  normTitle,
   recKey,
 } from '../recs.js';
+import { runClaude } from '../../../services/claude.js';
+import { BRANCHES } from './branches.js';
+import { collectBranchSuggestions, recentTitles } from './recommend.js';
+import type { RunClaudeFn } from './recommend.js';
 import { isWorkItemDone } from '../../../db/store.js';
 import type {
   BranchOutputFile,
@@ -21,12 +26,21 @@ import type {
   RawSuggestion,
   Recommendation,
   RecommendationsFile,
+  TasteProfileFile,
   TmdbSearchResponse,
   TmdbSearchResult,
 } from '../types.js';
 
 /** TMDB title search (injectable for tests). Returns the best match or null. */
 export type SearchMovieFn = (title: string, year: number | null) => Promise<TmdbSearchResult | null>;
+
+/**
+ * Re-prompt the branches for ADDITIONAL suggestions (T162 top-up). Given the
+ * titles already collected/owned/considered this run, returns fresh raw
+ * suggestions to verify+merge. Injectable for tests; the default fans out over
+ * all 8 branch specs in-memory (no file I/O).
+ */
+export type TopUpFn = (exclude: string[], round: number) => Promise<RawSuggestion[]>;
 
 const defaultSearchMovie: SearchMovieFn = (title, year) =>
   callService('tmdb', async () => {
@@ -38,10 +52,42 @@ const defaultSearchMovie: SearchMovieFn = (title, year) =>
 
 export interface MergeOpts {
   searchMovie?: SearchMovieFn;
+  /** Inject the top-up source (tests). Defaults to fanning out over the branches. */
+  topUp?: TopUpFn;
+  /** Inject the Claude runner the default top-up uses (tests). */
+  runClaude?: RunClaudeFn;
   snapshotFile?: string;
+  tasteFile?: string;
+  historyFile?: string;
   recsDir?: string;
   recsOut?: string;
   now?: Date;
+  // ── Threshold/target overrides (default from moviesConfig; tests pass these) ──
+  minRating?: number;
+  minVotes?: number;
+  target?: number;
+  genreCap?: number;
+  topUpRounds?: number;
+}
+
+/** A display label for a suggestion, used in the top-up exclude list + dedup. */
+function displayTitle(s: RawSuggestion): string {
+  return `${s.title}${s.year ? ` (${s.year})` : ''}`;
+}
+
+/** The cross-round dedup key for a raw suggestion (loose title + year). */
+function rawKey(s: RawSuggestion): string {
+  return `${normTitle(s.title)}::${s.year ?? ''}`;
+}
+
+/** Mutable counters threaded through every verify pass (initial + top-up rounds). */
+interface VerifyCounters {
+  searches: number;
+  dropHallucinated: number;
+  dropOwned: number;
+  dropAlready: number;
+  dropLowQuality: number;
+  quotaHit: boolean;
 }
 
 /** Read every branch's output file from the recs dir, pooling raw suggestions. */
@@ -61,72 +107,64 @@ function poolBranchSuggestions(recsDir: string, ctx: JobContext): RawSuggestion[
   return pooled;
 }
 
+/** Thresholds + target resolved once per run (config defaults, opts override). */
+interface MergeParams {
+  minRating: number;
+  minVotes: number;
+  target: number;
+  genreCap: number;
+  topUpRounds: number;
+}
+
 /**
- * Merge stage — CODE enforces correctness so the LLM can't invent or re-suggest.
- * Pools all branches' raw suggestions, then for each (after a cheap title/year
- * dedup): TMDB-searches it → must resolve to a REAL tmdb id → must NOT be owned →
- * must NOT already be recommended/ignored (the `movie-recs` ledger, keyed by
- * recommended tmdb id). Dedupes across branches by resolved tmdb id (merging
- * lenses), then BALANCES the output (cap per genre, ~target total) so the digest
- * isn't one flavour. Writes data/out/recommendations.json. Resilient: per-item
- * search failures are skipped and a TMDB quota stops it gracefully — it always
- * writes a (possibly empty) list and succeeds, so the notify stage still runs.
+ * Verify a batch of (already cross-round-deduped) raw suggestions and merge the
+ * survivors into `byTmdb`. CODE enforces correctness so the LLM can't invent or
+ * re-suggest: each suggestion must TMDB-resolve to a REAL id → NOT be owned →
+ * NOT already recommended/ignored (the `movie-recs` ledger) → clear the QUALITY
+ * bar (TMDB rating ≥ minRating AND vote_count ≥ minVotes, T162). Dedupes across
+ * branches by resolved tmdb id (merging lenses). Mutates `byTmdb` + `counters`;
+ * stops early (setting `counters.quotaHit`) when TMDB's quota is reached.
  */
-export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<void> {
-  ensureDirs();
-  const search = opts.searchMovie ?? defaultSearchMovie;
-  const snapshotFile = opts.snapshotFile ?? moviesConfig.snapshotOut;
-  const recsDir = opts.recsDir ?? moviesConfig.recsDir;
-  const recsOut = opts.recsOut ?? moviesConfig.recsOut;
-  const now = opts.now ?? new Date();
-
-  ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  ctx.log('rec-merge starting');
-  if (!existsSync(snapshotFile)) {
-    throw new Error(`snapshot.json not found — run movie-snapshot first (${snapshotFile}).`);
-  }
-  const snapshot = JSON.parse(readFileSync(snapshotFile, 'utf8')) as MovieSnapshotFile;
-  const owned = buildOwnedSet(snapshot.movies ?? []);
-  ctx.log(`Owned set size ${owned.size}.`);
-
-  ctx.log('Pooling branch suggestions…');
-  const pooled = poolBranchSuggestions(recsDir, ctx);
-  const unique = dedupeRawByTitleYear(pooled);
-  ctx.log(`Pooled ${pooled.length} raw suggestion(s) → ${unique.length} after title/year dedup.`);
-
-  const byTmdb = new Map<number, Recommendation>();
-  let searches = 0;
-  let dropHallucinated = 0;
-  let dropOwned = 0;
-  let dropAlready = 0;
-  let quotaHit = false;
-
-  for (let i = 0; i < unique.length; i++) {
-    const s = unique[i];
-    ctx.progress((i / Math.max(unique.length, 1)) * 90, `verified ${i}/${unique.length}`);
+async function verifyInto(
+  batch: RawSuggestion[],
+  byTmdb: Map<number, Recommendation>,
+  owned: Set<number>,
+  search: SearchMovieFn,
+  ctx: JobContext,
+  params: MergeParams,
+  counters: VerifyCounters,
+): Promise<void> {
+  for (const s of batch) {
     let result: TmdbSearchResult | null;
     try {
       result = await search(s.title, s.year);
-      searches++;
+      counters.searches++;
     } catch (err) {
       if (err instanceof QuotaExceededError) {
         ctx.log(`tmdb ${err.window} cap reached (${err.used}/${err.cap}) — stopping verification gracefully.`, 'warn');
-        quotaHit = true;
-        break;
+        counters.quotaHit = true;
+        return;
       }
       ctx.log(`  ✗ "${s.title}" — search failed: ${err instanceof Error ? err.message.split('\n')[0] : err}`, 'warn');
       continue;
     }
     if (!result || typeof result.id !== 'number') {
-      dropHallucinated++;
+      counters.dropHallucinated++;
       ctx.log(`  ⨯ "${s.title}"${s.year ? ` (${s.year})` : ''} — no TMDB match (hallucinated) — dropped.`, 'warn');
       continue;
     }
     const tmdbId = result.id;
-    if (owned.has(tmdbId)) { dropOwned++; ctx.log(`  ⨯ "${s.title}" → tmdb ${tmdbId} — already OWNED — dropped.`); continue; }
+    if (owned.has(tmdbId)) { counters.dropOwned++; ctx.log(`  ⨯ "${s.title}" → tmdb ${tmdbId} — already OWNED — dropped.`); continue; }
     if (isWorkItemDone(RECS_JOB, recKey(tmdbId), 1)) {
-      dropAlready++;
+      counters.dropAlready++;
       ctx.log(`  ⨯ "${s.title}" → tmdb ${tmdbId} — already recommended/ignored — dropped.`);
+      continue;
+    }
+    const rating = typeof result.vote_average === 'number' ? result.vote_average : 0;
+    const votes = typeof result.vote_count === 'number' ? result.vote_count : 0;
+    if (rating < params.minRating || votes < params.minVotes) {
+      counters.dropLowQuality++;
+      ctx.log(`  ⨯ "${s.title}" → tmdb ${tmdbId} — rating ${rating} (${votes} votes) below bar (≥${params.minRating}, ≥${params.minVotes} votes) — dropped.`);
       continue;
     }
     const existing = byTmdb.get(tmdbId);
@@ -138,22 +176,145 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
       reason: s.reason,
       lens: s.lens,
       genre: genreNameFromIds(result.genre_ids),
-      tmdbRating: typeof result.vote_average === 'number' ? result.vote_average : null,
+      tmdbRating: rating,
     });
+  }
+}
+
+/**
+ * The default top-up source (T162): fan out over all 8 branch specs IN-MEMORY
+ * (no file I/O), re-prompting each Claude branch for ADDITIONAL well-regarded
+ * films while excluding everything already collected/considered this run. Built
+ * lazily so a run that never goes under target loads no taste profile.
+ */
+function buildDefaultTopUp(
+  snapshot: MovieSnapshotFile,
+  tasteFile: string,
+  historyFile: string,
+  run: RunClaudeFn,
+  ctx: JobContext,
+): TopUpFn {
+  return async (exclude) => {
+    if (!existsSync(tasteFile)) {
+      ctx.log('  • top-up: no taste profile on disk — cannot re-prompt branches.', 'warn');
+      return [];
+    }
+    const taste = JSON.parse(readFileSync(tasteFile, 'utf8')) as TasteProfileFile;
+    const movies = snapshot.movies ?? [];
+    const recent = recentTitles(historyFile, moviesConfig.recsRecentWindow);
+    const pooled: RawSuggestion[] = [];
+    for (const spec of BRANCHES) {
+      const more = await collectBranchSuggestions(
+        spec,
+        { profile: taste.profile, movies, recent, sampleSize: moviesConfig.recsSampleSize, ask: moviesConfig.recsPerBranchAsk, exclude },
+        run,
+        moviesConfig.recsModel,
+      );
+      if (more.length) pooled.push(...more);
+    }
+    return pooled;
+  };
+}
+
+/**
+ * Merge stage — pools all branches' raw suggestions, verifies+dedupes+quality-
+ * filters them into the final balanced list. If fewer than the TARGET survive
+ * (T162: ≥15 well-rated, un-owned, never-before-recommended, genre-balanced
+ * picks), runs a BOUNDED top-up loop: re-prompt the branches for more, verify +
+ * merge, repeat up to `topUpRounds` rounds or until the target is reached / no
+ * new suggestions arrive. Writes data/out/recommendations.json. Resilient: per-
+ * item search failures are skipped and a TMDB quota stops it gracefully — it
+ * always writes a (possibly short) list and succeeds, so the notify stage runs.
+ */
+export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<void> {
+  ensureDirs();
+  const search = opts.searchMovie ?? defaultSearchMovie;
+  const snapshotFile = opts.snapshotFile ?? moviesConfig.snapshotOut;
+  const tasteFile = opts.tasteFile ?? moviesConfig.tasteOut;
+  const historyFile = opts.historyFile ?? moviesConfig.recsHistoryOut;
+  const recsDir = opts.recsDir ?? moviesConfig.recsDir;
+  const recsOut = opts.recsOut ?? moviesConfig.recsOut;
+  const now = opts.now ?? new Date();
+  const params: MergeParams = {
+    minRating: opts.minRating ?? moviesConfig.recsMinRating,
+    minVotes: opts.minVotes ?? moviesConfig.recsMinVotes,
+    target: opts.target ?? moviesConfig.recsTarget,
+    genreCap: opts.genreCap ?? moviesConfig.recsGenreCap,
+    topUpRounds: opts.topUpRounds ?? moviesConfig.recsTopUpRounds,
+  };
+
+  ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  ctx.log('rec-merge starting');
+  if (!existsSync(snapshotFile)) {
+    throw new Error(`snapshot.json not found — run movie-snapshot first (${snapshotFile}).`);
+  }
+  const snapshot = JSON.parse(readFileSync(snapshotFile, 'utf8')) as MovieSnapshotFile;
+  const owned = buildOwnedSet(snapshot.movies ?? []);
+  ctx.log(`Owned set size ${owned.size}. Target ≥${params.target}; quality bar rating ≥${params.minRating} with ≥${params.minVotes} votes.`);
+
+  ctx.log('Pooling branch suggestions…');
+  const pooled = poolBranchSuggestions(recsDir, ctx);
+  const unique = dedupeRawByTitleYear(pooled);
+  ctx.log(`Pooled ${pooled.length} raw suggestion(s) → ${unique.length} after title/year dedup.`);
+
+  const byTmdb = new Map<number, Recommendation>();
+  const counters: VerifyCounters = {
+    searches: 0, dropHallucinated: 0, dropOwned: 0, dropAlready: 0, dropLowQuality: 0, quotaHit: false,
+  };
+  // Every (loose) title key we've already considered — across the pool AND every
+  // top-up round — so the top-up never re-asks for or re-verifies a known title.
+  const seen = new Set<string>();
+  const considered: string[] = []; // display labels handed to the branches as exclusions
+  for (const s of unique) { seen.add(rawKey(s)); considered.push(displayTitle(s)); }
+
+  ctx.progress(20, `verifying ${unique.length}`);
+  await verifyInto(unique, byTmdb, owned, search, ctx, params, counters);
+
+  let balanced = balanceByGenre([...byTmdb.values()], { cap: params.genreCap, target: params.target });
+
+  // ── Bounded top-up loop (T162): re-prompt the branches until we hit the target. ──
+  const topUp = opts.topUp
+    ?? buildDefaultTopUp(snapshot, tasteFile, historyFile, opts.runClaude ?? runClaude, ctx);
+  let round = 0;
+  while (!counters.quotaHit && balanced.length < params.target && round < params.topUpRounds) {
+    round++;
+    ctx.log(`Top-up round ${round}/${params.topUpRounds}: have ${balanced.length}/${params.target} — re-prompting branches for more…`);
+    let more: RawSuggestion[];
+    try {
+      more = await topUp(considered, round);
+    } catch (err) {
+      ctx.log(`  ✗ top-up round ${round} failed (${err instanceof Error ? err.message.split('\n')[0] : err}) — stopping.`, 'warn');
+      break;
+    }
+    // Keep only genuinely-new titles (not already pooled or seen in a prior round).
+    const fresh: RawSuggestion[] = [];
+    for (const s of dedupeRawByTitleYear(more)) {
+      const k = rawKey(s);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      considered.push(displayTitle(s));
+      fresh.push(s);
+    }
+    ctx.log(`  • round ${round}: ${more.length} returned → ${fresh.length} new to verify.`);
+    if (!fresh.length) { ctx.log('  • no new suggestions — stopping top-up.'); break; }
+    await verifyInto(fresh, byTmdb, owned, search, ctx, params, counters);
+    balanced = balanceByGenre([...byTmdb.values()], { cap: params.genreCap, target: params.target });
+    ctx.progress(20 + (round / params.topUpRounds) * 70, `top-up ${round}: ${balanced.length}/${params.target}`);
   }
 
   const verified = [...byTmdb.values()];
-  const balanced = balanceByGenre(verified, { cap: moviesConfig.recsGenreCap, target: moviesConfig.recsTarget });
-
   const out: RecommendationsFile = { generatedAt: now.toISOString(), pooled: pooled.length, recommendations: balanced };
   writeJsonFile(recsOut, out);
 
   ctx.progress(100, `${balanced.length} recommendation(s)`);
   ctx.log('');
   ctx.log('═══════════════ REC-MERGE SUMMARY ═══════════════');
-  ctx.log(`Pooled ${pooled.length} · unique ${unique.length} · TMDB searches ${searches}${quotaHit ? ' (stopped on quota)' : ''}.`);
-  ctx.log(`Dropped: ${dropHallucinated} hallucinated · ${dropOwned} owned · ${dropAlready} already-recommended.`);
-  ctx.log(`Verified novel: ${verified.length} → balanced to ${balanced.length} (cap ${moviesConfig.recsGenreCap}/genre, target ${moviesConfig.recsTarget}).`);
+  ctx.log(`Pooled ${pooled.length} · considered ${considered.length} · TMDB searches ${counters.searches}${counters.quotaHit ? ' (stopped on quota)' : ''} · top-up rounds ${round}.`);
+  ctx.log(`Dropped: ${counters.dropHallucinated} hallucinated · ${counters.dropOwned} owned · ${counters.dropAlready} already-recommended · ${counters.dropLowQuality} below quality bar.`);
+  ctx.log(`Verified novel: ${verified.length} → balanced to ${balanced.length} (cap ${params.genreCap}/genre, target ${params.target}).`);
+  if (balanced.length < params.target) {
+    ctx.log(`⚠ Only ${balanced.length}/${params.target} quality picks after ${round} top-up round(s) — outputting what we have.`, 'warn');
+  }
   for (const r of balanced) ctx.log(`  • [${r.genre}] ${r.title}${r.year ? ` (${r.year})` : ''} — ${r.reason} (${r.lens})`);
   ctx.log(`Wrote ${recsOut}`);
   ctx.log('══════════════════════════════════════════════════');

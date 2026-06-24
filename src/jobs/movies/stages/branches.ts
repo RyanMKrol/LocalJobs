@@ -21,6 +21,10 @@ export interface BranchContext {
   recent: string[];
   /** Owned-library sample size to show (stratified). */
   sampleSize: number;
+  /** How many films to ask Claude for (T162 — larger ask gives headroom). */
+  ask: number;
+  /** Extra titles to exclude (T162 top-up: everything already collected this run). */
+  exclude?: string[];
 }
 
 export interface BranchSpec {
@@ -37,15 +41,24 @@ export interface BranchSpec {
   build(ctx: BranchContext): string | null;
 }
 
-const RULES = [
-  '',
-  'Rules:',
-  '- Recommend films I do NOT already own (none from the owned list) and NONE from the "recently recommended" list.',
-  '- Do NOT recommend sequels or other entries in franchises I am already collecting — straight standalone or new-to-me films only.',
-  '- Favour DIVERSE picks (vary genre, era, country) — never return all-one-flavour.',
-  '- Give a concise one-line reason for each pick.',
-  'Return ONLY a JSON object, no prose: {"recommendations":[{"title":"...","year":1999,"reason":"..."}]}. About 5 films.',
-].join('\n');
+/**
+ * The shared per-branch rules + JSON contract. The ASK count is parameterized
+ * (T162) so the merge can request a larger batch (and re-prompt for more in a
+ * top-up round) — favour well-regarded films so they survive the merge's quality
+ * filter (TMDB rating ≥ ~7 with a meaningful vote count).
+ */
+function rules(ask: number): string {
+  return [
+    '',
+    'Rules:',
+    '- Recommend films I do NOT already own (none from the owned list) and NONE from the "recently recommended" or "already considered" lists.',
+    '- Do NOT recommend sequels or other entries in franchises I am already collecting — straight standalone or new-to-me films only.',
+    '- Favour DIVERSE picks (vary genre, era, country) — never return all-one-flavour.',
+    '- Favour WELL-REGARDED, acclaimed films (these get filtered against a quality bar, so avoid obscure low-rated picks).',
+    '- Give a concise one-line reason for each pick.',
+    `Return ONLY a JSON object, no prose: {"recommendations":[{"title":"...","year":1999,"reason":"..."}]}. About ${ask} films.`,
+  ].join('\n');
+}
 
 function fmtMovies(movies: PlexMovie[]): string {
   return movies.map((m) => `- ${m.title}${m.year ? ` (${m.year})` : ''}`).join('\n');
@@ -59,6 +72,12 @@ function ownedBlock(ctx: BranchContext, seed: number): string {
 function recentBlock(ctx: BranchContext): string {
   if (!ctx.recent.length) return '';
   return `\n\nRecently recommended to me (do NOT repeat these):\n${ctx.recent.map((t) => `- ${t}`).join('\n')}`;
+}
+
+/** T162 top-up: titles already collected/considered this run, to avoid repeats. */
+function excludeBlock(ctx: BranchContext): string {
+  if (!ctx.exclude?.length) return '';
+  return `\n\nAlready considered this round (do NOT suggest any of these again):\n${ctx.exclude.map((t) => `- ${t}`).join('\n')}`;
 }
 
 function topGenresLine(profile: TasteProfile, n = 5): string {
@@ -83,7 +102,8 @@ function randomBranch(n: number): BranchSpec {
         '',
         ownedBlock(ctx, 1000 + n), // distinct seed per random branch → divergent slices
         recentBlock(ctx),
-        RULES,
+        excludeBlock(ctx),
+        rules(ctx.ask),
       ].join('\n');
     },
   };
@@ -106,7 +126,8 @@ const auteurBranch: BranchSpec = {
       '',
       ownedBlock(ctx, 2001),
       recentBlock(ctx),
-      RULES,
+      excludeBlock(ctx),
+      rules(ctx.ask),
     ].join('\n');
   },
 };
@@ -130,7 +151,8 @@ const canonBranch: BranchSpec = {
       '',
       ownedBlock(ctx, 2002),
       recentBlock(ctx),
-      RULES,
+      excludeBlock(ctx),
+      rules(ctx.ask),
     ].join('\n');
   },
 };
@@ -150,7 +172,8 @@ const thinGenreBranch: BranchSpec = {
       '',
       ownedBlock(ctx, 2003),
       recentBlock(ctx),
-      RULES,
+      excludeBlock(ctx),
+      rules(ctx.ask),
     ].join('\n');
   },
 };
@@ -172,7 +195,8 @@ const olderEraBranch: BranchSpec = {
       '',
       ownedBlock(ctx, 2004),
       recentBlock(ctx),
-      RULES,
+      excludeBlock(ctx),
+      rules(ctx.ask),
     ].join('\n');
   },
 };
@@ -194,7 +218,8 @@ const worldCinemaBranch: BranchSpec = {
       '',
       ownedBlock(ctx, 2005),
       recentBlock(ctx),
-      RULES,
+      excludeBlock(ctx),
+      rules(ctx.ask),
     ].join('\n');
   },
 };

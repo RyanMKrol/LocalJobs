@@ -70,7 +70,7 @@ writeFileSync(join(recsDir, 'rec-world-cinema.json'), JSON.stringify(branchB));
 
 // Injected TMDB search: title → result (or null = hallucination).
 const result = (id: number, title: string, year: number, genre: number): TmdbSearchResult =>
-  ({ id, title, release_date: `${year}-01-01`, vote_average: 7, genre_ids: [genre], original_language: 'en' });
+  ({ id, title, release_date: `${year}-01-01`, vote_average: 7, vote_count: 100, genre_ids: [genre], original_language: 'en' });
 const SEARCH: Record<string, TmdbSearchResult | null> = {
   'Action A': result(ACT[0], 'Action A', 2001, 28),
   'Action A Alternate Title': result(ACT[0], 'Action A', 2001, 28), // same id, different title
@@ -90,7 +90,9 @@ const searchMovie: SearchMovieFn = async (title) => (title in SEARCH ? SEARCH[ti
 markWorkItem(RECS_JOB, recKey(PREV_REC_ID), 'success');
 ignoreSurfacedItem(RECS_JOB, recKey(IGNORED_ID));
 
-await runMerge(fakeCtx(), { searchMovie, snapshotFile, recsDir, recsOut, now: NOW });
+// Inject an empty top-up so this hermetic test never reaches the live default
+// (branch fan-out) path; the top-up loop itself is covered in merge-quality.test.ts.
+await runMerge(fakeCtx(), { searchMovie, snapshotFile, recsDir, recsOut, now: NOW, topUp: async () => [] });
 
 const out = JSON.parse(readFileSync(recsOut, 'utf8')) as RecommendationsFile;
 const recs = out.recommendations;

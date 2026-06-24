@@ -128,6 +128,8 @@ export interface TmdbSearchResult {
   title?: string;
   release_date?: string | null;
   vote_average?: number;
+  /** Number of TMDB votes — a quality floor so a fluke rating can't sneak in (T162). */
+  vote_count?: number;
   genre_ids?: number[];
   original_language?: string;
 }
