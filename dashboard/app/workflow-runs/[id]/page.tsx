@@ -235,12 +235,13 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
     : 'This run processed no new items.';
   return (
     <>
-      <h2>Input → Output mapping</h2>
+      <h2>Input → Output mapping{io.length > 0 ? ` · ${io.length.toLocaleString()} items` : ''}</h2>
       <div className="panel">
         {io.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>{emptyMessage}</p>
         ) : (
           <>
+            <div className="io-table-scroll">
             <table>
               <thead>
                 <tr>
@@ -274,6 +275,7 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
                 ))}
               </tbody>
             </table>
+            </div>
             {!singleStage && <p className="io-footnote">{note}</p>}
           </>
         )}

@@ -125,6 +125,9 @@ tbody tr:hover { background: var(--panel-2); }
 .muted { color: var(--muted); }
 /* Subtle caveat footnote under the Input→Output table (T139). */
 .io-footnote { color: var(--muted); font-size: 0.8em; margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--border); }
+/* IO table scroll container (T148) — height-capped, both-axis scroll, sticky header. */
+.io-table-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
+.io-table-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
 .mono { font-family: var(--font-mono); }
 .code-block { display: block; font-family: var(--font-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
