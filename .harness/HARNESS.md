@@ -74,7 +74,14 @@ task is not done. (Only a task that would have to *exceed* the monthly cap to ve
 
 Per-task `model`/`effort` in `TASKS.json` (Opus for code/complex, Sonnet for simple), falling back
 to `defaults` then `harness.env`. After `MAX_ATTEMPTS` soft failures on a rung, the loop climbs the
-task's `escalation` ladder (e.g. Sonnet→Opus); past the top rung it stops for a human.
+escalation ladder; past the top rung it stops for a human.
+
+**Difficulty is now auto-tuned (see `designs/difficulty-autotune.md`).** The loop rides ONE global
+tier ladder (`facets.json → .tiers.ladder`) and a policy (`policy.jq`) picks each task's START tier
+from its `(layer × work-type)` facet cell's escalation history (cheapest tier clearing floor 0.75
+with ≥6 samples; else the authored difficulty). Every built task's outcome is captured to
+`.harness/outcomes.jsonl` (the sole calibration input; forward-only). The authored `model`/`effort`
+is now just the cold-start prior. `needs-human` tasks are carved out entirely.
 
 ## 7. Usage-limit backoff (pause + auto-resume)
 
