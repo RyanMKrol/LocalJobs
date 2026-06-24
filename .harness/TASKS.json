@@ -4016,7 +4016,7 @@
     {
       "id": "T155",
       "title": "Evaluate: movies graph shows a validation gate under the gaps-notify job, not between two jobs",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -4537,6 +4537,116 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T174.md",
+      "reviewed": false
+    },
+    {
+      "id": "T175",
+      "title": "Workflow DAG graph: draw non-adjacent/skip-wave edges as visible connectors (franchise-gaps → notify bypasses rec-merge)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "xhigh"
+        }
+      ],
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T175.md",
+      "reviewed": false
+    },
+    {
+      "id": "T176",
+      "title": "rec-merge logs: narrate the top-up rounds (re-prompted branches, new suggestions, drops, running count)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "movies",
+        "logging"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/jobs/movies"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T176.md",
+      "reviewed": false
+    },
+    {
+      "id": "T177",
+      "title": "Log view: add a Copy button to copy all logs for a run to the clipboard",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/workflow-runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T177.md",
+      "reviewed": false
+    },
+    {
+      "id": "T178",
+      "title": "Progress bar: hide the message hint (e.g. \"verifying 61\") — show only the percentage",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T178.md",
       "reviewed": false
     },
     {
