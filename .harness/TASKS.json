@@ -4407,7 +4407,7 @@
     },
     {
       "id": "T170",
-      "title": "Movies workflow page: contain + make scrollable the Recommendations & gaps section; theme-consistent Ignore buttons",
+      "title": "Movies workflow page: fix the Recommendations & gaps section styling — contain + scroll, themed Ignore buttons, tidy empty state",
       "status": "pending",
       "dependsOn": [],
       "gate": null,
