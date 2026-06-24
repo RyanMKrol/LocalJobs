@@ -4124,6 +4124,113 @@
       "verify": [],
       "spec": ".harness/tasks/T157.md",
       "reviewed": false
+    },
+    {
+      "id": "T158",
+      "title": "Markdown preview: stop hiding null/empty frontmatter fields — show them, mark null + bold",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T158.md",
+      "reviewed": false
+    },
+    {
+      "id": "T159",
+      "title": "Backlog: make buildable + needs-human lists compact rows that expand on click (like Done)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T159.md",
+      "reviewed": false
+    },
+    {
+      "id": "T160",
+      "title": "Backlog: needs-human marker should be a stable blue, not the theme accent (green under Pixel Picnic)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T160.md",
+      "reviewed": false
+    },
+    {
+      "id": "T161",
+      "title": "Movies franchise-gaps report: show one example owned film per collection",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "movies",
+        "coding"
+      ],
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "escalation": [
+        {
+          "model": "claude-opus-4-8",
+          "effort": "high"
+        }
+      ],
+      "scope": [
+        "src/jobs/movies"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T161.md",
+      "reviewed": false
     }
   ]
 }
