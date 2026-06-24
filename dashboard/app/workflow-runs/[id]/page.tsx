@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
-import type { IoRow, Run, WorkflowIo, WorkflowRunOutput } from '../../lib/api';
+import type { IoRow, Run, WorkflowIo } from '../../lib/api';
 import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
 
 function latestByStage(members: Run[]): Run[] {
@@ -97,9 +97,16 @@ function renderFmValue(v: string): React.ReactNode {
 
 /** Full-markdown popover — renders LLM/scraped markdown via react-markdown (XSS-safe:
  *  no rehype-raw, raw HTML in the content is escaped, not executed). YAML frontmatter
- *  is stripped and shown as a compact key-value header above the body. */
+ *  is stripped and shown as a compact key-value header above the body.
+ *  When `loading` is true the body shows a loading indicator instead of content. */
 function MarkdownModal(
-  { title, content, truncated, onClose }: { title: string; content: string; truncated?: boolean; onClose: () => void },
+  { title, content, truncated, loading, onClose }: {
+    title: string;
+    content?: string;
+    truncated?: boolean;
+    loading?: boolean;
+    onClose: () => void;
+  },
 ) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
@@ -107,8 +114,8 @@ function MarkdownModal(
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const { fields, body } = parseFrontmatter(content);
-  const visibleFields = fields.filter(([, v]) => !isFmEmpty(v));
+  const parsed = content ? parseFrontmatter(content) : null;
+  const visibleFields = parsed ? parsed.fields.filter(([, v]) => !isFmEmpty(v)) : [];
 
   return (
     <div className="db-modal-overlay" onClick={onClose}>
@@ -118,59 +125,52 @@ function MarkdownModal(
           <button className="db-modal-close" onClick={onClose} aria-label="Close">✕</button>
         </div>
         <div className="db-modal-body">
-          {truncated && <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>⚠ Output is large — showing the first part only.</p>}
-          {visibleFields.length > 0 && (
-            <dl className="md-fm">
-              {visibleFields.map(([k, v]) => (
-                <div key={k} className="md-fm-row">
-                  <dt className="md-fm-key">{k}</dt>
-                  <dd className="md-fm-val">{renderFmValue(v)}</dd>
-                </div>
-              ))}
-            </dl>
+          {loading && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
+          {!loading && parsed && (
+            <>
+              {truncated && <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>⚠ Output is large — showing the first part only.</p>}
+              {visibleFields.length > 0 && (
+                <dl className="md-fm">
+                  {visibleFields.map(([k, v]) => (
+                    <div key={k} className="md-fm-row">
+                      <dt className="md-fm-key">{k}</dt>
+                      <dd className="md-fm-val">{renderFmValue(v)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              <div className="md-body">
+                <ReactMarkdown>{parsed.body}</ReactMarkdown>
+              </div>
+            </>
           )}
-          <div className="md-body">
-            <ReactMarkdown>{body}</ReactMarkdown>
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/** Format byte count as a human-readable string (e.g. "4.2 KB"). */
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /**
- * Output cell for one IO row: lazily fetches the produced markdown ONCE, then
- * renders filename + file-size metadata (meta style). Falls back to the bare
- * output key/detail when the item has no markdown artifact.
+ * Output cell for one IO row — two-phase, no mount-time fetch.
+ *
+ * Phase 1 (instant): derives filename and label from `row.outputDetail` already
+ * present on the row (`outputDetail.markdown` → basename; `outputDetail.name` →
+ * label). Renders the final meta layout immediately so the column never reflows.
+ *
+ * Phase 2 (lazy): fetches the full markdown content only when the user clicks
+ * "click to preview". The `onOpen` callback is given the title and a Promise
+ * for the content; the parent shows a loading state in the popover while it resolves.
+ *
+ * Falls back to showing the bare key/name (no preview) when there is no markdown
+ * path recorded on the row, and renders `—` when there is no output key at all.
  */
 function OutputCell(
   { runId, row, onOpen }: {
     runId: string;
     row: IoRow;
-    onOpen: (title: string, content: string, truncated: boolean) => void;
+    onOpen: (title: string, contentPromise: Promise<{ content: string; truncated: boolean }>) => void;
   },
 ) {
-  const [out, setOut] = useState<WorkflowRunOutput | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!row.outputJob || !row.outputKey) return;
-    let alive = true;
-    setLoading(true);
-    api.workflowRunOutput(runId, row.outputJob, row.outputKey)
-      .then((o) => { if (alive) setOut(o); })
-      .catch(() => { if (alive) setOut(null); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [runId, row.outputJob, row.outputKey]);
-
   if (!row.outputKey) return <span className="muted">—</span>;
 
   const detailName =
@@ -178,34 +178,35 @@ function OutputCell(
       ? itemLabel(row.outputKey, row.outputDetail)
       : null;
 
-  // Fallback when no markdown artifact (or still loading).
-  if (!out?.found || !out.content) {
+  const mdPath =
+    row.outputDetail && typeof (row.outputDetail as Record<string, unknown>).markdown === 'string'
+      ? (row.outputDetail as Record<string, unknown>).markdown as string
+      : null;
+
+  // No markdown path recorded — show key/name, no preview (no fetch needed).
+  if (!mdPath) {
     return (
       <>
         <div className="mono" style={{ fontSize: '0.82em' }}>{row.outputKey}</div>
         {detailName && <div className="muted" style={{ fontSize: '0.88em' }}>{detailName}</div>}
-        {loading && <div className="muted" style={{ fontSize: '0.78em' }}>loading preview…</div>}
       </>
     );
   }
 
-  const { title } = mdPreview(out.content);
-  const heading = title ?? detailName ?? row.outputKey;
-  const filename = out.file ?? row.outputKey;
-  const content = out.content;
-  const truncated = !!out.truncated;
-  const open = () => onOpen(heading, content, truncated);
+  // Derive display name from the recorded path (no fetch).
+  const shortName = mdPath.split('/').pop() ?? mdPath;
+  const heading = detailName ?? shortName;
 
-  // ── Meta style: filename link + file-size metadata ───────────────────────
-  const shortName = filename.split('/').pop() ?? filename;
+  const open = () => {
+    const contentPromise = api.workflowRunOutput(runId, row.outputJob!, row.outputKey!)
+      .then((o) => ({ content: o.content ?? '', truncated: !!o.truncated }));
+    onOpen(heading, contentPromise);
+  };
+
   return (
     <div className="out-meta">
-      <button type="button" className="out-meta-link" onClick={open} title={filename}>{shortName}</button>
-      <span className="out-meta-info muted">
-        {out.bytes != null ? fmtBytes(out.bytes) : null}
-        {out.bytes != null && ' · '}
-        click to preview
-      </span>
+      <button type="button" className="out-meta-link" onClick={open} title={mdPath}>{shortName}</button>
+      <span className="out-meta-info muted">click to preview</span>
     </div>
   );
 }
@@ -221,11 +222,23 @@ function OutputCell(
  * produced markdown artifact (title + excerpt) and opens the full markdown in a
  * popover on click (T110).
  */
+type ModalState =
+  | { loading: true; title: string }
+  | { loading: false; title: string; content: string; truncated: boolean };
+
 function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
   const { io, firstWave, lastWave, emptyReason, note } = data;
-  const [modal, setModal] = useState<{ title: string; content: string; truncated: boolean } | null>(null);
+  const [modal, setModal] = useState<ModalState | null>(null);
+
+  // Opens the preview popover immediately (with a loading state) and resolves
+  // the content Promise to fill it in — so the column never fetches on mount.
   const openModal = useCallback(
-    (title: string, content: string, truncated: boolean) => setModal({ title, content, truncated }),
+    (title: string, contentPromise: Promise<{ content: string; truncated: boolean }>) => {
+      setModal({ loading: true, title });
+      contentPromise
+        .then(({ content, truncated }) => setModal({ loading: false, title, content, truncated }))
+        .catch(() => setModal(null));
+    },
     [],
   );
   if (io.length === 0 && firstWave.length === 0) return null;
@@ -280,7 +293,15 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
           </>
         )}
       </div>
-      {modal && <MarkdownModal title={modal.title} content={modal.content} truncated={modal.truncated} onClose={() => setModal(null)} />}
+      {modal && (
+        <MarkdownModal
+          title={modal.title}
+          loading={modal.loading}
+          content={modal.loading ? undefined : modal.content}
+          truncated={modal.loading ? undefined : modal.truncated}
+          onClose={() => setModal(null)}
+        />
+      )}
     </>
   );
 }
