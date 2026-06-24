@@ -3771,7 +3771,7 @@
     {
       "id": "T146",
       "title": "Movie workflow: 8-branch Claude recommendation layer (3 random + 5 targeted) with TMDB-verified merge",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T145"
       ],
