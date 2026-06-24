@@ -4288,7 +4288,7 @@
     {
       "id": "T165",
       "title": "Table row hover jitters — remove the translateY hover-lift on rows (keep a non-reflowing highlight)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
