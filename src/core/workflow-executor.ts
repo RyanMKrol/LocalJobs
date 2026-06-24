@@ -348,7 +348,10 @@ async function runWorkflowInner(
   const statuses = [...lastStatuses.values()];
   const status: WorkflowRunStatus = controller.signal.aborted
     ? 'cancelled'
-    : statuses.length === 0 ? 'failed' : statuses.every((s) => s === 'success') ? 'success' : 'partial';
+    : statuses.length === 0 ? 'failed'
+    : statuses.every((s) => s === 'success') ? 'success'
+    : statuses.some((s) => s === 'success') ? 'partial'
+    : 'failed';
   finishWorkflowRun(workflowRunId, status);
   log(status === 'cancelled' ? `Workflow "${def.name}" cancelled` : `Workflow "${def.name}" finished: ${status}`);
   await notifyWorkflow(def.name, workflowRunId, status, log);

@@ -155,15 +155,35 @@ try {
     assert.equal(rollUpWorkflowProgress(prid), 50);
   });
 
-  await test('a failed upstream skips its dependent → status partial, dependent recorded skipped', async () => {
+  await test('a failed upstream skips its dependent → status failed (no member succeeded), dependent recorded skipped', async () => {
     const def: WorkflowDefinition = { name: 'pp-partial', jobs: [{ job: 'fail-pp-a' }, { job: 'pp-dep', dependsOn: ['fail-pp-a'] }] };
     syncWorkflow(def);
     const { workflowRunId } = await runWorkflow(def, 'manual');
-    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'partial');
+    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'failed');
     const memberRuns = listRunsForWorkflowRun(workflowRunId!);
     assert.ok(memberRuns.some((r) => r.job_name === 'fail-pp-a' && r.status === 'failed'));
     const skipped = memberRuns.find((r) => r.job_name === 'pp-dep');
     assert.equal(skipped?.status, 'skipped'); // never spawned — recorded by the skip cascade
+  });
+
+  await test('status rollup: all-success → success; mixed success+failure → partial; no success → failed', async () => {
+    // all success
+    const defOk: WorkflowDefinition = { name: 'rollup-ok', jobs: [{ job: 'pp-a' }, { job: 'pp-b' }] };
+    syncWorkflow(defOk);
+    const { workflowRunId: okId } = await runWorkflow(defOk, 'manual');
+    assert.equal(getWorkflowRun(okId!)?.status, 'success', 'all succeed → success');
+
+    // first stage fails, second is skipped (depends on first) → no successes → failed
+    const defAllFail: WorkflowDefinition = { name: 'rollup-fail', jobs: [{ job: 'fail-pp-a' }, { job: 'pp-dep', dependsOn: ['fail-pp-a'] }] };
+    syncWorkflow(defAllFail);
+    const { workflowRunId: failId } = await runWorkflow(defAllFail, 'manual');
+    assert.equal(getWorkflowRun(failId!)?.status, 'failed', 'no stage succeeded → failed (not partial)');
+
+    // first stage succeeds, second fails independently → partial
+    const defMixed: WorkflowDefinition = { name: 'rollup-mixed', jobs: [{ job: 'pp-a' }, { job: 'fail-pp-a' }] };
+    syncWorkflow(defMixed);
+    const { workflowRunId: mixId } = await runWorkflow(defMixed, 'manual');
+    assert.equal(getWorkflowRun(mixId!)?.status, 'partial', 'some succeeded, some failed → partial');
   });
 
   await test('repeatUntilStable: cycles repeat while retryable work remains (up to maxCycles)', async () => {
