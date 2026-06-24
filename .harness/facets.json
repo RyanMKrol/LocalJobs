@@ -1,36 +1,36 @@
 {
-  "_about": "Canonical, controlled facet vocabulary for the difficulty auto-tuning system. SOURCE OF TRUTH: the add-to-backlog authoring step picks facet values ONLY from this file; the calibration/policy validate against it; a human curates it (deliberate additions only, never ad-hoc per task). Facets are the join key that lets the policy generalise escalation history from past tasks to new ones. needs-human (gated) tasks are CARVED OUT entirely — they never run through the loop, so they get no facets and never enter calibration.",
+  "_about": "Canonical, controlled facet vocabulary for the difficulty auto-tuning system. SOURCE OF TRUTH: the add-to-backlog authoring step picks facet values ONLY from this file; the calibration/policy validate against it; a human curates it (deliberate additions only, never ad-hoc per task). Facets are the join key that lets the policy generalise escalation history from past tasks to new ones. needs-human (gated) tasks are CARVED OUT entirely — they never run through the loop, so they get no facets and never enter calibration. ⚠️ The 'difficultyHint' on each value is ADVISORY ONLY — human/LLM-readable taxonomy intuition; the policy NEVER reads it. Model selection is driven entirely by the outcomes ledger (.harness/outcomes.jsonl), the tier ladder (.tiers.ladder), and the floor/minN knobs (.policy). Do NOT wire difficultyHint into any code.",
   "version": 1,
   "facets": {
     "layer": {
       "cardinality": "exactly-one",
       "desc": "WHERE the change lives — inferable largely from the task's scope file paths.",
       "values": {
-        "ui":              { "desc": "dashboard CSS / components / visual layout (dashboard/app/**)", "difficulty": "low-med" },
-        "dashboard-logic": { "desc": "dashboard client data/state/api-client (dashboard/app/lib/*, polling, non-visual)", "difficulty": "med" },
-        "api":             { "desc": "daemon HTTP routes (src/api/server.ts)", "difficulty": "med" },
-        "job":             { "desc": "example-workflow stage logic (src/jobs/**)", "difficulty": "med" },
-        "service":         { "desc": "shared rate-limit/quota services (src/services/**)", "difficulty": "med-high" },
-        "framework":       { "desc": "executor/scheduler/dag/workflow-executor/core (src/core/**)", "difficulty": "high" },
-        "db":              { "desc": "schema/store/migrations (src/db/**)", "difficulty": "high" },
-        "harness":         { "desc": "the .harness/ loop + scaffolding, backlog authoring", "difficulty": "varies" }
+        "ui":              { "desc": "dashboard CSS / components / visual layout (dashboard/app/**)", "difficultyHint": "low-med" },
+        "dashboard-logic": { "desc": "dashboard client data/state/api-client (dashboard/app/lib/*, polling, non-visual)", "difficultyHint": "med" },
+        "api":             { "desc": "daemon HTTP routes (src/api/server.ts)", "difficultyHint": "med" },
+        "job":             { "desc": "example-workflow stage logic (src/jobs/**)", "difficultyHint": "med" },
+        "service":         { "desc": "shared rate-limit/quota services (src/services/**)", "difficultyHint": "med-high" },
+        "framework":       { "desc": "executor/scheduler/dag/workflow-executor/core (src/core/**)", "difficultyHint": "high" },
+        "db":              { "desc": "schema/store/migrations (src/db/**)", "difficultyHint": "high" },
+        "harness":         { "desc": "the .harness/ loop + scaffolding, backlog authoring", "difficultyHint": "varies" }
       }
     },
     "work-type": {
       "cardinality": "exactly-one",
       "desc": "WHAT KIND of change it is — the main thing the authoring LLM reasons about.",
       "values": {
-        "style":      { "desc": "visual / CSS / layout only", "difficulty": "very-easy" },
-        "logging":    { "desc": "log verbosity / messages", "difficulty": "very-easy" },
-        "docs":       { "desc": "README / CLAUDE / spec text", "difficulty": "very-easy" },
-        "config":     { "desc": "env / config knobs", "difficulty": "easy" },
-        "component":  { "desc": "new/changed UI component or page", "difficulty": "med" },
-        "endpoint":   { "desc": "new/changed API route", "difficulty": "med" },
-        "bugfix":     { "desc": "fix a specific defect", "difficulty": "med-varies" },
-        "feature":    { "desc": "multi-file new capability", "difficulty": "high" },
-        "migration":  { "desc": "schema / data migration", "difficulty": "high" },
-        "llm-prompt": { "desc": "recommender / LLM prompt logic", "difficulty": "high" },
-        "refactor":   { "desc": "rename / move / restructure", "difficulty": "high" }
+        "style":      { "desc": "visual / CSS / layout only", "difficultyHint": "very-easy" },
+        "logging":    { "desc": "log verbosity / messages", "difficultyHint": "very-easy" },
+        "docs":       { "desc": "README / CLAUDE / spec text", "difficultyHint": "very-easy" },
+        "config":     { "desc": "env / config knobs", "difficultyHint": "easy" },
+        "component":  { "desc": "new/changed UI component or page", "difficultyHint": "med" },
+        "endpoint":   { "desc": "new/changed API route", "difficultyHint": "med" },
+        "bugfix":     { "desc": "fix a specific defect", "difficultyHint": "med-varies" },
+        "feature":    { "desc": "multi-file new capability", "difficultyHint": "high" },
+        "migration":  { "desc": "schema / data migration", "difficultyHint": "high" },
+        "llm-prompt": { "desc": "recommender / LLM prompt logic", "difficultyHint": "high" },
+        "refactor":   { "desc": "rename / move / restructure", "difficultyHint": "high" }
       }
     },
     "risk": {
