@@ -194,3 +194,15 @@ CREATE TABLE IF NOT EXISTS service_usage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_service_usage ON service_usage(service, ts);
+
+-- Runtime-recorded mapping of which jobs have called each service (T186).
+-- Populated by callService() in src/core/services.ts — a distinct (service, job)
+-- pair is upserted on each call, keeping last_used current.
+CREATE TABLE IF NOT EXISTS service_consumers (
+  service_name TEXT NOT NULL,
+  job_name     TEXT NOT NULL,
+  last_used    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (service_name, job_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_consumers_service ON service_consumers(service_name);

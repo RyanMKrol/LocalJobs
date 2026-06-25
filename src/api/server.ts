@@ -48,6 +48,7 @@ import {
   serviceCallsThisMonth,
   serviceCallsToday,
   updateServiceLimits,
+  listServiceConsumers,
   setWorkflowEnabled,
   updateWorkflowSchedule,
   updateWorkflowConcurrency,
@@ -1128,6 +1129,19 @@ export function createApiServer(
         if (!updated) return json(res, 404, { error: 'service not found' });
         console.log(`[api] service ${parts[2]} limits updated:`, limits);
         return json(res, 200, { ok: true, service: updated });
+      }
+
+      // GET /api/services/:name/consumers — workflows + jobs that have called this service
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'services' && parts[3] === 'consumers') {
+        const rows = listServiceConsumers(parts[2]);
+        // Group by workflow for the dashboard view.
+        const byWorkflow: Record<string, { workflow_name: string | null; jobs: { job_name: string; last_used: string }[] }> = {};
+        for (const r of rows) {
+          const wf = r.workflow_name ?? '__none__';
+          if (!byWorkflow[wf]) byWorkflow[wf] = { workflow_name: r.workflow_name, jobs: [] };
+          byWorkflow[wf].jobs.push({ job_name: r.job_name, last_used: r.last_used });
+        }
+        return json(res, 200, { consumers: Object.values(byWorkflow) });
       }
 
       // GET /api/db/tables — list the SQLite tables (read-only DB browser)

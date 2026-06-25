@@ -1231,6 +1231,40 @@ export function tryReserveMinInterval(service: string, minIntervalMs: number): b
   return _reserveIntervalTx.immediate(service, minIntervalMs) as boolean;
 }
 
+// ════════════════════════ service consumers (T186) ════════════════════════
+
+const _upsertServiceConsumer = db.prepare(`
+  INSERT INTO service_consumers (service_name, job_name, last_used)
+  VALUES (?, ?, datetime('now'))
+  ON CONFLICT(service_name, job_name) DO UPDATE SET last_used = datetime('now')
+`);
+
+/** Record that a job called a service. Called from callService() in services.ts. */
+export function recordServiceConsumer(serviceName: string, jobName: string): void {
+  _upsertServiceConsumer.run(serviceName, jobName);
+}
+
+export interface ServiceConsumerRow {
+  service_name: string;
+  job_name: string;
+  workflow_name: string | null;
+  last_used: string;
+}
+
+/**
+ * List all jobs (+ their workflow) that have ever called a service, ordered by
+ * workflow then job name. A job not yet in workflow_jobs shows workflow_name = null.
+ */
+export function listServiceConsumers(serviceName: string): ServiceConsumerRow[] {
+  return db.prepare(`
+    SELECT sc.service_name, sc.job_name, wj.workflow_name, sc.last_used
+    FROM service_consumers sc
+    LEFT JOIN workflow_jobs wj ON wj.job_name = sc.job_name
+    WHERE sc.service_name = ?
+    ORDER BY wj.workflow_name, sc.job_name
+  `).all(serviceName) as ServiceConsumerRow[];
+}
+
 // ─────────────────── Read-only DB browser (dashboard) ───────────────────
 // A generic, strictly READ-ONLY view of the SQLite tables for ad-hoc browsing
 // from the dashboard, so the local DB can be inspected without building a

@@ -1,6 +1,7 @@
 import {
   getServiceRow,
   recordServiceCall,
+  recordServiceConsumer,
   serviceCallsThisMonth,
   serviceCallsToday,
   tryReserveMinInterval,
@@ -21,6 +22,11 @@ export function getServiceDef(name: string): ServiceDefinition | undefined {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// The calling job name is passed as process.argv[2] when running as a child
+// (src/runJob.ts). We capture it once so each callService() can record the
+// (service, job) pair without callers needing to pass it explicitly.
+const _callingJobName: string | undefined = process.argv[2] || undefined;
 
 /**
  * Resolve the limits to ENFORCE for a service. When the user has overridden them
@@ -85,6 +91,11 @@ export async function callService<T>(
 ): Promise<T> {
   const def = getServiceDef(name);
   if (!def) return fn();
+
+  // Record that this job used this service (best-effort — never block the call).
+  if (_callingJobName) {
+    try { recordServiceConsumer(name, _callingJobName); } catch { /* non-fatal */ }
+  }
 
   // Effective limits: a dashboard override (limits_overridden) wins over the code
   // default; otherwise the code default is the source of truth. minIntervalMs /

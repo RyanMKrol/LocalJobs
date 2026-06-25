@@ -6,7 +6,7 @@
 // on the first loop iteration (no sleep) and stay fast.
 import assert from 'node:assert/strict';
 import { callService, QuotaExceededError, registerService } from './services.js';
-import { recordServiceCall, serviceCallsToday, syncService } from '../db/store.js';
+import { recordServiceCall, serviceCallsToday, syncService, listServiceConsumers } from '../db/store.js';
 
 let passed = 0;
 async function test(name: string, fn: () => Promise<void>) {
@@ -99,6 +99,35 @@ await test('min-interval: a no-slot wait throws once maxWait is exceeded (min-in
     () => callService('svc-mi-to', async () => {}, { maxWaitMs: -1 }),
     (e) => e instanceof Error && /min-interval/.test(e.message),
   );
+});
+
+// ── service_consumers (T186) ────────────────────────────────────────────────
+// callService records the calling job via process.argv[2]. In the test runner
+// process.argv[2] is the test file path, so we can't test the auto-capture here;
+// instead we import recordServiceConsumer directly and test the DB + API layer.
+import { recordServiceConsumer } from '../db/store.js';
+
+await test('recordServiceConsumer upserts a distinct (service, job) pair', async () => {
+  recordServiceConsumer('svc-consumer-test', 'job-a');
+  recordServiceConsumer('svc-consumer-test', 'job-b');
+  recordServiceConsumer('svc-consumer-test', 'job-a'); // duplicate — should not add a second row
+  const rows = listServiceConsumers('svc-consumer-test');
+  const jobs = rows.map((r) => r.job_name).sort();
+  assert.deepEqual(jobs, ['job-a', 'job-b']);
+});
+
+await test('listServiceConsumers returns only rows for the named service', async () => {
+  recordServiceConsumer('svc-cons-x', 'job-x');
+  recordServiceConsumer('svc-cons-y', 'job-y');
+  const rows = listServiceConsumers('svc-cons-x');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].job_name, 'job-x');
+  assert.equal(rows[0].service_name, 'svc-cons-x');
+});
+
+await test('listServiceConsumers returns empty array for unknown service', async () => {
+  const rows = listServiceConsumers('no-such-service');
+  assert.deepEqual(rows, []);
 });
 
 console.log(`\n${passed} services test(s) passed.`);

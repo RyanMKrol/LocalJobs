@@ -230,6 +230,11 @@ export interface ServiceLimits {
   monthly_cap: number | null;
 }
 
+export interface ServiceConsumerGroup {
+  workflow_name: string | null;
+  jobs: { job_name: string; last_used: string }[];
+}
+
 export interface StuckItem {
   job_name: string;
   item_key: string;
@@ -439,6 +444,8 @@ export const api = {
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
+  serviceConsumers: (name: string) =>
+    get<{ consumers: ServiceConsumerGroup[] }>(`/api/services/${name}/consumers`),
 
   // Harness backlog (.harness/TASKS.json). Read-only EXCEPT the human-owned
   // `reviewed` flag, which lives in the owner-owned .harness/reviews.json (T136).

@@ -221,7 +221,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
 | `src/core/repo-lock.ts` | The shared mkdir-based repo lock (`acquireRepoLock`/`resolveRepoPaths`) the daemon's reviews commit+push uses to be mutually exclusive with the autonomous loop (T136). The lock path MUST stay byte-identical to `loop.sh`'s `acquire_lock` (`<git-common-dir>/<basename(repo-root)>-loop.lock` + `pid` file + stale-pid reclaim) |
-| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage` |
+| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
 | `src/jobs/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/jobs/` AND `*.service.ts` under BOTH `src/services/` and `src/jobs/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
@@ -688,6 +688,14 @@ doubt, log it.
     EFFECTIVE limit (`effectiveLimits` in `core/services.ts`): the override when
     set, else the code default — so an edit takes effect for the next call without
     a code change. `minIntervalMs`/`maxJitterMs` are NOT editable (code-only).
+  - **Runtime-recorded service consumers (T186).** `callService` upserts a row in
+    the `service_consumers` table (`service_name`, `job_name`, `last_used` — UNIQUE on
+    the pair) whenever a job calls a service, recording WHICH job used WHICH service.
+    The job name is read from `process.argv[2]` (the child process entrypoint always
+    receives the job name there). `GET /api/services/:name/consumers` (read-only) returns
+    the consumers grouped by workflow (joined via `workflow_jobs`), powering the
+    Services page's click-to-expand consumer list. The table is a brand-new schema
+    addition (no T098 trap).
 - **Headless-browser scrapes (shared launch helper).** Any job that drives a
   real browser to scrape a reputation-gated site (Cloudflare et al.) should launch
   via `launchPersistentBrowser` from `src/core/browser.ts` rather than calling

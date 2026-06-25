@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { api, type Service } from '../lib/api';
+import { api, type Service, type ServiceConsumerGroup } from '../lib/api';
 import { usePoll } from '../ui';
 
 function Bar({ used, cap }: { used: number; cap: number | null }) {
@@ -29,6 +29,50 @@ const validField = (s: string): boolean => {
   return n === null || (Number.isInteger(n) && n >= 0);
 };
 
+function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }) {
+  const { data, error } = usePoll(() => api.serviceConsumers(name), 5000);
+  const consumers: ServiceConsumerGroup[] = data?.consumers ?? [];
+  const total = consumers.reduce((s, g) => s + g.jobs.length, 0);
+
+  return (
+    <div className="db-modal-overlay" onClick={onClose}>
+      <div className="db-modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <strong>Consumers of <span className="mono">{name}</span></strong>
+          <button className="btn secondary" onClick={onClose}>✕ Close</button>
+        </div>
+        {error && <p className="muted">⚠ Could not load consumers ({error}).</p>}
+        {!error && total === 0 && (
+          <p className="muted" style={{ fontSize: 13 }}>
+            No consumers recorded yet — jobs that call this service are recorded at runtime.
+          </p>
+        )}
+        {consumers.map((group) => (
+          <div key={group.workflow_name ?? '__none__'} style={{ marginBottom: 12 }}>
+            {group.workflow_name ? (
+              <div style={{ marginBottom: 4 }}>
+                <a href={`/workflows/${group.workflow_name}`} className="mono" style={{ fontWeight: 600 }}>
+                  {group.workflow_name}
+                </a>
+              </div>
+            ) : (
+              <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>No workflow</div>
+            )}
+            <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'none' }}>
+              {group.jobs.map((j) => (
+                <li key={j.job_name} style={{ marginBottom: 2, fontSize: 13 }}>
+                  <a href={`/jobs/${j.job_name}`} className="mono">{j.job_name}</a>
+                  <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>last used {new Date(j.last_used + 'Z').toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Services() {
   const { data, error } = usePoll(() => api.services(), 3000);
   const services = [...(data?.services ?? [])].sort(
@@ -41,6 +85,7 @@ export default function Services() {
   const [draft, setDraft] = useState({ rate: '', daily: '', monthly: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [viewingConsumers, setViewingConsumers] = useState<string | null>(null);
 
   function startEdit(s: Service) {
     setEditing(s.name);
@@ -76,9 +121,12 @@ export default function Services() {
   return (
     <>
       <h1>Services</h1>
-      <p className="sub">Shared external dependencies with cross-job rate limits + quotas. Auto-refreshes. Edit a limit to override the code default — overrides are preserved across daemon restarts / code-sync.</p>
+      <p className="sub">Shared external dependencies with cross-job rate limits + quotas. Auto-refreshes. Edit a limit to override the code default — overrides are preserved across daemon restarts / code-sync. Click a service name to see which workflows/jobs use it.</p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {err && <p className="muted" style={{ color: 'var(--red)' }}>⚠ {err}</p>}
+      {viewingConsumers && (
+        <ConsumersPanel name={viewingConsumers} onClose={() => setViewingConsumers(null)} />
+      )}
       <div className="panel">
         <table>
           <thead>
@@ -93,7 +141,14 @@ export default function Services() {
               return (
                 <tr key={s.name}>
                   <td>
-                    <strong>{s.name}</strong> {s.paid ? <span className="pill paid">paid</span> : <span className="pill free">free</span>}
+                    <button
+                      className="btn secondary"
+                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, marginBottom: 2 }}
+                      onClick={() => setViewingConsumers(s.name)}
+                    >
+                      {s.name}
+                    </button>{' '}
+                    {s.paid ? <span className="pill paid">paid</span> : <span className="pill free">free</span>}
                     {s.limits_overridden ? <span className="pill" title="Limits edited from the dashboard; preserved across code-sync"> edited</span> : null}
                     <div className="muted" style={{ fontSize: 12 }}>{s.description}</div>
                   </td>

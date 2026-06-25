@@ -12,7 +12,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { jobs, workflows } from '../jobs/registry.js';
-import { createWorkflowRun, finishWorkflowRun, getWorkflow, markWorkItem, syncJob, syncWorkflow } from '../db/store.js';
+import { createWorkflowRun, finishWorkflowRun, getWorkflow, markWorkItem, recordServiceConsumer, syncJob, syncWorkflow } from '../db/store.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
@@ -1123,5 +1123,46 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
     assert.ok(pushed.some((t) => t.includes('1')), 'digest sent for 1 new season (only Alpha)');
   });
 }
+
+// ── GET /api/services/:name/consumers (T186) ────────────────────────────────
+await test('GET /api/services/:name/consumers returns empty consumers for unknown service', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/services/no-such-service/consumers`);
+    assert.equal(res.status, 200);
+    const body = await res.json() as { consumers: unknown[] };
+    assert.deepEqual(body.consumers, []);
+  });
+});
+
+await test('GET /api/services/:name/consumers returns recorded consumers grouped by workflow', async () => {
+  // Register a minimal workflow + job so workflow_jobs has a row.
+  const consWfDef: WorkflowDefinition = {
+    name: 'cons-api-wf',
+    description: 'consumer test wf',
+    schedule: null,
+    jobs: [{ job: 'cons-api-job' }],
+  };
+  const consJobDef: JobDefinition = {
+    name: 'cons-api-job',
+    description: 'consumer test job',
+    timeoutMs: 0,
+    maxRetries: 0,
+    async run() {},
+  };
+  syncJob(consJobDef);
+  syncWorkflow(consWfDef);
+  // Seed a consumer row.
+  recordServiceConsumer('cons-svc', 'cons-api-job');
+
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/services/cons-svc/consumers`);
+    assert.equal(res.status, 200);
+    const body = await res.json() as { consumers: { workflow_name: string | null; jobs: { job_name: string }[] }[] };
+    assert.equal(body.consumers.length, 1);
+    assert.equal(body.consumers[0].workflow_name, 'cons-api-wf');
+    assert.equal(body.consumers[0].jobs.length, 1);
+    assert.equal(body.consumers[0].jobs[0].job_name, 'cons-api-job');
+  });
+});
 
 console.log(`\n  ${passed} assertions passed`);

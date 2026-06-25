@@ -303,7 +303,9 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
 - **Services** — per-service usage counts vs caps, current per-minute call rate,
   and **editable rate/quota limits** (override the code default; the override is
   persisted and preserved across daemon restarts / code-sync — same reconcile as
-  the enabled toggle)
+  the enabled toggle). **Click a service name** to see which workflows/jobs have
+  called it (service → workflow → job, backed by a runtime-recorded
+  `service_consumers` table populated by `callService`)
 - **Database** — a strictly **read-only** SQLite view with two parts: a set of
   **named common queries** (recent failed runs, stuck & ignored items by job,
   work-items by status per job, service usage vs caps this month, recent
