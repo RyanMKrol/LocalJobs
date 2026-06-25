@@ -5079,7 +5079,7 @@
     {
       "id": "T197",
       "title": "Harden ntfy sending: log e.cause + retry transient network throws",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
