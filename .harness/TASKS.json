@@ -4382,7 +4382,7 @@
     {
       "id": "T172",
       "title": "Input→Output mapping panel: fix inconsistent corner radii + footnote hugging the edges",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
