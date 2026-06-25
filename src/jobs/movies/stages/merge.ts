@@ -194,7 +194,7 @@ function buildDefaultTopUp(
   run: RunClaudeFn,
   ctx: JobContext,
 ): TopUpFn {
-  return async (exclude) => {
+  return async (exclude, round) => {
     if (!existsSync(tasteFile)) {
       ctx.log('  • top-up: no taste profile on disk — cannot re-prompt branches.', 'warn');
       return [];
@@ -202,6 +202,7 @@ function buildDefaultTopUp(
     const taste = JSON.parse(readFileSync(tasteFile, 'utf8')) as TasteProfileFile;
     const movies = snapshot.movies ?? [];
     const recent = recentTitles(historyFile, moviesConfig.recsRecentWindow);
+    ctx.log(`  Re-prompting ${BRANCHES.length} branch(es) (round ${round}), excluding ${exclude.length} already-collected/owned/considered title(s)…`);
     const pooled: RawSuggestion[] = [];
     for (const spec of BRANCHES) {
       const more = await collectBranchSuggestions(
@@ -210,6 +211,7 @@ function buildDefaultTopUp(
         run,
         moviesConfig.recsModel,
       );
+      ctx.log(`    • ${spec.id} (${spec.lens}) → ${more.length} suggestion(s)`);
       if (more.length) pooled.push(...more);
     }
     return pooled;
@@ -281,6 +283,7 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
   const topUp = opts.topUp
     ?? buildDefaultTopUp(snapshot, tasteFile, historyFile, opts.runClaude ?? runClaude, ctx);
   let round = 0;
+  let topUpStopReason = '';
   while (!counters.quotaHit && balanced.length < params.target && round < params.topUpRounds) {
     round++;
     ctx.log(`Top-up round ${round}/${params.topUpRounds}: have ${balanced.length}/${params.target} — re-prompting branches for more…`);
@@ -289,22 +292,39 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
       more = await topUp(considered, round);
     } catch (err) {
       ctx.log(`  ✗ top-up round ${round} failed (${err instanceof Error ? err.message.split('\n')[0] : err}) — stopping.`, 'warn');
+      topUpStopReason = `error in round ${round}`;
       break;
     }
     // Keep only genuinely-new titles (not already pooled or seen in a prior round).
     const fresh: RawSuggestion[] = [];
     for (const s of dedupeRawByTitleYear(more)) {
       const k = rawKey(s);
-      if (seen.has(k)) continue;
+      if (seen.has(k)) {
+        ctx.log(`  ⟳ "${displayTitle(s)}" [${s.lens}] — already seen this run — skipped.`);
+        continue;
+      }
       seen.add(k);
       considered.push(displayTitle(s));
       fresh.push(s);
     }
     ctx.log(`  • round ${round}: ${more.length} returned → ${fresh.length} new to verify.`);
-    if (!fresh.length) { ctx.log('  • no new suggestions — stopping top-up.'); break; }
+    if (!fresh.length) {
+      topUpStopReason = `round ${round}: +0 new — stopping early`;
+      ctx.log(`  • ${topUpStopReason}.`);
+      break;
+    }
+    const beforeVerify = byTmdb.size;
     await verifyInto(fresh, byTmdb, owned, search, ctx, params, counters);
+    const added = byTmdb.size - beforeVerify;
     balanced = balanceByGenre([...byTmdb.values()], { cap: params.genreCap, target: params.target });
+    ctx.log(`  • round ${round}: +${added} verified → ${balanced.length}/${params.target}.`);
     ctx.progress(20 + (round / params.topUpRounds) * 70, `top-up ${round}: ${balanced.length}/${params.target}`);
+  }
+  if (!topUpStopReason && round > 0) {
+    if (counters.quotaHit) topUpStopReason = 'TMDB quota hit';
+    else if (balanced.length >= params.target) topUpStopReason = `target ${params.target} reached`;
+    else topUpStopReason = `max rounds (${params.topUpRounds}) reached`;
+    if (round > 0) ctx.log(`  • top-up stopped: ${topUpStopReason}.`);
   }
 
   const verified = [...byTmdb.values()];
@@ -314,7 +334,7 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
   ctx.progress(100, `${balanced.length} recommendation(s)`);
   ctx.log('');
   ctx.log('═══════════════ REC-MERGE SUMMARY ═══════════════');
-  ctx.log(`Pooled ${pooled.length} · considered ${considered.length} · TMDB searches ${counters.searches}${counters.quotaHit ? ' (stopped on quota)' : ''} · top-up rounds ${round}.`);
+  ctx.log(`Pooled ${pooled.length} · considered ${considered.length} · TMDB searches ${counters.searches}${counters.quotaHit ? ' (stopped on quota)' : ''} · top-up rounds ${round}${topUpStopReason ? ` (${topUpStopReason})` : ''}.`);
   ctx.log(`Dropped: ${counters.dropHallucinated} hallucinated · ${counters.dropOwned} owned · ${counters.dropAlready} already-recommended · ${counters.dropLowQuality} below quality bar.`);
   ctx.log(`Verified novel: ${verified.length} → balanced to ${balanced.length} (cap ${params.genreCap}/genre, target ${params.target}).`);
   if (balanced.length < params.target) {
