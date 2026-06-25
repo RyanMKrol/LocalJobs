@@ -4682,7 +4682,7 @@
     {
       "id": "T184",
       "title": "Trim appearance selector to 3 themes (each light+dark, auto time-of-day) + 3 fonts (Baloo 2 / system / Space Mono)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
