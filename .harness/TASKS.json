@@ -5157,7 +5157,7 @@
     {
       "id": "T200",
       "title": "Restyle the Recommendations & gaps + Missing seasons sections (cross-theme)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
