@@ -4453,7 +4453,7 @@
     {
       "id": "T175",
       "title": "Workflow DAG graph: draw non-adjacent/skip-wave edges as visible connectors (franchise-gaps → notify bypasses rec-merge)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
