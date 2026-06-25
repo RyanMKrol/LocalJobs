@@ -4551,7 +4551,7 @@
     {
       "id": "T179",
       "title": "Missing seasons view on the TV-seasons workflow page (mirror the movies gaps/recs section)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
