@@ -5007,7 +5007,7 @@
     {
       "id": "T194",
       "title": "Input→Output mapping: remove last-row hover gap before the footer note",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
