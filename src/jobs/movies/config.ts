@@ -52,6 +52,8 @@ export const moviesConfig = {
   recsTopUpConcurrency: Number(process.env.MOVIES_RECS_TOPUP_CONCURRENCY ?? 4),
   /** How many recent recommendations to feed back into branch prompts. */
   recsRecentWindow: Number(process.env.MOVIES_RECS_RECENT_WINDOW ?? 40),
+  /** Max number of history titles passed as "already-suggested" context to branch prompts (bounded). */
+  recsHistoryContext: Number(process.env.MOVIES_RECS_HISTORY_CONTEXT ?? 200),
 
   /** The movie library section to audit. Default 4 (the owner's "Movies"). */
   movieSection: process.env.PLEX_MOVIE_SECTION ?? '4',

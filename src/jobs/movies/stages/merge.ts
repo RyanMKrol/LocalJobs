@@ -17,7 +17,7 @@ import {
 } from '../recs.js';
 import { runClaude } from '../../../services/claude.js';
 import { BRANCHES } from './branches.js';
-import { collectBranchSuggestions, recentTitles } from './recommend.js';
+import { allHistoryTitles, collectBranchSuggestions, recentTitles } from './recommend.js';
 import type { RunClaudeFn } from './recommend.js';
 import { isWorkItemDone } from '../../../db/store.js';
 import type {
@@ -220,15 +220,17 @@ function buildDefaultTopUp(
     const taste = JSON.parse(readFileSync(tasteFile, 'utf8')) as TasteProfileFile;
     const movies = snapshot.movies ?? [];
     const recent = recentTitles(historyFile, moviesConfig.recsRecentWindow);
+    // T183: full bounded history so top-up branches also avoid re-suggesting previously-recommended films.
+    const alreadySuggested = allHistoryTitles(historyFile, moviesConfig.recsHistoryContext);
     const limit = concurrency;
-    ctx.log(`  Re-prompting ${BRANCHES.length} branch(es) (round ${round}, concurrency ${limit}), excluding ${exclude.length} already-collected/owned/considered title(s)…`);
+    ctx.log(`  Re-prompting ${BRANCHES.length} branch(es) (round ${round}, concurrency ${limit}), excluding ${exclude.length} already-collected/owned/considered title(s); ${alreadySuggested.length} already-suggested history title(s) in context…`);
     const pooled: RawSuggestion[] = [];
     await runBounded(BRANCHES, limit, async (spec) => {
       let more: RawSuggestion[];
       try {
         more = await collectBranchSuggestions(
           spec,
-          { profile: taste.profile, movies, recent, sampleSize: moviesConfig.recsSampleSize, ask: moviesConfig.recsPerBranchAsk, exclude },
+          { profile: taste.profile, movies, recent, alreadySuggested, sampleSize: moviesConfig.recsSampleSize, ask: moviesConfig.recsPerBranchAsk, exclude },
           run,
           moviesConfig.recsModel,
         );

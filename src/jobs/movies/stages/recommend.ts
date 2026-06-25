@@ -57,6 +57,23 @@ export function recentTitles(historyFile: string, window: number): string[] {
   }
 }
 
+/**
+ * Load ALL recommendation history titles up to `cap` (T183) — the full already-
+ * recommended/ignored set to pass to branch prompts so they avoid re-suggesting
+ * across months, not just the recent window. Bounded at `cap` to keep prompts
+ * token-sensible. Exported so merge.ts can reuse it in top-up rounds.
+ */
+export function allHistoryTitles(historyFile: string, cap: number): string[] {
+  if (!existsSync(historyFile)) return [];
+  try {
+    const hist = JSON.parse(readFileSync(historyFile, 'utf8')) as RecsHistoryFile;
+    const recs = Array.isArray(hist.recommended) ? hist.recommended : [];
+    return recs.slice(-cap).map((r) => `${r.title}${r.year ? ` (${r.year})` : ''}`);
+  } catch {
+    return [];
+  }
+}
+
 /** Write a branch's output file (raw suggestions, or empty + error on skip/fail). */
 function writeBranchFile(recsDir: string, file: BranchOutputFile): string {
   const path = join(recsDir, `${file.branchId}.json`);
@@ -92,13 +109,15 @@ export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchO
   const taste = JSON.parse(readFileSync(tasteFile, 'utf8')) as TasteProfileFile;
   const movies = snapshot.movies ?? [];
   const recent = recentTitles(historyFile, moviesConfig.recsRecentWindow);
-  ctx.log(`Loaded ${movies.length} owned movies; ${recent.length} recent recommendation(s) to avoid.`);
+  // T183: full bounded history so branches avoid re-suggesting across months, not just the recent window.
+  const alreadySuggested = allHistoryTitles(historyFile, moviesConfig.recsHistoryContext);
+  ctx.log(`Loaded ${movies.length} owned movies; ${alreadySuggested.length} already-suggested title(s) to avoid (full history, capped at ${moviesConfig.recsHistoryContext}).`);
 
   const base: BranchOutputFile = { branchId: spec.id, lens: spec.lens, generatedAt: now.toISOString(), suggestions: [] };
 
   ctx.progress(30, 'building prompt');
   const prompt = spec.build({
-    profile: taste.profile, movies, recent,
+    profile: taste.profile, movies, recent, alreadySuggested,
     sampleSize: moviesConfig.recsSampleSize, ask: moviesConfig.recsPerBranchAsk,
   });
   if (prompt == null) {
