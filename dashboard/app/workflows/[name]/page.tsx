@@ -5,8 +5,8 @@ import { Dag } from '../../components/Dag';
 import { api, type MissingSeason, type MovieGap } from '../../lib/api';
 import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
 
-/** Workflow names that show the Missing seasons section. T151 will update this. */
-const MISSING_SEASONS_WORKFLOWS = new Set(['plex']);
+/** Workflow names that show the Missing seasons section. */
+const MISSING_SEASONS_WORKFLOWS = new Set(['missing-tv-seasons']);
 
 /** Group gaps by collection name, sorted by name; films sorted by year then title. */
 function groupByCollection(gaps: MovieGap[]): [string, MovieGap[]][] {
