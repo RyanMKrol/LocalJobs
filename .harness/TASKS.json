@@ -4477,7 +4477,7 @@
     {
       "id": "T176",
       "title": "rec-merge logs: narrate the top-up rounds (re-prompted branches, new suggestions, drops, running count)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
