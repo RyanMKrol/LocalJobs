@@ -15,7 +15,7 @@ import {
 } from '../db/store.js';
 import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
 import { runJobForWorkflow } from './executor.js';
-import { notifyWorkflow, notifyStage } from './notifier.js';
+import { notifyWorkflow } from './notifier.js';
 import type { LogLevel, WorkflowDefinition, WorkflowRunStatus, RunStatus } from './types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -277,20 +277,6 @@ async function runWorkflowInner(
   log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
   if (emptySelectionWarning) log(emptySelectionWarning, 'warn');
 
-  // Per-stage notification dedup (T112): the LAST status we pushed a notification
-  // for, per member. During repeatUntilStable cycling we re-run every stage each
-  // cycle; without this, a stage that succeeds every cycle would push a "success"
-  // notification on EVERY cycle (40 cycles × 4 stages) and ntfy rate-limits (429).
-  // We only notify when a stage's status CHANGES from the last one we sent (a
-  // meaningful transition), so the steady state is quiet. Single-cycle workflows
-  // start with an empty map → still notify each stage exactly once (unchanged).
-  const lastNotifiedStatus = new Map<string, RunStatus>();
-  const maybeNotifyStage = async (job: string, s: RunStatus) => {
-    if (def.repeatUntilStable && lastNotifiedStatus.get(job) === s) return;
-    lastNotifiedStatus.set(job, s);
-    await notifyStage(def.name, workflowRunId, job, s, log);
-  };
-
   // No-forward-progress detection across repeatUntilStable cycles (T112).
   let prevSig: WorkflowProgressSignature | null = null;
 
@@ -341,14 +327,12 @@ async function runWorkflowInner(
         settled++;
         rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} ${s})`);
         log(`${s === 'success' ? '✓' : '✗'} ${job} → ${s}`, s === 'success' ? 'info' : 'warn');
-        await maybeNotifyStage(job, s);
       },
       onSkip: async (job, reason) => {
         settled++;
         recordSkippedRun(job, workflowRunId, `skipped: ${reason}`);
         rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} skipped)`);
         log(`⊘ ${job} skipped — ${reason}`, 'warn');
-        await maybeNotifyStage(job, 'skipped');
       },
     });
 

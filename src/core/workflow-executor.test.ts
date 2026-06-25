@@ -16,6 +16,7 @@ import {
   rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow,
 } from '../db/store.js';
 import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress } from './workflow-executor.js';
+import { _setFetchForTest, _resetFetchForTest } from './notifier.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 
 let passed = 0;
@@ -537,6 +538,40 @@ try {
     // fully-serial run — so the three deps overlapped AND the dependent waited.
     assert.ok(parDep > parDefault, `dependent must add a second wave (${parDep}ms > ${parDefault}ms)`);
     assert.ok(parDep < parSerial, `the three deps must still overlap (${parDep}ms < serial ${parSerial}ms)`);
+  });
+
+  // T189: notifyStage is never called; notifyWorkflow is called exactly once.
+  // We enable ntfy temporarily and intercept fetch to count push calls by title.
+  await test('T189: only notifyWorkflow fires — no per-stage push notifications', async () => {
+    const def: WorkflowDefinition = {
+      name: 't189-notify',
+      jobs: [{ job: 'pp-a' }, { job: 'pp-b', dependsOn: ['pp-a'] }],
+    };
+    syncWorkflow(def);
+
+    const pushTitles: string[] = [];
+    const fakeFetch = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const title = (init?.headers as Record<string, string>)?.['Title'] ?? '';
+      pushTitles.push(title);
+      return new Response('', { status: 200 });
+    };
+
+    _setFetchForTest(fakeFetch as typeof fetch);
+    config.ntfyTopic = 'test-topic';
+    try {
+      await runWorkflow(def, 'manual');
+    } finally {
+      config.ntfyTopic = '';
+      _resetFetchForTest();
+    }
+
+    // No per-stage push: titles must not contain ': pp-' (the notifyStage pattern)
+    const stagePushes = pushTitles.filter(t => t.includes(': pp-'));
+    assert.equal(stagePushes.length, 0, `Expected no per-stage pushes, got: ${JSON.stringify(stagePushes)}`);
+
+    // Exactly one aggregate push (notifyWorkflow)
+    const workflowPushes = pushTitles.filter(t => t.includes('t189-notify workflow'));
+    assert.equal(workflowPushes.length, 1, `Expected 1 workflow push, got: ${JSON.stringify(pushTitles)}`);
   });
 
 } finally {
