@@ -5239,7 +5239,7 @@
     {
       "id": "T203",
       "title": "Per-workflow 'Clear output data' reset action (dashboard, guarded)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
