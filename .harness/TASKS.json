@@ -4359,7 +4359,7 @@
     {
       "id": "T171",
       "title": "Backlog: default Harness-buildable + Needs-a-human sections open; only Done collapsed",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
