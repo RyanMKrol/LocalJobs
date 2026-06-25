@@ -76,6 +76,7 @@ header.site nav a:hover { color: var(--text); }
 h1 { font-size: 22px; margin: 0 0 4px; font-family: var(--font-display); font-weight: var(--heading-weight, 700); overflow-wrap: anywhere; }
 h2 { font-size: 16px; margin: 28px 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-family: var(--font-display); font-weight: var(--heading-weight, 700); }
 .sub { color: var(--muted); margin: 0 0 20px; }
+.wf-desc { margin-top: 10px; }
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
 .grid { display: grid; gap: 14px; }

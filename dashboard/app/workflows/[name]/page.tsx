@@ -362,7 +362,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
   return (
     <>
       <p className="muted"><a href="/workflows">← Workflows</a></p>
-      <div className="row">
+      <div className="row" style={{ gap: 20 }}>
         <h1 style={{ margin: 0 }}>{name}</h1>
         <div className="spacer" />
         {p?.limitable && (
@@ -384,7 +384,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
           ? <button className="btn" disabled title="A run is already in progress — only one run per workflow at a time">Running…</button>
           : <button className="btn" onClick={run} disabled={busy}>{busy ? 'Started…' : '▶ Run now'}</button>}
       </div>
-      <p className="sub">{p?.description}</p>
+      <p className="sub wf-desc">{p?.description}</p>
 
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
         <div className="kv">
