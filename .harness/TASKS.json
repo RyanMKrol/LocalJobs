@@ -4500,7 +4500,7 @@
     {
       "id": "T177",
       "title": "Log view: add a Copy button to copy all logs for a run to the clipboard",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
