@@ -5561,6 +5561,183 @@
       ],
       "expectsTest": false,
       "spec": ".harness/tasks/T213.md"
+    },
+    {
+      "id": "T214",
+      "title": "Scaffold tv-recommendations workflow + tv-snapshot (TV library snapshot + taste profile)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "job",
+        "tv-recs",
+        "workflow",
+        "plex"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "src/jobs/tv-recs/**",
+        "README.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T214.md"
+    },
+    {
+      "id": "T215",
+      "title": "TV recommender infrastructure libs (recs sampler/balancer/dedupe, branches, recommend)",
+      "status": "pending",
+      "dependsOn": [
+        "T214"
+      ],
+      "gate": null,
+      "tags": [
+        "job",
+        "tv-recs",
+        "llm"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "llm-prompt",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/tv-recs/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T215.md"
+    },
+    {
+      "id": "T216",
+      "title": "TV recommender: 8 branch stages + wire into the workflow manifest",
+      "status": "pending",
+      "dependsOn": [
+        "T214",
+        "T215"
+      ],
+      "gate": null,
+      "tags": [
+        "job",
+        "tv-recs",
+        "llm"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/tv-recs/**"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T216.md"
+    },
+    {
+      "id": "T217",
+      "title": "TV recommender: tv-rec-merge (TMDB-verify, dedupe, quality bar, balance, top-up)",
+      "status": "pending",
+      "dependsOn": [
+        "T216"
+      ],
+      "gate": null,
+      "tags": [
+        "job",
+        "tv-recs"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/tv-recs/**"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T217.md"
+    },
+    {
+      "id": "T218",
+      "title": "TV recommender: tv-recs-notify monthly digest + complete the workflow DAG",
+      "status": "pending",
+      "dependsOn": [
+        "T217"
+      ],
+      "gate": null,
+      "tags": [
+        "job",
+        "tv-recs"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/tv-recs/**",
+        "README.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T218.md"
+    },
+    {
+      "id": "T219",
+      "title": "Surface TV recommendations in the dashboard (+ per-item ignore)",
+      "status": "pending",
+      "dependsOn": [
+        "T218",
+        "T209"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "tv-recs"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/api/server.ts",
+        "src/db/store.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T219.md"
     }
   ]
 }
