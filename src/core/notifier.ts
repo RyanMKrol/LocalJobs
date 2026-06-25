@@ -15,6 +15,11 @@ let ntfyBackoffMs = 0;
 /** Injectable fetch for unit tests; defaults to the global. */
 let _fetch: typeof fetch = globalThis.fetch;
 
+/** Number of additional attempts after the first for transient network throws. */
+const NETWORK_RETRIES = 2;
+/** Delay between network-throw retries in ms. */
+const NETWORK_RETRY_DELAY_MS = 500;
+
 /** Reset the in-process ntfy backoff state (exported for tests only). */
 export function _resetNtfyBackoff(): void {
   ntfyBackoffUntil = 0;
@@ -148,9 +153,11 @@ export async function notifyWorkflow(
 }
 
 /**
- * Low-level ntfy POST with exponential backoff on 429. Exported for tests so
- * callers can pass an arbitrary URL (bypassing the config.ntfyTopic guard).
+ * Low-level ntfy POST with exponential backoff on 429, plus bounded retry on
+ * transient network throws (DNS/connection errors). Exported for tests so callers
+ * can pass an arbitrary URL (bypassing the config.ntfyTopic guard).
  * Never throws — a broken notifier must not affect job execution.
+ * HTTP error statuses (4xx/5xx) are NOT retried — only thrown network errors are.
  */
 export async function _sendNtfyToUrl(
   url: string,
@@ -165,39 +172,54 @@ export async function _sendNtfyToUrl(
     const remaining = Math.ceil((ntfyBackoffUntil - now) / 1000);
     return { ok: false, error: `ntfy suppressed — rate-limit cooldown (${remaining}s remaining)` };
   }
-  try {
-    const res = await _fetch(url, {
-      method: 'POST',
-      headers: { Title: sanitizeHeader(title) || 'localjobs', Priority: priority, Tags: tags, 'X-Job': sanitizeHeader(jobName) },
-      body,
-    });
 
-    if (res.status === 429) {
-      const base = config.ntfyBackoffBaseMs;
-      const cap = config.ntfyBackoffCapMs;
-      const retryAfterRaw = res.headers.get('Retry-After');
-      let cooldown: number;
-      if (retryAfterRaw !== null) {
-        const secs = parseInt(retryAfterRaw, 10);
-        cooldown = Math.min(isNaN(secs) ? base : secs * 1000, cap);
-      } else {
-        cooldown = Math.min(ntfyBackoffMs === 0 ? base : ntfyBackoffMs * 2, cap);
+  let lastNetworkError: string | undefined;
+  for (let attempt = 0; attempt <= NETWORK_RETRIES; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, NETWORK_RETRY_DELAY_MS));
+    try {
+      const res = await _fetch(url, {
+        method: 'POST',
+        headers: { Title: sanitizeHeader(title) || 'localjobs', Priority: priority, Tags: tags, 'X-Job': sanitizeHeader(jobName) },
+        body,
+      });
+
+      if (res.status === 429) {
+        const base = config.ntfyBackoffBaseMs;
+        const cap = config.ntfyBackoffCapMs;
+        const retryAfterRaw = res.headers.get('Retry-After');
+        let cooldown: number;
+        if (retryAfterRaw !== null) {
+          const secs = parseInt(retryAfterRaw, 10);
+          cooldown = Math.min(isNaN(secs) ? base : secs * 1000, cap);
+        } else {
+          cooldown = Math.min(ntfyBackoffMs === 0 ? base : ntfyBackoffMs * 2, cap);
+        }
+        ntfyBackoffMs = cooldown;
+        ntfyBackoffUntil = Date.now() + cooldown;
+        return { ok: false, error: `ntfy HTTP 429 — backing off ${Math.round(cooldown / 1000)}s` };
       }
-      ntfyBackoffMs = cooldown;
-      ntfyBackoffUntil = Date.now() + cooldown;
-      return { ok: false, error: `ntfy HTTP 429 — backing off ${Math.round(cooldown / 1000)}s` };
-    }
 
-    if (res.ok) {
-      ntfyBackoffUntil = 0;
-      ntfyBackoffMs = 0;
-      return { ok: true };
-    }
+      if (res.ok) {
+        ntfyBackoffUntil = 0;
+        ntfyBackoffMs = 0;
+        return { ok: true };
+      }
 
-    return { ok: false, error: `ntfy HTTP ${res.status}` };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      // Real HTTP error — don't retry, return immediately.
+      return { ok: false, error: `ntfy HTTP ${res.status}` };
+    } catch (e) {
+      // Network-level throw (DNS/connection). Build a diagnostic string that
+      // includes the underlying cause (e.g. ENOTFOUND, ECONNREFUSED) so the
+      // run log says WHY it failed rather than just "fetch failed".
+      const msg = e instanceof Error ? e.message : String(e);
+      const cause = e instanceof Error && e.cause != null ? e.cause : undefined;
+      const causeStr = cause instanceof Error
+        ? `${(cause as NodeJS.ErrnoException).code ?? cause.name}: ${cause.message}`
+        : cause != null ? String(cause) : undefined;
+      lastNetworkError = causeStr ? `${msg} (${causeStr})` : msg;
+    }
   }
+  return { ok: false, error: lastNetworkError };
 }
 
 async function sendNtfy(

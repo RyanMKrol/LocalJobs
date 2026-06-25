@@ -198,5 +198,67 @@ test('a successful send resets the backoff to zero', async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Network-throw retry behaviour
+// ---------------------------------------------------------------------------
+
+function makeThrowingFetch(throwCount: number, thenReturn: 'ok' | 'fail' = 'ok'): typeof fetch {
+  let calls = 0;
+  return async () => {
+    calls++;
+    if (calls <= throwCount) {
+      const cause = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+      throw Object.assign(new Error('fetch failed'), { cause });
+    }
+    return new Response('', { status: thenReturn === 'ok' ? 200 : 500, headers: new Headers() });
+  };
+}
+
+test('a fetch that throws then succeeds on retry returns ok:true', async () => {
+  _resetNtfyBackoff();
+  // Throws on first call, succeeds on second — should be retried and succeed.
+  _setFetchForTest(makeThrowingFetch(1, 'ok'));
+  try {
+    const res = await _sendNtfyToUrl(TEST_URL, 't', 'b', 'j', 'default', 'bell');
+    assert.equal(res.ok, true, `expected ok:true, got ok:${res.ok} error:${res.error}`);
+  } finally {
+    _resetFetchForTest();
+    _resetNtfyBackoff();
+  }
+});
+
+test('a fetch that always throws is retried then returns ok:false with cause in error', async () => {
+  _resetNtfyBackoff();
+  // Throws every time — exhausts all retries.
+  _setFetchForTest(makeThrowingFetch(999, 'ok'));
+  try {
+    const res = await _sendNtfyToUrl(TEST_URL, 't', 'b', 'j', 'default', 'bell');
+    assert.equal(res.ok, false, 'should be ok:false after all retries exhausted');
+    assert.ok(res.error?.includes('ECONNREFUSED'), `error should contain cause code, got: ${res.error}`);
+  } finally {
+    _resetFetchForTest();
+    _resetNtfyBackoff();
+  }
+});
+
+test('an HTTP error status is not retried', async () => {
+  _resetNtfyBackoff();
+  let fetchCalls = 0;
+  const fetch500: typeof fetch = async () => {
+    fetchCalls++;
+    return new Response('', { status: 503, headers: new Headers() });
+  };
+  _setFetchForTest(fetch500);
+  try {
+    const res = await _sendNtfyToUrl(TEST_URL, 't', 'b', 'j', 'default', 'bell');
+    assert.equal(res.ok, false);
+    assert.ok(res.error?.includes('503'), `error should mention 503, got: ${res.error}`);
+    assert.equal(fetchCalls, 1, `HTTP errors must not be retried; fetch was called ${fetchCalls} time(s)`);
+  } finally {
+    _resetFetchForTest();
+    _resetNtfyBackoff();
+  }
+});
+
 await testChain;
 console.log(`\n${passed} notifier test(s) passed.`);
