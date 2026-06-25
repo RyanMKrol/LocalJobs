@@ -5103,7 +5103,7 @@
     {
       "id": "T198",
       "title": "Back-link label: show just the destination id (drop '<workflow> run.' prefix)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
