@@ -4864,6 +4864,96 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T188.md"
+    },
+    {
+      "id": "T189",
+      "title": "Notify only on workflow completion, not per-stage",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "notifications",
+        "framework"
+      ],
+      "facets": {
+        "layer": "framework",
+        "workType": "refactor",
+        "risk": [
+          "touches-executor"
+        ]
+      },
+      "scope": [
+        "src/core/workflow-executor.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/core/notifier.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T189.md"
+    },
+    {
+      "id": "T190",
+      "title": "Explicit Dark / Light / System theme-mode picker (default System)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "theme"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/layout.tsx",
+        "dashboard/app/globals.css",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T190.md"
+    },
+    {
+      "id": "T191",
+      "title": "Bulk Mark-as-reviewed UI for the Backlog Done section (single commit)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "api",
+        "backlog",
+        "harness"
+      ],
+      "facets": {
+        "layer": "api",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T191.md"
     }
   ]
 }
