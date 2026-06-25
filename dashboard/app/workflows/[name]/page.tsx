@@ -302,6 +302,36 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
   const p = data?.workflow;
   const runs = p?.runs ?? [];
 
+  // Reset (clear output data) state.
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+  const [resetErr, setResetErr] = useState<string | null>(null);
+
+  async function resetOutput() {
+    const msg =
+      `Clear all output data for "${name}"?\n\n` +
+      `This permanently deletes:\n` +
+      `  • Work item ledger (re-runs from scratch next time)\n` +
+      `  • All run history and logs\n` +
+      `  • Output files (data/out/**)\n\n` +
+      `This will NOT touch:\n` +
+      `  • Input data (data/raw/**)\n` +
+      `  • Workflow settings (schedule, concurrency, enabled)\n\n` +
+      `The workflow will re-process everything from scratch on the next run.`;
+    if (!confirm(msg)) return;
+    setResetting(true);
+    setResetResult(null);
+    setResetErr(null);
+    try {
+      const r = await api.resetWorkflowOutput(name);
+      setResetResult(`Cleared: ${r.itemsDeleted} ledger rows, ${r.runsDeleted} job runs, ${r.wfRunsDeleted} workflow runs, ${r.filesRemoved} output file entries.`);
+    } catch (e) {
+      setResetErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setResetting(false);
+    }
+  }
+
   // Inline schedule editor (T135).
   const [editingSchedule, setEditingSchedule] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState('');
@@ -505,6 +535,32 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
 
       {name === 'movie-recommendations' && <MovieGapsManager />}
       {MISSING_SEASONS_WORKFLOWS.has(name) && <MissingSeasonsManager />}
+
+      <h2>Danger zone</h2>
+      <div className="panel" style={{ borderLeft: '3px solid var(--red)', padding: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <strong>Clear output data</strong>
+            <p className="muted" style={{ fontSize: 13, margin: '4px 0 0' }}>
+              Deletes run history, the work item ledger, and output files (<code>data/out/**</code>).
+              Input data (<code>data/raw</code>), settings, and service limits are preserved.
+              The workflow re-processes everything from scratch on the next run.
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <button
+              className="btn btn-danger"
+              onClick={resetOutput}
+              disabled={resetting || p?.last_run?.status === 'running'}
+              title={p?.last_run?.status === 'running' ? 'Cannot reset while a run is in progress' : undefined}
+            >
+              {resetting ? 'Clearing…' : 'Clear output data'}
+            </button>
+            {resetResult && <span style={{ fontSize: 12, color: 'var(--green)' }}>{resetResult}</span>}
+            {resetErr && <span style={{ fontSize: 12, color: 'var(--red)' }}>{resetErr}</span>}
+          </div>
+        </div>
+      </div>
     </>
   );
 }

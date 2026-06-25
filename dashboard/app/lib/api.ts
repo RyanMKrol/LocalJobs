@@ -444,6 +444,13 @@ export const api = {
     return data as { ok: boolean; max_concurrency: number };
   },
   cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
+  // Clear all output data for a workflow (T203): work_items + runs/logs + data/out/*.
+  // Preserves: input data (data/raw), chrome-profile, settings, definition tables.
+  // Refuses while the workflow has an active run.
+  resetWorkflowOutput: (name: string) =>
+    post<{ ok: boolean; jobNames: string[]; itemsDeleted: number; runsDeleted: number; wfRunsDeleted: number; filesRemoved: number; outDir: string | null }>(
+      `/api/workflows/${encodeURIComponent(name)}/reset-output`,
+    ),
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),

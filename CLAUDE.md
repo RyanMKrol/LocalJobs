@@ -421,6 +421,27 @@ doubt, log it.
   **Unlimited** checkbox — when checked, `0` is persisted and the read view shows
   "Unlimited" instead of a number. `effective_max_concurrency = 0` in the API payload
   signals the unlimited state to the UI (Infinity cannot serialise as JSON).
+- **Per-workflow "Clear output data" reset action (T203).** `POST /api/workflows/:name/reset-output`
+  (mutating — loopback/token guard, refuses with **409** while a run is active) wipes all
+  output state for a workflow so it re-processes from scratch on the next run.
+  **What is cleared:** `work_items` + `work_item_runs` (the per-item ledger), `run_logs` +
+  `runs` (all member job run history), `workflow_run_logs` + `workflow_runs` (all workflow run
+  history), and the contents of the workflow's `data/out/**` directory (output files only —
+  NOT the `data/out` directory itself, which is left in place).
+  **What is preserved:** `data/raw/**` (input data), `data/chrome-profile/`, `.env`, the
+  definition tables (`workflows`, `jobs`, `workflow_jobs`), all user-owned settings
+  (`enabled`, schedule override, concurrency override, service limit overrides), and
+  `service_usage` (the spend meter — lifetime call counts are never erased).
+  The filesystem cleanup (`findWorkflowDataOut` + `deleteDataOutContents` in `server.ts`)
+  locates the workflow's folder by scanning `JOBS_ROOT` for `*.workflow.ts` files and
+  dynamically importing each to match by `default.name` (fast — already in module cache after
+  registry startup). Two path-safety guards in `deleteDataOutContents` enforce that the target
+  is (1) within `JOBS_ROOT` AND (2) contains `/data/out/` in its path — neither check alone
+  is sufficient. The DB reset (`resetWorkflowOutput` in `store.ts`) uses subquery-based deletes
+  (`DELETE … WHERE run_id IN (SELECT id FROM runs WHERE job_name IN (…))`) to avoid SQLite's
+  999-variable limit. The dashboard's workflow detail page exposes a **Danger zone → Clear
+  output data** button (disabled while a run is active, confirms via the browser native dialog
+  before posting) and shows a green success line or red error message after the call.
 - **No workflow-level properties on a job (T070).** Because a job is only ever a
   workflow member, ALL workflow-level concerns live on the workflow, never the job:
   a job has NO `schedule`, NO `enabled` toggle, NO `instructions`, and NO run-now.

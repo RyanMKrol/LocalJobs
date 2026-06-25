@@ -1266,6 +1266,60 @@ export function listServiceConsumers(serviceName: string): ServiceConsumerRow[] 
   `).all(serviceName) as ServiceConsumerRow[];
 }
 
+// ════════════════════ workflow output reset (T203) ════════════════════
+
+export interface WorkflowResetResult {
+  jobNames: string[];
+  itemsDeleted: number;
+  runsDeleted: number;
+  wfRunsDeleted: number;
+}
+
+/**
+ * Clear ALL output data for a workflow — scoped to its member jobs.
+ * Deletes in a single transaction:
+ *   • `work_item_runs` attribution rows for the member jobs
+ *   • `work_items` ledger rows for the member jobs
+ *   • `run_logs` for those jobs' runs
+ *   • `runs` for those jobs
+ *   • `workflow_run_logs` for those workflow runs
+ *   • `workflow_runs` for the named workflow
+ *
+ * Does NOT touch: `data/raw/**` files, definition tables (jobs/workflows/services),
+ * user settings (enabled/schedule/concurrency overrides, service limits), or
+ * `service_usage` (a cross-workflow spend meter).
+ *
+ * Filesystem cleanup (data/out/**) is performed by the API layer after calling this.
+ * MANUAL ONLY — never invoked from the run/schedule path.
+ */
+export function resetWorkflowOutput(workflowName: string): WorkflowResetResult {
+  const members = getWorkflowJobs(workflowName);
+  const jobNames = members.map((m) => m.job_name);
+  if (jobNames.length === 0) {
+    return { jobNames: [], itemsDeleted: 0, runsDeleted: 0, wfRunsDeleted: 0 };
+  }
+  const ph = jobNames.map(() => '?').join(',');
+
+  const tx = db.transaction(() => {
+    // work_item_runs: attribution rows for member jobs
+    db.prepare(`DELETE FROM work_item_runs WHERE job_name IN (${ph})`).run(...jobNames);
+    // work_items: ledger rows for member jobs
+    const itemsDeleted = db.prepare(`DELETE FROM work_items WHERE job_name IN (${ph})`).run(...jobNames).changes;
+    // run_logs: cascade-delete before runs (subquery avoids large IN lists)
+    db.prepare(`DELETE FROM run_logs WHERE run_id IN (SELECT id FROM runs WHERE job_name IN (${ph}))`).run(...jobNames);
+    // runs: member job runs
+    const runsDeleted = db.prepare(`DELETE FROM runs WHERE job_name IN (${ph})`).run(...jobNames).changes;
+    // workflow_run_logs: cascade-delete before workflow_runs
+    db.prepare('DELETE FROM workflow_run_logs WHERE workflow_run_id IN (SELECT id FROM workflow_runs WHERE workflow_name = ?)').run(workflowName);
+    // workflow_runs: all runs of this workflow
+    const wfRunsDeleted = db.prepare('DELETE FROM workflow_runs WHERE workflow_name = ?').run(workflowName).changes;
+    return { itemsDeleted, runsDeleted, wfRunsDeleted };
+  });
+
+  const result = tx();
+  return { jobNames, ...result };
+}
+
 // ─────────────────── Read-only DB browser (dashboard) ───────────────────
 // A generic, strictly READ-ONLY view of the SQLite tables for ad-hoc browsing
 // from the dashboard, so the local DB can be inspected without building a

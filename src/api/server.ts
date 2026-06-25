@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
-import { readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { config } from '../config.js';
 import { acquireRepoLock, resolveRepoPaths } from '../core/repo-lock.js';
@@ -41,6 +41,7 @@ import {
   runCannedQuery,
   orphanedWorkItems,
   pruneOrphanedWorkItems,
+  resetWorkflowOutput,
   workItemIoRows,
   workflowHasRunLinkage,
   workItemMarkdownPath,
@@ -425,6 +426,61 @@ export function isWithin(parent: string, child: string): boolean {
   const rel = relativePath(parent, child);
   // Inside iff the relative path doesn't climb out (`..`) and isn't absolute.
   return rel === '' || (!rel.startsWith('..') && !rel.startsWith(sep));
+}
+
+/**
+ * Scan JOBS_ROOT for `*.workflow.ts` / `*.workflow.js` files, import each one
+ * (cached by the module system from registry startup), and return the containing
+ * directory when the exported workflow name matches `workflowName`. Returns null
+ * if no matching workflow file is found.
+ *
+ * Used by the reset-output endpoint to locate the workflow's `data/out/` tree.
+ * Imports are cheap (already cached) — this is a filesystem walk + map-lookup.
+ */
+export async function findWorkflowDataOut(workflowName: string): Promise<string | null> {
+  const isWfFile = (f: string) => f.endsWith('.workflow.ts') || f.endsWith('.workflow.js');
+  function walkForWfFiles(dir: string): string[] {
+    const out: string[] = [];
+    try {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = joinPath(dir, entry.name);
+        if (entry.isDirectory()) out.push(...walkForWfFiles(full));
+        else if (isWfFile(entry.name)) out.push(full);
+      }
+    } catch { /* skip unreadable dirs */ }
+    return out;
+  }
+  for (const file of walkForWfFiles(JOBS_ROOT)) {
+    try {
+      const mod = await import(pathToFileURL(file).href) as { default?: { name?: string } };
+      if (mod.default?.name === workflowName) {
+        const candidate = joinPath(dirname(file), 'data', 'out');
+        // Validate the candidate is within JOBS_ROOT (it always should be, but be explicit).
+        if (!isWithin(JOBS_ROOT, resolvePath(candidate))) return null;
+        return existsSync(candidate) ? candidate : null;
+      }
+    } catch { /* skip import errors */ }
+  }
+  return null;
+}
+
+/**
+ * Delete all children of `outDir` without removing the directory itself.
+ * Validates that `outDir` is within JOBS_ROOT and contains `data/out` in its
+ * path before touching anything. Returns the number of top-level entries removed.
+ * Safe to call when the directory doesn't exist (returns 0). Exported for testing.
+ */
+export function deleteDataOutContents(outDir: string): number {
+  if (!isWithin(JOBS_ROOT, resolvePath(outDir))) return 0; // safety: must stay within jobs tree
+  if (!outDir.includes(`${sep}data${sep}out`)) return 0;   // safety: must be a data/out dir
+  let removed = 0;
+  try {
+    for (const entry of readdirSync(outDir)) {
+      rmSync(joinPath(outDir, entry), { recursive: true, force: true });
+      removed++;
+    }
+  } catch { /* directory doesn't exist or is unreadable — no-op */ }
+  return removed;
 }
 
 /**
@@ -1011,6 +1067,39 @@ export function createApiServer(
         }
         updateWorkflowConcurrency(name, n);
         return json(res, 200, { ok: true, max_concurrency: n });
+      }
+
+      // POST /api/workflows/:name/reset-output
+      // Clear all OUTPUT data for the named workflow: work_items ledger + work_item_runs
+      // attribution + member job runs/logs + workflow_runs/logs + data/out/** files.
+      // Preserves: data/raw/** (input data), chrome-profile, .env, definition tables
+      // (jobs/workflows/services), and user settings (enabled/schedule/concurrency
+      // overrides, service limits). Does NOT clear service_usage (cross-workflow meter).
+      // Refuses to run while the workflow has an active run (avoids racing the executor).
+      // Mutating — behind the same loopback/token guard as all other POST endpoints.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'reset-output') {
+        const name = parts[2];
+        if (!getWorkflow(name)) return json(res, 404, { error: 'workflow not found' });
+        if (workflowRunInProgress(name)) {
+          return json(res, 409, { error: `workflow "${name}" has an active run — wait for it to finish before resetting` });
+        }
+        // Find the workflow's data/out directory before clearing the DB (the directory
+        // lookup uses cached module imports, so it's cheap and doesn't affect the DB).
+        const outDir = await findWorkflowDataOut(name);
+        // Perform the DB reset in a single transaction.
+        const result = resetWorkflowOutput(name);
+        // Delete filesystem artifacts (data/out/**) if the directory was found.
+        const filesRemoved = outDir ? deleteDataOutContents(outDir) : 0;
+        console.log(`[api] reset-output "${name}": ${result.itemsDeleted} items, ${result.runsDeleted} runs, ${result.wfRunsDeleted} wf-runs, ${filesRemoved} fs entries`);
+        return json(res, 200, {
+          ok: true,
+          jobNames: result.jobNames,
+          itemsDeleted: result.itemsDeleted,
+          runsDeleted: result.runsDeleted,
+          wfRunsDeleted: result.wfRunsDeleted,
+          filesRemoved,
+          outDir: outDir ? relativePath(JOBS_ROOT, outDir) : null,
+        });
       }
 
       // GET /api/workflow-runs?limit=

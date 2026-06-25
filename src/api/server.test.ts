@@ -5,7 +5,7 @@
 // `opts.isLoopback` lets us simulate a remote (non-loopback) caller without a second host.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -1272,5 +1272,85 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
     assert.equal(body.consumers[0].jobs[0].job_name, 'cons-api-job');
   });
 });
+
+// ── T203: resetWorkflowOutput (store) + deleteDataOutContents + API endpoint ──
+{
+  const { resetWorkflowOutput: resetStore, getWorkflowRun: getWfRun } = await import('../db/store.js');
+  const { deleteDataOutContents } = await import('./server.js');
+
+  // Set up two workflows in the scratch DB so we can verify isolation.
+  syncJob({ name: 't203-j1', run: async () => {} });
+  syncJob({ name: 't203-j2', run: async () => {} });
+  syncJob({ name: 't203-other', run: async () => {} });
+  syncWorkflow({ name: 't203-wf', jobs: [{ job: 't203-j1' }, { job: 't203-j2' }] });
+  syncWorkflow({ name: 't203-other-wf', jobs: [{ job: 't203-other' }] });
+
+  // Seed runs + work items for the target workflow.
+  markWorkItem('t203-j1', 'item-a', 'success');
+  markWorkItem('t203-j2', 'item-b', 'failed', { attempts: 3 });
+  const wfRunId = createWorkflowRun('t203-wf', 'manual');
+  finishWorkflowRun(wfRunId, 'success');
+
+  // Seed a run + work item for the OTHER workflow — these must NOT be cleared.
+  markWorkItem('t203-other', 'other-item', 'success');
+  const otherRunId = createWorkflowRun('t203-other-wf', 'manual');
+  finishWorkflowRun(otherRunId, 'success');
+
+  await test('resetWorkflowOutput: clears target workflow rows, leaves other workflow untouched', () => {
+    const result = resetStore('t203-wf');
+    // Target workflow: all records cleared.
+    assert.ok(result.itemsDeleted >= 2, `expected ≥2 work_items deleted, got ${result.itemsDeleted}`);
+    assert.ok(result.wfRunsDeleted >= 1, `expected ≥1 workflow_runs deleted, got ${result.wfRunsDeleted}`);
+    // Other workflow: rows still present after the reset.
+    assert.ok(getWfRun(otherRunId), 'other workflow run still exists');
+    // Re-running reset on already-cleared workflow is a safe no-op.
+    const again = resetStore('t203-wf');
+    assert.equal(again.itemsDeleted, 0, 'second reset is a no-op');
+    assert.equal(again.wfRunsDeleted, 0, 'second reset is a no-op');
+  });
+
+  // deleteDataOutContents path-safety guards.
+  await test('deleteDataOutContents: rejects paths outside JOBS_ROOT or without /data/out/', () => {
+    // A path outside JOBS_ROOT (e.g. tmpdir) must be rejected.
+    assert.equal(deleteDataOutContents(tmpdir()), 0, 'tmpdir() is outside JOBS_ROOT — rejected');
+    // A path within JOBS_ROOT but without /data/out/ in it must also be rejected.
+    const JOBS_ROOT_REAL = realpathSync(fileURLToPath(new URL('../jobs', import.meta.url)));
+    assert.equal(deleteDataOutContents(join(JOBS_ROOT_REAL, 'places')), 0, 'no /data/out/ — rejected');
+  });
+
+  // API endpoint: 404 for unknown workflow.
+  await test('POST /api/workflows/:name/reset-output: 404 for unknown workflow', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/__no_such_wf__/reset-output`, { method: 'POST' });
+      assert.equal(res.status, 404);
+    });
+  });
+
+  await test('POST /api/workflows/:name/reset-output: 200 ok for a known workflow (no active run)', async () => {
+    // Re-seed something to clear so the counts are non-trivial.
+    markWorkItem('t203-j1', 'api-test-item', 'success');
+    const seededRunId = createWorkflowRun('t203-wf', 'manual');
+    finishWorkflowRun(seededRunId, 'success'); // must be finished; active runs → 409
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/t203-wf/reset-output`, { method: 'POST' });
+      assert.equal(res.status, 200);
+      const body = await res.json() as { ok: boolean; jobNames: string[]; itemsDeleted: number; wfRunsDeleted: number; filesRemoved: number };
+      assert.equal(body.ok, true);
+      assert.ok(Array.isArray(body.jobNames), 'jobNames is an array');
+      assert.ok(body.jobNames.includes('t203-j1'), 'jobNames includes member job t203-j1');
+      assert.ok(typeof body.itemsDeleted === 'number', 'itemsDeleted is a number');
+      assert.ok(typeof body.filesRemoved === 'number', 'filesRemoved is a number');
+      assert.ok(body.itemsDeleted >= 1, 'at least one item was deleted');
+    });
+  });
+
+  // Cleanup registry stubs.
+  for (const n of ['t203-j1', 't203-j2', 't203-other']) {
+    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
+  }
+  for (const n of ['t203-wf', 't203-other-wf']) {
+    const i = workflows.findIndex((x) => x.name === n); if (i >= 0) workflows.splice(i, 1);
+  }
+}
 
 console.log(`\n  ${passed} assertions passed`);

@@ -271,7 +271,10 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   (Edit → type a croner expression or blank for manual-only → Save; persisted,
   user-owned, applied to the live scheduler with no restart), an **editable max
   concurrency** (Edit → number ≥ 1 → Save; user-owned, takes effect next run with
-  no restart), full run history
+  no restart), full run history, and a **Danger zone → Clear output data** action
+  (T203) — deletes run history, the work-item ledger, and `data/out/**` output
+  files so the workflow re-processes everything from scratch; blocked while a run
+  is active; input data (`data/raw`), settings, and service limits are preserved
 - **Workflow run detail** — live framework logs, per-stage job outcomes and
   statuses, **grouped by stage with older cycles collapsed** (click to expand),
   overall progress bar (counts completed stages only — stays at 0% until the
