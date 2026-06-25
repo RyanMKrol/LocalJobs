@@ -4926,7 +4926,7 @@
     {
       "id": "T191",
       "title": "Bulk Mark-as-reviewed UI for the Backlog Done section (single commit)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
