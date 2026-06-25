@@ -4954,6 +4954,464 @@
       "verify": [],
       "expectsTest": true,
       "spec": ".harness/tasks/T191.md"
+    },
+    {
+      "id": "T192",
+      "title": "Theme Picker: move the Dark/Light/System mode control to the last section",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "theme"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T192.md"
+    },
+    {
+      "id": "T193",
+      "title": "Services consumers popup: add internal padding/spacing",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/services/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T193.md"
+    },
+    {
+      "id": "T194",
+      "title": "Input→Output mapping: remove last-row hover gap before the footer note",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/workflow-runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T194.md"
+    },
+    {
+      "id": "T195",
+      "title": "Input→Output mapping: style the empty-state placeholder text",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/workflow-runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T195.md"
+    },
+    {
+      "id": "T196",
+      "title": "Workflow header: add spacing between description and the Run button",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T196.md"
+    },
+    {
+      "id": "T197",
+      "title": "Harden ntfy sending: log e.cause + retry transient network throws",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "notifications"
+      ],
+      "facets": {
+        "layer": "framework",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "scope": [
+        "src/core/notifier.ts",
+        "src/core/notifier.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T197.md"
+    },
+    {
+      "id": "T198",
+      "title": "Back-link label: show just the destination id (drop '<workflow> run.' prefix)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T198.md"
+    },
+    {
+      "id": "T199",
+      "title": "Surface franchise-gaps 'you own' anchor on the dashboard movie-recommendations page",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "api",
+        "movies"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T199.md"
+    },
+    {
+      "id": "T200",
+      "title": "Restyle the Recommendations & gaps + Missing seasons sections (cross-theme)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T200.md"
+    },
+    {
+      "id": "T201",
+      "title": "Workflows: allow unlimited (no cap) max-concurrency via an explicit toggle",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "api",
+        "framework"
+      ],
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": [
+          "touches-executor",
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/core/workflow-executor.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T201.md"
+    },
+    {
+      "id": "T202",
+      "title": "Remove the static 'run' eyebrow label on the job-run page",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T202.md"
+    },
+    {
+      "id": "T203",
+      "title": "Per-workflow 'Clear output data' reset action (dashboard, guarded)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "api",
+        "db"
+      ],
+      "facets": {
+        "layer": "api",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T203.md"
+    },
+    {
+      "id": "T204",
+      "title": "Rebuild the workflow graph: true dependency edges/concurrency + wide layout (library OK)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "graph"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/components/Dag.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/package.json",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T204.md"
+    },
+    {
+      "id": "T205",
+      "title": "Prototype a unified joined-output view (3 switchable options; dedupe by stable key)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "prototype"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "dashboard/app/components/**",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts",
+        "dashboard/package.json"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T205.md"
+    },
+    {
+      "id": "T206",
+      "title": "Review joined-output prototype options; pick the winner + dedupe-key convention",
+      "status": "pending",
+      "dependsOn": [
+        "T205"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "review"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T206.md"
+    },
+    {
+      "id": "T207",
+      "title": "Hardcode the chosen joined-output option; remove the switcher + unused paths",
+      "status": "pending",
+      "dependsOn": [
+        "T206"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/components/**",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts",
+        "dashboard/package.json",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T207.md"
+    },
+    {
+      "id": "T208",
+      "title": "Backlog: mark a needs-human task done (owner-owned overlay; implies reviewed)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "api",
+        "harness"
+      ],
+      "facets": {
+        "layer": "harness",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "src/core/repo-lock.ts",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/lib/api.ts",
+        ".harness/human-done.json",
+        "CLAUDE.md",
+        ".harness/HARNESS.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T208.md"
     }
   ]
 }
