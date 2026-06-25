@@ -379,16 +379,16 @@ export function StuckPopover({
    attributes BEFORE first paint (no flash).
 
    The switcher chooses the theme FAMILY (`default` / `pixel-picnic` /
-   `sunny-8bit`); the light/dark MODE is NOT user-chosen — it's derived
-   automatically from the viewer's local time of day (see useTimeMode) and
-   written to `data-mode`. The `default` family's DARK mode is the original
-   pre-T142 dark look (the :root palette), so an untouched dashboard at night is
-   exactly the familiar dark dashboard; logs keep their fixed dark-terminal
-   palette in BOTH modes.
+   `sunny-8bit`) and the light/dark MODE (Dark/Light/System, T190). System (the
+   default) follows the OS `prefers-color-scheme`; Dark/Light force a fixed mode.
+   The choice persists to `localStorage` under `localjobs.mode`. The `default`
+   family's DARK mode is the original pre-T142 dark look (the :root palette), so
+   an untouched dashboard on a dark-OS viewer is exactly the familiar dark
+   dashboard; logs keep their fixed dark-terminal palette in BOTH modes.
    ────────────────────────────────────────────────────────────────────────── */
 
 // Three theme FAMILIES (T184). Each has a light + dark palette in globals.css;
-// the mode is picked by time of day, not here.
+// the mode is chosen by the viewer (Dark/Light/System), not here.
 export type ThemeId = 'default' | 'pixel-picnic' | 'sunny-8bit';
 
 export const THEMES: { id: ThemeId; label: string; emoji: string }[] = [
@@ -440,25 +440,57 @@ function useHtmlPref<T extends string>(key: string, attr: string, fallback: T) {
 export function useTheme() { return useHtmlPref<ThemeId>('localjobs.theme', 'data-theme', 'default'); }
 export function useFont() { return useHtmlPref<FontId>('localjobs.font', 'data-font', 'system'); }
 
-/** Light during the day, dark in the evening/night, keyed off the viewer's local
- *  clock. Day = 07:00–18:59; otherwise dark. Pure so it can be unit-tested and is
- *  shared with the pre-paint script's inline equivalent in layout.tsx. */
-export function modeForHour(hour: number): 'light' | 'dark' {
-  return hour >= 7 && hour < 19 ? 'light' : 'dark';
+// Three mode choices (T190): explicit Dark/Light, or System (follow OS preference).
+export type ModeId = 'dark' | 'light' | 'system';
+
+export const MODES: { id: ModeId; label: string }[] = [
+  { id: 'dark',   label: 'Dark' },
+  { id: 'light',  label: 'Light' },
+  { id: 'system', label: 'System' },
+];
+
+/** Pure helper: maps the stored mode choice + OS dark-preference → effective data-mode value.
+ *  Default (no stored choice) = System. */
+export function resolveMode(stored: ModeId | null, osPrefersDark: boolean): 'light' | 'dark' {
+  if (stored === 'dark') return 'dark';
+  if (stored === 'light') return 'light';
+  return osPrefersDark ? 'dark' : 'light';
 }
 
-/** Auto light/dark mode from the viewer's local time of day, written to the
- *  `data-mode` html attribute (the pre-paint script sets it first to avoid a
- *  flash; this keeps it in sync after hydration and re-checks hourly so a page
- *  left open across the day/night threshold flips on its own). NOT user-chosen. */
-export function useTimeMode() {
+/** User-chosen Dark/Light/System mode, written to the `data-mode` html attribute.
+ *  The pre-paint script sets it first (no flash); this keeps it in sync after
+ *  hydration and reacts to OS-preference changes when System is selected. */
+export function useMode(): [ModeId, (m: ModeId) => void] {
+  const [mode, setMode] = useState<ModeId>('system');
+
   useEffect(() => {
-    const apply = () =>
-      document.documentElement.setAttribute('data-mode', modeForHour(new Date().getHours()));
+    const stored = window.localStorage.getItem('localjobs.mode') as ModeId | null;
+    const validModes: ModeId[] = ['dark', 'light', 'system'];
+    const effective = stored && validModes.includes(stored) ? stored : 'system';
+    setMode(effective);
+
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const cur = window.localStorage.getItem('localjobs.mode') as ModeId | null;
+      document.documentElement.setAttribute('data-mode', resolveMode(cur as ModeId | null, mq.matches));
+    };
     apply();
-    const id = setInterval(apply, 5 * 60 * 1000); // re-evaluate every 5 min
-    return () => clearInterval(id);
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
   }, []);
+
+  const update = (v: ModeId) => {
+    setMode(v);
+    if (v === 'system') {
+      window.localStorage.removeItem('localjobs.mode');
+    } else {
+      window.localStorage.setItem('localjobs.mode', v);
+    }
+    const osPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-mode', resolveMode(v, osPrefersDark));
+  };
+
+  return [mode, update];
 }
 
 /** Reduce-motion / minimal-emoji toggle. Tri-state storage: explicit 'reduced' /
@@ -551,7 +583,7 @@ export function ThemeControls() {
   const [theme, setTheme] = useTheme();
   const [font, setFont] = useFont();
   const [reduced, setReduced] = useMotion();
-  useTimeMode();
+  const [mode, setMode] = useMode();
 
   return (
     <div className="theme-controls">
@@ -580,13 +612,29 @@ export function ThemeControls() {
                       key={t.id}
                       className={`theme-opt${theme === t.id ? ' active' : ''}`}
                       onClick={() => setTheme(t.id)}
-                      title={`${t.label} theme — light/dark follows time of day`}
+                      title={`${t.label} theme`}
                     >
                       <span aria-hidden="true">{t.emoji}</span> {t.label}
                     </button>
                   ))}
                 </div>
-                <p className="theme-section-hint">Light/dark follows your local time of day.</p>
+              </div>
+
+              <div className="theme-section">
+                <div className="theme-section-label">Mode</div>
+                <div className="theme-grid">
+                  {MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      className={`theme-opt${mode === m.id ? ' active' : ''}`}
+                      onClick={() => setMode(m.id)}
+                      title={m.id === 'system' ? 'Follow OS preference (default)' : `Force ${m.label} mode`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="theme-section-hint">System follows your OS dark/light preference.</p>
               </div>
 
               <div className="theme-section">

@@ -880,17 +880,19 @@ doubt, log it.
   `document.documentElement`. The curated set (T184) is:
   - **`data-theme` — the theme FAMILY, exactly 3:** `default` (plain), `pixel-picnic`,
     `sunny-8bit`. The switcher only picks the family.
-  - **`data-mode` — `light` | `dark`, chosen AUTOMATICALLY from the viewer's local
-    time of day** (day = `light` ~07:00–18:59, evening/night = `dark`), NOT
-    user-chosen. Each of the 3 families has a **light + dark palette** in
+  - **`data-mode` — `light` | `dark`, user-chosen via the 🎨 picker (T190).** The
+    picker offers **Dark / Light / System** (stored as `localjobs.mode`). System (the
+    default when nothing is stored) follows the OS `prefers-color-scheme`; Dark/Light
+    force a fixed mode. Each of the 3 families has a **light + dark palette** in
     `globals.css` (6 total). The family's BASE rule carries its DARK palette (so a
     JS-less viewer still gets a coherent theme) and a `[data-mode="light"]` rule
     overrides to light; the `default` family is the exception — its DARK palette IS
     `:root` (unchanged, the original pre-T142 dark look) and only its light override
     is defined. `data-mode` is set BEFORE first paint by the pre-paint inline script
-    in `layout.tsx` (`new Date().getHours()`) and kept in sync after hydration by
-    `useTimeMode()` (re-checks every 5 min, so a page open across the threshold
-    flips). The pure `modeForHour(hour)` helper in `ui.tsx` is shared/unit-tested.
+    in `layout.tsx` (reads `localjobs.mode`, falls back to `prefers-color-scheme`) and
+    kept in sync after hydration by `useMode()` (listens for OS-preference changes so
+    System mode reacts live while the page is open). The pure `resolveMode(stored,
+    osPrefersDark)` helper in `ui.tsx` maps stored choice → effective `data-mode`.
   - **`data-font` — exactly 3:** unset = System default, `baloo` (Baloo 2, a rounded
     face; uses a lighter `--heading-weight: 500` so headers read crisp), `spacemono`
     (Space Mono everywhere). Only **two faces are loaded** via `next/font/google` in

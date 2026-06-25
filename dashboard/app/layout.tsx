@@ -27,18 +27,19 @@ const spaceMono = Space_Mono({ subsets: ['latin'], weight: ['400', '700'], varia
 
 const fontVars = [baloo, spaceMono].map((f) => f.variable).join(' ');
 
-// Inline pre-paint script: applies the persisted theme-family / font / motion
-// choices AND the time-of-day light/dark mode to <html> BEFORE first paint so
-// there's no flash. Mirrors useTheme/useFont/useMotion/useTimeMode in ui.tsx.
-// The light/dark mode is derived purely from the VIEWER's local clock — day
-// (07:00–18:59) = light, evening/night = dark — and applied as data-mode. The
-// `default` family's DARK mode is the original pre-T142 dark look (the :root
-// palette); its light mode is the new counterpart. Nothing stored keeps the
-// system font; motion honours the OS `prefers-reduced-motion` until overridden.
+// Inline pre-paint script: applies the persisted theme-family / font / motion / mode
+// choices to <html> BEFORE first paint so there's no flash. Mirrors
+// useTheme/useFont/useMotion/useMode in ui.tsx.
+// Mode (localjobs.mode): 'dark'→force dark, 'light'→force light, 'system'/absent→
+// follow OS prefers-color-scheme. The `default` family's DARK mode is the original
+// pre-T142 dark look (the :root palette); its light mode is the new counterpart.
+// Nothing stored keeps the system font; motion honours the OS `prefers-reduced-motion`
+// until overridden.
 const PREPAINT = `(function(){try{
 var d=document.documentElement,L=window.localStorage;
-var hr=new Date().getHours();
-d.setAttribute('data-mode',(hr>=7&&hr<19)?'light':'dark');
+var mo=L.getItem('localjobs.mode');
+var dark=mo==='dark'||(mo!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+d.setAttribute('data-mode',dark?'dark':'light');
 var t=L.getItem('localjobs.theme'); if(t&&t!=='default') d.setAttribute('data-theme',t);
 var f=L.getItem('localjobs.font'); if(f&&f!=='system') d.setAttribute('data-font',f);
 var m=L.getItem('localjobs.motion');
