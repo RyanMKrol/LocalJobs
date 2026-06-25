@@ -4896,7 +4896,7 @@
     {
       "id": "T190",
       "title": "Explicit Dark / Light / System theme-mode picker (default System)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
