@@ -44,7 +44,6 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
                 <h1 style={{ margin: 0 }}>{run.job_name}</h1>
                 <StatusBadge status={run.status} />
               </div>
-              <span className="muted" style={{ fontSize: 12 }}>run</span>
             </div>
             <div className="spacer" />
             <span className="muted mono">{run.id}</span>
