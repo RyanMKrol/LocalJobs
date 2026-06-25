@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { GateStatus, StructuralGate, WorkflowMember } from '../lib/api';
 import { statusLabel } from '../ui';
 
@@ -74,6 +74,13 @@ function GateMarks({ gates }: { gates: RenderGate[] }) {
   );
 }
 
+interface SkipEdgeDraw {
+  d: string;
+  midX: number;
+  midY: number;
+  gates: RenderGate[];
+}
+
 /**
  * Render a workflow DAG as left-to-right waves of status-coloured nodes. Pass
  * `statusByJob` to colour each node by a run's member status, and `runIdByJob`
@@ -108,6 +115,10 @@ export function Dag({
   /** Workflow run id, required when `gates` is provided to build gate-detail URLs. */
   workflowRunId?: string;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [skipDrawn, setSkipDrawn] = useState<SkipEdgeDraw[]>([]);
+  const [svgSize, setSvgSize] = useState({ w: 0, h: 0 });
+
   const waves = computeWaves(members);
   // Wave index of each job, so a gate's (producer, consumer) can be placed on the
   // arrow that bridges them.
@@ -118,12 +129,12 @@ export function Dag({
   // between those two waves — the arrow rendered after the PRODUCER's wave (index
   // i bridges wave i → i+1). For the strictly-linear example workflows the
   // producer is always the wave immediately before the consumer, so the gate sits
-  // on that inter-wave arrow. For any non-adjacent edge (producer more than one
-  // wave upstream) we DON'T drop the chip — we fall back to rendering it under the
-  // consumer node, keyed by consumer, rather than mis-placing it on a wrong arrow.
+  // on that inter-wave arrow. Non-adjacent edges (producer more than one wave
+  // upstream) are drawn as skip-wave SVG connectors (see below) with the gate
+  // chip placed along the path.
   const partition = <T extends { producer: string; consumer: string }>(items: T[]) => {
     const onArrow = new Map<number, T[]>(); // arrow index (= producer wave) → gates
-    const onConsumer = new Map<string, T[]>(); // fallback for non-adjacent edges
+    const onConsumer = new Map<string, T[]>(); // fallback for non-adjacent edges (will be drawn on SVG path)
     for (const g of items) {
       const pi = waveOf.get(g.producer);
       const ci = waveOf.get(g.consumer);
@@ -154,11 +165,155 @@ export function Dag({
   });
   const arrowGates = (i: number): RenderGate[] =>
     workflowRunId ? (runGates.onArrow.get(i) ?? []).map(normRun) : (structGates.onArrow.get(i) ?? []).map(normStruct);
-  const nodeGates = (job: string): RenderGate[] =>
+  // Adjacent-edge gates under consumer nodes are no longer used (drawn on SVG path instead),
+  // but this is kept for type-safety; skip-edge gates are filtered out below.
+  const consumerGates = (job: string): RenderGate[] =>
     workflowRunId ? (runGates.onConsumer.get(job) ?? []).map(normRun) : (structGates.onConsumer.get(job) ?? []).map(normStruct);
 
+  // Collect all skip-wave edges (non-adjacent producer→consumer). For each we
+  // draw an SVG connector path instead of a fallback chip under the consumer.
+  const skipEdges = members.flatMap((m) =>
+    m.depends_on
+      .filter((dep) => {
+        const pi = waveOf.get(dep);
+        const ci = waveOf.get(m.job_name);
+        return pi != null && ci != null && (ci as number) > (pi as number) + 1;
+      })
+      .map((dep) => ({
+        producer: dep,
+        consumer: m.job_name,
+        // Gates for this specific producer→consumer pair come from onConsumer
+        // (they were partitioned there because the edge is non-adjacent).
+        gates: consumerGates(m.job_name).filter((g) => g.producer === dep),
+      }))
+  );
+  // Set of skip-edge consumer gates that will be drawn on the SVG path — exclude
+  // them from the per-node fallback chip rendering so they don't appear twice.
+  const skipGateKey = (producer: string, consumer: string) => `${producer}\x00${consumer}`;
+  const skipEdgeSet = new Set(skipEdges.map((e) => skipGateKey(e.producer, e.consumer)));
+  const nodeGates = (job: string): RenderGate[] =>
+    consumerGates(job).filter((g) => !skipEdgeSet.has(skipGateKey(g.producer, job)));
+
+  // After each render, measure node positions and compute SVG paths for skip edges.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const compute = () => {
+      const cRect = container.getBoundingClientRect();
+      const w = cRect.width;
+      const h = cRect.height;
+
+      if (skipEdges.length === 0) {
+        setSkipDrawn([]);
+        setSvgSize({ w, h });
+        return;
+      }
+
+      // Detect layout orientation: on phone the dag is flex-column so the y-span
+      // of a multi-wave workflow dominates; on desktop it's flex-row (x-span dominates).
+      // We determine this by checking whether the container's flex-direction is column.
+      const vertical = getComputedStyle(container).flexDirection === 'column';
+
+      const drawn: SkipEdgeDraw[] = [];
+      for (const { producer, consumer, gates: edgeGates } of skipEdges) {
+        // Find the rendered node elements by data attribute.
+        const pEl = container.querySelector<HTMLElement>(
+          `[data-dag-job="${producer.replace(/"/g, '\\"')}"] .dag-node`
+        );
+        const cEl = container.querySelector<HTMLElement>(
+          `[data-dag-job="${consumer.replace(/"/g, '\\"')}"] .dag-node`
+        );
+        if (!pEl || !cEl) continue;
+
+        const pRect = pEl.getBoundingClientRect();
+        const cRect2 = cEl.getBoundingClientRect();
+
+        let x1: number, y1: number, x2: number, y2: number, d: string, midX: number, midY: number;
+
+        if (!vertical) {
+          // Desktop (horizontal): producer right-center → consumer left-center.
+          // Route BELOW intermediate waves so the connector is visually distinct
+          // from the adjacent-wave arrows between them.
+          x1 = pRect.right - cRect.left;
+          y1 = pRect.top + pRect.height / 2 - cRect.top;
+          x2 = cRect2.left - cRect.left;
+          y2 = cRect2.top + cRect2.height / 2 - cRect.top;
+
+          // Push control points down below the deepest of the two endpoints,
+          // clearing the node content. The vertical dip scales with horizontal span.
+          const dip = Math.max(36, Math.abs(x2 - x1) * 0.22);
+          const baseY = Math.max(y1, y2) + dip;
+          const cx = (x1 + x2) / 2;
+          d = `M ${x1} ${y1} C ${cx} ${baseY}, ${cx} ${baseY}, ${x2} ${y2}`;
+          midX = cx;
+          midY = baseY;
+        } else {
+          // Phone (vertical): producer bottom-center → consumer top-center.
+          // Route to the RIGHT so the connector clears the node content.
+          x1 = pRect.left + pRect.width / 2 - cRect.left;
+          y1 = pRect.bottom - cRect.top;
+          x2 = cRect2.left + cRect2.width / 2 - cRect.left;
+          y2 = cRect2.top - cRect.top;
+
+          const bulge = Math.max(36, Math.abs(y2 - y1) * 0.22);
+          const rightX = Math.max(x1, x2) + bulge;
+          const cy = (y1 + y2) / 2;
+          d = `M ${x1} ${y1} C ${rightX} ${cy}, ${rightX} ${cy}, ${x2} ${y2}`;
+          midX = rightX;
+          midY = cy;
+        }
+
+        drawn.push({ d, midX, midY, gates: edgeGates });
+      }
+
+      setSkipDrawn(drawn);
+      setSvgSize({ w, h });
+    };
+
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(container);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members, gates, structuralGates, workflowRunId, workflowName]);
+
   return (
-    <div className="dag">
+    <div className="dag" ref={containerRef} style={{ position: 'relative' }}>
+      {/* SVG overlay for skip-wave (non-adjacent) edge connectors */}
+      {svgSize.w > 0 && skipDrawn.length > 0 && (
+        <svg
+          aria-hidden="true"
+          style={{
+            position: 'absolute', top: 0, left: 0,
+            width: svgSize.w, height: svgSize.h,
+            pointerEvents: 'none', overflow: 'visible',
+            zIndex: 0,
+          }}
+        >
+          {skipDrawn.map((sp, idx) => (
+            <path key={idx} d={sp.d} className="dag-skip-path" />
+          ))}
+        </svg>
+      )}
+      {/* Absolutely-positioned gate chips for skip edges, placed at path midpoints */}
+      {skipDrawn.map((sp, idx) =>
+        sp.gates.length > 0 ? (
+          <div
+            key={`sg-${idx}`}
+            style={{
+              position: 'absolute',
+              left: sp.midX,
+              top: sp.midY,
+              transform: 'translate(-50%, -50%)',
+              zIndex: 2,
+              pointerEvents: 'auto',
+            }}
+          >
+            <GateMarks gates={sp.gates} />
+          </div>
+        ) : null
+      )}
       {waves.map((wave, i) => (
         <Fragment key={i}>
           <div className="dag-wave">
@@ -173,9 +328,9 @@ export function Dag({
               );
               const href = (runId ? `/runs/${runId}` : `/jobs/${job}`) + (from ? `?from=${encodeURIComponent(from)}` : '');
               return (
-                <div key={job}>
+                <div key={job} data-dag-job={job} style={{ position: 'relative', zIndex: 1 }}>
                   <a href={href} style={{ textDecoration: 'none' }}>{node}</a>
-                  {/* Fallback marks for non-adjacent edges that can't sit on an arrow. */}
+                  {/* Gate chips for non-skip consumer gates (none in practice; skip edges are drawn on SVG) */}
                   <GateMarks gates={nodeGates(job)} />
                 </div>
               );
@@ -192,4 +347,3 @@ export function Dag({
     </div>
   );
 }
-
