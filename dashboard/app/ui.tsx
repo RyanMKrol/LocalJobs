@@ -369,74 +369,42 @@ export function StuckPopover({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Joyful theme / font / motion switcher (T142, an evaluation aid)
+   Theme-family / font / motion switcher (T184 — curated from the T142/T154
+   evaluation set down to the owner's keepers)
 
    Mirrors the existing persisted-chooser pattern: small `use…()` hooks back
    each axis with localStorage and apply it to `document.documentElement`
    (`data-theme` / `data-font` / `data-motion`), so every page reacts live and
    the choice survives reloads. A pre-paint script in layout.tsx sets the same
-   attributes BEFORE first paint (no theme flash). The DEFAULT (untouched) is the
-   current dark + system-font look so nothing regresses.
+   attributes BEFORE first paint (no flash).
 
-   A FOLLOW-UP (gated by the review task T143) will hardcode the chosen theme +
-   font + motion preference and delete this switcher + the unused options.
+   The switcher chooses the theme FAMILY (`default` / `pixel-picnic` /
+   `sunny-8bit`); the light/dark MODE is NOT user-chosen — it's derived
+   automatically from the viewer's local time of day (see useTimeMode) and
+   written to `data-mode`. The `default` family's DARK mode is the original
+   pre-T142 dark look (the :root palette), so an untouched dashboard at night is
+   exactly the familiar dark dashboard; logs keep their fixed dark-terminal
+   palette in BOTH modes.
    ────────────────────────────────────────────────────────────────────────── */
 
-// Iteration 2 (T154): the owner's round-1 review (T045) narrowed the joyful
-// themes to the Pixel Picnic + Sunny 8-bit families. We keep `default` (the dark
-// baseline) and offer each family as its original + 4 variants = 10 themes.
-export type ThemeId =
-  | 'default'
-  | 'pixel-picnic' | 'pixel-picnic-meadow' | 'pixel-picnic-dusk' | 'pixel-picnic-berry' | 'pixel-picnic-mint'
-  | 'sunny-8bit' | 'sunny-8bit-sunset' | 'sunny-8bit-lime' | 'sunny-8bit-aqua' | 'sunny-8bit-coral';
+// Three theme FAMILIES (T184). Each has a light + dark palette in globals.css;
+// the mode is picked by time of day, not here.
+export type ThemeId = 'default' | 'pixel-picnic' | 'sunny-8bit';
 
-export const THEMES: { id: ThemeId; label: string; emoji: string; group: 'Dark' | 'Pixel Picnic' | 'Sunny 8-bit' }[] = [
-  { id: 'default',              label: 'Default Dark',   emoji: '🌙', group: 'Dark' },
-  { id: 'pixel-picnic',         label: 'Pixel Picnic',   emoji: '🧺', group: 'Pixel Picnic' },
-  { id: 'pixel-picnic-meadow',  label: 'Picnic Meadow',  emoji: '🌿', group: 'Pixel Picnic' },
-  { id: 'pixel-picnic-dusk',    label: 'Picnic Dusk',    emoji: '🌅', group: 'Pixel Picnic' },
-  { id: 'pixel-picnic-berry',   label: 'Picnic Berry',   emoji: '🫐', group: 'Pixel Picnic' },
-  { id: 'pixel-picnic-mint',    label: 'Picnic Mint',    emoji: '🌱', group: 'Pixel Picnic' },
-  { id: 'sunny-8bit',           label: 'Sunny 8-bit',    emoji: '🕹️', group: 'Sunny 8-bit' },
-  { id: 'sunny-8bit-sunset',    label: '8-bit Sunset',   emoji: '🌇', group: 'Sunny 8-bit' },
-  { id: 'sunny-8bit-lime',      label: '8-bit Lime',     emoji: '🍋', group: 'Sunny 8-bit' },
-  { id: 'sunny-8bit-aqua',      label: '8-bit Aqua',     emoji: '🐬', group: 'Sunny 8-bit' },
-  { id: 'sunny-8bit-coral',     label: '8-bit Coral',    emoji: '🐠', group: 'Sunny 8-bit' },
+export const THEMES: { id: ThemeId; label: string; emoji: string }[] = [
+  { id: 'default',      label: 'Default',      emoji: '🌓' },
+  { id: 'pixel-picnic', label: 'Pixel Picnic', emoji: '🧺' },
+  { id: 'sunny-8bit',   label: 'Sunny 8-bit',  emoji: '🕹️' },
 ];
 
-// Fonts narrowed to the ROUNDED family the owner liked (Fredoka/Nunito + 8 more
-// rounded sans), a few THINNER-HEADER variants (lighter heading weight), a couple
-// pixel-display+rounded pairings for the Pixel Picnic vibe, and a small Space Mono
-// cluster to iterate on. The non-rounded body faces (VT323/JetBrains-as-body) are
-// gone; Pixelify only ever appears as a DISPLAY face.
-export type FontId =
-  | 'system'
-  | 'fredoka' | 'nunito' | 'quicksand' | 'baloo' | 'comfortaa'
-  | 'varela' | 'rubik' | 'mulish' | 'poppins' | 'lexend'
-  | 'fredoka-light' | 'nunito-light' | 'poppins-light'
-  | 'pixelify-nunito' | 'pixelify-fredoka'
-  | 'spacemono' | 'spacemono-fredoka' | 'spacemono-light';
+// Three fonts (T184): the unset System default, Baloo 2 (rounded body), and
+// Space Mono. Baloo 2 uses a lighter heading weight so headers read crisp.
+export type FontId = 'system' | 'baloo' | 'spacemono';
 
 export const FONTS: { id: FontId; label: string }[] = [
-  { id: 'system',           label: 'System (default)' },
-  { id: 'fredoka',          label: 'Fredoka' },
-  { id: 'nunito',           label: 'Nunito' },
-  { id: 'quicksand',        label: 'Quicksand' },
-  { id: 'baloo',            label: 'Baloo 2' },
-  { id: 'comfortaa',        label: 'Comfortaa' },
-  { id: 'varela',           label: 'Varela Round' },
-  { id: 'rubik',            label: 'Rubik' },
-  { id: 'mulish',           label: 'Mulish' },
-  { id: 'poppins',          label: 'Poppins' },
-  { id: 'lexend',           label: 'Lexend' },
-  { id: 'fredoka-light',    label: 'Fredoka · thin headers' },
-  { id: 'nunito-light',     label: 'Nunito · thin headers' },
-  { id: 'poppins-light',    label: 'Poppins · thin headers' },
-  { id: 'pixelify-nunito',  label: 'Pixelify + Nunito' },
-  { id: 'pixelify-fredoka', label: 'Pixelify + Fredoka' },
-  { id: 'spacemono',        label: 'Space Mono' },
-  { id: 'spacemono-fredoka',label: 'Fredoka + Space Mono' },
-  { id: 'spacemono-light',  label: 'Space Mono · light' },
+  { id: 'system',    label: 'System (default)' },
+  { id: 'baloo',     label: 'Baloo 2' },
+  { id: 'spacemono', label: 'Space Mono' },
 ];
 
 const prefersReducedMotion = () => {
@@ -471,6 +439,27 @@ function useHtmlPref<T extends string>(key: string, attr: string, fallback: T) {
 
 export function useTheme() { return useHtmlPref<ThemeId>('localjobs.theme', 'data-theme', 'default'); }
 export function useFont() { return useHtmlPref<FontId>('localjobs.font', 'data-font', 'system'); }
+
+/** Light during the day, dark in the evening/night, keyed off the viewer's local
+ *  clock. Day = 07:00–18:59; otherwise dark. Pure so it can be unit-tested and is
+ *  shared with the pre-paint script's inline equivalent in layout.tsx. */
+export function modeForHour(hour: number): 'light' | 'dark' {
+  return hour >= 7 && hour < 19 ? 'light' : 'dark';
+}
+
+/** Auto light/dark mode from the viewer's local time of day, written to the
+ *  `data-mode` html attribute (the pre-paint script sets it first to avoid a
+ *  flash; this keeps it in sync after hydration and re-checks hourly so a page
+ *  left open across the day/night threshold flips on its own). NOT user-chosen. */
+export function useTimeMode() {
+  useEffect(() => {
+    const apply = () =>
+      document.documentElement.setAttribute('data-mode', modeForHour(new Date().getHours()));
+    apply();
+    const id = setInterval(apply, 5 * 60 * 1000); // re-evaluate every 5 min
+    return () => clearInterval(id);
+  }, []);
+}
 
 /** Reduce-motion / minimal-emoji toggle. Tri-state storage: explicit 'reduced' /
  *  'full', or absent = follow the OS `prefers-reduced-motion`. The returned
@@ -562,6 +551,7 @@ export function ThemeControls() {
   const [theme, setTheme] = useTheme();
   const [font, setFont] = useFont();
   const [reduced, setReduced] = useMotion();
+  useTimeMode();
 
   return (
     <div className="theme-controls">
@@ -590,12 +580,13 @@ export function ThemeControls() {
                       key={t.id}
                       className={`theme-opt${theme === t.id ? ' active' : ''}`}
                       onClick={() => setTheme(t.id)}
-                      title={`${t.group} theme`}
+                      title={`${t.label} theme — light/dark follows time of day`}
                     >
                       <span aria-hidden="true">{t.emoji}</span> {t.label}
                     </button>
                   ))}
                 </div>
+                <p className="theme-section-hint">Light/dark follows your local time of day.</p>
               </div>
 
               <div className="theme-section">

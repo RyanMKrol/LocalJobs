@@ -470,66 +470,75 @@ input[type="text"]:focus { border-color: var(--accent); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   JOYFUL THEMES + FONTS + ACCENTS (T142, an evaluation aid)
+   THEMES + FONTS + ACCENTS (T184 — curated set)
 
-   Everything below is driven by three html attributes set live by the switcher
-   (ui.tsx) and the pre-paint script (layout.tsx):
-     data-theme="…"   — one of 10 themes: Pixel Picnic + 4 variants and Sunny
-                        8-bit + 4 variants (the unset/“default” = current dark look)
-     data-font="…"    — a rounded body face or Space Mono variant (T154 narrowed
-                        the set to rounded + a Space Mono cluster; unset = system)
+   Everything below is driven by four html attributes set live by the switcher
+   (ui.tsx) + useTimeMode and the pre-paint script (layout.tsx):
+     data-theme="…"   — the theme FAMILY: unset/"default" (plain), pixel-picnic,
+                        or sunny-8bit (3 families)
+     data-mode="…"    — "light" | "dark", chosen automatically from the viewer's
+                        local time of day (day = light, evening/night = dark);
+                        NOT user-chosen
+     data-font="…"    — unset = system, or one of two loaded faces: baloo / spacemono
      data-motion="reduced" — dampens animations + minimises emoji
-   The UNSET state renders identically to the pre-T142 dashboard. This is
-   iteration 2 (T142 → owner review T045 → T154); a follow-up gated by T045 will
-   hardcode the winners + delete the rest.
+   The default family's DARK mode (and the fully-unset state) renders identically
+   to the pre-T142 dark dashboard. Logs keep a fixed dark-terminal palette in both
+   modes. (This curated set supersedes the T142/T154 evaluation sets.)
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Font faces (display + body [+ mono]) — T154 narrowed to ROUNDED + Space Mono
-   Each rounded face is self-paired (display == body) for a clean rounded heading;
-   a few pair a pixel DISPLAY (Pixelify) with a rounded body for the Pixel Picnic
-   vibe; "thin header" variants drop --heading-weight so headings read crisp; the
-   Space Mono cluster keeps a monospace body to iterate on. Logs/code keep the
-   default system --font-mono (legibility) UNLESS the face is a Space Mono one. */
-
-/* Rounded, self-paired (clean rounded headings) */
-html[data-font="fredoka"]    { --font-display: var(--font-fredoka);    --font-body: var(--font-fredoka); }
-html[data-font="nunito"]     { --font-display: var(--font-nunito);     --font-body: var(--font-nunito); }
-html[data-font="quicksand"]  { --font-display: var(--font-quicksand);  --font-body: var(--font-quicksand); }
-html[data-font="baloo"]      { --font-display: var(--font-baloo);      --font-body: var(--font-baloo); }
-html[data-font="comfortaa"]  { --font-display: var(--font-comfortaa);  --font-body: var(--font-comfortaa); }
-html[data-font="varela"]     { --font-display: var(--font-varela);     --font-body: var(--font-varela); --heading-weight: 400; }
-html[data-font="rubik"]      { --font-display: var(--font-rubik);      --font-body: var(--font-rubik); }
-html[data-font="mulish"]     { --font-display: var(--font-mulish);     --font-body: var(--font-mulish); }
-html[data-font="poppins"]    { --font-display: var(--font-poppins);    --font-body: var(--font-poppins); }
-html[data-font="lexend"]     { --font-display: var(--font-lexend);     --font-body: var(--font-lexend); }
-
-/* Thin-header variants: same rounded face, lighter heading weight (crisp headings) */
-html[data-font="fredoka-light"] { --font-display: var(--font-fredoka); --font-body: var(--font-fredoka); --heading-weight: 500; }
-html[data-font="nunito-light"]  { --font-display: var(--font-nunito);  --font-body: var(--font-nunito);  --heading-weight: 400; }
-html[data-font="poppins-light"] { --font-display: var(--font-poppins); --font-body: var(--font-poppins); --heading-weight: 400; }
-
-/* Pixel DISPLAY + rounded body (Pixel Picnic vibe) */
-html[data-font="pixelify-nunito"]  { --font-display: var(--font-pixelify); --font-body: var(--font-nunito); }
-html[data-font="pixelify-fredoka"] { --font-display: var(--font-pixelify); --font-body: var(--font-fredoka); }
-
-/* Space Mono cluster (monospace body to iterate on) */
-html[data-font="spacemono"]         { --font-display: var(--font-spacemono); --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); }
-html[data-font="spacemono-fredoka"] { --font-display: var(--font-fredoka);   --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); }
-html[data-font="spacemono-light"]   { --font-display: var(--font-spacemono); --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); --heading-weight: 400; letter-spacing: -.01em; }
+/* ── Font faces (display + body [+ mono]) — T184: curated to TWO loaded faces
+   (Baloo 2 + Space Mono) plus the unset System default.
+   • baloo     — rounded face, self-paired (display == body); a LIGHTER heading
+                 weight (500) so section headers read crisp, not chunky.
+   • spacemono — monospace everywhere (display + body + mono).
+   Logs/code keep the default system --font-mono UNLESS the Space Mono face is
+   picked. Pixel/display faces are no longer shipped. */
+html[data-font="baloo"]     { --font-display: var(--font-baloo);     --font-body: var(--font-baloo);     --heading-weight: 500; }
+html[data-font="spacemono"] { --font-display: var(--font-spacemono); --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); }
 
 /* ── Theme palettes ────────────────────────────────────────────────────────
-   T154 narrowed the joyful themes to TWO families the owner liked: Pixel Picnic
-   (cream + dot grid) and Sunny 8-bit (amber arcade + scanlines), each shipped as
-   its original + 4 in-family variants = 10 themes (the `default` dark baseline is
-   kept). Every variant stays a full vibe package over :root with dark text on
-   light panels; `--card-radius` varies the card rounding within the family. Logs
-   keep their own fixed dark terminal palette (in :root, never overridden) so they
-   stay legible everywhere. */
+   T184: THREE families, each with a LIGHT and a DARK palette (6 total). The
+   light/dark MODE is chosen by the viewer's local time of day (data-mode, set by
+   the pre-paint script + useTimeMode), NOT by the switcher — the switcher only
+   picks the family.
 
-/* ═══ Pixel Picnic family — cream base, soft dot grid ═══════════════════════ */
+   • default      — the plain dashboard. DARK = the original pre-T142 :root look
+                    (so the untouched dashboard at night is unchanged); LIGHT is a
+                    new GitHub-light-ish counterpart. No joyful accents either way.
+   • pixel-picnic — cream + soft dot grid (light) / deep forest green (dark).
+   • sunny-8bit   — amber arcade + scanlines (light) / dark warm arcade (dark).
 
-/* Pixel Picnic — BASKET-like cream + dot grid + soft green/peach (round-1 keeper) */
+   Convention: the family's BASE rule (no [data-mode]) carries its DARK palette so
+   a JS-less viewer still gets a coherent theme; a `[data-mode="light"]` rule
+   overrides to the light palette. The `default` family is the exception — its
+   dark palette IS :root (no rule needed), and only its light override is defined.
+   Logs keep their own fixed dark-terminal palette (in :root, never overridden) so
+   they stay legible in both modes everywhere. */
+
+/* ═══ default family — light override (dark = :root, unchanged) ═════════════ */
+html[data-mode="light"]:not([data-theme]),
+html[data-theme="default"][data-mode="light"] {
+  --bg: #f6f8fa; --panel: #ffffff; --panel-2: #eef1f4; --border: #d0d7de;
+  --text: #1f2328; --muted: #59636e;
+  --accent: #0969da; --green: #1a7f37; --red: #cf222e; --yellow: #9a6700; --grey: #6e7781; --amber: #bc4c00;
+  --on-accent: #ffffff; --spark: var(--yellow);
+  --bg-texture: none;
+}
+
+/* ═══ Pixel Picnic family — green character, dot grid ═══════════════════════ */
+
+/* DARK (base) — deep forest/olive with warm cream text + green accent */
 html[data-theme="pixel-picnic"] {
+  --bg: #161c12; --panel: #1f271a; --panel-2: #283322; --border: #3a4730;
+  --text: #e8e4d2; --muted: #9aa583;
+  --accent: #7bc043; --green: #7bc043; --red: #e0705a; --yellow: #d6a93f; --grey: #7d8a6a; --amber: #d6953f;
+  --on-accent: #161c12; --spark: #a8d860;
+  --bg-texture: radial-gradient(circle, rgba(170,200,120,.06) 1.3px, transparent 1.3px);
+  --bg-texture-size: 16px 16px;
+  --card-radius: 12px;
+}
+/* LIGHT — BASKET-like cream + dot grid + soft green/peach */
+html[data-theme="pixel-picnic"][data-mode="light"] {
   --bg: #fbf6ea; --panel: #fffdf7; --panel-2: #f3ecd9; --border: #e3d8bf;
   --text: #3a3326; --muted: #8a7d63;
   --accent: #5a9e5a; --green: #3f9a4e; --red: #d65a4a; --yellow: #c98a1f; --grey: #a89c82; --amber: #c8821f;
@@ -538,53 +547,19 @@ html[data-theme="pixel-picnic"] {
   --bg-texture-size: 16px 16px;
 }
 
-/* Picnic Meadow — cooler & greener, denser dot grid, teal-green accent */
-html[data-theme="pixel-picnic-meadow"] {
-  --bg: #f2f7ec; --panel: #fbfdf6; --panel-2: #e6efdc; --border: #cfe0c0;
-  --text: #2c3826; --muted: #6f815f;
-  --accent: #4a9e6f; --green: #3f9a4e; --red: #d65a4a; --yellow: #b8901f; --grey: #9aab8a; --amber: #b8821f;
-  --on-accent: #ffffff; --spark: #7bc043;
-  --bg-texture: radial-gradient(circle, rgba(60,100,50,.12) 1.2px, transparent 1.2px);
-  --bg-texture-size: 12px 12px;
-  --card-radius: 12px;
-}
+/* ═══ Sunny 8-bit family — amber arcade, scanline texture ═══════════════════ */
 
-/* Picnic Dusk — warmer & deeper cream, dusty rose accent, larger softer dots */
-html[data-theme="pixel-picnic-dusk"] {
-  --bg: #f4ece4; --panel: #fcf6f0; --panel-2: #ece0d6; --border: #ddc9bb;
-  --text: #463a36; --muted: #8c7a72;
-  --accent: #b06a8a; --green: #5a9e6a; --red: #d6604a; --yellow: #c2882a; --grey: #ab988e; --amber: #c2782a;
-  --on-accent: #ffffff; --spark: #d68aa6;
-  --bg-texture: radial-gradient(circle, rgba(110,70,90,.10) 1.4px, transparent 1.4px);
-  --bg-texture-size: 18px 18px;
-  --card-radius: 16px;
-}
-
-/* Picnic Berry — berry/plum accent on warm cream */
-html[data-theme="pixel-picnic-berry"] {
-  --bg: #faf3ee; --panel: #fffaf6; --panel-2: #f1e4dc; --border: #e2cfc4;
-  --text: #3d2f30; --muted: #8a7370;
-  --accent: #9c4a72; --green: #4f9a5e; --red: #d6504a; --yellow: #c2861f; --grey: #a8978f; --amber: #c2761f;
-  --on-accent: #ffffff; --spark: #c95a92;
-  --bg-texture: radial-gradient(circle, rgba(120,50,80,.09) 1.3px, transparent 1.3px);
-  --bg-texture-size: 15px 15px;
-}
-
-/* Picnic Mint — minty-cool, lighter & higher contrast, tighter crisp dots */
-html[data-theme="pixel-picnic-mint"] {
-  --bg: #eef7f3; --panel: #f8fdfa; --panel-2: #ddefe6; --border: #c4e0d2;
-  --text: #283832; --muted: #6a847a;
-  --accent: #2f9e8a; --green: #3f9a5e; --red: #d6584a; --yellow: #b8901f; --grey: #93aaa0; --amber: #b8821f;
-  --on-accent: #ffffff; --spark: #3fc0a0;
-  --bg-texture: radial-gradient(circle, rgba(40,110,95,.10) 1.1px, transparent 1.1px);
-  --bg-texture-size: 14px 14px;
-  --card-radius: 10px;
-}
-
-/* ═══ Sunny 8-bit family — warm base, retro scanline texture ════════════════ */
-
-/* Sunny 8-bit — amber/retro arcade + sparkles (round-1 keeper) */
+/* DARK (base) — dark warm/charcoal arcade with amber accent */
 html[data-theme="sunny-8bit"] {
+  --bg: #1c1610; --panel: #261e13; --panel-2: #322818; --border: #463722;
+  --text: #f0dcae; --muted: #b39a6a;
+  --accent: #e8a020; --green: #8ac43f; --red: #e0593c; --yellow: #e8c020; --grey: #8a7a5a; --amber: #e8a020;
+  --on-accent: #1c1610; --spark: #ffc24d;
+  --bg-texture: repeating-linear-gradient(0deg, rgba(230,160,32,.06) 0 2px, transparent 2px 4px);
+  --bg-texture-size: auto;
+}
+/* LIGHT — amber/retro arcade + sparkles */
+html[data-theme="sunny-8bit"][data-mode="light"] {
   --bg: #fff3d6; --panel: #fff9ec; --panel-2: #ffeec2; --border: #f0d49a;
   --text: #4a3613; --muted: #9c7e44;
   --accent: #e8821f; --green: #5a9e2e; --red: #e0492e; --yellow: #c98a12; --grey: #b39c6a; --amber: #d9791a;
@@ -593,53 +568,10 @@ html[data-theme="sunny-8bit"] {
   --bg-texture-size: auto;
 }
 
-/* 8-bit Sunset — sunset orange/red on a peachy base */
-html[data-theme="sunny-8bit-sunset"] {
-  --bg: #ffe9d4; --panel: #fff4e8; --panel-2: #ffdcc0; --border: #f3c499;
-  --text: #4d2c1c; --muted: #a06f4c;
-  --accent: #e85a3c; --green: #5a9e3e; --red: #e0392e; --yellow: #d98a1a; --grey: #bb9678; --amber: #e0701a;
-  --on-accent: #ffffff; --spark: #ff7a4d;
-  --bg-texture: repeating-linear-gradient(0deg, rgba(200,90,40,.06) 0 2px, transparent 2px 4px);
-  --bg-texture-size: auto;
-  --card-radius: 12px;
-}
-
-/* 8-bit Lime — lime/green arcade pop */
-html[data-theme="sunny-8bit-lime"] {
-  --bg: #f6f7d0; --panel: #fcfdec; --panel-2: #eef0bd; --border: #d6da8f;
-  --text: #3e4413; --muted: #82883f;
-  --accent: #7aa81f; --green: #5a9e2e; --red: #e0492e; --yellow: #c2a312; --grey: #a8ac6a; --amber: #b89a1a;
-  --on-accent: #ffffff; --spark: #a8d83e;
-  --bg-texture: repeating-linear-gradient(0deg, rgba(120,150,30,.06) 0 2px, transparent 2px 4px);
-  --bg-texture-size: auto;
-}
-
-/* 8-bit Aqua — aqua/cyan pop on a warm base, crisp small cards */
-html[data-theme="sunny-8bit-aqua"] {
-  --bg: #fff3d6; --panel: #fbfaef; --panel-2: #e4f0e6; --border: #bfe0d4;
-  --text: #2e4438; --muted: #6f9080;
-  --accent: #1f9ea8; --green: #3f9e6e; --red: #e0584a; --yellow: #d99a1a; --grey: #93b3a8; --amber: #2faab0;
-  --on-accent: #ffffff; --spark: #2fc0c8;
-  --bg-texture: repeating-linear-gradient(0deg, rgba(30,140,150,.05) 0 2px, transparent 2px 4px);
-  --bg-texture-size: auto;
-  --card-radius: 8px;
-}
-
-/* 8-bit Coral — coral/pink warm, rounder cards */
-html[data-theme="sunny-8bit-coral"] {
-  --bg: #ffeede; --panel: #fff6ee; --panel-2: #ffe0d2; --border: #f3c4b0;
-  --text: #4d2e28; --muted: #a0746a;
-  --accent: #e85a6a; --green: #5a9e5e; --red: #e0392e; --yellow: #d98a3a; --grey: #bb968e; --amber: #e0705a;
-  --on-accent: #ffffff; --spark: #ff7a8a;
-  --bg-texture: repeating-linear-gradient(0deg, rgba(200,90,100,.06) 0 2px, transparent 2px 4px);
-  --bg-texture-size: auto;
-  --card-radius: 16px;
-}
-
 /* ── Joyful accents (apply to every NON-default theme; the default stays plain) ──
-   Selector `html[data-theme]:not([data-theme="default"])` = "a joyful theme is
-   active". The reduce-motion toggle (html[data-motion="reduced"]) disables the
-   animated bits further down. */
+   Selector `html[data-theme]:not([data-theme="default"])` = "a non-default theme
+   family is active" (light OR dark). The reduce-motion toggle
+   (html[data-motion="reduced"]) disables the animated bits further down. */
 
 /* Emoji status badges: hidden by default, shown on a joyful theme. */
 .badge-emoji { display: none; margin-right: 4px; font-size: .92em; }
@@ -747,6 +679,7 @@ html[data-motion="reduced"] .joy-emoji { display: none !important; }
 .theme-section-label {
   font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600;
 }
+.theme-section-hint { font-size: 11px; color: var(--muted); margin: 2px 0 0; }
 .theme-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .theme-opt {
   display: inline-flex; align-items: center; gap: 5px;

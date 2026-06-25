@@ -1,19 +1,6 @@
 import './globals.css';
 import type { ReactNode } from 'react';
-import {
-  Pixelify_Sans,
-  Nunito,
-  Quicksand,
-  Fredoka,
-  Baloo_2,
-  Comfortaa,
-  Varela_Round,
-  Rubik,
-  Mulish,
-  Poppins,
-  Lexend,
-  Space_Mono,
-} from 'next/font/google';
+import { Baloo_2, Space_Mono } from 'next/font/google';
 import { ThemeControls } from './ui';
 
 export const metadata = {
@@ -28,39 +15,30 @@ export const viewport = {
   initialScale: 1,
 };
 
-// ── Joyful font set (T142; narrowed to ROUNDED + a Space Mono cluster in T154) ──
-// Each font is loaded once via next/font/google (self-hosted, `display: swap` so
-// there's no blocking FOUC) and exposes a CSS custom property. ALL the variables
-// are attached to <html>, so they're always defined; the font *switcher* just
-// remaps `--font-display`/`--font-body`/`--font-mono` to a chosen face via
-// `html[data-font="…"]` in globals.css. The owner's round-1 verdict narrowed the
-// body face to the ROUNDED family (Fredoka/Nunito + 8 more) plus a small Space
-// Mono cluster; the only pixel face kept is Pixelify_Sans, used as a DISPLAY
-// (heading) face only — never on body/table/log text.
-const pixelify = Pixelify_Sans({ subsets: ['latin'], variable: '--font-pixelify', display: 'swap' });
-const nunito = Nunito({ subsets: ['latin'], variable: '--font-nunito', display: 'swap' });
-const quicksand = Quicksand({ subsets: ['latin'], variable: '--font-quicksand', display: 'swap' });
-const fredoka = Fredoka({ subsets: ['latin'], variable: '--font-fredoka', display: 'swap' });
+// ── Curated font set (T184) ─────────────────────────────────────────────────
+// The owner picked the two keepers from the T142/T154 experiment: Baloo 2 (a
+// rounded body face) and Space Mono. The third option is the unset System
+// default. Each is loaded once via next/font/google (self-hosted, `display:
+// swap` so there's no blocking FOUC) and exposes a CSS custom property attached
+// to <html>; the font *switcher* remaps `--font-display`/`--font-body`/
+// `--font-mono` to one of them via `html[data-font="…"]` in globals.css.
 const baloo = Baloo_2({ subsets: ['latin'], variable: '--font-baloo', display: 'swap' });
-const comfortaa = Comfortaa({ subsets: ['latin'], variable: '--font-comfortaa', display: 'swap' });
-const varela = Varela_Round({ subsets: ['latin'], weight: ['400'], variable: '--font-varela', display: 'swap' });
-const rubik = Rubik({ subsets: ['latin'], variable: '--font-rubik', display: 'swap' });
-const mulish = Mulish({ subsets: ['latin'], variable: '--font-mulish', display: 'swap' });
-const poppins = Poppins({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700'], variable: '--font-poppins', display: 'swap' });
-const lexend = Lexend({ subsets: ['latin'], variable: '--font-lexend', display: 'swap' });
 const spaceMono = Space_Mono({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-spacemono', display: 'swap' });
 
-const fontVars = [
-  pixelify, nunito, quicksand, fredoka, baloo,
-  comfortaa, varela, rubik, mulish, poppins, lexend, spaceMono,
-].map((f) => f.variable).join(' ');
+const fontVars = [baloo, spaceMono].map((f) => f.variable).join(' ');
 
-// Inline pre-paint script: applies the persisted theme / font / motion choices to
-// <html> BEFORE first paint so there's no theme flash. Mirrors useTheme/useFont/
-// useMotion in ui.tsx. Defaults (nothing stored) keep the current dark + system
-// look, and motion honours the OS `prefers-reduced-motion` until overridden.
+// Inline pre-paint script: applies the persisted theme-family / font / motion
+// choices AND the time-of-day light/dark mode to <html> BEFORE first paint so
+// there's no flash. Mirrors useTheme/useFont/useMotion/useTimeMode in ui.tsx.
+// The light/dark mode is derived purely from the VIEWER's local clock — day
+// (07:00–18:59) = light, evening/night = dark — and applied as data-mode. The
+// `default` family's DARK mode is the original pre-T142 dark look (the :root
+// palette); its light mode is the new counterpart. Nothing stored keeps the
+// system font; motion honours the OS `prefers-reduced-motion` until overridden.
 const PREPAINT = `(function(){try{
 var d=document.documentElement,L=window.localStorage;
+var hr=new Date().getHours();
+d.setAttribute('data-mode',(hr>=7&&hr<19)?'light':'dark');
 var t=L.getItem('localjobs.theme'); if(t&&t!=='default') d.setAttribute('data-theme',t);
 var f=L.getItem('localjobs.font'); if(f&&f!=='system') d.setAttribute('data-font',f);
 var m=L.getItem('localjobs.motion');
