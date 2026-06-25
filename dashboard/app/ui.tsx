@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './lib/api';
-import type { BulkScope, RunStatus, StuckItem } from './lib/api';
+import type { BulkScope, LogLine, RunStatus, StuckItem } from './lib/api';
 
 const STATUS_LABELS: Record<string, string> = {
   success:   'Succeeded',
@@ -491,6 +491,64 @@ export function useMotion() {
   };
 
   return [reduced, update] as const;
+}
+
+/**
+ * One-click "Copy logs" button. Formats every log line as "<timestamp> [LEVEL] message"
+ * and writes it to the clipboard. Falls back to selecting the text in a hidden textarea
+ * when the clipboard API is unavailable. Shows "Copied!" for 1.5 s after success.
+ */
+export function CopyLogsButton({ logs }: { logs: LogLine[] }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const copy = useCallback(() => {
+    const text = logs
+      .map((l) => `${l.ts} [${l.level.toUpperCase()}] ${l.message}`)
+      .join('\n');
+
+    const done = () => {
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {
+        // Clipboard write rejected (e.g. permissions) — fall back to textarea select.
+        fallbackCopy(text);
+        done();
+      });
+    } else {
+      fallbackCopy(text);
+      done();
+    }
+  }, [logs]);
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  return (
+    <button
+      type="button"
+      className="btn secondary copy-logs-btn"
+      onClick={copy}
+      disabled={logs.length === 0}
+      title="Copy all logs to clipboard"
+    >
+      {copied ? 'Copied!' : 'Copy logs'}
+    </button>
+  );
+}
+
+function fallbackCopy(text: string) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); } catch { /* silent — nothing better we can do */ }
+  document.body.removeChild(ta);
 }
 
 /**

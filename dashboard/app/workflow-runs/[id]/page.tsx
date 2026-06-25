@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { Dag } from '../../components/Dag';
 import { api } from '../../lib/api';
 import type { IoRow, Run, WorkflowIo } from '../../lib/api';
-import { StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
+import { CopyLogsButton, StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
 
 function latestByStage(members: Run[]): Run[] {
   const latest = new Map<string, Run>();
@@ -391,7 +391,10 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
         </table>
       </div>
 
-      <h2>Framework logs</h2>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <h2>Framework logs</h2>
+        <div style={{ marginBottom: 12 }}><CopyLogsButton logs={logs} /></div>
+      </div>
       <div className="logs">
         {logs.length === 0 && <span className="muted">No framework logs yet.</span>}
         {logs.map((l) => (

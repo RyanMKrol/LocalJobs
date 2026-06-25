@@ -2,7 +2,7 @@
 
 import { use, useState } from 'react';
 import { api } from '../../lib/api';
-import { ProgressBar, StatusBadge, WorkflowRunBackLink, exitCodeLabel, fmtDuration, fmtTime, usePoll } from '../../ui';
+import { CopyLogsButton, ProgressBar, StatusBadge, WorkflowRunBackLink, exitCodeLabel, fmtDuration, fmtTime, usePoll } from '../../ui';
 
 type LevelFilter = 'all' | 'info' | 'warn' | 'error';
 
@@ -78,6 +78,7 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
             <h2 style={{ margin: '28px 0 12px' }}>Logs</h2>
             <div className="row" style={{ gap: 6, marginBottom: 12 }}>
+              <CopyLogsButton logs={logs} />
               {(['all', 'info', 'warn', 'error'] as LevelFilter[]).map((lvl) => {
                 const n = lvl === 'all' ? logs.length : counts[lvl];
                 return (
