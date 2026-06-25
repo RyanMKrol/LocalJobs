@@ -4526,7 +4526,7 @@
     {
       "id": "T178",
       "title": "Progress bar: hide the message hint (e.g. \"verifying 61\") — show only the percentage",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
