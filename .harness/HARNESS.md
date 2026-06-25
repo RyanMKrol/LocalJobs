@@ -25,10 +25,10 @@ deliberately **don't** here:
 ```
 SELECT (shell)  → next not-done task in LOCAL TASKS.json whose dependsOn are all done and which
                   is not a 🚦 gate / 🔒 needs-human / blocked task. None eligible → stop.
-WORK   (claude) → one `claude -p` (per-task model/effort) builds the task IN THIS CHECKOUT on
-                  main, runs the Definition of Done (§5), and COMMITS (does NOT push).
-GATE   (shell)  → pre-push guard (§4) → push main → watch GitHub CI (§3) → green: mark the task
-                  `done` in LOCAL TASKS.json; red: STOP for a human (revert is one line).
+WORK   (claude) → one `claude -p` at the policy-chosen tier builds the task COLD in this checkout
+                  on main, runs the Definition of Done (§5), and COMMITS (does NOT push).
+GATE   (shell)  → pre-push guard (§4) → structural checks + sampled blocking audit (§5) → push main
+                  → watch GitHub CI (§3) → green: mark `done`; red: revert + cold retry (escalate).
 ```
 
 ## 3. The CI gate
