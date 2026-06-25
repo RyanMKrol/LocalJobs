@@ -4830,6 +4830,23 @@
         ]
       },
       "expectsTest": true
+    },
+    {
+      "id": "T187",
+      "title": "Design the ideas-vs-backlog two-step process (flat ideas file + interview-driven conversion)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "process",
+        "harness",
+        "backlog"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T187.md"
     }
   ]
 }
