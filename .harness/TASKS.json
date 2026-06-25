@@ -4634,7 +4634,7 @@
     {
       "id": "T182",
       "title": "rec-merge top-up: re-prompt the recommender branches concurrently (bounded), not sequentially",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
