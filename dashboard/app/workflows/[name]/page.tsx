@@ -55,7 +55,7 @@ function MovieGapsManager() {
   }
 
   return (
-    <>
+    <div className="output-section">
       <h2>Recommendations &amp; gaps</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         Films you own <em>some but not all</em> of, detected via the TMDB Collections API. Every
@@ -148,7 +148,7 @@ function MovieGapsManager() {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -197,7 +197,7 @@ function MissingSeasonsManager() {
   }
 
   return (
-    <>
+    <div className="output-section">
       <h2>Missing seasons</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         Seasons you don&apos;t own that are completely aired on TMDB, detected by comparing your Plex
@@ -290,7 +290,7 @@ function MissingSeasonsManager() {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 

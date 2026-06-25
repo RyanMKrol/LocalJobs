@@ -143,8 +143,18 @@ tbody tr:hover { background: var(--panel-2); }
 /* Recent workflow runs scroll container (T185) — bounded height ~12 rows, sticky header. */
 .recent-runs-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
 .recent-runs-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+/* Movie gaps/recs section container — distinct block with border + background. */
+.output-section { border: 1px solid var(--border); background: var(--panel-2); border-radius: 6px; padding: 16px 18px; margin-bottom: 16px; }
+.output-section h2 { margin-top: 0; }
 /* Movie gaps/recs scroll container (T170) — bounded height, scrolls internally. */
 .movie-gaps-scroll { max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+/* Tables inside the output-section get borders and inner padding. */
+.output-section table { border-collapse: collapse; width: 100%; }
+.output-section table th,
+.output-section table td { padding: 6px 10px; border: 1px solid var(--border); }
+.output-section table thead th { background: var(--panel); }
+/* Per-collection/per-show cards inside the scroll area get a subtle border. */
+.output-section .panel { border: 1px solid var(--border); }
 .mono { font-family: var(--font-mono); }
 .code-block { display: block; font-family: var(--font-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
