@@ -407,6 +407,17 @@ input[type="text"]:focus { border-color: var(--accent); }
 .btn-ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
 .schedule-err { color: var(--red); font-size: 12px; flex-basis: 100%; }
 
+/* ── Consumers-of-service modal (T186/T193) ────────────────────────────────── */
+/* Reuses the db-modal overlay/chrome; adds internal padding so content breathes. */
+.consumers-modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+.consumers-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+
 /* ── Stuck-items popover (T118) ────────────────────────────────────────────── */
 /* Reuses the db-modal overlay/chrome; just a wider width + bulk-action footer. */
 .stuck-popover { width: min(760px, 100%); }

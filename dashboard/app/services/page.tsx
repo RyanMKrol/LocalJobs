@@ -37,7 +37,8 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
   return (
     <div className="db-modal-overlay" onClick={onClose}>
       <div className="db-modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="consumers-modal-body">
+        <div className="consumers-modal-header">
           <strong>Consumers of <span className="mono">{name}</span></strong>
           <button className="btn secondary" onClick={onClose}>✕ Close</button>
         </div>
@@ -68,6 +69,7 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
             </ul>
           </div>
         ))}
+        </div>
       </div>
     </div>
   );
