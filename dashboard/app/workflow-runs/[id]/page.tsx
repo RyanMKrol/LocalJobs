@@ -250,7 +250,7 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
   return (
     <>
       <h2>Input → Output mapping{io.length > 0 ? ` · ${io.length.toLocaleString()} items` : ''}</h2>
-      <div className="panel">
+      <div className="panel" style={{ overflow: 'hidden' }}>
         {io.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>{emptyMessage}</p>
         ) : (
