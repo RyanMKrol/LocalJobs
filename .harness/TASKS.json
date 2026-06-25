@@ -4584,7 +4584,7 @@
     {
       "id": "T180",
       "title": "Workflow graph: center it horizontally in its container when narrower than the width",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
