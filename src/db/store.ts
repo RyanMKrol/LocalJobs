@@ -847,13 +847,14 @@ export function updateWorkflowSchedule(name: string, schedule: string | null): W
  * Persist a USER override of a workflow's bounded-parallelism cap (from the
  * dashboard, T169). Sets `max_concurrency` and flips `max_concurrency_overridden = 1`
  * so a later code-sync keeps the user's value — the same ownership reconcile
- * `enabled`/`schedule`/service limits get. `n` must be a positive integer ≥ 1
- * (callers validate; this throws on a bad value as a defensive backstop). Returns the
- * updated row, or undefined if the workflow doesn't exist (no row touched).
+ * `enabled`/`schedule`/service limits get. `n` must be a positive integer ≥ 1 OR
+ * exactly `0` (the unlimited sentinel, T201 — means "no cap, launch all ready stages").
+ * Callers validate; this throws on any other value as a defensive backstop. Returns
+ * the updated row, or undefined if the workflow doesn't exist (no row touched).
  */
 export function updateWorkflowConcurrency(name: string, n: number): WorkflowRow | undefined {
-  if (!Number.isInteger(n) || n < 1) {
-    throw new Error(`maxConcurrency must be a positive integer ≥ 1, got ${n}`);
+  if (!Number.isInteger(n) || (n !== 0 && n < 1)) {
+    throw new Error(`maxConcurrency must be a positive integer ≥ 1 or 0 (unlimited), got ${n}`);
   }
   const info = db
     .prepare('UPDATE workflows SET max_concurrency = ?, max_concurrency_overridden = 1 WHERE name = ?')

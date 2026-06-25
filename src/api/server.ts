@@ -887,9 +887,13 @@ export function createApiServer(
         // value / default — the same number runWorkflow will use — so the detail page
         // can show the current cap even when `max_concurrency` is NULL (not overridden).
         const wfDef = getWorkflowDefinition(p.name);
-        const effective_max_concurrency = wfDef
-          ? effectiveWorkflowConcurrency(wfDef)
+        // For the API response, return the raw effective value (0 = unlimited sentinel, T201).
+        // `effectiveWorkflowConcurrency` maps 0→Infinity for the executor; we keep 0 here so
+        // the dashboard can detect and display "Unlimited" without serialising Infinity (NaN in JSON).
+        const rawEff = wfDef
+          ? (getWorkflow(p.name)?.max_concurrency ?? wfDef.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY)
           : (p.max_concurrency ?? DEFAULT_WORKFLOW_CONCURRENCY);
+        const effective_max_concurrency = rawEff;
         return json(res, 200, { workflow: { ...p, effective_max_concurrency, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
       }
 
@@ -1002,8 +1006,8 @@ export function createApiServer(
         if (!getWorkflow(name)) return json(res, 404, { error: 'workflow not found' });
         const body = await readBody(req);
         const n = Number(body.maxConcurrency);
-        if (!Number.isInteger(n) || n < 1) {
-          return json(res, 400, { error: 'maxConcurrency must be a positive integer ≥ 1' });
+        if (!Number.isInteger(n) || (n !== 0 && n < 1)) {
+          return json(res, 400, { error: 'maxConcurrency must be a positive integer ≥ 1, or 0 for unlimited' });
         }
         updateWorkflowConcurrency(name, n);
         return json(res, 200, { ok: true, max_concurrency: n });

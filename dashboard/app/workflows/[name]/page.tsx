@@ -332,14 +332,20 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
     }
   }
 
-  // Inline max-concurrency editor (T169) — same affordance as the schedule editor.
+  // Inline max-concurrency editor (T169/T201) — same affordance as the schedule editor.
+  // T201 adds an "Unlimited" toggle: when on, persists sentinel 0 (no cap); when off, the
+  // number input applies. effective_max_concurrency === 0 means unlimited.
   const [editingConc, setEditingConc] = useState(false);
   const [concDraft, setConcDraft] = useState('');
+  const [concUnlimited, setConcUnlimited] = useState(false);
   const [concErr, setConcErr] = useState<string | null>(null);
   const [savingConc, setSavingConc] = useState(false);
 
   function startEditConc() {
-    setConcDraft(String(p?.effective_max_concurrency ?? ''));
+    const eff = p?.effective_max_concurrency ?? 0;
+    const isUnlim = eff === 0;
+    setConcUnlimited(isUnlim);
+    setConcDraft(isUnlim ? '' : String(eff));
     setConcErr(null);
     setEditingConc(true);
   }
@@ -351,7 +357,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
     setSavingConc(true);
     setConcErr(null);
     try {
-      await api.updateWorkflowConcurrency(name, Number(concDraft));
+      await api.updateWorkflowConcurrency(name, concUnlimited ? 0 : Number(concDraft));
       // The 3s poll refetches, so the displayed value updates on the next tick.
       setEditingConc(false);
     } catch (e) {
@@ -434,6 +440,14 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
           <div>
             {editingConc ? (
               <div className="schedule-edit">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={concUnlimited}
+                    onChange={(e) => setConcUnlimited(e.target.checked)}
+                  />
+                  Unlimited
+                </label>
                 <input
                   className="mono schedule-input"
                   type="number"
@@ -442,7 +456,8 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
                   value={concDraft}
                   onChange={(e) => setConcDraft(e.target.value)}
                   placeholder="≥ 1"
-                  autoFocus
+                  disabled={concUnlimited}
+                  autoFocus={!concUnlimited}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveConc(); if (e.key === 'Escape') cancelEditConc(); }}
                 />
                 <button className="btn btn-sm" onClick={saveConc} disabled={savingConc}>
@@ -454,7 +469,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
             ) : (
               <span className="schedule-view">
                 <span className="mono" style={{ whiteSpace: 'nowrap' }}>
-                  {p?.effective_max_concurrency ?? '—'}
+                  {p?.effective_max_concurrency === 0 ? 'Unlimited' : (p?.effective_max_concurrency ?? '—')}
                   {p?.max_concurrency_overridden ? '' : ' (default)'}
                 </span>
                 <span className="schedule-edit-link" onClick={startEditConc}>Edit</span>

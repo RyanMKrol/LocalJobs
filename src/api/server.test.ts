@@ -296,7 +296,7 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
     });
   });
 
-  for (const bad of [0, -1, 1.5, 'x'] as const) {
+  for (const bad of [-1, 1.5, 'x'] as const) {
     await test(`concurrency: an invalid value (${bad}) is rejected 400`, async () => {
       await withServer({}, async (base) => {
         const res = await fetch(`${base}/api/workflows/conc-api-wf/concurrency`, {
@@ -307,6 +307,17 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
       });
     });
   }
+
+  // T201: sentinel 0 means unlimited — accepted (200), not rejected.
+  await test('concurrency: sentinel 0 (unlimited) is accepted 200', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/conc-api-wf/concurrency`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxConcurrency: 0 }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(((await res.json()) as { max_concurrency?: number }).max_concurrency, 0);
+    });
+  });
 
   await test('concurrency: unknown workflow → 404', async () => {
     await withServer({}, async (base) => {

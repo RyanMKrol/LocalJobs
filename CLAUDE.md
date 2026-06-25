@@ -412,6 +412,15 @@ doubt, log it.
   `max_concurrency` + `max_concurrency_overridden` columns are added by `schema.sql`
   (fresh DBs) + an additive `ALTER TABLE` migration in `index.ts` (existing DBs, per
   the T098 rule — no index on the new columns).
+  **Unlimited (no cap, T201).** Setting `maxConcurrency = 0` (the
+  `UNLIMITED_CONCURRENCY_SENTINEL`) expresses "no concurrency cap — launch ALL ready
+  stages together". The API accepts `0` alongside ≥1 (still rejects negatives/garbage
+  with **400**); `updateWorkflowConcurrency` in `store.ts` allows `0`; and
+  `effectiveWorkflowConcurrency` maps `0 → Infinity` so `executeDag` skips the slot
+  check entirely. The dashboard's "Max concurrency" editor exposes an explicit
+  **Unlimited** checkbox — when checked, `0` is persisted and the read view shows
+  "Unlimited" instead of a number. `effective_max_concurrency = 0` in the API payload
+  signals the unlimited state to the UI (Infinity cannot serialise as JSON).
 - **No workflow-level properties on a job (T070).** Because a job is only ever a
   workflow member, ALL workflow-level concerns live on the workflow, never the job:
   a job has NO `schedule`, NO `enabled` toggle, NO `instructions`, and NO run-now.

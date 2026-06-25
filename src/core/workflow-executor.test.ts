@@ -13,9 +13,9 @@ import { jobs } from '../jobs/registry.js';
 import {
   createWorkflowRun, createRun, finishRun, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots,
   lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,
-  rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow,
+  rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow, updateWorkflowConcurrency, getWorkflow,
 } from '../db/store.js';
-import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress } from './workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress, effectiveWorkflowConcurrency, UNLIMITED_CONCURRENCY_SENTINEL } from './workflow-executor.js';
 import { _setFetchForTest, _resetFetchForTest } from './notifier.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 
@@ -572,6 +572,47 @@ try {
     // Exactly one aggregate push (notifyWorkflow)
     const workflowPushes = pushTitles.filter(t => t.includes('t189-notify workflow'));
     assert.equal(workflowPushes.length, 1, `Expected 1 workflow push, got: ${JSON.stringify(pushTitles)}`);
+  });
+
+  // T201: unlimited concurrency sentinel (0) round-trip.
+  await test('T201: effectiveWorkflowConcurrency returns Infinity for sentinel 0', async () => {
+    const def: WorkflowDefinition = { name: 'unlim-eff-test', jobs: [{ job: 'pp-a' }], maxConcurrency: 0 };
+    syncWorkflow(def);
+    assert.equal(effectiveWorkflowConcurrency(def), Infinity, 'manifest maxConcurrency=0 → Infinity');
+  });
+
+  await test('T201: updateWorkflowConcurrency persists sentinel 0 and effectiveWorkflowConcurrency returns Infinity', async () => {
+    const def: WorkflowDefinition = { name: 'unlim-store-test', jobs: [{ job: 'pp-a' }] };
+    syncWorkflow(def);
+    // Starts with default cap.
+    assert.equal(effectiveWorkflowConcurrency(def), 4, 'default cap before override');
+    // Set unlimited via sentinel.
+    updateWorkflowConcurrency('unlim-store-test', UNLIMITED_CONCURRENCY_SENTINEL);
+    assert.equal(getWorkflow('unlim-store-test')?.max_concurrency, 0, 'stored sentinel is 0');
+    assert.equal(getWorkflow('unlim-store-test')?.max_concurrency_overridden, 1, 'override flag set');
+    assert.equal(effectiveWorkflowConcurrency(def), Infinity, 'effective cap is Infinity after sentinel stored');
+  });
+
+  await test('T201: updateWorkflowConcurrency rejects invalid values', async () => {
+    const def: WorkflowDefinition = { name: 'unlim-invalid-test', jobs: [{ job: 'pp-a' }] };
+    syncWorkflow(def);
+    assert.throws(() => updateWorkflowConcurrency('unlim-invalid-test', -1), /unlimited/i);
+    assert.throws(() => updateWorkflowConcurrency('unlim-invalid-test', 1.5), /unlimited/i);
+  });
+
+  await test('T201: unlimited workflow runs all independent stages without throttling', async () => {
+    const def: WorkflowDefinition = {
+      name: 'unlim-run-test',
+      jobs: [{ job: 'slow-a' }, { job: 'slow-b' }, { job: 'slow-c' }, { job: 'slow-d' }],
+      maxConcurrency: 0,
+    };
+    syncWorkflow(def);
+    const t0 = Date.now();
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    const elapsed = Date.now() - t0;
+    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success');
+    // All four slow stages should have overlapped — elapsed should be well under 4×SLOW_MS.
+    assert.ok(elapsed < SLOW_MS * 3, `unlimited run with 4 slow stages should overlap, took ${elapsed}ms (expected < ${SLOW_MS * 3}ms)`);
   });
 
 } finally {

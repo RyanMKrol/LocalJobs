@@ -36,15 +36,22 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export const DEFAULT_WORKFLOW_CONCURRENCY = 4;
 
+/** Sentinel stored in DB / passed via API to express "no concurrency cap" (T201). */
+export const UNLIMITED_CONCURRENCY_SENTINEL = 0;
+
 /**
  * The EFFECTIVE bounded parallelism for a workflow (T169): the DB `max_concurrency`
  * (user override when set, else the synced manifest value) else the manifest's
  * `maxConcurrency` else the default. Reading the DB row keeps it user-editable +
  * code-reconciled. Shared by `runWorkflow` and the API's workflow payload so both
  * report the same number.
+ *
+ * A `max_concurrency` of `0` (UNLIMITED_CONCURRENCY_SENTINEL, T201) means "no cap":
+ * returns `Infinity` so `executeDag` launches all ready stages without throttling.
  */
 export function effectiveWorkflowConcurrency(def: WorkflowDefinition): number {
-  return getWorkflow(def.name)?.max_concurrency ?? def.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY;
+  const raw = getWorkflow(def.name)?.max_concurrency ?? def.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY;
+  return raw === UNLIMITED_CONCURRENCY_SENTINEL ? Infinity : raw;
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));

@@ -71,7 +71,8 @@ export interface Workflow {
   max_concurrency?: number | null;
   /** 1 when the owner has edited maxConcurrency from the dashboard (T169); code-sync then preserves it. */
   max_concurrency_overridden?: number;
-  /** Effective bounded parallelism the next run will use — override / manifest / default (T169). */
+  /** Effective bounded parallelism the next run will use — override / manifest / default (T169).
+   *  `0` means unlimited (no cap, all ready stages launch together — T201 sentinel). */
   effective_max_concurrency?: number;
   created_at: string;
   last_run: WorkflowRun | null;

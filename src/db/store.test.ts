@@ -75,9 +75,8 @@ console.log('  ✓ updateWorkflowSchedule: set/clear + schedule_overridden recon
   assert.equal(getWorkflow('t-conc')?.max_concurrency, 2, 'overridden value survives re-sync');
   assert.equal(getWorkflow('t-conc')?.max_concurrency_overridden, 1, 'override flag survives re-sync');
 
-  // invalid values are rejected (≥ 1 integer)
-  assert.throws(() => updateWorkflowConcurrency('t-conc', 0), /positive integer/, 'rejects 0');
-  assert.throws(() => updateWorkflowConcurrency('t-conc', -1), /positive integer/, 'rejects negative');
+  // invalid values are rejected (must be ≥ 1 OR exactly 0 = unlimited sentinel, T201)
+  assert.throws(() => updateWorkflowConcurrency('t-conc', -1), /unlimited/, 'rejects negative');
   assert.throws(() => updateWorkflowConcurrency('t-conc', 1.5), /positive integer/, 'rejects non-integer');
 
   // unknown workflow → undefined (no row touched)
