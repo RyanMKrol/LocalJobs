@@ -4406,7 +4406,7 @@
     {
       "id": "T173",
       "title": "Backlog: Done list bottom margin is thicker than the row spacing — make it consistent",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
