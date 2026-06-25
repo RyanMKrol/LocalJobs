@@ -777,21 +777,15 @@ doubt, log it.
   — each gate carries its `description` (what the producer's `produces[key]` and
   consumer's `consumes[key]` contracts ASSERT, enriched in the API's
   `gatesForWorkflow`), so a gate is inspectable, not just coloured.
-  `dashboard/.../Dag.tsx` renders a gate mark per gate ON THE CONNECTING ARROW between
-  the producer and consumer waves it guards (not under either node) — at both
-  desktop (`→`) and phone (`↓`) widths; a non-adjacent producer→consumer edge that
-  can't sit on a single inter-wave arrow falls back to rendering under the consumer
-  node rather than being dropped or mis-placed. **Gate display is currently
-  TOGGLEABLE (T099, an evaluation aid).** Both graph views show a small "Gate style"
-  selector and the user can switch live between five compact styles — `icon` (bare
-  ⛒ glyph), `dot` (bare state-coloured dot), `key` (tiny pill of just the artifact
-  key), `connector` (no chip — the arrow glyph itself is state-coloured + clickable),
-  `lock` (bare 🔒 glyph) — persisted to `localStorage` (`localjobs.gateStyle`) via
-  `useGateStyle()` in `app/ui.tsx` (`GATE_STYLES` is the source of truth). All five
-  keep every gate clickable to its detail page, keep the passed/failed/pending +
-  structural state colouring distinguishable, and work at desktop and phone widths.
-  Once a favourite is picked, a FOLLOW-UP task will hardcode the winner and remove
-  the toggle + unused styles. EVERY mark (passed/failed/pending
+  `dashboard/.../Dag.tsx` renders a gate mark per gate ON THE CONNECTING SVG EDGE between
+  the specific producer and consumer nodes it guards (T204). The graph layout uses
+  topological columns (each node's column = max(parent columns) + 1) with SVG bezier curves
+  drawn from each producer node's right-center to each consumer's left-center — every edge
+  reflects the actual `dependsOn` relationship, so there are no false wave-barrier implications
+  (e.g. `franchise-gaps` and `rec-merge` in movie-recommendations have no implied ordering).
+  Wide graphs scroll horizontally via `overflow-x: auto`; the phone layout stacks columns
+  top-to-bottom as a single column. Gate marks are placed as absolutely-positioned divs at
+  each edge's bezier midpoint, using the `gs-key` key-pill style. EVERY mark (passed/failed/pending
   alike) links directly to that gate's dedicated detail page
   (`/workflow-runs/<id>/gates/<producer>/<key>`), which shows what the gate
   validates (key + description, producer→consumer), its outcome, and links to the

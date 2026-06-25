@@ -167,9 +167,13 @@ tbody tr:hover { background: var(--panel-2); }
 .badge.pending { color: var(--grey); background: rgba(110,118,129,.10); border-color: rgba(110,118,129,.25); }
 .badge.passed { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 
-/* workflow DAG */
-.dag { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; padding: 18px; }
-.dag-wave { display: flex; flex-direction: column; gap: 10px; }
+/* workflow DAG — true dependency edges drawn as SVG bezier curves per actual dependsOn */
+/* Outer wrapper: scrolls horizontally on desktop so wide graphs remain legible */
+.dag { overflow-x: auto; padding: 18px; }
+/* Inner flex container: columns (topological layers) flow left-to-right with space for edge curves */
+.dag-inner { display: flex; flex-direction: row; align-items: flex-start; gap: 44px; min-width: fit-content; position: relative; padding: 6px 0; }
+/* Each column holds all nodes at the same topological depth */
+.dag-col { display: flex; flex-direction: column; gap: 10px; }
 /* boxed card nodes with a left accent bar for status — NOT whole-card tinting */
 .dag-node { min-width: 156px; padding: 10px 12px 10px 14px; border-radius: 9px; background: var(--panel); border: 1px solid var(--border); border-left-width: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: border-color .15s, box-shadow .15s; }
 .dag-node-name { font-weight: 600; font-size: 13px; color: var(--text); }
@@ -182,11 +186,10 @@ tbody tr:hover { background: var(--panel-2); }
 .dag-node.success .dag-node-status { color: var(--green); }
 .dag-node.running .dag-node-status { color: var(--accent); }
 .dag-node.failed .dag-node-status, .dag-node.timeout .dag-node-status { color: var(--red); }
-/* The inter-wave connector: arrow glyph with this edge's validation-gate chips stacked below it. */
-.dag-arrow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; }
-.dag-arrow-glyph { color: var(--grey); font-size: 22px; line-height: 1; display: flex; align-items: center; }
-.dag-arrow .dag-gates { margin-top: 0; align-items: center; }
 a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent); box-shadow: 0 0 0 1px rgba(88,166,255,.2), 0 1px 3px rgba(0,0,0,.3); }
+/* SVG edge paths: bezier curves connecting actual producer→consumer node pairs */
+.dag-edge-path { fill: none; stroke: var(--grey); stroke-width: 1.5px; opacity: 0.55; }
+/* Gate marks on edges */
 .dag-gates { display: flex; flex-direction: column; gap: 4px; margin-top: 5px; }
 .dag-gate { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); text-decoration: none; letter-spacing: .02em; }
 .dag-gate.passed { border-color: rgba(63,185,80,.45); color: var(--green); }
@@ -197,17 +200,6 @@ a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.
 .dag-gate.structural { border-style: dashed; }
 /* key pill — tiny pill showing only the artifact key (no producer name). */
 .dag-gate.gs-key { font-size: 9px; padding: 1px 5px; }
-/* Boustrophedon ("snake") layout — activated when wave columns overflow the container.
-   Row 0 runs L→R, row 1 R→L, row 2 L→R, … so consecutive waves stay adjacent. */
-.dag-snake-container { display: flex; flex-direction: column; width: 100%; }
-.dag-snake-row { display: flex; flex-direction: row; align-items: center; gap: 14px; }
-/* Between-row turn connector: ↓ glyph + any gate chip, aligned to the side where
-   the next row begins (right after L→R rows, left after R→L rows). */
-.dag-row-turn { display: flex; align-items: center; gap: 5px; padding: 2px 0; }
-.dag-row-turn-right { justify-content: flex-end; padding-right: 8px; }
-.dag-row-turn-left { justify-content: flex-start; padding-left: 8px; }
-/* skip-wave (non-adjacent) edge connector drawn as an SVG curved path */
-.dag-skip-path { fill: none; stroke: var(--grey); stroke-width: 1.5px; stroke-dasharray: 5 3; opacity: 0.6; }
 /* collapsible section heading (used on /backlog for all three sections) */
 /* ── Backlog section header: spin caret (T132, chosen in T127) ── */
 .section-heading-summary { font-size: 16px; margin: 0 0 12px -8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; display: flex; align-items: center; padding: 4px 8px; }
@@ -478,14 +470,12 @@ input[type="text"]:focus { border-color: var(--accent); }
   .md-fm { grid-template-columns: 1fr; }
   .md-fm-row:not(:first-child) .md-fm-key { margin-top: 6px; }
 
-  /* DAG: switch to top-down layout on mobile — waves stack vertically, nodes flow
-     horizontally within each wave, and the → arrow becomes ↓. */
-  .dag { flex-direction: column; align-items: stretch; padding: 14px; gap: 8px; }
-  .dag-wave { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+  /* DAG: switch to top-down layout on mobile — columns stack vertically, nodes flow
+     horizontally within each column, SVG edges drawn vertically. */
+  .dag { padding: 14px; }
+  .dag-inner { flex-direction: column; align-items: stretch; gap: 12px; }
+  .dag-col { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; }
   .dag-node { min-width: 0; }
-  .dag-arrow { text-align: center; justify-content: center; }
-  .dag-arrow-glyph { font-size: 0; }
-  .dag-arrow-glyph::after { content: '↓'; font-size: 22px; color: var(--grey); }
 
   /* DB row modal: full-width key column on narrow screens. */
   .db-modal-row { grid-template-columns: 1fr; gap: 2px; }
