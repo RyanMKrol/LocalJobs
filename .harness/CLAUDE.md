@@ -32,21 +32,26 @@ private jobs — stay local and never hit the public repo. The *mechanism* trave
 this committed doc; each project grows its own private inbox. This is distinct from the committed
 `TASKS.json` backlog — the inbox is transient working state, the backlog is the durable record.
 
-### Step 2 — convert: a TWO-PHASE interview (`/convert-idea`), ONE idea at a time
+### Step 2 — convert: a per-idea TWO-PHASE interview, looped over the whole inbox (`/convert-ideas`)
 
 Conversion is its OWN process — it **leans on `ralph-loop-add-to-backlog` but is NOT the bare skill**.
-An idea is typically barely formed, so a probing front-end runs first:
+`/convert-ideas` sweeps the **whole inbox** in one invocation, but converts the ideas **one at a
+time**: each idea gets its own full excavation before any shaping. The batch is purely an ergonomic
+loop — it never lets you shape several half-formed ideas at once. For each idea, a probing front-end
+runs first:
 - **Phase 1 — idea excavation.** Treat the idea as one vague sentence. Probe the owner FIRST: what's
   the underlying itch/problem, what are they actually after, rough shape, why it matters — *before*
   any task-shaping. Default to MORE questions here; assume nothing is fleshed out. (This phase is
   exactly what the standard add-to-backlog interview lacks — it expects an already-formed feature.)
 - **Phase 2 — task shaping.** Feed the now-understood idea into the **`ralph-loop-add-to-backlog`**
-  interview (DoD, scope, dependsOn, facets, spec MD) → a schema-correct task.
-- **Discipline:** convert **one idea at a time**, and ideally not while mid-build on something else —
-  that context-juggling is the root problem this whole flow solves.
-- **Delete on convert.** On success, remove the converted idea from `.harness/IDEAS.md`. The resulting
-  `TASKS.json` task (+ its spec MD) is the record; the inbox stays a clean, transient surface. (No
-  "converted" archive — the inbox is gitignored, so there'd be no history of it anyway.)
+  interview (DoD, scope, dependsOn, facets, spec MD) → a schema-correct task. Related ideas (one a
+  foundation the other builds on) become a `dependsOn` edge, not a merge.
+- **Discipline:** finish one idea completely (excavate → shape → delete) before starting the next, and
+  ideally don't run the sweep while mid-build on something else — that context-juggling is the root
+  problem this whole flow solves.
+- **Delete on convert.** As each idea's task lands, remove that idea's bullet from `.harness/IDEAS.md`.
+  The resulting `TASKS.json` task (+ its spec MD) is the record; the inbox stays a clean, transient
+  surface. (No "converted" archive — the inbox is gitignored, so there'd be no history of it anyway.)
 
 **Worked example.** Inbox bullet: *"The services page could show each service's daily usage vs its
 cap."* → **Phase 1** surfaces: is this a sparkline or a number? daily-only or also monthly? does it
@@ -55,7 +60,7 @@ service about to hit its quota? → once understood, **Phase 2** runs add-to-bac
 `ui`/`component` task scoped to the services page (+ any `api` task if a new field is needed), each
 with a real `## Done when`. Then the bullet is deleted from `IDEAS.md`.
 
-> Distribution: the `/idea` + `/convert-idea` commands are project-local (`.claude/commands/`) for now;
+> Distribution: the `/idea` + `/convert-ideas` commands are project-local (`.claude/commands/`) for now;
 > folding this flow into the distributable `claude-skills` plugin so other projects inherit it is
 > tracked by the harness-parity task **T188**.
 
