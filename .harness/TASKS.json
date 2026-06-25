@@ -5031,7 +5031,7 @@
     {
       "id": "T195",
       "title": "Input→Output mapping: style the empty-state placeholder text",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
