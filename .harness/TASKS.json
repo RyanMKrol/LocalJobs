@@ -5412,6 +5412,155 @@
       "verify": [],
       "expectsTest": true,
       "spec": ".harness/tasks/T208.md"
+    },
+    {
+      "id": "T209",
+      "title": "Surface movie recommendations as their own section (+ per-item ignore wiring)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "movies",
+        "recommendations"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/api/server.ts",
+        "src/db/store.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        "CLAUDE.md",
+        ".harness/LIMITATIONS.md"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T209.md"
+    },
+    {
+      "id": "T210",
+      "title": "Dismiss an entire collection/show at once (bulk-ignore current items only)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "movies",
+        "plex",
+        "ignore"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/api/server.ts",
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T210.md"
+    },
+    {
+      "id": "T211",
+      "title": "Align Film/Year/TMDB columns across collections on the movie gaps list",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "movies"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T211.md"
+    },
+    {
+      "id": "T212",
+      "title": "Add spacing between the crontab expression and its hint icon",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T212.md"
+    },
+    {
+      "id": "T213",
+      "title": "Workflow card status pill always below the title on the overview page",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T213.md"
     }
   ]
 }
