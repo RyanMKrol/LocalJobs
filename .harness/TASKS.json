@@ -4735,7 +4735,7 @@
     {
       "id": "T186",
       "title": "Services: click a service to see which workflows/jobs use it (runtime-recorded consumers)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
