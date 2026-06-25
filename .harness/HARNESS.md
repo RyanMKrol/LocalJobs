@@ -70,6 +70,21 @@ then with the smallest sample (1–2 items). **Never skip verification to avoid 
 task is not done. (Only a task that would have to *exceed* the monthly cap to verify records
 `failed:blocked`.)
 
+**The loop adds two gates beyond CI** (see `designs/audit-verification.md`). Before a built task is
+pushed, the loop runs cheap **structural checks** (the diff is non-empty; if the task sets
+`expectsTest: true`, a test file changed; the `LOCAL_DOD` commands — `tsc`/`test` — pass), then — for
+a *sampled* fraction of tasks — a **blocking audit**: a fresh, independent Claude (at
+`max(opus-4.8/medium, the builder's tier)`) reads the spec's `## Done when` + the diff and must answer
+`PASS`. A structural or audit failure is a failed attempt → cold retry → escalate, exactly like a red
+CI; the work is never pushed. Audit sampling per `(layer × work-type)` cell starts at 100% and decays
+to a 10% floor as the cell accumulates audit-confirmed successes — so a plausible-but-wrong build at a
+cheap tier is caught, the task escalates, and the ledger learns the cell's true difficulty.
+
+**Every attempt is COLD.** The loop `cold_reset`s to a clean `origin/main` before each (re)attempt, so
+the builder never sees a prior attempt's worklog or partial work — each outcome measures whether that
+tier can do the task in one cold pass. The worklog is written for humans but never read by the
+builder. A task that can't be done cold in one pass is mis-sized → split it.
+
 ## 6. Model selection (auto-tuned — no per-task models)
 
 Tasks do **not** carry per-task `model`/`effort`/`escalation` — difficulty is **auto-tuned** (see
@@ -82,10 +97,11 @@ ladder; past the top tier it stops for a human. Every built task's outcome is ca
 cheapest tier (`sonnet/low`, set in `harness.env`) — used until a cell has enough samples.
 `needs-human` tasks are carved out entirely (no facets, no calibration).
 
-## 7. Usage-limit backoff (pause + auto-resume)
+## 7. Usage-limit backoff (pause + cold re-attempt)
 
 When `claude` hits the Claude Code usage/rate limit, the loop detects it in the CLI output, **sleeps
-and resumes the SAME task** — this is *not* a soft failure (no attempt counted, no escalation).
+and re-attempts the SAME task COLD** (cold_reset first) — this is *not* a soft failure (no attempt
+counted, no escalation); it just keeps every measured pass a clean cold one.
 Backoff is exponential from `RL_BACKOFF_MIN` (5 min) capped at `RL_BACKOFF_MAX` (~5 h, the refresh
 window). `supervise.sh`'s ~5 h 15 m cadence is the outer backstop.
 
@@ -105,7 +121,7 @@ agent must not edit it.
       // NOTE: NO `reviewed` field — since T136 it lives in owner-owned .harness/reviews.json
       "dependsOn": [], "gate": null,                      // gate: null | "gate" | "needs-human"
       "facets": { "layer": "ui", "workType": "style", "risk": [] },  // difficulty auto-tuning (OMIT for needs-human); values from .harness/facets.json
-      "scope": ["src/…"], "verify": [],
+      "scope": ["src/…"], "verify": [], "expectsTest": false,  // expectsTest: true → audit's structural gate requires a test in the diff (§5)
       "spec": ".harness/tasks/T001.md"                    // do/doneWhen live in this MD (T131); NO per-task model/effort/escalation
     }
   ]
@@ -124,6 +140,12 @@ and never enter calibration. Facets are normally assigned by the add-to-backlog 
 task that's missing them **degrades gracefully** (the policy falls back to the cold-start floor) but
 won't benefit from / contribute to calibration until tagged — so prefer authoring through the skill,
 or add `facets` by hand.
+
+**`expectsTest` (optional, default false) — the verification contract.** Set `true` on a task whose
+correctness should be pinned by a test; the loop's structural gate (§5) then requires a test file to
+change in the diff. Make `## Done when` concrete + runnable where possible so the blocking audit (and
+you) can verify it objectively. Each ledger row records `verification: "audited" | "ci-only"` so the
+calibration can weight audit-confirmed successes (see `designs/audit-verification.md`).
 
 **`do`/`doneWhen` live in a per-task Markdown spec (T131).** Each task's *what to build* and *the
 bar for done* are NOT flat strings in TASKS.json — they live in a per-task Markdown file at
