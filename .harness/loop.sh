@@ -499,7 +499,7 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
     cold_reset
     set +e; run_claude "$tmodel" "$teffort" "$(prompt "$task")"; rc=$?; set -e
     if [ "$rc" = 10 ]; then
-      log "Claude usage/rate limit hit — backing off ${rl_sleep}s, will RESUME the same task (not a failure)."
+      log "Claude usage/rate limit hit — backing off ${rl_sleep}s, will RE-ATTEMPT the same task COLD (not a failure)."
       sleep "$rl_sleep"
       rl_sleep=$(( rl_sleep * 2 )); [ "$rl_sleep" -gt "$RL_BACKOFF_MAX" ] && rl_sleep="$RL_BACKOFF_MAX"
       continue
