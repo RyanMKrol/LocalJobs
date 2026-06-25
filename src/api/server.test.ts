@@ -26,6 +26,7 @@ import {
   readReviews,
   readTaskSpec,
   safeOutputMarkdown,
+  setReviewEntries,
   setReviewEntry,
 } from './server.js';
 
@@ -638,6 +639,29 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
     assert.equal(flipped.T2.reviewed, false);
   });
 
+  await test('setReviewEntries: sets multiple ids, preserves others; empty raw → {}', () => {
+    const seeded = setReviewEntries('', ['T1', 'T2'], true, '2026-06-25T00:00:00.000Z');
+    let map = JSON.parse(seeded) as Record<string, { reviewed: boolean; at: string }>;
+    assert.deepEqual(Object.keys(map).sort(), ['T1', 'T2'], 'both ids set from empty raw');
+    assert.equal(map.T1.reviewed, true);
+    assert.equal(map.T2.reviewed, true);
+    assert.equal(map.T1.at, '2026-06-25T00:00:00.000Z');
+
+    // Pre-existing T3 must survive when we bulk-set T1+T2.
+    const withT3 = JSON.stringify({ T3: { reviewed: false, at: 'x' } });
+    const out = setReviewEntries(withT3, ['T1', 'T2'], true, '2026-06-25T01:00:00.000Z');
+    map = JSON.parse(out) as Record<string, { reviewed: boolean; at: string }>;
+    assert.equal(map.T3.reviewed, false, 'sibling T3 preserved');
+    assert.equal(map.T1.reviewed, true, 'T1 set');
+    assert.equal(map.T2.reviewed, true, 'T2 set');
+
+    // Overwrite an existing entry in the batch.
+    const overwritten = JSON.parse(setReviewEntries(out, ['T1'], false, '2026-06-25T02:00:00.000Z')) as Record<string, { reviewed: boolean }>;
+    assert.equal(overwritten.T1.reviewed, false, 'T1 overwritten to false');
+    assert.equal(overwritten.T2.reviewed, true, 'T2 untouched');
+    assert.equal(overwritten.T3.reviewed, false, 'T3 untouched');
+  });
+
   await test('migrateReviewsOut: strips reviewed from tasks; seeds reviews from reviewed:true', () => {
     const tasksRaw =
       JSON.stringify({
@@ -710,6 +734,45 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       assert.equal(reviews.T2.reviewed, true, 'new id written');
     });
     rmSync(reviewsPath, { force: true });
+  });
+
+  await test('POST /api/backlog/reviewed-bulk: writes all ids to reviews.json in one shot', async () => {
+    writeFileSync(backlogPath, fixture());
+    writeFileSync(reviewsPath, JSON.stringify({ T1: { reviewed: false, at: 'x' } }) + '\n');
+    const noGitBulk = async () => ({ committed: false, pushed: false });
+    await withServer({ backlogPath, reviewsPath, commitReviewsBulk: noGitBulk }, async (base) => {
+      const res = await fetch(`${base}/api/backlog/reviewed-bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ['T2', 'T3'] }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; ids: string[]; count: number; committed: boolean };
+      assert.equal(body.ok, true);
+      assert.equal(body.count, 2);
+      assert.deepEqual(body.ids.sort(), ['T2', 'T3']);
+      // reviews.json must contain T2 + T3 as reviewed; T1 (pre-existing) preserved.
+      const reviews = JSON.parse(readFileSync(reviewsPath, 'utf8')) as Record<string, { reviewed: boolean }>;
+      assert.equal(reviews.T1.reviewed, false, 'pre-existing T1 preserved');
+      assert.equal(reviews.T2.reviewed, true, 'T2 set');
+      assert.equal(reviews.T3.reviewed, true, 'T3 set');
+    });
+    rmSync(reviewsPath, { force: true });
+  });
+
+  await test('POST /api/backlog/reviewed-bulk: 400 on empty ids or bad id format', async () => {
+    writeFileSync(backlogPath, fixture());
+    const noGitBulk = async () => ({ committed: false, pushed: false });
+    await withServer({ backlogPath, reviewsPath, commitReviewsBulk: noGitBulk }, async (base) => {
+      const rEmpty = await fetch(`${base}/api/backlog/reviewed-bulk`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [] }),
+      });
+      assert.equal(rEmpty.status, 400, 'empty ids rejected');
+      const rBad = await fetch(`${base}/api/backlog/reviewed-bulk`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ['T1', 'notvalid'] }),
+      });
+      assert.equal(rBad.status, 400, 'invalid id format rejected');
+    });
   });
 
   await test('POST /api/backlog/:id/reviewed: 400 for a bad id format and a non-boolean', async () => {

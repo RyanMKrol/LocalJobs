@@ -24,10 +24,14 @@ function TaskSpec({ t, small }: { t: BacklogTask; small?: boolean }) {
 /** Shared compact row that collapses/expands for all three backlog sections. */
 function CollapsibleRow({
   t,
-  onToggleReviewed,
+  selectable,
+  checked,
+  onCheck,
 }: {
   t: BacklogTask;
-  onToggleReviewed?: (t: BacklogTask) => void;
+  selectable?: boolean;
+  checked?: boolean;
+  onCheck?: (id: string, val: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const human = t.gate === 'needs-human' || t.gate === 'gate';
@@ -51,6 +55,19 @@ function CollapsibleRow({
         role="button"
         aria-expanded={expanded}
       >
+        {selectable && !reviewed && (
+          <input
+            type="checkbox"
+            checked={checked ?? false}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => { e.stopPropagation(); onCheck?.(t.id, e.target.checked); }}
+            aria-label={`Select ${t.id} for bulk review`}
+            style={{ flexShrink: 0, cursor: 'pointer' }}
+          />
+        )}
+        {selectable && reviewed && (
+          <span style={{ display: 'inline-block', width: 13, flexShrink: 0 }} />
+        )}
         <span className="muted" style={{ fontSize: 10, minWidth: 10 }}>{expanded ? '▾' : '▸'}</span>
         <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
         <span style={{ flex: 1 }}>{t.title}</span>
@@ -61,15 +78,6 @@ function CollapsibleRow({
             <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`} style={{ flexShrink: 0 }}>
               {reviewed ? '👁 reviewed' : 'not reviewed'}
             </span>
-            <button
-              type="button"
-              className="review-toggle"
-              style={{ flexShrink: 0 }}
-              onClick={(e) => { e.stopPropagation(); onToggleReviewed?.(t); }}
-              title={reviewed ? 'Mark this task as not reviewed' : 'Mark this task as reviewed'}
-            >
-              {reviewed ? 'Mark not reviewed' : 'Mark as reviewed'}
-            </button>
             <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
           </>
         )}
@@ -106,19 +114,11 @@ export default function Backlog() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const { data, error } = usePoll(() => api.backlog(), 5000, [refreshNonce]);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkPending, setBulkPending] = useState(false);
   // Non-fatal warning when the review was saved + committed locally but the push
   // to GitHub didn't go through (offline / no remote). The commit still persists.
   const [pushWarning, setPushWarning] = useState<string | null>(null);
-
-  const toggleReviewed = async (t: BacklogTask) => {
-    try {
-      const res = await api.markReviewed(t.id, !(t.reviewed === true));
-      setPushWarning(res.committed && res.pushed === false ? (res.warning ?? 'saved locally, push pending') : null);
-    } catch {
-      // ignore — the next poll reflects the true file state
-    }
-    setRefreshNonce((n) => n + 1); // refetch immediately so the pill flips
-  };
 
   const tasks = data?.tasks ?? [];
   const allDone = tasks.filter((t) => t.status === 'done').sort((a, b) => a.id.localeCompare(b.id));
@@ -128,6 +128,41 @@ export default function Backlog() {
   );
   const buildable = tasks.filter((t) => t.status !== 'done' && t.gate == null);
   const human = tasks.filter((t) => t.status !== 'done' && t.gate != null);
+
+  // Unreviewed tasks currently visible in the done section (checkable).
+  const unreviewedVisible = done.filter((t) => t.reviewed !== true);
+  const allChecked = unreviewedVisible.length > 0 && unreviewedVisible.every((t) => selected.has(t.id));
+
+  const toggleSelectAll = () => {
+    if (allChecked) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(unreviewedVisible.map((t) => t.id)));
+    }
+  };
+
+  const toggleOne = (id: string, val: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (val) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+
+  const markSelectedReviewed = async () => {
+    if (selected.size === 0) return;
+    setBulkPending(true);
+    try {
+      const ids = Array.from(selected);
+      const res = await api.markReviewedBulk(ids);
+      setPushWarning(res.committed && res.pushed === false ? (res.warning ?? 'saved locally, push pending') : null);
+      setSelected(new Set());
+    } catch {
+      // ignore — next poll reflects true state
+    }
+    setBulkPending(false);
+    setRefreshNonce((n) => n + 1);
+  };
 
   return (
     <>
@@ -175,15 +210,47 @@ export default function Backlog() {
                 key={f.id}
                 type="button"
                 className={`caret-style-btn${reviewFilter === f.id ? ' active' : ''}`}
-                onClick={() => setReviewFilter(f.id)}
+                onClick={() => { setReviewFilter(f.id); setSelected(new Set()); }}
               >
                 {f.label}
               </button>
             ))}
           </div>
+          {/* Bulk-review controls: select-all + action button */}
+          {unreviewedVisible.length > 0 && (
+            <div className="row" style={{ alignItems: 'center', gap: 10, padding: '6px 0 4px', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={toggleSelectAll}
+                  aria-label="Select all unreviewed done tasks"
+                />
+                Select all unreviewed ({unreviewedVisible.length})
+              </label>
+              {selected.size > 0 && (
+                <button
+                  type="button"
+                  className="review-toggle"
+                  disabled={bulkPending}
+                  onClick={markSelectedReviewed}
+                >
+                  {bulkPending ? 'Saving…' : `Mark ${selected.size} as reviewed`}
+                </button>
+              )}
+            </div>
+          )}
           <div className="panel" style={{ padding: '0 14px' }}>
             {done.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None{reviewFilter !== 'all' ? ' matching this filter' : ' yet'}.</p>}
-            {done.map((t) => <CollapsibleRow key={t.id} t={t} onToggleReviewed={toggleReviewed} />)}
+            {done.map((t) => (
+              <CollapsibleRow
+                key={t.id}
+                t={t}
+                selectable
+                checked={selected.has(t.id)}
+                onCheck={toggleOne}
+              />
+            ))}
           </div>
         </details>
       </div>

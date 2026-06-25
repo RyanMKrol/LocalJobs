@@ -193,10 +193,14 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   deliberate write exception** (T136, was T124): the human-owned `reviewed` flag on
   a backlog task. It lives in its OWN owner-owned file `.harness/reviews.json` (a
   committed `id → { reviewed, at }` map — NOT in TASKS.json, which the loop owns).
-  `POST /api/backlog/:id/reviewed` atomically writes that file (temp-file + rename)
-  AND, under the SAME mkdir lock loop.sh uses (`src/core/repo-lock.ts`), commits it
-  `[skip ci]` + pushes it to GitHub (fetch+rebase+retry; a failed push is a non-fatal
-  warning). Because reviews.json is a disjoint git path from everything the loop
+  Two endpoints write it: `POST /api/backlog/:id/reviewed` (single task, any
+  `reviewed` bool) and `POST /api/backlog/reviewed-bulk { ids: string[] }` (multiple
+  tasks reviewed=true in **one** atomic write + **one** git commit). Both atomically
+  write the file (temp-file + rename) AND, under the SAME mkdir lock loop.sh uses
+  (`src/core/repo-lock.ts`), commit it `[skip ci]` + push to GitHub (fetch+rebase+
+  retry; a failed push is a non-fatal warning). The bulk endpoint produces exactly ONE
+  git commit for the whole batch — the Backlog UI uses it for the select-all/bulk
+  flow (T191). Because reviews.json is a disjoint git path from everything the loop
   commits, the two writers never conflict (see the harness section below).
   Everything else stays read-only.
 
@@ -957,11 +961,14 @@ this in addition to everything above:
     tracking is **human/dashboard-owned, not shell-owned** — and since T136 it lives in its OWN
     owner-owned file `.harness/reviews.json` (a committed `id → { reviewed, at }` map), NOT in
     TASKS.json. A new backlog task therefore **no longer carries a `reviewed` field in its JSON**.
-    The owner toggles it from the Backlog page via `POST /api/backlog/:id/reviewed`, which the
-    DAEMON handles: it atomically writes reviews.json (temp-file + rename, field-scoped to that id)
-    AND, under the SAME mkdir lock loop.sh uses (`src/core/repo-lock.ts`), commits + pushes that one
-    file `[skip ci]` (fetch+rebase+retry; failed push = non-fatal warning). The loop NEVER writes
-    reviews.json (only TASKS.json `status` + the worklog), so the two writers are fully decoupled —
+    The owner sets it from the Backlog Done section via two endpoints the DAEMON handles: the
+    per-task `POST /api/backlog/:id/reviewed` (single id, any bool) and the bulk
+    `POST /api/backlog/reviewed-bulk { ids: string[] }` (multiple ids marked reviewed=true in ONE
+    atomic write + ONE git commit — the Backlog UI select-all/bulk flow, T191). Both atomically
+    write reviews.json (temp-file + rename) AND, under the SAME mkdir lock loop.sh uses
+    (`src/core/repo-lock.ts`), commit + push that one file `[skip ci]` (fetch+rebase+retry; failed
+    push = non-fatal warning). The loop NEVER writes reviews.json (only TASKS.json `status` + the
+    worklog), so the two writers are fully decoupled —
     disjoint git paths, never a conflict. `GET /api/backlog` overlays `reviewed` from the file
     (absent → false). The agent still must not hand-edit `reviewed`/reviews.json — it's a UI action.
 - **Task `do`/`doneWhen` live in a per-task Markdown spec (T131).** A task's *what to build* and

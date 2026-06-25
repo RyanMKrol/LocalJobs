@@ -452,11 +452,17 @@ export const api = {
   // `markReviewed` writes it AND the daemon commits + pushes it to GitHub under the
   // loop lock; the response reports whether the push succeeded (`pushed`) and a
   // non-fatal `warning` if it didn't (e.g. offline) — the commit still persists.
+  // `markReviewedBulk` marks multiple tasks reviewed in a SINGLE git commit.
   backlog: () => get<{ tasks: BacklogTask[]; error?: string }>('/api/backlog'),
   markReviewed: (id: string, reviewed: boolean) =>
     post<{ ok: boolean; id: string; reviewed: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
       `/api/backlog/${encodeURIComponent(id)}/reviewed`,
       { reviewed },
+    ),
+  markReviewedBulk: (ids: string[]) =>
+    post<{ ok: boolean; ids: string[]; count: number; committed?: boolean; pushed?: boolean; warning?: string }>(
+      '/api/backlog/reviewed-bulk',
+      { ids },
     ),
 
   // Read-only DB browser

@@ -185,6 +185,22 @@ export function setReviewEntry(raw: string, id: string, reviewed: boolean, at: s
 }
 
 /**
+ * Pure, field-scoped edit of the reviews-store TEXT for MULTIPLE ids at once:
+ * parse `raw` (may be empty → treated as `{}`), set ALL entries in `ids` to
+ * `{ reviewed, at }`, and return the re-serialised JSON. Every other id is preserved.
+ * Exported for unit testing — no git, no disk.
+ */
+export function setReviewEntries(raw: string, ids: string[], reviewed: boolean, at: string): string {
+  let map: Record<string, ReviewEntry> = {};
+  if (raw.trim()) {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed as Record<string, ReviewEntry>;
+  }
+  for (const id of ids) map[id] = { reviewed, at };
+  return `${JSON.stringify(map, null, 2)}\n`;
+}
+
+/**
  * Atomically persist a single id's review entry to the reviews store. Reads the
  * current file (absent → `{}`), applies the field-scoped edit ({@link setReviewEntry}),
  * validates the result parses, then writes via temp-file + rename so a concurrent
@@ -199,6 +215,25 @@ function writeReviewEntry(path: string, id: string, reviewed: boolean, at: strin
     raw = ''; // absent → start from {}
   }
   const updated = setReviewEntry(raw, id, reviewed, at);
+  JSON.parse(updated); // validate before we touch disk
+  const tmp = `${path}.tmp-${process.pid}`;
+  writeFileSync(tmp, updated);
+  renameSync(tmp, path); // atomic replace
+}
+
+/**
+ * Atomically persist multiple ids' review entries to the reviews store in ONE write.
+ * Same atomic temp-file + rename approach as writeReviewEntry; all ids land in a
+ * single disk write so no partial state is ever observable.
+ */
+function writeReviewEntries(path: string, ids: string[], reviewed: boolean, at: string): void {
+  let raw = '';
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    raw = '';
+  }
+  const updated = setReviewEntries(raw, ids, reviewed, at);
   JSON.parse(updated); // validate before we touch disk
   const tmp = `${path}.tmp-${process.pid}`;
   writeFileSync(tmp, updated);
@@ -279,12 +314,14 @@ export async function commitReviewsFile(opts: {
   lockDir?: string;
   push?: boolean;
   timeoutMs?: number;
+  commitMessage?: string;
 }): Promise<CommitReviewsResult> {
   const { repoRoot, reviewsAbsPath, id, reviewed } = opts;
   const mainBranch = opts.mainBranch ?? process.env.MAIN_BRANCH ?? 'main';
   const push = opts.push ?? true;
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const relPath = relativePath(repoRoot, reviewsAbsPath);
+  const commitMsg = opts.commitMessage ?? `reviews: ${id} reviewed=${reviewed} [skip ci]`;
 
   const release = await acquireRepoLock({ lockDir: opts.lockDir, cwd: repoRoot, timeoutMs });
   try {
@@ -299,7 +336,7 @@ export async function commitReviewsFile(opts: {
       // `commit.gpgsign=true` an ordinary commit would FAIL to sign and leave
       // reviews.json staged-but-uncommitted. These are automated housekeeping
       // commits — never sign them, regardless of the ambient config.
-      ['commit', '--no-gpg-sign', '-m', `reviews: ${id} reviewed=${reviewed} [skip ci]`],
+      ['commit', '--no-gpg-sign', '-m', commitMsg],
       timeoutMs,
     );
     if (!commit.ok) return { committed: false, pushed: false, warning: commit.stderr.trim().slice(0, 300) };
@@ -336,6 +373,29 @@ async function defaultCommitReviews(reviewsPath: string, id: string, reviewed: b
   }
   try {
     return await commitReviewsFile({ repoRoot, reviewsAbsPath: reviewsPath, id, reviewed });
+  } catch (e) {
+    return { committed: false, pushed: false, warning: e instanceof Error ? e.message : 'commit failed' };
+  }
+}
+
+async function defaultCommitReviewsBulk(reviewsPath: string, ids: string[]): Promise<CommitReviewsResult> {
+  let repoRoot: string;
+  try {
+    repoRoot = resolveRepoPaths(dirname(reviewsPath)).root;
+  } catch {
+    return { committed: false, pushed: false, warning: 'not a git repo — wrote locally only' };
+  }
+  try {
+    // Reuse commitReviewsFile with a custom message for the bulk case. The `id` /
+    // `reviewed` fields are only used to build the default commit message, which we
+    // override here, so we pass placeholder values.
+    return await commitReviewsFile({
+      repoRoot,
+      reviewsAbsPath: reviewsPath,
+      id: '',
+      reviewed: true,
+      commitMessage: `reviews: bulk ${ids.length} reviewed [skip ci]`,
+    });
   } catch (e) {
     return { committed: false, pushed: false, warning: e instanceof Error ? e.message : 'commit failed' };
   }
@@ -560,12 +620,14 @@ export function createApiServer(
     // Injectable for tests: commit+push the reviews file. Defaults to the real git
     // path (resolves the repo from the reviews dir; no-ops outside a git repo).
     commitReviews?: (reviewsPath: string, id: string, reviewed: boolean) => Promise<CommitReviewsResult>;
+    commitReviewsBulk?: (reviewsPath: string, ids: string[]) => Promise<CommitReviewsResult>;
   } = {},
 ) {
   const isLoopback = opts.isLoopback ?? isLoopbackAddress;
   const backlogPath = opts.backlogPath ?? BACKLOG_PATH;
   const reviewsPath = opts.reviewsPath ?? reviewsPathFor(backlogPath);
   const commitReviews = opts.commitReviews ?? defaultCommitReviews;
+  const commitReviewsBulk = opts.commitReviewsBulk ?? defaultCommitReviewsBulk;
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${config.apiPort}`);
     const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','jobs','demo','runs']
@@ -1200,6 +1262,33 @@ export function createApiServer(
           ok: true,
           id,
           reviewed,
+          committed: result.committed,
+          pushed: result.pushed,
+          ...(result.warning ? { warning: result.warning } : {}),
+        });
+      }
+
+      // POST /api/backlog/reviewed-bulk  { ids: string[] } — bulk mark-reviewed:
+      // writes ALL ids to reviews.json in ONE atomic disk write and produces exactly
+      // ONE git commit for the whole batch (not N). Behind the same loopback/token
+      // guard as the per-task endpoint; serialized via the same in-process mutex so
+      // concurrent POSTs can't interleave. Always marks reviewed=true (un-review is
+      // a no-op via the per-task endpoint for the single case; there is no bulk un-review).
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'backlog' && parts[2] === 'reviewed-bulk' && parts.length === 3) {
+        const body = await readBody(req);
+        const ids = body.ids;
+        if (!Array.isArray(ids) || ids.length === 0 || ids.some((x: unknown) => typeof x !== 'string' || !/^T\d+$/.test(x as string))) {
+          return json(res, 400, { error: 'ids must be a non-empty array of T\\d+ strings' });
+        }
+        const validIds = ids as string[];
+        const result = await serializeReview(async () => {
+          writeReviewEntries(reviewsPath, validIds, true, new Date().toISOString());
+          return commitReviewsBulk(reviewsPath, validIds);
+        });
+        return json(res, 200, {
+          ok: true,
+          ids: validIds,
+          count: validIds.length,
           committed: result.committed,
           pushed: result.pushed,
           ...(result.warning ? { warning: result.warning } : {}),
