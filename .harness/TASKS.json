@@ -4334,7 +4334,7 @@
     {
       "id": "T170",
       "title": "Movies workflow page: fix the Recommendations & gaps section styling — contain + scroll, themed Ignore buttons, tidy empty state",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
