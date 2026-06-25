@@ -38,11 +38,10 @@ function CollapsibleRow({
   return (
     <div>
       <div
-        className="row done-row"
+        className={`row done-row${expanded ? ' expanded' : ''}`}
         style={{
           gap: 8,
           padding: '5px 0',
-          borderBottom: expanded ? 'none' : '1px solid var(--border)',
           alignItems: 'baseline',
           flexWrap: 'wrap',
           cursor: 'pointer',
