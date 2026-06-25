@@ -4711,7 +4711,7 @@
     {
       "id": "T185",
       "title": "Home page: cap the recent workflow runs table at ~12 rows, scroll the rest",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
