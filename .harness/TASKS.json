@@ -4847,6 +4847,23 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T187.md"
+    },
+    {
+      "id": "T188",
+      "title": "Final parity audit: .harness/ vs the claude-skills Ralph Harness plugin (source of truth)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "harness",
+        "parity",
+        "audit"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T188.md"
     }
   ]
 }
