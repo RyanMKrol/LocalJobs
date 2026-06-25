@@ -4868,7 +4868,7 @@
     {
       "id": "T189",
       "title": "Notify only on workflow completion, not per-stage",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
