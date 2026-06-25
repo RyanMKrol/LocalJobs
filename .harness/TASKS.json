@@ -4958,7 +4958,7 @@
     {
       "id": "T192",
       "title": "Theme Picker: move the Dark/Light/System mode control to the last section",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
