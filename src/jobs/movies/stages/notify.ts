@@ -102,7 +102,12 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   // Drop owner-ignored gaps up front — they leave BOTH the report AND notifications.
   const ignoredGaps = ignoredItemKeys(NOTIFY_JOB);
   const gaps = allGaps.filter((g) => !ignoredGaps.has(gapKey(g.tmdbId)));
-  ctx.log(`Loaded ${allGaps.length} franchise gap(s); ${allGaps.length - gaps.length} owner-ignored excluded → ${gaps.length} active.`);
+  const ignoredGapCount = allGaps.length - gaps.length;
+  ctx.log(`Loaded ${allGaps.length} franchise gap(s); ${ignoredGapCount} owner-ignored excluded → ${gaps.length} active.`);
+  if (ignoredGapCount > 0) {
+    const excluded = allGaps.filter((g) => ignoredGaps.has(gapKey(g.tmdbId)));
+    for (const g of excluded) ctx.log(`  ✕ ignored gap: "${g.collectionName}: ${g.title}"${g.year ? ` (${g.year})` : ''} tmdb=${g.tmdbId}`);
+  }
 
   // ── Recommendations (optional — the merge stage may have produced none) ──
   const allRecs: Recommendation[] = existsSync(recsFile)
@@ -110,12 +115,21 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
     : [];
   const ignoredRecs = ignoredItemKeys(RECS_JOB);
   const recs = allRecs.filter((r) => !ignoredRecs.has(recKey(r.tmdbId)));
-  ctx.log(`Loaded ${allRecs.length} recommendation(s); ${allRecs.length - recs.length} owner-ignored excluded → ${recs.length} active.`);
+  const ignoredRecCount = allRecs.length - recs.length;
+  ctx.log(`Loaded ${allRecs.length} recommendation(s); ${ignoredRecCount} owner-ignored excluded → ${recs.length} active.`);
+  if (ignoredRecCount > 0) {
+    const excludedRecs = allRecs.filter((r) => ignoredRecs.has(recKey(r.tmdbId)));
+    for (const r of excludedRecs) ctx.log(`  ✕ ignored rec: "${r.title}"${r.year ? ` (${r.year})` : ''} tmdb=${r.tmdbId}`);
+  }
 
   // Newly-detected (not yet in the respective ledger).
   const newGaps = gaps.filter((g) => !isWorkItemDone(NOTIFY_JOB, gapKey(g.tmdbId), 1));
   const newRecs = recs.filter((r) => !isWorkItemDone(RECS_JOB, recKey(r.tmdbId), 1));
   ctx.log(`Newly-detected: ${newGaps.length} gap(s) (already notified: ${gaps.length - newGaps.length}), ${newRecs.length} recommendation(s) (already notified: ${recs.length - newRecs.length}).`);
+  const alreadyNotifiedGaps = gaps.filter((g) => isWorkItemDone(NOTIFY_JOB, gapKey(g.tmdbId), 1));
+  for (const g of alreadyNotifiedGaps) ctx.log(`  ↩ already notified gap: "${g.collectionName}: ${g.title}"${g.year ? ` (${g.year})` : ''}`);
+  const alreadyNotifiedRecs = recs.filter((r) => isWorkItemDone(RECS_JOB, recKey(r.tmdbId), 1));
+  for (const r of alreadyNotifiedRecs) ctx.log(`  ↩ already notified rec: "${r.title}"${r.year ? ` (${r.year})` : ''}`);
 
   // Always (re)write the combined markdown report of the current active backlog.
   const collectionExamples = file.collectionExamples ?? {};

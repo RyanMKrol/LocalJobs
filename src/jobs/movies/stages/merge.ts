@@ -256,6 +256,11 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
   const pooled = poolBranchSuggestions(recsDir, ctx);
   const unique = dedupeRawByTitleYear(pooled);
   ctx.log(`Pooled ${pooled.length} raw suggestion(s) → ${unique.length} after title/year dedup.`);
+  if (unique.length < pooled.length) {
+    const survivingSet = new Set<RawSuggestion>(unique);
+    const dupes = pooled.filter((s) => !survivingSet.has(s));
+    for (const s of dupes) ctx.log(`  ⟳ "${s.title}"${s.year ? ` (${s.year})` : ''} [${s.lens}] — duplicate, kept first occurrence.`);
+  }
 
   const byTmdb = new Map<number, Recommendation>();
   const counters: VerifyCounters = {
@@ -314,6 +319,11 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
   ctx.log(`Verified novel: ${verified.length} → balanced to ${balanced.length} (cap ${params.genreCap}/genre, target ${params.target}).`);
   if (balanced.length < params.target) {
     ctx.log(`⚠ Only ${balanced.length}/${params.target} quality picks after ${round} top-up round(s) — outputting what we have.`, 'warn');
+  }
+  if (verified.length > balanced.length) {
+    const balancedSet = new Set(balanced.map((r) => r.tmdbId));
+    const capped = verified.filter((r) => !balancedSet.has(r.tmdbId));
+    for (const r of capped) ctx.log(`  ⊘ genre-capped: "${r.title}"${r.year ? ` (${r.year})` : ''} [${r.genre}] — exceeded cap of ${params.genreCap}/genre.`);
   }
   for (const r of balanced) ctx.log(`  • [${r.genre}] ${r.title}${r.year ? ` (${r.year})` : ''} — ${r.reason} (${r.lens})`);
   ctx.log(`Wrote ${recsOut}`);

@@ -34,7 +34,13 @@ export async function runSnapshot(ctx: JobContext): Promise<void> {
   const withTmdb = movies.filter((m) => m.tmdbId != null).length;
   const noTmdb = movies.length - withTmdb;
   ctx.log(`Built snapshot: ${movies.length} movies · ${withTmdb} GUID-matched (owned set size ${owned.size}) · ${noTmdb} without a tmdb:// GUID.`);
-  if (noTmdb > 0) ctx.log(`${noTmdb} movie(s) have no tmdb:// GUID — they can't be checked for franchise gaps (never guessed).`, 'warn');
+  if (noTmdb > 0) {
+    ctx.log(`${noTmdb} movie(s) have no tmdb:// GUID — they can't be checked for franchise gaps (never guessed).`, 'warn');
+    const noGuidMovies = movies.filter((m) => m.tmdbId == null);
+    const listed = noGuidMovies.slice(0, 20);
+    for (const m of listed) ctx.log(`  • "${m.title}"${m.year ? ` (${m.year})` : ''} — ratingKey ${m.ratingKey}`, 'warn');
+    if (noGuidMovies.length > 20) ctx.log(`  … and ${noGuidMovies.length - 20} more without a tmdb:// GUID.`, 'warn');
+  }
 
   ctx.progress(80, 'building taste profile');
   const profile = buildTasteProfile(movies);
