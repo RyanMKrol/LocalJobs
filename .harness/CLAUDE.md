@@ -21,10 +21,12 @@ capture from planning into **two deliberate steps**, with **ideas as a first-cla
 
 ### Step 1 — capture: the ideas inbox (`.harness/IDEAS.md`)
 
-A **gitignored**, zero-ceremony scratchpad: a single `## Inbox` list, one bullet per idea, one or two
-sentences, no schema and no planning. It is the low-friction place to dump a thought so it isn't lost
-and isn't interrupting in-flight work. Capture two ways:
-- **`/idea <one or two sentences>`** — appends a bullet to the Inbox.
+A **gitignored**, zero-ceremony scratchpad: a single `## Inbox` list, one bullet per idea, as detailed
+as needed (the full idea + any helpful context), no schema and no planning. It is the low-friction
+place to dump a thought so it isn't lost and isn't interrupting in-flight work — capture is
+**non-interactive** (it enriches from what's already known, never by asking) precisely so it doesn't
+derail whatever Claude is mid-task on. Capture two ways:
+- **`/idea <the idea, in as much detail as you like>`** — appends a bullet to the Inbox.
 - Or just **hand-edit** `.harness/IDEAS.md`, or tell Claude "add an idea: …".
 
 It is **gitignored on purpose** (like `data/` folders): raw, unfleshed ideas — which may reference
