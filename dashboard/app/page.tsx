@@ -235,30 +235,32 @@ export default function Overview() {
 
       <h2>Recent workflow runs</h2>
       <div className="panel">
-        <table>
-          <thead>
-            <tr><th>Workflow</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th></th></tr>
-          </thead>
-          <tbody>
-            {visibleWorkflowRuns.length === 0 && (
-              <tr><td colSpan={6} className="muted">
-                {activeFilter && workflowRuns.length > 0
-                  ? 'No workflow runs match the current filter.'
-                  : 'No workflow runs yet — trigger one from a workflow card above.'}
-              </td></tr>
-            )}
-            {visibleWorkflowRuns.map((r) => (
-              <tr key={r.id}>
-                <td><a href={`/workflows/${r.workflow_name}`}>{r.workflow_name}</a></td>
-                <td><span className={`badge ${r.status}`}>{statusLabel(r.status)}</span></td>
-                <td className="muted">{r.trigger}</td>
-                <td className="muted">{fmtRelative(r.started_at)}</td>
-                <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                <td><a href={`/workflow-runs/${r.id}`}>details →</a></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="recent-runs-scroll">
+          <table>
+            <thead>
+              <tr><th>Workflow</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th><th></th></tr>
+            </thead>
+            <tbody>
+              {visibleWorkflowRuns.length === 0 && (
+                <tr><td colSpan={6} className="muted">
+                  {activeFilter && workflowRuns.length > 0
+                    ? 'No workflow runs match the current filter.'
+                    : 'No workflow runs yet — trigger one from a workflow card above.'}
+                </td></tr>
+              )}
+              {visibleWorkflowRuns.map((r) => (
+                <tr key={r.id}>
+                  <td><a href={`/workflows/${r.workflow_name}`}>{r.workflow_name}</a></td>
+                  <td><span className={`badge ${r.status}`}>{statusLabel(r.status)}</span></td>
+                  <td className="muted">{r.trigger}</td>
+                  <td className="muted">{fmtRelative(r.started_at)}</td>
+                  <td className="mono">{fmtDuration(r.duration_ms)}</td>
+                  <td><a href={`/workflow-runs/${r.id}`}>details →</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
       </>)}
     </>

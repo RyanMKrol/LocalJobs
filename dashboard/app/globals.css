@@ -135,6 +135,9 @@ tbody tr:hover { background: var(--panel-2); }
 /* IO table scroll container (T148) — height-capped, both-axis scroll, sticky header. */
 .io-table-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
 .io-table-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+/* Recent workflow runs scroll container (T185) — bounded height ~12 rows, sticky header. */
+.recent-runs-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
+.recent-runs-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
 /* Movie gaps/recs scroll container (T170) — bounded height, scrolls internally. */
 .movie-gaps-scroll { max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .mono { font-family: var(--font-mono); }
