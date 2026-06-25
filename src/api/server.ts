@@ -15,6 +15,9 @@ import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
 import { moviesConfig } from '../jobs/movies/config.js';
 import { NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey } from '../jobs/movies/stages/notify.js';
 import type { FranchiseGapsFile } from '../jobs/movies/types.js';
+import { plexConfig } from '../jobs/plex/config.js';
+import { NOTIFY_JOB as PLEX_SEASONS_JOB, pairKey } from '../jobs/plex/stages/notify.js';
+import type { MissingSeasonsFile } from '../jobs/plex/types.js';
 import {
   browseTable,
   getLogs,
@@ -699,6 +702,46 @@ export function createApiServer(
           return json(res, 400, { error: 'tmdbId must be a positive integer' });
         }
         const ignored = ignoreSurfacedItem(MOVIE_GAPS_JOB, gapKey(tmdbId));
+        return json(res, 200, { ok: true, ignored });
+      }
+
+      // GET /api/missing-seasons — the currently-detected complete-missing TV seasons
+      // (read from missing-seasons.json), each overlaid with its notified/ignored state
+      // from the plex-seasons-notify ledger. Read-only, file + DB only.
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'missing-seasons' && parts.length === 2) {
+        let file: MissingSeasonsFile = { generatedAt: '', shows: [], unverifiable: [] };
+        try {
+          file = JSON.parse(readFileSync(plexConfig.missingOut, 'utf8')) as MissingSeasonsFile;
+        } catch {
+          // missing-seasons.json not yet written (workflow hasn't run) — return empty.
+        }
+        const ignoredKeys = ignoredItemKeys(PLEX_SEASONS_JOB);
+        const shows = (file.shows ?? []).flatMap((s) =>
+          s.completeMissingSeasons.map((season) => {
+            const key = pairKey(s.tmdbId, season);
+            return {
+              tmdbId: s.tmdbId,
+              title: s.title,
+              year: s.year,
+              season,
+              tmdbStatus: s.tmdbStatus,
+              ignored: ignoredKeys.has(key),
+              notified: isWorkItemDone(PLEX_SEASONS_JOB, key, 1) && !ignoredKeys.has(key),
+            };
+          }),
+        );
+        return json(res, 200, { generatedAt: file.generatedAt || null, shows });
+      }
+
+      // POST /api/missing-seasons/:tmdbId/:season/ignore — suppress a season gap from
+      // future reports + notifications. Guarded by the global loopback/token mutation check.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'missing-seasons' && parts[4] === 'ignore') {
+        const tmdbId = Number(parts[2]);
+        const season = Number(parts[3]);
+        if (!Number.isInteger(tmdbId) || tmdbId <= 0 || !Number.isInteger(season) || season <= 0) {
+          return json(res, 400, { error: 'tmdbId and season must be positive integers' });
+        }
+        const ignored = ignoreSurfacedItem(PLEX_SEASONS_JOB, pairKey(tmdbId, season));
         return json(res, 200, { ok: true, ignored });
       }
 

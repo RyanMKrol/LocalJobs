@@ -296,6 +296,22 @@ export interface BacklogTask {
   reviewed?: boolean;
 }
 
+/** One complete-missing TV season (plex workflow), overlaid with ledger status. */
+export interface MissingSeason {
+  tmdbId: number;
+  title: string;
+  year: number | null;
+  season: number;
+  tmdbStatus: string;
+  notified: boolean;
+  ignored: boolean;
+}
+
+export interface MissingSeasons {
+  generatedAt: string | null;
+  shows: MissingSeason[];
+}
+
 /** One detected franchise gap (movies workflow), overlaid with ledger status. */
 export interface MovieGap {
   collectionId: number;
@@ -359,6 +375,11 @@ export const api = {
   ignore: (job: string, key: string) => post<{ ok: boolean; ignored: number }>(`/api/stuck/ignore`, { job, key }),
   unstickBulk: (scope?: BulkScope) => post<{ ok: boolean; unstuck: number }>('/api/stuck/unstick-bulk', scope ? scopeBody(scope) : {}),
   ignoreBulk: (scope?: BulkScope) => post<{ ok: boolean; ignored: number }>('/api/stuck/ignore-bulk', scope ? scopeBody(scope) : {}),
+
+  // TV-seasons missing-season audit: list current gaps + manually ignore one (T179).
+  missingSeasons: () => get<MissingSeasons>('/api/missing-seasons'),
+  missingSeasonsIgnore: (tmdbId: number, season: number) =>
+    post<{ ok: boolean; ignored: number }>(`/api/missing-seasons/${tmdbId}/${season}/ignore`),
 
   // Movies franchise-gap audit: list current gaps + manually ignore one (T145).
   movieGaps: () => get<MovieGaps>('/api/movie-gaps'),

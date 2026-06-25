@@ -992,4 +992,136 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   }
 }
 
+// ── missing-seasons endpoints (T179): GET overlays ignored/notified; POST ignores ──
+{
+  const { plexConfig } = await import('../jobs/plex/config.js');
+  const { NOTIFY_JOB: PLEX_JOB, pairKey } = await import('../jobs/plex/stages/notify.js');
+  const { markWorkItem: mark, ignoredItemKeys: ignoredKeys } = await import('../db/store.js');
+
+  const NOTIFIED_ID = 9980001;
+  const FRESH_ID    = 9980002;
+  const IGNORE_ID   = 9980003;
+  const NOTIFIED_S  = 2;
+  const FRESH_S     = 3;
+  const IGNORE_S    = 1;
+  const missingPath = plexConfig.missingOut;
+  const hadFile = existsSync(missingPath);
+  const backup = hadFile ? readFileSync(missingPath, 'utf8') : null;
+  mkdirSync(join(missingPath, '..'), { recursive: true });
+  writeFileSync(missingPath, JSON.stringify({
+    generatedAt: '2026-06-01T00:00:00Z',
+    shows: [
+      { tmdbId: NOTIFIED_ID, title: 'Already Notified Show', year: 2019, ratingKey: 'r1', highestOwnedSeason: 1, tmdbStatus: 'Ended', highestAiredSeason: 3, completeMissingSeasons: [NOTIFIED_S] },
+      { tmdbId: FRESH_ID,    title: 'Fresh Show', year: 2020, ratingKey: 'r2', highestOwnedSeason: 2, tmdbStatus: 'Returning Series', highestAiredSeason: 4, completeMissingSeasons: [FRESH_S] },
+      { tmdbId: IGNORE_ID,   title: 'To Ignore Show', year: 2021, ratingKey: 'r3', highestOwnedSeason: 0, tmdbStatus: 'Ended', highestAiredSeason: 1, completeMissingSeasons: [IGNORE_S] },
+    ],
+    unverifiable: [],
+  }));
+  mark(PLEX_JOB, pairKey(NOTIFIED_ID, NOTIFIED_S), 'success');
+
+  try {
+    await test('GET /api/missing-seasons overlays notified + ignored status', async () => {
+      await withServer({}, async (base) => {
+        const data = (await (await fetch(`${base}/api/missing-seasons`)).json()) as {
+          generatedAt: string | null;
+          shows: { tmdbId: number; season: number; notified: boolean; ignored: boolean }[];
+        };
+        assert.ok(data.generatedAt, 'generatedAt is returned');
+        const find = (id: number, s: number) => data.shows.find((x) => x.tmdbId === id && x.season === s);
+        assert.equal(find(NOTIFIED_ID, NOTIFIED_S)?.notified, true, 'already-digested pair is flagged notified');
+        assert.equal(find(FRESH_ID, FRESH_S)?.notified, false, 'fresh pair is not yet notified');
+        assert.equal(find(FRESH_ID, FRESH_S)?.ignored, false);
+      });
+    });
+
+    await test('POST /api/missing-seasons/:tmdbId/:season/ignore suppresses a season gap', async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/missing-seasons/${IGNORE_ID}/${IGNORE_S}/ignore`, { method: 'POST' });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; ignored: number };
+        assert.equal(body.ok, true);
+        assert.ok(body.ignored >= 1);
+        assert.ok(ignoredKeys(PLEX_JOB).has(pairKey(IGNORE_ID, IGNORE_S)), 'ledger row is now ignored');
+
+        const data = (await (await fetch(`${base}/api/missing-seasons`)).json()) as {
+          shows: { tmdbId: number; season: number; ignored: boolean }[];
+        };
+        assert.equal(
+          data.shows.find((s) => s.tmdbId === IGNORE_ID && s.season === IGNORE_S)?.ignored,
+          true,
+          'GET reflects the ignore',
+        );
+      });
+    });
+
+    await test('POST /api/missing-seasons/:tmdbId/:season/ignore rejects bad ids (400)', async () => {
+      await withServer({}, async (base) => {
+        const r1 = await fetch(`${base}/api/missing-seasons/not-a-number/1/ignore`, { method: 'POST' });
+        assert.equal(r1.status, 400);
+        const r2 = await fetch(`${base}/api/missing-seasons/9980001/bad-season/ignore`, { method: 'POST' });
+        assert.equal(r2.status, 400);
+      });
+    });
+  } finally {
+    if (backup !== null) writeFileSync(missingPath, backup);
+    else rmSync(missingPath, { force: true });
+  }
+}
+
+// ── notify stage excludes ignored pairs from writeReport (T179) ──
+{
+  const { buildDigest, runNotify, NOTIFY_JOB: PLEX_JOB, pairKey } = await import('../jobs/plex/stages/notify.js');
+  const { ignoreSurfacedItem, isWorkItemDone } = await import('../db/store.js');
+  const { existsSync: exists, readFileSync: readFS, mkdirSync: mkdirFS } = await import('node:fs');
+  const { plexConfig } = await import('../jobs/plex/config.js');
+  const tmp = mkdtempSync(join(tmpdir(), 'notify-test-'));
+
+  await test('buildDigest count and title', () => {
+    const d = buildDigest([{ title: 'Show A', tmdbId: 1, seasons: [2, 3] }, { title: 'Show B', tmdbId: 2, seasons: [1] }]);
+    assert.equal(d.count, 3);
+    assert.ok(d.title.includes('3'));
+  });
+
+  await test('runNotify writeReport excludes ignored pairs (T179)', async () => {
+    const missingFile = join(tmp, 'missing-seasons.json');
+    const pushed: string[] = [];
+    writeFileSync(missingFile, JSON.stringify({
+      generatedAt: '2026-06-01T00:00:00Z',
+      shows: [
+        { tmdbId: 7001, title: 'Show Alpha', year: 2020, ratingKey: 'r1', highestOwnedSeason: 1, tmdbStatus: 'Ended', highestAiredSeason: 2, completeMissingSeasons: [2] },
+        { tmdbId: 7002, title: 'Show Beta',  year: 2021, ratingKey: 'r2', highestOwnedSeason: 0, tmdbStatus: 'Ended', highestAiredSeason: 1, completeMissingSeasons: [1] },
+      ],
+      unverifiable: [],
+    }));
+    // Ignore Show Beta S1.
+    ignoreSurfacedItem(PLEX_JOB, pairKey(7002, 1));
+
+    mkdirFS(plexConfig.reportDir, { recursive: true });
+    const logs: string[] = [];
+    const ctx = {
+      log: (msg: string) => { logs.push(msg); },
+      progress: () => {},
+      selectedRoots: () => null,
+      rootAllowed: () => true,
+    } as unknown as Parameters<typeof runNotify>[0];
+
+    await runNotify(ctx, {
+      push: async (title: string, body: string) => { pushed.push(title); return { ok: true }; },
+      now: new Date('2026-06-25T00:00:00Z'),
+      missingFile,
+    });
+
+    // Report file must NOT contain Show Beta.
+    const { readFileSync: rfs } = await import('node:fs');
+    const reportContent = rfs(plexConfig.reportDir + '/missing-seasons.md', 'utf8');
+    assert.ok(reportContent.includes('Show Alpha'), 'report includes non-ignored show');
+    assert.ok(!reportContent.includes('Show Beta'), 'report excludes ignored show');
+
+    // Show Alpha S2 should be notified; Show Beta S1 is ignored so skipped.
+    assert.ok(isWorkItemDone(PLEX_JOB, pairKey(7001, 2), 1), 'non-ignored season is marked notified');
+    // pushed digest should reference Show Alpha, not Show Beta.
+    assert.ok(pushed.some((t) => t.includes('1')), 'digest sent for 1 new season (only Alpha)');
+  });
+}
+
 console.log(`\n  ${passed} assertions passed`);

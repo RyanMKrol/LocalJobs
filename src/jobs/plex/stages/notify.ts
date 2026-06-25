@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { push } from '../../../core/notifier.js';
-import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { ignoredItemKeys, isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { plexConfig } from '../config.js';
 import { ensureDirs, formatSeasonRanges } from '../lib.js';
@@ -111,25 +111,31 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   ctx.log(`Marked ${totalNew} (show, season) pair(s) notified.`);
 }
 
-/** Write a markdown report of the current backlog; returns its absolute path. */
+/** Write a markdown report of the current backlog (excluding ignored pairs); returns its absolute path. */
 function writeReport(shows: ShowMissingSeasons[], newShows: NewShow[], now: Date): string {
+  const ignoredKeys = ignoredItemKeys(NOTIFY_JOB);
+  // Filter shows to exclude any season pair that is ignored.
+  const visibleShows = shows
+    .map((s) => ({ ...s, completeMissingSeasons: s.completeMissingSeasons.filter((season) => !ignoredKeys.has(pairKey(s.tmdbId, season))) }))
+    .filter((s) => s.completeMissingSeasons.length > 0);
+
   const newKeys = new Set<string>();
   for (const s of newShows) for (const season of s.seasons) newKeys.add(pairKey(s.tmdbId, season));
 
   const lines: string[] = [
     '---',
     `generatedAt: ${now.toISOString()}`,
-    `actionableShows: ${shows.length}`,
+    `actionableShows: ${visibleShows.length}`,
     `newlyDetected: ${newShows.reduce((n, s) => n + s.seasons.length, 0)}`,
     '---',
     '',
     '# Plex — complete seasons you don\'t own',
     '',
   ];
-  if (shows.length === 0) {
+  if (visibleShows.length === 0) {
     lines.push('_Nothing missing — your library is up to date._', '');
   }
-  for (const s of [...shows].sort((a, b) => a.title.localeCompare(b.title))) {
+  for (const s of [...visibleShows].sort((a, b) => a.title.localeCompare(b.title))) {
     const parts = s.completeMissingSeasons.map((season) => {
       const isNew = newKeys.has(pairKey(s.tmdbId, season));
       return `S${season}${isNew ? ' 🆕' : ''}`;
