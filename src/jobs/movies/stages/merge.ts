@@ -42,6 +42,21 @@ export type SearchMovieFn = (title: string, year: number | null) => Promise<Tmdb
  */
 export type TopUpFn = (exclude: string[], round: number) => Promise<RawSuggestion[]>;
 
+/**
+ * Run `fn` over `items` with at most `limit` concurrent executions at any time.
+ * Results are collected in completion order (attributed inside `fn` via logging).
+ */
+async function runBounded<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    let item: T | undefined;
+    while ((item = queue.shift()) !== undefined) {
+      await fn(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 const defaultSearchMovie: SearchMovieFn = (title, year) =>
   callService('tmdb', async () => {
     const params = new URLSearchParams({ query: title, include_adult: 'false' });
@@ -68,6 +83,8 @@ export interface MergeOpts {
   target?: number;
   genreCap?: number;
   topUpRounds?: number;
+  /** Max concurrent branch re-prompts per top-up round (tests inject this to assert bounds). */
+  topUpConcurrency?: number;
 }
 
 /** A display label for a suggestion, used in the top-up exclude list + dedup. */
@@ -193,6 +210,7 @@ function buildDefaultTopUp(
   historyFile: string,
   run: RunClaudeFn,
   ctx: JobContext,
+  concurrency: number,
 ): TopUpFn {
   return async (exclude, round) => {
     if (!existsSync(tasteFile)) {
@@ -202,18 +220,25 @@ function buildDefaultTopUp(
     const taste = JSON.parse(readFileSync(tasteFile, 'utf8')) as TasteProfileFile;
     const movies = snapshot.movies ?? [];
     const recent = recentTitles(historyFile, moviesConfig.recsRecentWindow);
-    ctx.log(`  Re-prompting ${BRANCHES.length} branch(es) (round ${round}), excluding ${exclude.length} already-collected/owned/considered title(s)…`);
+    const limit = concurrency;
+    ctx.log(`  Re-prompting ${BRANCHES.length} branch(es) (round ${round}, concurrency ${limit}), excluding ${exclude.length} already-collected/owned/considered title(s)…`);
     const pooled: RawSuggestion[] = [];
-    for (const spec of BRANCHES) {
-      const more = await collectBranchSuggestions(
-        spec,
-        { profile: taste.profile, movies, recent, sampleSize: moviesConfig.recsSampleSize, ask: moviesConfig.recsPerBranchAsk, exclude },
-        run,
-        moviesConfig.recsModel,
-      );
+    await runBounded(BRANCHES, limit, async (spec) => {
+      let more: RawSuggestion[];
+      try {
+        more = await collectBranchSuggestions(
+          spec,
+          { profile: taste.profile, movies, recent, sampleSize: moviesConfig.recsSampleSize, ask: moviesConfig.recsPerBranchAsk, exclude },
+          run,
+          moviesConfig.recsModel,
+        );
+      } catch (err) {
+        ctx.log(`    • ${spec.id} (${spec.lens}) — failed: ${err instanceof Error ? err.message.split('\n')[0] : err}`, 'warn');
+        return;
+      }
       ctx.log(`    • ${spec.id} (${spec.lens}) → ${more.length} suggestion(s)`);
       if (more.length) pooled.push(...more);
-    }
+    });
     return pooled;
   };
 }
@@ -281,7 +306,7 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
 
   // ── Bounded top-up loop (T162): re-prompt the branches until we hit the target. ──
   const topUp = opts.topUp
-    ?? buildDefaultTopUp(snapshot, tasteFile, historyFile, opts.runClaude ?? runClaude, ctx);
+    ?? buildDefaultTopUp(snapshot, tasteFile, historyFile, opts.runClaude ?? runClaude, ctx, opts.topUpConcurrency ?? moviesConfig.recsTopUpConcurrency);
   let round = 0;
   let topUpStopReason = '';
   while (!counters.quotaHit && balanced.length < params.target && round < params.topUpRounds) {

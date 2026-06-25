@@ -47,6 +47,9 @@ export const moviesConfig = {
   recsMinVotes: Number(process.env.MOVIES_RECS_MIN_VOTES ?? 50),
   /** Bounded number of merge top-up rounds when under target (T162). */
   recsTopUpRounds: Number(process.env.MOVIES_RECS_TOPUP_ROUNDS ?? 3),
+  /** Max concurrent branch re-prompts per top-up round (T182). Each branch is a
+   *  Claude CLI subprocess — cap keeps CPU/memory manageable on the Mac Mini. */
+  recsTopUpConcurrency: Number(process.env.MOVIES_RECS_TOPUP_CONCURRENCY ?? 4),
   /** How many recent recommendations to feed back into branch prompts. */
   recsRecentWindow: Number(process.env.MOVIES_RECS_RECENT_WINDOW ?? 40),
 
