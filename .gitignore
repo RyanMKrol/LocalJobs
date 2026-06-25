@@ -47,6 +47,11 @@ TODO.md
 .harness/worklog/STATUS.md
 .harness/worklog/*.audit.md
 
+# The ideas inbox is a PRIVATE, transient capture scratchpad (raw, unfleshed ideas —
+# may reference private jobs). The mechanism travels via .harness/CLAUDE.md; the ideas
+# themselves stay local and are DELETED once converted into a TASKS.json task.
+.harness/IDEAS.md
+
 # harness: atomic-write temps for TASKS.json + the owner-owned reviews store (T136).
 # .harness/reviews.json itself IS committed (owner-owned; the daemon commits+pushes it).
 .harness/TASKS.json.tmp
