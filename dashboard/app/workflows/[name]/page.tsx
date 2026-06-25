@@ -480,7 +480,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
         </table>
       </div>
 
-      {name === 'movies' && <MovieGapsManager />}
+      {name === 'movie-recommendations' && <MovieGapsManager />}
       {MISSING_SEASONS_WORKFLOWS.has(name) && <MissingSeasonsManager />}
     </>
   );

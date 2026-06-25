@@ -124,6 +124,12 @@ for (const suffix of ['', '-wal', '-shm']) rmSync(dbPath + suffix, { force: true
     INSERT INTO workflows (name, schedule) VALUES ('plex', '0 9 * * 1');
     INSERT INTO workflow_jobs (workflow_name, job_name) VALUES ('plex', 'plex-tv-snapshot');
     INSERT INTO workflow_runs (id, workflow_name, status, trigger) VALUES ('wr-plex-1', 'plex', 'success', 'scheduled');
+    -- Pre-T168 movies workflow under its old 'movies' slug, with member links + run
+    -- history — the migration must rename it to 'movie-recommendations' preserving these.
+    INSERT INTO jobs (name, description) VALUES ('movie-snapshot', 's');
+    INSERT INTO workflows (name, schedule) VALUES ('movies', '0 9 1 * *');
+    INSERT INTO workflow_jobs (workflow_name, job_name) VALUES ('movies', 'movie-snapshot');
+    INSERT INTO workflow_runs (id, workflow_name, status, trigger) VALUES ('wr-movies-1', 'movies', 'success', 'scheduled');
     INSERT INTO work_items (job_name, item_key, status, attempts) VALUES
       ('resolve', 'cid-1', 'success', 1),
       ('resolve', 'cid-2', 'failed', 2),
@@ -240,11 +246,33 @@ test('plex workflow is renamed to missing-tv-seasons, run history + member links
   assert.equal(run?.status, 'success', 'historical run status preserved');
 });
 
+test('movies workflow is renamed to movie-recommendations, run history + member links preserved (T168)', () => {
+  assert.equal(
+    (migrated.prepare("SELECT COUNT(*) c FROM workflows WHERE name = 'movies'").get() as { c: number }).c,
+    0,
+    'no orphaned `movies` workflow row lingers',
+  );
+  assert.equal(
+    (migrated.prepare("SELECT COUNT(*) c FROM workflows WHERE name = 'movie-recommendations'").get() as { c: number }).c,
+    1,
+    'workflow renamed to movie-recommendations',
+  );
+  const job = migrated
+    .prepare("SELECT job_name FROM workflow_jobs WHERE workflow_name = 'movie-recommendations'")
+    .get() as { job_name: string } | undefined;
+  assert.equal(job?.job_name, 'movie-snapshot', 'member job link carried over (job name unchanged)');
+  const run = migrated
+    .prepare("SELECT workflow_name, status FROM workflow_runs WHERE id = 'wr-movies-1'")
+    .get() as { workflow_name: string; status: string } | undefined;
+  assert.equal(run?.workflow_name, 'movie-recommendations', 'historical run re-pointed to the new name');
+  assert.equal(run?.status, 'success', 'historical run status preserved');
+});
+
 test('all seeded rows are preserved (no data loss across the bootstrap+migration)', () => {
   assert.equal((migrated.prepare('SELECT COUNT(*) c FROM work_items').get() as { c: number }).c, 3);
   assert.equal((migrated.prepare('SELECT COUNT(*) c FROM runs').get() as { c: number }).c, 1);
-  assert.equal((migrated.prepare('SELECT COUNT(*) c FROM workflow_runs').get() as { c: number }).c, 2);
-  assert.equal((migrated.prepare('SELECT COUNT(*) c FROM workflows').get() as { c: number }).c, 2);
+  assert.equal((migrated.prepare('SELECT COUNT(*) c FROM workflow_runs').get() as { c: number }).c, 3);
+  assert.equal((migrated.prepare('SELECT COUNT(*) c FROM workflows').get() as { c: number }).c, 3);
 });
 
 test('idempotent: a SECOND openDb() against the now-migrated file is a clean no-op', () => {

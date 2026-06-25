@@ -67,6 +67,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
   migrateRenamePlexWorkflow(db);
+  migrateRenameMoviesWorkflow(db);
 
   // Data migration: unify the manual-park concept on a single name (T033).
   // The old `dismissed` status is renamed to `ignored` — same semantics
@@ -203,6 +204,36 @@ export function migrateRenamePlexWorkflow(db: Database.Database): void {
         db.prepare("UPDATE workflow_runs SET workflow_name = 'missing-tv-seasons' WHERE workflow_name = 'plex'").run();
       }
       db.prepare("UPDATE workflows SET name = 'missing-tv-seasons' WHERE name = 'plex'").run();
+    });
+    rename();
+  } finally {
+    if (fkWasOn) db.pragma('foreign_keys = ON');
+  }
+}
+
+/**
+ * Idempotent rename (T168) of the movies workflow from the bare `movies` slug to
+ * the descriptive `movie-recommendations`. Mirrors `migrateRenamePlexWorkflow`:
+ * child FK references updated before the parent to avoid transient orphan violations.
+ */
+export function migrateRenameMoviesWorkflow(db: Database.Database): void {
+  const tableExists = (name: string): boolean =>
+    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name);
+  if (!tableExists('workflows')) return;
+  const hasOld = !!db.prepare("SELECT 1 FROM workflows WHERE name = 'movies'").get();
+  if (!hasOld) return;
+
+  const fkWasOn = db.pragma('foreign_keys', { simple: true }) === 1;
+  if (fkWasOn) db.pragma('foreign_keys = OFF');
+  try {
+    const rename = db.transaction(() => {
+      if (tableExists('workflow_jobs')) {
+        db.prepare("UPDATE workflow_jobs SET workflow_name = 'movie-recommendations' WHERE workflow_name = 'movies'").run();
+      }
+      if (tableExists('workflow_runs')) {
+        db.prepare("UPDATE workflow_runs SET workflow_name = 'movie-recommendations' WHERE workflow_name = 'movies'").run();
+      }
+      db.prepare("UPDATE workflows SET name = 'movie-recommendations' WHERE name = 'movies'").run();
     });
     rename();
   } finally {

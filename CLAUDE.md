@@ -74,7 +74,7 @@ profiles to local files), **perfumes** (Fragrantica scrape → headless Chrome
 fetch → parse → Claude CLI profile build), **missing-tv-seasons** (snapshot the Plex TV
 library by GUID → check TMDB for complete missing seasons → weekly digest push;
 the `src/jobs/plex/` folder, formerly the `plex` workflow),
-and **movies** (snapshot the Plex movie library by GUID → detect franchise gaps
+and **movie-recommendations** (snapshot the Plex movie library by GUID → detect franchise gaps
 via the TMDB Collections API AND fan out 8 Claude recommender branches over a
 stratified library sample → a `rec-merge` stage that TMDB-verifies/dedupes/balances
 the picks, enforces a quality bar (TMDB rating ≥7.0 with ≥50 votes) and targets ≥15
@@ -121,12 +121,12 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   every ready stage (deps all succeeded) up to a concurrency cap; `runWorkflow`
   passes the **effective** maxConcurrency (see T169 below) where the default is
   **4** (raised from 1). So a DAG with independent same-wave stages — e.g. the
-  movies `franchise-gaps` + 8 recommender branches all hanging off `movie-snapshot`
+  `movie-recommendations` `franchise-gaps` + 8 recommender branches all hanging off `movie-snapshot`
   — runs them concurrently (up to 4) once their shared dependency finishes, instead
   of one-after-another. Strictly-linear workflows (places, perfumes, the TV
   `missing-tv-seasons` workflow) are unaffected: only ever one stage is ready at a time. A workflow
   overrides the cap with **`maxConcurrency`** on its `WorkflowDefinition` — raise it
-  for a wider fan-out, or set **`1`** to force strict sequential order (the movies
+  for a wider fan-out, or set **`1`** to force strict sequential order (the `movie-recommendations`
   workflow sets `4` so its branches fan out; the cap is kept modest because each
   parallel stage spawns its OWN child process, and `executeDag` queues the excess).
   The cap is also **user-editable from the dashboard + code-reconciled (T169)** —
@@ -589,7 +589,7 @@ doubt, log it.
     (DB note: the legacy `dismissed` status is migrated to `ignored` on startup
     in `src/db/index.ts`.)
   - **Ignore-to-suppress a SURFACED (non-failed) item (T145).** The audit-style
-    workflows (`missing-tv-seasons`/`movies`) whose ledger tracks "have I notified this?" rather
+    workflows (`missing-tv-seasons`/`movie-recommendations`) whose ledger tracks "have I notified this?" rather
     than work-done need to ignore a still-VALID surfaced item (a franchise film the
     owner owns some-but-not-all of and deliberately doesn't want) — NOT a `failed`
     one. `ignoreSurfacedItem(jobName, itemKey)` in `store.ts` EXTENDS ignore to this
@@ -599,11 +599,11 @@ doubt, log it.
     ignored keys from BOTH the report (`ignoredItemKeys(jobName)`) AND notifications
     (`isWorkItemDone` already treats `ignored` as done, so it's never re-notified).
     Wired for movies via `POST /api/movie-gaps/:tmdbId/ignore` + a "Recommendations &
-    gaps" management section on the **movies workflow detail page** (`/workflows/movies`,
+    gaps" management section on the **movie-recommendations workflow detail page** (`/workflows/movie-recommendations`,
     gated to render only for that workflow — T152 folded it in from the old dedicated
     top-level `/movie-gaps` page); still MANUAL-ONLY (nothing auto-ignores). Reuse this shape for
     any future periodic-audit workflow that needs the owner to permanently silence a
-    factual-but-unwanted finding. The movies **recommendation layer** (T146) reuses
+    factual-but-unwanted finding. The movie-recommendations **recommendation layer** (T146) reuses
     it verbatim for recs: `ignoreSurfacedItem('movie-recs', <tmdbId>)` excludes a rec
     from both the merge (it filters `isWorkItemDone`) and the digest/report — so an
     ignored ("not interested") rec never resurfaces (its owner-facing API+UI trigger

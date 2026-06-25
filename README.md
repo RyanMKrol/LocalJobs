@@ -237,7 +237,7 @@ and the daemon **refuses to start** (it fails loud at load).
 It then appears in the dashboard automatically with history tracked from run one.
 
 > **Your jobs stay private by default.** This repo is public; it ships the
-> framework and the **places**, **perfumes**, **missing-tv-seasons**, and **movies** workflows as
+> framework and the **places**, **perfumes**, **missing-tv-seasons**, and **movie-recommendations** workflows as
 > worked examples. Every other `src/jobs/*.job.ts` (and any private subfolder you
 > add) is gitignored, so the jobs you add stay local-only unless you choose to
 > publish them. Every job's `data/` folder is **always** gitignored
@@ -440,7 +440,7 @@ scheduled-only) and re-scans fresh every run — the `work_items` ledger lives O
 the notify stage, as a "have I already notified this (show, season)?" log, so each
 backlog season is announced exactly once.
 
-**movies** — Plex movie franchise-gap audit. Three stages: `movie-snapshot`
+**movie-recommendations** — Plex movie franchise-gap audit. Three stages: `movie-snapshot`
 (snapshot the movie section by GUID — each film + the taste metadata Plex returns:
 genres/directors/decades/countries, written as a separate taste profile) →
 `franchise-gaps` (the DETERMINISTIC detector via the TMDB **Collections** API: for
@@ -454,13 +454,13 @@ idempotency (no `inputKeys()`, re-computes fresh, ledger only in notify). There 
 TMDB rating rides along for the owner's context only. Deduped per missing film so a
 gap is announced once (first run = one big digest of the whole backlog). A gap leaves
 future reports AND notifications ONLY when the owner manually **ignores** it. That
-manage/ignore UI lives on the **movies workflow detail page** (`/workflows/movies`),
+manage/ignore UI lives on the **movie-recommendations workflow detail page** (`/workflows/movie-recommendations`),
 in a "Recommendations & gaps" section that lists every current gap grouped by
 collection with a TMDB link + rating and an ✕ Ignore button →
 `POST /api/movie-gaps/:tmdbId/ignore` → `ignoreSurfacedItem`, which parks the ledger
 row `ignored`. (It used to be a dedicated top-level `/movie-gaps` page; T152 folded it
 into the workflow's own page since it only manages this one workflow's outputs — the
-section is gated to render only for the movies workflow.) Nothing auto-ignores.
+section is gated to render only for the movie-recommendations workflow.) Nothing auto-ignores.
 
 The same monthly run ALSO produces taste-based **recommendations** (T146) — the
 subjective half of the audit. Off the snapshot, **8 Claude recommender branches**
