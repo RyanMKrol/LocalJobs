@@ -133,7 +133,7 @@ export function WorkflowRunBackLink({
     return (
       <p className="muted">
         <a href={`/workflow-runs/${workflowRunId}`} title={workflowRunId}>
-          ← {workflowName} run · {shortId}
+          ← {shortId}
         </a>
       </p>
     );
