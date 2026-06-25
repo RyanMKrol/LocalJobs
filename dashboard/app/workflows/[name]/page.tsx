@@ -83,9 +83,16 @@ function MovieGapsManager() {
       )}
 
       <div className="movie-gaps-scroll">
-        {groupByCollection(active).map(([cname, films]) => (
+        {groupByCollection(active).map(([cname, films]) => {
+          const example = data?.collectionExamples?.[cname];
+          return (
           <div className="panel" key={cname}>
             <h3 style={{ fontSize: 15, marginTop: 0 }}>{cname}</h3>
+            {example && (
+              <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
+                You own: {example.title}{example.year != null ? ` (${example.year})` : ''}
+              </p>
+            )}
             <table>
               <thead>
                 <tr><th>Film</th><th>Year</th><th>TMDB</th><th></th></tr>
@@ -111,7 +118,8 @@ function MovieGapsManager() {
               </tbody>
             </table>
           </div>
-        ))}
+          );
+        })}
 
         {ignored.length > 0 && (
           <div className="panel">

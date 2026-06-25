@@ -336,6 +336,8 @@ export interface MovieGaps {
   generatedAt: string | null;
   collectionsChecked: number;
   gaps: MovieGap[];
+  /** Owned example film per collection name (from franchise-gaps.json). */
+  collectionExamples: Record<string, { title: string; year: number | null }>;
 }
 
 /** Scope for bulk stuck-item operations passed to the bulk API endpoints. */

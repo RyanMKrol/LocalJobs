@@ -1049,6 +1049,40 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
         assert.equal(res.status, 400);
       });
     });
+
+    await test('GET /api/movie-gaps returns collectionExamples from the gaps file', async () => {
+      const examplesPath = gapsPath;
+      writeFileSync(examplesPath, JSON.stringify({
+        generatedAt: '2026-06-01T00:00:00Z',
+        collectionsChecked: 2,
+        gaps: [
+          { collectionId: 1, collectionName: 'A', tmdbId: FRESH, title: 'Fresh', year: 2021, tmdbRating: 6 },
+        ],
+        collectionExamples: {
+          A: { title: 'Owned Film', year: 2019 },
+        },
+      }));
+      await withServer({}, async (base) => {
+        const data = (await (await fetch(`${base}/api/movie-gaps`)).json()) as {
+          collectionExamples: Record<string, { title: string; year: number | null }>;
+        };
+        assert.deepEqual(data.collectionExamples, { A: { title: 'Owned Film', year: 2019 } });
+      });
+    });
+
+    await test('GET /api/movie-gaps returns empty collectionExamples when field absent', async () => {
+      writeFileSync(gapsPath, JSON.stringify({
+        generatedAt: '2026-06-01T00:00:00Z',
+        collectionsChecked: 1,
+        gaps: [],
+      }));
+      await withServer({}, async (base) => {
+        const data = (await (await fetch(`${base}/api/movie-gaps`)).json()) as {
+          collectionExamples: unknown;
+        };
+        assert.deepEqual(data.collectionExamples, {});
+      });
+    });
   } finally {
     if (backup !== null) writeFileSync(gapsPath, backup);
     else rmSync(gapsPath, { force: true });

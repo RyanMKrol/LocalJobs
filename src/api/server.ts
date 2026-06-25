@@ -751,6 +751,7 @@ export function createApiServer(
           generatedAt: file.generatedAt || null,
           collectionsChecked: file.collectionsChecked ?? 0,
           gaps,
+          collectionExamples: file.collectionExamples ?? {},
         });
       }
 
