@@ -4430,7 +4430,7 @@
     {
       "id": "T174",
       "title": "Movies logs: name the items (e.g. which movies have no tmdb:// GUID), not just counts",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
