@@ -4578,7 +4578,8 @@
         "risk": [
           "full-stack"
         ]
-      }
+      },
+      "expectsTest": true
     },
     {
       "id": "T180",
@@ -4651,7 +4652,8 @@
         "layer": "job",
         "workType": "feature",
         "risk": []
-      }
+      },
+      "expectsTest": true
     },
     {
       "id": "T183",
@@ -4674,7 +4676,8 @@
         "layer": "job",
         "workType": "llm-prompt",
         "risk": []
-      }
+      },
+      "expectsTest": true
     },
     {
       "id": "T184",
@@ -4760,7 +4763,8 @@
         "risk": [
           "full-stack"
         ]
-      }
+      },
+      "expectsTest": true
     },
     {
       "id": "T151",
@@ -4824,7 +4828,8 @@
         "risk": [
           "touches-schema"
         ]
-      }
+      },
+      "expectsTest": true
     }
   ]
 }
