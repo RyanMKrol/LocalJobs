@@ -5216,7 +5216,7 @@
     {
       "id": "T202",
       "title": "Remove the static 'run' eyebrow label on the job-run page",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
