@@ -179,6 +179,15 @@ a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.
 .dag-gate.structural { border-style: dashed; }
 /* key pill — tiny pill showing only the artifact key (no producer name). */
 .dag-gate.gs-key { font-size: 9px; padding: 1px 5px; }
+/* Boustrophedon ("snake") layout — activated when wave columns overflow the container.
+   Row 0 runs L→R, row 1 R→L, row 2 L→R, … so consecutive waves stay adjacent. */
+.dag-snake-container { display: flex; flex-direction: column; width: 100%; }
+.dag-snake-row { display: flex; flex-direction: row; align-items: center; gap: 14px; }
+/* Between-row turn connector: ↓ glyph + any gate chip, aligned to the side where
+   the next row begins (right after L→R rows, left after R→L rows). */
+.dag-row-turn { display: flex; align-items: center; gap: 5px; padding: 2px 0; }
+.dag-row-turn-right { justify-content: flex-end; padding-right: 8px; }
+.dag-row-turn-left { justify-content: flex-start; padding-left: 8px; }
 /* skip-wave (non-adjacent) edge connector drawn as an SVG curved path */
 .dag-skip-path { fill: none; stroke: var(--grey); stroke-width: 1.5px; stroke-dasharray: 5 3; opacity: 0.6; }
 /* collapsible section heading (used on /backlog for all three sections) */
