@@ -144,7 +144,7 @@ export default function Backlog() {
       {pushWarning && <p className="muted" style={{ fontSize: 12 }}>⚠ Review saved locally but not pushed to GitHub ({pushWarning}). It will sync on the next successful push.</p>}
 
       <div>
-        <details>
+        <details open>
           <summary className="section-heading-summary">
             🤖 Harness-buildable ({buildable.length})
           </summary>
@@ -154,7 +154,7 @@ export default function Backlog() {
           </div>
         </details>
 
-        <details style={{ marginTop: 28 }}>
+        <details open style={{ marginTop: 28 }}>
           <summary className="section-heading-summary">
             🔒 Needs a human ({human.length})
           </summary>
