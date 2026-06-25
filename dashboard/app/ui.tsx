@@ -621,6 +621,21 @@ export function ThemeControls() {
               </div>
 
               <div className="theme-section">
+                <div className="theme-section-label">Font</div>
+                <div className="theme-grid">
+                  {FONTS.map((f) => (
+                    <button
+                      key={f.id}
+                      className={`theme-opt${font === f.id ? ' active' : ''}`}
+                      onClick={() => setFont(f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="theme-section">
                 <div className="theme-section-label">Mode</div>
                 <div className="theme-grid">
                   {MODES.map((m) => (
@@ -635,21 +650,6 @@ export function ThemeControls() {
                   ))}
                 </div>
                 <p className="theme-section-hint">System follows your OS dark/light preference.</p>
-              </div>
-
-              <div className="theme-section">
-                <div className="theme-section-label">Font</div>
-                <div className="theme-grid">
-                  {FONTS.map((f) => (
-                    <button
-                      key={f.id}
-                      className={`theme-opt${font === f.id ? ' active' : ''}`}
-                      onClick={() => setFont(f.id)}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               <div className="theme-section">
