@@ -5539,7 +5539,7 @@
     {
       "id": "T213",
       "title": "Workflow card status pill always below the title on the overview page",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
