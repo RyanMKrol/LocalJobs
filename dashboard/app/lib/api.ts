@@ -321,6 +321,27 @@ export interface MissingSeasons {
   shows: MissingSeason[];
 }
 
+/** One recommendation (movies workflow), overlaid with ledger status. */
+export interface MovieRec {
+  tmdbId: number;
+  title: string;
+  year: number | null;
+  reason: string;
+  lens: string;
+  genre: string;
+  tmdbRating: number | null;
+  /** Already digest-notified — true once announced. */
+  notified: boolean;
+  /** Owner manually suppressed it — excluded from future reports + notifications. */
+  ignored: boolean;
+}
+
+export interface MovieRecs {
+  generatedAt: string | null;
+  pooled: number;
+  recommendations: MovieRec[];
+}
+
 /** One detected franchise gap (movies workflow), overlaid with ledger status. */
 export interface MovieGap {
   collectionId: number;
@@ -396,6 +417,11 @@ export const api = {
   movieGaps: () => get<MovieGaps>('/api/movie-gaps'),
   ignoreMovieGap: (tmdbId: number) =>
     post<{ ok: boolean; ignored: number }>(`/api/movie-gaps/${tmdbId}/ignore`),
+
+  // Movies recommendations: list current recs + manually ignore one (T209).
+  movieRecs: () => get<MovieRecs>('/api/movie-recs'),
+  ignoreMovieRec: (tmdbId: number) =>
+    post<{ ok: boolean; ignored: number }>(`/api/movie-recs/${tmdbId}/ignore`),
 
   recentWorkflowRuns: (limit = 50) => get<{ runs: WorkflowRun[] }>(`/api/workflow-runs?limit=${limit}`),
   workflows: () => get<{ workflows: Workflow[] }>('/api/workflows'),

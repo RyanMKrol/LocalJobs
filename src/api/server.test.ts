@@ -1216,6 +1216,85 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   }
 }
 
+// ── movie-recs endpoints (T209): GET overlays ignored/notified; POST ignores ──
+{
+  const { moviesConfig } = await import('../jobs/movies/config.js');
+  const { RECS_JOB, recKey } = await import('../jobs/movies/recs.js');
+  const { markWorkItem: mark, ignoredItemKeys: ignoredKeys } = await import('../db/store.js');
+
+  const NOTIFIED_REC = 9990001;
+  const FRESH_REC    = 9990002;
+  const IGNORE_REC   = 9990003;
+  const recsPath = moviesConfig.recsOut;
+  const hadFile = existsSync(recsPath);
+  const backup = hadFile ? readFileSync(recsPath, 'utf8') : null;
+  mkdirSync(moviesConfig.outDir, { recursive: true });
+  const makeRec = (tmdbId: number, title: string) => ({
+    tmdbId, title, year: 2020, reason: 'test', lens: 'test-lens', genre: 'Drama', tmdbRating: 7.5,
+  });
+  writeFileSync(recsPath, JSON.stringify({
+    generatedAt: '2026-06-01T00:00:00Z',
+    pooled: 30,
+    recommendations: [
+      makeRec(NOTIFIED_REC, 'Already Notified'),
+      makeRec(FRESH_REC, 'Fresh Rec'),
+      makeRec(IGNORE_REC, 'To Ignore'),
+    ],
+  }));
+  mark(RECS_JOB, recKey(NOTIFIED_REC), 'success'); // pretend it was already digested
+
+  try {
+    await test('GET /api/movie-recs overlays notified + ignored status', async () => {
+      await withServer({}, async (base) => {
+        const data = (await (await fetch(`${base}/api/movie-recs`)).json()) as {
+          recommendations: { tmdbId: number; notified: boolean; ignored: boolean }[];
+        };
+        const byId = new Map(data.recommendations.map((r) => [r.tmdbId, r]));
+        assert.equal(byId.get(NOTIFIED_REC)?.notified, true, 'already-digested rec is flagged notified');
+        assert.equal(byId.get(FRESH_REC)?.notified, false, 'fresh rec is not yet notified');
+        assert.equal(byId.get(FRESH_REC)?.ignored, false);
+      });
+    });
+
+    await test('POST /api/movie-recs/:id/ignore suppresses a rec (manual ignore)', async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/movie-recs/${IGNORE_REC}/ignore`, { method: 'POST' });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; ignored: number };
+        assert.equal(body.ok, true);
+        assert.ok(body.ignored >= 1);
+        assert.ok(ignoredKeys(RECS_JOB).has(recKey(IGNORE_REC)), 'ledger row is now ignored');
+
+        const data = (await (await fetch(`${base}/api/movie-recs`)).json()) as {
+          recommendations: { tmdbId: number; ignored: boolean }[];
+        };
+        assert.equal(data.recommendations.find((r) => r.tmdbId === IGNORE_REC)?.ignored, true, 'GET reflects the ignore');
+      });
+    });
+
+    await test('POST /api/movie-recs/:id/ignore rejects a non-numeric id (400)', async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/movie-recs/not-a-number/ignore`, { method: 'POST' });
+        assert.equal(res.status, 400);
+      });
+    });
+
+    await test('GET /api/movie-recs returns empty list when file absent', async () => {
+      rmSync(recsPath, { force: true });
+      await withServer({}, async (base) => {
+        const data = (await (await fetch(`${base}/api/movie-recs`)).json()) as {
+          generatedAt: null; recommendations: unknown[];
+        };
+        assert.equal(data.generatedAt, null);
+        assert.deepEqual(data.recommendations, []);
+      });
+    });
+  } finally {
+    if (backup !== null) writeFileSync(recsPath, backup);
+    else rmSync(recsPath, { force: true });
+  }
+}
+
 // ── missing-seasons endpoints (T179): GET overlays ignored/notified; POST ignores ──
 {
   const { plexConfig } = await import('../jobs/plex/config.js');

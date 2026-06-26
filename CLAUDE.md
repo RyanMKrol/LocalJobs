@@ -643,8 +643,10 @@ doubt, log it.
     factual-but-unwanted finding. The movie-recommendations **recommendation layer** (T146) reuses
     it verbatim for recs: `ignoreSurfacedItem('movie-recs', <tmdbId>)` excludes a rec
     from both the merge (it filters `isWorkItemDone`) and the digest/report — so an
-    ignored ("not interested") rec never resurfaces (its owner-facing API+UI trigger
-    is a follow-up; see `.harness/LIMITATIONS.md`). A `movie-recs` ledger row keyed by
+    ignored ("not interested") rec never resurfaces. The owner-facing trigger is
+    `POST /api/movie-recs/:tmdbId/ignore` with a dashboard Recommendations section on the
+    movie-recommendations workflow detail page (T209, mirroring the franchise-gaps section).
+    A `movie-recs` ledger row keyed by
     the recommended film's tmdb id also serves as the **never-re-recommend** dedup log
     (`success` = already recommended), distinct from the `movie-gaps-notify` ledger.
   - **Bulk unstick/ignore with scope (T118).** The per-item controls above are
