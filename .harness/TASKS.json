@@ -5488,7 +5488,7 @@
     {
       "id": "T211",
       "title": "Align Film/Year/TMDB columns across collections on the movie gaps list",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
