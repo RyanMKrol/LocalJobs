@@ -5416,7 +5416,7 @@
     {
       "id": "T209",
       "title": "Surface movie recommendations as their own section (+ per-item ignore wiring)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
