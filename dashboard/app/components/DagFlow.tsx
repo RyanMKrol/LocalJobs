@@ -17,7 +17,7 @@
  * Libraries: @xyflow/react ^12, @dagrejs/dagre.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ReactFlow,
   Background,
@@ -43,7 +43,7 @@ function StageNode({ data }: { data: { label: string; status: string; href: stri
   // the left and the source handle on the right. Hidden + non-connectable (this is a read-only DAG),
   // but they MUST exist for the dependency edges to draw.
   return (
-    <a href={data.href} style={{ textDecoration: 'none' }}>
+    <a href={data.href} style={{ textDecoration: 'none', pointerEvents: 'auto' }}>
       <Handle type="target" position={Position.Left} isConnectable={false} style={{ opacity: 0, border: 'none', background: 'transparent' }} />
       <div className={`dag-node rf-dag-node ${data.status}`} style={{ cursor: 'pointer', minWidth: 156 }}>
         <div className="dag-node-name">{data.label}</div>
@@ -196,11 +196,19 @@ function buildLayout(
       const edgeKey = `${dep}\x00${m.job_name}`;
       const gateLabel = gateLabelByEdge.get(edgeKey);
       const gateData = allGates.find((gt) => gt.producer === dep && gt.consumer === m.job_name);
+      const gateHref = gateData?.href;
+      // A gate mark is a clickable link to its detail page (matching the other graph styles), so it
+      // needs pointer-events re-enabled (React Flow edge labels are non-interactive by default).
+      const label: ReactNode = gateLabel
+        ? (gateHref
+            ? <a href={gateHref} style={{ color: 'var(--muted)', textDecoration: 'none', pointerEvents: 'all', cursor: 'pointer' }}>{gateLabel}</a>
+            : gateLabel)
+        : undefined;
       edges.push({
         id: `${dep}->${m.job_name}`,
         source: dep,
         target: m.job_name,
-        label: gateLabel,
+        label,
         labelStyle: { fill: 'var(--muted)', fontSize: 10 },
         labelBgStyle: { fill: 'var(--panel-2)', fillOpacity: 0.9 },
         style: {
@@ -209,7 +217,9 @@ function buildLayout(
           opacity: 0.6,
         },
         animated: false,
-        type: 'smoothstep',
+        // bezier (default) curves fan cleanly from one source to many targets, instead of the
+        // smoothstep orthogonal "bus" that made the parallel branches look chained together.
+        type: 'default',
       });
     }
   }
