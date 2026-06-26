@@ -237,7 +237,7 @@ and the daemon **refuses to start** (it fails loud at load).
 It then appears in the dashboard automatically with history tracked from run one.
 
 > **Your jobs stay private by default.** This repo is public; it ships the
-> framework and the **places**, **perfumes**, **missing-tv-seasons**, and **movie-recommendations** workflows as
+> framework and the **places**, **perfumes**, **missing-tv-seasons**, **movie-recommendations**, and **tv-recommendations** workflows as
 > worked examples. Every other `src/jobs/*.job.ts` (and any private subfolder you
 > add) is gitignored, so the jobs you add stay local-only unless you choose to
 > publish them. Every job's `data/` folder is **always** gitignored
@@ -495,6 +495,20 @@ can be **ignore-to-suppress**'d like a gap. The quality bar (`MOVIES_RECS_MIN_RA
 (`MOVIES_RECS_TOPUP_ROUNDS`), per-branch ask (`MOVIES_RECS_PER_BRANCH_ASK`), and the rest
 are all `MOVIES_RECS_*` env-overridable (model, sample size, per-genre cap). Live LLM/TMDB
 runs are the owner's.
+
+**tv-recommendations** — Plex TV show recommendations workflow (`src/jobs/tv-recs/`). A standalone
+counterpart to **movie-recommendations** for TV shows, separate from **missing-tv-seasons** (which
+only audits completely-missing seasons). Currently one stage (`tv-snapshot`); later tasks will add
+recommender branches, merge, and notify stages in the same fan-out pattern as movies. Scheduled
+monthly (1st of the month, 09:00). **`tv-snapshot`** connects to Plex via
+`resolvePlexHost()`/`plexGet` (reused from the plex client — self-heals a changed DHCP IP), reads
+the TV library section (`PLEX_TV_SECTION`, default `5`), builds a per-show snapshot keyed by TMDB
+GUID, and rolls up a **taste profile** (per-genre / per-role / per-decade / per-country owned
+counts). Writes `snapshot.json` + `taste-profile.json` to `src/jobs/tv-recs/data/out/`. Like the
+movies snapshot, re-scans fresh every run (no inputKeys — not limitable). Shares Plex/TMDB
+connectivity env vars (`PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN`) with the existing plex
+workflows. TV-recs-specific knobs are all `TV_RECS_*` env-overridable (`TV_RECS_TARGET`,
+`TV_RECS_MIN_RATING` 7.0, `TV_RECS_MIN_VOTES` 50, `TV_RECS_GENRE_CAP`, `TV_RECS_SAMPLE`, etc.).
 
 **Typed-artifact contracts.** Each stage boundary declares `produces`/`consumes`
 contracts (`contracts.ts` in each workflow). A shape violation at a gate fails
