@@ -2,11 +2,22 @@
 
 import { use, useState } from 'react';
 import { Dag } from '../../components/Dag';
+import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api, type MissingSeason, type MovieGap, type MovieRec } from '../../lib/api';
 import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
 
 /** Workflow names that show the Missing seasons section. */
 const MISSING_SEASONS_WORKFLOWS = new Set(['missing-tv-seasons']);
+
+/**
+ * Workflows that have a dedicated, workflow-specific output manager component
+ * (MovieRecsManager, MovieGapsManager, MissingSeasonsManager). The generic
+ * WorkflowOutputSection is rendered for all OTHER workflows (T205).
+ */
+const WORKFLOWS_WITH_SPECIFIC_MANAGERS = new Set([
+  'movie-recommendations',
+  'missing-tv-seasons',
+]);
 
 /** Group gaps by collection name, sorted by name; films sorted by year then title. */
 function groupByCollection(gaps: MovieGap[]): [string, MovieGap[]][] {
@@ -706,6 +717,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       {name === 'movie-recommendations' && <MovieRecsManager />}
       {name === 'movie-recommendations' && <MovieGapsManager />}
       {MISSING_SEASONS_WORKFLOWS.has(name) && <MissingSeasonsManager />}
+      {!WORKFLOWS_WITH_SPECIFIC_MANAGERS.has(name) && <WorkflowOutputSection workflowName={name} />}
 
       <h2>Danger zone</h2>
       <div className="panel" style={{ borderLeft: '3px solid var(--red)', padding: 18 }}>

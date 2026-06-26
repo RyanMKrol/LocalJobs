@@ -352,6 +352,28 @@ job MAY colocate a service it owns).
   `data/out/` tree (`safeOutputMarkdown` in `server.ts` — resolve + realpath +
   prefix + `/data/out/` checks; no traversal, files only, no paid/remote calls),
   so keep output artifacts under `data/out/`.
+- **Unified Output section on the workflow detail page (T205).** Every workflow's detail
+  page shows a consolidated **Output** section backed by `GET /api/workflows/:name/output-items`
+  → `workflowTerminalItems(lastWave)` in `src/db/store.ts`. The convention is:
+  - **The terminal stage's `work_items` ledger IS the output list.** `workflowTerminalItems`
+    queries `work_items` for the DAG's final-wave job names with `status='success'`, ordered
+    newest first. Items are de-duped by `(job_name, item_key)` by construction (the ledger has
+    a UNIQUE key per pair), so each produced item appears exactly once regardless of how many
+    runs have processed it.
+  - **Markdown artifact workflows** (places, perfumes): the terminal stage records
+    `detail: { name, markdown: <path> }` on each `markWorkItem` call (T110). The output
+    section shows a "View" button per item that fetches `GET /api/workflows/:name/output?job=&key=`
+    (same guard as the per-run endpoint: `safeOutputMarkdown`, confined to `data/out/` tree)
+    and opens the content in a markdown popover.
+  - **Audit-style workflows** (movie-recommendations, missing-tv-seasons): these already have
+    dedicated, richer output managers (`MovieRecsManager`, `MovieGapsManager`,
+    `MissingSeasonsManager`) on the detail page. They are EXCLUDED from the generic section
+    (the `WORKFLOWS_WITH_SPECIFIC_MANAGERS` set in `page.tsx`). New dedicated managers should
+    be added to that set; standard build workflows use the generic section automatically.
+  - **Adding a new workflow that produces output**: make the terminal stage call
+    `markWorkItem(ctx, key, 'success', { detail: { name: ..., markdown: <path> } })` for
+    markdown artifact items, OR just `markWorkItem(ctx, key, 'success')` for non-markdown
+    items. The output section renders automatically — no extra wiring needed.
 - Long jobs: set a realistic `timeoutMs` so a hang is killed, not left forever.
 - Heavy external calls (Places API, headless browser): rate-limit inside the
   job, and make progress observable.

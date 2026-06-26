@@ -46,6 +46,8 @@ import {
   workItemIoRows,
   workflowHasRunLinkage,
   workItemMarkdownPath,
+  workflowTerminalItems,
+  type OutputItem,
   serviceCallsInLastSeconds,
   serviceCallsThisMonth,
   serviceCallsToday,
@@ -1161,6 +1163,54 @@ export function createApiServer(
           // one factory wired as both produces[key] and consumes[key]), the detail
           // page collapses to a single panel; an asymmetric gate keeps both sides.
           identical: shapesIdentical(producedShape, consumedShape),
+        });
+      }
+
+      // GET /api/workflows/:name/output-items  (T205)
+      // Return the terminal-stage work items with status='success', de-duped by
+      // (job_name, item_key). Powers the unified Output section on every workflow's
+      // detail page — items are naturally de-duped because the ledger has a UNIQUE
+      // key per (job_name, item_key). Read-only, DB only, no paid/remote calls.
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'output-items' && parts.length === 4) {
+        const name = parts[2];
+        const refs = getWorkflowJobs(name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
+        if (refs.length === 0) return json(res, 200, { items: [] as OutputItem[], terminalJobs: [] as string[] });
+        let lastWave: string[] = [];
+        try {
+          const dag = buildDag(refs);
+          lastWave = dag.waves[dag.waves.length - 1] ?? [];
+        } catch {
+          return json(res, 200, { items: [] as OutputItem[], terminalJobs: [] as string[] });
+        }
+        return json(res, 200, { items: workflowTerminalItems(lastWave), terminalJobs: lastWave });
+      }
+
+      // GET /api/workflows/:name/output?job=&key=  (T205)
+      // Return the markdown artifact for one workflow output item, not scoped to a
+      // specific run. Same guard as the per-run /output endpoint: safeOutputMarkdown
+      // confines the read to a .md file inside a job's own data/out/ tree.
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'output' && parts.length === 4) {
+        const jobName = url.searchParams.get('job');
+        const key = url.searchParams.get('key');
+        if (!jobName || !key) return json(res, 400, { error: 'job and key query params are required' });
+        const safe = safeOutputMarkdown(workItemMarkdownPath(jobName, key));
+        if (!safe) return json(res, 200, { found: false, job: jobName, key });
+        let content: string;
+        try {
+          content = readFileSync(safe, 'utf8');
+        } catch {
+          return json(res, 200, { found: false, job: jobName, key });
+        }
+        const MAX = 512 * 1024;
+        const truncated = content.length > MAX;
+        return json(res, 200, {
+          found: true,
+          job: jobName,
+          key,
+          file: relativePath(JOBS_ROOT, safe),
+          bytes: Buffer.byteLength(content),
+          truncated,
+          content: truncated ? content.slice(0, MAX) : content,
         });
       }
 

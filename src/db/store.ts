@@ -537,6 +537,43 @@ export function workItemMarkdownPath(jobName: string, itemKey: string): string |
   }
 }
 
+/** One terminal-stage output item for the unified workflow output section (T205). */
+export interface OutputItem {
+  jobName: string;
+  itemKey: string;
+  /** Human-readable name from the item's detail.name, if recorded. */
+  name: string | null;
+  /** Whether a markdown artifact path is recorded in detail.markdown. */
+  hasMarkdown: boolean;
+  updatedAt: string;
+}
+
+/**
+ * Return all success work_items for the given terminal-stage job names, with their
+ * detail parsed into name + hasMarkdown fields. De-duped by (job_name, item_key)
+ * by construction (the work_items ledger is keyed by that pair). Ordered newest first.
+ * Used by GET /api/workflows/:name/output-items (T205).
+ */
+export function workflowTerminalItems(terminalJobNames: string[]): OutputItem[] {
+  if (terminalJobNames.length === 0) return [];
+  const ph = terminalJobNames.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT job_name, item_key, detail, updated_at FROM work_items WHERE job_name IN (${ph}) AND status = 'success' ORDER BY updated_at DESC`,
+  ).all(...terminalJobNames) as { job_name: string; item_key: string; detail: string | null; updated_at: string }[];
+  return rows.map((r) => {
+    let name: string | null = null;
+    let hasMarkdown = false;
+    if (r.detail) {
+      try {
+        const d = JSON.parse(r.detail) as Record<string, unknown>;
+        name = typeof d.name === 'string' && d.name ? d.name : null;
+        hasMarkdown = typeof d.markdown === 'string' && !!d.markdown;
+      } catch { /* ignore malformed detail */ }
+    }
+    return { jobName: r.job_name, itemKey: r.item_key, name, hasMarkdown, updatedAt: r.updated_at };
+  });
+}
+
 /** Count of work items per status for a job, e.g. { success: 1700, failed: 3 }. */
 export function workItemCounts(jobName: string): Record<string, number> {
   const rows = db.prepare('SELECT status, COUNT(*) AS n FROM work_items WHERE job_name = ? GROUP BY status')

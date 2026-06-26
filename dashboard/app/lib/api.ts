@@ -365,6 +365,22 @@ export interface MovieGaps {
   collectionExamples: Record<string, { title: string; year: number | null }>;
 }
 
+/** One terminal-stage output item from the unified workflow output section (T205). */
+export interface WorkflowOutputItem {
+  jobName: string;
+  itemKey: string;
+  /** Human-readable name from detail.name, if the job recorded one. */
+  name: string | null;
+  /** True when the work item has a markdown artifact path in detail.markdown. */
+  hasMarkdown: boolean;
+  updatedAt: string;
+}
+
+export interface WorkflowOutputItems {
+  items: WorkflowOutputItem[];
+  terminalJobs: string[];
+}
+
 /** Scope for bulk stuck-item operations passed to the bulk API endpoints. */
 export type BulkScope =
   | { type: 'all' }
@@ -446,6 +462,14 @@ export const api = {
   workflowRunOutput: (id: string, job: string, key: string) =>
     get<WorkflowRunOutput>(
       `/api/workflow-runs/${id}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,
+    ),
+  // T205: unified output section — terminal-stage work items for a workflow.
+  workflowOutputItems: (name: string) =>
+    get<WorkflowOutputItems>(`/api/workflows/${encodeURIComponent(name)}/output-items`),
+  // T205: markdown artifact for one output item (not scoped to a specific run).
+  workflowOutput: (name: string, job: string, key: string) =>
+    get<WorkflowRunOutput>(
+      `/api/workflows/${encodeURIComponent(name)}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,
     ),
   runWorkflow: (name: string, limit?: number) =>
     post<{ ok: boolean; limit: number | null }>(`/api/workflows/${name}/run`, limit !== undefined ? { limit } : undefined),
