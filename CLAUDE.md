@@ -649,6 +649,23 @@ doubt, log it.
     A `movie-recs` ledger row keyed by
     the recommended film's tmdb id also serves as the **never-re-recommend** dedup log
     (`success` = already recommended), distinct from the `movie-gaps-notify` ledger.
+  - **Bulk collection/show dismiss (T210).** Each grouped output section on the
+    workflow detail page (`dashboard/app/workflows/[name]/page.tsx`) — movie franchise
+    gaps grouped by collection (`MovieGapsManager` / `groupByCollection`) and missing TV
+    seasons grouped by show (`MissingSeasonsManager` / `groupByShow`) — shows an
+    **"✕ Ignore all"** button at each group header. After a confirm it ignores all
+    currently-active items in that group via `ignoreSurfacedItems(jobName, itemKeys[])`
+    in `src/db/store.ts` (a transactional batch of the per-item upsert). **CRITICAL
+    semantics: this is NOT a standing rule on the collection.** Only the exact item
+    keys surfaced right now are ignored; a new item key appearing in a later run (a
+    4th film in the collection, a new missing season) surfaces fresh and is NOT
+    auto-ignored. Do NOT persist any collection-level "ignored" flag. Backed by two
+    endpoints: `POST /api/movie-gaps/ignore-bulk { tmdbIds: number[] }` (each →
+    `ignoreSurfacedItem(MOVIE_GAPS_JOB, gapKey(id))`) and `POST /api/missing-seasons/ignore-bulk
+    { items: { tmdbId, season }[] }` (each → `ignoreSurfacedItem(PLEX_SEASONS_JOB,
+    pairKey(tmdbId, season))`), both behind the global loopback/token mutation guard.
+    Client helpers: `api.ignoreMovieGapBulk(tmdbIds)` and
+    `api.missingSeasonsIgnoreBulk(items)` in `dashboard/app/lib/api.ts`.
   - **Bulk unstick/ignore with scope (T118).** The per-item controls above are
     complemented by bulk operations: `bulkUnstickItems(scope)` /
     `bulkIgnoreItems(scope)` in `src/db/store.ts`, backed by

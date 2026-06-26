@@ -612,6 +612,28 @@ export function ignoreSurfacedItem(jobName: string, itemKey: string): number {
   `).run(jobName, itemKey, itemKey).changes;
 }
 
+/**
+ * Bulk-ignore multiple surfaced items in a single transaction. Calls
+ * {@link ignoreSurfacedItem} semantics for each key: only the exact keys passed are
+ * ignored — no collection-level rule is persisted. Returns the total rows affected.
+ */
+export function ignoreSurfacedItems(jobName: string, itemKeys: string[]): number {
+  if (itemKeys.length === 0) return 0;
+  const stmt = db.prepare(`
+    INSERT INTO work_items (job_name, item_key, status, attempts, root_key)
+    VALUES (?, ?, 'ignored', 0, ?)
+    ON CONFLICT(job_name, item_key) DO UPDATE SET
+      status = 'ignored',
+      updated_at = datetime('now')
+  `);
+  const run = db.transaction((keys: string[]) => {
+    let total = 0;
+    for (const key of keys) total += stmt.run(jobName, key, key).changes;
+    return total;
+  });
+  return run(itemKeys);
+}
+
 /** The set of `item_key`s a job has manually `ignored` — used to exclude ignored
  *  gaps from a fresh audit's report (the audit recomputes every run, so it must
  *  re-filter against this each time). */

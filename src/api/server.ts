@@ -59,6 +59,7 @@ import {
   unstickWorkItem,
   ignoreWorkItem,
   ignoreSurfacedItem,
+  ignoreSurfacedItems,
   ignoredItemKeys,
   isWorkItemDone,
   ignoredItems,
@@ -918,6 +919,22 @@ export function createApiServer(
         return json(res, 200, { ok: true, ignored });
       }
 
+      // POST /api/movie-gaps/ignore-bulk { tmdbIds: number[] } — bulk-ignore a set
+      // of franchise gap items (e.g. all items in a collection). Only the exact
+      // tmdbIds supplied are ignored; no collection-level flag is persisted so a new
+      // gap appearing later for the same collection will surface fresh. Guarded by
+      // the global loopback/token mutation check. Idempotent.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'movie-gaps' && parts[2] === 'ignore-bulk') {
+        const body: { tmdbIds?: unknown } = await readBody(req).catch(() => ({}));
+        const ids = body.tmdbIds;
+        if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+          return json(res, 400, { error: 'tmdbIds must be an array of positive integers' });
+        }
+        const keys = (ids as number[]).map((id) => gapKey(id));
+        const ignored = ignoreSurfacedItems(MOVIE_GAPS_JOB, keys);
+        return json(res, 200, { ok: true, ignored });
+      }
+
       // GET /api/movie-recs — the current recommendations (read from the movies
       // workflow's recommendations.json), each overlaid with its ledger status:
       // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
@@ -995,6 +1012,33 @@ export function createApiServer(
           return json(res, 400, { error: 'tmdbId and season must be positive integers' });
         }
         const ignored = ignoreSurfacedItem(PLEX_SEASONS_JOB, pairKey(tmdbId, season));
+        return json(res, 200, { ok: true, ignored });
+      }
+
+      // POST /api/missing-seasons/ignore-bulk { items: { tmdbId, season }[] } —
+      // bulk-ignore a set of season gaps (e.g. all seasons for a show). Only the
+      // exact items supplied are ignored; a new season appearing in a later run for
+      // the same show will surface fresh. Guarded by the global loopback/token
+      // mutation check. Idempotent.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'missing-seasons' && parts[2] === 'ignore-bulk') {
+        const body: { items?: unknown } = await readBody(req).catch(() => ({}));
+        const items = body.items;
+        if (
+          !Array.isArray(items) ||
+          items.some(
+            (it) =>
+              typeof it !== 'object' ||
+              it === null ||
+              !Number.isInteger((it as Record<string, unknown>).tmdbId) ||
+              ((it as Record<string, unknown>).tmdbId as number) <= 0 ||
+              !Number.isInteger((it as Record<string, unknown>).season) ||
+              ((it as Record<string, unknown>).season as number) <= 0,
+          )
+        ) {
+          return json(res, 400, { error: 'items must be an array of { tmdbId, season } objects with positive integers' });
+        }
+        const keys = (items as { tmdbId: number; season: number }[]).map((it) => pairKey(it.tmdbId, it.season));
+        const ignored = ignoreSurfacedItems(PLEX_SEASONS_JOB, keys);
         return json(res, 200, { ok: true, ignored });
       }
 

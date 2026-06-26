@@ -155,6 +155,7 @@ function MovieRecsManager() {
 function MovieGapsManager() {
   const { data, error } = usePoll(() => api.movieGaps(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
+  const [busyCollection, setBusyCollection] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const all = data?.gaps ?? [];
@@ -171,6 +172,20 @@ function MovieGapsManager() {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function ignoreCollection(cname: string, films: MovieGap[]) {
+    const count = films.length;
+    if (!confirm(`Ignore all ${count} gap${count === 1 ? '' : 's'} in “${cname}”? Only these specific films will be ignored — any new gaps added to this collection later will still surface.`)) return;
+    setBusyCollection(cname);
+    setErr(null);
+    try {
+      await api.ignoreMovieGapBulk(films.map((f) => f.tmdbId));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyCollection(null);
     }
   }
 
@@ -207,7 +222,17 @@ function MovieGapsManager() {
           const example = data?.collectionExamples?.[cname];
           return (
           <div className="panel" key={cname}>
-            <h3 style={{ fontSize: 15, marginTop: 0 }}>{cname}</h3>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+              <h3 style={{ fontSize: 15, marginTop: 0, marginBottom: 0 }}>{cname}</h3>
+              <button
+                className="btn btn-sm"
+                onClick={() => ignoreCollection(cname, films)}
+                disabled={busyCollection === cname}
+                style={{ flexShrink: 0 }}
+              >
+                {busyCollection === cname ? 'Ignoring…' : '✕ Ignore all'}
+              </button>
+            </div>
             {example && (
               <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
                 You own: {example.title}{example.year != null ? ` (${example.year})` : ''}
@@ -295,6 +320,7 @@ function groupByShow(seasons: MissingSeason[]): [MissingSeason, number[]][] {
 function MissingSeasonsManager() {
   const { data, error } = usePoll(() => api.missingSeasons(), 5000);
   const [busy, setBusy] = useState<string | null>(null);
+  const [busyShow, setBusyShow] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const all = data?.shows ?? [];
@@ -313,6 +339,20 @@ function MissingSeasonsManager() {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function ignoreShow(meta: MissingSeason, nums: number[]) {
+    const count = nums.length;
+    if (!confirm(`Ignore all ${count} missing season${count === 1 ? '' : 's'} of "${meta.title}"? Only these specific seasons will be ignored — any new missing seasons detected later will still surface.`)) return;
+    setBusyShow(meta.tmdbId);
+    setErr(null);
+    try {
+      await api.missingSeasonsIgnoreBulk(nums.map((season) => ({ tmdbId: meta.tmdbId, season })));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyShow(null);
     }
   }
 
@@ -345,12 +385,22 @@ function MissingSeasonsManager() {
       <div className="movie-gaps-scroll">
         {groupByShow(active).map(([meta, nums]) => (
           <div className="panel" key={meta.tmdbId}>
-            <h3 style={{ fontSize: 15, marginTop: 0 }}>
-              <a href={`https://www.themoviedb.org/tv/${meta.tmdbId}`} target="_blank" rel="noreferrer">
-                {meta.title}
-              </a>
-              {meta.year ? <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>({meta.year})</span> : null}
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+              <h3 style={{ fontSize: 15, marginTop: 0, marginBottom: 0 }}>
+                <a href={`https://www.themoviedb.org/tv/${meta.tmdbId}`} target="_blank" rel="noreferrer">
+                  {meta.title}
+                </a>
+                {meta.year ? <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>({meta.year})</span> : null}
+              </h3>
+              <button
+                className="btn btn-sm"
+                onClick={() => ignoreShow(meta, nums)}
+                disabled={busyShow === meta.tmdbId}
+                style={{ flexShrink: 0 }}
+              >
+                {busyShow === meta.tmdbId ? 'Ignoring…' : '✕ Ignore all'}
+              </button>
+            </div>
             <table>
               <thead>
                 <tr><th>Season</th><th>TMDB status</th><th></th></tr>

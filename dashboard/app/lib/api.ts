@@ -412,11 +412,15 @@ export const api = {
   missingSeasons: () => get<MissingSeasons>('/api/missing-seasons'),
   missingSeasonsIgnore: (tmdbId: number, season: number) =>
     post<{ ok: boolean; ignored: number }>(`/api/missing-seasons/${tmdbId}/${season}/ignore`),
+  missingSeasonsIgnoreBulk: (items: { tmdbId: number; season: number }[]) =>
+    post<{ ok: boolean; ignored: number }>('/api/missing-seasons/ignore-bulk', { items }),
 
   // Movies franchise-gap audit: list current gaps + manually ignore one (T145).
   movieGaps: () => get<MovieGaps>('/api/movie-gaps'),
   ignoreMovieGap: (tmdbId: number) =>
     post<{ ok: boolean; ignored: number }>(`/api/movie-gaps/${tmdbId}/ignore`),
+  ignoreMovieGapBulk: (tmdbIds: number[]) =>
+    post<{ ok: boolean; ignored: number }>('/api/movie-gaps/ignore-bulk', { tmdbIds }),
 
   // Movies recommendations: list current recs + manually ignore one (T209).
   movieRecs: () => get<MovieRecs>('/api/movie-recs'),

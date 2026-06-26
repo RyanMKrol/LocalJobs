@@ -5,7 +5,7 @@ import {
   browseTable, listDbTables, listCannedQueries, runCannedQuery,
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
-  ignoreWorkItem, ignoredItems, isWorkItemDone,
+  ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoreSurfacedItems, isWorkItemDone,
   listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
@@ -835,3 +835,38 @@ console.log('  ✓ T112 status flicker: listRunsForWorkflowRun orders by (starte
   assert.equal(workflowHasRunLinkage('t139-fresh'), false, 'workflow with no runs/linkage → false');
 }
 console.log('  ✓ T139 run-scoped IO: work_item_runs linkage scopes workItemIoRows to the run');
+
+// T210 — bulk-ignore resurface semantics: only the exact supplied keys are ignored;
+// a NEW key for the same logical "collection" surfaces fresh.
+{
+  const JOB = 't210-notify';
+  syncJob({ name: JOB, run: async () => {} });
+
+  // Simulate 3 items in a collection being notified (success).
+  markWorkItem(JOB, 'col:1', 'success');
+  markWorkItem(JOB, 'col:2', 'success');
+  markWorkItem(JOB, 'col:3', 'success');
+
+  // Owner dismisses the whole collection via bulk-ignore.
+  const affected = ignoreSurfacedItems(JOB, ['col:1', 'col:2', 'col:3']);
+  assert.equal(affected, 3, 'ignoreSurfacedItems returns 3 for 3 keys');
+
+  // All three are now ignored.
+  assert.ok(isWorkItemDone(JOB, 'col:1', 1), 'col:1 is done (ignored)');
+  assert.ok(isWorkItemDone(JOB, 'col:2', 1), 'col:2 is done (ignored)');
+  assert.ok(isWorkItemDone(JOB, 'col:3', 1), 'col:3 is done (ignored)');
+  const keys = ignoredItemKeys(JOB);
+  assert.ok(keys.has('col:1') && keys.has('col:2') && keys.has('col:3'), 'all three appear in ignoredItemKeys');
+
+  // A NEW item key for the same collection is NOT affected by the bulk-ignore.
+  assert.ok(!isWorkItemDone(JOB, 'col:4', 1), 'col:4 (new gap) is NOT treated as done');
+  assert.ok(!keys.has('col:4'), 'col:4 does NOT appear in ignoredItemKeys');
+
+  // Idempotency: re-ignoring the same keys is a no-op (still = 3 rows changed).
+  const idempotent = ignoreSurfacedItems(JOB, ['col:1', 'col:2', 'col:3']);
+  assert.equal(idempotent, 3, 'ignoreSurfacedItems is idempotent (ON CONFLICT upsert)');
+
+  // Empty array returns 0.
+  assert.equal(ignoreSurfacedItems(JOB, []), 0, 'empty key array returns 0');
+}
+console.log('  ✓ T210 ignoreSurfacedItems: bulk-dismiss ignores only supplied keys, new keys surface fresh');
