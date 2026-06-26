@@ -96,3 +96,26 @@ The matcher understands an entry as an **exact path** OR a **directory prefix** 
 bracket dirs like `dashboard/app/workflows/[name]/page.tsx` are matched literally — the brackets are
 NOT glob character-classes here.) Rule of thumb: if the task legitimately can't predict every file
 (it may refactor or add helpers), scope the **directory**; if it must stay surgical, list the files.
+
+## Known-but-deferred issues (review if they recur)
+
+A running log of harness pathologies we've **seen at least once** and **consciously chose not to fix
+yet** — usually because they're rare or only triggered by manual intervention. If you (Claude) hit
+one again while working in or evaluating the harness, **flag it to the owner** with a pointer here
+rather than silently working around it; a second occurrence is the signal to actually fix it. Add a
+dated bullet when you defer something new.
+
+- **2026-06-26 — A manual loop interrupt (Ctrl+C) can orphan a task whose work already merged.**
+  *Symptom:* a task's code is on `main` and CI-green, but its `status` is still `pending` (the
+  interrupt landed between the push and `mark_done`). The loop then re-selects it, the cold rebuild
+  finds the feature already present so it produces only a worklog-only `[skip ci]` commit, and
+  `wait_ci_green` never sees a CI run for that SHA → it times out (~`CI_TIMEOUT`s) and treats "no run
+  appeared" the SAME as "CI failed" → revert + retry, **forever** (a `…build summary` → `Revert …`
+  cycle, climbing the ladder until it falsely BLOCKS a task that's actually done). Two root causes:
+  (a) an interrupt can leave a merged task in `pending`; (b) `wait_ci_green` returning *indeterminate*
+  (no run / `[skip ci]`) is conflated with *red*. *Manual recovery (what we did):* stop the loop,
+  confirm the work is on `main` + green, mark the task `done`, drop the bogus `ci-red` rows from the
+  failure buffer, and add a clean `outcomes.jsonl` success row. *Why deferred:* only triggered by a
+  manual Ctrl+C mid-task; not worth the complexity yet. *If it recurs:* consider (1) `wait_ci_green`
+  treating indeterminate ≠ red, and (2) the loop detecting "this task's work is already on `main` →
+  just `mark_done`" instead of rebuilding.
