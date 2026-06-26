@@ -5653,7 +5653,7 @@
     {
       "id": "T217",
       "title": "TV recommender: tv-rec-merge (TMDB-verify, dedupe, quality bar, balance, top-up)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T216"
       ],
@@ -5680,7 +5680,7 @@
     {
       "id": "T218",
       "title": "TV recommender: tv-recs-notify monthly digest + complete the workflow DAG",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T217"
       ],
