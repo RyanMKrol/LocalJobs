@@ -224,6 +224,17 @@ pick_base() {
 ladder_len() { echo $(( ${#TIER_TUPLES[@]} - cur_base )); }
 rung_at()    { gtier $(( cur_base + ${2:-0} )); }
 
+# tier_strength <model> <effort> — a total strength order over ANY (model, effort) pair, independent
+# of the ladder: model dominates (opus > sonnet), then effort (low<medium<high<xhigh<max). Lets us
+# compare the AUDITOR's configured tier against the builder's tier even when the auditor tier (e.g.
+# opus/medium) isn't on the builder ladder.
+tier_strength() {
+  local m="$1" e="$2" mr er
+  case "$m" in *opus*) mr=1 ;; *) mr=0 ;; esac
+  case "$e" in low) er=0 ;; medium) er=1 ;; high) er=2 ;; xhigh) er=3 ;; max) er=4 ;; *) er=0 ;; esac
+  echo $(( mr * 10 + er ))
+}
+
 # SELECT — echo the next eligible task id; return 1 if nothing is eligible.
 select_task() {
   local t d ok
@@ -458,11 +469,16 @@ audit_gate() {
   if [ "$(( RANDOM % 1000 ))" -ge "$pm" ]; then
     log "audit: $id cell (${layer:-?}×${wt:-?}) $count confirmed, p=${pm}per-mille → NOT sampled (ci-only)"; return 0
   fi
-  bi=$(( cur_base + cur_rung ))
-  ai="$(jq -n --argjson t "$(jq -c '.tiers.ladder' "$FACETS" 2>/dev/null)" --arg m "$AUDITOR_MODEL" --arg e "$AUDITOR_EFFORT" '($t|map(.model==$m and .effort==$e)|index(true)) // 3' 2>/dev/null || echo 3)"
-  (( ai > bi )) && bi=$ai
-  read -r am ae <<<"$(gtier "$bi")"
-  log "audit: $id cell (${layer:-?}×${wt:-?}) $count confirmed, p=${pm}per-mille → AUDITING at $am/$ae (max of opus-medium + builder rung)"
+  # The auditor runs at its CONFIGURED tier (AUDITOR_MODEL/EFFORT — e.g. opus/medium, which need NOT
+  # exist on the builder ladder), bumped UP to the builder's tier ONLY when the builder was stronger.
+  # So most (sonnet-built) tasks audit at opus/medium; only an opus/high-built task bumps to opus/high.
+  read -r bm be <<<"$(gtier $(( cur_base + cur_rung )))"   # the builder's tier
+  if (( $(tier_strength "$bm" "$be") > $(tier_strength "$AUDITOR_MODEL" "$AUDITOR_EFFORT") )); then
+    am="$bm"; ae="$be"
+  else
+    am="$AUDITOR_MODEL"; ae="$AUDITOR_EFFORT"
+  fi
+  log "audit: $id cell (${layer:-?}×${wt:-?}) $count confirmed, p=${pm}per-mille → AUDITING at $am/$ae (auditor $AUDITOR_MODEL/$AUDITOR_EFFORT, bumped to builder tier if stronger)"
   diff="$(git -C "$ROOT" diff "origin/$MAIN_BRANCH..HEAD" 2>/dev/null)"
   rel="$(task_spec_rel "$id")"; [ -n "$rel" ] && [ -f "$ROOT/$rel" ] && spec="$(cat "$ROOT/$rel")"
   out="$WORKLOG/$id.audit.md"
