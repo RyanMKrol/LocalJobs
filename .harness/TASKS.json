@@ -5302,7 +5302,7 @@
     {
       "id": "T205",
       "title": "Unified, de-duped output section on every workflow detail page",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
@@ -5567,7 +5567,7 @@
     {
       "id": "T214",
       "title": "Scaffold tv-recommendations workflow + tv-snapshot (TV library snapshot + taste profile)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
