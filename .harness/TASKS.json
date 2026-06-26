@@ -5515,7 +5515,7 @@
     {
       "id": "T212",
       "title": "Add spacing between the crontab expression and its hint icon",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
