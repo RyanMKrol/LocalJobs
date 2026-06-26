@@ -22,6 +22,8 @@ import {
   ReactFlow,
   Background,
   Controls,
+  Handle,
+  Position,
   type Node,
   type Edge,
   type NodeTypes,
@@ -36,12 +38,18 @@ import { statusLabel } from '../ui';
 
 /** A stage node styled to match the existing .dag-node appearance. */
 function StageNode({ data }: { data: { label: string; status: string; href: string; showStatus: boolean } }) {
+  // React Flow draws edges between node HANDLES — a custom node with no <Handle> has no anchor
+  // points, so edges silently don't render. Layout is LR (rankdir 'LR'), so the target handle is on
+  // the left and the source handle on the right. Hidden + non-connectable (this is a read-only DAG),
+  // but they MUST exist for the dependency edges to draw.
   return (
     <a href={data.href} style={{ textDecoration: 'none' }}>
+      <Handle type="target" position={Position.Left} isConnectable={false} style={{ opacity: 0, border: 'none', background: 'transparent' }} />
       <div className={`dag-node rf-dag-node ${data.status}`} style={{ cursor: 'pointer', minWidth: 156 }}>
         <div className="dag-node-name">{data.label}</div>
         {data.showStatus && <div className="dag-node-status">{statusLabel(data.status)}</div>}
       </div>
+      <Handle type="source" position={Position.Right} isConnectable={false} style={{ opacity: 0, border: 'none', background: 'transparent' }} />
     </a>
   );
 }
