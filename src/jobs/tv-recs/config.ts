@@ -18,6 +18,7 @@ export const tvRecsConfig = {
   recsDir: resolve(dataDir, 'out', 'recs'),
   recsOut: resolve(dataDir, 'out', 'recommendations.json'),
   recsHistoryOut: resolve(dataDir, 'out', 'recs-history.json'),
+  reportDir: resolve(dataDir, 'out', 'reports'),
 
   /** The TV library section to read. Default 5 (the owner's "TV Shows"). */
   tvSection: process.env.PLEX_TV_SECTION ?? '5',

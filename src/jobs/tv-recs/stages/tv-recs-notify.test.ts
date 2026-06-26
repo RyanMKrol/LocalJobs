@@ -1,0 +1,136 @@
+// tv-recs-notify tests — dedup + digest + ignore-to-suppress against the work_items
+// ledger. Hermetic: NO live push (an injected capture fn), synthetic recommendations
+// file, scratch DB (npm test points LOCALJOBS_DB at /tmp). Covers: first run = one
+// digest of the whole backlog; an already-notified rec is NOT re-notified; a freshly
+// detected rec aggregates into a new single digest; an owner-IGNORED rec is excluded
+// from BOTH the report AND notifications.
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ignoreSurfacedItem, isWorkItemDone } from '../../../db/store.js';
+import type { JobContext } from '../../../core/types.js';
+import { RECS_JOB, recKey } from '../recs.js';
+import { buildDigest, runTvRecsNotify } from './tv-recs-notify.js';
+import type { Recommendation, RecommendationsFile, RecsHistoryFile } from '../types.js';
+
+function fakeCtx(): JobContext {
+  return { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
+}
+
+interface CapturedPush { title: string; body: string }
+function capturePush(sent: CapturedPush[]) {
+  return (async (title: string, body: string) => {
+    sent.push({ title, body });
+    return { ok: true };
+  }) as unknown as typeof import('../../../core/notifier.js').push;
+}
+
+const rec = (id: number, title: string, genre = 'Drama'): Recommendation =>
+  ({ tmdbId: id, title, year: 2010, reason: `watch ${title}`, lens: 'world-cinema', genre, tmdbRating: 8.0 });
+
+// ── buildDigest ──
+{
+  const d = buildDigest([rec(1, 'Show A'), rec(2, 'Show B')]);
+  assert.equal(d.count, 2);
+  assert.match(d.title, /2 TV show recommendations/);
+  assert.match(d.body, /Show A/);
+  assert.match(d.body, /Show B/);
+  assert.equal(buildDigest([rec(3, 'Solo')]).title, '📺 1 TV show recommendation', 'singular');
+  console.log('  ✓ buildDigest aggregates and pluralises');
+}
+
+// Distinct tmdbIds so this test is isolated from any other ledger rows.
+const REC_A = 8880001;
+const REC_B = 8880002;
+const REC_C = 8880003;
+const REC_IGN = 8880004;
+
+const dir = mkdtempSync(join(tmpdir(), 'tv-recs-notify-'));
+const recsFile = join(dir, 'recommendations.json');
+const historyFile = join(dir, 'history.json');
+const reportDir = dir;
+const reportPath = join(dir, 'tv-recommendations.md');
+const NOW = new Date('2026-06-01T09:00:00Z');
+
+function writeRecs(recs: Recommendation[]) {
+  const file: RecommendationsFile = { generatedAt: NOW.toISOString(), pooled: recs.length, recommendations: recs };
+  writeFileSync(recsFile, JSON.stringify(file));
+}
+
+const backlog: Recommendation[] = [
+  rec(REC_A, 'Severance', 'Sci-Fi & Fantasy'),
+  rec(REC_B, 'Shogun', 'Drama'),
+];
+
+// Run 1 — first run sends ONE digest of the whole backlog and marks the ledger.
+{
+  const sent: CapturedPush[] = [];
+  writeRecs(backlog);
+  await runTvRecsNotify(fakeCtx(), { push: capturePush(sent), now: NOW, recsFile, historyFile, reportDir });
+  assert.equal(sent.length, 1, 'first run sends exactly ONE digest');
+  assert.match(sent[0].title, /2 TV show recommendations/);
+  assert.match(sent[0].body, /Severance/);
+  assert.match(sent[0].body, /Shogun/);
+  assert.ok(isWorkItemDone(RECS_JOB, recKey(REC_A), 1), 'Severance marked in ledger');
+  assert.ok(isWorkItemDone(RECS_JOB, recKey(REC_B), 1), 'Shogun marked in ledger');
+  const md = readFileSync(reportPath, 'utf8');
+  assert.match(md, /## Recommendations/);
+  assert.match(md, /\[Severance\]\(https:\/\/www\.themoviedb\.org\/tv\/8880001\)/);
+  assert.match(md, /TMDB 8\.0/);
+  assert.match(md, /world-cinema/, 'lens shown in report');
+  assert.match(md, /watch Severance/, 'reason shown in report');
+  const hist = JSON.parse(readFileSync(historyFile, 'utf8')) as RecsHistoryFile;
+  assert.equal(hist.recommended.length, 2, 'both recs appended to history');
+  console.log('  ✓ first run digests the whole backlog, marks the ledger, writes the report, appends history');
+}
+
+// Run 2 — same backlog, nothing new → NO push.
+{
+  const sent: CapturedPush[] = [];
+  await runTvRecsNotify(fakeCtx(), { push: capturePush(sent), now: NOW, recsFile, historyFile, reportDir });
+  assert.equal(sent.length, 0, 're-run with no new recs sends nothing (dedup)');
+  console.log('  ✓ re-run with nothing new sends no push (dedup)');
+}
+
+// Run 3 — a NEW rec appears; only it is notified, in one digest.
+{
+  const sent: CapturedPush[] = [];
+  const grown = [...backlog, rec(REC_C, 'The Bear', 'Comedy')];
+  writeRecs(grown);
+  await runTvRecsNotify(fakeCtx(), { push: capturePush(sent), now: NOW, recsFile, historyFile, reportDir });
+  assert.equal(sent.length, 1, 'one digest for the new rec');
+  assert.match(sent[0].title, /1 TV show recommendation/);
+  assert.match(sent[0].body, /The Bear/);
+  assert.doesNotMatch(sent[0].body, /Severance/, 'already-notified Severance not repeated');
+  assert.ok(isWorkItemDone(RECS_JOB, recKey(REC_C), 1), 'new rec marked in ledger');
+  console.log('  ✓ a newly-detected rec notifies once, not the already-known ones');
+}
+
+// Run 4 — ignore-to-suppress: a new rec is IGNORED before notify → excluded from
+// BOTH the digest AND the report.
+{
+  const sent: CapturedPush[] = [];
+  const withIgnored = [...backlog, rec(REC_IGN, 'The Ignored Show', 'Drama')];
+  writeRecs(withIgnored);
+  ignoreSurfacedItem(RECS_JOB, recKey(REC_IGN));
+  assert.ok(isWorkItemDone(RECS_JOB, recKey(REC_IGN), 1), 'ignored rec counts as done');
+  await runTvRecsNotify(fakeCtx(), { push: capturePush(sent), now: NOW, recsFile, historyFile, reportDir });
+  assert.equal(sent.length, 0, 'the only new candidate was ignored → no push');
+  const md = readFileSync(reportPath, 'utf8');
+  assert.doesNotMatch(md, /The Ignored Show/, 'ignored rec excluded from report');
+  console.log('  ✓ ignore-to-suppress excludes a rec from BOTH report and notifications');
+}
+
+// Run 5 — ignoring an ALREADY-notified rec also removes it from future reports.
+{
+  const sent: CapturedPush[] = [];
+  ignoreSurfacedItem(RECS_JOB, recKey(REC_A)); // was notified in run 1
+  await runTvRecsNotify(fakeCtx(), { push: capturePush(sent), now: NOW, recsFile, historyFile, reportDir });
+  assert.equal(sent.length, 0);
+  const md = readFileSync(reportPath, 'utf8');
+  assert.doesNotMatch(md, /Severance/, 'a previously-notified rec, once ignored, leaves the report');
+  console.log('  ✓ ignoring a previously-notified rec removes it from the report');
+}
+
+console.log('  ✓ tv-recs-notify dedup/digest/ignore tests passed');

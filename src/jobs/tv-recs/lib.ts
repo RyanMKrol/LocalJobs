@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tvRecsConfig } from './config.js';
 
 export function ensureDirs(): void {
-  for (const d of [tvRecsConfig.outDir, tvRecsConfig.recsDir]) mkdirSync(d, { recursive: true });
+  for (const d of [tvRecsConfig.outDir, tvRecsConfig.recsDir, tvRecsConfig.reportDir]) mkdirSync(d, { recursive: true });
 }
 
 export function readJsonFile<T>(path: string, fallback: T): T {

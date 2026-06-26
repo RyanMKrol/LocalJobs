@@ -8,13 +8,13 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * NOT limitable (no inputKeys on any member) — inputs are discovered live from
  * Plex each run.
  *
- * Stages (T214 + T216 + T217): tv-snapshot + 8 recommender branches (3 random
+ * Stages (T214 + T216 + T217 + T218): tv-snapshot + 8 recommender branches (3 random
  * serendipity + 5 targeted) + tv-rec-merge (TMDB-verify, dedupe, quality bar,
- * balance, top-up). A notify stage is planned for a later task.
+ * balance, top-up) + tv-recs-notify (monthly digest push + report).
  */
 const workflow: WorkflowDefinition = {
   name: 'tv-recommendations',
-  description: 'Snapshots your Plex TV library by GUID, builds a taste profile (genres/roles/decades/countries), fans out 8 Claude recommender branches, and — in a later stage — merges + pushes a monthly digest of TV show recommendations.',
+  description: 'Snapshots your Plex TV library by GUID, builds a taste profile (genres/roles/decades/countries), fans out 8 Claude recommender branches, TMDB-verifies + merges the picks, and pushes a monthly digest of TV show recommendations.',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,
   jobs: [
@@ -35,6 +35,7 @@ const workflow: WorkflowDefinition = {
         'tv-rec-older-era', 'tv-rec-world',
       ],
     },
+    { job: 'tv-recs-notify', dependsOn: ['tv-rec-merge'] },
   ],
 };
 

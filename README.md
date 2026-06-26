@@ -498,16 +498,26 @@ runs are the owner's.
 
 **tv-recommendations** — Plex TV show recommendations workflow (`src/jobs/tv-recs/`). A standalone
 counterpart to **movie-recommendations** for TV shows, separate from **missing-tv-seasons** (which
-only audits completely-missing seasons). Currently one stage (`tv-snapshot`); later tasks will add
-recommender branches, merge, and notify stages in the same fan-out pattern as movies. Scheduled
-monthly (1st of the month, 09:00). **`tv-snapshot`** connects to Plex via
-`resolvePlexHost()`/`plexGet` (reused from the plex client — self-heals a changed DHCP IP), reads
-the TV library section (`PLEX_TV_SECTION`, default `5`), builds a per-show snapshot keyed by TMDB
-GUID, and rolls up a **taste profile** (per-genre / per-role / per-decade / per-country owned
-counts). Writes `snapshot.json` + `taste-profile.json` to `src/jobs/tv-recs/data/out/`. Like the
-movies snapshot, re-scans fresh every run (no inputKeys — not limitable). Shares Plex/TMDB
-connectivity env vars (`PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN`) with the existing plex
-workflows. TV-recs-specific knobs are all `TV_RECS_*` env-overridable (`TV_RECS_TARGET`,
+only audits completely-missing seasons). Scheduled monthly (1st of the month, 09:00). Full DAG:
+`tv-snapshot → (8 branches) → tv-rec-merge → tv-recs-notify`. **`tv-snapshot`** connects to Plex
+via `resolvePlexHost()`/`plexGet` (reused from the plex client — self-heals a changed DHCP IP),
+reads the TV library section (`PLEX_TV_SECTION`, default `5`), builds a per-show snapshot keyed by
+TMDB GUID, and rolls up a **taste profile** (per-genre / per-role / per-decade / per-country owned
+counts). Writes `snapshot.json` + `taste-profile.json` to `src/jobs/tv-recs/data/out/`. **8
+recommender branches** (3 random serendipity + 5 targeted: creator, canon, thin-genre, older-era,
+world-cinema) fan out in parallel, each calling Claude with a stratified library sample and
+returning raw suggestions. **`tv-rec-merge`** TMDB-verifies each suggestion (real TV show, not
+already owned, not already recommended, TMDB rating ≥7.0 / ≥50 votes), dedupes across branches,
+balances per genre (`TV_RECS_GENRE_CAP`), and tops up via a bounded re-prompt loop if under the
+target (`TV_RECS_TARGET` default 15). Writes `recommendations.json`. **`tv-recs-notify`** reads
+the verified recommendations, drops owner-ignored shows (`ignoredItemKeys('tv-recs')`) and
+already-notified ones, sends ONE monthly digest of the new picks, marks each notified show
+`success` in the `tv-recs` ledger (announce-exactly-once), writes a markdown report to
+`data/out/reports/tv-recommendations.md` with its path in `detail.markdown` (T110), and appends
+newly-notified shows to the history file (fed back into next month's branches). Like the movies
+snapshot, re-scans fresh every run (no inputKeys — not limitable). Shares Plex/TMDB connectivity
+env vars (`PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN`) with the existing plex workflows.
+TV-recs-specific knobs are all `TV_RECS_*` env-overridable (`TV_RECS_TARGET`,
 `TV_RECS_MIN_RATING` 7.0, `TV_RECS_MIN_VOTES` 50, `TV_RECS_GENRE_CAP`, `TV_RECS_SAMPLE`, etc.).
 
 **Typed-artifact contracts.** Each stage boundary declares `produces`/`consumes`
