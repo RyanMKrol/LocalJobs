@@ -8,17 +8,24 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * NOT limitable (no inputKeys on any member) — inputs are discovered live from
  * Plex each run.
  *
- * Current stages (T214): tv-snapshot only. Later tasks will add recommender
- * branches, a merge stage, and a notify stage in the same fan-out pattern the
- * movies workflow uses (maxConcurrency 4 ready for that expansion).
+ * Stages (T214 + T216): tv-snapshot + 8 recommender branches (3 random serendipity
+ * + 5 targeted). Later tasks add a merge stage and notify stage.
  */
 const workflow: WorkflowDefinition = {
   name: 'tv-recommendations',
-  description: 'Snapshots your Plex TV library by GUID, builds a taste profile (genres/roles/decades/countries), and — in later stages — fans out Claude recommender branches and pushes a monthly digest of TV show recommendations.',
+  description: 'Snapshots your Plex TV library by GUID, builds a taste profile (genres/roles/decades/countries), fans out 8 Claude recommender branches, and — in a later stage — merges + pushes a monthly digest of TV show recommendations.',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,
   jobs: [
     { job: 'tv-snapshot' },
+    { job: 'tv-rec-random-1', dependsOn: ['tv-snapshot'] },
+    { job: 'tv-rec-random-2', dependsOn: ['tv-snapshot'] },
+    { job: 'tv-rec-random-3', dependsOn: ['tv-snapshot'] },
+    { job: 'tv-rec-creator', dependsOn: ['tv-snapshot'] },
+    { job: 'tv-rec-canon', dependsOn: ['tv-snapshot'] },
+    { job: 'tv-rec-thin-genre', dependsOn: ['tv-snapshot'] },
+    { job: 'tv-rec-older-era', dependsOn: ['tv-snapshot'] },
+    { job: 'tv-rec-world', dependsOn: ['tv-snapshot'] },
   ],
 };
 
