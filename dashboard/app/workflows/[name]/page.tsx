@@ -238,7 +238,7 @@ function MovieGapsManager() {
                 You own: {example.title}{example.year != null ? ` (${example.year})` : ''}
               </p>
             )}
-            <table>
+            <table className="gaps-table">
               <thead>
                 <tr><th>Film</th><th>Year</th><th>TMDB</th><th></th></tr>
               </thead>

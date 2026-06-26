@@ -148,6 +148,11 @@ tbody tr:hover { background: var(--panel-2); }
 .output-section h2 { margin-top: 0; }
 /* Movie gaps/recs scroll container (T170) — bounded height, scrolls internally. */
 .movie-gaps-scroll { max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+/* Fixed column layout so Film/Year/TMDB/actions align across per-collection tables */
+.gaps-table { table-layout: fixed; width: 100%; }
+.gaps-table th:nth-child(2), .gaps-table td:nth-child(2) { width: 56px; }
+.gaps-table th:nth-child(3), .gaps-table td:nth-child(3) { width: 56px; }
+.gaps-table th:last-child,   .gaps-table td:last-child   { width: 90px; }
 /* Tables inside the output-section get borders and inner padding. */
 .output-section table { border-collapse: collapse; width: 100%; }
 .output-section table th,
