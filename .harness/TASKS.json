@@ -5383,7 +5383,7 @@
     {
       "id": "T208",
       "title": "Backlog: mark a needs-human task done (owner-owned overlay; implies reviewed)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
