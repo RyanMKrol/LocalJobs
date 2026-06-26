@@ -23,9 +23,11 @@ import {
   isWithin,
   migrateReviewsOut,
   originAllowed,
+  readHumanDone,
   readReviews,
   readTaskSpec,
   safeOutputMarkdown,
+  setHumanDoneEntry,
   setReviewEntries,
   setReviewEntry,
 } from './server.js';
@@ -873,6 +875,120 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
 
   rmSync(dir, { recursive: true, force: true });
+}
+
+// ── T208: human-done overlay — POST /api/backlog/:id/done + GET overlay ──
+{
+  const dir2 = mkdtempSync(join(tmpdir(), 'localjobs-humandone-'));
+  const backlogPath = join(dir2, 'TASKS.json');
+  const reviewsPath = join(dir2, 'reviews.json');
+  const humanDonePath = join(dir2, 'human-done.json');
+  const noGit = async () => ({ committed: false, pushed: false });
+
+  const fixture = () =>
+    JSON.stringify(
+      {
+        version: 1,
+        tasks: [
+          { id: 'T10', title: 'NH task', status: 'pending', gate: 'needs-human' },
+          { id: 'T11', title: 'Buildable task', status: 'pending', gate: null },
+          { id: 'T12', title: 'Done task', status: 'done', gate: null },
+        ],
+      },
+      null,
+      2,
+    ) + '\n';
+
+  await test('setHumanDoneEntry: sets only the target id, preserves rest; empty raw → {}', () => {
+    const out = setHumanDoneEntry('', 'T10', '2026-06-26T00:00:00.000Z');
+    const map = JSON.parse(out) as Record<string, { done: boolean; at: string }>;
+    assert.deepEqual(Object.keys(map), ['T10']);
+    assert.equal(map.T10.done, true);
+    assert.equal(map.T10.at, '2026-06-26T00:00:00.000Z');
+    const out2 = setHumanDoneEntry(out, 'T11', '2026-06-26T01:00:00.000Z');
+    const map2 = JSON.parse(out2) as Record<string, { done: boolean }>;
+    assert.equal(map2.T10.done, true, 'sibling preserved');
+    assert.equal(map2.T11.done, true, 'new id set');
+  });
+
+  await test('readHumanDone: absent file → {}, present file reads correctly', () => {
+    assert.deepEqual(readHumanDone(join(dir2, 'does-not-exist.json')), {});
+    writeFileSync(humanDonePath, JSON.stringify({ T10: { done: true, at: 'x' } }) + '\n');
+    assert.equal(readHumanDone(humanDonePath).T10?.done, true);
+    rmSync(humanDonePath, { force: true });
+  });
+
+  await test('POST /api/backlog/:id/done: marks needs-human task done; GET overlays done+reviewed=true', async () => {
+    writeFileSync(backlogPath, fixture());
+    rmSync(humanDonePath, { force: true });
+    await withServer({ backlogPath, reviewsPath, humanDonePath, commitHumanDone: noGit }, async (base) => {
+      const res = await fetch(`${base}/api/backlog/T10/done`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; id: string; done: boolean };
+      assert.equal(body.ok, true);
+      assert.equal(body.id, 'T10');
+      assert.equal(body.done, true);
+
+      // human-done.json written to disk
+      const onDisk = JSON.parse(readFileSync(humanDonePath, 'utf8')) as Record<string, { done: boolean }>;
+      assert.equal(onDisk.T10.done, true);
+
+      // GET /api/backlog overlays done=true and reviewed=true for T10
+      const get = await fetch(`${base}/api/backlog`);
+      assert.equal(get.status, 200);
+      const bl = (await get.json()) as { tasks: Array<{ id: string; done?: boolean; reviewed?: boolean }> };
+      const t10 = bl.tasks.find((t) => t.id === 'T10');
+      assert.ok(t10, 'T10 in backlog');
+      assert.equal(t10!.done, true, 'done overlaid');
+      assert.equal(t10!.reviewed, true, 'reviewed derived from done');
+    });
+    rmSync(humanDonePath, { force: true });
+  });
+
+  await test('POST /api/backlog/:id/done: 400 for non-needs-human task', async () => {
+    writeFileSync(backlogPath, fixture());
+    await withServer({ backlogPath, reviewsPath, humanDonePath, commitHumanDone: noGit }, async (base) => {
+      const rBuildable = await fetch(`${base}/api/backlog/T11/done`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      assert.equal(rBuildable.status, 400, 'non-needs-human buildable task rejected');
+      const rDone = await fetch(`${base}/api/backlog/T12/done`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      assert.equal(rDone.status, 400, 'non-needs-human done task rejected');
+    });
+  });
+
+  await test('POST /api/backlog/:id/done: 400 for invalid task id format', async () => {
+    writeFileSync(backlogPath, fixture());
+    await withServer({ backlogPath, reviewsPath, humanDonePath, commitHumanDone: noGit }, async (base) => {
+      const r = await fetch(`${base}/api/backlog/__bad__/done`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      assert.equal(r.status, 400, 'invalid id rejected');
+    });
+  });
+
+  await test('GET /api/backlog: human-done task without explicit reviews.json still shows reviewed=true', async () => {
+    writeFileSync(backlogPath, fixture());
+    writeFileSync(humanDonePath, JSON.stringify({ T10: { done: true, at: '2026-06-26T00:00:00.000Z' } }) + '\n');
+    rmSync(reviewsPath, { force: true });
+    await withServer({ backlogPath, reviewsPath, humanDonePath, commitHumanDone: noGit }, async (base) => {
+      const res = await fetch(`${base}/api/backlog`);
+      const bl = (await res.json()) as { tasks: Array<{ id: string; done?: boolean; reviewed?: boolean }> };
+      const t10 = bl.tasks.find((t) => t.id === 'T10');
+      assert.equal(t10!.done, true);
+      assert.equal(t10!.reviewed, true);
+      const t11 = bl.tasks.find((t) => t.id === 'T11');
+      assert.equal(t11!.done, undefined, 'non-done task has no done field');
+      assert.equal(t11!.reviewed, false, 'non-done task not reviewed');
+    });
+    rmSync(humanDonePath, { force: true });
+  });
+
+  rmSync(dir2, { recursive: true, force: true });
 }
 
 // ── T131: per-task Markdown spec — readTaskSpec + GET inlines specContent + loop prompt ──

@@ -89,9 +89,20 @@ const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/TASKS.json', import.m
 // everything the loop commits (TASKS.json / worklog), the two writers never conflict.
 const REVIEWS_PATH = fileURLToPath(new URL('../../.harness/reviews.json', import.meta.url));
 
+// The owner-owned human-done store (T208). `done` records that a needs-human task
+// was completed by the owner. The file is a committed JSON map
+// `id → { done: true, at: ISO-8601 }`. `POST /api/backlog/:id/done` atomically
+// writes it AND commits+pushes under the SAME lock. Marking done implies reviewed.
+const HUMAN_DONE_PATH = fileURLToPath(new URL('../../.harness/human-done.json', import.meta.url));
+
 /** Default the reviews-store path to sit beside a given backlog file. */
 function reviewsPathFor(backlogPath: string): string {
   return joinPath(dirname(backlogPath), 'reviews.json');
+}
+
+/** Default the human-done-store path to sit beside a given backlog file. */
+function humanDonePathFor(backlogPath: string): string {
+  return joinPath(dirname(backlogPath), 'human-done.json');
 }
 
 /**
@@ -123,6 +134,60 @@ export interface ReviewEntry {
   at?: string;
 }
 
+/** An entry in the owner-owned human-done store (`.harness/human-done.json`, T208). */
+export interface HumanDoneEntry {
+  done: boolean;
+  at?: string;
+}
+
+/**
+ * Read the human-done store (`id → { done, at }`). Returns `{}` when the file is
+ * absent, empty, or unparseable. Exported for unit testing.
+ */
+export function readHumanDone(path: string = HUMAN_DONE_PATH): Record<string, HumanDoneEntry> {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, HumanDoneEntry>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Pure, field-scoped edit of the human-done-store TEXT: parse `raw` (may be empty →
+ * treated as `{}`), set ONLY the entry for `id` to `{ done: true, at }`, and return
+ * the re-serialised JSON. Every other id is preserved. Exported for unit testing.
+ */
+export function setHumanDoneEntry(raw: string, id: string, at: string): string {
+  let map: Record<string, HumanDoneEntry> = {};
+  if (raw.trim()) {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed as Record<string, HumanDoneEntry>;
+  }
+  map[id] = { done: true, at };
+  return `${JSON.stringify(map, null, 2)}\n`;
+}
+
+/**
+ * Atomically persist a single id's human-done entry. Reads the current file
+ * (absent → `{}`), applies the field-scoped edit, validates, then temp-file + rename.
+ */
+function writeHumanDoneEntry(path: string, id: string, at: string): void {
+  let raw = '';
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    raw = '';
+  }
+  const updated = setHumanDoneEntry(raw, id, at);
+  JSON.parse(updated); // validate before we touch disk
+  const tmp = `${path}.tmp-${process.pid}`;
+  writeFileSync(tmp, updated);
+  renameSync(tmp, path); // atomic replace
+}
+
 /**
  * Read the reviews store (`id → { reviewed, at }`). Returns `{}` when the file is
  * absent, empty, or unparseable — so a fresh repo (no reviews yet) reads cleanly.
@@ -140,27 +205,30 @@ export function readReviews(path: string = REVIEWS_PATH): Record<string, ReviewE
 }
 
 /**
- * Read the backlog and OVERLAY the owner-owned reviews store: each task's
- * `reviewed` is `reviews[id]?.reviewed ?? false` (the task objects no longer carry
- * the field, T136). Also inlines each task's Markdown spec content (`spec` →
- * `specContent`, T131) so the dashboard renders Do / Done-when without a second
- * request. `reviewsPath` defaults to `reviews.json` beside the backlog file.
+ * Read the backlog and OVERLAY the owner-owned reviews store (T136) and human-done
+ * store (T208): each task's `reviewed` is `reviews[id]?.reviewed ?? false`, and
+ * `done` is `humanDone[id]?.done ?? false`. When `done` is true, `reviewed` is
+ * also forced true (done implies reviewed). Also inlines each task's Markdown spec
+ * content (`spec` → `specContent`, T131).
  */
 function readBacklog(
   path: string = BACKLOG_PATH,
   reviewsPath: string = reviewsPathFor(path),
+  humanDonePath: string = humanDonePathFor(path),
 ): { tasks: unknown[]; error?: string } {
   try {
     const baseDir = dirname(path);
     const reviews = readReviews(reviewsPath);
+    const humanDone = readHumanDone(humanDonePath);
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as { tasks?: unknown[] };
     const tasks = Array.isArray(parsed.tasks)
       ? parsed.tasks.map((t) => {
           if (!(t && typeof t === 'object' && !Array.isArray(t))) return t;
           const task = t as { id?: unknown; spec?: unknown };
           const specContent = readTaskSpec(task.spec, baseDir);
-          const reviewed = typeof task.id === 'string' ? reviews[task.id]?.reviewed === true : false;
-          return { ...(t as object), reviewed, ...(specContent !== null ? { specContent } : {}) };
+          const isDone = typeof task.id === 'string' ? humanDone[task.id]?.done === true : false;
+          const reviewed = isDone || (typeof task.id === 'string' ? reviews[task.id]?.reviewed === true : false);
+          return { ...(t as object), reviewed, ...(isDone ? { done: true } : {}), ...(specContent !== null ? { specContent } : {}) };
         })
       : [];
     return { tasks };
@@ -396,6 +464,26 @@ async function defaultCommitReviewsBulk(reviewsPath: string, ids: string[]): Pro
       id: '',
       reviewed: true,
       commitMessage: `reviews: bulk ${ids.length} reviewed [skip ci]`,
+    });
+  } catch (e) {
+    return { committed: false, pushed: false, warning: e instanceof Error ? e.message : 'commit failed' };
+  }
+}
+
+async function defaultCommitHumanDone(humanDonePath: string, id: string): Promise<CommitReviewsResult> {
+  let repoRoot: string;
+  try {
+    repoRoot = resolveRepoPaths(dirname(humanDonePath)).root;
+  } catch {
+    return { committed: false, pushed: false, warning: 'not a git repo — wrote locally only' };
+  }
+  try {
+    return await commitReviewsFile({
+      repoRoot,
+      reviewsAbsPath: humanDonePath,
+      id,
+      reviewed: true,
+      commitMessage: `human-done: ${id} done [skip ci]`,
     });
   } catch (e) {
     return { committed: false, pushed: false, warning: e instanceof Error ? e.message : 'commit failed' };
@@ -673,17 +761,21 @@ export function createApiServer(
     isLoopback?: (addr: string | undefined) => boolean;
     backlogPath?: string;
     reviewsPath?: string;
+    humanDonePath?: string;
     // Injectable for tests: commit+push the reviews file. Defaults to the real git
     // path (resolves the repo from the reviews dir; no-ops outside a git repo).
     commitReviews?: (reviewsPath: string, id: string, reviewed: boolean) => Promise<CommitReviewsResult>;
     commitReviewsBulk?: (reviewsPath: string, ids: string[]) => Promise<CommitReviewsResult>;
+    commitHumanDone?: (humanDonePath: string, id: string) => Promise<CommitReviewsResult>;
   } = {},
 ) {
   const isLoopback = opts.isLoopback ?? isLoopbackAddress;
   const backlogPath = opts.backlogPath ?? BACKLOG_PATH;
   const reviewsPath = opts.reviewsPath ?? reviewsPathFor(backlogPath);
+  const humanDonePath = opts.humanDonePath ?? humanDonePathFor(backlogPath);
   const commitReviews = opts.commitReviews ?? defaultCommitReviews;
   const commitReviewsBulk = opts.commitReviewsBulk ?? defaultCommitReviewsBulk;
+  const commitHumanDone = opts.commitHumanDone ?? defaultCommitHumanDone;
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${config.apiPort}`);
     const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','jobs','demo','runs']
@@ -1330,9 +1422,10 @@ export function createApiServer(
 
       // GET /api/backlog — the harness TASKS.json backlog (read-only). Each task's
       // human-review flag `reviewed` is OVERLAID from the owner-owned reviews store
-      // (.harness/reviews.json, T136), defaulting to false when absent.
+      // (.harness/reviews.json, T136) and human-done store (.harness/human-done.json,
+      // T208). A human-done task shows done=true and reviewed=true (done implies reviewed).
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'backlog' && parts.length === 2) {
-        return json(res, 200, readBacklog(backlogPath, reviewsPath));
+        return json(res, 200, readBacklog(backlogPath, reviewsPath, humanDonePath));
       }
 
       // POST /api/backlog/:id/reviewed  { reviewed: bool } — the ONE dashboard→harness
@@ -1356,6 +1449,32 @@ export function createApiServer(
           ok: true,
           id,
           reviewed,
+          committed: result.committed,
+          pushed: result.pushed,
+          ...(result.warning ? { warning: result.warning } : {}),
+        });
+      }
+
+      // POST /api/backlog/:id/done — mark a needs-human task done in the owner-owned
+      // human-done store (.harness/human-done.json, T208). Only applies to tasks with
+      // gate === 'needs-human'. Marking done implies reviewed. Serialized via the same
+      // in-process mutex as reviewed POSTs; committed+pushed under the repo lock.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'backlog' && parts[3] === 'done' && parts.length === 4) {
+        const id = decodeURIComponent(parts[2]);
+        if (!/^T\d+$/.test(id)) return json(res, 400, { error: 'invalid task id' });
+        // Validate: only needs-human tasks may be marked done via this endpoint.
+        const backlog = readBacklog(backlogPath, reviewsPath, humanDonePath);
+        const task = (backlog.tasks as Array<{ id?: string; gate?: string | null }>).find((t) => t.id === id);
+        if (!task) return json(res, 400, { error: `task ${id} not found in backlog` });
+        if (task.gate !== 'needs-human') return json(res, 400, { error: `task ${id} is not a needs-human task` });
+        const result = await serializeReview(async () => {
+          writeHumanDoneEntry(humanDonePath, id, new Date().toISOString());
+          return commitHumanDone(humanDonePath, id);
+        });
+        return json(res, 200, {
+          ok: true,
+          id,
+          done: true,
           committed: result.committed,
           pushed: result.pushed,
           ...(result.warning ? { warning: result.warning } : {}),

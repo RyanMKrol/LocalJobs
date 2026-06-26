@@ -189,20 +189,28 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   pick the stale settled run over the live one — the succeeded→running→succeeded
   status flicker. Keep any "latest run" derivation ordering by `(started_at, rowid)`.
 - **The dashboard is a pure read/refresh client of the API.** It never touches
-  SQLite directly and is not required for jobs to run. There is **exactly ONE
-  deliberate write exception** (T136, was T124): the human-owned `reviewed` flag on
-  a backlog task. It lives in its OWN owner-owned file `.harness/reviews.json` (a
-  committed `id → { reviewed, at }` map — NOT in TASKS.json, which the loop owns).
-  Two endpoints write it: `POST /api/backlog/:id/reviewed` (single task, any
-  `reviewed` bool) and `POST /api/backlog/reviewed-bulk { ids: string[] }` (multiple
-  tasks reviewed=true in **one** atomic write + **one** git commit). Both atomically
-  write the file (temp-file + rename) AND, under the SAME mkdir lock loop.sh uses
-  (`src/core/repo-lock.ts`), commit it `[skip ci]` + push to GitHub (fetch+rebase+
-  retry; a failed push is a non-fatal warning). The bulk endpoint produces exactly ONE
-  git commit for the whole batch — the Backlog UI uses it for the select-all/bulk
-  flow (T191). Because reviews.json is a disjoint git path from everything the loop
-  commits, the two writers never conflict (see the harness section below).
-  Everything else stays read-only.
+  SQLite directly and is not required for jobs to run. There are **exactly TWO
+  deliberate write exceptions**, both owner-owned overlay files in `.harness/`:
+  - **`reviewed` flag (T136, was T124):** lives in `.harness/reviews.json` (a
+    committed `id → { reviewed, at }` map — NOT in TASKS.json, which the loop owns).
+    Two endpoints write it: `POST /api/backlog/:id/reviewed` (single task, any
+    `reviewed` bool) and `POST /api/backlog/reviewed-bulk { ids: string[] }` (multiple
+    tasks reviewed=true in **one** atomic write + **one** git commit). Both atomically
+    write the file (temp-file + rename) AND, under the SAME mkdir lock loop.sh uses
+    (`src/core/repo-lock.ts`), commit it `[skip ci]` + push to GitHub (fetch+rebase+
+    retry; a failed push is a non-fatal warning). The bulk endpoint produces exactly ONE
+    git commit for the whole batch — the Backlog UI uses it for the select-all/bulk
+    flow (T191).
+  - **`done` flag (T208):** lives in `.harness/human-done.json` (a committed
+    `id → { done: true, at }` map). `POST /api/backlog/:id/done` applies only to
+    tasks with `gate === 'needs-human'` (400 otherwise); it atomically writes the
+    file and commits+pushes under the same repo lock. **Marking done implies
+    reviewed**: `GET /api/backlog` overlays `done=true` and derives `reviewed=true`
+    for any human-done task. TASKS.json status is never modified. The Backlog page
+    shows a **"Mark done"** button on needs-human tasks that aren't already done.
+  Both overlay files are disjoint git paths from TASKS.json and from each other,
+  so neither writer ever conflicts with the loop or the other file. Everything
+  else stays read-only.
 
 ## File map
 
@@ -981,20 +989,19 @@ this in addition to everything above:
   loop sets a task's `status` to `done` (via a `jq` field-scoped edit that preserves every other
   field) — **never edit `status` (or any field) of `.harness/TASKS.json` yourself.** Write your
   attempt notes to `.harness/worklog/<TASK>.md` and the result line to `.harness/worklog/.result`.
-  - **The ONE owner-authorized exception is the `reviewed` flag (T136, was T124).** Human-review
-    tracking is **human/dashboard-owned, not shell-owned** — and since T136 it lives in its OWN
-    owner-owned file `.harness/reviews.json` (a committed `id → { reviewed, at }` map), NOT in
-    TASKS.json. A new backlog task therefore **no longer carries a `reviewed` field in its JSON**.
-    The owner sets it from the Backlog Done section via two endpoints the DAEMON handles: the
-    per-task `POST /api/backlog/:id/reviewed` (single id, any bool) and the bulk
-    `POST /api/backlog/reviewed-bulk { ids: string[] }` (multiple ids marked reviewed=true in ONE
-    atomic write + ONE git commit — the Backlog UI select-all/bulk flow, T191). Both atomically
-    write reviews.json (temp-file + rename) AND, under the SAME mkdir lock loop.sh uses
-    (`src/core/repo-lock.ts`), commit + push that one file `[skip ci]` (fetch+rebase+retry; failed
-    push = non-fatal warning). The loop NEVER writes reviews.json (only TASKS.json `status` + the
-    worklog), so the two writers are fully decoupled —
-    disjoint git paths, never a conflict. `GET /api/backlog` overlays `reviewed` from the file
-    (absent → false). The agent still must not hand-edit `reviewed`/reviews.json — it's a UI action.
+  - **The owner-authorized exceptions are the `reviewed` flag (T136) and `done` flag (T208) — both
+    human/dashboard-owned overlay files, NOT fields in TASKS.json.** The loop NEVER writes
+    either file (only TASKS.json `status` + the worklog), so all three writers are fully decoupled.
+    - **`reviewed` (T136):** lives in `.harness/reviews.json` (`id → { reviewed, at }`). Set via
+      `POST /api/backlog/:id/reviewed` or bulk `POST /api/backlog/reviewed-bulk`. Both atomically
+      write the file AND commit+push `[skip ci]` under the repo lock (fetch+rebase+retry; failed
+      push = non-fatal warning). `GET /api/backlog` overlays `reviewed` (absent → false).
+    - **`done` (T208):** lives in `.harness/human-done.json` (`id → { done: true, at }`). Set via
+      `POST /api/backlog/:id/done` (needs-human tasks only — 400 otherwise). Same atomic
+      write+commit+push pattern. `GET /api/backlog` overlays `done=true` and derives
+      `reviewed=true` for human-done tasks (done implies reviewed). The Backlog page shows a
+      "Mark done" button on needs-human tasks that aren't already done.
+    The agent must not hand-edit `reviewed`/`done` or either overlay file — these are UI actions.
 - **Task `do`/`doneWhen` live in a per-task Markdown spec (T131).** A task's *what to build* and
   *bar for done* are NOT flat strings in `.harness/TASKS.json` — they live in `.harness/tasks/TNNN.md`
   with two sections, `## Do` and `## Done when`, referenced by the JSON task's `spec` field (a

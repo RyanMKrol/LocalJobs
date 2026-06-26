@@ -300,6 +300,9 @@ export interface BacklogTask {
   // Human-review flag (T124): owner-set via the dashboard, not the harness loop.
   // Defaults to false (the API normalises absent values).
   reviewed?: boolean;
+  // Human-done flag (T208): set when the owner marks a needs-human task done.
+  // Implies reviewed=true. Only present (true) when the task is human-done.
+  done?: boolean;
 }
 
 /** One complete-missing TV season (plex workflow), overlaid with ledger status. */
@@ -473,6 +476,11 @@ export const api = {
     post<{ ok: boolean; ids: string[]; count: number; committed?: boolean; pushed?: boolean; warning?: string }>(
       '/api/backlog/reviewed-bulk',
       { ids },
+    ),
+  markBacklogDone: (id: string) =>
+    post<{ ok: boolean; id: string; done: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
+      `/api/backlog/${encodeURIComponent(id)}/done`,
+      {},
     ),
 
   // Read-only DB browser

@@ -158,28 +158,28 @@ which lives in `.harness/reviews.json`, see below). The loop's per-task prompt r
 `GET /api/backlog` inlines the file as `specContent` (`readTaskSpec`, confined to
 `.harness/tasks/*.md`) and the Backlog page renders it as markdown.
 
-**`reviewed` — owner-owned, in its OWN file (T136, was T124).** Whether the OWNER has personally
-reviewed a `done` task is the ONE human/dashboard-owned piece of backlog state — and since T136 it
-lives **entirely outside TASKS.json**, in its own committed file `.harness/reviews.json`: a JSON map
-`id → { "reviewed": bool, "at": <ISO-8601> }`. TASKS.json tasks carry **no** `reviewed` field, and
-**the loop NEVER writes reviews.json** (it only ever writes TASKS.json `status` + the worklog). This
-makes the two writers fully decoupled — different files, so the loop's `jq` status write and the
-daemon's review write can never conflict, and a merge is always clean.
+**Owner-owned overlay flags — `reviewed` (T136) and `done` (T208).** These are the
+human/dashboard-owned pieces of backlog state. Both live **entirely outside TASKS.json**, in their
+own committed files, and **the loop NEVER writes either file** (it only ever writes TASKS.json
+`status` + the worklog). The loop's `jq` status write and the daemon's overlay writes can never
+conflict — different files, always clean merges.
 
-`GET /api/backlog` (`readBacklog`) OVERLAYS the file: each task's `reviewed = reviews[id]?.reviewed
-?? false`. The Backlog page's "Mark as reviewed" toggle calls `POST /api/backlog/:id/reviewed
-{ reviewed }` — the **single deliberate dashboard→harness write** — which (a) ATOMICALLY writes the
-entry (read-modify-write, temp-file + rename, field-scoped, stamping `at`) as the durability floor,
-then (b) under the **SAME mkdir lock loop.sh uses** (`src/core/repo-lock.ts`, the
-`<git-common-dir>/<basename(repo-root)>-loop.lock` dir with the stale-pid-reclaim protocol — so the
-daemon's git ops are mutually exclusive with the loop) stages ONLY `.harness/reviews.json`, commits
-it `reviews: <id> reviewed=<bool> [skip ci]`, and `fetch`+rebase+`push`es with a bounded retry. The
-local commit is the guarantee; the push is **best-effort** — a failed push (offline / no remote)
-returns `{ ok, reviewed, committed, pushed: false, warning }` (non-fatal), and the lock is always
-released in a `finally`. So a review survives a daemon restart AND a working-tree reset, and reaches
-GitHub. An absent entry reads as `false`. The agent must NOT hand-edit `reviewed`/reviews.json — it
-is an owner UI action, just as `status` is a shell action. **loop.sh and the daemon must agree on
-the lock path byte-for-byte** (see `repo-lock.ts`'s header + loop.sh's `acquire_lock`).
+- **`.harness/reviews.json`** — `id → { "reviewed": bool, "at": <ISO-8601> }`. Set via
+  `POST /api/backlog/:id/reviewed { reviewed }` or bulk `POST /api/backlog/reviewed-bulk`. Atomically
+  writes the file (read-modify-write, temp-file + rename, field-scoped) then commits+pushes under the
+  repo lock. `GET /api/backlog` overlays `reviewed = reviews[id]?.reviewed ?? false`.
+- **`.harness/human-done.json`** (T208) — `id → { "done": true, "at": <ISO-8601> }`. Set via
+  `POST /api/backlog/:id/done` (needs-human tasks ONLY — 400 otherwise). Same atomic write+commit+push
+  pattern. `GET /api/backlog` overlays `done=true` and derives `reviewed=true` (done implies reviewed).
+  TASKS.json `status` is NEVER modified. The Backlog page shows a **"Mark done"** button on
+  needs-human tasks that aren't already done.
+
+Both endpoints use the **SAME mkdir lock loop.sh uses** (`src/core/repo-lock.ts`, the
+`<git-common-dir>/<basename(repo-root)>-loop.lock` dir with stale-pid-reclaim) — daemon git ops are
+mutually exclusive with the loop. The push is **best-effort** (non-fatal warning on failure; the local
+commit is the durability guarantee). The agent must NOT hand-edit either overlay file — they are owner
+UI actions. **loop.sh and the daemon must agree on the lock path byte-for-byte** (see `repo-lock.ts`'s
+header + loop.sh's `acquire_lock`).
 
 ### Backlog authoring: a new task = JSON object + spec MD (T131)
 

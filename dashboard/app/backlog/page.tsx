@@ -27,17 +27,21 @@ function CollapsibleRow({
   selectable,
   checked,
   onCheck,
+  onMarkDone,
 }: {
   t: BacklogTask;
   selectable?: boolean;
   checked?: boolean;
   onCheck?: (id: string, val: boolean) => void;
+  onMarkDone?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [markingDone, setMarkingDone] = useState(false);
   const human = t.gate === 'needs-human' || t.gate === 'gate';
   const buildable = t.status !== 'done' && !human;
-  const isDone = t.status === 'done';
+  const isDone = t.status === 'done' || t.done === true;
   const reviewed = t.reviewed === true;
+  const isHumanDone = t.done === true;
 
   return (
     <div>
@@ -72,7 +76,24 @@ function CollapsibleRow({
         <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
         <span style={{ flex: 1 }}>{t.title}</span>
         {buildable && <span className="pill buildable" style={{ flexShrink: 0 }}>🤖 buildable</span>}
-        {human && <span className="pill human" style={{ flexShrink: 0 }}>🔒 needs human</span>}
+        {human && !isHumanDone && <span className="pill human" style={{ flexShrink: 0 }}>🔒 needs human</span>}
+        {human && !isHumanDone && onMarkDone && (
+          <button
+            type="button"
+            className="review-toggle"
+            disabled={markingDone}
+            style={{ flexShrink: 0 }}
+            onClick={async (e) => {
+              e.stopPropagation();
+              setMarkingDone(true);
+              try { await api.markBacklogDone(t.id); } catch { /* ignore — next poll reflects state */ }
+              setMarkingDone(false);
+              onMarkDone(t.id);
+            }}
+          >
+            {markingDone ? 'Saving…' : 'Mark done'}
+          </button>
+        )}
         {isDone && (
           <>
             <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`} style={{ flexShrink: 0 }}>
@@ -112,6 +133,7 @@ const REVIEW_FILTERS: { id: ReviewFilter; label: string }[] = [
 
 export default function Backlog() {
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const refresh = () => setRefreshNonce((n) => n + 1);
   const { data, error } = usePoll(() => api.backlog(), 5000, [refreshNonce]);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -161,7 +183,7 @@ export default function Backlog() {
       // ignore — next poll reflects true state
     }
     setBulkPending(false);
-    setRefreshNonce((n) => n + 1);
+    refresh();
   };
 
   return (
@@ -195,7 +217,7 @@ export default function Backlog() {
           <p className="sub">The loop skips these — work them manually.</p>
           <div className="panel" style={{ padding: '0 14px' }}>
             {human.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
-            {human.map((t) => <CollapsibleRow key={t.id} t={t} />)}
+            {human.map((t) => <CollapsibleRow key={t.id} t={t} onMarkDone={t.gate === 'needs-human' ? refresh : undefined} />)}
           </div>
         </details>
 
