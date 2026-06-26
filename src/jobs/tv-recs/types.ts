@@ -91,6 +91,11 @@ export interface RecommendationsFile {
   recommendations: Recommendation[];
 }
 
+/** Persisted cross-run history of past recommendations (for avoid-re-suggesting). */
+export interface RecsHistoryFile {
+  recommended: Array<{ title: string; year?: number | null }>;
+}
+
 // ── Minimal Plex response shapes (only the fields we read) ──
 
 export interface PlexGuid { id?: string }
