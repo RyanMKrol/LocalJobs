@@ -5301,14 +5301,13 @@
     },
     {
       "id": "T205",
-      "title": "Prototype a unified joined-output view (3 switchable options; dedupe by stable key)",
+      "title": "Unified, de-duped output section on every workflow detail page",
       "status": "pending",
       "dependsOn": [],
       "gate": null,
       "tags": [
         "dashboard",
-        "ui",
-        "prototype"
+        "ui"
       ],
       "facets": {
         "layer": "ui",
@@ -5320,10 +5319,11 @@
       "scope": [
         "dashboard/app/components/**",
         "dashboard/app/workflows/[name]/page.tsx",
-        "dashboard/app/ui.tsx",
         "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
         "src/api/server.ts",
-        "dashboard/package.json"
+        "src/db/store.ts",
+        "CLAUDE.md"
       ],
       "design": null,
       "verify": [],
@@ -5332,10 +5332,10 @@
     },
     {
       "id": "T206",
-      "title": "Review joined-output prototype options; pick the winner + dedupe-key convention",
+      "title": "Review graph-view prototype options; pick the winner",
       "status": "pending",
       "dependsOn": [
-        "T205"
+        "T220"
       ],
       "gate": "needs-human",
       "tags": [
@@ -5349,7 +5349,7 @@
     },
     {
       "id": "T207",
-      "title": "Hardcode the chosen joined-output option; remove the switcher + unused paths",
+      "title": "Hardcode the chosen graph-view option; remove the switcher + unused libraries",
       "status": "pending",
       "dependsOn": [
         "T206"
@@ -5369,7 +5369,9 @@
       "scope": [
         "dashboard/app/components/**",
         "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/**",
         "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css",
         "dashboard/app/lib/api.ts",
         "src/api/server.ts",
         "dashboard/package.json",
@@ -5738,6 +5740,42 @@
       ],
       "expectsTest": true,
       "spec": ".harness/tasks/T219.md"
+    },
+    {
+      "id": "T220",
+      "title": "Prototype the workflow graph (DAG) view (2-3 switchable graphing-library options)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "prototype",
+        "graph"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/components/**",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/**",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/lib/api.ts",
+        "dashboard/package.json",
+        "src/api/server.ts"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T220.md"
     }
   ]
 }
