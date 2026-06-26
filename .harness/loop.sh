@@ -404,6 +404,11 @@ structural_checks() {
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     case "$f" in .harness/worklog/*) continue ;; esac
+    # Lockfiles are a MECHANICAL artifact of a dependency change, never "the work" and never dangerous:
+    # a real dep change still requires editing package.json (which IS scope-checked), so its sibling
+    # lockfile is auto-allowed (like test files + the worklog). This stops the common scope-creep where
+    # a task lists package.json but `npm install` also rewrites package-lock.json (the T220 failure).
+    case "$f" in */package-lock.json|package-lock.json|*/yarn.lock|yarn.lock|*/pnpm-lock.yaml|pnpm-lock.yaml) continue ;; esac
     if printf '%s\n' "$f" | grep -qiE '(\.test\.|\.spec\.|_test\.|(^|/)test_|(^|/)tests?/)'; then continue; fi
     inscope=0
     while IFS= read -r s; do

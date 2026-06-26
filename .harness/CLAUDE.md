@@ -97,6 +97,14 @@ bracket dirs like `dashboard/app/workflows/[name]/page.tsx` are matched literall
 NOT glob character-classes here.) Rule of thumb: if the task legitimately can't predict every file
 (it may refactor or add helpers), scope the **directory**; if it must stay surgical, list the files.
 
+**Always-allowed regardless of scope:** the task's own worklog, **test files** (`*.test.*`/`*.spec.*`/
+`tests/…`), and **lockfiles** (`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`). You therefore do
+NOT need to list a lockfile in `scope` — when a task changes dependencies, scoping just `package.json`
+is enough; the `npm install`-rewritten `package-lock.json` is auto-allowed (a real dep change still
+requires editing `package.json`, which IS scope-checked, so the lockfile can't smuggle anything in).
+This auto-exemption was added after a task scoped to `package.json` failed scope-creep on its sibling
+`package-lock.json` (T220).
+
 ## Known-but-deferred issues (review if they recur)
 
 A running log of harness pathologies we've **seen at least once** and **consciously chose not to fix

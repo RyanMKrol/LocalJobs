@@ -5762,11 +5762,12 @@
       },
       "scope": [
         "dashboard/app/components/**",
-        "dashboard/app/workflows/[name]/page.tsx",
-        "dashboard/app/workflow-runs/[id]/**",
-        "dashboard/app/ui.tsx",
         "dashboard/app/globals.css",
         "dashboard/app/lib/api.ts",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/workflow-runs/[id]/**",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/package-lock.json",
         "dashboard/package.json",
         "src/api/server.ts"
       ],
