@@ -31,11 +31,13 @@ case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$ROOT/$GIT_COMMON" ;; esac   # make 
 
 BACKLOG="$HARNESS_DIR/TASKS.json"
 WORKLOG="$HARNESS_DIR/worklog"
-OUTCOMES="$HARNESS_DIR/outcomes.jsonl"             # append-only escalation ledger — the SOLE input to difficulty calibration (forward-only)
+OUTCOMES="$HARNESS_DIR/outcomes.jsonl"             # append-only escalation ledger — the SOLE input to difficulty calibration (forward-only); ONE terminal row per task
+FAILURES="$HARNESS_DIR/failures.jsonl"             # append-only PER-ATTEMPT failure ledger — ONE row per failed attempt (kind+cause). Diagnostics only, NOT calibration; committed so causes are queryable across tasks
+FAILBUF="$WORKLOG/.failures.buf"                   # gitignored scratch buffer for the current task's failures: survives cold_reset (git clean -fd keeps ignored files), flushed into FAILURES at each terminal event
 NAME="$(basename "$ROOT")"
 MODEL="${MODEL:-claude-sonnet-4-6}"               # COLD-START FLOOR — cheapest tier; the policy tunes UP from here (pin the full id; the bare alias drifts)
 EFFORT="${EFFORT:-low}"                            # low|medium|high|xhigh|max — cheapest by default (bias-cheap; the ladder escalates on failure)
-MAX_ATTEMPTS="${MAX_ATTEMPTS:-2}"                  # soft failures per rung before escalating (2: the ladder is now fine-grained — 7 global tiers — so fewer tries per rung keeps the total attempt budget bounded)
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-2}"                  # soft failures per rung before escalating (2: with the 4-tier ladder this caps a doomed task at 4×2=8 attempts before it BLOCKS to a human)
 MAX_ITERS="${MAX_ITERS:-100}"                      # global iteration backstop
 WAIT_SECONDS="${WAIT_SECONDS:-30}"                 # backoff between retries / CI polls
 CI_TIMEOUT="${CI_TIMEOUT:-1200}"                   # max seconds to wait for a CI run
@@ -122,13 +124,42 @@ record_outcome() {
   if [ -n "$line" ]; then printf '%s\n' "$line" >>"$OUTCOMES"; else log "WARN: couldn't record outcome for $id"; fi
 }
 
+# record_failure <id> <kind> [detail] — append ONE per-attempt failure row to the gitignored buffer
+# (FAILBUF). Unlike record_outcome (one terminal row per task), this captures the CAUSE of EVERY
+# failed attempt along the way — scope-creep / audit-fail / ci-red / … — so you can see the full
+# escalation history, not just where a task ended up. The buffer is gitignored so it survives the
+# cold_reset between attempts; flush_failures folds it into the committed FAILURES ledger at a
+# terminal event (mark_done / block_task). Best-effort — never fails the caller. kinds:
+#   scope-creep | empty-diff | test-missing | local-dod | audit-fail | push-fail | ci-red |
+#   agent-soft | agent-blocked | guard
+record_failure() {
+  local id="$1" kind="$2" detail="${3:-}" line ts m e
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  read -r m e <<<"$(rung_at "$id" "$cur_rung")"
+  line="$(tj --arg id "$id" --arg ts "$ts" --arg kind "$kind" --arg detail "$detail" \
+      --argjson rung "$cur_rung" --argjson attempt "$cur_attempts" --arg m "$m" --arg e "$e" \
+      -c '.tasks[]|select(.id==$id)|{
+        id:$id, ts:$ts, kind:$kind, rung:$rung, attempt:$attempt,
+        model:$m, effort:$e, facets:(.facets // null), detail:$detail
+      }' 2>/dev/null)"
+  if [ -n "$line" ]; then printf '%s\n' "$line" >>"$FAILBUF"; else log "WARN: couldn't record failure for $id"; fi
+}
+
+# flush_failures — fold the current task's buffered per-attempt failures into the committed FAILURES
+# ledger, then clear the buffer. Called at every terminal event so the buffer never spans tasks.
+flush_failures() {
+  [ -s "$FAILBUF" ] || return 0
+  cat "$FAILBUF" >>"$FAILURES" && : >"$FAILBUF"
+}
+
 # Shell owns task status: set it done, then commit+push the one-line change (no CI needed).
 mark_done() {
   local id="$1" tmp="$BACKLOG.tmp"   # same-dir temp → mv is an atomic rename (no cross-fs partial reads)
   jq --arg id "$id" '(.tasks[]|select(.id==$id)|.status)="done"' "$BACKLOG" >"$tmp" \
     && mv "$tmp" "$BACKLOG" || { rm -f "$tmp"; log "WARN: failed to mark $id done"; return 1; }
   record_outcome "$id" false                        # success → ledger row (succeededRung=cur_rung)
-  git -C "$ROOT" add "$BACKLOG" "$WORKLOG" "$OUTCOMES" 2>/dev/null || true
+  flush_failures                                     # fold any soft-failures-along-the-way into the committed FAILURES ledger
+  git -C "$ROOT" add "$BACKLOG" "$WORKLOG" "$OUTCOMES" "$FAILURES" 2>/dev/null || true
   git -C "$ROOT" commit -q -m "$id: mark done [skip ci]" 2>/dev/null || true
   git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push status update for $id"
 }
@@ -346,9 +377,10 @@ cold_reset() {
 # structural_checks <id> — cheap, model-agnostic gate on the build commit, BEFORE the audit. Any
 # fail = a failed attempt. 0 = pass, 1 = fail.
 structural_checks() {
-  local id="$1" changed want_test scope creep f s inscope
+  local id="$1" changed want_test scope creep f s d inscope
+  STRUCT_FAIL_KIND=""; STRUCT_FAIL_DETAIL=""        # set on failure so the caller can label the failures.jsonl row
   changed="$(git -C "$ROOT" diff --name-only "origin/$MAIN_BRANCH..HEAD" 2>/dev/null)"
-  if [ -z "$changed" ]; then log "structural: $id produced an EMPTY diff — fail"; return 1; fi
+  if [ -z "$changed" ]; then STRUCT_FAIL_KIND="empty-diff"; log "structural: $id produced an EMPTY diff — fail"; return 1; fi
   # Scope-creep gate: every changed file must be WITHIN the task's declared `scope` (exact path or
   # under a scope directory) — except the always-allowed worklog + test files. The strong planner's
   # `scope` is a binding contract; any other file the cheap builder touched is a failed attempt.
@@ -361,7 +393,13 @@ structural_checks() {
     inscope=0
     while IFS= read -r s; do
       [ -z "$s" ] && continue
-      if [ "$f" = "$s" ] || [ "${f#"$s"/}" != "$f" ]; then inscope=1; break; fi
+      # A scope entry matches as: an EXACT path, OR a directory prefix. A trailing glob (`/**`, `/*`)
+      # or slash is stripped to the bare directory so a file ANYWHERE under it counts — this is the
+      # rigour dial: scope a whole area as `src/jobs/foo/**` (proactive in-area files like a new util
+      # are fine) or pin exact files for surgical/shared changes (tight). Brackets in Next.js paths
+      # (`[name]`) are literal here ([ = ] string compare + quoted ${f#"$d"/}), never glob classes.
+      d="${s%/}"; d="${d%/\*\*}"; d="${d%/\*}"
+      if [ "$f" = "$s" ] || [ "$f" = "$d" ] || [ "${f#"$d"/}" != "$f" ]; then inscope=1; break; fi
     done <<SCOPE
 $scope
 SCOPE
@@ -369,14 +407,14 @@ SCOPE
   done <<CHANGED
 $changed
 CHANGED
-  if [ -n "$creep" ]; then log "structural: $id changed files OUTSIDE scope (scope creep):$creep — fail"; return 1; fi
+  if [ -n "$creep" ]; then STRUCT_FAIL_KIND="scope-creep"; STRUCT_FAIL_DETAIL="${creep# }"; log "structural: $id changed files OUTSIDE scope (scope creep):$creep — fail"; return 1; fi
   want_test="$(tj -r --arg id "$id" '.tasks[]|select(.id==$id)|.expectsTest // false')"
   if [ "$want_test" = "true" ] && ! printf '%s\n' "$changed" | grep -qiE '(\.test\.|\.spec\.|_test\.|(^|/)test_|(^|/)tests?/)'; then
-    log "structural: $id has expectsTest=true but no test file changed — fail"; return 1
+    STRUCT_FAIL_KIND="test-missing"; log "structural: $id has expectsTest=true but no test file changed — fail"; return 1
   fi
   if [ -n "$LOCAL_DOD" ]; then
     log "structural: running LOCAL_DOD → $LOCAL_DOD"
-    if ! ( cd "$ROOT" && eval "$LOCAL_DOD" ) >/dev/null 2>&1; then log "structural: LOCAL_DOD failed for $id — fail"; return 1; fi
+    if ! ( cd "$ROOT" && eval "$LOCAL_DOD" ) >/dev/null 2>&1; then STRUCT_FAIL_KIND="local-dod"; STRUCT_FAIL_DETAIL="$LOCAL_DOD"; log "structural: LOCAL_DOD failed for $id — fail"; return 1; fi
   fi
   return 0
 }
@@ -437,6 +475,7 @@ audit_gate() {
   cp "$WORKLOG/.claude-out" "$out" 2>/dev/null || true
   verdict="$(grep -oiE '\b(PASS|FAIL)\b' "$out" 2>/dev/null | head -1 | tr '[:lower:]' '[:upper:]')"
   if [ "$verdict" = "PASS" ]; then cur_verification="audited"; log "audit: PASS for $id (reasons → $out)"; return 0; fi
+  AUDIT_FAIL_DETAIL="verdict=${verdict:-none}; reasons in .harness/worklog/$id.audit.md"
   log "audit: FAIL for $id (verdict='${verdict:-none}', reasons → $out)"; return 1
 }
 
@@ -475,19 +514,21 @@ block_task() {
   mkdir -p "$WORKLOG"
   printf '\n---\nfailed:blocked %s — %s\n' "$id" "$reason" >>"$WORKLOG/$id.md"
   record_outcome "$id" true "$reason"               # blocked → ledger row (succeededRung=null, topRung=cur_rung, reason kept)
-  git -C "$ROOT" add "$WORKLOG/$id.md" "$OUTCOMES" 2>/dev/null || true
+  flush_failures                                     # fold this task's buffered per-attempt failures into the committed FAILURES ledger
+  git -C "$ROOT" add "$WORKLOG/$id.md" "$OUTCOMES" "$FAILURES" 2>/dev/null || true
   git -C "$ROOT" commit -q -m "$id: blocked, needs human — skipping [skip ci]" 2>/dev/null || true
   git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push block marker for $id"
   log "BLOCKED $id ($reason) — recorded for a human; moving on to the next task."
   cur_task=""; cur_attempts=0; cur_rung=0; cur_base=0
 }
 
-bump() {   # count a soft failure for $1; escalate at the cap; BLOCK + move on past the top rung (never halt)
-  local t="$1" last
+bump() {   # count a soft failure for $1 (kind/detail → failures.jsonl); escalate at the cap; BLOCK + move on past the top rung (never halt)
+  local t="$1" kind="${2:-soft}" detail="${3:-}" last
   [ "$t" = "$cur_task" ] || { cur_task="$t"; cur_attempts=0; cur_rung=0; cur_base="$(pick_base "$t")"; }
   last=$(( $(ladder_len "$t") - 1 ))
   cur_attempts=$((cur_attempts + 1))
-  log "soft failure $cur_attempts/$MAX_ATTEMPTS on $t (rung $cur_rung/$last)"
+  record_failure "$t" "$kind" "$detail"             # capture THIS attempt's cause (the full escalation history, not just the terminal row)
+  log "soft failure $cur_attempts/$MAX_ATTEMPTS on $t (rung $cur_rung/$last): $kind${detail:+ — $detail}"
   if (( cur_attempts >= MAX_ATTEMPTS )); then
     if (( cur_rung < last )); then
       cur_rung=$((cur_rung + 1)); cur_attempts=0
@@ -550,6 +591,7 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
       log "agent reports $task built + committed"
       if ! guard_clean; then
         log "PRE-PUSH GUARD tripped on $task — sensitive path staged; discarding the commit + blocking."
+        record_failure "$task" "guard" "sensitive path staged"
         block_task "$task" "pre-push guard tripped (sensitive path staged)"; board; continue
       fi
       # Cheap structural gate (in-place local DoD) THEN the blocking audit — both BEFORE the push, so
@@ -557,15 +599,15 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
       # attempt: discard the commit + soft-retry (cold), escalating per the existing ladder.
       if ! structural_checks "$task"; then
         log "structural checks failed for $task — discarding commit + soft retry."
-        cold_reset; bump "$task"; board; continue
+        cold_reset; bump "$task" "${STRUCT_FAIL_KIND:-structural}" "$STRUCT_FAIL_DETAIL"; board; continue
       fi
       if ! audit_gate "$task"; then
         log "AUDIT FAILED for $task — discarding the commit (never pushed) + soft retry."
-        cold_reset; bump "$task"; board; continue
+        cold_reset; bump "$task" "audit-fail" "$AUDIT_FAIL_DETAIL"; board; continue
       fi
       if ! git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH"; then
         log "push to $MAIN_BRANCH failed (remote moved / network) — soft retry."
-        bump "$task"; board; continue
+        bump "$task" "push-fail" "remote moved / network"; board; continue
       fi
       if [ "$REQUIRE_CI" = "1" ]; then
         if wait_ci_green; then
@@ -579,14 +621,14 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
           else
             log "WARN: auto-revert/push failed — main may need a manual: git revert HEAD && git push"
           fi
-          bump "$task"
+          bump "$task" "ci-red" "CI checks failed on the pushed commit"
         fi
       else
         mark_done "$task"; run_integrate_hook; log "marked $task done (REQUIRE_CI=0; local DoD only)"; cur_task=""; cur_attempts=0; cur_rung=0; cur_base=0
       fi
       ;;
-    failed:soft)    log "agent soft-failed $rtask: ${extra:-}"; bump "$task" ;;
-    failed:blocked) log "agent reports blocker on $rtask: ${extra:-}"; block_task "$task" "agent reported failed:blocked — ${extra:-}" ;;
+    failed:soft)    log "agent soft-failed $rtask: ${extra:-}"; bump "$task" "agent-soft" "${extra:-}" ;;
+    failed:blocked) log "agent reports blocker on $rtask: ${extra:-}"; record_failure "$task" "agent-blocked" "${extra:-}"; block_task "$task" "agent reported failed:blocked — ${extra:-}" ;;
     waiting)        log "waiting on deps for $rtask: ${extra:-}"; sleep "$WAIT_SECONDS" ;;
     idle)           log "agent reports idle — nothing to do"; board; exit 0 ;;
     *)              log "unrecognized result '$status' — backing off"; sleep "$WAIT_SECONDS" ;;

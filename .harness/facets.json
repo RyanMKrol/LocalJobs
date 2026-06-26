@@ -61,10 +61,7 @@
       { "model": "claude-sonnet-4-6", "effort": "low" },
       { "model": "claude-sonnet-4-6", "effort": "medium" },
       { "model": "claude-sonnet-4-6", "effort": "high" },
-      { "model": "claude-opus-4-8", "effort": "medium" },
-      { "model": "claude-opus-4-8", "effort": "high" },
-      { "model": "claude-opus-4-8", "effort": "xhigh" },
-      { "model": "claude-opus-4-8", "effort": "max" }
+      { "model": "claude-opus-4-8", "effort": "high" }
     ]
   }
 }

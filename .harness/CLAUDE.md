@@ -74,3 +74,25 @@ from `facets.json`'s controlled vocabulary (use the task's `scope` paths to pick
 `needs-human` (gated) tasks are **carved out** — they get NO facets. A buildable task missing facets
 gets no auto-tuning and the loop **pre-flight WARNs** about it. Background:
 `designs/difficulty-autotune.md`.
+
+## `scope` is the rigour dial — pick its granularity deliberately
+
+A task's `scope` is a **hard boundary**: the loop's `structural_checks` fails any attempt whose diff
+touches a file outside it (test files + the task's own worklog are always allowed). It is NOT a
+"these files must change" checklist — "did it actually do the work" is the **audit + CI's** job
+(`expectsTest: true` is the one cheap positive signal, forcing a test into the diff). `scope`'s only
+job is **blast-radius containment**, and its *granularity* is how you express the intended rigour:
+
+- **Greenfield / "this whole area is the blast radius" → scope a DIRECTORY glob**, e.g.
+  `src/jobs/tv-recs/**` or `dashboard/app/components/**`. Anything the builder creates *inside that
+  tree* — including a proactive new util/helper file it decides it needs — is in-scope and NOT
+  punished. Use this for new workflows, new component areas, etc.
+- **Surgical / shared / dangerous → pin EXACT files**, e.g. `src/core/executor.ts`,
+  `src/db/store.ts`. A new sibling in a shared/core dir then trips scope-creep on purpose, so a
+  stronger model (escalation) or a human looks at a high-blast-radius change.
+
+The matcher understands an entry as an **exact path** OR a **directory prefix** — a trailing `/**`,
+`/*`, or `/` is stripped to the bare directory, so a file anywhere beneath it counts. (Next.js
+bracket dirs like `dashboard/app/workflows/[name]/page.tsx` are matched literally — the brackets are
+NOT glob character-classes here.) Rule of thumb: if the task legitimately can't predict every file
+(it may refactor or add helpers), scope the **directory**; if it must stay surgical, list the files.

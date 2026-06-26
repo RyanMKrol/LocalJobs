@@ -71,7 +71,9 @@ task is not done. (Only a task that would have to *exceed* the monthly cap to ve
 `failed:blocked`.)
 
 **The loop adds two gates beyond CI** (see `designs/audit-verification.md`). Before a built task is
-pushed, the loop runs cheap **structural checks** (the diff is non-empty; if the task sets
+pushed, the loop runs cheap **structural checks** (the diff is non-empty; every changed file is within
+the task's declared `scope` — a hard blast-radius boundary, matched as an exact path or a directory
+prefix so a `dir/**` entry admits anything beneath it; if the task sets
 `expectsTest: true`, a test file changed; the `LOCAL_DOD` commands — `tsc`/`test` — pass), then — for
 a *sampled* fraction of tasks — a **blocking audit**: a fresh, independent Claude (at
 `max(opus-4.8/medium, the builder's tier)`) reads the spec's `## Done when` + the diff and must answer
@@ -92,9 +94,22 @@ Tasks do **not** carry per-task `model`/`effort`/`escalation` — difficulty is 
 .tiers.ladder`, cheapest→priciest) and a policy (`policy.jq`) picks each task's START tier from its
 `(layer × work-type)` facet cell's escalation history (the cheapest tier clearing floor 0.75 with ≥6
 samples; else the cold-start floor). After `MAX_ATTEMPTS` soft failures on a tier the loop climbs the
-ladder; past the top tier it stops for a human. Every built task's outcome is captured to
-`.harness/outcomes.jsonl` (the sole calibration input; forward-only). The **cold-start floor** is the
-cheapest tier (`sonnet/low`, set in `harness.env`) — used until a cell has enough samples.
+ladder; past the top tier it stops for a human. The ladder is deliberately SHORT (4 tiers:
+`sonnet/low → sonnet/medium → sonnet/high → opus/high`), so a doomed task BLOCKS to a human after at
+most `4×MAX_ATTEMPTS` attempts rather than burning the most expensive opus-effort tiers — if
+`opus/high` can't do it twice, a human glance is cheaper than throwing `opus/max` at it. Every built
+task's outcome is captured to `.harness/outcomes.jsonl` (the sole calibration input; forward-only).
+The **cold-start floor** is the cheapest tier (`sonnet/low`, set in `harness.env`) — used until a cell
+has enough samples.
+
+**Two distinct ledgers.** `outcomes.jsonl` is one TERMINAL row per built task (where it ended up:
+final tier, total soft-fails, blocked?) and feeds calibration. `failures.jsonl` is one row per FAILED
+ATTEMPT (`{id, ts, kind, rung, attempt, model, effort, detail}`) with the cause — `scope-creep`,
+`audit-fail`, `ci-red`, `test-missing`, … — so you can see the FULL escalation history (what failed
+at each rung, and whether the causes were all the same), not just the summary. It's diagnostics only
+(never read by calibration), buffered per-task in a gitignored scratch file (survives the cold reset
+between attempts) and flushed into the committed ledger when the task terminates. Aggregate it with
+`jq` to answer "which failure kind drives most escalations across tasks?".
 `needs-human` tasks are carved out entirely (no facets, no calibration).
 
 ## 7. Usage-limit backoff (pause + cold re-attempt)

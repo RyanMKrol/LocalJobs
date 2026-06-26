@@ -46,6 +46,7 @@ TODO.md
 .harness/worklog/.claude-out
 .harness/worklog/STATUS.md
 .harness/worklog/*.audit.md
+.harness/worklog/.failures.buf
 
 # The ideas inbox is a PRIVATE, transient capture scratchpad (raw, unfleshed ideas —
 # may reference private jobs). The mechanism travels via .harness/CLAUDE.md; the ideas
