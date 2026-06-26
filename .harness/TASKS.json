@@ -5707,7 +5707,7 @@
     {
       "id": "T219",
       "title": "Surface TV recommendations in the dashboard (+ per-item ignore)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T218",
         "T209"
