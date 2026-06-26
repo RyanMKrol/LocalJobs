@@ -5452,7 +5452,7 @@
     {
       "id": "T210",
       "title": "Dismiss an entire collection/show at once (bulk-ignore current items only)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
