@@ -176,15 +176,14 @@ export default function Overview() {
         )}
         {visibleWorkflows.map((p) => (
           <div key={p.name} className="panel" style={{ padding: 16 }}>
-            <div className="row">
-              <a href={`/workflows/${p.name}`}><strong>{p.name}</strong></a>
-              <div className="spacer" />
-              {p.last_run && (
+            <a href={`/workflows/${p.name}`}><strong>{p.name}</strong></a>
+            {p.last_run && (
+              <div style={{ marginTop: 4 }}>
                 <a href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}>
                   <span className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</span>
                 </a>
-              )}
-            </div>
+              </div>
+            )}
             <div className="muted" style={{ fontSize: 12, margin: '6px 0' }}>
               {p.jobs.length} stages · {p.schedule
                 ? <CronBadge expr={p.schedule} />
