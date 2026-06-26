@@ -321,6 +321,27 @@ export interface MissingSeasons {
   shows: MissingSeason[];
 }
 
+/** One recommendation (TV recs workflow), overlaid with ledger status. */
+export interface TvRec {
+  tmdbId: number;
+  title: string;
+  year: number | null;
+  reason: string;
+  lens: string;
+  genre: string;
+  tmdbRating: number | null;
+  /** Already digest-notified — true once announced. */
+  notified: boolean;
+  /** Owner manually suppressed it — excluded from future reports + notifications. */
+  ignored: boolean;
+}
+
+export interface TvRecs {
+  generatedAt: string | null;
+  pooled: number;
+  recommendations: TvRec[];
+}
+
 /** One recommendation (movies workflow), overlaid with ledger status. */
 export interface MovieRec {
   tmdbId: number;
@@ -442,6 +463,11 @@ export const api = {
   movieRecs: () => get<MovieRecs>('/api/movie-recs'),
   ignoreMovieRec: (tmdbId: number) =>
     post<{ ok: boolean; ignored: number }>(`/api/movie-recs/${tmdbId}/ignore`),
+
+  // TV recommendations: list current recs + manually ignore one (T219).
+  tvRecs: () => get<TvRecs>('/api/tv-recs'),
+  ignoreTvRec: (tmdbId: number) =>
+    post<{ ok: boolean; ignored: number }>(`/api/tv-recs/${tmdbId}/ignore`),
 
   recentWorkflowRuns: (limit = 50) => get<{ runs: WorkflowRun[] }>(`/api/workflow-runs?limit=${limit}`),
   workflows: () => get<{ workflows: Workflow[] }>('/api/workflows'),

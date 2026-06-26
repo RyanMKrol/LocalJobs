@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { Dag } from '../../components/Dag';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
-import { api, type MissingSeason, type MovieGap, type MovieRec } from '../../lib/api';
+import { api, type MissingSeason, type MovieGap, type MovieRec, type TvRec } from '../../lib/api';
 import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
 
 /** Workflow names that show the Missing seasons section. */
@@ -17,6 +17,7 @@ const MISSING_SEASONS_WORKFLOWS = new Set(['missing-tv-seasons']);
 const WORKFLOWS_WITH_SPECIFIC_MANAGERS = new Set([
   'movie-recommendations',
   'missing-tv-seasons',
+  'tv-recommendations',
 ]);
 
 /** Group gaps by collection name, sorted by name; films sorted by year then title. */
@@ -33,6 +34,125 @@ function groupByCollection(gaps: MovieGap[]): [string, MovieGap[]][] {
       name,
       films.sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || a.title.localeCompare(b.title)),
     ] as [string, MovieGap[]]);
+}
+
+/**
+ * Manage-outputs section for TV **recommendations**: lists the current recs with
+ * a per-item Ignore control so the owner can suppress ones they're not interested
+ * in. Backed by `/api/tv-recs` + `/api/tv-recs/:id/ignore`. Mirrors MovieRecsManager.
+ */
+function TvRecsManager() {
+  const { data, error } = usePoll(() => api.tvRecs(), 5000);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const all = data?.recommendations ?? [];
+  const active = all.filter((r) => !r.ignored);
+  const ignored = all.filter((r) => r.ignored);
+
+  async function ignore(r: TvRec) {
+    if (!confirm(`Ignore "${r.title}"? It will be excluded from future digests and notifications.`)) return;
+    setBusy(r.tmdbId);
+    setErr(null);
+    try {
+      await api.ignoreTvRec(r.tmdbId);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="output-section output-section-recs">
+      <h2>TV Recommendations</h2>
+      <p className="muted" style={{ fontSize: 13 }}>
+        Shows recommended for you by the Claude-powered recommender branches, verified via TMDB and
+        balanced across genres. A rec is ignored once you dismiss it — it won&apos;t appear in future
+        digests or notifications.
+      </p>
+
+      {error && <p className="error">Failed to load: {String(error)}</p>}
+      {err && <p className="error">{err}</p>}
+
+      {data && data.generatedAt == null && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          No recommendations yet. Run the workflow manually — the recommended shows will appear here.
+        </p>
+      )}
+
+      {data && data.generatedAt != null && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          {active.length} active recommendation{active.length === 1 ? '' : 's'} from{' '}
+          {data.pooled} pooled suggestions{ignored.length ? ` · ${ignored.length} ignored` : ''}.
+        </p>
+      )}
+
+      <div className="movie-gaps-scroll">
+        {active.length > 0 && (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr><th>Show</th><th>Year</th><th>Genre</th><th>Lens</th><th>TMDB</th><th></th></tr>
+              </thead>
+              <tbody>
+                {active.map((r) => (
+                  <tr key={r.tmdbId}>
+                    <td>
+                      <a href={`https://www.themoviedb.org/tv/${r.tmdbId}`} target="_blank" rel="noreferrer">
+                        {r.title}
+                      </a>
+                      {r.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
+                    </td>
+                    <td>{r.year ?? '—'}</td>
+                    <td className="muted">{r.genre}</td>
+                    <td className="muted" style={{ fontSize: 12 }}>{r.lens}</td>
+                    <td>{r.tmdbRating != null ? r.tmdbRating.toFixed(1) : '—'}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="btn btn-sm" onClick={() => ignore(r)} disabled={busy === r.tmdbId}>
+                        {busy === r.tmdbId ? 'Ignoring…' : '✕ Ignore'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {active.length === 0 && data?.generatedAt != null && (
+          <p className="muted" style={{ fontSize: 13 }}>No active recommendations — all dismissed or not yet generated.</p>
+        )}
+
+        {ignored.length > 0 && (
+          <div className="panel">
+            <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
+            <p className="muted" style={{ fontSize: 13 }}>
+              Dismissed by you — never recommended or notified again.
+            </p>
+            <table>
+              <thead>
+                <tr><th>Show</th><th>Year</th><th>Genre</th></tr>
+              </thead>
+              <tbody>
+                {[...ignored].sort((a, b) => a.title.localeCompare(b.title)).map((r) => (
+                  <tr key={r.tmdbId} className="muted">
+                    <td>
+                      <a href={`https://www.themoviedb.org/tv/${r.tmdbId}`} target="_blank" rel="noreferrer">
+                        {r.title}
+                      </a>
+                    </td>
+                    <td>{r.year ?? '—'}</td>
+                    <td>{r.genre}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -717,6 +837,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       {name === 'movie-recommendations' && <MovieRecsManager />}
       {name === 'movie-recommendations' && <MovieGapsManager />}
       {MISSING_SEASONS_WORKFLOWS.has(name) && <MissingSeasonsManager />}
+      {name === 'tv-recommendations' && <TvRecsManager />}
       {!WORKFLOWS_WITH_SPECIFIC_MANAGERS.has(name) && <WorkflowOutputSection workflowName={name} />}
 
       <h2>Danger zone</h2>

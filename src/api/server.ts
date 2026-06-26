@@ -16,6 +16,9 @@ import { moviesConfig } from '../jobs/movies/config.js';
 import { NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey } from '../jobs/movies/stages/notify.js';
 import { RECS_JOB, recKey } from '../jobs/movies/recs.js';
 import type { FranchiseGapsFile, RecommendationsFile } from '../jobs/movies/types.js';
+import { tvRecsConfig } from '../jobs/tv-recs/config.js';
+import { RECS_JOB as TV_RECS_JOB, recKey as tvRecKey } from '../jobs/tv-recs/recs.js';
+import type { RecommendationsFile as TvRecommendationsFile } from '../jobs/tv-recs/types.js';
 import { plexConfig } from '../jobs/plex/config.js';
 import { NOTIFY_JOB as PLEX_SEASONS_JOB, pairKey } from '../jobs/plex/stages/notify.js';
 import type { MissingSeasonsFile } from '../jobs/plex/types.js';
@@ -974,6 +977,46 @@ export function createApiServer(
           return json(res, 400, { error: 'tmdbId must be a positive integer' });
         }
         const ignored = ignoreSurfacedItem(RECS_JOB, recKey(tmdbId));
+        return json(res, 200, { ok: true, ignored });
+      }
+
+      // GET /api/tv-recs — the current TV recommendations (read from the tv-recs
+      // workflow's recommendations.json), each overlaid with its ledger status:
+      // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
+      // file + DB only — never a paid/remote call. Returns an empty list (not an
+      // error) when the workflow hasn't produced recommendations yet.
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'tv-recs' && parts.length === 2) {
+        let file: TvRecommendationsFile = { generatedAt: '', pooled: 0, recommendations: [] };
+        try {
+          file = JSON.parse(readFileSync(tvRecsConfig.recsOut, 'utf8')) as TvRecommendationsFile;
+        } catch {
+          // recommendations.json not yet written — return an empty list.
+        }
+        const ignoredKeys = ignoredItemKeys(TV_RECS_JOB);
+        const recs = (file.recommendations ?? []).map((r) => {
+          const key = tvRecKey(r.tmdbId);
+          return {
+            ...r,
+            ignored: ignoredKeys.has(key),
+            notified: isWorkItemDone(TV_RECS_JOB, key, 1) && !ignoredKeys.has(key),
+          };
+        });
+        return json(res, 200, {
+          generatedAt: file.generatedAt || null,
+          pooled: file.pooled ?? 0,
+          recommendations: recs,
+        });
+      }
+
+      // POST /api/tv-recs/:tmdbId/ignore — owner manually IGNORES a TV recommendation
+      // so it leaves future reports AND notifications and never resurfaces. Manual only;
+      // guarded by the global loopback/token mutation check above. Idempotent.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'tv-recs' && parts[3] === 'ignore') {
+        const tmdbId = Number(parts[2]);
+        if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+          return json(res, 400, { error: 'tmdbId must be a positive integer' });
+        }
+        const ignored = ignoreSurfacedItem(TV_RECS_JOB, tvRecKey(tmdbId));
         return json(res, 200, { ok: true, ignored });
       }
 
