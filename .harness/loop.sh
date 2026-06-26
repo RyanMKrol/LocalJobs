@@ -159,7 +159,11 @@ mark_done() {
     && mv "$tmp" "$BACKLOG" || { rm -f "$tmp"; log "WARN: failed to mark $id done"; return 1; }
   record_outcome "$id" false                        # success → ledger row (succeededRung=cur_rung)
   flush_failures                                     # fold any soft-failures-along-the-way into the committed FAILURES ledger
-  git -C "$ROOT" add "$BACKLOG" "$WORKLOG" "$OUTCOMES" "$FAILURES" 2>/dev/null || true
+  # Stage the always-present files FIRST, then FAILURES only if it exists. (A single `git add … $FAILURES`
+  # would fail ATOMICALLY when failures.jsonl is absent — the common case — staging NOTHING, so the
+  # commit silently no-ops and the status=done never persists → orphaned task. Do NOT recombine these.)
+  git -C "$ROOT" add "$BACKLOG" "$WORKLOG" "$OUTCOMES" 2>/dev/null || true
+  if [ -f "$FAILURES" ]; then git -C "$ROOT" add "$FAILURES" 2>/dev/null || true; fi
   git -C "$ROOT" commit -q -m "$id: mark done [skip ci]" 2>/dev/null || true
   git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push status update for $id"
 }
@@ -531,7 +535,10 @@ block_task() {
   printf '\n---\nfailed:blocked %s — %s\n' "$id" "$reason" >>"$WORKLOG/$id.md"
   record_outcome "$id" true "$reason"               # blocked → ledger row (succeededRung=null, topRung=cur_rung, reason kept)
   flush_failures                                     # fold this task's buffered per-attempt failures into the committed FAILURES ledger
-  git -C "$ROOT" add "$WORKLOG/$id.md" "$OUTCOMES" "$FAILURES" 2>/dev/null || true
+  # Stage always-present files first; add FAILURES only if it exists (see mark_done — a single add with a
+  # missing failures.jsonl stages nothing and silently drops this commit).
+  git -C "$ROOT" add "$WORKLOG/$id.md" "$OUTCOMES" 2>/dev/null || true
+  if [ -f "$FAILURES" ]; then git -C "$ROOT" add "$FAILURES" 2>/dev/null || true; fi
   git -C "$ROOT" commit -q -m "$id: blocked, needs human — skipping [skip ci]" 2>/dev/null || true
   git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push block marker for $id"
   log "BLOCKED $id ($reason) — recorded for a human; moving on to the next task."

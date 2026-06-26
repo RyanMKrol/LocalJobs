@@ -119,3 +119,17 @@ dated bullet when you defer something new.
   manual Ctrl+C mid-task; not worth the complexity yet. *If it recurs:* consider (1) `wait_ci_green`
   treating indeterminate ≠ red, and (2) the loop detecting "this task's work is already on `main` →
   just `mark_done`" instead of rebuilding.
+- **2026-06-26 — ROOT CAUSE FOUND + FIXED: `mark_done`/`block_task` silently failed to commit
+  `status=done` whenever `failures.jsonl` didn't exist.** The interrupt above was a *red herring* — the
+  real reason tasks orphaned was a regression in the T-`failures.jsonl` change (commit `2226eb1`):
+  `mark_done` did `git add "$BACKLOG" "$WORKLOG" "$OUTCOMES" "$FAILURES"`, but `.harness/failures.jsonl`
+  almost never exists (failures are rare). `git add` fails **atomically** on a missing pathspec —
+  staging **nothing** — so `git commit … || true` hit "no changes added to commit" and silently no-op'd.
+  The `status=done` therefore lived ONLY as an uncommitted working-tree edit, which the next task's
+  `cold_reset` wiped → **every** completed task since `2226eb1` orphaned (T214–T218), not just on
+  interrupts (a clean run would orphan them too; the interrupt just made it visible — and the loop log's
+  opening `no changes added to commit` line was the smoking gun). *Fix:* stage the always-present files
+  first, then add `$FAILURES` only `if [ -f "$FAILURES" ]` (both `mark_done` and `block_task`). Verified
+  in a scratch repo: the `mark done` commit now persists with `failures.jsonl` absent. **Do not recombine
+  those `git add`s.** The interrupt-window race + `wait_ci_green`-indeterminate items above remain the
+  only genuinely-deferred parts.
