@@ -5598,7 +5598,7 @@
     {
       "id": "T215",
       "title": "TV recommender infrastructure libs (recs sampler/balancer/dedupe, branches, recommend)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T214"
       ],
@@ -5624,7 +5624,7 @@
     {
       "id": "T216",
       "title": "TV recommender: 8 branch stages + wire into the workflow manifest",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T214",
         "T215"
