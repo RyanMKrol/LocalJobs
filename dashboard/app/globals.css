@@ -205,6 +205,47 @@ a.dag-gate.failed:hover { border-color: var(--red); background: rgba(248,81,73,.
 .dag-gate.structural { border-style: dashed; }
 /* key pill — tiny pill showing only the artifact key (no producer name). */
 .dag-gate.gs-key { font-size: 9px; padding: 1px 5px; }
+
+/* ── DAG graph-style switcher (T220) ───────────────────────────────────────── */
+.dag-option-switcher { display: flex; align-items: center; gap: 6px; padding: 0 18px 10px; flex-wrap: wrap; }
+.dag-option-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.dag-option-btn { font-size: 11px; padding: 3px 9px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; transition: border-color .12s, color .12s; }
+.dag-option-btn:hover { border-color: var(--accent); color: var(--text); }
+.dag-option-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.12); }
+
+/* ── Option A: Wave-Columns (DagWaves) ──────────────────────────────────────── */
+.dag-waves-inner { display: flex; flex-direction: row; align-items: flex-start; gap: 0; min-width: fit-content; position: relative; padding: 6px 0; }
+.dag-wave-col { display: flex; flex-direction: column; position: relative; padding: 0 22px; }
+.dag-wave-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; position: relative; z-index: 2; }
+.dag-wave-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.dag-wave-count { font-size: 9px; padding: 1px 6px; border-radius: 10px; background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid rgba(88,166,255,.3); font-weight: 600; }
+.dag-wave-band { position: absolute; inset: 0; border-radius: 8px; pointer-events: none; }
+.dag-wave-band-0 { background: rgba(255,255,255,.025); }
+.dag-wave-band-1 { background: rgba(88,166,255,.04); }
+
+/* ── Option B: Swim Lanes (DagSwimlane) ─────────────────────────────────────── */
+.dag-swimlane-wrap { overflow-x: auto; }
+.dag-swimlane-inner { display: flex; flex-direction: column; gap: 0; position: relative; padding: 6px 18px; min-width: fit-content; }
+.dag-swimlane-row { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 12px 0; position: relative; }
+.dag-swimlane-row-0 { background: rgba(255,255,255,.02); border-radius: 8px; }
+.dag-swimlane-row-1 { background: rgba(88,166,255,.03); border-radius: 8px; }
+.dag-swimlane-label { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 52px; flex-shrink: 0; padding: 0 8px; }
+.dag-swimlane-nodes { display: flex; flex-direction: row; gap: 10px; flex-wrap: wrap; }
+
+/* ── Option C: React Flow (DagFlow) ─────────────────────────────────────────── */
+.dag-flow-wrap { overflow: hidden; border-radius: 10px; border: 1px solid var(--border); margin: 0 18px 6px; }
+/* Scope React Flow overrides inside our wrapper to avoid polluting global styles */
+.dag-flow-wrap .react-flow__background { background: var(--bg); }
+.dag-flow-wrap .react-flow__controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: none; }
+.dag-flow-wrap .react-flow__controls-button { background: var(--panel); border: none; color: var(--muted); fill: var(--muted); }
+.dag-flow-wrap .react-flow__controls-button:hover { background: var(--panel-2); }
+.dag-flow-wrap .react-flow__edge-path { stroke: var(--grey); }
+.dag-flow-wrap .react-flow__node { padding: 0; border: none; background: transparent; box-shadow: none; }
+/* Wave group background panel */
+.rf-wave-group { width: 100%; height: 100%; border-radius: 10px; background: rgba(88,166,255,.05); border: 1px dashed rgba(88,166,255,.2); position: relative; }
+.rf-wave-group-label { position: absolute; top: 6px; left: 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); opacity: .7; }
+/* React Flow node wrapper — the dag-node style already handles the visual */
+.rf-dag-node { margin: 0; }
 /* collapsible section heading (used on /backlog for all three sections) */
 /* ── Backlog section header: spin caret (T132, chosen in T127) ── */
 .section-heading-summary { font-size: 16px; margin: 0 0 12px -8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; display: flex; align-items: center; padding: 4px 8px; }
@@ -481,6 +522,16 @@ input[type="text"]:focus { border-color: var(--accent); }
   .dag-inner { flex-direction: column; align-items: stretch; gap: 12px; }
   .dag-col { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; }
   .dag-node { min-width: 0; }
+  /* Option A waves: stack wave columns vertically on mobile */
+  .dag-waves-inner { flex-direction: column; align-items: stretch; gap: 12px; }
+  .dag-wave-col { padding: 8px; }
+  /* Option B swimlane: stack label+nodes vertically per wave on narrow screens */
+  .dag-swimlane-row { flex-direction: column; align-items: flex-start; }
+  .dag-swimlane-label { flex-direction: row; gap: 6px; min-width: auto; padding: 0; }
+  /* Option C React Flow: reduce height on mobile */
+  .dag-flow-wrap { height: 260px !important; margin: 0 4px 6px; }
+  /* Switcher wraps on narrow screens */
+  .dag-option-switcher { padding: 0 8px 10px; }
 
   /* DB row modal: full-width key column on narrow screens. */
   .db-modal-row { grid-template-columns: 1fr; gap: 2px; }

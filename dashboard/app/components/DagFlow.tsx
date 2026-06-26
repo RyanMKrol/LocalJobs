@@ -1,0 +1,261 @@
+'use client';
+
+/**
+ * Option C — React Flow view.
+ *
+ * Uses @xyflow/react (React Flow v12) for a professional interactive node-edge graph.
+ * Node positions are computed by @dagrejs/dagre with LR (left-to-right) ranking so
+ * each rank corresponds to one wave. Wave membership is shown as translucent background
+ * "wave band" nodes behind the stage nodes.
+ *
+ * Key concurrency signals:
+ *  - Dagre ranks nodes by wave; parallel stages in the same rank are stacked vertically
+ *    at the same X position, visually grouped together.
+ *  - A "Wave N (M concurrent)" background group node spans behind each rank's stages.
+ *  - Edges have arrowheads; gate marks appear as edge labels.
+ *
+ * Libraries: @xyflow/react ^12, @dagrejs/dagre.
+ */
+
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  type Node,
+  type Edge,
+  type NodeTypes,
+  BackgroundVariant,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import * as dagre from '@dagrejs/dagre';
+import type { GateStatus, StructuralGate, WorkflowMember } from '../lib/api';
+import { statusLabel } from '../ui';
+
+// ─── Custom node types ───────────────────────────────────────────────────────
+
+/** A stage node styled to match the existing .dag-node appearance. */
+function StageNode({ data }: { data: { label: string; status: string; href: string; showStatus: boolean } }) {
+  return (
+    <a href={data.href} style={{ textDecoration: 'none' }}>
+      <div className={`dag-node rf-dag-node ${data.status}`} style={{ cursor: 'pointer', minWidth: 156 }}>
+        <div className="dag-node-name">{data.label}</div>
+        {data.showStatus && <div className="dag-node-status">{statusLabel(data.status)}</div>}
+      </div>
+    </a>
+  );
+}
+
+/** A translucent wave-group background node that spans behind all stages in one wave. */
+function WaveGroupNode({ data }: { data: { label: string } }) {
+  return (
+    <div className="rf-wave-group">
+      <span className="rf-wave-group-label">{data.label}</span>
+    </div>
+  );
+}
+
+const nodeTypes: NodeTypes = {
+  stage: StageNode as NodeTypes['stage'],
+  waveGroup: WaveGroupNode as NodeTypes['waveGroup'],
+};
+
+// ─── Layout computation ──────────────────────────────────────────────────────
+
+const NODE_W = 180;
+const NODE_H = 58;
+const NODE_SEP = 20;    // vertical gap between nodes in the same rank
+const RANK_SEP = 100;   // horizontal gap between ranks
+
+function computeLayers(members: WorkflowMember[]): Map<string, number> {
+  const names = members.map((m) => m.job_name);
+  const indeg = new Map(members.map((m) => [m.job_name, m.depends_on.length]));
+  const dependents = new Map<string, string[]>(names.map((n) => [n, []]));
+  for (const m of members) for (const d of m.depends_on) dependents.get(d)?.push(m.job_name);
+  const layer = new Map<string, number>();
+  let queue = names.filter((n) => (indeg.get(n) ?? 0) === 0);
+  for (const n of queue) layer.set(n, 0);
+  while (queue.length) {
+    const next: string[] = [];
+    for (const n of queue) {
+      for (const dep of dependents.get(n) ?? []) {
+        indeg.set(dep, (indeg.get(dep) ?? 0) - 1);
+        const newLayer = (layer.get(n) ?? 0) + 1;
+        if ((layer.get(dep) ?? -1) < newLayer) layer.set(dep, newLayer);
+        if (indeg.get(dep) === 0) next.push(dep);
+      }
+    }
+    queue = next;
+  }
+  for (const n of names) if (!layer.has(n)) layer.set(n, 0);
+  return layer;
+}
+
+interface LayoutResult { nodes: Node[]; edges: Edge[]; }
+
+function buildLayout(
+  members: WorkflowMember[],
+  statusByJob?: Record<string, string>,
+  runIdByJob?: Record<string, string>,
+  gates?: GateStatus[],
+  structuralGates?: StructuralGate[],
+  workflowName?: string,
+  workflowRunId?: string,
+  from?: string,
+): LayoutResult {
+  if (members.length === 0) return { nodes: [], edges: [] };
+
+  // Build dagre graph for layout
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ rankdir: 'LR', nodesep: NODE_SEP, ranksep: RANK_SEP, marginx: 16, marginy: 16 });
+  g.setDefaultEdgeLabel(() => ({}));
+  for (const m of members) g.setNode(m.job_name, { width: NODE_W, height: NODE_H });
+  for (const m of members) for (const dep of m.depends_on) g.setEdge(dep, m.job_name);
+  dagre.layout(g);
+
+  // Group nodes by wave (layer) for wave group panels
+  const layerOf = computeLayers(members);
+  const numWaves = Math.max(...Array.from(layerOf.values())) + 1;
+  const waveNodes: string[][] = Array.from({ length: numWaves }, () => []);
+  for (const m of members) waveNodes[layerOf.get(m.job_name) ?? 0].push(m.job_name);
+
+  // Gate label lookup: "producer\x00consumer" → label string
+  const gateLabelByEdge = new Map<string, string>();
+  const runGateHref = (runId: string, g2: { producer: string; key: string }) =>
+    `/workflow-runs/${runId}/gates/${encodeURIComponent(g2.producer)}/${encodeURIComponent(g2.key)}`;
+  const defGateHref = (name: string, g2: { producer: string; key: string }) =>
+    `/workflows/${encodeURIComponent(name)}/gates/${encodeURIComponent(g2.producer)}/${encodeURIComponent(g2.key)}`;
+
+  const allGates: Array<{ key: string; producer: string; consumer: string; state?: string; href?: string }> = [];
+  for (const gt of gates ?? []) {
+    const href = workflowRunId ? runGateHref(workflowRunId, gt) : undefined;
+    allGates.push({ key: gt.key, producer: gt.producer, consumer: gt.consumer, state: gt.state, href });
+  }
+  for (const gt of structuralGates ?? []) {
+    const href = workflowName ? defGateHref(workflowName, gt) : undefined;
+    allGates.push({ key: gt.key, producer: gt.producer, consumer: gt.consumer, state: 'structural', href });
+  }
+  for (const gt of allGates) {
+    const k = `${gt.producer}\x00${gt.consumer}`;
+    gateLabelByEdge.set(k, gt.key);
+  }
+
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  // Wave group background nodes
+  // Compute group bounds from dagre layout
+  for (let wi = 0; wi < numWaves; wi++) {
+    const waveJobs = waveNodes[wi];
+    if (waveJobs.length === 0) continue;
+    const positions = waveJobs.map((j) => g.node(j));
+    const minX = Math.min(...positions.map((p) => p.x - NODE_W / 2)) - 12;
+    const maxX = Math.max(...positions.map((p) => p.x + NODE_W / 2)) + 12;
+    const minY = Math.min(...positions.map((p) => p.y - NODE_H / 2)) - 32; // space for label
+    const maxY = Math.max(...positions.map((p) => p.y + NODE_H / 2)) + 12;
+    const label = waveJobs.length > 1
+      ? `Wave ${wi + 1} · ${waveJobs.length} concurrent`
+      : `Wave ${wi + 1}`;
+    nodes.push({
+      id: `__wave-${wi}`,
+      type: 'waveGroup',
+      position: { x: minX, y: minY },
+      data: { label },
+      style: { width: maxX - minX, height: maxY - minY, zIndex: -1 },
+      selectable: false,
+      draggable: false,
+    });
+  }
+
+  // Stage nodes
+  for (const m of members) {
+    const { x, y } = g.node(m.job_name);
+    const status = statusByJob?.[m.job_name] ?? 'pending';
+    const runId = runIdByJob?.[m.job_name];
+    const href = (runId ? `/runs/${runId}` : `/jobs/${m.job_name}`) + (from ? `?from=${encodeURIComponent(from)}` : '');
+    nodes.push({
+      id: m.job_name,
+      type: 'stage',
+      position: { x: x - NODE_W / 2, y: y - NODE_H / 2 },
+      data: { label: m.job_name, status, href, showStatus: !!statusByJob },
+      draggable: false,
+    });
+  }
+
+  // Dependency edges
+  for (const m of members) {
+    for (const dep of m.depends_on) {
+      const edgeKey = `${dep}\x00${m.job_name}`;
+      const gateLabel = gateLabelByEdge.get(edgeKey);
+      const gateData = allGates.find((gt) => gt.producer === dep && gt.consumer === m.job_name);
+      edges.push({
+        id: `${dep}->${m.job_name}`,
+        source: dep,
+        target: m.job_name,
+        label: gateLabel,
+        labelStyle: { fill: 'var(--muted)', fontSize: 10 },
+        labelBgStyle: { fill: 'var(--panel-2)', fillOpacity: 0.9 },
+        style: {
+          stroke: gateData?.state === 'failed' ? 'var(--red)' : 'var(--grey)',
+          strokeWidth: 1.5,
+          opacity: 0.6,
+        },
+        animated: false,
+        type: 'smoothstep',
+      });
+    }
+  }
+
+  return { nodes, edges };
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export function DagFlow({
+  members, statusByJob, runIdByJob, gates, structuralGates, workflowName, from, workflowRunId,
+}: {
+  members: WorkflowMember[];
+  statusByJob?: Record<string, string>;
+  runIdByJob?: Record<string, string>;
+  gates?: GateStatus[];
+  structuralGates?: StructuralGate[];
+  workflowName?: string;
+  from?: string;
+  workflowRunId?: string;
+}) {
+  const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
+
+  useEffect(() => {
+    setLayout(buildLayout(members, statusByJob, runIdByJob, gates, structuralGates, workflowName, workflowRunId, from));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members, statusByJob, runIdByJob, gates, structuralGates, workflowName, workflowRunId, from]);
+
+  // Estimate the height needed to show the full graph (based on the tallest wave)
+  const layerOf = computeLayers(members);
+  const numWaves = members.length === 0 ? 1 : Math.max(...Array.from(layerOf.values())) + 1;
+  const waveNodes: string[][] = Array.from({ length: numWaves }, () => []);
+  for (const m of members) waveNodes[layerOf.get(m.job_name) ?? 0].push(m.job_name);
+  const maxStagesInWave = Math.max(1, ...waveNodes.map((w) => w.length));
+  const graphH = Math.max(180, maxStagesInWave * (NODE_H + NODE_SEP) + 80);
+
+  return (
+    <div className="dag dag-flow-wrap" style={{ height: Math.min(graphH, 480) }}>
+      <ReactFlow
+        nodes={layout.nodes}
+        edges={layout.edges}
+        nodeTypes={nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.15 }}
+        minZoom={0.3}
+        maxZoom={2}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
+        <Controls showInteractive={false} position="bottom-right" />
+      </ReactFlow>
+    </div>
+  );
+}
