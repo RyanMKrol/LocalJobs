@@ -5908,7 +5908,7 @@
     {
       "id": "T225",
       "title": "Work-item data model: add a 'skipped' outcome + stop marking success with no output",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
