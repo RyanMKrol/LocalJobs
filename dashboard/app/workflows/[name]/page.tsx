@@ -64,7 +64,7 @@ function TvRecsManager() {
   }
 
   return (
-    <div className="output-section output-section-recs">
+    <>
       <h2>TV Recommendations</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         Shows recommended for you by the Claude-powered recommender branches, verified via TMDB and
@@ -108,7 +108,7 @@ function TvRecsManager() {
                     <td className="muted">{r.genre}</td>
                     <td className="muted" style={{ fontSize: 12 }}>{r.lens}</td>
                     <td>{r.tmdbRating != null ? r.tmdbRating.toFixed(1) : '—'}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td>
                       <button className="btn btn-sm" onClick={() => ignore(r)} disabled={busy === r.tmdbId}>
                         {busy === r.tmdbId ? 'Ignoring…' : '✕ Ignore'}
                       </button>
@@ -151,7 +151,7 @@ function TvRecsManager() {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -184,7 +184,7 @@ function MovieRecsManager() {
   }
 
   return (
-    <div className="output-section output-section-recs">
+    <>
       <h2>Recommendations</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         Films recommended for you by the Claude-powered recommender branches, verified via TMDB and
@@ -228,7 +228,7 @@ function MovieRecsManager() {
                     <td className="muted">{r.genre}</td>
                     <td className="muted" style={{ fontSize: 12 }}>{r.lens}</td>
                     <td>{r.tmdbRating != null ? r.tmdbRating.toFixed(1) : '—'}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td>
                       <button className="btn btn-sm" onClick={() => ignore(r)} disabled={busy === r.tmdbId}>
                         {busy === r.tmdbId ? 'Ignoring…' : '✕ Ignore'}
                       </button>
@@ -271,7 +271,7 @@ function MovieRecsManager() {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -321,7 +321,7 @@ function MovieGapsManager() {
   }
 
   return (
-    <div className="output-section">
+    <>
       <h2>Franchise gaps</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         Films you own <em>some but not all</em> of, detected via the TMDB Collections API. Every
@@ -384,7 +384,7 @@ function MovieGapsManager() {
                     </td>
                     <td>{g.year ?? '—'}</td>
                     <td>{g.tmdbRating != null ? g.tmdbRating.toFixed(1) : '—'}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td>
                       <button className="btn btn-sm" onClick={() => ignore(g)} disabled={busy === g.tmdbId}>
                         {busy === g.tmdbId ? 'Ignoring…' : '✕ Ignore'}
                       </button>
@@ -424,7 +424,7 @@ function MovieGapsManager() {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -488,7 +488,7 @@ function MissingSeasonsManager() {
   }
 
   return (
-    <div className="output-section">
+    <>
       <h2>Missing seasons</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         Seasons you don&apos;t own that are completely aired on TMDB, detected by comparing your Plex
@@ -547,7 +547,7 @@ function MissingSeasonsManager() {
                         {row.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
                       </td>
                       <td className="muted">{meta.tmdbStatus}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td>
                         <button className="btn btn-sm" onClick={() => ignore(row)} disabled={busy === key}>
                           {busy === key ? 'Ignoring…' : '✕ Ignore'}
                         </button>
@@ -591,7 +591,7 @@ function MissingSeasonsManager() {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
