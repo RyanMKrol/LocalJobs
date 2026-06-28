@@ -6002,7 +6002,7 @@
     {
       "id": "T228",
       "title": "Remove the redundant \"(off)\" hint from the Schedule column",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
