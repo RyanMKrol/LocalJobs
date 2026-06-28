@@ -108,7 +108,26 @@ function buildLayout(
   g.setGraph({ rankdir: 'LR', nodesep: NODE_SEP, ranksep: RANK_SEP, marginx: 16, marginy: 16 });
   g.setDefaultEdgeLabel(() => ({}));
   for (const m of members) g.setNode(m.job_name, { width: NODE_W, height: NODE_H });
-  for (const m of members) for (const dep of m.depends_on) g.setEdge(dep, m.job_name);
+  // Pack each node toward its EARLIEST consumer instead of its longest-path rank. A node whose only
+  // successors sit several ranks ahead gets pulled RIGHT to just before them — so a direct-to-terminal
+  // node like `franchise-gaps` (one hop off the snapshot but feeding the final notify) isn't stranded
+  // in the middle of the snapshot's fan-out column; it lands beside `rec-merge`, and the two parallel
+  // paths visibly converge on the terminal. Encoded as dagre per-edge `minlen`.
+  const rank = computeLayers(members);
+  const minSucc = new Map<string, number>();
+  for (const m of members) for (const dep of m.depends_on) {
+    minSucc.set(dep, Math.min(minSucc.get(dep) ?? Infinity, rank.get(m.job_name) ?? 0));
+  }
+  const pulled = new Map<string, number>();
+  for (const m of members) {
+    const r = rank.get(m.job_name) ?? 0;
+    const ms = minSucc.get(m.job_name);
+    pulled.set(m.job_name, ms === undefined ? r : Math.max(r, ms - 1));
+  }
+  for (const m of members) for (const dep of m.depends_on) {
+    const ml = Math.max(1, (pulled.get(m.job_name) ?? 0) - (pulled.get(dep) ?? 0));
+    g.setEdge(dep, m.job_name, { minlen: ml });
+  }
   dagre.layout(g);
 
   // Gate label lookup: "producer\x00consumer" → label string
