@@ -842,7 +842,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
 
       <h2>Danger zone</h2>
       <div className="panel" style={{ borderLeft: '3px solid var(--red)', padding: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 220 }}>
             <strong>Clear output data</strong>
             <p className="muted" style={{ fontSize: 13, margin: '4px 0 0' }}>
