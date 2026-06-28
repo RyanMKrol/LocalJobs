@@ -54,26 +54,16 @@ function StageNode({ data }: { data: { label: string; status: string; href: stri
   );
 }
 
-/** A translucent wave-group background node that spans behind all stages in one wave. */
-function WaveGroupNode({ data }: { data: { label: string } }) {
-  return (
-    <div className="rf-wave-group">
-      <span className="rf-wave-group-label">{data.label}</span>
-    </div>
-  );
-}
-
 const nodeTypes: NodeTypes = {
   stage: StageNode as NodeTypes['stage'],
-  waveGroup: WaveGroupNode as NodeTypes['waveGroup'],
 };
 
 // ─── Layout computation ──────────────────────────────────────────────────────
 
 const NODE_W = 180;
 const NODE_H = 58;
-const NODE_SEP = 20;    // vertical gap between nodes in the same rank
-const RANK_SEP = 100;   // horizontal gap between ranks
+const NODE_SEP = 28;    // vertical gap between nodes in the same rank (more room for fan-out edges)
+const RANK_SEP = 110;   // horizontal gap between ranks
 
 function computeLayers(members: WorkflowMember[]): Map<string, number> {
   const names = members.map((m) => m.job_name);
@@ -121,12 +111,6 @@ function buildLayout(
   for (const m of members) for (const dep of m.depends_on) g.setEdge(dep, m.job_name);
   dagre.layout(g);
 
-  // Group nodes by wave (layer) for wave group panels
-  const layerOf = computeLayers(members);
-  const numWaves = Math.max(...Array.from(layerOf.values())) + 1;
-  const waveNodes: string[][] = Array.from({ length: numWaves }, () => []);
-  for (const m of members) waveNodes[layerOf.get(m.job_name) ?? 0].push(m.job_name);
-
   // Gate label lookup: "producer\x00consumer" → label string
   const gateLabelByEdge = new Map<string, string>();
   const runGateHref = (runId: string, g2: { producer: string; key: string }) =>
@@ -150,30 +134,6 @@ function buildLayout(
 
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-
-  // Wave group background nodes
-  // Compute group bounds from dagre layout
-  for (let wi = 0; wi < numWaves; wi++) {
-    const waveJobs = waveNodes[wi];
-    if (waveJobs.length === 0) continue;
-    const positions = waveJobs.map((j) => g.node(j));
-    const minX = Math.min(...positions.map((p) => p.x - NODE_W / 2)) - 12;
-    const maxX = Math.max(...positions.map((p) => p.x + NODE_W / 2)) + 12;
-    const minY = Math.min(...positions.map((p) => p.y - NODE_H / 2)) - 32; // space for label
-    const maxY = Math.max(...positions.map((p) => p.y + NODE_H / 2)) + 12;
-    const label = waveJobs.length > 1
-      ? `Wave ${wi + 1} · ${waveJobs.length} concurrent`
-      : `Wave ${wi + 1}`;
-    nodes.push({
-      id: `__wave-${wi}`,
-      type: 'waveGroup',
-      position: { x: minX, y: minY },
-      data: { label },
-      style: { width: maxX - minX, height: maxY - minY, zIndex: -1 },
-      selectable: false,
-      draggable: false,
-    });
-  }
 
   // Stage nodes
   for (const m of members) {
@@ -256,8 +216,11 @@ export function DagFlow({
   const maxStagesInWave = Math.max(1, ...waveNodes.map((w) => w.length));
   const graphH = Math.max(180, maxStagesInWave * (NODE_H + NODE_SEP) + 80);
 
+  // Container height scales with the graph's natural height (tallest wave) so a busy workflow like
+  // movie-recommendations gets room to breathe and fitView shows it near 1:1, while a simple linear
+  // workflow (e.g. perfumes, graphH≈180) stays compact. Capped so a pathological graph can't grow unbounded.
   return (
-    <div className="dag dag-flow-wrap" style={{ height: Math.min(graphH, 480) }}>
+    <div className="dag dag-flow-wrap" style={{ height: Math.min(graphH, 820) }}>
       <ReactFlow
         nodes={layout.nodes}
         edges={layout.edges}
