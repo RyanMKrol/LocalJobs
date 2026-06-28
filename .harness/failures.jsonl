@@ -1,0 +1,1 @@
+{"id":"T229","ts":"2026-06-28T21:58:09Z","kind":"local-dod","rung":0,"attempt":1,"model":"claude-sonnet-4-6","effort":"low","facets":{"layer":"ui","workType":"style","risk":[]},"detail":"npx tsc --noEmit && npm test"}

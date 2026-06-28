@@ -6027,7 +6027,7 @@
     {
       "id": "T229",
       "title": "Vertically centre the Danger-zone \"Clear output data\" button",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
