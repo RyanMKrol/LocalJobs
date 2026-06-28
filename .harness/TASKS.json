@@ -5874,7 +5874,7 @@
     {
       "id": "T224",
       "title": "Full validation-gate coverage across all workflows (add per-edge contracts)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T221"
       ],
