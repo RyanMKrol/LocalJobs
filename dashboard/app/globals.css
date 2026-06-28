@@ -206,6 +206,13 @@ a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent
 .rf-wave-group-label { position: absolute; top: 6px; left: 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); opacity: .7; }
 /* React Flow node wrapper — the dag-node style already handles the visual */
 .rf-dag-node { margin: 0; }
+/* Gate padlock marker on DAG edges */
+.dag-gate-lock { opacity: 0.55; transition: opacity .15s, transform .15s; }
+.dag-gate-lock:hover { opacity: 1; transform: scale(1.25); }
+.dag-gate-lock--failed { opacity: 1; filter: drop-shadow(0 0 3px color-mix(in srgb,var(--red) 60%,transparent)); }
+.dag-gate-lock--failed:hover { transform: scale(1.35); }
+.dag-gate-lock--passed { opacity: 0.45; }
+.dag-gate-lock--passed:hover { opacity: 0.85; }
 /* collapsible section heading (used on /backlog for all three sections) */
 /* ── Backlog section header: spin caret (T132, chosen in T127) ── */
 .section-heading-summary { font-size: 16px; margin: 0 0 12px -8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; display: flex; align-items: center; padding: 4px 8px; }

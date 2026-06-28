@@ -119,25 +119,20 @@ function buildLayout(
   const wave = computeLayers(members);
   const colX = (job: string) => 16 + (wave.get(job) ?? 0) * (NODE_W + RANK_SEP);
 
-  // Gate label lookup: "producer\x00consumer" → label string
-  const gateLabelByEdge = new Map<string, string>();
+  // Gate data lookup: "producer\x00consumer" → gate info
   const runGateHref = (runId: string, g2: { producer: string; key: string }) =>
     `/workflow-runs/${runId}/gates/${encodeURIComponent(g2.producer)}/${encodeURIComponent(g2.key)}`;
   const defGateHref = (name: string, g2: { producer: string; key: string }) =>
     `/workflows/${encodeURIComponent(name)}/gates/${encodeURIComponent(g2.producer)}/${encodeURIComponent(g2.key)}`;
 
-  const allGates: Array<{ key: string; producer: string; consumer: string; state?: string; href?: string }> = [];
+  const allGates: Array<{ key: string; producer: string; consumer: string; state?: string; href?: string; description?: string }> = [];
   for (const gt of gates ?? []) {
     const href = workflowRunId ? runGateHref(workflowRunId, gt) : undefined;
-    allGates.push({ key: gt.key, producer: gt.producer, consumer: gt.consumer, state: gt.state, href });
+    allGates.push({ key: gt.key, producer: gt.producer, consumer: gt.consumer, state: gt.state, href, description: (gt as { description?: string }).description });
   }
   for (const gt of structuralGates ?? []) {
     const href = workflowName ? defGateHref(workflowName, gt) : undefined;
-    allGates.push({ key: gt.key, producer: gt.producer, consumer: gt.consumer, state: 'structural', href });
-  }
-  for (const gt of allGates) {
-    const k = `${gt.producer}\x00${gt.consumer}`;
-    gateLabelByEdge.set(k, gt.key);
+    allGates.push({ key: gt.key, producer: gt.producer, consumer: gt.consumer, state: 'structural', href, description: (gt as { description?: string }).description });
   }
 
   const nodes: Node[] = [];
@@ -163,27 +158,75 @@ function buildLayout(
   for (const m of members) {
     for (const dep of m.depends_on) {
       const edgeKey = `${dep}\x00${m.job_name}`;
-      const gateLabel = gateLabelByEdge.get(edgeKey);
       const gateData = allGates.find((gt) => gt.producer === dep && gt.consumer === m.job_name);
       const gateHref = gateData?.href;
-      // A gate mark is a clickable link to its detail page (matching the other graph styles), so it
-      // needs pointer-events re-enabled (React Flow edge labels are non-interactive by default).
-      const label: ReactNode = gateLabel
+      const gateState = gateData?.state;
+      const isFailed = gateState === 'failed';
+      const isPassed = gateState === 'passed';
+      // Padlock icon: colour-coded by gate state. Failed = prominent red, passed = subtle green,
+      // pending/structural = muted grey. Tooltip shows key + description on hover.
+      const tooltipText = gateData
+        ? [gateData.key, gateData.description].filter(Boolean).join(' — ')
+        : undefined;
+      // Colour and size vary by state: failed = prominent red, passed = subtle green, else muted.
+      const lockColor = isFailed ? 'var(--red)' : isPassed ? 'var(--green)' : 'var(--muted)';
+      const lockSize = isFailed ? 16 : 12;
+      // SVG padlock: shackle arc + body rectangle, stroked in the state colour.
+      const PadlockSvg = (
+        <svg
+          width={lockSize} height={lockSize}
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke={lockColor}
+          strokeWidth={isFailed ? 1.8 : 1.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: 'block', flexShrink: 0 }}
+          aria-hidden="true"
+        >
+          {/* Shackle arc */}
+          <path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2" />
+          {/* Body */}
+          <rect x="2.5" y="7" width="11" height="8" rx="1.5" fill={isFailed ? 'color-mix(in srgb,var(--red) 18%,transparent)' : 'none'} />
+        </svg>
+      );
+      // A gate mark is a clickable link to its detail page. Pointer-events must be re-enabled
+      // (React Flow edge labels are non-interactive by default).
+      const label: ReactNode = gateData
         ? (gateHref
-            ? <a href={gateHref} style={{ color: 'var(--muted)', textDecoration: 'none', pointerEvents: 'all', cursor: 'pointer' }}>{gateLabel}</a>
-            : gateLabel)
+            ? (
+                <a
+                  href={gateHref}
+                  title={tooltipText}
+                  className={`dag-gate-lock${isFailed ? ' dag-gate-lock--failed' : isPassed ? ' dag-gate-lock--passed' : ''}`}
+                  style={{ pointerEvents: 'all', cursor: 'pointer', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  aria-label={tooltipText}
+                >
+                  {PadlockSvg}
+                </a>
+              )
+            : (
+                <span
+                  title={tooltipText}
+                  className={`dag-gate-lock${isFailed ? ' dag-gate-lock--failed' : isPassed ? ' dag-gate-lock--passed' : ''}`}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  aria-label={tooltipText}
+                >
+                  {PadlockSvg}
+                </span>
+              ))
         : undefined;
       edges.push({
         id: `${dep}->${m.job_name}`,
         source: dep,
         target: m.job_name,
         label,
-        labelStyle: { fill: 'var(--muted)', fontSize: 10 },
-        labelBgStyle: { fill: 'var(--panel-2)', fillOpacity: 0.9 },
+        labelStyle: {},
+        labelBgStyle: { fill: 'var(--panel-2)', fillOpacity: 0.85 },
         style: {
-          stroke: gateData?.state === 'failed' ? 'var(--red)' : 'var(--grey)',
-          strokeWidth: 1.5,
-          opacity: 0.6,
+          stroke: isFailed ? 'var(--red)' : 'var(--grey)',
+          strokeWidth: isFailed ? 2 : 1.5,
+          opacity: isFailed ? 0.9 : 0.6,
         },
         animated: false,
         // bezier (default) curves fan cleanly from one source to many targets, instead of the
