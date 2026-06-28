@@ -7,9 +7,10 @@
 // Plex/TMDB response-shape change or an empty hand-off without brittle full-schema
 // validation. They take an optional path so unit tests can point at fixtures.
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
 import { moviesConfig } from './config.js';
-import type { FranchiseGapsFile, MovieSnapshotFile, RecommendationsFile } from './types.js';
+import type { BranchOutputFile, FranchiseGapsFile, MovieSnapshotFile, RecommendationsFile } from './types.js';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -172,6 +173,59 @@ export function recommendationsContract(file: string = moviesConfig.recsOut): Ar
         actual: bad ? 'a recommendation is missing tmdbId/title' : 'all recommendations well-formed',
       });
       return fromChecks(checks, `${recs.length} recommendation(s)`);
+    },
+  };
+}
+
+const BRANCH_EXP = {
+  json: 'A readable branch-output JSON object',
+  suggestions: 'Contains the suggestions array',
+};
+
+/**
+ * snapshot/branch → rec-merge boundary, ONE per recommender branch (keyed `recs:<branchId>`).
+ * Each branch writes data/out/recs/<branchId>.json before rec-merge pools them. SHAPE-only and
+ * empty-tolerant: a branch that fails gracefully (Claude error, junk reply, no targets) still
+ * writes an EMPTY suggestions file with an `error` field — that's a valid hand-off, NOT a gate
+ * violation — so a single flaky branch never blocks the merge. Only a missing/garbage file (a hard
+ * crash that wrote nothing, or a shape drift) trips it.
+ */
+export function branchSuggestionsContract(
+  branchId: string,
+  file: string = join(moviesConfig.recsDir, `${branchId}.json`),
+): ArtifactContract {
+  return {
+    key: `recs:${branchId}`,
+    description: `${branchId} branch output: { branchId, lens, suggestions: [{ title, year?, reason? }] } — readable; the suggestions list may legitimately be empty (a gracefully-failed branch still writes the file).`,
+    shape: {
+      summary: `Raw film suggestions from the ${branchId} recommender branch (pooled + TMDB-verified by rec-merge).`,
+      format: 'JSON object { branchId, lens, generatedAt, suggestions[], error? }',
+      expectations: [
+        { label: BRANCH_EXP.json, detail: 'The branch wrote its hand-off file and it parses as a JSON object.' },
+        { label: BRANCH_EXP.suggestions, detail: 'It has a `suggestions` array (may be empty — a gracefully-failed branch still writes one).' },
+      ],
+    },
+    check(): GateResult {
+      const checks: ExpectationResult[] = [];
+      if (!existsSync(file)) {
+        checks.push({ label: BRANCH_EXP.json, ok: false, actual: `branch output missing: ${file}` });
+        return fromChecks(checks);
+      }
+      let parsed: BranchOutputFile;
+      try {
+        parsed = JSON.parse(readFileSync(file, 'utf8')) as BranchOutputFile;
+      } catch (e) {
+        checks.push({ label: BRANCH_EXP.json, ok: false, actual: `not valid JSON — ${errMsg(e)}` });
+        return fromChecks(checks);
+      }
+      checks.push({ label: BRANCH_EXP.json, ok: true, actual: 'valid JSON object' });
+      const sugg = Array.isArray(parsed.suggestions) ? parsed.suggestions : null;
+      checks.push({
+        label: BRANCH_EXP.suggestions,
+        ok: !!sugg,
+        actual: sugg ? `${sugg.length} suggestion(s)${parsed.error ? ` [${parsed.error}]` : ''}` : 'no suggestions array',
+      });
+      return fromChecks(checks, sugg ? `${sugg.length} suggestion(s)${parsed.error ? ` [${parsed.error}]` : ''}` : undefined);
     },
   };
 }

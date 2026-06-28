@@ -4,6 +4,7 @@ import type { JobContext, JobDefinition } from '../../../core/types.js';
 import { extractJsonObject, runClaude } from '../../../services/claude.js';
 import type { ClaudeResult } from '../../../services/claude.js';
 import { moviesConfig } from '../config.js';
+import { branchSuggestionsContract, movieSnapshotContract } from '../contracts.js';
 import { ensureDirs } from '../lib.js';
 import { branchById } from './branches.js';
 import type {
@@ -191,6 +192,10 @@ export function makeBranchJob(id: string): JobDefinition {
     description: spec.description,
     timeoutMs: 600_000, // ~10 min headroom for one Claude CLI call
     maxRetries: 1,      // LLM trouble is handled gracefully in-stage, not via retries
+    // Gate every edge: the branch consumes the movie snapshot and produces its own raw-suggestions
+    // file, so snapshot→branch and branch→rec-merge are both validated boundaries.
+    consumes: [movieSnapshotContract()],
+    produces: [branchSuggestionsContract(spec.id)],
     async run(ctx) {
       await runBranch(ctx, spec);
     },

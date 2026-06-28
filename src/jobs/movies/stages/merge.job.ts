@@ -1,5 +1,6 @@
 import type { JobDefinition } from '../../../core/types.js';
-import { recommendationsContract } from '../contracts.js';
+import { branchSuggestionsContract, recommendationsContract } from '../contracts.js';
+import { BRANCHES } from './branches.js';
 import { runMerge } from './merge.js';
 
 const job: JobDefinition = {
@@ -7,6 +8,8 @@ const job: JobDefinition = {
   description: 'Merge stage: pool the 8 branches\' raw film suggestions, TMDB-verify each (real, un-owned, not previously recommended), dedupe across branches, and balance per genre into the final recommendation list.',
   timeoutMs: 1_800_000, // ~30 min headroom for TMDB title searches
   maxRetries: 2,
+  // Consume EVERY branch's raw-suggestions hand-off (one gate per branch→rec-merge edge).
+  consumes: BRANCHES.map((b) => branchSuggestionsContract(b.id)),
   produces: [recommendationsContract()],
   async run(ctx) {
     await runMerge(ctx);
