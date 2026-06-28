@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { extractJsonObject, runClaude } from '../../../services/claude.js';
 import type { ClaudeResult } from '../../../services/claude.js';
+import { tvBranchSuggestionsContract, tvSnapshotContract } from '../contracts.js';
 import { tvRecsConfig } from '../config.js';
 import { ensureDirs } from '../lib.js';
 import { branchById } from './branches.js';
@@ -186,6 +187,10 @@ export function makeBranchJob(id: string) {
     description: spec.description,
     timeoutMs: 600_000,
     maxRetries: 1,
+    // Gate every edge: the branch consumes the TV snapshot and produces its own
+    // raw-suggestions file so the framework derives a gate for each branch→merge edge.
+    consumes: [tvSnapshotContract()],
+    produces: [tvBranchSuggestionsContract(spec.id)],
     async run(ctx: JobContext) {
       await runBranch(ctx, spec);
     },
