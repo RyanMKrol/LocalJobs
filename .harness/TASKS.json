@@ -5939,7 +5939,7 @@
     {
       "id": "T226",
       "title": "Input→Output mapping: filter rows by item state (success / failed / skipped)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T225"
       ],
