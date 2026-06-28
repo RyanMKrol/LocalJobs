@@ -5816,7 +5816,7 @@
     {
       "id": "T222",
       "title": "Disable zoom/pan on the workflow graph (static, read-only diagram)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T221"
       ],
