@@ -21,7 +21,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import {
   ReactFlow,
   Background,
-  Controls,
   Handle,
   Position,
   type Node,
@@ -237,15 +236,17 @@ export function DagFlow({
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.15 }}
-        minZoom={0.3}
-        maxZoom={2}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
+        panOnScroll={false}
+        panOnDrag={false}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
-        <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
     </div>
   );
