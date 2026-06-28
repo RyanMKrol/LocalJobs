@@ -227,9 +227,22 @@ type ModalState =
   | { loading: true; title: string }
   | { loading: false; title: string; content: string; truncated: boolean };
 
+/** Derive the "effective" state of a row for filtering purposes.
+ *  For single-stage workflows only the input status matters.
+ *  For multi-stage workflows the output status is the terminal outcome; fall
+ *  back to the input status when there is no output yet. */
+function rowEffectiveState(row: IoRow, singleStage: boolean): string {
+  if (singleStage) return row.inputStatus;
+  return row.outputStatus ?? row.inputStatus;
+}
+
+const IO_FILTER_STATES = ['all', 'success', 'failed', 'skipped'] as const;
+type IoFilterState = typeof IO_FILTER_STATES[number];
+
 function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
   const { io, firstWave, lastWave, emptyReason, note } = data;
   const [modal, setModal] = useState<ModalState | null>(null);
+  const [filter, setFilter] = useState<IoFilterState>('all');
 
   // Opens the preview popover immediately (with a loading state) and resolves
   // the content Promise to fill it in — so the column never fetches on mount.
@@ -247,6 +260,16 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
   const emptyMessage = emptyReason === 'pre-feature'
     ? "Per-run input/output isn't recorded for runs created before this feature."
     : 'This run processed no new items.';
+
+  // Tally counts per state for chip labels.
+  const stateCounts: Record<string, number> = {};
+  for (const row of io) {
+    const s = rowEffectiveState(row, singleStage);
+    stateCounts[s] = (stateCounts[s] ?? 0) + 1;
+  }
+
+  const filtered = filter === 'all' ? io : io.filter((r) => rowEffectiveState(r, singleStage) === filter);
+
   return (
     <>
       <h2>Input → Output mapping{io.length > 0 ? ` · ${io.length.toLocaleString()} items` : ''}</h2>
@@ -255,42 +278,69 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
           <p className="io-empty-state">{emptyMessage}</p>
         ) : (
           <>
-            <div className="io-table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Input</th>
-                  <th>Input status</th>
-                  {!singleStage && <th>Output</th>}
-                  {!singleStage && <th>Output status</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {io.map((row) => (
-                  <tr key={row.inputKey}>
-                    <td>
-                      <div className="mono" style={{ fontSize: '0.82em' }}>{row.inputKey}</div>
-                      {row.inputDetail && typeof (row.inputDetail as Record<string, unknown>).name === 'string' && (
-                        <div className="muted" style={{ fontSize: '0.88em' }}>{itemLabel(row.inputKey, row.inputDetail)}</div>
-                      )}
-                    </td>
-                    <td><span className={`badge ${row.inputStatus}`}>{row.inputStatus}</span></td>
-                    {!singleStage && (
-                      <td><OutputCell runId={runId} row={row} onOpen={openModal} /></td>
-                    )}
-                    {!singleStage && (
-                      <td>
-                        {row.outputStatus
-                          ? <span className={`badge ${row.outputStatus}`}>{row.outputStatus}</span>
-                          : <span className="muted">—</span>}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="io-filter-bar">
+              {IO_FILTER_STATES.map((s) => {
+                const count = s === 'all' ? io.length : (stateCounts[s] ?? 0);
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    className={`io-filter-chip${filter === s ? ' active' : ''}${s !== 'all' ? ` io-filter-chip--${s}` : ''}`}
+                    onClick={() => setFilter(s)}
+                    disabled={s !== 'all' && count === 0}
+                  >
+                    {s} <span className="io-filter-count">{count}</span>
+                  </button>
+                );
+              })}
             </div>
-            {!singleStage && <p className="io-footnote">{note}</p>}
+            {filtered.length === 0 ? (
+              <p className="io-empty-state" style={{ paddingTop: 12 }}>No {filter} items in this run.</p>
+            ) : (
+              <>
+                <div className="io-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Input</th>
+                      <th>State</th>
+                      {!singleStage && <th>Output</th>}
+                      {!singleStage && <th>Output state</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((row) => (
+                      <tr key={row.inputKey}>
+                        <td>
+                          <div className="mono" style={{ fontSize: '0.82em' }}>{row.inputKey}</div>
+                          {row.inputDetail && typeof (row.inputDetail as Record<string, unknown>).name === 'string' && (
+                            <div className="muted" style={{ fontSize: '0.88em' }}>{itemLabel(row.inputKey, row.inputDetail)}</div>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge ${row.inputStatus}`}>{row.inputStatus}</span>
+                          {!singleStage && row.outputStatus && row.outputStatus !== row.inputStatus && (
+                            <span className="io-state-arrow">→ <span className={`badge ${row.outputStatus}`}>{row.outputStatus}</span></span>
+                          )}
+                        </td>
+                        {!singleStage && (
+                          <td><OutputCell runId={runId} row={row} onOpen={openModal} /></td>
+                        )}
+                        {!singleStage && (
+                          <td>
+                            {row.outputStatus
+                              ? <span className={`badge ${row.outputStatus}`}>{row.outputStatus}</span>
+                              : <span className="muted">—</span>}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
+                {!singleStage && <p className="io-footnote">{note}</p>}
+              </>
+            )}
           </>
         )}
       </div>

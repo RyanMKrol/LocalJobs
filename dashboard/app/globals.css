@@ -140,6 +140,17 @@ tbody tr:hover { background: var(--panel-2); }
 .io-table-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
 /* Remove last row's bottom border so hover flush-abuts the footnote border-top (T194). */
 .io-table-scroll tbody tr:last-child td { border-bottom: none; }
+/* IO state-filter chip bar (T226) */
+.io-filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 14px 0; }
+.io-filter-chip { background: none; border: 1px solid var(--border); border-radius: 20px; color: var(--muted); cursor: pointer; font-size: 0.8em; padding: 2px 10px; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.io-filter-chip:disabled { opacity: 0.38; cursor: default; }
+.io-filter-chip.active { background: rgba(88,166,255,.12); border-color: var(--accent); color: var(--accent); }
+.io-filter-chip--success.active { background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.5); color: var(--green); }
+.io-filter-chip--failed.active  { background: rgba(248,81,73,.12); border-color: rgba(248,81,73,.5); color: var(--red); }
+.io-filter-chip--skipped.active { background: rgba(110,118,129,.12); border-color: rgba(110,118,129,.5); color: var(--muted); }
+.io-filter-count { font-variant-numeric: tabular-nums; margin-left: 2px; opacity: 0.75; }
+/* Inline input→output state transition arrow (T226) */
+.io-state-arrow { margin-left: 4px; color: var(--muted); font-size: 0.88em; white-space: nowrap; }
 /* Recent workflow runs scroll container (T185) — bounded height ~12 rows, sticky header. */
 .recent-runs-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
 .recent-runs-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
