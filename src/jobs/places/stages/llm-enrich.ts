@@ -132,6 +132,8 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
     } catch (err) {
       if (err instanceof QuotaExceededError) {
         ctx.log(`gemini ${err.window} service cap reached (${err.used}/${err.cap}) — stopping gracefully; next run resumes.`, 'warn');
+        // Record soft-stop: item was not attempted; use prior attempt count (no increment).
+        markWorkItem(JOB_NAME, place.placeId, 'skipped', { attempts: attempts - 1, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name } });
         break;
       }
       const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
@@ -140,6 +142,8 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
         // fault. Stop gracefully without marking it failed or burning an attempt;
         // the next run resumes once capacity/credits return.
         ctx.log(`Gemini quota/credit/rate limit hit on "${name}" — stopping run gracefully (place not counted). ${msg}`, 'warn');
+        // Record soft-stop: item was not attempted; use prior attempt count (no increment).
+        markWorkItem(JOB_NAME, place.placeId, 'skipped', { attempts: attempts - 1, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name } });
         break;
       }
       markWorkItem(JOB_NAME, place.placeId, 'failed', { attempts, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name, error: msg } });

@@ -289,6 +289,39 @@ console.log('  ✓ pruneOrphanedWorkItems removes orphaned keys, keeps current (
 }
 console.log('  ✓ ignoreWorkItem parks a stuck item (manual, persists, off stuck list, on Ignored list)');
 
+// ── skipped outcome: soft-stop for quota exhaustion (T225) ──
+// `skipped` means "quota hit — retry on the next run when quota resets".
+// It must NOT be treated as done, NOT appear in the stuck list, and NOT be
+// confused with success (no real output was produced).
+{
+  syncJob({ name: 't-skipped', run: async () => {} });
+  markWorkItem('t-skipped', 'quota-hit', 'skipped', { attempts: 0, detail: { name: 'Quota Place' } });
+  markWorkItem('t-skipped', 'already-ok', 'success');
+  markWorkItem('t-skipped', 'real-fail', 'failed', { attempts: 4 });
+
+  // skipped is NOT done — item will be retried when quota resets
+  assert.equal(isWorkItemDone('t-skipped', 'quota-hit', 4), false, 'skipped item is not done');
+  assert.equal(isWorkItemDone('t-skipped', 'already-ok', 4), true, 'success item is done');
+
+  // skipped is NOT stuck — stuck list only contains failed-exhausted rows
+  const stuck = stuckItems().filter((i) => i.job_name === 't-skipped');
+  assert.deepEqual(stuck.map((i) => i.item_key), ['real-fail'], 'skipped item absent from stuck list');
+  assert.equal(stuckCount('t-skipped'), 1, 'skipped does not inflate stuck count');
+
+  // skipped status is stored and readable
+  const row = getWorkItem('t-skipped', 'quota-hit');
+  assert.equal(row?.status, 'skipped');
+  assert.equal(row?.attempts, 0, 'soft-stop records prior attempt count, not incremented');
+
+  // re-marking the same item as skipped is idempotent (upsert updates updated_at)
+  markWorkItem('t-skipped', 'quota-hit', 'skipped', { attempts: 0, detail: { name: 'Quota Place' } });
+  assert.equal(getWorkItem('t-skipped', 'quota-hit')?.status, 'skipped');
+
+  // clean up the failed row so it doesn't bleed into the bulk-unstick 'all' count below
+  unstickWorkItem('t-skipped', 'real-fail');
+}
+console.log('  ✓ skipped outcome: not done, not stuck, retried on next run');
+
 // ── bulkUnstickItems / bulkIgnoreItems: scope + only-failed guard (T118) ──
 // Bulk operations act ONLY on currently-'failed' rows; success/ignored rows are
 // untouched. Scopes: 'all' (no filter), 'job' (one job), 'workflow' (member jobs).

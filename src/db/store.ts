@@ -192,11 +192,16 @@ export function getWorkItem(jobName: string, itemKey: string): WorkItemRow | und
  * True when it succeeded, was manually ignored, or it failed but has exhausted
  * its retry budget. An `ignored` row is a human's "give up on this one
  * permanently" — it must never be reprocessed (see {@link ignoreWorkItem}).
+ *
+ * `skipped` means soft-stopped (e.g. quota exhausted) — NOT done; the item
+ * will be retried on the next run when the quota resets. It is never counted
+ * as stuck (the stuck query only matches `failed` rows).
  */
 export function isWorkItemDone(jobName: string, itemKey: string, maxAttempts: number): boolean {
   const row = getWorkItem(jobName, itemKey);
   if (!row) return false;
   if (row.status === 'success' || row.status === 'ignored') return true;
+  if (row.status === 'skipped') return false; // retry when quota resets
   return row.status === 'failed' && row.attempts >= maxAttempts;
 }
 

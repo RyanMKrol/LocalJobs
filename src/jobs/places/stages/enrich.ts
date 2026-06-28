@@ -123,6 +123,8 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       if (e instanceof QuotaExceededError) {
         stopReason = `google-places ${e.window} service cap reached (${e.used}/${e.cap})`;
         ctx.log(`google-places ${e.window} service cap reached — stopping gracefully; next run resumes.`, 'warn');
+        // Record soft-stop: item was not attempted; use prior attempt count (no increment).
+        markWorkItem(JOB_NAME, placeId, 'skipped', { attempts: attempts - 1, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver', detail: { name: place.name } });
         break;
       }
       throw e;
@@ -133,6 +135,8 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       // cap was reached. Stop gracefully; the next daily run continues.
       stopReason = 'API quota/rate limit reached (429 / RESOURCE_EXHAUSTED)';
       ctx.log(`Quota/rate limit hit on "${place.name}" — stopping run gracefully; next run resumes.`, 'warn');
+      // Record soft-stop: quota was hit mid-call; item produced no output.
+      markWorkItem(JOB_NAME, placeId, 'skipped', { attempts: attempts - 1, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver', detail: { name: place.name } });
       break;
     }
     if (res.authError) {
