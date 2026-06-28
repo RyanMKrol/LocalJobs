@@ -514,59 +514,6 @@ export function useMotion() {
   return [reduced, update] as const;
 }
 
-// ─── DAG graph-style switcher (T220) ─────────────────────────────────────────
-
-/** The three prototype DAG rendering options. */
-export type DagOption = 'waves' | 'swimlane' | 'flow';
-
-const DAG_OPTIONS: DagOption[] = ['waves', 'swimlane', 'flow'];
-const DAG_OPTION_LABELS: Record<DagOption, string> = {
-  waves:    'Wave Columns',
-  swimlane: 'Swim Lanes',
-  flow:     'React Flow',
-};
-const DAG_OPTION_DESCRIPTIONS: Record<DagOption, string> = {
-  waves:    'Columns per wave · bezier edges · wave labels + concurrency count',
-  swimlane: 'Rows per wave · nodes side-by-side within each lane · top-to-bottom edges',
-  flow:     'Interactive graph (React Flow + dagre) · wave band backgrounds · draggable',
-};
-
-/** Persist the chosen DAG graph style to localStorage. */
-export function useDagOption(): [DagOption, (o: DagOption) => void] {
-  const [option, setOption] = useState<DagOption>('waves');
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem('localjobs.dag-option') as DagOption | null;
-    if (stored && (DAG_OPTIONS as string[]).includes(stored)) setOption(stored);
-  }, []);
-
-  const update = useCallback((o: DagOption) => {
-    setOption(o);
-    window.localStorage.setItem('localjobs.dag-option', o);
-  }, []);
-
-  return [option, update];
-}
-
-/** Inline switcher rendered above the DAG graph. */
-export function DagOptionSwitcher() {
-  const [option, setOption] = useDagOption();
-  return (
-    <div className="dag-option-switcher">
-      <span className="dag-option-label">Graph style:</span>
-      {DAG_OPTIONS.map((o) => (
-        <button
-          key={o}
-          className={`dag-option-btn${option === o ? ' active' : ''}`}
-          onClick={() => setOption(o)}
-          title={DAG_OPTION_DESCRIPTIONS[o]}
-        >
-          {DAG_OPTION_LABELS[o]}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /**
  * One-click "Copy logs" button. Formats every log line as "<timestamp> [LEVEL] message"

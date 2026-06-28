@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Dag } from '../../components/Dag';
+import { DagFlow } from '../../components/DagFlow';
 import { api } from '../../lib/api';
 import type { IoRow, Run, WorkflowIo } from '../../lib/api';
 import { CopyLogsButton, StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
@@ -366,7 +366,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
 
       {workflow && (
         <div className="panel" style={{ marginBottom: 16 }}>
-          <Dag members={workflow.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/workflow-runs/${id}`} workflowRunId={id} />
+          <DagFlow members={workflow.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/workflow-runs/${id}`} workflowRunId={id} />
         </div>
       )}
 

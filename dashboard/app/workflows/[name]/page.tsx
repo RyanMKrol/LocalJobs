@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState } from 'react';
-import { Dag } from '../../components/Dag';
+import { DagFlow } from '../../components/DagFlow';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api, type MissingSeason, type MovieGap, type MovieRec, type TvRec } from '../../lib/api';
 import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
@@ -813,7 +813,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       </div>
 
       <h2>Graph</h2>
-      <div className="panel">{p && <Dag members={p.jobs} structuralGates={p.gates} workflowName={name} from={`/workflows/${name}`} />}</div>
+      <div className="panel">{p && <DagFlow members={p.jobs} structuralGates={p.gates} workflowName={name} from={`/workflows/${name}`} />}</div>
 
       <h2>Runs</h2>
       <div className="panel">

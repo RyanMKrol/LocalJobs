@@ -837,16 +837,13 @@ doubt, log it.
   — each gate carries its `description` (what the producer's `produces[key]` and
   consumer's `consumes[key]` contracts ASSERT, enriched in the API's
   `gatesForWorkflow`), so a gate is inspectable, not just coloured.
-  `dashboard/.../Dag.tsx` renders a gate mark per gate ON THE CONNECTING SVG EDGE between
-  the specific producer and consumer nodes it guards (T204). The graph layout uses
-  topological columns (each node's column = max(parent columns) + 1) with SVG bezier curves
-  drawn from each producer node's right-center to each consumer's left-center — every edge
-  reflects the actual `dependsOn` relationship, so there are no false wave-barrier implications
-  (e.g. `franchise-gaps` and `rec-merge` in movie-recommendations have no implied ordering).
-  Wide graphs scroll horizontally via `overflow-x: auto`; the phone layout stacks columns
-  top-to-bottom as a single column. Gate marks are placed as absolutely-positioned divs at
-  each edge's bezier midpoint, using the `gs-key` key-pill style. EVERY mark (passed/failed/pending
-  alike) links directly to that gate's dedicated detail page
+  `dashboard/app/components/DagFlow.tsx` renders a gate mark per gate as a React Flow edge label
+  on the connecting edge between the specific producer and consumer nodes it guards (T204). The
+  graph layout uses topological columns (each node's column = max(parent columns) + 1) with dagre
+  computing the vertical ordering — every edge reflects the actual `dependsOn` relationship, so
+  there are no false wave-barrier implications (e.g. `franchise-gaps` and `rec-merge` in
+  movie-recommendations have no implied ordering). EVERY mark (passed/failed/pending alike) links
+  directly to that gate's dedicated detail page
   (`/workflow-runs/<id>/gates/<producer>/<key>`), which shows what the gate
   validates (key + description, producer→consumer), its outcome, and links to the
   producer/consumer/violation run logs. Gates render ONLY when a run's `gates` prop is passed — the
@@ -906,9 +903,9 @@ doubt, log it.
     which returns the structural gate from `gatesForWorkflow` (`deriveGates` +
     contract descriptions) plus each side's `shape` ONLY — it does **NOT** run any
     contract `check()`, so it touches no `data/` files and makes no paid/remote calls
-    at all (purely static contract metadata). `Dag`'s structural gate chips take a
-    `workflowName` prop (replacing the old `lastRunId`) to build these definition-view
-    links; run-view chips still use `workflowRunId` → the run-scoped page, UNCHANGED.
+    at all (purely static contract metadata). `DagFlow`'s structural gate chips take a
+    `workflowName` prop to build these definition-view links; run-view chips use
+    `workflowRunId` → the run-scoped page.
 - **Workflow progress is rolled up from member jobs (don't set it by hand).** A
   workflow run's `progress` is a first-class roll-up that counts **only completed
   stages** over the workflow's total stage count — a member in a terminal state
