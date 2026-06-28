@@ -103,32 +103,22 @@ function buildLayout(
 ): LayoutResult {
   if (members.length === 0) return { nodes: [], edges: [] };
 
-  // Build dagre graph for layout
+  // Build dagre graph for layout. We use dagre for the VERTICAL ordering (crossing minimisation
+  // within each column) but OVERRIDE the horizontal position so each node's column = its true wave
+  // depth (computeLayers). Dagre's ranker would otherwise pull a short-path node like franchise-gaps
+  // (one hop off the snapshot, but feeding the final notify) toward its consumer, stranding it
+  // between columns so the snapshot→franchise edge slices through the rec fan-out. Pinning X by wave
+  // keeps franchise-gaps in wave 2 with the rec branches, exactly where the run actually places it.
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: 'LR', nodesep: NODE_SEP, ranksep: RANK_SEP, marginx: 16, marginy: 16 });
   g.setDefaultEdgeLabel(() => ({}));
   for (const m of members) g.setNode(m.job_name, { width: NODE_W, height: NODE_H });
-  // Pack each node toward its EARLIEST consumer instead of its longest-path rank. A node whose only
-  // successors sit several ranks ahead gets pulled RIGHT to just before them — so a direct-to-terminal
-  // node like `franchise-gaps` (one hop off the snapshot but feeding the final notify) isn't stranded
-  // in the middle of the snapshot's fan-out column; it lands beside `rec-merge`, and the two parallel
-  // paths visibly converge on the terminal. Encoded as dagre per-edge `minlen`.
-  const rank = computeLayers(members);
-  const minSucc = new Map<string, number>();
-  for (const m of members) for (const dep of m.depends_on) {
-    minSucc.set(dep, Math.min(minSucc.get(dep) ?? Infinity, rank.get(m.job_name) ?? 0));
-  }
-  const pulled = new Map<string, number>();
-  for (const m of members) {
-    const r = rank.get(m.job_name) ?? 0;
-    const ms = minSucc.get(m.job_name);
-    pulled.set(m.job_name, ms === undefined ? r : Math.max(r, ms - 1));
-  }
-  for (const m of members) for (const dep of m.depends_on) {
-    const ml = Math.max(1, (pulled.get(m.job_name) ?? 0) - (pulled.get(dep) ?? 0));
-    g.setEdge(dep, m.job_name, { minlen: ml });
-  }
+  for (const m of members) for (const dep of m.depends_on) g.setEdge(dep, m.job_name);
   dagre.layout(g);
+
+  // Column X is pinned to the true wave depth (not dagre's rank).
+  const wave = computeLayers(members);
+  const colX = (job: string) => 16 + (wave.get(job) ?? 0) * (NODE_W + RANK_SEP);
 
   // Gate label lookup: "producer\x00consumer" → label string
   const gateLabelByEdge = new Map<string, string>();
@@ -156,7 +146,8 @@ function buildLayout(
 
   // Stage nodes
   for (const m of members) {
-    const { x, y } = g.node(m.job_name);
+    const { y } = g.node(m.job_name);          // dagre's vertical position (crossing-minimised order)
+    const x = colX(m.job_name) + NODE_W / 2;    // X pinned to the node's true wave column
     const status = statusByJob?.[m.job_name] ?? 'pending';
     const runId = runIdByJob?.[m.job_name];
     const href = (runId ? `/runs/${runId}` : `/jobs/${m.job_name}`) + (from ? `?from=${encodeURIComponent(from)}` : '');
