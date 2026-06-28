@@ -5781,7 +5781,7 @@
     {
       "id": "T221",
       "title": "Hardcode React Flow as the only workflow graph; remove the style switcher + other styles",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
