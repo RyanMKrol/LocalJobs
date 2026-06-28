@@ -73,7 +73,7 @@ export default function Workflows() {
                   {p.schedule
                     ? <CronBadge expr={p.schedule} />
                     : <span className="muted">manual</span>}
-                  {p.enabled ? '' : ' (off)'}
+
                 </td>
                 <td>
                   {p.last_run
