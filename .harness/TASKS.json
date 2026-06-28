@@ -5777,6 +5777,659 @@
       ],
       "expectsTest": false,
       "spec": ".harness/tasks/T220.md"
+    },
+    {
+      "id": "T221",
+      "title": "Hardcode React Flow as the only workflow graph; remove the style switcher + other styles",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "graph"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/components/**",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/**",
+        "dashboard/app/globals.css",
+        "dashboard/package.json",
+        "dashboard/package-lock.json",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T221.md"
+    },
+    {
+      "id": "T222",
+      "title": "Disable zoom/pan on the workflow graph (static, read-only diagram)",
+      "status": "pending",
+      "dependsOn": [
+        "T221"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "graph"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T222.md"
+    },
+    {
+      "id": "T223",
+      "title": "Padlock gate markers on the graph (state-coloured, hover/click), replace text labels",
+      "status": "pending",
+      "dependsOn": [
+        "T221"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "graph"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T223.md"
+    },
+    {
+      "id": "T224",
+      "title": "Full validation-gate coverage across all workflows (add per-edge contracts)",
+      "status": "pending",
+      "dependsOn": [
+        "T221"
+      ],
+      "gate": null,
+      "tags": [
+        "jobs",
+        "contracts",
+        "graph"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "src/jobs/places/**",
+        "src/jobs/perfumes/**",
+        "src/jobs/plex/**",
+        "src/jobs/tv-recs/**",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T224.md"
+    },
+    {
+      "id": "T225",
+      "title": "Work-item data model: add a 'skipped' outcome + stop marking success with no output",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "db",
+        "framework"
+      ],
+      "facets": {
+        "layer": "db",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/core/services.ts",
+        "src/jobs/places/**",
+        "src/api/server.ts"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T225.md"
+    },
+    {
+      "id": "T226",
+      "title": "Input→Output mapping: filter rows by item state (success / failed / skipped)",
+      "status": "pending",
+      "dependsOn": [
+        "T225"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "api"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/**",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        "src/api/server.ts",
+        "src/db/store.ts"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T226.md"
+    },
+    {
+      "id": "T227",
+      "title": "Unify the grouped output/manager section styling on workflow detail pages",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/components/**",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T227.md"
+    },
+    {
+      "id": "T228",
+      "title": "Remove the redundant \"(off)\" hint from the Schedule column",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T228.md"
+    },
+    {
+      "id": "T229",
+      "title": "Vertically centre the Danger-zone \"Clear output data\" button",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T229.md"
+    },
+    {
+      "id": "T230",
+      "title": "Remove the Database view (/db) and all UI-driven DB views",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "api"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "dashboard/app/db/**",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/layout.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/scripts/mobile-check.mjs",
+        "src/api/server.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T230.md"
+    },
+    {
+      "id": "T231",
+      "title": "Show the worklog in the expanded Backlog task cell",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "api"
+      ],
+      "facets": {
+        "layer": "api",
+        "workType": "feature",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/lib/api.ts"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T231.md"
+    },
+    {
+      "id": "T232",
+      "title": "Sort the Backlog done list by reviewed-status then ascending task id",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T232.md"
+    },
+    {
+      "id": "T233",
+      "title": "Split Backlog buildable into Ready / Waiting-on-deps with dependency pills",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T233.md"
+    },
+    {
+      "id": "T234",
+      "title": "Fix the Recent-workflow-runs table border (continuous on all four sides)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T234.md"
+    },
+    {
+      "id": "T235",
+      "title": "Make System the first Mode option in the theme picker",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T235.md"
+    },
+    {
+      "id": "T236",
+      "title": "Make the workflow Run buttons pop (high-contrast accent)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T236.md"
+    },
+    {
+      "id": "T237",
+      "title": "Move a needs-human task into the done section when marked done",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T237.md"
+    },
+    {
+      "id": "T238",
+      "title": "Make the service-detail popup follow the theme font",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T238.md"
+    },
+    {
+      "id": "T239",
+      "title": "Vertically centre the Input→Output \"fan-out\" footnote caption",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T239.md"
+    },
+    {
+      "id": "T240",
+      "title": "Stack the LAST RUN column onto two lines (pill above, time below)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T240.md"
+    },
+    {
+      "id": "T241",
+      "title": "Show full IDs in dashboard back-navigation labels (audit all)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/**",
+        "dashboard/app/workflows/[name]/**",
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T241.md"
+    },
+    {
+      "id": "T242",
+      "title": "Polish the expanded Backlog task styling (inner padding + rounded card)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T242.md"
+    },
+    {
+      "id": "T243",
+      "title": "Show reviewed vs not-reviewed count in the Backlog done header",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "run-app"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T243.md"
     }
   ]
 }
