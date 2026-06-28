@@ -5845,7 +5845,7 @@
     {
       "id": "T223",
       "title": "Padlock gate markers on the graph (state-coloured, hover/click), replace text labels",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T221"
       ],
