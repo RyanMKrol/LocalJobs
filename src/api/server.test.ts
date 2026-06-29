@@ -26,6 +26,7 @@ import {
   readHumanDone,
   readReviews,
   readTaskSpec,
+  readWorklogContent,
   safeOutputMarkdown,
   setHumanDoneEntry,
   setReviewEntries,
@@ -1047,6 +1048,66 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       assert.equal(a.doneWhen, undefined, 'no flat doneWhen field');
       assert.equal(b.specContent, undefined, 'missing spec file → no specContent');
       assert.equal(a.reviewed, false, 'reviewed still defaults to false');
+    });
+  });
+
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── T231: worklog inlining — readWorklogContent + GET /api/backlog inlines worklogContent ──
+{
+  const root = mkdtempSync(join(tmpdir(), 'localjobs-worklog-'));
+  const baseDir = join(root, '.harness');
+  const worklogDir = join(baseDir, 'worklog');
+  const tasksDir = join(baseDir, 'tasks');
+  mkdirSync(worklogDir, { recursive: true });
+  mkdirSync(tasksDir, { recursive: true });
+  const harnessName = basename(baseDir);
+  writeFileSync(join(worklogDir, 'T001.md'), '# T001\n\ndone: built it\n');
+  writeFileSync(join(tasksDir, 'T001.md'), '## Do\n\nbuild\n\n## Done when\n\ngreen\n');
+
+  await test('readWorklogContent: reads worklog markdown for a valid id', () => {
+    const md = readWorklogContent('T001', baseDir);
+    assert.ok(md && md.includes('done: built it'));
+  });
+
+  await test('readWorklogContent: null for missing worklog', () => {
+    assert.equal(readWorklogContent('T999', baseDir), null);
+  });
+
+  await test('readWorklogContent: null for traversal / invalid ids', () => {
+    assert.equal(readWorklogContent('../escape', baseDir), null);
+    assert.equal(readWorklogContent('../../etc/passwd', baseDir), null);
+    assert.equal(readWorklogContent('T001/bad', baseDir), null);
+    assert.equal(readWorklogContent(null, baseDir), null);
+    assert.equal(readWorklogContent(42, baseDir), null);
+  });
+
+  const backlogPath = join(baseDir, 'TASKS.json');
+  writeFileSync(
+    backlogPath,
+    JSON.stringify(
+      {
+        version: 1,
+        tasks: [
+          { id: 'T001', title: 'A', status: 'done', spec: `${harnessName}/tasks/T001.md` },
+          { id: 'T002', title: 'B', status: 'pending' },
+        ],
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+
+  await test('GET /api/backlog: inlines worklogContent when worklog file exists', async () => {
+    await withServer({ backlogPath }, async (base) => {
+      const res = await fetch(`${base}/api/backlog`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { tasks: Array<Record<string, unknown>> };
+      const a = body.tasks.find((t) => t.id === 'T001')!;
+      const b = body.tasks.find((t) => t.id === 'T002')!;
+      assert.ok(typeof a.worklogContent === 'string' && (a.worklogContent as string).includes('done: built it'));
+      assert.equal(b.worklogContent, undefined, 'no worklog → no worklogContent');
     });
   });
 

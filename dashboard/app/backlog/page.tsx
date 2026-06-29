@@ -111,8 +111,16 @@ function CollapsibleRow({
             </div>
           )}
           <TaskSpec t={t} small />
+          {t.worklogContent && (
+            <details style={{ marginTop: 10 }}>
+              <summary className="muted" style={{ fontSize: 12, cursor: 'pointer', userSelect: 'none' }}>Build log</summary>
+              <div className="task-spec md-body" style={{ fontSize: 13, marginTop: 6 }}>
+                <ReactMarkdown>{t.worklogContent}</ReactMarkdown>
+              </div>
+            </details>
+          )}
           {t.tags && t.tags.length > 0 && (
-            <div>
+            <div style={{ marginTop: 8 }}>
               {t.tags.map((tag) => (
                 <span key={tag} className="pill" style={{ marginRight: 4 }}>{tag}</span>
               ))}

@@ -131,6 +131,25 @@ export function readTaskSpec(specRel: unknown, baseDir: string): string | null {
   }
 }
 
+/**
+ * Read a task's committed worklog (`.harness/worklog/<id>.md`). `id` must be a
+ * plain task id string; `baseDir` is the backlog file's directory. Confined to
+ * `.harness/worklog/*.md` (no traversal, markdown only). Returns the file text,
+ * or null when the file is absent or the id fails the safety check.
+ */
+export function readWorklogContent(id: unknown, baseDir: string): string | null {
+  if (typeof id !== 'string' || !id || id.includes('/') || id.includes('..') || !id.match(/^[\w-]+$/)) return null;
+  const worklogDir = joinPath(baseDir, 'worklog');
+  const abs = joinPath(worklogDir, `${id}.md`);
+  if (!isWithin(worklogDir, abs)) return null; // belt-and-suspenders
+  if (!abs.toLowerCase().endsWith('.md')) return null;
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 /** An entry in the owner-owned reviews store (`.harness/reviews.json`, T136). */
 export interface ReviewEntry {
   reviewed: boolean;
@@ -229,9 +248,10 @@ function readBacklog(
           if (!(t && typeof t === 'object' && !Array.isArray(t))) return t;
           const task = t as { id?: unknown; spec?: unknown };
           const specContent = readTaskSpec(task.spec, baseDir);
+          const worklogContent = readWorklogContent(task.id, baseDir);
           const isDone = typeof task.id === 'string' ? humanDone[task.id]?.done === true : false;
           const reviewed = isDone || (typeof task.id === 'string' ? reviews[task.id]?.reviewed === true : false);
-          return { ...(t as object), reviewed, ...(isDone ? { done: true } : {}), ...(specContent !== null ? { specContent } : {}) };
+          return { ...(t as object), reviewed, ...(isDone ? { done: true } : {}), ...(specContent !== null ? { specContent } : {}), ...(worklogContent !== null ? { worklogContent } : {}) };
         })
       : [];
     return { tasks };

@@ -277,6 +277,9 @@ export interface BacklogTask {
   // text (## Do / ## Done when), supplied by GET /api/backlog for rendering.
   spec?: string;
   specContent?: string;
+  // Committed worklog for this task (.harness/worklog/<id>.md), inlined by GET /api/backlog.
+  // Absent when no worklog file exists yet.
+  worklogContent?: string;
   // Human-review flag (T124): owner-set via the dashboard, not the harness loop.
   // Defaults to false (the API normalises absent values).
   reviewed?: boolean;
