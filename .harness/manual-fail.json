@@ -3,5 +3,10 @@
     "failed": true,
     "reason": "The padlock gate markers are not present in the UI at all. We should have validated this with some visual inspection, but we failed to do so.",
     "at": "2026-06-29T09:25:30.189Z"
+  },
+  "T225": {
+    "failed": true,
+    "reason": "The skip state does not appear to have been propagated thoroughly throughout the ecosystem. When I run places with a limit of five, it picks five places that have already been processed before. It does nothing for them, but it still marks them as a success. That indicates to me that we actually haven't plumbed in skipped as intended.",
+    "at": "2026-06-29T09:26:20.310Z"
   }
 }
