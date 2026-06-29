@@ -6327,7 +6327,7 @@
     {
       "id": "T240",
       "title": "Stack the LAST RUN column onto two lines (pill above, time below)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
