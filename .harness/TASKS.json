@@ -6714,7 +6714,7 @@
     {
       "id": "T255",
       "title": "listens: one-time Last.fm history backfill into the listens table",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T254"
       ],
