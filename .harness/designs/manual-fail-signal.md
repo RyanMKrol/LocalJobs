@@ -63,10 +63,12 @@ Net effect: marking a UI task failed makes future UI tasks both **built with a s
 
 ## 4. What it deliberately does NOT do
 
-- **It does not change the task's `status` or re-open it.** The loop owns `status`; re-opening for a
-  rebuild would require the loop to read the overlay during selection and un-`done` the task, which would
-  dent the strict decoupling. Out of scope by choice. After marking failed, the owner fixes the work or
-  authors a follow-up task. (Re-open could be layered on later if a real need emerges.)
+- **It does not RE-OPEN the task.** (Update — T279: the loop now DOES reconcile the overlay into
+  `TASKS.json` `status=failed` at pre-flight via `reconcile_overlays`, mirroring T261's human-done →
+  `status=done` reconcile, so `TASKS.json` status is the authoritative state. But `failed` is
+  **terminal** — the loop SKIPS it, it does NOT re-build/auto-reopen the task. The dashboard still
+  writes only the overlay; the loop is the sole `TASKS.json` writer, so the decoupling holds. The
+  re-do of failed work is a separate follow-up task, never an auto-reopen.)
 - **It does not feed the failure reason into the auditor's prompt.** The correction is purely the
   sampling-rate + tier bump above; teaching the auditor *what to look for* from past reasons is a possible
   future extension, not part of this design.

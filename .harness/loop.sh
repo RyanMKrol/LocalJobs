@@ -34,7 +34,8 @@ WORKLOG="$HARNESS_DIR/worklog"
 OUTCOMES="$HARNESS_DIR/outcomes.jsonl"             # append-only escalation ledger — the SOLE input to difficulty calibration (forward-only); ONE terminal row per task
 FAILURES="$HARNESS_DIR/failures.jsonl"             # append-only PER-ATTEMPT failure ledger — ONE row per failed attempt (kind+cause). Diagnostics only, NOT calibration; committed so causes are queryable across tasks
 FAILBUF="$WORKLOG/.failures.buf"                   # gitignored scratch buffer for the current task's failures: survives cold_reset (git clean -fd keeps ignored files), flushed into FAILURES at each terminal event
-MANUAL_FAIL="$HARNESS_DIR/manual-fail.json"        # owner-owned overlay (id → {failed,reason,at}); committed, dashboard/command-written, NEVER written by the loop. Read-only correction the calibration readers honor (designs/manual-fail-signal.md)
+MANUAL_FAIL="$HARNESS_DIR/manual-fail.json"        # owner-owned overlay (id → {failed,reason,at}); dashboard/command-written, never WRITTEN by the loop. Read for calibration (manual_fail_ids) AND reconciled → TASKS.json status=failed at pre-flight (T279, reconcile_overlays)
+HUMAN_DONE="$HARNESS_DIR/human-done.json"          # owner-owned overlay (id → {done,at}) for needs-human tasks; dashboard-written, never WRITTEN by the loop. Reconciled → TASKS.json status=done at pre-flight so dependents unblock (T261, reconcile_overlays)
 NAME="$(basename "$ROOT")"
 MODEL="${MODEL:-claude-sonnet-4-6}"               # COLD-START FLOOR — cheapest tier; the policy tunes UP from here (pin the full id; the bare alias drifts)
 EFFORT="${EFFORT:-low}"                            # low|medium|high|xhigh|max — cheapest by default (bias-cheap; the ladder escalates on failure)
@@ -96,6 +97,9 @@ task_done()    { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="done"'
 deps_for()     { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.dependsOn[]?' | tr '\n' ' '; }
 task_gated()   { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.gate!=null' >/dev/null; }
 task_blocked() { [ -f "$WORKLOG/$1.md" ] && grep -qiE 'failed:blocked|needs-human' "$WORKLOG/$1.md"; }
+# A task the owner marked FAILED, reconciled into TASKS.json status=failed (T279). Terminal: the loop
+# must NEVER (re)select it — the re-do is a separate follow-up task, not an auto-reopen.
+task_failed()  { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="failed"' >/dev/null; }
 # A task's do/doneWhen live in a per-task Markdown spec (T131), referenced by the
 # JSON `spec` field (path relative to the repo root, e.g. .harness/tasks/T001.md).
 task_spec_rel() { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.spec // empty'; }
@@ -108,6 +112,47 @@ task_spec_rel() { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.spec // empty'
 manual_fail_ids() {
   [ -f "$MANUAL_FAIL" ] || { echo '[]'; return; }
   jq -c '[to_entries[] | select(.value.failed == true) | .key]' "$MANUAL_FAIL" 2>/dev/null || echo '[]'
+}
+
+# set_task_status <id> <status> — atomic, field-scoped edit of TASKS.json (temp-file + rename), leaving
+# every other field/task verbatim. Returns non-zero (and leaves TASKS.json untouched) on jq failure.
+set_task_status() {
+  local id="$1" s="$2" tmp="$BACKLOG.tmp"
+  jq --arg id "$id" --arg s "$s" '(.tasks[]|select(.id==$id)|.status)=$s' "$BACKLOG" >"$tmp" \
+    && mv "$tmp" "$BACKLOG" || { rm -f "$tmp"; return 1; }
+}
+
+# reconcile_overlays — promote the owner-owned overlay VERDICTS into the AUTHORITATIVE TASKS.json
+# status, so a dashboard "Mark done" (human-done.json) / "Mark failed" (manual-fail.json) actually
+# takes effect for the loop, which keys selection on TASKS.json status — NOT on the overlays (T261/T279).
+# The dashboard still writes ONLY the overlays; the loop stays the SOLE TASKS.json writer, so the
+# decoupling is intact (the loop ENACTS the owner's intent). Rules:
+#   - human-done done==true + task is needs-human + status!=done  → status=done   (T261; unblocks dependents)
+#   - manual-fail failed==true + status!=failed                   → status=failed (T279; supersedes done)
+# One-directional + idempotent (only overlay→status, never the reverse; a no-op when nothing changed).
+# Does NOT touch outcomes.jsonl: these aren't loop-built, and manual-fail's calibration effect already
+# comes from the overlay via manual_fail_ids (the ledger readers), not from the status.
+reconcile_overlays() {
+  local changed=0 id
+  if [ -f "$HUMAN_DONE" ]; then
+    for id in $(jq -r 'to_entries[]|select(.value.done==true)|.key' "$HUMAN_DONE" 2>/dev/null); do
+      if tj -e --arg id "$id" '.tasks[]|select(.id==$id and .gate=="needs-human" and .status!="done")' >/dev/null 2>&1; then
+        set_task_status "$id" done && { changed=1; log "reconcile: $id human-done → status=done (T261)"; }
+      fi
+    done
+  fi
+  if [ -f "$MANUAL_FAIL" ]; then
+    for id in $(jq -r 'to_entries[]|select(.value.failed==true)|.key' "$MANUAL_FAIL" 2>/dev/null); do
+      if tj -e --arg id "$id" '.tasks[]|select(.id==$id and .status!="failed")' >/dev/null 2>&1; then
+        set_task_status "$id" failed && { changed=1; log "reconcile: $id manual-fail → status=failed (T279)"; }
+      fi
+    done
+  fi
+  if [ "$changed" = 1 ]; then
+    git -C "$ROOT" add "$BACKLOG" 2>/dev/null || true
+    git -C "$ROOT" commit -q -m "reconcile: overlay verdicts → TASKS.json status [skip ci]" 2>/dev/null || true
+    git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push reconciled TASKS.json status"
+  fi
 }
 
 # record_outcome <id> <blocked:true|false> [reason] — append ONE escalation-outcome row to the
@@ -265,6 +310,7 @@ select_task() {
   fi
   for t in $(all_tasks); do
     task_done "$t" && continue
+    task_failed "$t" && continue
     task_gated "$t" && continue
     task_blocked "$t" && continue
     ok=1; for d in $(deps_for "$t"); do task_done "$d" || { ok=0; break; }; done
@@ -303,7 +349,9 @@ wait_ci_green() {   # 0=green 1=red 2=indeterminate
 }
 
 # --- Claude invocation with rate-limit detection ----------------------------
-RL_RE='usage limit|rate.?limit|429|resets at|try again later|overloaded|quota|insufficient.*credit|exceeded your'
+# NB: the real Claude-CLI message is e.g. "You've hit your session limit · resets 2:30pm (Europe/London)"
+# — so match "session limit"/"hit your … limit" and a bare "resets" (no "at"), not just "usage limit".
+RL_RE='usage limit|session limit|hit your .*limit|rate.?limit|429|resets|try again later|overloaded|quota|insufficient.*credit|exceeded your'
 # run_claude <model> <effort> <prompt> → 0 ok | 10 rate-limited | other = failure
 run_claude() {
   local model="$1" effort="$2" pr="$3" out="$WORKLOG/.claude-out" rc
@@ -313,6 +361,58 @@ run_claude() {
   set -e
   if [ "$rc" -ne 0 ] && grep -qiE "$RL_RE" "$out"; then return 10; fi
   return "$rc"
+}
+
+# rl_reset_wait <captured-output-file> — when Claude reports WHEN the usage limit resets, echo the
+# seconds to sleep so the loop resumes right AFTER the reset (+ RL_BUFFER cushion) instead of the
+# blind exponential backoff that over-waits (T265). Returns non-zero (echoes nothing) if no reset
+# time is parseable → caller falls back to exponential. Handles the two machine-readable forms:
+#   • relative   — "try again in 42 seconds" / "in 5 minutes" / "in 2 hours" / "for 3 minutes"
+#   • ISO-8601   — "...resets at 2025-06-29T21:00:00Z" / "2025-06-29 21:00"
+# (A bare clock time like "resets at 3pm" is intentionally NOT parsed — ambiguous + tz-fragile; it
+# falls back.) The exact Claude-CLI wording isn't pinned here, so the fallback guarantees no
+# regression; refine the patterns once a real rate-limit message is captured in $WORKLOG/.claude-out.
+# Never negative; capped at RL_BACKOFF_MAX.
+rl_reset_wait() {
+  local out="$1" content now secs="" n unit ts epoch h mm ap tz hh24 today
+  [ -f "$out" ] || return 1
+  content="$(cat "$out")"
+  now=$(date +%s)
+  # (a) CONFIRMED real format — clock time + timezone: "resets 2:30pm (Europe/London)" / "resets 3am
+  #     (Europe/London)". Anchored on the am/pm + "(TZ)" so a leading date ("Jun 30 3am") can't be
+  #     mistaken for the hour. Compute the NEXT occurrence of that time in that tz: if it's already
+  #     past today, it's tomorrow (handles a cross-midnight reset, e.g. 10pm now → 3am).
+  if [[ "$content" =~ ([0-9]{1,2})(:([0-9]{2}))?[[:space:]]*([AaPp][Mm])[[:space:]]*\(([A-Za-z_/]+)\) ]]; then
+    h="${BASH_REMATCH[1]}"; mm="${BASH_REMATCH[3]:-00}"; ap="$(printf '%s' "${BASH_REMATCH[4]}" | tr 'APM' 'apm')"; tz="${BASH_REMATCH[5]}"
+    hh24="$h"
+    [ "$ap" = pm ] && [ "$h" -lt 12 ] && hh24=$((h + 12))
+    [ "$ap" = am ] && [ "$h" -eq 12 ] && hh24=0
+    today="$(TZ="$tz" date +%Y-%m-%d 2>/dev/null || true)"
+    if [ -n "$today" ]; then
+      epoch=$(TZ="$tz" date -j -f "%Y-%m-%d %H:%M" "$today $(printf '%02d' "$hh24"):$mm" +%s 2>/dev/null \
+            || TZ="$tz" date -d "$today $hh24:$mm" +%s 2>/dev/null || true)
+      if [ -n "$epoch" ]; then
+        (( epoch <= now )) && epoch=$(( epoch + 86400 ))
+        secs=$(( epoch - now ))
+      fi
+    fi
+  fi
+  # (b) relative: "try again in 42 seconds" / "in 5 minutes" / "in 2 hours"
+  if [ -z "$secs" ] && [[ "$content" =~ (in|for)[[:space:]]+([0-9]+)[[:space:]]*(second|minute|hour) ]]; then
+    n="${BASH_REMATCH[2]}"; unit="${BASH_REMATCH[3]}"
+    case "$unit" in second) secs=$n ;; minute) secs=$((n*60)) ;; hour) secs=$((n*3600)) ;; esac
+  fi
+  # (c) ISO-8601 timestamp: "2025-06-29T21:00:00Z" / "2025-06-29 21:00"
+  if [ -z "$secs" ] && [[ "$content" =~ ([0-9]{4}-[0-9]{2}-[0-9]{2}[T\ ][0-9]{2}:[0-9]{2}(:[0-9]{2})?)Z? ]]; then
+    ts="${BASH_REMATCH[1]}"
+    epoch=$(date -d "$ts" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${ts/ /T}" +%s 2>/dev/null || true)
+    [ -n "$epoch" ] && secs=$(( epoch - now ))
+  fi
+  [ -z "$secs" ] && return 1
+  (( secs < 0 )) && secs=0
+  secs=$(( secs + RL_BUFFER ))
+  (( secs > RL_BACKOFF_MAX )) && secs="$RL_BACKOFF_MAX"
+  echo "$secs"
 }
 
 # --- Per-task build prompt --------------------------------------------------
@@ -564,7 +664,10 @@ EOF
   rlpoll="${RL_POLL:-${RL_BACKOFF_MIN:-300}}"
   while :; do
     set +e; run_claude "$am" "$ae" "$(audit_prompt "$id" "$spec" "$diff" "$visual")"; arc=$?; set -e
-    [ "$arc" = 10 ] && { log "auditor rate-limited — waiting ${rlpoll}s (NOT an audit fail)"; sleep "$rlpoll"; continue; }
+    if [ "$arc" = 10 ]; then
+      arl="$(rl_reset_wait "$WORKLOG/.claude-out" || true)"; arl="${arl:-$rlpoll}"
+      log "auditor rate-limited — waiting ${arl}s (NOT an audit fail)"; sleep "$arl"; continue
+    fi
     break
   done
   cp "$WORKLOG/.claude-out" "$out" 2>/dev/null || true
@@ -648,6 +751,7 @@ _missing_facets="$(tj -r '[.tasks[]|select(.status!="done" and (.gate==null) and
 if [ -n "$_missing_facets" ]; then log "WARN: buildable tasks MISSING facets (no auto-tuning until tagged — see facets.json): $_missing_facets"; fi
 for ((i = 1; i <= MAX_ITERS; i++)); do
   git -C "$ROOT" fetch origin --quiet 2>/dev/null || true
+  reconcile_overlays   # promote owner overlay verdicts (human-done→done, manual-fail→failed) into TASKS.json status BEFORE selecting
   sel="$(select_task || true)"
   if [ -z "$sel" ]; then
     log "no eligible task — backlog complete or everything left is gate/human-blocked."
@@ -671,9 +775,15 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
     cold_reset
     set +e; run_claude "$tmodel" "$teffort" "$(prompt "$task")"; rc=$?; set -e
     if [ "$rc" = 10 ]; then
-      log "Claude usage/rate limit hit — backing off ${rl_sleep}s, will RE-ATTEMPT the same task COLD (not a failure)."
-      sleep "$rl_sleep"
-      rl_sleep=$(( rl_sleep * 2 )); [ "$rl_sleep" -gt "$RL_BACKOFF_MAX" ] && rl_sleep="$RL_BACKOFF_MAX"
+      rl_wait="$(rl_reset_wait "$WORKLOG/.claude-out" || true)"
+      if [ -n "$rl_wait" ]; then
+        log "Claude usage/rate limit hit — Claude reports a reset; waiting ${rl_wait}s (until ~reset + ${RL_BUFFER}s), then RE-ATTEMPT COLD (not a failure)."
+        sleep "$rl_wait"
+      else
+        log "Claude usage/rate limit hit (no parseable reset time) — exponential backoff ${rl_sleep}s, will RE-ATTEMPT COLD (not a failure)."
+        sleep "$rl_sleep"
+        rl_sleep=$(( rl_sleep * 2 )); [ "$rl_sleep" -gt "$RL_BACKOFF_MAX" ] && rl_sleep="$RL_BACKOFF_MAX"
+      fi
       continue
     fi
     break

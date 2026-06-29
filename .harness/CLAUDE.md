@@ -112,8 +112,10 @@ When the owner judges a `done` task to have actually failed, that is recorded in
 `/mark-task-failed` command or `.harness/mark-failed.sh <TNNN> "<reason>"` (the dashboard's "Mark
 failed" button writes the same file). The loop READS this overlay to correct calibration — a false
 success is re-counted as a failure for difficulty tuning and dropped from its cell's audited-success
-count, so that `(layer × workType)` cell is built with a stronger model and audited more often. It
-does NOT change task status or re-open the task. Full design: `designs/manual-fail-signal.md`.
+count, so that `(layer × workType)` cell is built with a stronger model and audited more often. At
+pre-flight the loop ALSO reconciles it → `TASKS.json` `status=failed` (T279, `reconcile_overlays`) — a
+terminal status the loop skips; it does NOT re-open/rebuild the task (the re-do is a separate
+follow-up). The loop still never WRITES the overlay file. Full design: `designs/manual-fail-signal.md`.
 
 ## `scope` is the rigour dial — pick its granularity deliberately
 
