@@ -6169,7 +6169,7 @@
     {
       "id": "T234",
       "title": "Fix the Recent-workflow-runs table border (continuous on all four sides)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
