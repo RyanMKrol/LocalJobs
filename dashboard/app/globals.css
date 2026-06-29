@@ -279,6 +279,17 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+/* Done-row trailing cluster: three fixed columns (reviewed pill | done/failed pill | action button)
+   so every done row aligns regardless of which label variant is showing. */
+.done-status-cluster {
+  display: grid;
+  grid-template-columns: 90px 70px 82px;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.done-status-cluster .pill { text-align: center; }
+.done-status-cluster .review-toggle { width: 100%; text-align: center; }
 /* "Mark as reviewed" toggle on each done row + the Reviewed/Not-reviewed/All filter. */
 .review-toggle { font-size: 11px; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
 .review-toggle:hover { border-color: var(--accent); color: var(--text); }
@@ -527,6 +538,9 @@ input[type="text"]:focus { border-color: var(--accent); }
   .db-modal-row { grid-template-columns: 1fr; gap: 2px; }
   .db-modal-key { margin-top: 8px; }
   .db-modal-key:first-child { margin-top: 0; }
+
+  /* Done-row status cluster: shrink columns to fit phone width. */
+  .done-status-cluster { grid-template-columns: 82px 62px 76px; gap: 3px; }
 
   /* Gate flow: stack output → gate → input vertically; arrows point down. */
   .gate-flow { flex-direction: column; }

@@ -104,52 +104,41 @@ function CollapsibleRow({
           </button>
         )}
         {isDone && (
-          <>
-            <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`} style={{ flexShrink: 0 }}>
+          <div className="done-status-cluster" onClick={(e) => e.stopPropagation()}>
+            <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`}>
               {reviewed ? '👁 reviewed' : 'not reviewed'}
             </span>
             {isFailed ? (
-              <span className="pill failed" style={{ flexShrink: 0 }} title={t.failReason ?? undefined}>✗ failed</span>
+              <span className="pill failed" title={t.failReason ?? undefined}>✗ failed</span>
             ) : (
-              <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
+              <span className="pill done">✓ done</span>
             )}
-            {onMarkFailed && !isFailed && (
+            {onMarkFailed ? (
               <button
                 type="button"
                 className="review-toggle"
                 disabled={markingFailed}
-                style={{ flexShrink: 0 }}
                 onClick={async (e) => {
                   e.stopPropagation();
-                  const reason = window.prompt(`Mark ${t.id} as FAILED — what was actually wrong?\n\n(This overturns the recorded success: future tasks of this kind get built with a stronger model and audited more often. It does NOT re-open the task.)`);
-                  if (reason === null || !reason.trim()) return; // cancelled / empty → abort
-                  setMarkingFailed(true);
-                  try { await api.markBacklogFailed(t.id, true, reason.trim()); } catch { /* ignore — next poll reflects state */ }
+                  if (!isFailed) {
+                    const reason = window.prompt(`Mark ${t.id} as FAILED — what was actually wrong?\n\n(This overturns the recorded success: future tasks of this kind get built with a stronger model and audited more often. It does NOT re-open the task.)`);
+                    if (reason === null || !reason.trim()) return;
+                    setMarkingFailed(true);
+                    try { await api.markBacklogFailed(t.id, true, reason.trim()); } catch { /* ignore — next poll reflects state */ }
+                  } else {
+                    setMarkingFailed(true);
+                    try { await api.markBacklogFailed(t.id, false); } catch { /* ignore */ }
+                  }
                   setMarkingFailed(false);
                   onMarkFailed(t.id);
                 }}
               >
-                {markingFailed ? 'Saving…' : 'Mark failed'}
+                {markingFailed ? 'Saving…' : isFailed ? 'Undo fail' : 'Mark failed'}
               </button>
+            ) : (
+              <span />
             )}
-            {onMarkFailed && isFailed && (
-              <button
-                type="button"
-                className="review-toggle"
-                disabled={markingFailed}
-                style={{ flexShrink: 0 }}
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  setMarkingFailed(true);
-                  try { await api.markBacklogFailed(t.id, false); } catch { /* ignore */ }
-                  setMarkingFailed(false);
-                  onMarkFailed(t.id);
-                }}
-              >
-                {markingFailed ? 'Saving…' : 'Undo fail'}
-              </button>
-            )}
-          </>
+          </div>
         )}
       </div>
       {expanded && (
