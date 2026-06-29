@@ -4834,7 +4834,7 @@
     {
       "id": "T187",
       "title": "Design the ideas-vs-backlog two-step process (flat ideas file + interview-driven conversion)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -6882,7 +6882,7 @@
     {
       "id": "T261",
       "title": "Loop pre-flight: reconcile human-done.json → TASKS.json status for needs-human tasks (unblock dependents)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -6980,7 +6980,7 @@
     {
       "id": "T265",
       "title": "Honour Claude's reset time on rate-limit backoff (stop over-waiting past the quota reset)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -7360,7 +7360,7 @@
     {
       "id": "T279",
       "title": "Reconcile manual-fail overlay → TASKS.json status=failed (authoritative terminal state)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T261"
       ],
