@@ -8,5 +8,10 @@
     "failed": true,
     "reason": "The skip state does not appear to have been propagated thoroughly throughout the ecosystem. When I run places with a limit of five, it picks five places that have already been processed before. It does nothing for them, but it still marks them as a success. That indicates to me that we actually haven't plumbed in skipped as intended.",
     "at": "2026-06-29T09:26:20.310Z"
+  },
+  "T238": {
+    "failed": true,
+    "reason": "On the service pop-up, all of the names of the workflows as well as names of the jobs are still using a sort of blocky code style font and aren't actually using the font dictated by the Theme Picker at all. This should have been validated more thoroughly with UI screenshot validation, but that was not done.",
+    "at": "2026-06-29T09:26:52.386Z"
   }
 }
