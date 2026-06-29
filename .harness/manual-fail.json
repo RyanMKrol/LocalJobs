@@ -1,1 +1,7 @@
-{}
+{
+  "T223": {
+    "failed": true,
+    "reason": "The padlock gate markers are not present in the UI at all. We should have validated this with some visual inspection, but we failed to do so.",
+    "at": "2026-06-29T09:25:30.189Z"
+  }
+}
