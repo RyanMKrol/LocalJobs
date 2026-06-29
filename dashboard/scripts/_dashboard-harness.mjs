@@ -196,8 +196,11 @@ export const FLOWS = [
   },
   {
     // The 🎨 theme/font/mode picker popover, opened from the header.
+    // viewport: true — the modal backdrop only covers the viewport, so a fullPage
+    // screenshot shows the page below the fold un-dimmed, misrepresenting how it looks.
     name: 'overview-theme-picker',
     path: '/',
+    viewport: true,
     actions: async (page) => {
       await page.click('.theme-trigger');
       await page.waitForSelector('.theme-modal', { state: 'visible', timeout: 5000 });

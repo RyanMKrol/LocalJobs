@@ -70,11 +70,12 @@ async function capture(ctx, spec, theme) {
       await spec.actions(page);
       await page.waitForTimeout(spec.settleMs ?? SETTLE_MS);
     }
-    await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
+    const fullPage = !spec.viewport;
+    await page.screenshot({ path: file, fullPage, animations: 'disabled' });
     return { name: spec.name, path: spec.path, theme, file, pass: consoleErrors.length === 0, error: consoleErrors[0] ?? null };
   } catch (e) {
     // Still try to capture whatever DID render, so the viewer can see the broken state.
-    try { await page.screenshot({ path: file, fullPage: true, animations: 'disabled' }); } catch { /* ignore */ }
+    try { await page.screenshot({ path: file, fullPage: !spec.viewport, animations: 'disabled' }); } catch { /* ignore */ }
     return { name: spec.name, path: spec.path, theme, file, pass: false, error: e instanceof Error ? e.message : String(e) };
   } finally {
     await page.close();
