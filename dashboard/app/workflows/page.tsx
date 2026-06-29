@@ -83,8 +83,8 @@ export default function Workflows() {
                 <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
                 <td>
                   {p.last_run?.status === 'running'
-                    ? <button className="btn" disabled title="A run is already in progress — only one run per workflow at a time">Running…</button>
-                    : <button className="btn" onClick={() => run(p.name)}>▶ Run</button>}
+                    ? <button className="btn btn-run" disabled title="A run is already in progress — only one run per workflow at a time">Running…</button>
+                    : <button className="btn btn-run" onClick={() => run(p.name)}>▶ Run</button>}
                 </td>
               </tr>
             ))}

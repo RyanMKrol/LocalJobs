@@ -726,8 +726,8 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
           </div>
         )}
         {p?.last_run?.status === 'running'
-          ? <button className="btn" disabled title="A run is already in progress — only one run per workflow at a time">Running…</button>
-          : <button className="btn" onClick={run} disabled={busy}>{busy ? 'Started…' : '▶ Run now'}</button>}
+          ? <button className="btn btn-run" disabled title="A run is already in progress — only one run per workflow at a time">Running…</button>
+          : <button className="btn btn-run" onClick={run} disabled={busy}>{busy ? 'Started…' : '▶ Run now'}</button>}
       </div>
       <p className="sub wf-desc">{p?.description}</p>
 

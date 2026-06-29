@@ -35,6 +35,12 @@
      🔒 pill stays blue regardless of which --accent the active theme picks. */
   --human-blue: #58a6ff;
 
+  /* Primary-action Run button accent — matches --accent in the default theme so
+     the untouched look is unchanged; joyful themes override to --human-blue so
+     the button pops blue against green/amber page backgrounds. */
+  --run: var(--accent);
+  --on-run: var(--on-accent);
+
   /* Logs are a FIXED dark terminal on every theme, with their own palette, so
      streaming logs stay legible on bright themes too (constraint: density). */
   --logs-bg: #0a0e14;
@@ -106,6 +112,7 @@ tbody tr:hover { background: var(--panel-2); }
 .btn:hover { filter: brightness(1.08); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+.btn.btn-run { background: var(--run); color: var(--on-run); }
 .btn.btn-danger { background: var(--red); color: #fff; }
 .btn-link { background: none; border: none; padding: 0; font: inherit; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; }
 
@@ -573,6 +580,7 @@ html[data-theme="pixel-picnic"] {
   --text: #e8e4d2; --muted: #9aa583;
   --accent: #7bc043; --green: #7bc043; --red: #e0705a; --yellow: #d6a93f; --grey: #7d8a6a; --amber: #d6953f;
   --on-accent: #161c12; --spark: #a8d860;
+  --run: var(--human-blue); --on-run: #fff;
   --bg-texture: radial-gradient(circle, rgba(170,200,120,.06) 1.3px, transparent 1.3px);
   --bg-texture-size: 16px 16px;
   --card-radius: 12px;
@@ -583,6 +591,7 @@ html[data-theme="pixel-picnic"][data-mode="light"] {
   --text: #3a3326; --muted: #8a7d63;
   --accent: #5a9e5a; --green: #3f9a4e; --red: #d65a4a; --yellow: #c98a1f; --grey: #a89c82; --amber: #c8821f;
   --on-accent: #ffffff; --spark: #e8a020;
+  --run: #1a6db5; --on-run: #fff;
   --bg-texture: radial-gradient(circle, rgba(90,72,40,.10) 1.3px, transparent 1.3px);
   --bg-texture-size: 16px 16px;
 }
@@ -595,6 +604,7 @@ html[data-theme="sunny-8bit"] {
   --text: #f0dcae; --muted: #b39a6a;
   --accent: #e8a020; --green: #8ac43f; --red: #e0593c; --yellow: #e8c020; --grey: #8a7a5a; --amber: #e8a020;
   --on-accent: #1c1610; --spark: #ffc24d;
+  --run: var(--human-blue); --on-run: #fff;
   --bg-texture: repeating-linear-gradient(0deg, rgba(230,160,32,.06) 0 2px, transparent 2px 4px);
   --bg-texture-size: auto;
 }
@@ -604,6 +614,7 @@ html[data-theme="sunny-8bit"][data-mode="light"] {
   --text: #4a3613; --muted: #9c7e44;
   --accent: #e8821f; --green: #5a9e2e; --red: #e0492e; --yellow: #c98a12; --grey: #b39c6a; --amber: #d9791a;
   --on-accent: #ffffff; --spark: #e8821f;
+  --run: #1a6db5; --on-run: #fff;
   --bg-texture: repeating-linear-gradient(0deg, rgba(180,130,30,.05) 0 2px, transparent 2px 4px);
   --bg-texture-size: auto;
 }
