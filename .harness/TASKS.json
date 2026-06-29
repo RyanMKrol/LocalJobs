@@ -6353,7 +6353,7 @@
     {
       "id": "T241",
       "title": "Show full IDs in dashboard back-navigation labels (audit all)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
