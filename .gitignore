@@ -28,6 +28,10 @@ dist/
 dashboard/next-env.d.ts
 *.tsbuildinfo
 
+# Ephemeral screenshots from dashboard/scripts/visual-check.mjs — regenerated each run,
+# never committed (binary churn + the no-data-folder privacy rule).
+dashboard/scripts/visual-out/
+
 # --- Runtime data (SQLite + logs); keep the dir, drop its contents ---
 data/*
 !data/.gitkeep

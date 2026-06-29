@@ -90,6 +90,31 @@ const gates = [
   { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', state: 'failed', failureRunId: '1', description: 'produces — enriched.json has name + address fields' },
 ];
 
+// Input → Output mapping rows for a workflow run (the IoPanel on the run detail page).
+// A places-style fan-out: a CID input resolves to a place_id whose terminal stage
+// produces a markdown profile. Exercises the markdown-output "View" affordance.
+const ioRow = (over) => ({
+  inputJob: 'places-resolve', inputKey: 'cid:' + LONG, inputStatus: 'success',
+  inputDetail: { name: 'A Resolved Place With A Long Name' },
+  outputJob: 'places-enrich-with-llm', outputKey: 'place:ChIJ' + LONG, outputStatus: 'success',
+  outputDetail: { name: 'A Resolved Place With A Long Name', markdown: '/abs/data/out/' + LONG + '.md' },
+  ...over,
+});
+const workflowIo = {
+  io: [
+    ioRow(),
+    ioRow({ inputKey: 'cid:second-place', outputKey: 'place:second', outputStatus: 'failed',
+            outputDetail: { name: 'A Place That Failed Enrichment' } }),
+    ioRow({ inputKey: 'cid:third-place', inputStatus: 'failed', outputJob: null, outputKey: null,
+            outputStatus: null, outputDetail: null, inputDetail: { name: 'A Place That Failed To Resolve' } }),
+  ],
+  firstWave: ['places-resolve'],
+  lastWave: ['places-enrich-with-llm'],
+  scoped: true,
+  emptyReason: null,
+  note: '',
+};
+
 const tasks = [
   { id: 'T040', title: 'Mobile dashboard styling pass — ' + LONG, status: 'pending', gate: null,
     dependsOn: ['T001', 'T002', 'T003'], tags: ['dashboard', 'ui', 'testing'], model: 'claude-opus-4-8',
@@ -104,6 +129,9 @@ export function fixtureFor(pathname) {
   if (pathname === '/api/ignored') return { ignored: [stuckItem({ item_key: LONG + '-ign' })] };
   if (pathname === '/api/workflows') return { workflows: [workflow(), workflow({ name: 'perfumes' })] };
   if (pathname === '/api/workflow-runs') return { runs: [workflowRun(), workflowRun({ id: '2', status: 'failed' })] };
+  // Sub-routes must precede the generic `/api/workflow-runs/<id>` catch-all below.
+  if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) return workflowIo;
+  if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.' };
   if (pathname.startsWith('/api/workflow-runs/')) return { run: workflowRun(), jobs: [run(), run({ id: '2', job_name: 'places-enrich', status: 'failed' })], logs, gates };
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
   if (pathname.endsWith('/runs') && pathname.startsWith('/api/jobs/')) return { runs: [run(), run({ id: '2', status: 'failed' })] };
