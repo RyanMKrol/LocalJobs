@@ -6878,6 +6878,33 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T260.md"
+    },
+    {
+      "id": "T261",
+      "title": "Loop pre-flight: reconcile human-done.json → TASKS.json status for needs-human tasks (unblock dependents)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "harness",
+        "loop",
+        "human-done"
+      ],
+      "facets": {
+        "layer": "harness",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        ".harness/loop.sh",
+        "CLAUDE.md",
+        ".harness/CLAUDE.md",
+        ".harness/HARNESS.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T261.md"
     }
   ]
 }
