@@ -6274,7 +6274,7 @@
     {
       "id": "T238",
       "title": "Make the service-detail popup follow the theme font",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
