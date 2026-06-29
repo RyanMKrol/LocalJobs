@@ -133,7 +133,7 @@ const tasks = [
   // failed (exercises the red "failed" pill + "Undo fail" button) — manual-fail-signal.
   { id: 'T050', title: 'A finished task — ' + LONG, status: 'done', gate: null, dependsOn: [],
     tags: ['ui'], reviewed: true },
-  { id: 'T051', title: 'A finished task the owner marked failed', status: 'done', gate: null,
+  { id: 'T051', title: 'A finished task the owner marked failed', status: 'failed', gate: null,
     dependsOn: [], tags: ['ui'], reviewed: true, failed: true, failReason: 'padlock never renders on the DAG' },
 ];
 

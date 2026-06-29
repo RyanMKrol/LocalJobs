@@ -43,8 +43,10 @@ function CollapsibleRow({
   const [markingDone, setMarkingDone] = useState(false);
   const [markingFailed, setMarkingFailed] = useState(false);
   const human = t.gate === 'needs-human' || t.gate === 'gate';
-  const buildable = t.status !== 'done' && !human;
-  const isDone = t.status === 'done' || t.done === true;
+  const isFailedStatus = t.status === 'failed';   // owner-failed terminal status (T279)
+  const buildable = t.status !== 'done' && !isFailedStatus && !human;
+  // "done" here means TERMINAL (done OR failed OR human-done) — gates the reviewed/done/failed pills.
+  const isDone = t.status === 'done' || isFailedStatus || t.done === true;
   const reviewed = t.reviewed === true;
   const isHumanDone = t.done === true;
   const isFailed = t.failed === true;
@@ -190,7 +192,9 @@ export default function Backlog() {
 
   const tasks = data?.tasks ?? [];
   const taskNum = (id: string) => parseInt(id.replace(/^T/, ''), 10) || 0;
-  const allDone = tasks.filter((t) => t.status === 'done' || t.done === true).sort((a, b) => {
+  // Terminal tasks (the "Done" section): done OR the owner-failed terminal status (T279, reconciled
+  // from the manual-fail overlay) OR human-done. A failed task shows here with its red "failed" pill.
+  const allDone = tasks.filter((t) => t.status === 'done' || t.status === 'failed' || t.done === true).sort((a, b) => {
     const aRev = a.reviewed === true ? 1 : 0;
     const bRev = b.reviewed === true ? 1 : 0;
     if (aRev !== bRev) return aRev - bRev;
@@ -202,11 +206,13 @@ export default function Backlog() {
   );
   // Build a set of done task ids for quick dep-resolution.
   const doneIds = new Set(tasks.filter((t) => t.status === 'done' || t.done === true).map((t) => t.id));
-  const buildable = tasks.filter((t) => t.status !== 'done' && t.gate == null);
+  // Buildable excludes terminal statuses — a `failed` task is terminal (never re-built), so it must
+  // NOT appear as ready/waiting (it would, since gate==null + status!=='done', without this guard).
+  const buildable = tasks.filter((t) => t.status !== 'done' && t.status !== 'failed' && t.gate == null);
   // Split buildable into ready (all deps done) and waiting (≥1 dep not done).
   const ready = buildable.filter((t) => (t.dependsOn ?? []).every((dep) => doneIds.has(dep)));
   const waiting = buildable.filter((t) => (t.dependsOn ?? []).some((dep) => !doneIds.has(dep)));
-  const human = tasks.filter((t) => t.status !== 'done' && t.done !== true && t.gate != null);
+  const human = tasks.filter((t) => t.status !== 'done' && t.status !== 'failed' && t.done !== true && t.gate != null);
 
   // Unreviewed tasks currently visible in the done section (checkable).
   const unreviewedVisible = done.filter((t) => t.reviewed !== true);
