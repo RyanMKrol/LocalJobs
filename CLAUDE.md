@@ -199,8 +199,8 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   pick the stale settled run over the live one — the succeeded→running→succeeded
   status flicker. Keep any "latest run" derivation ordering by `(started_at, rowid)`.
 - **The dashboard is a pure read/refresh client of the API.** It never touches
-  SQLite directly and is not required for jobs to run. There are **exactly TWO
-  deliberate write exceptions**, both owner-owned overlay files in `.harness/`:
+  SQLite directly and is not required for jobs to run. There are **exactly THREE
+  deliberate write exceptions**, all owner-owned overlay files in `.harness/`:
   - **`reviewed` flag (T136, was T124):** lives in `.harness/reviews.json` (a
     committed `id → { reviewed, at }` map — NOT in TASKS.json, which the loop owns).
     Two endpoints write it: `POST /api/backlog/:id/reviewed` (single task, any
@@ -218,9 +218,24 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
     reviewed**: `GET /api/backlog` overlays `done=true` and derives `reviewed=true`
     for any human-done task. TASKS.json status is never modified. The Backlog page
     shows a **"Mark done"** button on needs-human tasks that aren't already done.
-  Both overlay files are disjoint git paths from TASKS.json and from each other,
-  so neither writer ever conflicts with the loop or the other file. Everything
-  else stays read-only.
+  - **`failed` flag (manual-fail-signal):** lives in `.harness/manual-fail.json` (a
+    committed `id → { failed: true, reason, at }` map). `POST /api/backlog/:id/failed`
+    is the owner's "this DONE task actually failed" correction — it applies only to
+    `status === 'done'` tasks (400 otherwise) and requires a `reason`; `{ failed: false }`
+    undoes. Same atomic write + commit/push-under-repo-lock pattern. **Marking failed
+    implies reviewed**: `GET /api/backlog` overlays `failed=true` + `failReason` and
+    derives `reviewed=true`. Crucially this is NOT just display — the **loop READS this
+    overlay** (the only overlay it reads) to CORRECT calibration: a falsely-recorded
+    success is re-counted as a failure for difficulty tuning AND dropped from its
+    `(layer×workType)` cell's confirmed-audited count, so that category is built with a
+    stronger model and audited more often. It does NOT change task status or re-open the
+    task. The Backlog page shows a **"Mark failed"** button on done tasks; the portable
+    `.harness/mark-failed.sh` (and `/mark-task-failed` command) write the same file for
+    projects with no dashboard. Full design: `.harness/designs/manual-fail-signal.md`.
+  All three overlay files are disjoint git paths from TASKS.json and from each other,
+  so no writer ever conflicts with the loop or another file. Everything else stays
+  read-only. (Note: `manual-fail.json` is the one overlay the loop reads — but still
+  never writes — so the read/write decoupling holds.)
 
 ## File map
 
@@ -1067,9 +1082,10 @@ this in addition to everything above:
   loop sets a task's `status` to `done` (via a `jq` field-scoped edit that preserves every other
   field) — **never edit `status` (or any field) of `.harness/TASKS.json` yourself.** Write your
   attempt notes to `.harness/worklog/<TASK>.md` and the result line to `.harness/worklog/.result`.
-  - **The owner-authorized exceptions are the `reviewed` flag (T136) and `done` flag (T208) — both
-    human/dashboard-owned overlay files, NOT fields in TASKS.json.** The loop NEVER writes
-    either file (only TASKS.json `status` + the worklog), so all three writers are fully decoupled.
+  - **The owner-authorized exceptions are the `reviewed` flag (T136), the `done` flag (T208), and
+    the `failed` flag (manual-fail-signal) — all human/dashboard-owned overlay files, NOT fields in
+    TASKS.json.** The loop NEVER WRITES any of them (it only writes TASKS.json `status` + the
+    worklog), so the writers stay decoupled.
     - **`reviewed` (T136):** lives in `.harness/reviews.json` (`id → { reviewed, at }`). Set via
       `POST /api/backlog/:id/reviewed` or bulk `POST /api/backlog/reviewed-bulk`. Both atomically
       write the file AND commit+push `[skip ci]` under the repo lock (fetch+rebase+retry; failed
@@ -1079,7 +1095,17 @@ this in addition to everything above:
       write+commit+push pattern. `GET /api/backlog` overlays `done=true` and derives
       `reviewed=true` for human-done tasks (done implies reviewed). The Backlog page shows a
       "Mark done" button on needs-human tasks that aren't already done.
-    The agent must not hand-edit `reviewed`/`done` or either overlay file — these are UI actions.
+    - **`failed` (manual-fail-signal):** lives in `.harness/manual-fail.json` (`id → { failed,
+      reason, at }`). The owner's "this DONE task actually failed" correction. Set via `POST
+      /api/backlog/:id/failed` (done tasks only, reason required; `{failed:false}` undoes), the
+      Backlog page's "Mark failed" button, OR the portable `.harness/mark-failed.sh` (the
+      `/mark-task-failed` command) for projects with no dashboard. Same atomic write+commit+push
+      pattern. UNLIKE the other two, **the loop READS this overlay** (it still never WRITES it) to
+      correct calibration — `policy.jq`/`pick_base` re-count the task as a failure for tier tuning,
+      and `audit_gate` drops it from its cell's confirmed-audited count (built stronger + audited
+      more). It does NOT change task status. Design: `.harness/designs/manual-fail-signal.md`.
+    The agent must not hand-edit any of these overlay files — they are UI / owner actions. (To mark
+    a task failed when asked, use `/mark-task-failed` or `.harness/mark-failed.sh`, never a hand-edit.)
 - **Task `do`/`doneWhen` live in a per-task Markdown spec (T131).** A task's *what to build* and
   *bar for done* are NOT flat strings in `.harness/TASKS.json` — they live in `.harness/tasks/TNNN.md`
   with two sections, `## Do` and `## Done when`, referenced by the JSON task's `spec` field (a

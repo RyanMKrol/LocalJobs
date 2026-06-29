@@ -94,6 +94,16 @@ on intentionally-removed things — same standard as keeping docs current. When 
 task, its `## Done when` MUST include the visual-check line (see the root `CLAUDE.md` rule); the
 `convert-ideas` / `ralph-loop-add-to-backlog` flow should inject it for UI tasks.
 
+## Marking a task FAILED (owner correction of a false success)
+
+When the owner judges a `done` task to have actually failed, that is recorded in the owner-owned
+`.harness/manual-fail.json` overlay — **never** by hand-editing it, and never by the loop. Use the
+`/mark-task-failed` command or `.harness/mark-failed.sh <TNNN> "<reason>"` (the dashboard's "Mark
+failed" button writes the same file). The loop READS this overlay to correct calibration — a false
+success is re-counted as a failure for difficulty tuning and dropped from its cell's audited-success
+count, so that `(layer × workType)` cell is built with a stronger model and audited more often. It
+does NOT change task status or re-open the task. Full design: `designs/manual-fail-signal.md`.
+
 ## `scope` is the rigour dial — pick its granularity deliberately
 
 A task's `scope` is a **hard boundary**: the loop's `structural_checks` fails any attempt whose diff

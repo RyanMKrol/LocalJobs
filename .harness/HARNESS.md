@@ -120,6 +120,17 @@ at each rung, and whether the causes were all the same), not just the summary. I
 (never read by calibration), buffered per-task in a gitignored scratch file (survives the cold reset
 between attempts) and flushed into the committed ledger when the task terminates. Aggregate it with
 `jq` to answer "which failure kind drives most escalations across tasks?".
+
+**Owner correction — manual-fail (see `designs/manual-fail-signal.md`).** The calibration ledger's
+weakness is a **false success**: a task marked `done` (green CI + passed/skipped audit) that the owner
+later judges not actually done. Left alone it teaches the tuner the cheap tier works AND suppresses the
+cell's audit rate — the same bug class keeps slipping through. The owner overturns it via the
+committed `.harness/manual-fail.json` overlay (`POST /api/backlog/:id/failed`, the Backlog "Mark
+failed" button, or the portable `.harness/mark-failed.sh` / `/mark-task-failed` for no-dashboard
+projects). The loop READS this overlay (never writes it): `policy.jq`/`pick_base` re-count a
+manually-failed task as a failure for tier selection, and `audit_gate` excludes it from the cell's
+confirmed-audited count — so that `(layer × workType)` cell is then built with a **stronger model** and
+**audited more often**. It does not change task status or re-open the task.
 `needs-human` tasks are carved out entirely (no facets, no calibration).
 
 ## 7. Usage-limit backoff (pause + cold re-attempt)
