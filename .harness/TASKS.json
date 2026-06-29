@@ -6682,7 +6682,7 @@
     {
       "id": "T254",
       "title": "listens-sync workflow: Last.fm (+Spotify) -> new DynamoDB listens table",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T251",
         "T252"
