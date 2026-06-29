@@ -1196,7 +1196,7 @@
     {
       "id": "T045",
       "title": "Dashboard styling — make it more joyful",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T184"
       ],
@@ -5845,7 +5845,7 @@
     {
       "id": "T223",
       "title": "Padlock gate markers on the graph (state-coloured, hover/click), replace text labels",
-      "status": "done",
+      "status": "failed",
       "dependsOn": [
         "T221"
       ],
@@ -5908,7 +5908,7 @@
     {
       "id": "T225",
       "title": "Work-item data model: add a 'skipped' outcome + stop marking success with no output",
-      "status": "done",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
@@ -6274,7 +6274,7 @@
     {
       "id": "T238",
       "title": "Make the service-detail popup follow the theme font",
-      "status": "done",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
@@ -6582,7 +6582,7 @@
     {
       "id": "T250",
       "title": "Workflow graph: symmetric vertical padding in the container",
-      "status": "done",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
