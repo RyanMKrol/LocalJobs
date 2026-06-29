@@ -151,7 +151,13 @@ export default function Backlog() {
   const [pushWarning, setPushWarning] = useState<string | null>(null);
 
   const tasks = data?.tasks ?? [];
-  const allDone = tasks.filter((t) => t.status === 'done').sort((a, b) => a.id.localeCompare(b.id));
+  const taskNum = (id: string) => parseInt(id.replace(/^T/, ''), 10) || 0;
+  const allDone = tasks.filter((t) => t.status === 'done').sort((a, b) => {
+    const aRev = a.reviewed === true ? 1 : 0;
+    const bRev = b.reviewed === true ? 1 : 0;
+    if (aRev !== bRev) return aRev - bRev;
+    return taskNum(a.id) - taskNum(b.id);
+  });
   const reviewedCount = allDone.filter((t) => t.reviewed === true).length;
   const done = allDone.filter((t) =>
     reviewFilter === 'all' ? true : reviewFilter === 'reviewed' ? t.reviewed === true : t.reviewed !== true,
