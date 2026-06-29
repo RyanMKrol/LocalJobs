@@ -13,5 +13,10 @@
     "failed": true,
     "reason": "On the service pop-up, all of the names of the workflows as well as names of the jobs are still using a sort of blocky code style font and aren't actually using the font dictated by the Theme Picker at all. This should have been validated more thoroughly with UI screenshot validation, but that was not done.",
     "at": "2026-06-29T09:26:52.386Z"
+  },
+  "T250": {
+    "failed": true,
+    "reason": "The problem with this one is that the task description seems to be, or the work log seems to be, talking to the nodes within the graph and not the container around the graph. There appears to be three containers:\n1. The first container, which has a beige background, which has all of the nodes inside of it.\n2. A container containing that container, which has padding for the beige container.\n3. Another container that contains that container, and that's the container that I was talking about when I wanted to fix this problem.",
+    "at": "2026-06-29T11:22:24.921Z"
   }
 }
