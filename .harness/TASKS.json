@@ -6795,7 +6795,7 @@
     },
     {
       "id": "T258",
-      "title": "Plumb skipped/no-op outcome: stop reporting success when a run does no work (follow-up to T225)",
+      "title": "Plumb skipped/no-op outcome — BACKEND: status model + root re-selection (follow-up to T225)",
       "status": "pending",
       "dependsOn": [],
       "gate": null,
@@ -6808,16 +6808,13 @@
         "layer": "db",
         "workType": "bugfix",
         "risk": [
-          "touches-executor",
-          "full-stack"
+          "touches-executor"
         ]
       },
       "scope": [
         "src/db/store.ts",
         "src/core/workflow-executor.ts",
-        "src/jobs/places/stages/",
-        "dashboard/app/workflow-runs/[id]/page.tsx",
-        "dashboard/app/ui.tsx"
+        "src/jobs/places/stages/"
       ],
       "design": null,
       "verify": [],
@@ -7402,6 +7399,32 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T280.md"
+    },
+    {
+      "id": "T281",
+      "title": "Surface skipped/no-op run status in the dashboard run-detail view (UI half of T258)",
+      "status": "pending",
+      "dependsOn": [
+        "T258"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T281.md"
     }
   ]
 }

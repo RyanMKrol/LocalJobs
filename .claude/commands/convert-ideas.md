@@ -33,6 +33,21 @@ Process:
       scope, dependsOn, facets, spec MD) and append the schema-correct task(s) to `TASKS.json`. If
       two ideas are clearly related (e.g. one is a foundation the other builds on), encode that as a
       `dependsOn` edge rather than merging them.
+      - **Atomise — size every task to ONE cold builder attempt (sizing gate, non-negotiable).**
+        Before shaping, decompose the idea so each resulting task is completable by a single cold pass
+        in a reasonable time/context budget — and SPLIT anything that isn't. A task is too big when it
+        spans multiple layers (e.g. `db` + `core` + `ui`), carries broad/full-stack `risk` flags, or
+        has a multi-part `## Done when` with several independent acceptance criteria. **Empirical
+        tell:** an attempt that runs 25–30+ minutes or repeatedly fails the cold tier is almost always
+        under-atomised — e.g. T258 (a status-model change spanning `store.ts` + `workflow-executor.ts`
+        + places stages + the dashboard) took ~25–30 min PER attempt and kept failing the DoD. Split
+        such an idea into a **dependency chain** of the smallest self-contained, separately verifiable
+        units — typically **backend logic + its tests FIRST**, then a **dependent UI-surfacing task**,
+        then any cross-cutting follow-up — each with its own tight `scope`, `facets`, and runnable
+        `## Done when`. Prefer several small tasks over one big one: the loop builds, verifies, and
+        commits each independently, so smaller tasks finish faster, fail more cheaply, and escalate
+        more precisely. (Same decomposition discipline as add-to-backlog §2.2 + the sizing pushback in
+        §6 — enforce it here too, on every idea.)
       - **For a `facets.layer == ui` task, the `## Done when` MUST include the visual-confirmation
         line** (alongside the existing mobile-check line), e.g.:
         > `node dashboard/scripts/visual-check.mjs` was run after `npm --prefix dashboard run build`,
