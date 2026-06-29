@@ -95,7 +95,7 @@ tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel-2); }
 
 /* Last-run cell: status pill on first line, relative time on second */
-.last-run-cell { display: inline-flex; flex-direction: column; gap: 3px; }
+.last-run-cell { display: inline-flex; flex-direction: column; gap: 3px; align-items: center; }
 .last-run-time { font-size: 11px; }
 
 .badge {

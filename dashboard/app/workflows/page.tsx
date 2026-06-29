@@ -46,7 +46,7 @@ export default function Workflows() {
       <div className="panel">
         <table>
           <thead>
-            <tr><th>Workflow</th><th style={{ textAlign: 'center' }}>Stages</th><th style={{ textAlign: 'center' }}>Schedule</th><th>Last run</th><th>Next</th><th></th></tr>
+            <tr><th>Workflow</th><th style={{ textAlign: 'center' }}>Stages</th><th style={{ textAlign: 'center' }}>Schedule</th><th style={{ textAlign: 'center' }}>Last run</th><th>Next</th><th></th></tr>
           </thead>
           <tbody>
             {workflows.length === 0 && (
@@ -75,7 +75,7 @@ export default function Workflows() {
                     : <span className="muted">manual</span>}
 
                 </td>
-                <td>
+                <td style={{ textAlign: 'center' }}>
                   {p.last_run
                     ? <span className="last-run-cell"><a href={`/workflow-runs/${p.last_run.id}`} className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</a><span className="muted last-run-time">{fmtRelative(p.last_run.started_at)}</span></span>
                     : <span className="muted">never</span>}
