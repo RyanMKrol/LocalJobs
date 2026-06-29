@@ -33,7 +33,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { PAGES, waitForServer, startDashboard, routeApi, seedTheme } from './_dashboard-harness.mjs';
+import { PAGES, FLOWS, waitForServer, startDashboard, routeApi, seedTheme } from './_dashboard-harness.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(__dirname, 'visual-out');
@@ -46,27 +46,36 @@ const SELECTOR_TIMEOUT_MS = 10000;
 const EXTRA_THEMES = (process.env.VISUAL_THEMES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 const THEMES = ['', ...EXTRA_THEMES];
 
-/** Capture one page under one theme. Returns a result row; throws only on a hard error. */
-async function capturePage(ctx, p, theme) {
+/**
+ * Capture one spec ({ name, path, waitFor?, settleMs?, actions? }) under one theme.
+ * For an interaction flow, `actions(page)` runs after the wait + settle and before the
+ * screenshot. Returns a result row; throws only on a hard error.
+ */
+async function capture(ctx, spec, theme) {
   const page = await ctx.newPage();
   const consoleErrors = [];
   page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
   const suffix = theme ? `.${theme}` : '';
-  const file = resolve(OUT_DIR, `${p.name}${suffix}.png`);
+  const file = resolve(OUT_DIR, `${spec.name}${suffix}.png`);
   try {
-    await page.goto(BASE + p.path, { waitUntil: 'networkidle' });
+    await page.goto(BASE + spec.path, { waitUntil: 'networkidle' });
     // Wait for real, post-mount content (e.g. the DAG's layout useEffect) to render
     // before settling — far more robust than a blind fixed delay.
-    for (const sel of p.waitFor ?? []) {
+    for (const sel of spec.waitFor ?? []) {
       await page.waitForSelector(sel, { state: 'visible', timeout: SELECTOR_TIMEOUT_MS });
     }
-    await page.waitForTimeout(p.settleMs ?? SETTLE_MS);
+    await page.waitForTimeout(spec.settleMs ?? SETTLE_MS);
+    // Interaction flows: drive the page into the state we want to capture, then re-settle.
+    if (spec.actions) {
+      await spec.actions(page);
+      await page.waitForTimeout(spec.settleMs ?? SETTLE_MS);
+    }
     await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
-    return { ...p, theme, file, pass: consoleErrors.length === 0, error: consoleErrors[0] ?? null };
+    return { name: spec.name, path: spec.path, theme, file, pass: consoleErrors.length === 0, error: consoleErrors[0] ?? null };
   } catch (e) {
     // Still try to capture whatever DID render, so the viewer can see the broken state.
     try { await page.screenshot({ path: file, fullPage: true, animations: 'disabled' }); } catch { /* ignore */ }
-    return { ...p, theme, file, pass: false, error: e instanceof Error ? e.message : String(e) };
+    return { name: spec.name, path: spec.path, theme, file, pass: false, error: e instanceof Error ? e.message : String(e) };
   } finally {
     await page.close();
   }
@@ -91,7 +100,12 @@ async function main() {
       // Freeze animations + hide emoji for a stable capture; seed the theme family.
       await seedTheme(ctx, { theme: theme || undefined, motion: 'reduced' });
       await routeApi(ctx);
-      for (const p of PAGES) results.push(await capturePage(ctx, p, theme));
+      for (const p of PAGES) results.push(await capture(ctx, p, theme));
+      // Interaction flows run once, under the DEFAULT theme only (bounds cost; the
+      // flows capture interaction state, not theme variants).
+      if (theme === '') {
+        for (const f of FLOWS) results.push(await capture(ctx, f, theme));
+      }
       await ctx.close();
     }
   } finally {

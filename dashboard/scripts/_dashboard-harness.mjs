@@ -169,6 +169,42 @@ export const PAGES = [
   { name: 'backlog',       path: '/backlog' },
 ];
 
+// ── Interaction flows ─────────────────────────────────────────────────────────
+// visual-check captures a baseline screenshot of every PAGES entry. FLOWS add EXTRA
+// screenshots of states that only appear after an INTERACTION — a collapsed section
+// expanded, a popover/menu opened, a tab switched — so a reviewer can see UI that the
+// default render hides. Each flow:
+//   name     — the screenshot file (`<name>.png`) AND its label (keep it unique).
+//   path     — the route to load.
+//   waitFor  — selectors to await visible before interacting (optional).
+//   actions  — async (page) => {…}: drive the real Playwright `page` (click/hover/
+//              evaluate) to set up the state. Then visual-check settles + screenshots.
+//   settleMs — optional settle override after the actions (default VISUAL_SETTLE_MS).
+// ⚠️ LIVING ARTIFACT: when a UI change adds/removes an interactive state worth seeing
+// (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
+export const FLOWS = [
+  {
+    // The Backlog "Done" section is collapsed by default — expand every <details> so the
+    // done rows (and their reviewed/done/failed chips + buttons) are visible.
+    name: 'backlog-expanded',
+    path: '/backlog',
+    actions: async (page) => {
+      await page.evaluate(() =>
+        document.querySelectorAll('details:not([open])').forEach((d) => d.setAttribute('open', '')),
+      );
+    },
+  },
+  {
+    // The 🎨 theme/font/mode picker popover, opened from the header.
+    name: 'overview-theme-picker',
+    path: '/',
+    actions: async (page) => {
+      await page.click('.theme-trigger');
+      await page.waitForSelector('.theme-modal', { state: 'visible', timeout: 5000 });
+    },
+  },
+];
+
 // ── Harness helpers ─────────────────────────────────────────────────────────
 
 /** Poll a URL until the dashboard responds (OK or 404 — the server is up either way). */
