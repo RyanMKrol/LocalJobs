@@ -379,6 +379,28 @@ cd dashboard && npm run build && cd ..
 node dashboard/scripts/mobile-check.mjs
 ```
 
+### Visual confirmation check
+
+`dashboard/scripts/visual-check.mjs` loads every dashboard page in a headless
+Chromium at a desktop viewport, waits for async/polled content to render
+(selector wait + a 1–5s settle), and saves a full-page **screenshot** of each to
+`dashboard/scripts/visual-out/` (gitignored). The screenshots exist so a human or
+agent can **see** what each page renders and judge whether it looks right — it
+catches the bug class structural checks miss: an element present in the DOM but
+never painted. It is **not** golden-image diffing (no baselines, no pixel
+comparison) and asserts no appearance invariants; it fails only on a hard error
+(page didn't load, a wait selector never appeared, a console error). Like
+mobile-check it is **hermetic** (`next start` + synthetic `/api/*` fixtures, no
+daemon / SQLite / API calls) and local-only, not part of CI. The page list and
+fixtures are shared with mobile-check in `dashboard/scripts/_dashboard-harness.mjs`
+— keep that one file current when the UI surface changes. Run it with:
+
+```bash
+cd dashboard && npm run build && cd ..
+node dashboard/scripts/visual-check.mjs
+# then open the PNGs in dashboard/scripts/visual-out/
+```
+
 ## Configuration
 
 See `.env.example`:

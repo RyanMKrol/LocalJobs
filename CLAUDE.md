@@ -251,7 +251,9 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the job-folder root |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
 | `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`); all responsive CSS lives in `app/globals.css` |
-| `dashboard/scripts/mobile-check.mjs` | Hermetic phone-viewport (402px) styling check — headless Chromium + synthetic API fixtures; local only, not in CI |
+| `dashboard/scripts/_dashboard-harness.mjs` | Shared hermetic test harness (the SINGLE living artifact): `PAGES` list + synthetic API fixtures + `next start` spawn + `/api/**` interception + theme seeding; imported by both checks below. Update it when the UI surface changes |
+| `dashboard/scripts/mobile-check.mjs` | Hermetic phone-viewport (402px) styling check — overflow/box-spill; local only, not in CI |
+| `dashboard/scripts/visual-check.mjs` | Hermetic desktop-viewport SCREENSHOT capture for visual confirmation (the thing actually renders) — writes PNGs to the gitignored `visual-out/`; no appearance assertions; local/loop only, not in CI |
 | `scripts/*` | launchd install scripts + start wrapper |
 
 ## How to add a job (the common request)
@@ -933,7 +935,9 @@ doubt, log it.
   code is a bug — it leaks the machine's topology and breaks on any other host.
 - **Run the checks on every change** — `npm test` (the unit suite) AND
   `npx tsc --noEmit` (daemon typecheck), plus `npm run build` in `dashboard/` for UI
-  changes — before declaring done. Keep the suite green; **add unit tests for new
+  changes — before declaring done. For a UI **surface** change, also run
+  `node dashboard/scripts/visual-check.mjs` (after building) and LOOK at the screenshots
+  (see the visual-confirmation rule below). Keep the suite green; **add unit tests for new
   behaviour as you build it** (tests live in `*.test.ts`; `npm test` discovers + runs
   them against a scratch DB). Never declare done on red.
 - **Tests can NEVER touch the production DB (guarded).** `npm test` points
@@ -958,6 +962,31 @@ doubt, log it.
   ⚠️ The mobile check only exercises the DEFAULT theme/font (it sets no
   localStorage), so it guards the default look; non-default themes are
   mobile-safe by design + spot-checked manually at phone width.
+- **Dashboard UI changes must get VISUAL confirmation, not just structural checks.**
+  A UI element can pass `tsc`, the unit suite, the dashboard build, AND mobile-check
+  yet never actually be PAINTED — the T223 gate-padlock bug shipped exactly that (an
+  icon present in the DOM but invisible, because every check is structural and
+  mobile-check only measures overflow on whatever rendered). So for any change to the
+  dashboard's rendered surface: build it, run `node dashboard/scripts/visual-check.mjs`
+  (hermetic like mobile-check — `next start` + synthetic `/api/**` fixtures, no daemon /
+  SQLite / paid calls), and **LOOK at the screenshots** it writes to the gitignored
+  `dashboard/scripts/visual-out/` — confirm with your own eyes the thing you changed
+  renders (painted/visible, nothing blank/overlapping/clipped). It loads every page at a
+  desktop viewport and waits for async/polled content (selector wait + a 1–5s settle).
+  It is **vision-only** — it captures screenshots for judgment and asserts NO appearance
+  invariants (NOT golden-image diffing, so no baselines / no cross-machine pixel drift);
+  it fails only on a hard error (page didn't load, a wait selector never appeared, a
+  console error). Local/loop-only, **not** in CI (no browser there).
+  - **LIVING ARTIFACT RULE (non-negotiable).** The page list + fixtures (and theme
+    seeding) live in ONE place — `dashboard/scripts/_dashboard-harness.mjs`, shared with
+    mobile-check. Any UI-surface change — adding a page, adding/removing a workflow or
+    gate, removing UI — **MUST update that file in the SAME change** so future runs stay
+    accurate and don't start failing on intentionally-removed things. Treat a stale
+    `PAGES`/fixture exactly like stale docs: it's a bug, and it's part of Done. (The
+    autonomous loop enforces this for `facets.layer == ui` tasks — it injects the
+    look-at-the-screenshots step into both the builder and the sampled auditor, and
+    auto-exempts these script files from the scope gate so keeping them current is never
+    punished.)
 - **Dashboard appearance is CSS-variable-driven + has a live theme/font switcher
   (T142 → T154 evaluation, curated down in T184).** All colours/fonts come from
   `:root` custom properties; a header **🎨** control (`ThemeControls` in

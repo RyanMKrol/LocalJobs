@@ -75,6 +75,25 @@ from `facets.json`'s controlled vocabulary (use the task's `scope` paths to pick
 gets no auto-tuning and the loop **pre-flight WARNs** about it. Background:
 `designs/difficulty-autotune.md`.
 
+### UI tasks must get VISUAL confirmation (`facets.layer == ui`)
+
+Structural checks can't see whether a UI element actually RENDERS — T223 shipped a gate padlock that
+was present in the DOM but invisible, and passed tsc + tests + the dashboard build + mobile-check. So
+for any `layer:ui` task the floor is: **build the dashboard, run `node
+dashboard/scripts/visual-check.mjs`, and LOOK at the screenshots** it writes to the gitignored
+`dashboard/scripts/visual-out/` — confirm with your own eyes that the change actually paints, and
+record what you saw in `.harness/worklog/<TASK>.md`. The loop enforces this mechanically: it injects
+the look-at-the-screenshots step into BOTH the builder prompt and the sampled auditor (the auditor
+must FAIL if a screenshot contradicts a `## Done when` claim), and it auto-exempts the
+`visual-check.mjs` / `_dashboard-harness.mjs` / `mobile-check.mjs` scripts from the scope gate.
+
+**LIVING ARTIFACT.** The page list + fixtures live once in `dashboard/scripts/_dashboard-harness.mjs`.
+A UI task that adds a page, adds/removes a workflow or gate, or removes UI **MUST update that file in
+the same commit** (its `PAGES` and/or fixtures) so the check stays accurate and doesn't start failing
+on intentionally-removed things — same standard as keeping docs current. When AUTHORING a `layer:ui`
+task, its `## Done when` MUST include the visual-check line (see the root `CLAUDE.md` rule); the
+`convert-ideas` / `ralph-loop-add-to-backlog` flow should inject it for UI tasks.
+
 ## `scope` is the rigour dial — pick its granularity deliberately
 
 A task's `scope` is a **hard boundary**: the loop's `structural_checks` fails any attempt whose diff

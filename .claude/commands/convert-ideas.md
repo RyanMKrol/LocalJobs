@@ -33,6 +33,15 @@ Process:
       scope, dependsOn, facets, spec MD) and append the schema-correct task(s) to `TASKS.json`. If
       two ideas are clearly related (e.g. one is a foundation the other builds on), encode that as a
       `dependsOn` edge rather than merging them.
+      - **For a `facets.layer == ui` task, the `## Done when` MUST include the visual-confirmation
+        line** (alongside the existing mobile-check line), e.g.:
+        > `node dashboard/scripts/visual-check.mjs` was run after `npm --prefix dashboard run build`,
+        > the screenshots in `dashboard/scripts/visual-out/` confirm <the thing this task makes
+        > visible> renders, and `dashboard/scripts/_dashboard-harness.mjs` (`PAGES`/fixtures) is
+        > updated if the UI surface changed.
+
+        This mirrors the LIVING ARTIFACT rule in the root + `.harness/CLAUDE.md`: a UI task that adds a
+        page / adds or removes a workflow or gate / removes UI must keep the shared harness current.
 
    c. **Delete on convert.** Once this idea's task(s) land, REMOVE its bullet from `.harness/IDEAS.md`
       (the resulting TASKS.json task is now the record). Leave the rest of the inbox untouched, then

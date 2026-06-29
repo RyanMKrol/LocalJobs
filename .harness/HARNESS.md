@@ -56,10 +56,20 @@ Run locally before committing; identical to `.github/workflows/ci.yml`:
 npx tsc --noEmit                      # typecheck
 npm test                              # unit suite (scratch DB; discovers *.test.ts)
 npm --prefix dashboard run build      # only for dashboard/ changes
+node dashboard/scripts/visual-check.mjs   # UI-SURFACE changes only (after the build) — then LOOK at the PNGs
 ```
 
 Plus: add unit tests for new behaviour; update docs in lockstep (§ CLAUDE.md); record empirical
 observations the task's `verify` field asks for in `.harness/worklog/<TASK>.md`.
+
+**UI tasks (`facets.layer == ui`) must get VISUAL confirmation.** Structural checks can't see whether
+a UI element actually paints (T223 shipped an invisible padlock that passed everything). The loop
+forces a visual look for UI tasks: it injects "build → run `visual-check.mjs` → READ the screenshots
+in `dashboard/scripts/visual-out/`" into BOTH the builder prompt and the sampled auditor, and the page
+list + fixtures are a SINGLE living artifact (`dashboard/scripts/_dashboard-harness.mjs`) that any
+UI-surface change must keep current (auto-exempt from the scope gate). `visual-check.mjs` is
+vision-only (screenshots for judgment, no appearance assertions) and local/loop-only — NOT in CI
+(no browser). Full rule: root `CLAUDE.md` + `.harness/CLAUDE.md`.
 
 **Verify correctness — paid calls are allowed, frugally.** The one hard rule is **never exceed a
 service's monthly cap** (enforced mechanically: the `service_usage` quota makes `callService` throw
