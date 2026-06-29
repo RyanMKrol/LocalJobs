@@ -6301,7 +6301,7 @@
     {
       "id": "T239",
       "title": "Vertically centre the Input→Output \"fan-out\" footnote caption",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
