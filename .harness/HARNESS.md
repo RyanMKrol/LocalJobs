@@ -65,11 +65,15 @@ observations the task's `verify` field asks for in `.harness/worklog/<TASK>.md`.
 **UI tasks (`facets.layer == ui`) must get VISUAL confirmation.** Structural checks can't see whether
 a UI element actually paints (T223 shipped an invisible padlock that passed everything). The loop
 forces a visual look for UI tasks: it injects "build → run `visual-check.mjs` → READ the screenshots
-in `dashboard/scripts/visual-out/`" into BOTH the builder prompt and the sampled auditor, and the page
-list + fixtures are a SINGLE living artifact (`dashboard/scripts/_dashboard-harness.mjs`) that any
-UI-surface change must keep current (auto-exempt from the scope gate). `visual-check.mjs` is
-vision-only (screenshots for judgment, no appearance assertions) and local/loop-only — NOT in CI
-(no browser). Full rule: root `CLAUDE.md` + `.harness/CLAUDE.md`.
+in `dashboard/scripts/visual-out/`" into BOTH the builder prompt and the sampled auditor. The page
+list (`PAGES`), fixtures, AND interaction flows (`FLOWS`) are a SINGLE living artifact
+(`dashboard/scripts/_dashboard-harness.mjs`) that any UI-surface change must keep current (auto-exempt
+from the scope gate): `PAGES` = one baseline shot per route; **`FLOWS` = states that only appear after
+an interaction (opened modal/popover, expanded section, clicked control)**. A task that adds/changes
+an interactive state MUST add a matching `FLOWS` entry so the screenshot actually captures it — a
+baseline shot can't show what you have to click to reveal. `visual-check.mjs` is vision-only
+(screenshots for judgment, no appearance assertions) and local/loop-only — NOT in CI (no browser).
+Full rule: root `CLAUDE.md` + `.harness/CLAUDE.md`.
 
 **Verify correctness — paid calls are allowed, frugally.** The one hard rule is **never exceed a
 service's monthly cap** (enforced mechanically: the `service_usage` quota makes `callService` throw

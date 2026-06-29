@@ -87,12 +87,23 @@ the look-at-the-screenshots step into BOTH the builder prompt and the sampled au
 must FAIL if a screenshot contradicts a `## Done when` claim), and it auto-exempts the
 `visual-check.mjs` / `_dashboard-harness.mjs` / `mobile-check.mjs` scripts from the scope gate.
 
-**LIVING ARTIFACT.** The page list + fixtures live once in `dashboard/scripts/_dashboard-harness.mjs`.
-A UI task that adds a page, adds/removes a workflow or gate, or removes UI **MUST update that file in
-the same commit** (its `PAGES` and/or fixtures) so the check stays accurate and doesn't start failing
-on intentionally-removed things — same standard as keeping docs current. When AUTHORING a `layer:ui`
-task, its `## Done when` MUST include the visual-check line (see the root `CLAUDE.md` rule); the
-`convert-ideas` / `ralph-loop-add-to-backlog` flow should inject it for UI tasks.
+**LIVING ARTIFACT.** The page list, fixtures, AND interaction flows live once in
+`dashboard/scripts/_dashboard-harness.mjs`. `PAGES` captures one baseline screenshot per route;
+**`FLOWS`** captures states that only appear after an INTERACTION — an opened modal/popover, an
+expanded section, a clicked control — each a `{ name, path, actions(page) }` (with `viewport: true`
+for modal/overlay states so the backdrop frames the whole shot). A UI task **MUST update that file in
+the same commit** whenever it changes the rendered surface:
+- adds/removes a **page** → update `PAGES` (+ fixtures);
+- adds/removes a **workflow or gate**, or removes UI → update fixtures;
+- **adds or changes an INTERACTIVE state worth confirming (a modal, popover, expand/collapse, menu,
+  multi-step click flow) → ADD or update a `FLOWS` entry** so a screenshot actually captures that
+  state. If the only way to SEE your change is to click/open something, a baseline `PAGES` shot won't
+  show it — a `FLOWS` entry is REQUIRED, not optional.
+So the check stays accurate and doesn't start failing on intentionally-removed things — same standard
+as keeping docs current; a stale or missing `PAGES`/`FLOWS`/fixture is a bug, and it is part of Done.
+When AUTHORING a `layer:ui` task, its `## Done when` MUST include the visual-check line (see the root
+`CLAUDE.md` rule) AND, when the task adds/changes an interactive state, MUST call out adding the
+matching `FLOWS` entry; the `convert-ideas` / `ralph-loop-add-to-backlog` flow injects this for UI tasks.
 
 ## Marking a task FAILED (owner correction of a false success)
 

@@ -37,11 +37,18 @@ Process:
         line** (alongside the existing mobile-check line), e.g.:
         > `node dashboard/scripts/visual-check.mjs` was run after `npm --prefix dashboard run build`,
         > the screenshots in `dashboard/scripts/visual-out/` confirm <the thing this task makes
-        > visible> renders, and `dashboard/scripts/_dashboard-harness.mjs` (`PAGES`/fixtures) is
-        > updated if the UI surface changed.
+        > visible> renders, and `dashboard/scripts/_dashboard-harness.mjs` (`PAGES`/fixtures/`FLOWS`)
+        > is updated if the UI surface changed.
+        - **If the thing the task makes visible only appears after an INTERACTION** (an opened
+          modal/popover, an expanded section, a clicked control, a multi-step flow), the `## Done when`
+          MUST ALSO require adding/updating a **`FLOWS`** entry in `_dashboard-harness.mjs` (with
+          `viewport: true` for modal/overlay states) so a screenshot captures that interacted state —
+          a baseline `PAGES` shot can't show what you have to click to reveal. Name the specific flow
+          in the done-when (e.g. "a `FLOWS` entry opens the Consumers modal and its screenshot shows …").
 
         This mirrors the LIVING ARTIFACT rule in the root + `.harness/CLAUDE.md`: a UI task that adds a
-        page / adds or removes a workflow or gate / removes UI must keep the shared harness current.
+        page / adds or removes a workflow or gate / removes UI / adds an interactive state must keep the
+        shared harness (`PAGES` + fixtures + `FLOWS`) current.
 
    c. **Delete on convert.** Once this idea's task(s) land, REMOVE its bullet from `.harness/IDEAS.md`
       (the resulting TASKS.json task is now the record). Leave the rest of the inbox untouched, then
