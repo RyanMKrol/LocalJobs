@@ -6531,7 +6531,7 @@
     {
       "id": "T248",
       "title": "Fix invisible gate padlock marks on the DAG (custom edge via EdgeLabelRenderer)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
