@@ -389,11 +389,14 @@ agent can **see** what each page renders and judge whether it looks right — it
 catches the bug class structural checks miss: an element present in the DOM but
 never painted. It is **not** golden-image diffing (no baselines, no pixel
 comparison) and asserts no appearance invariants; it fails only on a hard error
-(page didn't load, a wait selector never appeared, a console error). Like
-mobile-check it is **hermetic** (`next start` + synthetic `/api/*` fixtures, no
-daemon / SQLite / API calls) and local-only, not part of CI. The page list and
-fixtures are shared with mobile-check in `dashboard/scripts/_dashboard-harness.mjs`
-— keep that one file current when the UI surface changes. Run it with:
+(page didn't load, a wait selector never appeared, a console error). Beyond the
+baseline shot of every page it also captures **interaction flows** — states that
+need a click first (e.g. the Backlog "Done" section expanded, the 🎨 theme picker
+open) — defined as a `FLOWS` list in the shared harness. Like mobile-check it is
+**hermetic** (`next start` + synthetic `/api/*` fixtures, no daemon / SQLite / API
+calls) and local-only, not part of CI. The page list, fixtures, and flows are shared
+with mobile-check in `dashboard/scripts/_dashboard-harness.mjs` — keep that one file
+current when the UI surface changes. Run it with:
 
 ```bash
 cd dashboard && npm run build && cd ..

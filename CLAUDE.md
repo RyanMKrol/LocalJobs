@@ -992,12 +992,15 @@ doubt, log it.
   invariants (NOT golden-image diffing, so no baselines / no cross-machine pixel drift);
   it fails only on a hard error (page didn't load, a wait selector never appeared, a
   console error). Local/loop-only, **not** in CI (no browser there).
-  - **LIVING ARTIFACT RULE (non-negotiable).** The page list + fixtures (and theme
-    seeding) live in ONE place — `dashboard/scripts/_dashboard-harness.mjs`, shared with
-    mobile-check. Any UI-surface change — adding a page, adding/removing a workflow or
-    gate, removing UI — **MUST update that file in the SAME change** so future runs stay
-    accurate and don't start failing on intentionally-removed things. Treat a stale
-    `PAGES`/fixture exactly like stale docs: it's a bug, and it's part of Done. (The
+  - **LIVING ARTIFACT RULE (non-negotiable).** The page list, fixtures, theme seeding,
+    and **interaction flows** live in ONE place — `dashboard/scripts/_dashboard-harness.mjs`,
+    shared with mobile-check. `PAGES` is one baseline shot per route; `FLOWS` adds shots of
+    states that need an interaction first (a collapsed section expanded, a popover opened) —
+    each a `{ name, path, actions(page) }` that drives Playwright before the screenshot. Any
+    UI-surface change — adding a page, adding/removing a workflow or gate, removing UI, or
+    adding an interactive state worth seeing — **MUST update that file in the SAME change** so
+    future runs stay accurate and don't start failing on intentionally-removed things. Treat a
+    stale `PAGES`/`FLOWS`/fixture exactly like stale docs: it's a bug, and it's part of Done. (The
     autonomous loop enforces this for `facets.layer == ui` tasks — it injects the
     look-at-the-screenshots step into both the builder and the sampled auditor, and
     auto-exempts these script files from the scope gate so keeping them current is never
