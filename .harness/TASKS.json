@@ -5333,7 +5333,7 @@
     {
       "id": "T206",
       "title": "Review graph-view prototype options; pick the winner",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T220"
       ],
@@ -5350,7 +5350,7 @@
     {
       "id": "T207",
       "title": "Hardcode the chosen graph-view option; remove the switcher + unused libraries",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T206"
       ],
