@@ -6053,7 +6053,7 @@
     {
       "id": "T230",
       "title": "Remove the Database view (/db) and all UI-driven DB views",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
