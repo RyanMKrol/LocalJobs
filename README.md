@@ -179,6 +179,9 @@ gitignored). Private workflows live in gitignored subfolders.
 - **tv-recommendations** — Monthly Plex TV show recommendations: snapshot the TV
   library → 8 Claude recommender branches → merge/verify/dedupe → one monthly
   digest of new picks.
+- **workouts-sync** — Daily Hevy workout ingestion: paginate the Hevy API → write
+  each workout + its exercises to the existing DynamoDB tables; idempotent per
+  workout id (new workouts synced, already-synced ids skipped). Runs daily at 06:00.
 
 ## Dashboard pages
 
