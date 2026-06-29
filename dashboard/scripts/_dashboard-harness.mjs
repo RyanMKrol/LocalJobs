@@ -137,12 +137,41 @@ const tasks = [
     dependsOn: [], tags: ['ui'], reviewed: true, failed: true, failReason: 'padlock never renders on the DAG' },
 ];
 
+const rec = (over) => ({
+  tmdbId: 100, title: 'Inception', year: 2010, reason: 'A deeply layered thriller.', lens: 'cerebral',
+  genre: 'Science Fiction', tmdbRating: 8.4, notified: false, ignored: false, ...over,
+});
+
+const movieRecs = {
+  generatedAt: NOW, pooled: 12,
+  recommendations: [
+    rec({ tmdbId: 100, title: 'Inception', year: 2010, lens: 'cerebral', genre: 'Science Fiction', tmdbRating: 8.4 }),
+    rec({ tmdbId: 101, title: 'Arrival', year: 2016, lens: 'cerebral', genre: 'Science Fiction', tmdbRating: 7.9 }),
+    rec({ tmdbId: 102, title: 'Parasite', year: 2019, lens: 'serendipity', genre: 'Drama', tmdbRating: 8.5, notified: true }),
+    rec({ tmdbId: 103, title: 'Mad Max: Fury Road', year: 2015, lens: 'high-octane', genre: 'Action', tmdbRating: 7.8 }),
+    rec({ tmdbId: 200, title: 'An Ignored Film', year: 2000, lens: 'serendipity', genre: 'Drama', tmdbRating: 6.0, ignored: true }),
+  ],
+};
+
+const tvRecs = {
+  generatedAt: NOW, pooled: 8,
+  recommendations: [
+    { tmdbId: 300, title: 'Severance', year: 2022, reason: 'Workplace thriller.', lens: 'cerebral', genre: 'Drama', tmdbRating: 8.7, notified: false, ignored: false },
+    { tmdbId: 301, title: 'The Bear', year: 2022, reason: 'Intense kitchen drama.', lens: 'serendipity', genre: 'Drama', tmdbRating: 8.6, notified: true, ignored: false },
+    { tmdbId: 302, title: 'Dark', year: 2017, reason: 'Mind-bending time travel.', lens: 'cerebral', genre: 'Science Fiction', tmdbRating: 8.8, notified: false, ignored: false },
+    { tmdbId: 400, title: 'An Ignored Show', year: 2010, reason: 'Not interested.', lens: 'serendipity', genre: 'Comedy', tmdbRating: 5.5, notified: false, ignored: true },
+  ],
+};
+
 // Map an /api/* pathname to a fixture body.
 export function fixtureFor(pathname) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
   if (pathname === '/api/ignored') return { ignored: [stuckItem({ item_key: LONG + '-ign' })] };
   if (pathname === '/api/workflows') return { workflows: [workflow(), workflow({ name: 'perfumes', enabled: 0 })] };
   if (pathname === '/api/workflow-runs') return { runs: [workflowRun(), workflowRun({ id: '2', status: 'failed' })] };
+  if (pathname === '/api/movie-recs') return movieRecs;
+  if (pathname === '/api/tv-recs') return tvRecs;
+  if (pathname === '/api/movie-gaps') return { generatedAt: NOW, gaps: [], collectionsChecked: 0, collectionExamples: {} };
   // Sub-routes must precede the generic `/api/workflow-runs/<id>` catch-all below.
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) return workflowIo;
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.' };
@@ -167,14 +196,16 @@ export function fixtureFor(pathname) {
 //              DagFlow.tsx: stage node `.dag-node.rf-dag-node`, gate padlock `.dag-gate-lock`.
 //   settleMs — per-page settle delay override (defaults to VISUAL_SETTLE_MS).
 export const PAGES = [
-  { name: 'overview',      path: '/' },
-  { name: 'workflows',     path: '/workflows' },
-  { name: 'workflow',      path: '/workflows/places',  waitFor: ['.rf-dag-node'] },
-  { name: 'workflow-run',  path: '/workflow-runs/1',   waitFor: ['.rf-dag-node'] },
-  { name: 'job',           path: '/jobs/places-enrich' },
-  { name: 'run',           path: '/runs/1' },
-  { name: 'services',      path: '/services' },
-  { name: 'backlog',       path: '/backlog' },
+  { name: 'overview',                path: '/' },
+  { name: 'workflows',               path: '/workflows' },
+  { name: 'workflow',                path: '/workflows/places',               waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-movie-recs',     path: '/workflows/movie-recommendations', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
+  { name: 'job',                     path: '/jobs/places-enrich' },
+  { name: 'run',                     path: '/runs/1' },
+  { name: 'services',                path: '/services' },
+  { name: 'backlog',                 path: '/backlog' },
 ];
 
 // ── Interaction flows ─────────────────────────────────────────────────────────
@@ -191,6 +222,23 @@ export const PAGES = [
 // ⚠️ LIVING ARTIFACT: when a UI change adds/removes an interactive state worth seeing
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
+  {
+    // Movie-recs table sorted by Lens (click the Lens header) — shows same-lens rows clustered.
+    name: 'movie-recs-sorted-by-lens',
+    path: '/workflows/movie-recommendations',
+    waitFor: ['table th.sort-th'],
+    actions: async (page) => {
+      // Click the Lens header to sort by lens (default is TMDB desc; one click → lens desc)
+      await page.click('table th.sort-th:has-text("Lens")');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    // TV-recs table sorted by TMDB descending (the default, confirmed in screenshot).
+    name: 'tv-recs-default-sort',
+    path: '/workflows/tv-recommendations',
+    waitFor: ['table th.sort-th-active'],
+  },
   {
     // The Backlog "Done" section is collapsed by default — expand every <details> so the
     // done rows (and their reviewed/done/failed chips + buttons) are visible.

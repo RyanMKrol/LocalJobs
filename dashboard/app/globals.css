@@ -166,6 +166,9 @@ tbody tr:hover { background: var(--panel-2); }
 .recent-runs-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
 .recent-runs-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
 /* Movie gaps/recs scroll container (T170) — bounded height, scrolls internally. */
+.sort-th { cursor: pointer; user-select: none; white-space: nowrap; }
+.sort-th:hover { color: var(--fg); opacity: 0.8; }
+.sort-th-active { color: var(--accent, var(--fg)); }
 .movie-gaps-scroll { max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 /* Per-collection/per-show cards inside the scroll area: padding so content doesn't hug the border-radius. */
 .movie-gaps-scroll .panel { padding: 12px 16px; }

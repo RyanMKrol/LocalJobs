@@ -1,10 +1,38 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useCallback } from 'react';
 import { DagFlow } from '../../components/DagFlow';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api, type MissingSeason, type MovieGap, type MovieRec, type TvRec } from '../../lib/api';
 import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
+
+type RecSortCol = 'title' | 'year' | 'genre' | 'lens' | 'tmdb';
+type SortDir = 'asc' | 'desc';
+
+function sortRecs<T extends { title: string; year: number | null; genre: string; lens: string; tmdbRating: number | null }>(
+  recs: T[], col: RecSortCol, dir: SortDir,
+): T[] {
+  return [...recs].sort((a, b) => {
+    let cmp = 0;
+    if (col === 'title') cmp = a.title.localeCompare(b.title);
+    else if (col === 'year') cmp = (a.year ?? 0) - (b.year ?? 0);
+    else if (col === 'genre') cmp = a.genre.localeCompare(b.genre);
+    else if (col === 'lens') cmp = a.lens.localeCompare(b.lens);
+    else if (col === 'tmdb') cmp = (a.tmdbRating ?? 0) - (b.tmdbRating ?? 0);
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
+function SortTh({ label, col, active, dir, onSort }: {
+  label: string; col: RecSortCol; active: RecSortCol; dir: SortDir; onSort: (c: RecSortCol) => void;
+}) {
+  const isActive = col === active;
+  return (
+    <th className={`sort-th${isActive ? ' sort-th-active' : ''}`} onClick={() => onSort(col)} title={`Sort by ${label}`}>
+      {label}{isActive ? (dir === 'asc' ? ' ▲' : ' ▼') : ''}
+    </th>
+  );
+}
 
 /** Workflow names that show the Missing seasons section. */
 const MISSING_SEASONS_WORKFLOWS = new Set(['missing-tv-seasons']);
@@ -45,10 +73,19 @@ function TvRecsManager() {
   const { data, error } = usePoll(() => api.tvRecs(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [sortCol, setSortCol] = useState<RecSortCol>('tmdb');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const all = data?.recommendations ?? [];
   const active = all.filter((r) => !r.ignored);
   const ignored = all.filter((r) => r.ignored);
+
+  const handleSort = useCallback((col: RecSortCol) => {
+    setSortDir((prev) => col === sortCol ? (prev === 'asc' ? 'desc' : 'asc') : 'desc');
+    setSortCol(col);
+  }, [sortCol]);
+
+  const sortedActive = sortRecs(active, sortCol, sortDir);
 
   async function ignore(r: TvRec) {
     if (!confirm(`Ignore "${r.title}"? It will be excluded from future digests and notifications.`)) return;
@@ -93,10 +130,17 @@ function TvRecsManager() {
           <div className="panel">
             <table>
               <thead>
-                <tr><th>Show</th><th>Year</th><th>Genre</th><th>Lens</th><th>TMDB</th><th></th></tr>
+                <tr>
+                  <SortTh label="Show" col="title" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Year" col="year" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Genre" col="genre" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Lens" col="lens" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="TMDB" col="tmdb" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <th></th>
+                </tr>
               </thead>
               <tbody>
-                {active.map((r) => (
+                {sortedActive.map((r) => (
                   <tr key={r.tmdbId}>
                     <td>
                       <a href={`https://www.themoviedb.org/tv/${r.tmdbId}`} target="_blank" rel="noreferrer">
@@ -165,10 +209,19 @@ function MovieRecsManager() {
   const { data, error } = usePoll(() => api.movieRecs(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [sortCol, setSortCol] = useState<RecSortCol>('tmdb');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const all = data?.recommendations ?? [];
   const active = all.filter((r) => !r.ignored);
   const ignored = all.filter((r) => r.ignored);
+
+  const handleSort = useCallback((col: RecSortCol) => {
+    setSortDir((prev) => col === sortCol ? (prev === 'asc' ? 'desc' : 'asc') : 'desc');
+    setSortCol(col);
+  }, [sortCol]);
+
+  const sortedActive = sortRecs(active, sortCol, sortDir);
 
   async function ignore(r: MovieRec) {
     if (!confirm(`Ignore "${r.title}"? It will be excluded from future digests and notifications.`)) return;
@@ -213,10 +266,17 @@ function MovieRecsManager() {
           <div className="panel">
             <table>
               <thead>
-                <tr><th>Film</th><th>Year</th><th>Genre</th><th>Lens</th><th>TMDB</th><th></th></tr>
+                <tr>
+                  <SortTh label="Film" col="title" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Year" col="year" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Genre" col="genre" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Lens" col="lens" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="TMDB" col="tmdb" active={sortCol} dir={sortDir} onSort={handleSort} />
+                  <th></th>
+                </tr>
               </thead>
               <tbody>
-                {active.map((r) => (
+                {sortedActive.map((r) => (
                   <tr key={r.tmdbId}>
                     <td>
                       <a href={`https://www.themoviedb.org/movie/${r.tmdbId}`} target="_blank" rel="noreferrer">
