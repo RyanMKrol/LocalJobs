@@ -444,9 +444,9 @@ export function useFont() { return useHtmlPref<FontId>('localjobs.font', 'data-f
 export type ModeId = 'dark' | 'light' | 'system';
 
 export const MODES: { id: ModeId; label: string }[] = [
-  { id: 'dark',   label: 'Dark' },
-  { id: 'light',  label: 'Light' },
   { id: 'system', label: 'System' },
+  { id: 'light',  label: 'Light' },
+  { id: 'dark',   label: 'Dark' },
 ];
 
 /** Pure helper: maps the stored mode choice + OS dark-preference → effective data-mode value.
