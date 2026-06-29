@@ -6905,6 +6905,462 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T261.md"
+    },
+    {
+      "id": "T262",
+      "title": "Decouple the workflow Output section from markdown-only (declared output form / renderer dispatch)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "output",
+        "refactor"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T262.md"
+    },
+    {
+      "id": "T263",
+      "title": "Plex space-saver workflow: biggest-first library size breakdown (per movie / per show)",
+      "status": "pending",
+      "dependsOn": [
+        "T262"
+      ],
+      "gate": null,
+      "tags": [
+        "plex",
+        "workflow",
+        "space"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/plex-space-saver/",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T263.md"
+    },
+    {
+      "id": "T264",
+      "title": "Decide a portable backlog-dashboard form for the Claude Skills harness plugin (cross-repo)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "harness",
+        "plugin",
+        "dashboard",
+        "design"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T264.md"
+    },
+    {
+      "id": "T265",
+      "title": "Honour Claude's reset time on rate-limit backoff (stop over-waiting past the quota reset)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "harness",
+        "loop",
+        "rate-limit"
+      ],
+      "scope": [
+        ".harness/loop.sh",
+        ".harness/harness.env"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T265.md"
+    },
+    {
+      "id": "T266",
+      "title": "Backlog: clickable dependency ids that scroll to + expand the referenced task",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "backlog"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T266.md"
+    },
+    {
+      "id": "T267",
+      "title": "claude-warmer workflow: minimal Claude ping every 30 min to start the usage window early",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "claude",
+        "usage"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/claude-warmer/",
+        "src/services/claude.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T267.md"
+    },
+    {
+      "id": "T268",
+      "title": "Create a shared dashboard UI component library (scan pages + extract RunButton/Pill/etc.) + convention",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components",
+        "refactor"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/app/components/",
+        "dashboard/app/ui.tsx",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T268.md"
+    },
+    {
+      "id": "T269",
+      "title": "Migrate Overview page to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T269.md"
+    },
+    {
+      "id": "T270",
+      "title": "Migrate Workflows list page to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T270.md"
+    },
+    {
+      "id": "T271",
+      "title": "Migrate Workflow detail page to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T271.md"
+    },
+    {
+      "id": "T272",
+      "title": "Migrate Workflow-run page to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T272.md"
+    },
+    {
+      "id": "T273",
+      "title": "Migrate Job page to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/jobs/[name]/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T273.md"
+    },
+    {
+      "id": "T274",
+      "title": "Migrate Run page to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T274.md"
+    },
+    {
+      "id": "T275",
+      "title": "Migrate Services page to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T275.md"
+    },
+    {
+      "id": "T276",
+      "title": "Migrate Backlog page to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T276.md"
+    },
+    {
+      "id": "T277",
+      "title": "Migrate the gate detail pages to the shared component library",
+      "status": "pending",
+      "dependsOn": [
+        "T268"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "components"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/workflows/[name]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T277.md"
+    },
+    {
+      "id": "T278",
+      "title": "Add duplicate-idea detection to the /convert-ideas Step 0 sweep",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "harness",
+        "ideas",
+        "convert"
+      ],
+      "facets": {
+        "layer": "harness",
+        "workType": "docs",
+        "risk": []
+      },
+      "scope": [
+        ".claude/commands/convert-ideas.md",
+        ".harness/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T278.md"
     }
   ]
 }

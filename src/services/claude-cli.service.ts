@@ -1,10 +1,15 @@
 import type { ServiceDefinition } from '../core/types.js';
 
-/** The Claude Code CLI worker — $0 under the user's plan. Sequential use only
- *  (linear DAG, one-active-run-per-workflow, long per-call durations); no rate cap. */
+/** Claude Code CLI worker (`claude -p`). No LOCAL rate/quota cap is set here — NOT because
+ *  usage is unlimited, but because the cap is enforced UPSTREAM by the Claude plan: when you
+ *  hit the plan's usage limit the CLI fails out, and that surfaces gracefully (the harness's
+ *  rate-limit detection backs off + resumes; jobs catch QuotaExceededError / the failure and
+ *  soft-fail). So a local cap would be redundant — the upstream limit governs, gracefully.
+ *  Sequential use only (linear DAG, one-active-run-per-workflow, long per-call durations);
+ *  no marginal per-call charge under the plan. */
 const service: ServiceDefinition = {
   name: 'claude-cli',
-  description: 'Claude Code CLI (`claude -p`). Free under the plan; sequential use, no rate cap.',
+  description: 'Claude Code CLI (`claude -p`). No local cap: usage is capped UPSTREAM by the Claude plan and fails out gracefully when hit (the loop backs off; jobs soft-fail). Sequential use.',
   paid: false,
 };
 
