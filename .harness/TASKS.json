@@ -6195,7 +6195,7 @@
     {
       "id": "T235",
       "title": "Make System the first Mode option in the theme picker",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
