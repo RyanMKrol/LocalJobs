@@ -100,15 +100,6 @@ const tasks = [
     tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
 ];
 
-const dbTables = ['jobs', 'runs', 'run_logs', 'work_items', 'workflows', 'workflow_runs', 'services'];
-const dbPage = {
-  table: 'runs', columns: ['id', 'job_name', 'status', 'error', 'started_at'],
-  rows: Array.from({ length: 8 }, (_, i) => ({
-    id: String(i + 1), job_name: 'places-enrich', status: 'success', error: LONG_ERR, started_at: NOW,
-  })),
-  total: 8, limit: 50, offset: 0,
-};
-
 // Map an /api/* pathname to a fixture body.
 function fixtureFor(pathname) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
@@ -121,8 +112,6 @@ function fixtureFor(pathname) {
   if (pathname.startsWith('/api/jobs/')) return { job: job() };
   if (pathname.startsWith('/api/runs/')) return { run: run(), logs };
   if (pathname === '/api/services') return { services: [service(), service({ name: 'gemini', paid: 1 }), service({ name: 'fragrantica', paid: 0, daily_cap: null, monthly_cap: null })] };
-  if (pathname === '/api/db/tables') return { tables: dbTables };
-  if (pathname.startsWith('/api/db/tables/')) return dbPage;
   if (pathname === '/api/backlog') return { tasks };
   return {};
 }
@@ -177,7 +166,6 @@ const PAGES = [
   { name: 'job',           path: '/jobs/places-enrich' },
   { name: 'run',           path: '/runs/1' },
   { name: 'services',      path: '/services' },
-  { name: 'database',      path: '/db', clickTable: true },
   { name: 'backlog',       path: '/backlog' },
 ];
 
@@ -205,11 +193,6 @@ async function main() {
     for (const p of PAGES) {
       const page = await ctx.newPage();
       await page.goto(BASE + p.path, { waitUntil: 'networkidle' });
-      if (p.clickTable) {
-        // The DB page only renders a data table once a table is selected.
-        await page.locator('.panel button').first().click().catch(() => {});
-        await page.waitForTimeout(600);
-      }
       await page.waitForTimeout(300);
       const m = await page.evaluate(measure);
       const pass = m.docOverflow <= 1 && m.offenders.length === 0;

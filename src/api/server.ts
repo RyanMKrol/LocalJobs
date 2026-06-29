@@ -23,7 +23,6 @@ import { plexConfig } from '../jobs/plex/config.js';
 import { NOTIFY_JOB as PLEX_SEASONS_JOB, pairKey } from '../jobs/plex/stages/notify.js';
 import type { MissingSeasonsFile } from '../jobs/plex/types.js';
 import {
-  browseTable,
   getLogs,
   getWorkflow,
   getWorkflowJobs,
@@ -39,10 +38,7 @@ import {
   listRecentRuns,
   listRunsForJob,
   listRunsForWorkflowRun,
-  listCannedQueries,
-  listDbTables,
   listServices,
-  runCannedQuery,
   orphanedWorkItems,
   pruneOrphanedWorkItems,
   resetWorkflowOutput,
@@ -1568,34 +1564,6 @@ export function createApiServer(
           byWorkflow[wf].jobs.push({ job_name: r.job_name, last_used: r.last_used });
         }
         return json(res, 200, { consumers: Object.values(byWorkflow) });
-      }
-
-      // GET /api/db/tables — list the SQLite tables (read-only DB browser)
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'db' && parts[2] === 'tables' && parts.length === 3) {
-        return json(res, 200, { tables: listDbTables() });
-      }
-
-      // GET /api/db/tables/:name?limit=&offset= — one page of rows, strictly
-      // read-only (browseTable rejects unknown tables and runs only SELECT).
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'db' && parts[2] === 'tables' && parts.length === 4) {
-        const limit = Number(url.searchParams.get('limit') ?? 50);
-        const offset = Number(url.searchParams.get('offset') ?? 0);
-        const page = browseTable(parts[3], limit, offset);
-        if (!page) return json(res, 404, { error: 'table not found' });
-        return json(res, 200, page);
-      }
-
-      // GET /api/db/queries — the catalogue of canned read-only queries (metadata)
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'db' && parts[2] === 'queries' && parts.length === 3) {
-        return json(res, 200, { queries: listCannedQueries() });
-      }
-
-      // GET /api/db/queries/:id — run one canned query by id (fixed SELECT only;
-      // the id is the sole input and is matched against the fixed catalogue).
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'db' && parts[2] === 'queries' && parts.length === 4) {
-        const result = runCannedQuery(parts[3]);
-        if (!result) return json(res, 404, { error: 'query not found' });
-        return json(res, 200, result);
       }
 
       // GET /api/backlog — the harness TASKS.json backlog (read-only). Each task's
