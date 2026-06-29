@@ -6884,17 +6884,12 @@
       "title": "Loop pre-flight: reconcile human-done.json → TASKS.json status for needs-human tasks (unblock dependents)",
       "status": "pending",
       "dependsOn": [],
-      "gate": null,
+      "gate": "needs-human",
       "tags": [
         "harness",
         "loop",
         "human-done"
       ],
-      "facets": {
-        "layer": "harness",
-        "workType": "feature",
-        "risk": []
-      },
       "scope": [
         ".harness/loop.sh",
         "CLAUDE.md",
@@ -7361,6 +7356,33 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T278.md"
+    },
+    {
+      "id": "T279",
+      "title": "Reconcile manual-fail overlay → TASKS.json status=failed (authoritative terminal state)",
+      "status": "pending",
+      "dependsOn": [
+        "T261"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "harness",
+        "loop",
+        "manual-fail",
+        "status"
+      ],
+      "scope": [
+        ".harness/loop.sh",
+        "src/api/server.ts",
+        "dashboard/app/backlog/page.tsx",
+        "CLAUDE.md",
+        ".harness/CLAUDE.md",
+        ".harness/designs/manual-fail-signal.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T279.md"
     }
   ]
 }
