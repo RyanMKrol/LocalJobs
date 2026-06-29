@@ -6383,7 +6383,7 @@
     {
       "id": "T242",
       "title": "Polish the expanded Backlog task styling (inner padding + rounded card)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
