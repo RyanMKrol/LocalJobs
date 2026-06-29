@@ -186,6 +186,10 @@ gitignored). Private workflows live in gitignored subfolders.
   via `user.getRecentTracks` (5-hour lookback window) → optionally enrich album art
   via Spotify → write each scrobble to the DynamoDB listens table; idempotent per
   (trackId, scrobbledAt) via the work_items ledger. Runs every 4 hours.
+- **projects-sync** — Daily GitHub repo ingestion: fetch the owner's repos via the
+  GitHub REST API → filter out forks/archived/private → sort by pushed_at → upsert
+  the filtered list to the DynamoDB projects table; idempotent upsert keyed by
+  GitHub numeric repo id (`repoId`), refreshing fields every run. Runs daily at 05:00.
 
 ## Dashboard pages
 
