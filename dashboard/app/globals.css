@@ -266,6 +266,14 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 .done-row.expanded { border-bottom: none; }
 /* The last CollapsibleRow's outer <div> is the last div child of .panel */
 .panel > div:last-child .done-row { border-bottom: none; }
+/* Expanded task detail card — contained card below the row with inner padding + rounded corners */
+.task-expand-body {
+  padding: 12px 16px 14px;
+  margin-bottom: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
 /* "Mark as reviewed" toggle on each done row + the Reviewed/Not-reviewed/All filter. */
 .review-toggle { font-size: 11px; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
 .review-toggle:hover { border-color: var(--accent); color: var(--text); }

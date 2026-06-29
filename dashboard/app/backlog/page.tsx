@@ -109,7 +109,7 @@ function CollapsibleRow({
         )}
       </div>
       {expanded && (
-        <div style={{ padding: '8px 14px 12px', borderBottom: '1px solid var(--border)', background: 'var(--panel-2)', borderRadius: '0 0 4px 4px' }}>
+        <div className="task-expand-body">
           {t.dependsOn && t.dependsOn.length > 0 && (
             <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
               depends on: <span className="mono">{t.dependsOn.join(', ')}</span>
