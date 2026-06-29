@@ -244,6 +244,7 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 .pill.done { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.in-progress { color: var(--accent); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
 .pill.buildable { color: var(--amber); background: rgba(232,160,32,.12); border-color: rgba(232,160,32,.35); }
+.pill.dep-waiting { color: var(--muted); background: var(--panel-2); border-color: var(--border); font-size: 11px; }
 .pill.human { background: var(--human-blue); color: #fff; border-color: var(--human-blue); }
 /* Human-review flag (T124): a green "reviewed" vs a muted "not reviewed" pill. */
 .pill.reviewed { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }

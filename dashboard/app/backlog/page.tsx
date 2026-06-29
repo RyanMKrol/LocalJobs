@@ -28,12 +28,14 @@ function CollapsibleRow({
   checked,
   onCheck,
   onMarkDone,
+  unmetDeps,
 }: {
   t: BacklogTask;
   selectable?: boolean;
   checked?: boolean;
   onCheck?: (id: string, val: boolean) => void;
   onMarkDone?: (id: string) => void;
+  unmetDeps?: string[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
@@ -75,7 +77,10 @@ function CollapsibleRow({
         <span className="muted" style={{ fontSize: 10, minWidth: 10 }}>{expanded ? '▾' : '▸'}</span>
         <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
         <span style={{ flex: 1 }}>{t.title}</span>
-        {buildable && <span className="pill buildable" style={{ flexShrink: 0 }}>🤖 buildable</span>}
+        {unmetDeps && unmetDeps.length > 0 && (
+          <span className="pill dep-waiting" style={{ flexShrink: 0 }}>needs: {unmetDeps.join(', ')}</span>
+        )}
+        {buildable && !unmetDeps?.length && <span className="pill buildable" style={{ flexShrink: 0 }}>🤖 buildable</span>}
         {human && !isHumanDone && <span className="pill human" style={{ flexShrink: 0 }}>🔒 needs human</span>}
         {human && !isHumanDone && onMarkDone && (
           <button
@@ -162,7 +167,12 @@ export default function Backlog() {
   const done = allDone.filter((t) =>
     reviewFilter === 'all' ? true : reviewFilter === 'reviewed' ? t.reviewed === true : t.reviewed !== true,
   );
+  // Build a set of done task ids for quick dep-resolution.
+  const doneIds = new Set(tasks.filter((t) => t.status === 'done' || t.done === true).map((t) => t.id));
   const buildable = tasks.filter((t) => t.status !== 'done' && t.gate == null);
+  // Split buildable into ready (all deps done) and waiting (≥1 dep not done).
+  const ready = buildable.filter((t) => (t.dependsOn ?? []).every((dep) => doneIds.has(dep)));
+  const waiting = buildable.filter((t) => (t.dependsOn ?? []).some((dep) => !doneIds.has(dep)));
   const human = tasks.filter((t) => t.status !== 'done' && t.gate != null);
 
   // Unreviewed tasks currently visible in the done section (checkable).
@@ -207,7 +217,7 @@ export default function Backlog() {
       </div>
       <p className="sub">
         The harness task list (<span className="mono">.harness/TASKS.json</span>), rendered.
-        {' '}{tasks.length} task(s) · {buildable.length} harness-buildable · {human.length} need a human · {allDone.length} done ({reviewedCount} reviewed). Auto-refreshes.
+        {' '}{tasks.length} task(s) · {ready.length} ready · {waiting.length} waiting · {human.length} need a human · {allDone.length} done ({reviewedCount} reviewed). Auto-refreshes.
       </p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {data?.error && <p className="muted">⚠ Cannot read the backlog ({data.error}).</p>}
@@ -216,11 +226,24 @@ export default function Backlog() {
       <div>
         <details open>
           <summary className="section-heading-summary">
-            🤖 Harness-buildable ({buildable.length})
+            🤖 Ready ({ready.length})
           </summary>
           <div className="panel" style={{ padding: '0 14px' }}>
-            {buildable.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
-            {buildable.map((t) => <CollapsibleRow key={t.id} t={t} />)}
+            {ready.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
+            {ready.map((t) => <CollapsibleRow key={t.id} t={t} />)}
+          </div>
+        </details>
+
+        <details open style={{ marginTop: 28 }}>
+          <summary className="section-heading-summary">
+            ⏳ Waiting on dependencies ({waiting.length})
+          </summary>
+          <div className="panel" style={{ padding: '0 14px' }}>
+            {waiting.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
+            {waiting.map((t) => {
+              const unmet = (t.dependsOn ?? []).filter((dep) => !doneIds.has(dep));
+              return <CollapsibleRow key={t.id} t={t} unmetDeps={unmet} />;
+            })}
           </div>
         </details>
 
