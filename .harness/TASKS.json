@@ -6607,7 +6607,7 @@
     {
       "id": "T251",
       "title": "Provision AWS IAM key + DynamoDB tables for the ingestion pipelines (owner)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
