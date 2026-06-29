@@ -13,6 +13,8 @@
     "test": "rm -f /tmp/lj-test.db* 2>/dev/null; LOCALJOBS_DB=/tmp/lj-test.db tsx scripts/run-tests.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.840.0",
+    "@aws-sdk/lib-dynamodb": "^3.840.0",
     "@google/genai": "^2.9.0",
     "better-sqlite3": "^11.8.1",
     "croner": "^8.1.2",
