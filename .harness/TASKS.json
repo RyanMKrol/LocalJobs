@@ -6507,7 +6507,7 @@
     {
       "id": "T247",
       "title": "Backlog: align done-row status pills/buttons into fixed columns",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
