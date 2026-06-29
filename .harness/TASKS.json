@@ -6772,7 +6772,7 @@
     {
       "id": "T257",
       "title": "Slim the README to user-facing essentials (one-line workflows)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [

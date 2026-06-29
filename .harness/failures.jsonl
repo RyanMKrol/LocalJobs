@@ -10,3 +10,4 @@
 {"id":"T241","ts":"2026-06-29T03:05:08Z","kind":"scope-creep","rung":0,"attempt":1,"model":"claude-sonnet-4-6","effort":"low","facets":{"layer":"ui","workType":"bugfix","risk":["cross-cutting"]},"detail":"dashboard/app/globals.css"}
 {"id":"T248","ts":"2026-06-29T10:29:07Z","kind":"audit-fail","rung":0,"attempt":1,"model":"claude-sonnet-4-6","effort":"low","facets":{"layer":"ui","workType":"bugfix","risk":[]},"detail":"verdict=FAIL; reasons in .harness/worklog/T248.audit.md"}
 {"id":"T248","ts":"2026-06-29T10:36:13Z","kind":"audit-fail","rung":0,"attempt":2,"model":"claude-sonnet-4-6","effort":"low","facets":{"layer":"ui","workType":"bugfix","risk":[]},"detail":"verdict=FAIL; reasons in .harness/worklog/T248.audit.md"}
+{"id":"T257","ts":"2026-06-29T11:16:40Z","kind":"audit-fail","rung":0,"attempt":1,"model":"claude-sonnet-4-6","effort":"low","facets":{"layer":"harness","workType":"docs","risk":[]},"detail":"verdict=FAIL; reasons in .harness/worklog/T257.audit.md"}
