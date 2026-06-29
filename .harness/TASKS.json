@@ -6434,7 +6434,7 @@
     {
       "id": "T244",
       "title": "visual-check: per-flow viewport-capture mode for modal/overlay flows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
