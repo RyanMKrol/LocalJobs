@@ -6220,7 +6220,7 @@
     {
       "id": "T236",
       "title": "Make the workflow Run buttons pop (high-contrast accent)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
