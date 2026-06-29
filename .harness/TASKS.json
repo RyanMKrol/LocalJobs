@@ -6626,7 +6626,7 @@
     {
       "id": "T252",
       "title": "Shared dynamodb service (free-tier-aware, metered) + AWS SDK deps",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
