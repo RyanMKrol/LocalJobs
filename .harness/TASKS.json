@@ -6557,7 +6557,7 @@
     {
       "id": "T249",
       "title": "Sortable columns on the movie + TV recommendation tables",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
