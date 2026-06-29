@@ -6430,6 +6430,368 @@
       ],
       "expectsTest": false,
       "spec": ".harness/tasks/T243.md"
+    },
+    {
+      "id": "T244",
+      "title": "visual-check: per-flow viewport-capture mode for modal/overlay flows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "tooling",
+        "visual-check"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/scripts/visual-check.mjs",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T244.md"
+    },
+    {
+      "id": "T245",
+      "title": "Workflows list: centre the Last-run column contents",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T245.md"
+    },
+    {
+      "id": "T246",
+      "title": "Workflows list: add an Enabled on/off pill column",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T246.md"
+    },
+    {
+      "id": "T247",
+      "title": "Backlog: align done-row status pills/buttons into fixed columns",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T247.md"
+    },
+    {
+      "id": "T248",
+      "title": "Fix invisible gate padlock marks on the DAG (custom edge via EdgeLabelRenderer)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "dagflow",
+        "gates"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T248.md"
+    },
+    {
+      "id": "T249",
+      "title": "Sortable columns on the movie + TV recommendation tables",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "recommendations"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T249.md"
+    },
+    {
+      "id": "T250",
+      "title": "Workflow graph: symmetric vertical padding in the container",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "dagflow"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T250.md"
+    },
+    {
+      "id": "T251",
+      "title": "Provision AWS IAM key + DynamoDB tables for the ingestion pipelines (owner)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "dynamodb",
+        "infra",
+        "credentials"
+      ],
+      "scope": [
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T251.md"
+    },
+    {
+      "id": "T252",
+      "title": "Shared dynamodb service (free-tier-aware, metered) + AWS SDK deps",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dynamodb",
+        "service",
+        "foundation"
+      ],
+      "facets": {
+        "layer": "service",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/services/dynamodb.service.ts",
+        "package.json"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T252.md"
+    },
+    {
+      "id": "T253",
+      "title": "workouts-sync workflow: Hevy -> DynamoDB (tracked, idempotent)",
+      "status": "pending",
+      "dependsOn": [
+        "T251",
+        "T252"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "workouts",
+        "dynamodb"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/workouts-sync/",
+        "src/services/hevy.service.ts",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T253.md"
+    },
+    {
+      "id": "T254",
+      "title": "listens-sync workflow: Last.fm (+Spotify) -> new DynamoDB listens table",
+      "status": "pending",
+      "dependsOn": [
+        "T251",
+        "T252"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "listens",
+        "dynamodb"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/listens-sync/",
+        "src/services/lastfm.service.ts",
+        "src/services/spotify.service.ts",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T254.md"
+    },
+    {
+      "id": "T255",
+      "title": "listens: one-time Last.fm history backfill into the listens table",
+      "status": "pending",
+      "dependsOn": [
+        "T254"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "listens",
+        "backfill"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/listens-sync/",
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T255.md"
+    },
+    {
+      "id": "T256",
+      "title": "projects-sync workflow: GitHub repos -> new DynamoDB projects table",
+      "status": "pending",
+      "dependsOn": [
+        "T251",
+        "T252"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "projects",
+        "dynamodb"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/projects-sync/",
+        "src/services/github.service.ts",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T256.md"
+    },
+    {
+      "id": "T257",
+      "title": "Slim the README to user-facing essentials (one-line workflows)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "docs",
+        "readme"
+      ],
+      "facets": {
+        "layer": "harness",
+        "workType": "docs",
+        "risk": []
+      },
+      "scope": [
+        "README.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T257.md"
     }
   ]
 }
