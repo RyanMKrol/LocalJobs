@@ -46,11 +46,11 @@ export default function Workflows() {
       <div className="panel">
         <table>
           <thead>
-            <tr><th>Workflow</th><th style={{ textAlign: 'center' }}>Stages</th><th style={{ textAlign: 'center' }}>Schedule</th><th style={{ textAlign: 'center' }}>Last run</th><th>Next</th><th></th></tr>
+            <tr><th>Workflow</th><th style={{ textAlign: 'center' }}>Enabled</th><th style={{ textAlign: 'center' }}>Stages</th><th style={{ textAlign: 'center' }}>Schedule</th><th style={{ textAlign: 'center' }}>Last run</th><th>Next</th><th></th></tr>
           </thead>
           <tbody>
             {workflows.length === 0 && (
-              <tr><td colSpan={6} className="muted">No workflows yet — drop a <span className="mono">*.workflow.ts</span> in src/jobs.</td></tr>
+              <tr><td colSpan={7} className="muted">No workflows yet — drop a <span className="mono">*.workflow.ts</span> in src/jobs.</td></tr>
             )}
             {workflows.map((p) => (
               <tr key={p.name}>
@@ -67,6 +67,9 @@ export default function Workflows() {
                     </button>
                   )}
                   <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <span className={`pill ${p.enabled ? 'on' : 'off'}`}>{p.enabled ? 'on' : 'off'}</span>
                 </td>
                 <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
                 <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>

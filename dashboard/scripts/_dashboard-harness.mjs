@@ -133,7 +133,7 @@ const tasks = [
 export function fixtureFor(pathname) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
   if (pathname === '/api/ignored') return { ignored: [stuckItem({ item_key: LONG + '-ign' })] };
-  if (pathname === '/api/workflows') return { workflows: [workflow(), workflow({ name: 'perfumes' })] };
+  if (pathname === '/api/workflows') return { workflows: [workflow(), workflow({ name: 'perfumes', enabled: 0 })] };
   if (pathname === '/api/workflow-runs') return { runs: [workflowRun(), workflowRun({ id: '2', status: 'failed' })] };
   // Sub-routes must precede the generic `/api/workflow-runs/<id>` catch-all below.
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) return workflowIo;
