@@ -6483,7 +6483,7 @@
     {
       "id": "T246",
       "title": "Workflows list: add an Enabled on/off pill column",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
