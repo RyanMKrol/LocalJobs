@@ -6249,7 +6249,7 @@
     {
       "id": "T237",
       "title": "Move a needs-human task into the done section when marked done",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
