@@ -366,6 +366,28 @@ EOF
   printf 'You may change ONLY these files:\n'
   if [ -n "$sc" ]; then printf '%s\n' "$sc" | sed 's/^/  - /'; else printf '  (none declared — keep the diff minimal)\n'; fi
   printf '%s\n' 'PLUS you may always add/change TEST files (*.test.ts) and your own .harness/worklog/<TASK>.md. Touching ANY OTHER file — including a doc (README/CLAUDE/LIMITATIONS) not listed above — AUTO-FAILS this task. If you genuinely need a file that is not listed, do NOT edit it: record `failed:blocked <TASK> needs <file> (out of scope)` so a human can fix the scope.'
+  # Visual confirmation block — UI tasks only (facets.layer == ui). Structural checks can't see
+  # whether something actually RENDERS (T223 shipped a padlock present in the DOM but invisible, and
+  # passed every check). So a UI builder must look at the rendered pages with its own eyes.
+  if [ "$(tj -r --arg id "$tid" '.tasks[]|select(.id==$id)|.facets.layer // empty')" = "ui" ]; then
+    cat <<'EOF'
+
+--- VISUAL CONFIRMATION — MANDATORY FOR UI TASKS (facets.layer == ui) ---
+This task changes the dashboard's rendered surface. Passing tsc/tests/build is NOT enough — an
+element can satisfy every structural check yet never be painted (the T223 padlock bug). You MUST:
+  1. Build the dashboard, then capture screenshots:
+        npm --prefix dashboard run build && node dashboard/scripts/visual-check.mjs
+  2. READ the PNGs it writes to dashboard/scripts/visual-out/ (the script prints their paths) and
+     confirm WITH YOUR OWN EYES that what you changed renders correctly — the thing you added is
+     actually painted/visible, nothing is blank, overlapping, or clipped. Record what you observed
+     in .harness/worklog/<TASK>.md.
+  3. LIVING ARTIFACT (non-negotiable): if you ADDED a page, ADDED/REMOVED a workflow or gate, or
+     otherwise changed the UI surface, you MUST update dashboard/scripts/_dashboard-harness.mjs in
+     THIS SAME commit — its PAGES list and/or fixtures — so the check stays accurate and does not
+     start failing on intentionally-removed UI. The visual-check/harness/mobile-check scripts are
+     ALWAYS in-scope for a UI task; editing them never trips the scope gate.
+EOF
+  fi
   # Append the task's Markdown spec (## Do / ## Done when) verbatim — this is the
   # SOLE source of do/doneWhen since T131 (they no longer live in TASKS.json).
   local rel="" path
@@ -409,6 +431,11 @@ structural_checks() {
     # lockfile is auto-allowed (like test files + the worklog). This stops the common scope-creep where
     # a task lists package.json but `npm install` also rewrites package-lock.json (the T220 failure).
     case "$f" in */package-lock.json|package-lock.json|*/yarn.lock|yarn.lock|*/pnpm-lock.yaml|pnpm-lock.yaml) continue ;; esac
+    # The dashboard visual-validation harness is a MECHANICAL artifact of a UI change (like a
+    # lockfile): a UI task that adds a page / workflow / gate MUST keep the shared PAGES + fixtures
+    # current, so these files are always-allowed and never trip scope-creep (see the LIVING ARTIFACT
+    # rule in CLAUDE.md). Keeping them out of scope would punish a task for doing the right thing.
+    case "$f" in dashboard/scripts/_dashboard-harness.mjs|dashboard/scripts/visual-check.mjs|dashboard/scripts/mobile-check.mjs) continue ;; esac
     if printf '%s\n' "$f" | grep -qiE '(\.test\.|\.spec\.|_test\.|(^|/)test_|(^|/)tests?/)'; then continue; fi
     inscope=0
     while IFS= read -r s; do
@@ -439,9 +466,11 @@ CHANGED
   return 0
 }
 
-# audit_prompt <id> <spec> <diff> — the independent auditor's prompt (strict PASS/FAIL on ## Done when).
+# audit_prompt <id> <spec> <diff> [visual] — the independent auditor's prompt (strict PASS/FAIL on
+# ## Done when). The optional <visual> block (UI tasks only) instructs the auditor to LOOK at the
+# rendered pages, since a text diff can't reveal whether a UI element actually paints.
 audit_prompt() {
-  local id="$1" spec="$2" diff="$3"
+  local id="$1" spec="$2" diff="$3" visual="${4:-}"
   cat <<EOF
 You are an INDEPENDENT AUDITOR. You did NOT write this code and you carry NO prior context. Another
 agent implemented task $id; your ONLY job is to judge whether the implementation genuinely satisfies
@@ -456,6 +485,7 @@ $spec
 
 --- IMPLEMENTATION DIFF (origin/$MAIN_BRANCH..HEAD) ---
 $diff
+$visual
 EOF
 }
 
@@ -490,10 +520,27 @@ audit_gate() {
   log "audit: $id cell (${layer:-?}×${wt:-?}) $count confirmed, p=${pm}per-mille → AUDITING at $am/$ae (auditor $AUDITOR_MODEL/$AUDITOR_EFFORT, bumped to builder tier if stronger)"
   diff="$(git -C "$ROOT" diff "origin/$MAIN_BRANCH..HEAD" 2>/dev/null)"
   rel="$(task_spec_rel "$id")"; [ -n "$rel" ] && [ -f "$ROOT/$rel" ] && spec="$(cat "$ROOT/$rel")"
+  # UI tasks: give the auditor VISUAL evidence — a text diff can't show whether a UI element renders.
+  local visual=""
+  if [ "$layer" = "ui" ]; then
+    visual="$(cat <<'EOF'
+
+--- VISUAL EVIDENCE — REQUIRED FOR THIS UI TASK ---
+The text diff above is NOT sufficient to judge a UI task (an element can be in the diff yet never be
+painted — the T223 padlock bug). Before deciding PASS/FAIL you MUST:
+  1. Run:  npm --prefix dashboard run build && node dashboard/scripts/visual-check.mjs
+  2. READ the screenshots it writes to dashboard/scripts/visual-out/ (the script prints their paths).
+  3. Judge whether the rendered pages actually satisfy every "## Done when" item VISUALLY — the
+     intended element is present AND painted/visible, not merely in the DOM. FAIL if a screenshot
+     contradicts a "## Done when" claim, if the visual check exits non-zero, or if a "## Done when"
+     visual requirement is not evidenced by what actually renders.
+EOF
+)"
+  fi
   out="$WORKLOG/$id.audit.md"
   rlpoll="${RL_POLL:-${RL_BACKOFF_MIN:-300}}"
   while :; do
-    set +e; run_claude "$am" "$ae" "$(audit_prompt "$id" "$spec" "$diff")"; arc=$?; set -e
+    set +e; run_claude "$am" "$ae" "$(audit_prompt "$id" "$spec" "$diff" "$visual")"; arc=$?; set -e
     [ "$arc" = 10 ] && { log "auditor rate-limited — waiting ${rlpoll}s (NOT an audit fail)"; sleep "$rlpoll"; continue; }
     break
   done
