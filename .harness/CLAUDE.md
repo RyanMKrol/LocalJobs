@@ -183,3 +183,36 @@ dated bullet when you defer something new.
   in a scratch repo: the `mark done` commit now persists with `failures.jsonl` absent. **Do not recombine
   those `git add`s.** The interrupt-window race + `wait_ci_green`-indeterminate items above remain the
   only genuinely-deferred parts.
+- **2026-06-29 — FIXED: usage-limit handling, CI-indeterminate≠red, supervise over-park, and dirty-tree
+  block.** A session-limit hit on T254/T258 exposed a cluster of interacting bugs, all now fixed in
+  `loop.sh`/`supervise.sh`/`harness.env`:
+  - **`run_claude` missed an exit-0 usage limit.** It only classified a rate-limit when the CLI exited
+    non-zero (`rc != 0 && RL_RE`), but the CLI often prints "You've hit your session limit · resets …"
+    and STILL exits 0 — so the smart reset-aware backoff (`rl_reset_wait`, T265) was never reached and
+    the loop fell through and EXITED. *Fix:* a tight `RL_HARD_RE` now classifies the unambiguous limit
+    wording as rate-limited **regardless of exit code** (returns 10 → backoff); the broad `RL_RE` still
+    only applies when the command also failed, so ordinary success output can't be misread.
+    NB: the `rl_reset_wait` PARSER itself was never broken — it correctly parses
+    `resets 7:30pm (Europe/London)` under real bash (the apparent "no match" was a zsh-vs-bash
+    `BASH_REMATCH` artifact when testing interactively; loop.sh runs under `#!/usr/bin/env bash`).
+  - **`wait_ci_green` conflated CANCELLED with RED** (the long-deferred item #1 above). It now reads the
+    run's ACTUAL `conclusion` after watching: only `failure`/`timed_out`/`startup_failure`/`action_required`
+    → red (return 1); `cancelled`/`skipped`/`stale`/no-run → **indeterminate (return 2)**. The caller
+    branches on 0/1/2 and on indeterminate does **NOT revert** the pushed commit (it used to revert good
+    work whenever a newer push concurrency-cancelled the run). Rough edge: an indeterminate result leaves
+    the commit on `main` and soft-retries; a cold re-attempt may then hit an empty diff (the already-on-
+    `main` pathology, deferred item above) — acceptable vs. reverting verified work.
+  - **`supervise.sh` parked the FULL 5h15m window even on an early exit.** It now captures the loop's exit
+    code and on a non-zero exit does a short `SUPERVISE_ERROR_BACKOFF` (default 300s) relaunch instead of
+    the full interval — the loop now OWNS its usage-limit waits internally, so a non-zero exit is a crash,
+    not quota exhaustion. (This was the real cause of "next cycle at 21:47" — supervise's fixed cadence,
+    not the loop's backoff.)
+  - **Dirty-tree startup refusal permanently blocked unattended runs.** A killed attempt leaves orphaned
+    partial work; the startup guard then refused every future cycle (`exit 3`). New opt-in
+    `LOOP_AUTORESET` (default **1** in `harness.env` for this dedicated checkout) auto-STASHES the dirty
+    tree with a timestamped, recoverable label (`git stash list`) then hard-resets to `origin/$MAIN_BRANCH`
+    so the loop can always start. Set `0` to restore the protective refuse-on-dirty behaviour.
+  - **`structural_checks` discarded `LOCAL_DOD` output** (`>/dev/null 2>&1`), so a `tsc`/`test` failure was
+    undiagnosable after `cold_reset` wiped the tree. It now tees to the gitignored `$WORKLOG/.local-dod.log`
+    and logs the last 30 lines on failure. (The earlier `wait_ci_green` output is similarly worth capturing
+    if it recurs.)

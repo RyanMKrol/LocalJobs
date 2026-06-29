@@ -344,14 +344,40 @@ wait_ci_green() {   # 0=green 1=red 2=indeterminate
     sleep "$WAIT_SECONDS"; waited=$((waited + WAIT_SECONDS))
   done
   [ -n "$runid" ] || { log "no '$CI_WORKFLOW' run appeared for $sha within ${CI_TIMEOUT}s"; return 2; }
-  if gh run watch "$runid" --exit-status >/dev/null 2>&1; then log "CI GREEN (run $runid)"; return 0; fi
-  log "CI RED (run $runid) — gh run view $runid --log-failed"; return 1
+  # gh run watch's bare exit conflates "CI FAILED" with "watch hiccupped" and "the run got CANCELLED
+  # by a newer push (concurrency cancel-in-progress)". So watch to settle, then read the run's ACTUAL
+  # conclusion and classify on THAT — only a genuine failure is RED. A cancelled/skipped/indeterminate
+  # result returns 2 (NOT red), so the caller never reverts good work over a concurrency-cancel.
+  gh run watch "$runid" --exit-status >/dev/null 2>&1 || true
+  local latest concl
+  latest="$(gh run list --limit 20 --json databaseId,headSha,workflowName \
+              --jq ".[] | select(.headSha==\"$sha\" and .workflowName==\"$CI_WORKFLOW\") | .databaseId" \
+              2>/dev/null | head -1 || true)"
+  [ -n "$latest" ] && runid="$latest"
+  concl="$(gh run view "$runid" --json status,conclusion --jq '.status + "/" + (.conclusion // "")' 2>/dev/null || true)"
+  case "$concl" in
+    completed/success)
+      log "CI GREEN (run $runid)"; return 0 ;;
+    completed/failure|completed/timed_out|completed/startup_failure|completed/action_required)
+      log "CI RED (run $runid, $concl) — gh run view $runid --log-failed"; return 1 ;;
+    completed/cancelled|completed/skipped|completed/stale|completed/neutral)
+      log "CI INDETERMINATE (run $runid, $concl) — NOT treating as red (likely concurrency-cancelled/skipped, not a real failure)"; return 2 ;;
+    *)
+      log "CI INDETERMINATE (run $runid, conclusion='${concl:-unknown}') — NOT treating as red"; return 2 ;;
+  esac
 }
 
 # --- Claude invocation with rate-limit detection ----------------------------
 # NB: the real Claude-CLI message is e.g. "You've hit your session limit · resets 2:30pm (Europe/London)"
 # — so match "session limit"/"hit your … limit" and a bare "resets" (no "at"), not just "usage limit".
 RL_RE='usage limit|session limit|hit your .*limit|rate.?limit|429|resets|try again later|overloaded|quota|insufficient.*credit|exceeded your'
+# Unambiguous "you have hit a usage/session limit" wording. Kept SEPARATE from (and tighter than) the
+# broad RL_RE so it can classify a limit EVEN when the CLI exits 0 — which it frequently does, because
+# the limit notice is a normal assistant message, not a process error. The tightness ensures ordinary
+# task output (e.g. a task literally about "usage quotas") on a SUCCESSFUL run is never misread as a
+# limit. This is the fix for the loop EXITING on a session limit instead of doing its reset-aware
+# backoff: run_claude used to require rc!=0 to detect a limit, so an exit-0 limit slipped through.
+RL_HARD_RE='hit your (session|usage|account|weekly|5.?hour) limit|(session|usage|weekly|account) limit reached|reached your (usage|session|weekly) limit'
 # run_claude <model> <effort> <prompt> → 0 ok | 10 rate-limited | other = failure
 run_claude() {
   local model="$1" effort="$2" pr="$3" out="$WORKLOG/.claude-out" rc
@@ -359,7 +385,12 @@ run_claude() {
   ( cd "$ROOT" && "$CLAUDE_BIN" -p "$pr" --model "$model" --effort "$effort" "${FLAGS[@]}" ) 2>&1 | tee "$out"
   rc=${PIPESTATUS[0]}
   set -e
-  if [ "$rc" -ne 0 ] && grep -qiE "$RL_RE" "$out"; then return 10; fi
+  # Limit detection (see RL_HARD_RE/RL_RE above). The HARD pattern signals a limit regardless of exit
+  # code (the CLI often prints the notice yet exits 0); the BROAD pattern only when the command ALSO
+  # failed. Either way we return 10 so the caller runs the reset-aware backoff — the loop NEVER exits
+  # on a usage limit.
+  if grep -qiE "$RL_HARD_RE" "$out"; then log "run_claude: usage/session-limit notice detected (claude rc=$rc) → signalling backoff (10)"; return 10; fi
+  if [ "$rc" -ne 0 ] && grep -qiE "$RL_RE" "$out"; then log "run_claude: claude rc=$rc + rate-limit-ish output → signalling backoff (10)"; return 10; fi
   return "$rc"
 }
 
@@ -581,7 +612,14 @@ CHANGED
   fi
   if [ -n "$LOCAL_DOD" ]; then
     log "structural: running LOCAL_DOD → $LOCAL_DOD"
-    if ! ( cd "$ROOT" && eval "$LOCAL_DOD" ) >/dev/null 2>&1; then STRUCT_FAIL_KIND="local-dod"; STRUCT_FAIL_DETAIL="$LOCAL_DOD"; log "structural: LOCAL_DOD failed for $id — fail"; return 1; fi
+    # Capture the output (don't discard it): on failure the loop must say WHY, not just "it failed".
+    # .local-dod.log is gitignored (*.log) so it never dirties the tree and survives `git clean -fd`.
+    if ! ( cd "$ROOT" && eval "$LOCAL_DOD" ) >"$WORKLOG/.local-dod.log" 2>&1; then
+      STRUCT_FAIL_KIND="local-dod"; STRUCT_FAIL_DETAIL="$LOCAL_DOD"
+      log "structural: LOCAL_DOD FAILED for $id — full output → $WORKLOG/.local-dod.log ; last 30 lines:"
+      tail -n 30 "$WORKLOG/.local-dod.log" | sed 's/^/    │ /' >&2
+      return 1
+    fi
   fi
   return 0
 }
@@ -698,8 +736,24 @@ trap 'release_lock' EXIT INT TERM
 # every attempt, which DISCARDS any uncommitted work in this checkout. If the tree is dirty at
 # startup, that's external work the loop must NOT destroy — refuse to run (commit/stash first).
 if [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then
-  log "REFUSING TO RUN: '$ROOT' has uncommitted changes. The in-place loop cold-resets (git reset --hard) and would discard them. Commit or stash first."
-  exit 3
+  if [ "${LOOP_AUTORESET:-0}" = 1 ]; then
+    # This checkout is OWNED by the loop. A dirty tree at startup is almost always ORPHANED partial
+    # work from a previous attempt killed mid-build (e.g. a usage-limit interrupt) — NOT human work —
+    # and left unhandled it BLOCKS every future unattended cycle (the loop refuses, supervise then
+    # parks a whole window for nothing). So (recoverably) STASH it with a timestamped label, then
+    # hard-reset to the remote tip, so the loop can always start. Recover with `git stash list`.
+    _stash="loop-autoreset-$(date '+%Y%m%d-%H%M%S')"
+    log "DIRTY TREE at startup + LOOP_AUTORESET=1 → stashing as '$_stash' (recoverable via: git -C '$ROOT' stash list), then hard-reset to origin/$MAIN_BRANCH."
+    git -C "$ROOT" stash push --include-untracked -m "$_stash" >/dev/null 2>&1 \
+      || log "WARN: git stash failed — proceeding to hard reset (orphaned work may be unrecoverable)."
+    git -C "$ROOT" fetch origin --quiet 2>/dev/null || true
+    git -C "$ROOT" reset --hard "origin/$MAIN_BRANCH" >/dev/null 2>&1 || true
+    git -C "$ROOT" clean -fd >/dev/null 2>&1 || true
+    log "tree reset to origin/$MAIN_BRANCH (orphaned work, if any, saved in stash '$_stash')."
+  else
+    log "REFUSING TO RUN: '$ROOT' has uncommitted changes. The in-place loop cold-resets (git reset --hard) and would discard them. Commit or stash first, or set LOOP_AUTORESET=1 to auto-stash+reset."
+    exit 3
+  fi
 fi
 
 cur_task=""; cur_attempts=0; cur_rung=0; cur_base=0; cur_verification="ci-only"
@@ -818,11 +872,12 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
         bump "$task" "push-fail" "remote moved / network"; board; continue
       fi
       if [ "$REQUIRE_CI" = "1" ]; then
-        if wait_ci_green; then
+        set +e; wait_ci_green; ci_rc=$?; set -e
+        if [ "$ci_rc" = 0 ]; then
           mark_done "$task"; run_integrate_hook; log "integrated $task → $MAIN_BRANCH (CI green)"; cur_task=""; cur_attempts=0; cur_rung=0; cur_base=0
-        else
-          # NEVER halt the whole loop on one red CI: revert the pushed commit to restore main, then
-          # soft-retry. If it keeps failing, bump eventually BLOCKS it and the loop moves on.
+        elif [ "$ci_rc" = 1 ]; then
+          # CI genuinely RED. NEVER halt the whole loop on one red CI: revert the pushed commit to
+          # restore main, then soft-retry. If it keeps failing, bump eventually BLOCKS it and moves on.
           log "CI RED for $task — reverting the pushed commit to restore $MAIN_BRANCH, then retrying."
           if git -C "$ROOT" revert --no-edit HEAD 2>/dev/null && git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null; then
             log "reverted $task; $MAIN_BRANCH is clean again."
@@ -830,6 +885,13 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
             log "WARN: auto-revert/push failed — main may need a manual: git revert HEAD && git push"
           fi
           bump "$task" "ci-red" "CI checks failed on the pushed commit"
+        else
+          # INDETERMINATE (cancelled/skipped/no-run/timeout) — CI did NOT fail. Do NOT revert good work:
+          # the old code conflated this with red and reverted, discarding passing builds when a newer
+          # push concurrency-cancelled this run. Leave the commit on $MAIN_BRANCH; soft-retry WITHOUT
+          # reverting and WITHOUT marking done (unverified). A later cycle re-checks CI.
+          log "CI INDETERMINATE for $task (rc=$ci_rc) — leaving commit on $MAIN_BRANCH (NOT reverting, NOT marking done); will reconcile on a later cycle."
+          bump "$task" "ci-indeterminate" "CI produced no definitive result (cancelled/skipped/no-run)"
         fi
       else
         mark_done "$task"; run_integrate_hook; log "marked $task done (REQUIRE_CI=0; local DoD only)"; cur_task=""; cur_attempts=0; cur_rung=0; cur_base=0

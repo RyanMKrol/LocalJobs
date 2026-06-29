@@ -34,7 +34,8 @@ while :; do
   echo "======================================================================"
   echo "[supervise $(stamp)] cycle ${cycle}: launching loop.sh"
   echo "======================================================================"
-  "$LOOP" || echo "[supervise $(stamp)] loop exited non-zero — continuing"
+  "$LOOP"; loop_rc=$?
+  [ "$loop_rc" -ne 0 ] && echo "[supervise $(stamp)] loop exited non-zero (rc=${loop_rc})"
 
   if [ "$MAX_CYCLES" -gt 0 ] && [ "$cycle" -ge "$MAX_CYCLES" ]; then
     echo "[supervise $(stamp)] reached max cycles (${MAX_CYCLES}); exiting."
@@ -42,8 +43,22 @@ while :; do
   fi
 
   elapsed=$(( $(date +%s) - start ))
-  remain=$(( INTERVAL - elapsed ))
   printf '\a'   # terminal bell: cycle finished, loop idle
+  if [ "$loop_rc" -ne 0 ]; then
+    # Abnormal / early exit (crash, dirty-tree refusal, etc.). The loop now OWNS its usage-limit waits
+    # (it sleeps to the reset INTERNALLY and keeps working), so a non-zero exit is NOT "quota window
+    # exhausted" — don't park the whole INTERVAL. Short backoff, then relaunch. (Previously supervise
+    # parked the full 5h15m from cycle start regardless, wasting hours after an early exit.)
+    short="${SUPERVISE_ERROR_BACKOFF:-300}"
+    echo "══════════════════════════════════════════════════════════════════════"
+    echo "🔔 [supervise $(stamp)] cycle ${cycle} exited abnormally (rc=${loop_rc}, ran ${elapsed}s)."
+    echo "   Short backoff ${short}s, then relaunch — NOT the full ${INTERVAL}s window."
+    echo "   ✅ SAFE TO Ctrl-C NOW — nothing is running."
+    echo "══════════════════════════════════════════════════════════════════════"
+    sleep "$short"
+    continue
+  fi
+  remain=$(( INTERVAL - elapsed ))
   if [ "$remain" -gt 0 ]; then
     next=$(date -v+"${remain}"S '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "in ${remain}s")
     echo "══════════════════════════════════════════════════════════════════════"
