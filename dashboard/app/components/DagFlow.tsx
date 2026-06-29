@@ -331,6 +331,10 @@ export function DagFlow({
   const waveNodes: string[][] = Array.from({ length: numWaves }, () => []);
   for (const m of members) waveNodes[layerOf.get(m.job_name) ?? 0].push(m.job_name);
   const maxStagesInWave = Math.max(1, ...waveNodes.map((w) => w.length));
+  // Increased from 0.15 → 0.25 so React Flow's fitView adds equal breathing room on all four sides.
+  // At 0.15 the top/bottom margins were visibly unequal (flush top, sliver bottom) due to how
+  // fitView scales the bounding box — a larger padding value zooms out more and symmetrises the gap.
+  const FLOW_PADDING = 0.25;
   const graphH = Math.max(180, maxStagesInWave * (NODE_H + NODE_SEP) + 80);
 
   // Container height scales with the graph's natural height (tallest wave) so a busy workflow like
@@ -344,7 +348,7 @@ export function DagFlow({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.15 }}
+        fitViewOptions={{ padding: FLOW_PADDING }}
         zoomOnScroll={false}
         zoomOnPinch={false}
         zoomOnDoubleClick={false}
