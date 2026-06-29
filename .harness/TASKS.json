@@ -6118,7 +6118,7 @@
     {
       "id": "T232",
       "title": "Sort the Backlog done list by reviewed-status then ascending task id",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
