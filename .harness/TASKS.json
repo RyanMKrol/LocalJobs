@@ -6143,7 +6143,7 @@
     {
       "id": "T233",
       "title": "Split Backlog buildable into Ready / Waiting-on-deps with dependency pills",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
