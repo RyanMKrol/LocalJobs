@@ -182,6 +182,10 @@ gitignored). Private workflows live in gitignored subfolders.
 - **workouts-sync** — Daily Hevy workout ingestion: paginate the Hevy API → write
   each workout + its exercises to the existing DynamoDB tables; idempotent per
   workout id (new workouts synced, already-synced ids skipped). Runs daily at 06:00.
+- **listens-sync** — Every-4-hours Last.fm scrobble ingestion: fetch recent scrobbles
+  via `user.getRecentTracks` (5-hour lookback window) → optionally enrich album art
+  via Spotify → write each scrobble to the DynamoDB listens table; idempotent per
+  (trackId, scrobbledAt) via the work_items ledger. Runs every 4 hours.
 
 ## Dashboard pages
 
