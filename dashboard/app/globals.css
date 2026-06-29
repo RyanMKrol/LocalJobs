@@ -94,6 +94,10 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel-2); }
 
+/* Last-run cell: status pill on first line, relative time on second */
+.last-run-cell { display: inline-flex; flex-direction: column; gap: 3px; }
+.last-run-time { font-size: 11px; }
+
 .badge {
   display: inline-block; padding: 2px 9px; border-radius: 999px;
   font-size: 12px; font-weight: 600; border: 1px solid transparent;

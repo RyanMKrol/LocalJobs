@@ -77,7 +77,7 @@ export default function Workflows() {
                 </td>
                 <td>
                   {p.last_run
-                    ? <span style={{ whiteSpace: 'nowrap' }}><a href={`/workflow-runs/${p.last_run.id}`} className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</a> <span className="muted">{fmtRelative(p.last_run.started_at)}</span></span>
+                    ? <span className="last-run-cell"><a href={`/workflow-runs/${p.last_run.id}`} className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</a><span className="muted last-run-time">{fmtRelative(p.last_run.started_at)}</span></span>
                     : <span className="muted">never</span>}
                 </td>
                 <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
