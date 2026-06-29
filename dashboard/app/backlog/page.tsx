@@ -260,7 +260,7 @@ export default function Backlog() {
 
         <details style={{ marginTop: 28 }}>
           <summary className="section-heading-summary muted">
-            ✅ Done ({allDone.length})
+            ✅ Done ({allDone.length} · {reviewedCount} reviewed · {allDone.length - reviewedCount} not reviewed)
           </summary>
           <div className="review-filter-bar">
             <span className="caret-style-label">Show</span>
