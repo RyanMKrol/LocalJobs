@@ -115,9 +115,9 @@ export function backFrom(
 
 /**
  * Shared back link for pages that navigate up to a workflow run.
- * Renders "← {workflow} run · {shortId}" (full id in the title tooltip) when
- * both workflowRunId and workflowName are known; falls back to a plain link
- * (e.g. "← runs" or "← workflows") when there is no workflow-run context.
+ * Renders "← {workflowRunId}" (full id) when both workflowRunId and
+ * workflowName are known; falls back to a plain link (e.g. "← runs" or
+ * "← workflows") when there is no workflow-run context.
  */
 export function WorkflowRunBackLink({
   workflowRunId,
@@ -129,11 +129,10 @@ export function WorkflowRunBackLink({
   fallback?: { href: string; label: string };
 }) {
   if (workflowRunId && workflowName) {
-    const shortId = workflowRunId.split('-')[0];
     return (
       <p className="muted">
-        <a href={`/workflow-runs/${workflowRunId}`} title={workflowRunId}>
-          ← {shortId}
+        <a href={`/workflow-runs/${workflowRunId}`}>
+          ← {workflowRunId}
         </a>
       </p>
     );
