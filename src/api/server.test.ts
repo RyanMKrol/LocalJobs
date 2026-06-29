@@ -24,11 +24,13 @@ import {
   migrateReviewsOut,
   originAllowed,
   readHumanDone,
+  readManualFail,
   readReviews,
   readTaskSpec,
   readWorklogContent,
   safeOutputMarkdown,
   setHumanDoneEntry,
+  setManualFailEntry,
   setReviewEntries,
   setReviewEntry,
 } from './server.js';
@@ -990,6 +992,111 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
 
   rmSync(dir2, { recursive: true, force: true });
+}
+
+// ── manual-fail overlay — POST /api/backlog/:id/failed + GET overlay ──
+{
+  const dir3 = mkdtempSync(join(tmpdir(), 'localjobs-manualfail-'));
+  const backlogPath = join(dir3, 'TASKS.json');
+  const reviewsPath = join(dir3, 'reviews.json');
+  const humanDonePath = join(dir3, 'human-done.json');
+  const manualFailPath = join(dir3, 'manual-fail.json');
+  const noGit = async () => ({ committed: false, pushed: false });
+
+  const fixture = () =>
+    JSON.stringify(
+      {
+        version: 1,
+        tasks: [
+          { id: 'T20', title: 'Done task', status: 'done', gate: null },
+          { id: 'T21', title: 'Pending task', status: 'pending', gate: null },
+        ],
+      },
+      null,
+      2,
+    ) + '\n';
+
+  await test('setManualFailEntry: marks one id, preserves siblings; failed=false deletes', () => {
+    const out = setManualFailEntry('', 'T20', true, 'padlock never renders', '2026-06-29T00:00:00.000Z');
+    const map = JSON.parse(out) as Record<string, { failed: boolean; reason: string; at: string }>;
+    assert.deepEqual(Object.keys(map), ['T20']);
+    assert.equal(map.T20.failed, true);
+    assert.equal(map.T20.reason, 'padlock never renders');
+    const out2 = setManualFailEntry(out, 'T21', true, 'x', '2026-06-29T01:00:00.000Z');
+    assert.equal((JSON.parse(out2) as Record<string, unknown>).T20 !== undefined, true, 'sibling preserved');
+    const out3 = setManualFailEntry(out2, 'T20', false, '', ''); // undo
+    const map3 = JSON.parse(out3) as Record<string, unknown>;
+    assert.equal(map3.T20, undefined, 'failed=false removes the entry');
+    assert.ok(map3.T21, 'other id preserved on undo');
+  });
+
+  await test('readManualFail: absent file → {}, present reads correctly', () => {
+    assert.deepEqual(readManualFail(join(dir3, 'nope.json')), {});
+    writeFileSync(manualFailPath, JSON.stringify({ T20: { failed: true, reason: 'r', at: 'x' } }) + '\n');
+    assert.equal(readManualFail(manualFailPath).T20?.failed, true);
+    rmSync(manualFailPath, { force: true });
+  });
+
+  await test('POST /api/backlog/:id/failed: marks done task failed; GET overlays failed+reviewed=true', async () => {
+    writeFileSync(backlogPath, fixture());
+    rmSync(manualFailPath, { force: true });
+    await withServer({ backlogPath, reviewsPath, humanDonePath, manualFailPath, commitManualFail: noGit }, async (base) => {
+      const res = await fetch(`${base}/api/backlog/T20/failed`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'padlock never renders' }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; id: string; failed: boolean };
+      assert.equal(body.ok, true);
+      assert.equal(body.failed, true);
+
+      const onDisk = JSON.parse(readFileSync(manualFailPath, 'utf8')) as Record<string, { failed: boolean; reason: string }>;
+      assert.equal(onDisk.T20.failed, true);
+      assert.equal(onDisk.T20.reason, 'padlock never renders');
+
+      const get = await fetch(`${base}/api/backlog`);
+      const bl = (await get.json()) as { tasks: Array<{ id: string; failed?: boolean; failReason?: string; reviewed?: boolean }> };
+      const t20 = bl.tasks.find((t) => t.id === 'T20');
+      assert.equal(t20!.failed, true, 'failed overlaid');
+      assert.equal(t20!.failReason, 'padlock never renders', 'reason overlaid');
+      assert.equal(t20!.reviewed, true, 'failed implies reviewed');
+    });
+    rmSync(manualFailPath, { force: true });
+  });
+
+  await test('POST /api/backlog/:id/failed: { failed:false } undoes a prior mark', async () => {
+    writeFileSync(backlogPath, fixture());
+    writeFileSync(manualFailPath, JSON.stringify({ T20: { failed: true, reason: 'r', at: 'x' } }) + '\n');
+    await withServer({ backlogPath, reviewsPath, humanDonePath, manualFailPath, commitManualFail: noGit }, async (base) => {
+      const res = await fetch(`${base}/api/backlog/T20/failed`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ failed: false }),
+      });
+      assert.equal(res.status, 200);
+      const onDisk = JSON.parse(readFileSync(manualFailPath, 'utf8')) as Record<string, unknown>;
+      assert.equal(onDisk.T20, undefined, 'entry removed on undo');
+    });
+    rmSync(manualFailPath, { force: true });
+  });
+
+  await test('POST /api/backlog/:id/failed: 400 for pending task, missing reason, or bad id', async () => {
+    writeFileSync(backlogPath, fixture());
+    rmSync(manualFailPath, { force: true });
+    await withServer({ backlogPath, reviewsPath, humanDonePath, manualFailPath, commitManualFail: noGit }, async (base) => {
+      const rPending = await fetch(`${base}/api/backlog/T21/failed`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'x' }),
+      });
+      assert.equal(rPending.status, 400, 'pending (not done) task rejected');
+      const rNoReason = await fetch(`${base}/api/backlog/T20/failed`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      assert.equal(rNoReason.status, 400, 'missing reason rejected');
+      const rBad = await fetch(`${base}/api/backlog/__bad__/failed`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'x' }),
+      });
+      assert.equal(rBad.status, 400, 'invalid id rejected');
+    });
+  });
+
+  rmSync(dir3, { recursive: true, force: true });
 }
 
 // ── T131: per-task Markdown spec — readTaskSpec + GET inlines specContent + loop prompt ──

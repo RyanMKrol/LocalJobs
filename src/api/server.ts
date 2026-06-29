@@ -98,6 +98,15 @@ const REVIEWS_PATH = fileURLToPath(new URL('../../.harness/reviews.json', import
 // writes it AND commits+pushes under the SAME lock. Marking done implies reviewed.
 const HUMAN_DONE_PATH = fileURLToPath(new URL('../../.harness/human-done.json', import.meta.url));
 
+// The owner-owned manual-fail store (manual-fail-signal). `failed` records that the
+// owner judged a DONE task to have actually failed. The file is a committed JSON map
+// `id → { failed: true, reason, at: ISO-8601 }`. `POST /api/backlog/:id/failed`
+// atomically writes it AND commits+pushes under the SAME lock. The loop NEVER writes
+// it; it only READS it to correct calibration (re-count the task as a failure for tier
+// tuning + drop it from the cell's audited-success count). Disjoint git path, so it
+// never conflicts with the loop. Marking failed implies reviewed (the owner looked).
+const MANUAL_FAIL_PATH = fileURLToPath(new URL('../../.harness/manual-fail.json', import.meta.url));
+
 /** Default the reviews-store path to sit beside a given backlog file. */
 function reviewsPathFor(backlogPath: string): string {
   return joinPath(dirname(backlogPath), 'reviews.json');
@@ -106,6 +115,11 @@ function reviewsPathFor(backlogPath: string): string {
 /** Default the human-done-store path to sit beside a given backlog file. */
 function humanDonePathFor(backlogPath: string): string {
   return joinPath(dirname(backlogPath), 'human-done.json');
+}
+
+/** Default the manual-fail-store path to sit beside a given backlog file. */
+function manualFailPathFor(backlogPath: string): string {
+  return joinPath(dirname(backlogPath), 'manual-fail.json');
 }
 
 /**
@@ -210,6 +224,62 @@ function writeHumanDoneEntry(path: string, id: string, at: string): void {
   renameSync(tmp, path); // atomic replace
 }
 
+export interface ManualFailEntry {
+  failed: boolean;
+  reason?: string;
+  at?: string;
+}
+
+/**
+ * Read the manual-fail store (`id → { failed, reason, at }`). Returns `{}` when the
+ * file is absent, empty, or unparseable. Exported for unit testing.
+ */
+export function readManualFail(path: string = MANUAL_FAIL_PATH): Record<string, ManualFailEntry> {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, ManualFailEntry>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Pure, field-scoped edit of the manual-fail-store TEXT: parse `raw` (may be empty →
+ * treated as `{}`); when `failed` is true set ONLY this id to `{ failed: true, reason, at }`,
+ * when false DELETE this id (undo). Every other id is preserved. Exported for unit testing.
+ */
+export function setManualFailEntry(raw: string, id: string, failed: boolean, reason: string, at: string): string {
+  let map: Record<string, ManualFailEntry> = {};
+  if (raw.trim()) {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed as Record<string, ManualFailEntry>;
+  }
+  if (failed) map[id] = { failed: true, reason, at };
+  else delete map[id];
+  return `${JSON.stringify(map, null, 2)}\n`;
+}
+
+/**
+ * Atomically persist a single id's manual-fail entry (or remove it when failed=false).
+ * Reads the current file (absent → `{}`), applies the field-scoped edit, validates,
+ * then temp-file + rename.
+ */
+function writeManualFailEntry(path: string, id: string, failed: boolean, reason: string, at: string): void {
+  let raw = '';
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    raw = '';
+  }
+  const updated = setManualFailEntry(raw, id, failed, reason, at);
+  JSON.parse(updated); // validate before we touch disk
+  const tmp = `${path}.tmp-${process.pid}`;
+  writeFileSync(tmp, updated);
+  renameSync(tmp, path); // atomic replace
+}
+
 /**
  * Read the reviews store (`id → { reviewed, at }`). Returns `{}` when the file is
  * absent, empty, or unparseable — so a fresh repo (no reviews yet) reads cleanly.
@@ -237,11 +307,13 @@ function readBacklog(
   path: string = BACKLOG_PATH,
   reviewsPath: string = reviewsPathFor(path),
   humanDonePath: string = humanDonePathFor(path),
+  manualFailPath: string = manualFailPathFor(path),
 ): { tasks: unknown[]; error?: string } {
   try {
     const baseDir = dirname(path);
     const reviews = readReviews(reviewsPath);
     const humanDone = readHumanDone(humanDonePath);
+    const manualFail = readManualFail(manualFailPath);
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as { tasks?: unknown[] };
     const tasks = Array.isArray(parsed.tasks)
       ? parsed.tasks.map((t) => {
@@ -250,8 +322,18 @@ function readBacklog(
           const specContent = readTaskSpec(task.spec, baseDir);
           const worklogContent = readWorklogContent(task.id, baseDir);
           const isDone = typeof task.id === 'string' ? humanDone[task.id]?.done === true : false;
-          const reviewed = isDone || (typeof task.id === 'string' ? reviews[task.id]?.reviewed === true : false);
-          return { ...(t as object), reviewed, ...(isDone ? { done: true } : {}), ...(specContent !== null ? { specContent } : {}), ...(worklogContent !== null ? { worklogContent } : {}) };
+          const failEntry = typeof task.id === 'string' ? manualFail[task.id] : undefined;
+          const failed = failEntry?.failed === true;
+          // A manually-failed task counts as reviewed (the owner looked to fail it), like done.
+          const reviewed = isDone || failed || (typeof task.id === 'string' ? reviews[task.id]?.reviewed === true : false);
+          return {
+            ...(t as object),
+            reviewed,
+            ...(isDone ? { done: true } : {}),
+            ...(failed ? { failed: true, ...(failEntry?.reason ? { failReason: failEntry.reason } : {}) } : {}),
+            ...(specContent !== null ? { specContent } : {}),
+            ...(worklogContent !== null ? { worklogContent } : {}),
+          };
         })
       : [];
     return { tasks };
@@ -507,6 +589,26 @@ async function defaultCommitHumanDone(humanDonePath: string, id: string): Promis
       id,
       reviewed: true,
       commitMessage: `human-done: ${id} done [skip ci]`,
+    });
+  } catch (e) {
+    return { committed: false, pushed: false, warning: e instanceof Error ? e.message : 'commit failed' };
+  }
+}
+
+async function defaultCommitManualFail(manualFailPath: string, id: string, failed: boolean): Promise<CommitReviewsResult> {
+  let repoRoot: string;
+  try {
+    repoRoot = resolveRepoPaths(dirname(manualFailPath)).root;
+  } catch {
+    return { committed: false, pushed: false, warning: 'not a git repo — wrote locally only' };
+  }
+  try {
+    return await commitReviewsFile({
+      repoRoot,
+      reviewsAbsPath: manualFailPath,
+      id,
+      reviewed: failed,
+      commitMessage: failed ? `manual-fail: ${id} [skip ci]` : `manual-fail: clear ${id} [skip ci]`,
     });
   } catch (e) {
     return { committed: false, pushed: false, warning: e instanceof Error ? e.message : 'commit failed' };
@@ -785,20 +887,24 @@ export function createApiServer(
     backlogPath?: string;
     reviewsPath?: string;
     humanDonePath?: string;
+    manualFailPath?: string;
     // Injectable for tests: commit+push the reviews file. Defaults to the real git
     // path (resolves the repo from the reviews dir; no-ops outside a git repo).
     commitReviews?: (reviewsPath: string, id: string, reviewed: boolean) => Promise<CommitReviewsResult>;
     commitReviewsBulk?: (reviewsPath: string, ids: string[]) => Promise<CommitReviewsResult>;
     commitHumanDone?: (humanDonePath: string, id: string) => Promise<CommitReviewsResult>;
+    commitManualFail?: (manualFailPath: string, id: string, failed: boolean) => Promise<CommitReviewsResult>;
   } = {},
 ) {
   const isLoopback = opts.isLoopback ?? isLoopbackAddress;
   const backlogPath = opts.backlogPath ?? BACKLOG_PATH;
   const reviewsPath = opts.reviewsPath ?? reviewsPathFor(backlogPath);
   const humanDonePath = opts.humanDonePath ?? humanDonePathFor(backlogPath);
+  const manualFailPath = opts.manualFailPath ?? manualFailPathFor(backlogPath);
   const commitReviews = opts.commitReviews ?? defaultCommitReviews;
   const commitReviewsBulk = opts.commitReviewsBulk ?? defaultCommitReviewsBulk;
   const commitHumanDone = opts.commitHumanDone ?? defaultCommitHumanDone;
+  const commitManualFail = opts.commitManualFail ?? defaultCommitManualFail;
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${config.apiPort}`);
     const parts = url.pathname.split('/').filter(Boolean); // e.g. ['api','jobs','demo','runs']
@@ -1591,7 +1697,7 @@ export function createApiServer(
       // (.harness/reviews.json, T136) and human-done store (.harness/human-done.json,
       // T208). A human-done task shows done=true and reviewed=true (done implies reviewed).
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'backlog' && parts.length === 2) {
-        return json(res, 200, readBacklog(backlogPath, reviewsPath, humanDonePath));
+        return json(res, 200, readBacklog(backlogPath, reviewsPath, humanDonePath, manualFailPath));
       }
 
       // POST /api/backlog/:id/reviewed  { reviewed: bool } — the ONE dashboard→harness
@@ -1641,6 +1747,41 @@ export function createApiServer(
           ok: true,
           id,
           done: true,
+          committed: result.committed,
+          pushed: result.pushed,
+          ...(result.warning ? { warning: result.warning } : {}),
+        });
+      }
+
+      // POST /api/backlog/:id/failed  { failed?: boolean, reason?: string } — the owner's
+      // "this DONE task actually failed" correction (manual-fail-signal). Writes the
+      // owner-owned manual-fail.json overlay and commits+pushes under the repo lock. The
+      // loop reads it to re-count the task as a failure for tier tuning + drop it from its
+      // cell's audited-success count (so that category is built stronger + audited more).
+      // `failed` defaults to true; `{ failed: false }` UNDOES a prior mark. A mark (not undo)
+      // requires the task to be status 'done' (you're overturning a recorded success) and a
+      // non-empty reason. Marking failed implies reviewed. Does NOT change task status.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'backlog' && parts[3] === 'failed' && parts.length === 4) {
+        const id = decodeURIComponent(parts[2]);
+        if (!/^T\d+$/.test(id)) return json(res, 400, { error: 'invalid task id' });
+        const body = await readBody(req);
+        const failed = body.failed === undefined ? true : body.failed === true;
+        const reason = typeof body.reason === 'string' ? body.reason : '';
+        if (failed) {
+          const backlog = readBacklog(backlogPath, reviewsPath, humanDonePath, manualFailPath);
+          const task = (backlog.tasks as Array<{ id?: string; status?: string }>).find((t) => t.id === id);
+          if (!task) return json(res, 400, { error: `task ${id} not found in backlog` });
+          if (task.status !== 'done') return json(res, 400, { error: `task ${id} is '${task.status}', not 'done' — manual-fail overturns a recorded success` });
+          if (!reason.trim()) return json(res, 400, { error: 'reason (a non-empty string) is required when marking failed' });
+        }
+        const result = await serializeReview(async () => {
+          writeManualFailEntry(manualFailPath, id, failed, reason, new Date().toISOString());
+          return commitManualFail(manualFailPath, id, failed);
+        });
+        return json(res, 200, {
+          ok: true,
+          id,
+          failed,
           committed: result.committed,
           pushed: result.pushed,
           ...(result.warning ? { warning: result.warning } : {}),
