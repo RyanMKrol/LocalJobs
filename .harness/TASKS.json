@@ -6582,7 +6582,7 @@
     {
       "id": "T250",
       "title": "Workflow graph: symmetric vertical padding in the container",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
