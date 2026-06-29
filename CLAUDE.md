@@ -97,6 +97,15 @@ workout id via the `work_items` ledger (new workouts are synced, already-synced 
 Runs daily. No static input list — inputs are discovered live from Hevy each run (like the plex
 audit workflows). Rate-limited via `src/services/hevy.service.ts`. Credentials: `HEVY_API_KEY`,
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `WORKOUTS_TABLE`, `EXERCISES_TABLE`.
+and **listens-sync** (`src/jobs/listens-sync/`) — fetch recent Last.fm scrobbles via
+`user.getRecentTracks` and write each to the new DynamoDB `LISTENS_TABLE` (PK: `trackId` (S),
+SK: `scrobbledAt` (N, epoch seconds)); optional Spotify album-art enrichment (Client Credentials
+flow → search → largest album image URL); idempotent per (trackId, scrobbledAt) pair via the
+`work_items` ledger. Runs daily at 07:00. No static input list — scrobbles are discovered live
+from Last.fm each run. Rate-limited via `src/services/lastfm.service.ts` and
+`src/services/spotify.service.ts`. Credentials: `LAST_FM_API_KEY`, `LAST_FM_USERNAME` (required);
+`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` (optional — enrichment skipped when unset);
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `LISTENS_TABLE`.
 Private workflows are added as gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
@@ -276,7 +285,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
 | `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/LIMITATIONS.md`.) |
-| `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
+| `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listens-sync/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
 | `src/jobs/tv-recs/` | TV show recommendations workflow. `tv-recs.workflow.ts` (monthly schedule, maxConcurrency 4); `config.ts` / `types.ts` / `lib.ts` / `recs.ts` (pure recommendation helpers); `stages/tv-snapshot.job.ts` + `tv-snapshot.ts` (Plex TV snapshot → `snapshot.json` + `taste-profile.json`); `stages/tv-rec-*.job.ts` (8 branch jobs); `stages/tv-rec-merge.job.ts` + `tv-rec-merge.ts` (TMDB-verify/dedupe/balance/top-up → `recommendations.json`); `stages/tv-recs-notify.job.ts` + `tv-recs-notify.ts` (monthly digest + report → `data/out/reports/tv-recommendations.md`). Reuses `src/jobs/plex/client.ts` for Plex connectivity. |
 | `src/jobs/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the job-folder root |
@@ -357,7 +366,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/jobs/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, and `workouts-sync/` subfolder workflows as
+> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, and `listens-sync/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
