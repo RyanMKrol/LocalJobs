@@ -6459,7 +6459,7 @@
     {
       "id": "T245",
       "title": "Workflows list: centre the Last-run column contents",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
