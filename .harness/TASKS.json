@@ -6651,7 +6651,7 @@
     {
       "id": "T253",
       "title": "workouts-sync workflow: Hevy -> DynamoDB (tracked, idempotent)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T251",
         "T252"
