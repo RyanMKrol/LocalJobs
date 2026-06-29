@@ -6792,6 +6792,92 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T257.md"
+    },
+    {
+      "id": "T258",
+      "title": "Plumb skipped/no-op outcome: stop reporting success when a run does no work (follow-up to T225)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "work-items",
+        "bugfix",
+        "skipped"
+      ],
+      "facets": {
+        "layer": "db",
+        "workType": "bugfix",
+        "risk": [
+          "touches-executor",
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/db/store.ts",
+        "src/core/workflow-executor.ts",
+        "src/jobs/places/stages/",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T258.md"
+    },
+    {
+      "id": "T259",
+      "title": "Graph padding: evenly inset the React Flow box inside the OUTER panel (follow-up to T250)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "dagflow"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T259.md"
+    },
+    {
+      "id": "T260",
+      "title": "Service Consumers modal: use the theme font, not the code font (follow-up to T238)",
+      "status": "pending",
+      "dependsOn": [
+        "T244"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "services"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T260.md"
     }
   ]
 }
