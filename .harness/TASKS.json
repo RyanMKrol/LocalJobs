@@ -6409,7 +6409,7 @@
     {
       "id": "T243",
       "title": "Show reviewed vs not-reviewed count in the Backlog done header",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
