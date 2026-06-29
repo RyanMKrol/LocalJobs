@@ -28,6 +28,7 @@ function CollapsibleRow({
   checked,
   onCheck,
   onMarkDone,
+  onMarkFailed,
   unmetDeps,
 }: {
   t: BacklogTask;
@@ -35,15 +36,18 @@ function CollapsibleRow({
   checked?: boolean;
   onCheck?: (id: string, val: boolean) => void;
   onMarkDone?: (id: string) => void;
+  onMarkFailed?: (id: string) => void;
   unmetDeps?: string[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
+  const [markingFailed, setMarkingFailed] = useState(false);
   const human = t.gate === 'needs-human' || t.gate === 'gate';
   const buildable = t.status !== 'done' && !human;
   const isDone = t.status === 'done' || t.done === true;
   const reviewed = t.reviewed === true;
   const isHumanDone = t.done === true;
+  const isFailed = t.failed === true;
 
   return (
     <div>
@@ -104,7 +108,47 @@ function CollapsibleRow({
             <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`} style={{ flexShrink: 0 }}>
               {reviewed ? '👁 reviewed' : 'not reviewed'}
             </span>
-            <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
+            {isFailed ? (
+              <span className="pill failed" style={{ flexShrink: 0 }} title={t.failReason ?? undefined}>✗ failed</span>
+            ) : (
+              <span className="pill done" style={{ flexShrink: 0 }}>✓ done</span>
+            )}
+            {onMarkFailed && !isFailed && (
+              <button
+                type="button"
+                className="review-toggle"
+                disabled={markingFailed}
+                style={{ flexShrink: 0 }}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const reason = window.prompt(`Mark ${t.id} as FAILED — what was actually wrong?\n\n(This overturns the recorded success: future tasks of this kind get built with a stronger model and audited more often. It does NOT re-open the task.)`);
+                  if (reason === null || !reason.trim()) return; // cancelled / empty → abort
+                  setMarkingFailed(true);
+                  try { await api.markBacklogFailed(t.id, true, reason.trim()); } catch { /* ignore — next poll reflects state */ }
+                  setMarkingFailed(false);
+                  onMarkFailed(t.id);
+                }}
+              >
+                {markingFailed ? 'Saving…' : 'Mark failed'}
+              </button>
+            )}
+            {onMarkFailed && isFailed && (
+              <button
+                type="button"
+                className="review-toggle"
+                disabled={markingFailed}
+                style={{ flexShrink: 0 }}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setMarkingFailed(true);
+                  try { await api.markBacklogFailed(t.id, false); } catch { /* ignore */ }
+                  setMarkingFailed(false);
+                  onMarkFailed(t.id);
+                }}
+              >
+                {markingFailed ? 'Saving…' : 'Undo fail'}
+              </button>
+            )}
           </>
         )}
       </div>
@@ -308,6 +352,7 @@ export default function Backlog() {
                 selectable
                 checked={selected.has(t.id)}
                 onCheck={toggleOne}
+                onMarkFailed={refresh}
               />
             ))}
           </div>

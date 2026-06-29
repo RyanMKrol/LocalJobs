@@ -121,6 +121,12 @@ const tasks = [
     effort: 'high', do: 'Make the dashboard responsive on mobile. ' + LONG, doneWhen: 'It passes. ' + LONG },
   { id: 'T099', title: 'A human-gated task', status: 'pending', gate: 'needs-human', dependsOn: [],
     tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
+  // A done task (exercises the "Mark failed" button) and a done task already marked
+  // failed (exercises the red "failed" pill + "Undo fail" button) — manual-fail-signal.
+  { id: 'T050', title: 'A finished task — ' + LONG, status: 'done', gate: null, dependsOn: [],
+    tags: ['ui'], reviewed: true },
+  { id: 'T051', title: 'A finished task the owner marked failed', status: 'done', gate: null,
+    dependsOn: [], tags: ['ui'], reviewed: true, failed: true, failReason: 'padlock never renders on the DAG' },
 ];
 
 // Map an /api/* pathname to a fixture body.

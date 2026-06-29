@@ -260,6 +260,8 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 /* Human-review flag (T124): a green "reviewed" vs a muted "not reviewed" pill. */
 .pill.reviewed { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.unreviewed { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
+/* Manual-fail flag (manual-fail-signal): a red "failed" pill overriding the green done pill. */
+.pill.failed { color: var(--red); background: color-mix(in srgb,var(--red) 12%,transparent); border-color: color-mix(in srgb,var(--red) 35%,transparent); }
 /* Backlog task rows: separator between rows, but not below the last row (avoids a
    double-border / extra-gap at the panel bottom that looks thicker than inter-row spacing). */
 .done-row { border-bottom: 1px solid var(--border); }

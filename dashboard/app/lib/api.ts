@@ -286,6 +286,11 @@ export interface BacklogTask {
   // Human-done flag (T208): set when the owner marks a needs-human task done.
   // Implies reviewed=true. Only present (true) when the task is human-done.
   done?: boolean;
+  // Manual-fail flag (manual-fail-signal): set when the owner overturns a recorded
+  // success — the task was marked done but actually failed. Implies reviewed=true.
+  // Only present (true) when failed; `failReason` is the owner's note.
+  failed?: boolean;
+  failReason?: string;
 }
 
 /** One complete-missing TV season (plex workflow), overlaid with ledger status. */
@@ -544,6 +549,13 @@ export const api = {
     post<{ ok: boolean; id: string; done: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
       `/api/backlog/${encodeURIComponent(id)}/done`,
       {},
+    ),
+  // Mark a DONE task as failed (the owner's "this wasn't actually done" correction —
+  // manual-fail-signal). `reason` is required when failing; pass failed=false to undo.
+  markBacklogFailed: (id: string, failed: boolean, reason?: string) =>
+    post<{ ok: boolean; id: string; failed: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
+      `/api/backlog/${encodeURIComponent(id)}/failed`,
+      failed ? { failed: true, reason: reason ?? '' } : { failed: false },
     ),
 
 };
