@@ -157,7 +157,7 @@ export default function Backlog() {
 
   const tasks = data?.tasks ?? [];
   const taskNum = (id: string) => parseInt(id.replace(/^T/, ''), 10) || 0;
-  const allDone = tasks.filter((t) => t.status === 'done').sort((a, b) => {
+  const allDone = tasks.filter((t) => t.status === 'done' || t.done === true).sort((a, b) => {
     const aRev = a.reviewed === true ? 1 : 0;
     const bRev = b.reviewed === true ? 1 : 0;
     if (aRev !== bRev) return aRev - bRev;
@@ -173,7 +173,7 @@ export default function Backlog() {
   // Split buildable into ready (all deps done) and waiting (≥1 dep not done).
   const ready = buildable.filter((t) => (t.dependsOn ?? []).every((dep) => doneIds.has(dep)));
   const waiting = buildable.filter((t) => (t.dependsOn ?? []).some((dep) => !doneIds.has(dep)));
-  const human = tasks.filter((t) => t.status !== 'done' && t.gate != null);
+  const human = tasks.filter((t) => t.status !== 'done' && t.done !== true && t.gate != null);
 
   // Unreviewed tasks currently visible in the done section (checkable).
   const unreviewedVisible = done.filter((t) => t.reviewed !== true);
