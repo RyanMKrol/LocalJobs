@@ -63,7 +63,8 @@ const stuckItem = (over) => ({
 const workflow = (over) => ({
   name: 'places', description: 'A worked-example workflow: ' + LONG, schedule: '0 3 * * 1-5',
   enabled: 1, created_at: NOW, last_run: workflowRun(), next_run: NOW, jobs: members,
-  stuck: 2, runs: [workflowRun(), workflowRun({ id: '2', status: 'partial' })], ...over,
+  stuck: 2, runs: [workflowRun(), workflowRun({ id: '2', status: 'partial' })],
+  gates: structuralGates, ...over,
 });
 
 const service = (over) => ({
@@ -85,6 +86,13 @@ const logs = [
   { id: 3, ts: NOW, level: 'error', message: LONG_ERR },
 ];
 
+// Structural gates (no state — displayed as muted-grey padlocks on the definition-view DAG).
+const structuralGates = [
+  { key: 'resolved.json', producer: 'places-resolve', consumer: 'places-enrich', description: 'produces — resolved.json is a non-empty array of place_ids · consumes — every row has a place_id' },
+  { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', description: 'produces — enriched.json has name + address fields' },
+];
+
+// Run-scoped gates (with state — colour-coded in the run-view DAG).
 const gates = [
   { key: 'resolved.json', producer: 'places-resolve', consumer: 'places-enrich', state: 'passed', description: 'produces — resolved.json is a non-empty array of place_ids · consumes — every row has a place_id' },
   { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', state: 'failed', failureRunId: '1', description: 'produces — enriched.json has name + address fields' },

@@ -217,6 +217,10 @@ a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent
 .dag-flow-wrap .react-flow__controls-button:hover { background: var(--panel-2); }
 .dag-flow-wrap .react-flow__edge-path { stroke: var(--grey); }
 .dag-flow-wrap .react-flow__node { padding: 0; border: none; background: transparent; box-shadow: none; }
+/* EdgeLabelRenderer portal — fill the canvas and clip overflow so the mobile check doesn't flag the
+   0×0 overflow-visible container as boundary-crossing. React Flow sets width:0;height:0 so !important
+   is needed; the wrapper's overflow:hidden remains the outer visual clip. */
+.dag-flow-wrap .react-flow__edgelabel-renderer { inset: 0 !important; overflow: hidden; }
 /* Wave group background panel */
 .rf-wave-group { width: 100%; height: 100%; border-radius: 10px; background: rgba(88,166,255,.05); border: 1px dashed rgba(88,166,255,.2); position: relative; }
 .rf-wave-group-label { position: absolute; top: 6px; left: 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); opacity: .7; }

@@ -12,20 +12,25 @@
  *  - Dagre ranks nodes by wave; parallel stages in the same rank are stacked vertically
  *    at the same X position, visually grouped together.
  *  - A "Wave N (M concurrent)" background group node spans behind each rank's stages.
- *  - Edges have arrowheads; gate marks appear as edge labels.
+ *  - Edges have arrowheads; gate marks appear as EdgeLabelRenderer overlays.
  *
  * Libraries: @xyflow/react ^12, @dagrejs/dagre.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ReactFlow,
   Background,
   Handle,
   Position,
+  EdgeLabelRenderer,
+  getBezierPath,
+  BaseEdge,
   type Node,
   type Edge,
+  type EdgeProps,
   type NodeTypes,
+  type EdgeTypes,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -53,8 +58,116 @@ function StageNode({ data }: { data: { label: string; status: string; href: stri
   );
 }
 
+// ─── Custom edge type with EdgeLabelRenderer gate mark ───────────────────────
+
+interface GateEdgeData extends Record<string, unknown> {
+  gateHref?: string;
+  gateState?: string;
+  tooltipText?: string;
+  isFailed?: boolean;
+  isPassed?: boolean;
+}
+
+// Full edge type needed for EdgeProps generic in React Flow v12
+type GateEdgeType = Edge<GateEdgeData, 'gateEdge'>;
+
+/**
+ * Custom edge that renders the gate padlock via EdgeLabelRenderer — an HTML portal
+ * overlay positioned at the edge midpoint. This lets the <a>/<svg> padlock actually
+ * paint, unlike the built-in edge's <text>-based label renderer which silently hides
+ * HTML content via a zero-width getBBox() → visibility:hidden.
+ */
+function GateEdge({
+  id,
+  sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
+  style, markerEnd, data,
+}: EdgeProps<GateEdgeType>) {
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+  });
+
+  const gateHref = data?.gateHref;
+  const gateState = data?.gateState;
+  const tooltipText = data?.tooltipText;
+  const isFailed = !!data?.isFailed;
+  const isPassed = !!data?.isPassed;
+  const hasGate = !!gateState;
+
+  const lockColor = isFailed ? 'var(--red)' : isPassed ? 'var(--green)' : 'var(--muted)';
+  const lockSize = isFailed ? 16 : 12;
+
+  // SVG padlock: shackle arc + body rectangle, stroked in the state colour.
+  const padlockSvg = (
+    <svg
+      width={lockSize} height={lockSize}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke={lockColor}
+      strokeWidth={isFailed ? 1.8 : 1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ display: 'block', flexShrink: 0 }}
+      aria-hidden="true"
+    >
+      {/* Shackle arc */}
+      <path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2" />
+      {/* Body */}
+      <rect x="2.5" y="7" width="11" height="8" rx="1.5" fill={isFailed ? 'color-mix(in srgb,var(--red) 18%,transparent)' : 'none'} />
+    </svg>
+  );
+
+  const lockClass = `dag-gate-lock${isFailed ? ' dag-gate-lock--failed' : isPassed ? ' dag-gate-lock--passed' : ''}`;
+
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd} />
+      {hasGate && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan"
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: 'all',
+              background: 'var(--panel-2)',
+              borderRadius: 4,
+              padding: '2px 3px',
+              lineHeight: 0,
+            }}
+          >
+            {gateHref ? (
+              <a
+                href={gateHref}
+                title={tooltipText}
+                className={lockClass}
+                style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                aria-label={tooltipText}
+              >
+                {padlockSvg}
+              </a>
+            ) : (
+              <span
+                title={tooltipText}
+                className={lockClass}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                aria-label={tooltipText}
+              >
+                {padlockSvg}
+              </span>
+            )}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+
 const nodeTypes: NodeTypes = {
   stage: StageNode as NodeTypes['stage'],
+};
+
+const edgeTypes: EdgeTypes = {
+  gateEdge: GateEdge as EdgeTypes['gateEdge'],
 };
 
 // ─── Layout computation ──────────────────────────────────────────────────────
@@ -154,84 +267,36 @@ function buildLayout(
     });
   }
 
-  // Dependency edges
+  // Dependency edges — all use the custom gateEdge type so the padlock renders via
+  // EdgeLabelRenderer (an HTML portal) rather than inside an SVG <text>, where it cannot paint.
   for (const m of members) {
     for (const dep of m.depends_on) {
-      const edgeKey = `${dep}\x00${m.job_name}`;
       const gateData = allGates.find((gt) => gt.producer === dep && gt.consumer === m.job_name);
       const gateHref = gateData?.href;
       const gateState = gateData?.state;
       const isFailed = gateState === 'failed';
       const isPassed = gateState === 'passed';
-      // Padlock icon: colour-coded by gate state. Failed = prominent red, passed = subtle green,
-      // pending/structural = muted grey. Tooltip shows key + description on hover.
+      // Tooltip shows key + description on hover.
       const tooltipText = gateData
         ? [gateData.key, gateData.description].filter(Boolean).join(' — ')
         : undefined;
-      // Colour and size vary by state: failed = prominent red, passed = subtle green, else muted.
-      const lockColor = isFailed ? 'var(--red)' : isPassed ? 'var(--green)' : 'var(--muted)';
-      const lockSize = isFailed ? 16 : 12;
-      // SVG padlock: shackle arc + body rectangle, stroked in the state colour.
-      const PadlockSvg = (
-        <svg
-          width={lockSize} height={lockSize}
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke={lockColor}
-          strokeWidth={isFailed ? 1.8 : 1.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ display: 'block', flexShrink: 0 }}
-          aria-hidden="true"
-        >
-          {/* Shackle arc */}
-          <path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2" />
-          {/* Body */}
-          <rect x="2.5" y="7" width="11" height="8" rx="1.5" fill={isFailed ? 'color-mix(in srgb,var(--red) 18%,transparent)' : 'none'} />
-        </svg>
-      );
-      // A gate mark is a clickable link to its detail page. Pointer-events must be re-enabled
-      // (React Flow edge labels are non-interactive by default).
-      const label: ReactNode = gateData
-        ? (gateHref
-            ? (
-                <a
-                  href={gateHref}
-                  title={tooltipText}
-                  className={`dag-gate-lock${isFailed ? ' dag-gate-lock--failed' : isPassed ? ' dag-gate-lock--passed' : ''}`}
-                  style={{ pointerEvents: 'all', cursor: 'pointer', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  aria-label={tooltipText}
-                >
-                  {PadlockSvg}
-                </a>
-              )
-            : (
-                <span
-                  title={tooltipText}
-                  className={`dag-gate-lock${isFailed ? ' dag-gate-lock--failed' : isPassed ? ' dag-gate-lock--passed' : ''}`}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  aria-label={tooltipText}
-                >
-                  {PadlockSvg}
-                </span>
-              ))
-        : undefined;
+
+      const edgeData: GateEdgeData = gateData
+        ? { gateHref, gateState, tooltipText, isFailed, isPassed }
+        : {};
+
       edges.push({
         id: `${dep}->${m.job_name}`,
         source: dep,
         target: m.job_name,
-        label,
-        labelStyle: {},
-        labelBgStyle: { fill: 'var(--panel-2)', fillOpacity: 0.85 },
+        type: 'gateEdge',
+        data: edgeData,
         style: {
           stroke: isFailed ? 'var(--red)' : 'var(--grey)',
           strokeWidth: isFailed ? 2 : 1.5,
           opacity: isFailed ? 0.9 : 0.6,
         },
         animated: false,
-        // bezier (default) curves fan cleanly from one source to many targets, instead of the
-        // smoothstep orthogonal "bus" that made the parallel branches look chained together.
-        type: 'default',
       });
     }
   }
@@ -277,6 +342,7 @@ export function DagFlow({
         nodes={layout.nodes}
         edges={layout.edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.15 }}
         zoomOnScroll={false}
