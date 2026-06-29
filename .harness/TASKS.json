@@ -6900,7 +6900,7 @@
     },
     {
       "id": "T262",
-      "title": "Decouple the workflow Output section from markdown-only (declared output form / renderer dispatch)",
+      "title": "Decouple Output section — BACKEND: declared output form + API serves it (renderer dispatch is T282)",
       "status": "pending",
       "dependsOn": [],
       "gate": null,
@@ -6911,15 +6911,11 @@
         "refactor"
       ],
       "facets": {
-        "layer": "ui",
+        "layer": "api",
         "workType": "refactor",
-        "risk": [
-          "full-stack"
-        ]
+        "risk": []
       },
       "scope": [
-        "dashboard/app/workflows/[name]/page.tsx",
-        "dashboard/app/lib/api.ts",
         "src/api/server.ts",
         "CLAUDE.md"
       ],
@@ -6933,7 +6929,7 @@
       "title": "Plex space-saver workflow: biggest-first library size breakdown (per movie / per show)",
       "status": "pending",
       "dependsOn": [
-        "T262"
+        "T282"
       ],
       "gate": null,
       "tags": [
@@ -7425,6 +7421,32 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T281.md"
+    },
+    {
+      "id": "T282",
+      "title": "Decouple Output section — FRONTEND: renderer dispatch by declared form (UI half of T262)",
+      "status": "pending",
+      "dependsOn": [
+        "T262"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T282.md"
     }
   ]
 }
