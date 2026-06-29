@@ -7383,6 +7383,25 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T279.md"
+    },
+    {
+      "id": "T280",
+      "title": "Stream the loop's Claude output live (decide + apply the streaming flag)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "harness",
+        "observability"
+      ],
+      "facets": null,
+      "scope": [
+        ".harness/harness.env"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T280.md"
     }
   ]
 }
