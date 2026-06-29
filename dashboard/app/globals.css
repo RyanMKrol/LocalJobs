@@ -139,7 +139,7 @@ tbody tr:hover { background: var(--panel-2); }
 .kv .k { color: var(--muted); }
 .muted { color: var(--muted); }
 /* Subtle caveat footnote under the Input→Output table (T139). */
-.io-footnote { color: var(--muted); font-size: 0.8em; margin: 0; padding: 8px 14px 0; border-top: 1px solid var(--border); }
+.io-footnote { color: var(--muted); font-size: 0.8em; margin: 0; padding: 8px 14px; border-top: 1px solid var(--border); display: flex; align-items: center; }
 /* Input→Output empty-state (T195) — muted, padded, centred placeholder. */
 .io-empty-state { color: var(--muted); font-size: 0.9em; text-align: center; padding: 24px 16px; margin: 0; }
 /* IO table scroll container (T148) — height-capped, both-axis scroll, sticky header. */
