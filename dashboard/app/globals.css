@@ -307,6 +307,7 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
   width: min(680px, 100%); max-height: 80vh;
   display: flex; flex-direction: column;
   box-shadow: 0 8px 32px rgba(0,0,0,.45);
+  font-family: var(--font-body);
 }
 .db-modal-header {
   display: flex; align-items: center; justify-content: space-between;
