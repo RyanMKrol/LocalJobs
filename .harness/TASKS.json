@@ -6087,7 +6087,7 @@
     {
       "id": "T231",
       "title": "Show the worklog in the expanded Backlog task cell",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
