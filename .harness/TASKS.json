@@ -3,6 +3,31 @@
   "version": 1,
   "tasks": [
     {
+      "id": "T278",
+      "title": "Add duplicate-idea detection to the /convert-ideas Step 0 sweep",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "harness",
+        "ideas",
+        "convert"
+      ],
+      "facets": {
+        "layer": "harness",
+        "workType": "docs",
+        "risk": []
+      },
+      "scope": [
+        ".claude/commands/convert-ideas.md",
+        ".harness/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T278.md"
+    },
+    {
       "id": "T001",
       "title": "Green CI baseline on the public checkout",
       "status": "done",
@@ -7324,31 +7349,6 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T277.md"
-    },
-    {
-      "id": "T278",
-      "title": "Add duplicate-idea detection to the /convert-ideas Step 0 sweep",
-      "status": "pending",
-      "dependsOn": [],
-      "gate": null,
-      "tags": [
-        "harness",
-        "ideas",
-        "convert"
-      ],
-      "facets": {
-        "layer": "harness",
-        "workType": "docs",
-        "risk": []
-      },
-      "scope": [
-        ".claude/commands/convert-ideas.md",
-        ".harness/CLAUDE.md"
-      ],
-      "design": null,
-      "verify": [],
-      "expectsTest": false,
-      "spec": ".harness/tasks/T278.md"
     },
     {
       "id": "T279",
