@@ -5,7 +5,7 @@
     {
       "id": "T278",
       "title": "Add duplicate-idea detection to the /convert-ideas Step 0 sweep",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
