@@ -5,6 +5,7 @@ import {
   browseTable, listDbTables, listCannedQueries, runCannedQuery,
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
+  hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop,
   ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoreSurfacedItems, isWorkItemDone,
   listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
@@ -903,3 +904,54 @@ console.log('  ✓ T139 run-scoped IO: work_item_runs linkage scopes workItemIoR
   assert.equal(ignoreSurfacedItems(JOB, []), 0, 'empty key array returns 0');
 }
 console.log('  ✓ T210 ignoreSurfacedItems: bulk-dismiss ignores only supplied keys, new keys surface fresh');
+
+// T258 — noop detection helpers: root-with-skipped not re-selected,
+// hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop.
+{
+  // Jobs + workflow for T258 tests.
+  const FIRST_JOB = 't258-first';
+  const SECOND_JOB = 't258-second';
+  syncJob({ name: FIRST_JOB, run: async () => {} });
+  syncJob({ name: SECOND_JOB, run: async () => {} });
+  syncWorkflow({ name: 't258-wf', jobs: [{ job: FIRST_JOB }, { job: SECOND_JOB, dependsOn: [FIRST_JOB] }] });
+
+  // ── 1. selectPendingRoots: a root with only 'skipped' items is NOT re-selected ──
+  // Mark r1 with 'skipped' (quota soft-stop) in the first stage.
+  markWorkItem(FIRST_JOB, 'r1', 'skipped', { rootKey: 'r1' });
+  // Mark r2 with 'success' in the second (terminal) stage — fully done.
+  markWorkItem(FIRST_JOB, 'r2', 'success', { rootKey: 'r2' });
+  markWorkItem(SECOND_JOB, 'r2', 'success', { rootKey: 'r2' });
+  // Mark r3 as genuinely pending (first stage done, second stage not started).
+  markWorkItem(FIRST_JOB, 'r3', 'success', { rootKey: 'r3' });
+
+  const candidates = ['r1', 'r2', 'r3'];
+  const terminalJobs = [SECOND_JOB];
+  const memberJobs = [FIRST_JOB, SECOND_JOB];
+  const selected = selectPendingRoots(memberJobs, terminalJobs, candidates, 10, 4);
+
+  assert.ok(!selected.includes('r1'), 'r1 (only skipped items) is NOT re-selected (T258)');
+  assert.ok(!selected.includes('r2'), 'r2 (fully done through terminal stage) is not selected');
+  assert.ok(selected.includes('r3'), 'r3 (pending downstream) IS selected');
+
+  // ── 2. hasJobAdvancedAnyItem / workflowRunAdvancedAnyItem ──
+  const wfRunId = createWorkflowRun('t258-wf', 'manual');
+
+  // Nothing advanced yet → both false.
+  assert.equal(hasJobAdvancedAnyItem(wfRunId, FIRST_JOB), false, 'hasJobAdvancedAnyItem false before any markWorkItem');
+  assert.equal(workflowRunAdvancedAnyItem(wfRunId), false, 'workflowRunAdvancedAnyItem false before any markWorkItem');
+
+  // Advance one item in FIRST_JOB.
+  markWorkItem(FIRST_JOB, 'r3', 'success', { rootKey: 'r3', workflowRunId: wfRunId });
+  assert.equal(hasJobAdvancedAnyItem(wfRunId, FIRST_JOB), true, 'hasJobAdvancedAnyItem true after markWorkItem');
+  assert.equal(hasJobAdvancedAnyItem(wfRunId, SECOND_JOB), false, 'hasJobAdvancedAnyItem false for a different job that did nothing');
+  assert.equal(workflowRunAdvancedAnyItem(wfRunId), true, 'workflowRunAdvancedAnyItem true after first job advanced');
+
+  // ── 3. setRunNoop marks the run 'skipped' in the DB ──
+  const memberRunId = createRun(SECOND_JOB, 'workflow', 1, wfRunId);
+  finishRun(memberRunId, 'success', { exitCode: 0 });
+  setRunNoop(memberRunId);
+  const runs = listRunsForWorkflowRun(wfRunId);
+  const noopRun = runs.find((r) => r.id === memberRunId);
+  assert.equal(noopRun?.status, 'skipped', 'setRunNoop changes the run status to skipped');
+}
+console.log('  ✓ T258 noop detection: skipped items not re-selected, hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop');

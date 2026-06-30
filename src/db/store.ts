@@ -119,6 +119,38 @@ export function finishRun(
   `).run(status, opts.exitCode ?? null, opts.error ?? null, status, runId);
 }
 
+/**
+ * Mark a member run as a noop: updates its status to `'skipped'` in-place
+ * without resetting timing (the run completed at the recorded time, just with
+ * nothing to do). Called by the workflow executor after `hasJobAdvancedAnyItem`
+ * returns false for a successful stage. T258.
+ */
+export function setRunNoop(runId: string): void {
+  db.prepare("UPDATE runs SET status = 'skipped' WHERE id = ?").run(runId);
+}
+
+/**
+ * Did the given job advance any work items during this specific workflow run?
+ * Checks `work_item_runs` for any row with (workflow_run_id, job_name). Returns
+ * false when the job ran but called no `markWorkItem` — i.e. nothing to do.
+ * Used by the workflow executor to detect noop stages (T258).
+ */
+export function hasJobAdvancedAnyItem(workflowRunId: string, jobName: string): boolean {
+  return !!db.prepare('SELECT 1 FROM work_item_runs WHERE workflow_run_id = ? AND job_name = ? LIMIT 1')
+    .get(workflowRunId, jobName);
+}
+
+/**
+ * Did ANY stage advance any work items during this workflow run? (T258)
+ * Returns false only when the entire run made no `markWorkItem` calls — the
+ * workflow was a complete noop. Used to settle the workflow run as `'skipped'`
+ * rather than `'success'` when all stages had nothing to do.
+ */
+export function workflowRunAdvancedAnyItem(workflowRunId: string): boolean {
+  return !!db.prepare('SELECT 1 FROM work_item_runs WHERE workflow_run_id = ? LIMIT 1')
+    .get(workflowRunId);
+}
+
 export function addLog(runId: string, message: string, level: LogLevel = 'info'): void {
   db.prepare('INSERT INTO run_logs (run_id, level, message) VALUES (?, ?, ?)')
     .run(runId, level, message);
@@ -290,8 +322,11 @@ export function markWorkItem(
 /**
  * Whether a root still has outstanding work anywhere across a workflow's member
  * jobs (T094) — true if ANY ledger row for that root, in any of `jobNames`, is not
- * yet done (not success/ignored and not a failure past the retry budget). One
- * indexed query over (job_name, root_key).
+ * yet done. For root-selection purposes, `skipped` (quota soft-stop) is treated as
+ * handled (NOT outstanding): a root whose only non-done items are `skipped` falls
+ * through to `rootHasTerminalBlocker` and is treated as done for limited-run
+ * selection. Unlimited scheduled runs still retry `skipped` items (isWorkItemDone
+ * remains false for `skipped`). T258.
  */
 function rootHasOutstandingWork(jobNames: string[], rootKey: string, minAttempts: number): boolean {
   if (jobNames.length === 0) return false;
@@ -299,7 +334,7 @@ function rootHasOutstandingWork(jobNames: string[], rootKey: string, minAttempts
   const row = db.prepare(`
     SELECT 1 FROM work_items
      WHERE job_name IN (${ph}) AND root_key = ?
-       AND NOT (status IN ('success','ignored') OR (status = 'failed' AND attempts >= ?))
+       AND NOT (status IN ('success','ignored','skipped') OR (status = 'failed' AND attempts >= ?))
      LIMIT 1
   `).get(...jobNames, rootKey, minAttempts);
   return !!row;
@@ -324,13 +359,14 @@ function rootReachedTerminal(terminalJobs: string[], rootKey: string, minAttempt
 }
 
 /**
- * Does this root carry a "gave up" marker anywhere — an `ignored` row OR a
- * retry-exhausted (`failed` past the budget) row at any stage (T163)? Such a root
- * is stuck/unprogressable BELOW the terminal stage (it can't advance further), so
- * once it has no retryable outstanding work it is DONE, not perpetually pending —
- * this is what stops the selector livelocking on a root that can never reach the
- * terminal. (Distinct from a merely resolved-but-not-yet-attempted downstream
- * root, which has only success rows and no such marker → genuinely pending.)
+ * Does this root carry a "gave up" marker anywhere — an `ignored` row, a quota
+ * soft-stop `skipped` row, OR a retry-exhausted (`failed` past the budget) row at
+ * any stage (T163, T258)? Such a root is handled/unprogressable BELOW the terminal
+ * stage (it can't advance further in a limited run), so once it has no outstanding
+ * retryable work (step 1) and hasn't reached terminal (step 2) it is treated as
+ * DONE rather than perpetually pending. The `skipped` case: a quota-soft-stopped
+ * root is treated as done for limited-run selection — unlimited scheduled runs still
+ * retry `skipped` items via isWorkItemDone (which returns false for `skipped`).
  */
 function rootHasTerminalBlocker(jobNames: string[], rootKey: string, minAttempts: number): boolean {
   if (jobNames.length === 0) return false;
@@ -338,7 +374,7 @@ function rootHasTerminalBlocker(jobNames: string[], rootKey: string, minAttempts
   const row = db.prepare(`
     SELECT 1 FROM work_items
      WHERE job_name IN (${ph}) AND root_key = ?
-       AND (status = 'ignored' OR (status = 'failed' AND attempts >= ?))
+       AND (status IN ('ignored','skipped') OR (status = 'failed' AND attempts >= ?))
      LIMIT 1
   `).get(...jobNames, rootKey, minAttempts);
   return !!row;
@@ -1027,7 +1063,14 @@ export function rollUpWorkflowProgress(workflowRunId: string, message?: string):
   return pct;
 }
 
-export function finishWorkflowRun(id: string, status: WorkflowRunStatus): void {
+/**
+ * Extended workflow run status. Adds `'skipped'` for a noop run — one where
+ * the workflow executed but did NO actual item work (all stages had nothing to
+ * process). Distinct from `'partial'` (some stages actually failed). T258.
+ */
+export type FinalWorkflowRunStatus = WorkflowRunStatus | 'skipped';
+
+export function finishWorkflowRun(id: string, status: FinalWorkflowRunStatus): void {
   db.prepare(`
     UPDATE workflow_runs SET
       status = ?,

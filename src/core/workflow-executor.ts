@@ -5,18 +5,22 @@ import {
   finishWorkflowRun,
   getWorkflow,
   hasActiveWorkflowRun,
-  selectPendingRoots,
-  workflowProgressSignature,
+  hasJobAdvancedAnyItem,
   noForwardProgress,
   recordGateFailure,
   recordSkippedRun,
   rollUpWorkflowProgress,
+  selectPendingRoots,
+  setRunNoop,
+  workflowProgressSignature,
+  workflowRunAdvancedAnyItem,
+  type FinalWorkflowRunStatus,
   type WorkflowProgressSignature,
 } from '../db/store.js';
 import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
 import { runJobForWorkflow } from './executor.js';
 import { notifyWorkflow } from './notifier.js';
-import type { LogLevel, WorkflowDefinition, WorkflowRunStatus, RunStatus } from './types.js';
+import type { LogLevel, WorkflowDefinition, RunStatus } from './types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -294,6 +298,14 @@ async function runWorkflowInner(
   // schedule/enabled checks.
   const effectiveConcurrency = effectiveWorkflowConcurrency(def);
 
+  // Whether any member declares inputKeys() — only limitable workflows get noop
+  // detection via work_item_runs. Non-limitable workflows (no static input list)
+  // re-scan each run by design; marking them noop would misfire (T258).
+  const isLimitableWorkflow = !!findRootStage(dag);
+  // Track which member jobs were detected as noops this run (succeeded but advanced
+  // no items). Used by onSettle to log "skipped (noop)" instead of "→ success".
+  const noopJobs = new Set<string>();
+
   let lastStatuses = new Map<string, RunStatus>();
   try {
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
@@ -326,14 +338,29 @@ async function runWorkflowInner(
           }
           log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${suffix}`);
         }
-        const { status } = await runJobForWorkflow(jd, workflowRunId, controller.signal);
+        const { runId, status } = await runJobForWorkflow(jd, workflowRunId, controller.signal);
+        // Noop detection (T258): for limitable workflows, a stage that succeeds
+        // without advancing any work items (no markWorkItem calls during this run)
+        // is a noop — all items were already done or quota-soft-stopped. Update the
+        // DB run record to 'skipped' so the dashboard communicates "nothing to do"
+        // instead of "success". The return value stays 'success' so executeDag
+        // doesn't cascade-skip dependents — the noop is a per-stage annotation,
+        // not a workflow-level failure.
+        if (status === 'success' && runId && isLimitableWorkflow && !hasJobAdvancedAnyItem(workflowRunId, job)) {
+          setRunNoop(runId);
+          noopJobs.add(job);
+          log(`⊙ ${job} → skipped (nothing to do — all items already processed or no items in scope)`, 'warn');
+        }
         return status;
       },
       onStart: (job) => log(`▶ ${job} started`),
       onSettle: async (job, s) => {
         settled++;
-        rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} ${s})`);
-        log(`${s === 'success' ? '✓' : '✗'} ${job} → ${s}`, s === 'success' ? 'info' : 'warn');
+        const label = noopJobs.has(job) ? 'skipped (noop)' : s;
+        rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} ${label})`);
+        if (!noopJobs.has(job)) {
+          log(`${s === 'success' ? '✓' : '✗'} ${job} → ${s}`, s === 'success' ? 'info' : 'warn');
+        }
       },
       onSkip: async (job, reason) => {
         settled++;
@@ -383,15 +410,28 @@ async function runWorkflowInner(
   // A cancelled run is recorded 'cancelled' regardless of the members' tally —
   // the abort is the authoritative outcome (in-flight members were killed and
   // settled 'cancelled'; not-yet-started stages never spawned).
+  // For limitable workflows a run where NO stage advanced any work item is a
+  // whole-run noop → settle as 'skipped' (T258). This can only happen when
+  // selectPendingRoots found no pending roots (emptySelectionWarning path) or
+  // when every stage found its items already done. Non-limitable workflows re-scan
+  // each run by design and always advance something (or fail), so the guard is
+  // isLimitableWorkflow. 'success' stages whose individual runs were nooped still
+  // appear as 'success' in lastStatuses (the runOne return value is unchanged);
+  // workflowRunAdvancedAnyItem is the authoritative check.
   const statuses = [...lastStatuses.values()];
-  const status: WorkflowRunStatus = controller.signal.aborted
+  const anyRealWork = !isLimitableWorkflow || workflowRunAdvancedAnyItem(workflowRunId);
+  const status: FinalWorkflowRunStatus = controller.signal.aborted
     ? 'cancelled'
     : statuses.length === 0 ? 'failed'
+    : !anyRealWork && statuses.every((s) => s === 'success') ? 'skipped'
     : statuses.every((s) => s === 'success') ? 'success'
     : statuses.some((s) => s === 'success') ? 'partial'
     : 'failed';
   finishWorkflowRun(workflowRunId, status);
   log(status === 'cancelled' ? `Workflow "${def.name}" cancelled` : `Workflow "${def.name}" finished: ${status}`);
-  await notifyWorkflow(def.name, workflowRunId, status, log);
+  // notifyWorkflow accepts WorkflowRunStatus; a 'skipped' (noop) run is
+  // quiet/benign — map it to 'success' for the aggregate notification.
+  const notifyStatus = status === 'skipped' ? 'success' : status;
+  await notifyWorkflow(def.name, workflowRunId, notifyStatus, log);
   return { workflowRunId };
 }

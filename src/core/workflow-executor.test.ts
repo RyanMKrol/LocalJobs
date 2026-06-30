@@ -122,6 +122,19 @@ for (const d of limitMembers) {
   pushed.push(d);
 }
 
+// T258 noop-detection members: a limitable workflow (root stage has inputKeys).
+// The fake child succeeds but never calls markWorkItem, so every run appears to
+// advance nothing → status 'skipped' (noop).
+const t258Members: JobDefinition[] = [
+  { name: 't258-stage-a', inputKeys: () => ['x1', 'x2'], run: async () => {} },
+  { name: 't258-stage-b', run: async () => {} },
+];
+for (const d of t258Members) {
+  syncJob(d);
+  jobs.push(d);
+  pushed.push(d);
+}
+
 try {
   await test('all members succeed → aggregate status success', async () => {
     const def: WorkflowDefinition = { name: 'pp-success', jobs: [{ job: 'pp-a' }, { job: 'pp-b', dependsOn: ['pp-a'] }] };
@@ -613,6 +626,39 @@ try {
     assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success');
     // All four slow stages should have overlapped — elapsed should be well under 4×SLOW_MS.
     assert.ok(elapsed < SLOW_MS * 3, `unlimited run with 4 slow stages should overlap, took ${elapsed}ms (expected < ${SLOW_MS * 3}ms)`);
+  });
+
+  // T258: noop status — a limitable workflow where no stage advances any work items
+  // settles as 'skipped' (noop), not 'success'. The fake child succeeds but never
+  // calls markWorkItem, so work_item_runs has no rows for this run → noop detected.
+  await test('T258: limitable workflow where no stage advances items → status skipped (noop)', async () => {
+    const def: WorkflowDefinition = {
+      name: 't258-noop-wf',
+      jobs: [{ job: 't258-stage-a' }, { job: 't258-stage-b', dependsOn: ['t258-stage-a'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    assert.ok(workflowRunId);
+    // The workflow run itself must be 'skipped' — nothing was advanced.
+    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'skipped', 'limitable workflow advancing nothing → skipped (T258)');
+    // The member runs must have been individually marked 'skipped' by setRunNoop.
+    const memberRuns = listRunsForWorkflowRun(workflowRunId!);
+    assert.ok(memberRuns.every((r) => r.status === 'skipped'), 'every member run status is skipped (setRunNoop)');
+    // The framework log must include the noop explanation.
+    const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
+    assert.match(logText, /nothing to do — all items already processed/, `noop log missing: ${logText}`);
+  });
+
+  await test('T258: non-limitable workflow (no inputKeys) still settles success even with no work_item_runs', async () => {
+    // pp-a and pp-b have no inputKeys → isLimitableWorkflow = false → noop detection
+    // is never applied → workflow settles success as before.
+    const def: WorkflowDefinition = {
+      name: 't258-nonlim-wf',
+      jobs: [{ job: 'pp-a' }, { job: 'pp-b', dependsOn: ['pp-a'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success', 'non-limitable workflow still success (T258 guard)');
   });
 
 } finally {
