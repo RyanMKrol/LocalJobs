@@ -15,10 +15,23 @@ excavation is the whole point of this flow.
 
 Process:
 
-0. **Read the inbox.** Read `.harness/IDEAS.md`'s `## Inbox`. Collect every bullet into a worklist.
-   If `$ARGUMENTS` names a specific idea, start with that one (but still continue through the rest
-   afterwards unless told otherwise). If the inbox is empty, say so and stop. If the owner is clearly
-   mid-build on something else, say so and offer to defer the whole sweep.
+0. **Read the inbox / build the worklist.**  Read `.harness/IDEAS.md`'s `## Inbox`. Collect every
+   bullet into a worklist. If `$ARGUMENTS` names a specific idea, start with that one (but still
+   continue through the rest afterwards unless told otherwise). If the inbox is empty, say so and stop.
+   If the owner is clearly mid-build on something else, say so and offer to defer the whole sweep.
+
+   **De-dup pass (run before converting anything).** Scan the full worklist for ideas that are the
+   **same idea or substantially overlap** — use SEMANTIC similarity, not just exact-text match (the
+   same idea often appears in different words). Group any suspected duplicates and **surface each
+   duplicate group to the owner via `AskUserQuestion`** — present the overlapping bullets, explain
+   why you think they're the same, and ask whether to merge them into one or drop one. Do NOT
+   auto-merge silently; the owner decides.
+
+   This is distinct from the **related-ideas → `dependsOn`** handling in Phase 2: two ideas that are
+   *related but distinct* (one a foundation the other builds on) become a `dependsOn` edge and are
+   NOT merged — the de-dup pass targets genuine **duplicates** (the same idea appearing twice). Only
+   merge/drop when the ideas describe the *same underlying change*; otherwise proceed to the normal
+   per-idea loop below.
 
 1. **Loop — for EACH idea in the worklist, one at a time:**
 

@@ -45,6 +45,10 @@ runs first:
   the underlying itch/problem, what are they actually after, rough shape, why it matters — *before*
   any task-shaping. Default to MORE questions here; assume nothing is fleshed out. (This phase is
   exactly what the standard add-to-backlog interview lacks — it expects an already-formed feature.)
+- **De-dup pass (before converting anything).** Scan the full inbox for ideas that are the same or
+  substantially overlap (semantic similarity, not exact-text match) and surface suspected duplicate
+  groups to the owner to merge or drop — do NOT auto-merge. Genuinely related-but-distinct ideas
+  (one a foundation the other builds on) are NOT duplicates and become a `dependsOn` edge instead.
 - **Phase 2 — task shaping.** Feed the now-understood idea into the **`ralph-loop-add-to-backlog`**
   interview (DoD, scope, dependsOn, facets, spec MD) → a schema-correct task. Related ideas (one a
   foundation the other builds on) become a `dependsOn` edge, not a merge.
