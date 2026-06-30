@@ -2,9 +2,11 @@ import { getJobDefinition } from '../jobs/registry.js';
 import {
   addWorkflowLog,
   createWorkflowRun,
+  finishRun,
   finishWorkflowRun,
   getWorkflow,
   hasActiveWorkflowRun,
+  hasNonNoopItemsInRun,
   selectPendingRoots,
   workflowProgressSignature,
   noForwardProgress,
@@ -17,6 +19,9 @@ import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePref
 import { runJobForWorkflow } from './executor.js';
 import { notifyWorkflow } from './notifier.js';
 import type { LogLevel, WorkflowDefinition, WorkflowRunStatus, RunStatus } from './types.js';
+
+/** Extends the persisted WorkflowRunStatus with 'skipped' for all-noop runs (T258). */
+type WorkflowRunStatusOrSkipped = WorkflowRunStatus | 'skipped';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -326,7 +331,15 @@ async function runWorkflowInner(
           }
           log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${suffix}`);
         }
-        const { status } = await runJobForWorkflow(jd, workflowRunId, controller.signal);
+        const { runId, status } = await runJobForWorkflow(jd, workflowRunId, controller.signal);
+        // T258: if the job ran and completed (success) but advanced zero non-noop items,
+        // the stage did no actual work this run. Override the member-run record to
+        // 'skipped' (nothing-to-do) so the caller can distinguish a genuine success
+        // from a pure no-op and roll up an honest workflow status.
+        if (status === 'success' && runId && !hasNonNoopItemsInRun(workflowRunId, jd.name)) {
+          finishRun(runId, 'skipped', { error: 'nothing to do — all items already processed or quota-noop this run' });
+          return 'skipped';
+        }
         return status;
       },
       onStart: (job) => log(`▶ ${job} started`),
@@ -384,14 +397,22 @@ async function runWorkflowInner(
   // the abort is the authoritative outcome (in-flight members were killed and
   // settled 'cancelled'; not-yet-started stages never spawned).
   const statuses = [...lastStatuses.values()];
-  const status: WorkflowRunStatus = controller.signal.aborted
+  // T258: when every member settled as 'skipped' (nothing-to-do) the workflow
+  // itself is 'skipped' — distinguishable from a partial failure or a genuine
+  // success. Mixed runs (some success + some skipped) still count as 'success'
+  // because real work was done; a mixed failure is still 'partial' or 'failed'.
+  const status: WorkflowRunStatusOrSkipped = controller.signal.aborted
     ? 'cancelled'
     : statuses.length === 0 ? 'failed'
     : statuses.every((s) => s === 'success') ? 'success'
+    : statuses.every((s) => s === 'skipped') ? 'skipped'
     : statuses.some((s) => s === 'success') ? 'partial'
     : 'failed';
   finishWorkflowRun(workflowRunId, status);
   log(status === 'cancelled' ? `Workflow "${def.name}" cancelled` : `Workflow "${def.name}" finished: ${status}`);
-  await notifyWorkflow(def.name, workflowRunId, status, log);
+  // notifyWorkflow expects WorkflowRunStatus; cast 'skipped' (not yet in the type union — T281
+  // will surface it in the dashboard). For notification purposes 'skipped' is treated like
+  // a non-success outcome so the owner sees an informational alert.
+  await notifyWorkflow(def.name, workflowRunId, status as WorkflowRunStatus, log);
   return { workflowRunId };
 }

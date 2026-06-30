@@ -7,7 +7,7 @@ import {
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoreSurfacedItems, isWorkItemDone,
   listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
-  pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
+  hasNonNoopItemsInRun, pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, usageThisMonth,
   bulkUnstickItems, bulkIgnoreItems,
@@ -903,3 +903,90 @@ console.log('  ✓ T139 run-scoped IO: work_item_runs linkage scopes workItemIoR
   assert.equal(ignoreSurfacedItems(JOB, []), 0, 'empty key array returns 0');
 }
 console.log('  ✓ T210 ignoreSurfacedItems: bulk-dismiss ignores only supplied keys, new keys surface fresh');
+
+// ── T258: noop WorkStatus — retryable, not perpetually re-selected ──
+// A root that exhausted a service quota BEFORE any attempt is marked 'noop'.
+// 'noop' is retryable (isWorkItemDone returns false), is excluded from
+// rootHasOutstandingWork (not "pending work"), and a terminal-stage noop row
+// counts as "reached terminal" so the root is NOT perpetually re-selected in
+// limited runs. Distinct from 'skipped' (quota hit MID-attempt, which keeps
+// the root retryable + still selectable on the next limited run).
+{
+  for (const n of ['t258-entry', 't258-mid', 't258-term']) syncJob({ name: n, run: async () => {} });
+  syncWorkflow({ name: 't258-wf', jobs: [{ job: 't258-entry' }, { job: 't258-mid', dependsOn: ['t258-entry'] }, { job: 't258-term', dependsOn: ['t258-mid'] }] });
+  const members = ['t258-entry', 't258-mid', 't258-term'];
+  const terminal = ['t258-term'];
+  const MAX = 4;
+
+  // (1) noop is NOT done (retryable, unlike 'success' and 'ignored').
+  markWorkItem('t258-entry', 'noop-root', 'noop', { attempts: 0 });
+  assert.equal(isWorkItemDone('t258-entry', 'noop-root', MAX), false, 'noop item is not done — retryable');
+
+  // (2) noop does NOT appear in the stuck list (it is not a failed item).
+  const stuckBefore = stuckItems();
+  assert.ok(!stuckBefore.some((s) => s.item_key === 'noop-root'), 'noop item is NOT in the stuck list');
+
+  // (3) Scenario: terminal-stage noop → root is NOT re-selected in a limited run.
+  // Set up a root that ran all three stages: entry success, mid success, term NOOP.
+  markWorkItem('t258-entry', 'noop-root', 'success', { attempts: 1, rootKey: 'noop-root' });
+  markWorkItem('t258-mid', 'noop-root', 'success', { attempts: 1, rootKey: 'noop-root', parentJob: 't258-entry' });
+  markWorkItem('t258-term', 'noop-root', 'noop', { attempts: 0, rootKey: 'noop-root', parentJob: 't258-mid' });
+
+  // selectPendingRoots should NOT include noop-root (terminal noop = reached terminal).
+  const selected = selectPendingRoots(members, terminal, ['noop-root'], 5, MAX);
+  assert.deepEqual(selected, [], 'terminal-stage noop root is NOT re-selected in a limited run');
+
+  // (4) Contrast with 'skipped' at the terminal stage: skipped IS still selectable
+  // because skipped means quota hit mid-attempt (should retry when quota resets).
+  markWorkItem('t258-entry', 'skipped-root', 'success', { attempts: 1, rootKey: 'skipped-root' });
+  markWorkItem('t258-mid', 'skipped-root', 'success', { attempts: 1, rootKey: 'skipped-root', parentJob: 't258-entry' });
+  markWorkItem('t258-term', 'skipped-root', 'skipped', { attempts: 0, rootKey: 'skipped-root', parentJob: 't258-mid' });
+
+  const selectedWithSkip = selectPendingRoots(members, terminal, ['skipped-root'], 5, MAX);
+  assert.deepEqual(selectedWithSkip, ['skipped-root'], 'terminal-stage SKIPPED root IS still selected (retryable)');
+
+  // (5) Noop only at a non-terminal stage: root should still be pending
+  // (the terminal stage hasn't been reached yet).
+  markWorkItem('t258-entry', 'partial-noop', 'success', { attempts: 1, rootKey: 'partial-noop' });
+  markWorkItem('t258-mid', 'partial-noop', 'noop', { attempts: 0, rootKey: 'partial-noop', parentJob: 't258-entry' });
+  // no term row → downstream work not yet attempted
+
+  const selectedPartial = selectPendingRoots(members, terminal, ['partial-noop'], 5, MAX);
+  assert.deepEqual(selectedPartial, ['partial-noop'], 'noop at a non-terminal stage → root is still pending (terminal not reached)');
+}
+console.log('  ✓ T258 noop WorkStatus: retryable, not stuck, terminal noop stops re-selection, non-terminal noop keeps root pending, skipped still selectable');
+
+// ── T258: hasNonNoopItemsInRun — all-noop detection for executor stage roll-up ──
+// hasNonNoopItemsInRun(runId, jobName) returns true only when the run advanced
+// at least one non-noop item. Used by the executor to settle a stage as 'skipped'
+// (nothing to do) instead of 'success' when it did no actual work.
+{
+  for (const n of ['t258-exec-stage']) syncJob({ name: n, run: async () => {} });
+  syncWorkflow({ name: 't258-exec-wf', jobs: [{ job: 't258-exec-stage' }] });
+
+  // Run A: no items recorded → false (nothing advanced).
+  const runA = createWorkflowRun('t258-exec-wf', 'manual');
+  assert.equal(hasNonNoopItemsInRun(runA, 't258-exec-stage'), false, 'run with no items → false');
+  finishWorkflowRun(runA, 'skipped');
+
+  // Run B: only noop items recorded → false (quota-exhausted pre-attempt).
+  const runB = createWorkflowRun('t258-exec-wf', 'manual');
+  markWorkItem('t258-exec-stage', 'exec-k1', 'noop', { attempts: 0, workflowRunId: runB });
+  markWorkItem('t258-exec-stage', 'exec-k2', 'noop', { attempts: 0, workflowRunId: runB });
+  assert.equal(hasNonNoopItemsInRun(runB, 't258-exec-stage'), false, 'run with only noop items → false');
+  finishWorkflowRun(runB, 'skipped');
+
+  // Run C: at least one non-noop item → true (real work happened).
+  const runC = createWorkflowRun('t258-exec-wf', 'manual');
+  markWorkItem('t258-exec-stage', 'exec-k1', 'success', { attempts: 1, workflowRunId: runC });
+  markWorkItem('t258-exec-stage', 'exec-k2', 'noop', { attempts: 0, workflowRunId: runC });
+  assert.equal(hasNonNoopItemsInRun(runC, 't258-exec-stage'), true, 'run with one success + one noop → true');
+  finishWorkflowRun(runC, 'success');
+
+  // Run D: skipped (quota mid-attempt) also counts as non-noop.
+  const runD = createWorkflowRun('t258-exec-wf', 'manual');
+  markWorkItem('t258-exec-stage', 'exec-k3', 'skipped', { attempts: 0, workflowRunId: runD });
+  assert.equal(hasNonNoopItemsInRun(runD, 't258-exec-stage'), true, 'run with a skipped item (mid-attempt) → true (not noop)');
+  finishWorkflowRun(runD, 'success');
+}
+console.log('  ✓ T258 hasNonNoopItemsInRun: false when no items / all-noop, true when any non-noop item advanced');

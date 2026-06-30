@@ -165,7 +165,7 @@ export function reapOrphanRuns(): number {
 
 // ---- work items (per-item idempotency ledger) ----
 
-export type WorkStatus = 'success' | 'failed' | 'skipped' | 'ignored';
+export type WorkStatus = 'success' | 'failed' | 'skipped' | 'ignored' | 'noop';
 
 export interface WorkItemRow {
   job_name: string;
@@ -202,6 +202,7 @@ export function isWorkItemDone(jobName: string, itemKey: string, maxAttempts: nu
   if (!row) return false;
   if (row.status === 'success' || row.status === 'ignored') return true;
   if (row.status === 'skipped') return false; // retry when quota resets
+  if (row.status === 'noop') return false;    // quota exhausted pre-attempt — retry when quota resets
   return row.status === 'failed' && row.attempts >= maxAttempts;
 }
 
@@ -290,8 +291,14 @@ export function markWorkItem(
 /**
  * Whether a root still has outstanding work anywhere across a workflow's member
  * jobs (T094) — true if ANY ledger row for that root, in any of `jobNames`, is not
- * yet done (not success/ignored and not a failure past the retry budget). One
+ * yet done (not success/ignored/noop and not a failure past the retry budget). One
  * indexed query over (job_name, root_key).
+ *
+ * `noop` items (quota exhausted before the item was even attempted this run) are
+ * treated as NOT outstanding for root-selection purposes: a root with only `noop`
+ * items should not be perpetually re-selected in limited runs. Like `skipped`,
+ * `noop` items are still retryable (isWorkItemDone returns false) so they ARE
+ * reprocessed on the next unlimited/scheduled run when quota resets.
  */
 function rootHasOutstandingWork(jobNames: string[], rootKey: string, minAttempts: number): boolean {
   if (jobNames.length === 0) return false;
@@ -299,7 +306,7 @@ function rootHasOutstandingWork(jobNames: string[], rootKey: string, minAttempts
   const row = db.prepare(`
     SELECT 1 FROM work_items
      WHERE job_name IN (${ph}) AND root_key = ?
-       AND NOT (status IN ('success','ignored') OR (status = 'failed' AND attempts >= ?))
+       AND NOT (status IN ('success','ignored','noop') OR (status = 'failed' AND attempts >= ?))
      LIMIT 1
   `).get(...jobNames, rootKey, minAttempts);
   return !!row;
@@ -307,9 +314,14 @@ function rootHasOutstandingWork(jobNames: string[], rootKey: string, minAttempts
 
 /**
  * Has this root propagated all the way to a TERMINAL stage (the last DAG wave)? —
- * true if any terminal-job row for that root is in a DONE state (success/ignored,
+ * true if any terminal-job row for that root is in a DONE state (success/ignored/noop,
  * or failed past the retry budget = reached terminal but permanently failed there).
  * Used by {@link selectPendingRoots} to decide a root is fully processed (T163).
+ *
+ * `noop` in the terminal stage means the pipeline reached the terminal but found
+ * quota exhausted before it could process any items — treated as "reached terminal"
+ * so a limited run does not perpetually re-select such a root. An unlimited or
+ * scheduled run will still retry it (isWorkItemDone returns false for `noop`).
  */
 function rootReachedTerminal(terminalJobs: string[], rootKey: string, minAttempts: number): boolean {
   if (terminalJobs.length === 0) return false;
@@ -317,7 +329,7 @@ function rootReachedTerminal(terminalJobs: string[], rootKey: string, minAttempt
   const row = db.prepare(`
     SELECT 1 FROM work_items
      WHERE job_name IN (${ph}) AND root_key = ?
-       AND (status IN ('success','ignored') OR (status = 'failed' AND attempts >= ?))
+       AND (status IN ('success','ignored','noop') OR (status = 'failed' AND attempts >= ?))
      LIMIT 1
   `).get(...terminalJobs, rootKey, minAttempts);
   return !!row;
@@ -345,19 +357,24 @@ function rootHasTerminalBlocker(jobNames: string[], rootKey: string, minAttempts
 }
 
 /**
- * Is a root still PENDING for a limited run (T163)? — i.e. has it NOT yet been
- * fully processed through the pipeline. The corrected semantics (the T163 fix):
+ * Is a root still PENDING for a limited run (T163 + T258)? — i.e. has it NOT yet been
+ * fully processed through the pipeline. The corrected semantics (T163 + T258 fixes):
  * "pending" is defined by propagation through the TERMINAL stage, not merely past
  * the entry stage. In order:
- *  1. any retryable (not-done) row anywhere → still pending (work to retry);
- *  2. else if it reached a terminal stage (a done terminal row) → fully done;
+ *  1. any retryable (not-done, not-noop) row anywhere → still pending (work to retry);
+ *     `skipped` (quota soft-stop) is retryable/outstanding; `noop` is NOT (see below).
+ *  2. else if it reached a terminal stage (a done terminal row, including `noop`) → not
+ *     pending. A terminal-stage `noop` means quota was exhausted at the final step —
+ *     the pipeline went as far as it could this run; don't re-select in a limited run
+ *     (an unlimited/scheduled run will retry it when quota resets, since `noop` is not
+ *     done for isWorkItemDone).
  *  3. else if it carries a gave-up marker (ignored / retry-exhausted at any stage)
  *     and has no retryable work → stuck below the terminal, treat as done so the
  *     selector can't livelock on an unprogressable root;
  *  4. else it has unattempted downstream work (e.g. a resolved-but-not-yet-enriched
  *     place: entry succeeded, a later stage has NO row at all) → pending.
- * Step 4 is the bug this fixes: previously a root whose later stages simply hadn't
- * been attempted (no row) looked "fully done" and was never selected.
+ * Step 4 is the T163 fix. The T258 additions are `noop` exclusion in step 1 and
+ * `noop` inclusion in the step-2 terminal check.
  */
 export function isRootPending(
   members: string[],
@@ -1027,7 +1044,27 @@ export function rollUpWorkflowProgress(workflowRunId: string, message?: string):
   return pct;
 }
 
-export function finishWorkflowRun(id: string, status: WorkflowRunStatus): void {
+/**
+ * Did this workflow member stage advance any items that are NOT `noop` in this run?
+ *
+ * Used by the workflow executor (T258) to detect a "nothing to do" stage: if a job
+ * ran but either touched 0 items OR touched only `noop` items (quota exhausted before
+ * any real processing), the run is classified as `skipped` / nothing-to-do rather
+ * than `success`. A stage that processed REAL items (success / failed / skipped
+ * quota-soft-stop) still settles `success` — only the pure no-op case changes.
+ */
+export function hasNonNoopItemsInRun(workflowRunId: string, jobName: string): boolean {
+  const row = db.prepare(`
+    SELECT 1 FROM work_item_runs wir
+      JOIN work_items wi ON wi.job_name = wir.job_name AND wi.item_key = wir.item_key
+     WHERE wir.workflow_run_id = ? AND wir.job_name = ?
+       AND wi.status != 'noop'
+     LIMIT 1
+  `).get(workflowRunId, jobName);
+  return !!row;
+}
+
+export function finishWorkflowRun(id: string, status: WorkflowRunStatus | 'skipped'): void {
   db.prepare(`
     UPDATE workflow_runs SET
       status = ?,

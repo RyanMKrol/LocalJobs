@@ -102,7 +102,32 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
   // callService, which throws QuotaExceededError when exhausted) — read it here
   // just for visibility.
   const svc = getServiceDef('gemini');
-  ctx.log(`Service quota (gemini) — today: ${serviceCallsToday('gemini')}/${svc?.dailyCap ?? '∞'}, month: ${serviceCallsThisMonth('gemini')}/${svc?.monthlyCap ?? '∞'}`);
+  const monthUsed = serviceCallsThisMonth('gemini');
+  const dayUsed = serviceCallsToday('gemini');
+  const monthCap = svc?.monthlyCap ?? Infinity;
+  const dayCap = svc?.dailyCap ?? Infinity;
+  ctx.log(`Service quota (gemini) — today: ${dayUsed}/${dayCap}, month: ${monthUsed}/${monthCap}`);
+
+  // T258: pre-loop quota guard. When the gemini quota is already exhausted before we
+  // even start the loop, mark all todo items as 'noop' (not 'skipped') so limited
+  // runs don't perpetually re-select these roots. This stage is the TERMINAL stage
+  // of the places workflow; a 'noop' row here lets rootReachedTerminal treat the root
+  // as "reached terminal, just quota-stopped" and stop re-selecting it. An unlimited
+  // or scheduled run will still retry (isWorkItemDone returns false for 'noop').
+  if (monthUsed >= monthCap || dayUsed >= dayCap) {
+    ctx.log(`gemini service quota already exhausted (today ${dayUsed}/${dayCap}, month ${monthUsed}/${monthCap}). Marking ${todo.length} place(s) as noop — re-run when quota resets.`, 'warn');
+    for (const place of todo) {
+      markWorkItem(JOB_NAME, place.placeId, 'noop', {
+        attempts: getWorkItem(JOB_NAME, place.placeId)?.attempts ?? 0,
+        rootKey: place.cid,
+        parentKey: place.placeId,
+        parentJob: 'places-enrich',
+        detail: { name: displayName(place), reason: 'quota-exhausted-before-attempt' },
+      });
+    }
+    ctx.progress(100, `0 processed — gemini quota exhausted (${todo.length} marked noop)`);
+    return;
+  }
 
   let ok = 0;
   let fail = 0;

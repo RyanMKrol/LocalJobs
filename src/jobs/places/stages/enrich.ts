@@ -91,6 +91,23 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
   }
   if (monthLeft <= 0 || dayLeft <= 0) {
     ctx.log(`google-places service quota already exhausted (today ${usedToday}/${dayCap}, month ${usedMonth}/${monthCap}). Re-run later to continue.`, 'warn');
+    // T258: mark all todo items as 'noop' (quota exhausted before any attempt was made).
+    // 'noop' differs from 'skipped': the items were never actually attempted this run —
+    // quota was already zero. The executor detects an all-noop run and settles the member
+    // stage as 'skipped' (nothing to do) rather than 'success'. For root selection in
+    // limited runs, a terminal-stage 'noop' row counts as "reached terminal" so the root
+    // is not perpetually re-selected; an unlimited/scheduled run will still retry these
+    // items when quota resets (isWorkItemDone returns false for 'noop').
+    for (const place of todo) {
+      markWorkItem(JOB_NAME, place.placeId!, 'noop', {
+        attempts: getWorkItem(JOB_NAME, place.placeId!)?.attempts ?? 0,
+        rootKey: place.cid,
+        parentKey: place.cid,
+        parentJob: 'cid-to-place-id-resolver',
+        detail: { name: place.name, reason: 'quota-exhausted-before-attempt' },
+      });
+    }
+    ctx.log(`Marked ${todo.length} place(s) as noop (quota-exhausted). They will be retried when quota resets.`, 'warn');
     return;
   }
 
