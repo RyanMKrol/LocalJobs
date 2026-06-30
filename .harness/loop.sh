@@ -50,9 +50,10 @@ INTEGRATE_HOOK="${INTEGRATE_HOOK:-}"               # optional cmd run after each
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 CLAUDE_FLAGS="${CLAUDE_FLAGS:---dangerously-skip-permissions}"
 # Rate-limit-aware backoff: when Claude hits the usage limit, sleep and resume the SAME task.
-RL_BACKOFF_MIN="${RL_BACKOFF_MIN:-300}"            # first backoff (5 min)
-RL_BACKOFF_MAX="${RL_BACKOFF_MAX:-18000}"          # cap (~5h = the quota window)
-RL_BUFFER="${RL_BUFFER:-120}"                      # extra wait after a parsed reset
+RL_BACKOFF_MIN="${RL_BACKOFF_MIN:-300}"            # exponential-fallback first backoff (5 min)
+RL_EXP_MAX="${RL_EXP_MAX:-3600}"                   # exponential-fallback cap (1h; UNKNOWN-reset path only)
+RL_BACKOFF_MAX="${RL_BACKOFF_MAX:-18000}"          # cap for a PARSED reset wait (~5h — known reset can be hours away)
+RL_BUFFER="${RL_BUFFER:-300}"                      # resume this many secs AFTER a parsed reset (5-min cushion)
 FORCE_TASK="${1:-}"
 POSTFLIGHT="$HARNESS_DIR/postflight.sh"
 
@@ -701,7 +702,9 @@ EOF
   out="$WORKLOG/$id.audit.md"
   rlpoll="${RL_POLL:-${RL_BACKOFF_MIN:-300}}"
   while :; do
-    set +e; run_claude "$am" "$ae" "$(audit_prompt "$id" "$spec" "$diff" "$visual")"; arc=$?; set -e
+    # `… || arc=$?` (NOT `; arc=$?`) — see the builder call site: run_claude leaves `set -e` ON, so a
+    # bare `; arc=$?` would let `return 10` kill loop.sh here instead of triggering the auditor backoff.
+    arc=0; set +e; run_claude "$am" "$ae" "$(audit_prompt "$id" "$spec" "$diff" "$visual")" || arc=$?; set -e
     if [ "$arc" = 10 ]; then
       arl="$(rl_reset_wait "$WORKLOG/.claude-out" || true)"; arl="${arl:-$rlpoll}"
       log "auditor rate-limited — waiting ${arl}s (NOT an audit fail)"; sleep "$arl"; continue
@@ -827,16 +830,21 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
   rl_sleep="$RL_BACKOFF_MIN"
   while :; do
     cold_reset
-    set +e; run_claude "$tmodel" "$teffort" "$(prompt "$task")"; rc=$?; set -e
+    # NB: `… || rc=$?` (NOT `; rc=$?`). run_claude flips `set -e` back ON internally before it
+    # `return 10`s, which would defeat a leading `set +e` and make the non-zero return KILL loop.sh
+    # at this line (exit 10) before rc is ever captured — the bug where a usage limit exited the loop
+    # instead of triggering the reset-aware backoff below. The `||` keeps run_claude in an AND-OR list,
+    # which `set -e` never exits on, so rc=10 is captured and the handler runs. rc=0 init = success case.
+    rc=0; set +e; run_claude "$tmodel" "$teffort" "$(prompt "$task")" || rc=$?; set -e
     if [ "$rc" = 10 ]; then
       rl_wait="$(rl_reset_wait "$WORKLOG/.claude-out" || true)"
       if [ -n "$rl_wait" ]; then
         log "Claude usage/rate limit hit — Claude reports a reset; waiting ${rl_wait}s (until ~reset + ${RL_BUFFER}s), then RE-ATTEMPT COLD (not a failure)."
         sleep "$rl_wait"
       else
-        log "Claude usage/rate limit hit (no parseable reset time) — exponential backoff ${rl_sleep}s, will RE-ATTEMPT COLD (not a failure)."
+        log "Claude usage/rate limit hit (no parseable reset time) — exponential backoff ${rl_sleep}s (cap ${RL_EXP_MAX}s), will RE-ATTEMPT COLD (not a failure)."
         sleep "$rl_sleep"
-        rl_sleep=$(( rl_sleep * 2 )); [ "$rl_sleep" -gt "$RL_BACKOFF_MAX" ] && rl_sleep="$RL_BACKOFF_MAX"
+        rl_sleep=$(( rl_sleep * 2 )); [ "$rl_sleep" -gt "$RL_EXP_MAX" ] && rl_sleep="$RL_EXP_MAX"
       fi
       continue
     fi

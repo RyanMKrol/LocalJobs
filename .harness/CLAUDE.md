@@ -220,3 +220,22 @@ dated bullet when you defer something new.
     undiagnosable after `cold_reset` wiped the tree. It now tees to the gitignored `$WORKLOG/.local-dod.log`
     and logs the last 30 lines on failure. (The earlier `wait_ci_green` output is similarly worth capturing
     if it recurs.)
+- **2026-06-30 — FIXED the REAL reason the loop exited on a usage limit: a `set -e` escape in the
+  run_claude call sites (the 2026-06-29 "detect on rc=0" fix above was necessary but NOT sufficient).**
+  `run_claude` internally does `set +e` (to read the claude pipe's `PIPESTATUS` without dying) then
+  `set -e` to restore it — but `set -e` is a GLOBAL shell option, so by the time `run_claude` hits
+  `return 10` it has re-enabled `set -e`, which **defeats the caller's leading `set +e`**. The call
+  sites were `set +e; run_claude …; rc=$?; set -e` — and with `set -e` flipped back ON inside
+  run_claude, the non-zero `return 10` triggers errexit and **kills `loop.sh` (exit 10) at the call,
+  before `rc=$?` runs** — so the reset-aware backoff handler was never reached. supervise then saw a
+  non-zero exit and did blind `SUPERVISE_ERROR_BACKOFF` (300s) relaunches that re-hit the limit
+  immediately — the "5-minute retries forever" symptom. *Fix:* both call sites (builder ~`run_claude
+  "$tmodel"` and auditor ~`run_claude "$am"`) now use **`rc=0; set +e; run_claude … || rc=$?; set -e`**
+  — the `|| rc=$?` (an AND-OR list) is never exited-on by `set -e` regardless of run_claude's internal
+  flipping, so rc=10 is captured and the handler runs. Verified with a minimal `set -euo pipefail`
+  repro + an integration sim of the loop's structure (handler runs, script does NOT exit on rc=10).
+  Now: a KNOWN reset ("resets 3:10pm (TZ)") → the loop sleeps until that time + `RL_BUFFER` (raised to
+  **300s = 5 min**) and resumes itself, NOT supervise; an UNKNOWN/unparseable reset → exponential
+  backoff capped at the new **`RL_EXP_MAX` (1h)** (decoupled from `RL_BACKOFF_MAX`=5h, which still caps
+  a parsed wait since a real reset can be hours out). **Lesson:** a helper that toggles global `set -e`
+  must be called with `|| rc=$?`, never `; rc=$?` — the latter is a latent errexit landmine.
