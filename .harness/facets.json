@@ -6,41 +6,106 @@
       "cardinality": "exactly-one",
       "desc": "WHERE the change lives — inferable largely from the task's scope file paths.",
       "values": {
-        "ui":              { "desc": "dashboard CSS / components / visual layout (dashboard/app/**)", "difficultyHint": "low-med" },
-        "dashboard-logic": { "desc": "dashboard client data/state/api-client (dashboard/app/lib/*, polling, non-visual)", "difficultyHint": "med" },
-        "api":             { "desc": "daemon HTTP routes (src/api/server.ts)", "difficultyHint": "med" },
-        "job":             { "desc": "example-workflow stage logic (src/jobs/**)", "difficultyHint": "med" },
-        "service":         { "desc": "shared rate-limit/quota services (src/services/**)", "difficultyHint": "med-high" },
-        "framework":       { "desc": "executor/scheduler/dag/workflow-executor/core (src/core/**)", "difficultyHint": "high" },
-        "db":              { "desc": "schema/store/migrations (src/db/**)", "difficultyHint": "high" },
-        "harness":         { "desc": "the .harness/ loop + scaffolding, backlog authoring", "difficultyHint": "varies" }
+        "ui": {
+          "desc": "dashboard CSS / components / visual layout (dashboard/app/**)",
+          "difficultyHint": "low-med"
+        },
+        "dashboard-logic": {
+          "desc": "dashboard client data/state/api-client (dashboard/app/lib/*, polling, non-visual)",
+          "difficultyHint": "med"
+        },
+        "api": {
+          "desc": "daemon HTTP routes (src/api/server.ts)",
+          "difficultyHint": "med"
+        },
+        "job": {
+          "desc": "example-workflow stage logic (src/jobs/**)",
+          "difficultyHint": "med"
+        },
+        "service": {
+          "desc": "shared rate-limit/quota services (src/services/**)",
+          "difficultyHint": "med-high"
+        },
+        "framework": {
+          "desc": "executor/scheduler/dag/workflow-executor/core (src/core/**)",
+          "difficultyHint": "high"
+        },
+        "db": {
+          "desc": "schema/store/migrations (src/db/**)",
+          "difficultyHint": "high"
+        },
+        "harness": {
+          "desc": "the .harness/ loop + scaffolding, backlog authoring",
+          "difficultyHint": "varies"
+        }
       }
     },
     "work-type": {
       "cardinality": "exactly-one",
       "desc": "WHAT KIND of change it is — the main thing the authoring LLM reasons about.",
       "values": {
-        "style":      { "desc": "visual / CSS / layout only", "difficultyHint": "very-easy" },
-        "logging":    { "desc": "log verbosity / messages", "difficultyHint": "very-easy" },
-        "docs":       { "desc": "README / CLAUDE / spec text", "difficultyHint": "very-easy" },
-        "config":     { "desc": "env / config knobs", "difficultyHint": "easy" },
-        "component":  { "desc": "new/changed UI component or page", "difficultyHint": "med" },
-        "endpoint":   { "desc": "new/changed API route", "difficultyHint": "med" },
-        "bugfix":     { "desc": "fix a specific defect", "difficultyHint": "med-varies" },
-        "feature":    { "desc": "multi-file new capability", "difficultyHint": "high" },
-        "migration":  { "desc": "schema / data migration", "difficultyHint": "high" },
-        "llm-prompt": { "desc": "recommender / LLM prompt logic", "difficultyHint": "high" },
-        "refactor":   { "desc": "rename / move / restructure", "difficultyHint": "high" }
+        "style": {
+          "desc": "visual / CSS / layout only",
+          "difficultyHint": "very-easy"
+        },
+        "logging": {
+          "desc": "log verbosity / messages",
+          "difficultyHint": "very-easy"
+        },
+        "docs": {
+          "desc": "README / CLAUDE / spec text",
+          "difficultyHint": "very-easy"
+        },
+        "config": {
+          "desc": "env / config knobs",
+          "difficultyHint": "easy"
+        },
+        "component": {
+          "desc": "new/changed UI component or page",
+          "difficultyHint": "med"
+        },
+        "endpoint": {
+          "desc": "new/changed API route",
+          "difficultyHint": "med"
+        },
+        "bugfix": {
+          "desc": "fix a specific defect",
+          "difficultyHint": "med-varies"
+        },
+        "feature": {
+          "desc": "multi-file new capability",
+          "difficultyHint": "high"
+        },
+        "migration": {
+          "desc": "schema / data migration",
+          "difficultyHint": "high"
+        },
+        "llm-prompt": {
+          "desc": "recommender / LLM prompt logic",
+          "difficultyHint": "high"
+        },
+        "refactor": {
+          "desc": "rename / move / restructure",
+          "difficultyHint": "high"
+        }
       }
     },
     "risk": {
       "cardinality": "zero-or-more",
       "desc": "Danger modifiers; each pushes difficulty UP. Used by the policy only once a cell is dense.",
       "values": {
-        "touches-schema":   { "desc": "scope includes src/db/schema.sql or src/db/index.ts (the T098 trap)" },
-        "touches-executor": { "desc": "scope includes core/executor, workflow-executor, dag, or scheduler" },
-        "full-stack":       { "desc": "spans db + api + dashboard in one task" },
-        "cross-cutting":    { "desc": "many files / a shared convention" }
+        "touches-schema": {
+          "desc": "scope includes src/db/schema.sql or src/db/index.ts (the T098 trap)"
+        },
+        "touches-executor": {
+          "desc": "scope includes core/executor, workflow-executor, dag, or scheduler"
+        },
+        "full-stack": {
+          "desc": "spans db + api + dashboard in one task"
+        },
+        "cross-cutting": {
+          "desc": "many files / a shared convention"
+        }
       }
     }
   },
@@ -58,10 +123,22 @@
   "tiers": {
     "_about": "The GLOBAL difficulty ladder, cheapest → most expensive. The policy chooses a START tier from here per task; escalation walks UP it. The authored model/effort is the cold-start start tier. Project-specific (override per project).",
     "ladder": [
-      { "model": "claude-sonnet-4-6", "effort": "low" },
-      { "model": "claude-sonnet-4-6", "effort": "medium" },
-      { "model": "claude-sonnet-4-6", "effort": "high" },
-      { "model": "claude-opus-4-8", "effort": "high" }
+      {
+        "model": "claude-sonnet-5",
+        "effort": "low"
+      },
+      {
+        "model": "claude-sonnet-5",
+        "effort": "medium"
+      },
+      {
+        "model": "claude-sonnet-5",
+        "effort": "high"
+      },
+      {
+        "model": "claude-opus-4-8",
+        "effort": "high"
+      }
     ]
   }
 }

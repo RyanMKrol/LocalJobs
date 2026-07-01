@@ -37,7 +37,7 @@ FAILBUF="$WORKLOG/.failures.buf"                   # gitignored scratch buffer f
 MANUAL_FAIL="$HARNESS_DIR/manual-fail.json"        # owner-owned overlay (id → {failed,reason,at}); dashboard/command-written, never WRITTEN by the loop. Read for calibration (manual_fail_ids) AND reconciled → TASKS.json status=failed at pre-flight (T279, reconcile_overlays)
 HUMAN_DONE="$HARNESS_DIR/human-done.json"          # owner-owned overlay (id → {done,at}) for needs-human tasks; dashboard-written, never WRITTEN by the loop. Reconciled → TASKS.json status=done at pre-flight so dependents unblock (T261, reconcile_overlays)
 NAME="$(basename "$ROOT")"
-MODEL="${MODEL:-claude-sonnet-4-6}"               # COLD-START FLOOR — cheapest tier; the policy tunes UP from here (pin the full id; the bare alias drifts)
+MODEL="${MODEL:-claude-sonnet-5}"               # COLD-START FLOOR — cheapest tier; the policy tunes UP from here (pin the full id; the bare alias drifts)
 EFFORT="${EFFORT:-low}"                            # low|medium|high|xhigh|max — cheapest by default (bias-cheap; the ladder escalates on failure)
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-2}"                  # soft failures per rung before escalating (2: with the 4-tier ladder this caps a doomed task at 4×2=8 attempts before it BLOCKS to a human)
 MAX_ITERS="${MAX_ITERS:-100}"                      # global iteration backstop

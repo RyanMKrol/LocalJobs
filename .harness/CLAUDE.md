@@ -151,6 +151,29 @@ requires editing `package.json`, which IS scope-checked, so the lockfile can't s
 This auto-exemption was added after a task scoped to `package.json` failed scope-creep on its sibling
 `package-lock.json` (T220).
 
+## Bumping the base model (preserve calibration — migrate the ledger in lockstep)
+
+When a new model ships and you switch the harness to it, the difficulty calibration in
+`outcomes.jsonl`/`failures.jsonl` must be **migrated in lockstep**, or it is silently lost.
+`policy.jq` maps each historic row's `(model, effort)` to a ladder **index** via `tidx`, and
+**drops any row whose tuple isn't on the current ladder** (`select($s >= 0 and $f >= 0)`). So if you
+change the ladder in `facets.json` but leave the ledger referencing the old id, every historic row
+becomes `tidx = -1` → dropped → every `(layer × workType)` cell cold-starts from the floor again.
+
+Procedure (done for `claude-sonnet-4-6 → claude-sonnet-5`, 2026-07-01):
+1. **Pin the FULL id.** From `claude-sonnet-4-6` on, model IDs are a **dateless pinned snapshot** (not
+   an evergreen alias) — so `claude-sonnet-5` is the correct thing to pin (no `-YYYYMMDD`). Confirm the
+   exact id from Anthropic's models doc; do not guess.
+2. **Config:** update the `MODEL` default in `harness.env` + `loop.sh`, and the sonnet tiers in the
+   `facets.json` `.tiers.ladder`. Leave the Opus ceiling + `policy.auditorModel` unless bumping those too.
+3. **Migrate the ledger 1:1:** `sed 's/<oldid>/<newid>/g'` over `outcomes.jsonl` + `failures.jsonl`
+   (and the gitignored `worklog/.failures.buf` so a pending flush stays consistent). Because the new
+   model takes the SAME ladder positions, this preserves every cell's learned difficulty exactly.
+   Leave worklog narrative (`*.md`) alone — it's historical record, not policy-consumed.
+4. **Verify calibration is unchanged:** run `policy.jq` per cell against (old ledger + old ladder) vs
+   (new ledger + new ladder); every cell's chosen start-tier must be identical. (It's a slightly
+   *pessimistic* prior if the new model is stronger — safe; the ladder still escalates.)
+
 ## Known-but-deferred issues (review if they recur)
 
 A running log of harness pathologies we've **seen at least once** and **consciously chose not to fix
