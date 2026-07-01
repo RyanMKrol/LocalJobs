@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { api } from './lib/api';
 import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
+import { RunButton } from './components/RunButton';
 
 type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | 'ignored' | null;
 
@@ -191,7 +192,7 @@ export default function Overview() {
             </div>
             {p.last_run?.status === 'running' && <ProgressBar pct={p.last_run.progress} />}
             <div style={{ marginTop: 10 }}>
-              <button className="btn secondary" onClick={() => runWorkflow(p.name)}>▶ Run</button>
+              <RunButton variant="secondary" isRunning={false} label="▶ Run" onClick={() => runWorkflow(p.name)} />
             </div>
           </div>
         ))}

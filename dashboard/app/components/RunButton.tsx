@@ -11,6 +11,8 @@
  *   onClick    – called when the user clicks the button
  *   label      – override the default "▶ Run now" label (optional)
  *   runningLabel – override the default "Running…" label (optional)
+ *   variant    – 'run' (accent `.btn-run`, default) or 'secondary' (`.btn.secondary`,
+ *                used by the compact Overview workflow cards)
  */
 
 interface RunButtonProps {
@@ -20,6 +22,7 @@ interface RunButtonProps {
   label?: string;
   runningLabel?: string;
   className?: string;
+  variant?: 'run' | 'secondary';
 }
 
 export function RunButton({
@@ -29,12 +32,14 @@ export function RunButton({
   label = '▶ Run now',
   runningLabel = 'Running…',
   className,
+  variant = 'run',
 }: RunButtonProps) {
   const disabled = isRunning || busy;
   const title = isRunning
     ? 'A run is already in progress — only one run per workflow at a time'
     : undefined;
-  const cls = ['btn', 'btn-run', className].filter(Boolean).join(' ');
+  const variantClass = variant === 'secondary' ? 'secondary' : 'btn-run';
+  const cls = ['btn', variantClass, className].filter(Boolean).join(' ');
 
   return (
     <button className={cls} onClick={onClick} disabled={disabled} title={title}>
