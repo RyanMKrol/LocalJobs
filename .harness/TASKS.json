@@ -7447,6 +7447,94 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T282.md"
+    },
+    {
+      "id": "T283",
+      "title": "Backlog: only show needs-human blockers in Waiting on dependencies",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "backlog"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T283.md"
+    },
+    {
+      "id": "T284",
+      "title": "Add /pre-loop-checkin — read-only sanity pass before starting a loop run",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "harness",
+        "commands",
+        "backlog"
+      ],
+      "facets": {
+        "layer": "harness",
+        "workType": "docs",
+        "risk": []
+      },
+      "scope": [
+        ".claude/commands/pre-loop-checkin.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T284.md"
+    },
+    {
+      "id": "T285",
+      "title": "Per-workflow notifyEnabled toggle — turn off push notifications for a noisy workflow",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "backend",
+        "dashboard",
+        "ui",
+        "notifications"
+      ],
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": [
+          "touches-schema",
+          "touches-executor",
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "src/core/types.ts",
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/core/workflow-executor.ts",
+        "src/api/server.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T285.md"
     }
   ]
 }
