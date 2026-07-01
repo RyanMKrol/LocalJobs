@@ -151,6 +151,21 @@ const workflowIo = {
   note: '',
 };
 
+// A run/stage that did no work (T258 noop detection) — settles 'skipped' instead of
+// 'success' so the dashboard reads "nothing to do", not a misleading green success.
+// Exercises T281's distinct skipped pill/label + the IO panel's "processed no new
+// items" empty state (no rows freshly shown as succeeded).
+const workflowRunSkipped = workflowRun({
+  id: 'skipped', status: 'skipped', progress: 100, progress_msg: 'nothing to do',
+});
+const membersSkipped = members.map((m, i) => run({
+  id: `skipped-${i}`, job_name: m.job_name, status: 'skipped', workflow_run_id: 'skipped',
+}));
+const workflowIoSkipped = {
+  io: [], firstWave: ['places-resolve'], lastWave: ['places-enrich-with-llm'],
+  scoped: true, emptyReason: null, note: '',
+};
+
 const tasks = [
   // T001 is a ready pending task; T040 depends on it (unmet) so T040 appears in Waiting with a pill.
   { id: 'T001', title: 'Foundation task — ' + LONG, status: 'pending', gate: null, dependsOn: [],
@@ -209,6 +224,8 @@ export function fixtureFor(pathname) {
   // Sub-routes must precede the generic `/api/workflow-runs/<id>` catch-all below.
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflow-runs/')) return gateInspection;
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflows/')) return structuralGateDetail;
+  if (pathname === '/api/workflow-runs/skipped/io') return workflowIoSkipped;
+  if (pathname === '/api/workflow-runs/skipped') return { run: workflowRunSkipped, jobs: membersSkipped, logs, gates: [] };
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) return workflowIo;
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.' };
   if (pathname.startsWith('/api/workflow-runs/')) return { run: workflowRun(), jobs: [run(), run({ id: '2', job_name: 'places-enrich', status: 'failed' })], logs, gates };
@@ -239,6 +256,7 @@ export const PAGES = [
   { name: 'workflow-movie-recs',     path: '/workflows/movie-recommendations', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-skipped',    path: '/workflow-runs/skipped',          waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },
