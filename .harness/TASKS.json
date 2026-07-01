@@ -7399,7 +7399,7 @@
     {
       "id": "T281",
       "title": "Surface skipped/no-op run status in the dashboard run-detail view (UI half of T258)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T258"
       ],
