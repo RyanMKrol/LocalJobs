@@ -98,6 +98,34 @@ const gates = [
   { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', state: 'failed', failureRunId: '1', description: 'produces — enriched.json has name + address fields' },
 ];
 
+// Gate inspection fixtures (the gate DETAIL pages — run-scoped and definition-scoped).
+const gateShape = {
+  summary: 'A non-empty JSON array of resolved places, one row per input CID.',
+  format: 'JSON array',
+  expectations: [
+    { label: 'file exists and is non-empty', detail: 'resolved.json has at least one row' },
+    { label: 'every row has a place_id', detail: 'the Google Places identifier used downstream' },
+  ],
+};
+const gateInspection = {
+  gate: gates[0],
+  produced: { shape: gateShape, result: { ok: true, checks: [
+    { label: 'file exists and is non-empty', ok: true, actual: '42 rows' },
+    { label: 'every row has a place_id', ok: true, actual: '42/42 rows' },
+  ], sample: '[{"cid":"' + LONG + '","place_id":"ChIJ123"}]' } },
+  consumed: { shape: gateShape, result: { ok: true, checks: [
+    { label: 'file exists and is non-empty', ok: true, actual: '42 rows' },
+    { label: 'every row has a place_id', ok: true, actual: '42/42 rows' },
+  ], sample: '[{"cid":"' + LONG + '","place_id":"ChIJ123"}]' } },
+  identical: true,
+};
+const structuralGateDetail = {
+  gate: structuralGates[0],
+  produced: { shape: gateShape },
+  consumed: { shape: gateShape },
+  identical: true,
+};
+
 // Input → Output mapping rows for a workflow run (the IoPanel on the run detail page).
 // A places-style fan-out: a CID input resolves to a place_id whose terminal stage
 // produces a markdown profile. Exercises the markdown-output "View" affordance.
@@ -179,6 +207,8 @@ export function fixtureFor(pathname) {
   if (pathname === '/api/tv-recs') return tvRecs;
   if (pathname === '/api/movie-gaps') return { generatedAt: NOW, gaps: [], collectionsChecked: 0, collectionExamples: {} };
   // Sub-routes must precede the generic `/api/workflow-runs/<id>` catch-all below.
+  if (pathname.includes('/gates/') && pathname.startsWith('/api/workflow-runs/')) return gateInspection;
+  if (pathname.includes('/gates/') && pathname.startsWith('/api/workflows/')) return structuralGateDetail;
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) return workflowIo;
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.' };
   if (pathname.startsWith('/api/workflow-runs/')) return { run: workflowRun(), jobs: [run(), run({ id: '2', job_name: 'places-enrich', status: 'failed' })], logs, gates };
@@ -209,6 +239,8 @@ export const PAGES = [
   { name: 'workflow-movie-recs',     path: '/workflows/movie-recommendations', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
+  { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
+  { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },
   { name: 'run',                     path: '/runs/1' },
   { name: 'services',                path: '/services' },

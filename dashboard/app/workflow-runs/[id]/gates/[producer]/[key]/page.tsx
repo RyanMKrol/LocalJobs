@@ -3,7 +3,8 @@
 import { use } from 'react';
 import { api } from '../../../../../lib/api';
 import type { ArtifactShape, ExpectationResult, GateResult } from '../../../../../lib/api';
-import { WorkflowRunBackLink, statusLabel, usePoll } from '../../../../../ui';
+import { StatusBadge, WorkflowRunBackLink, usePoll } from '../../../../../ui';
+import type { RunStatus } from '../../../../../lib/api';
 
 /** Pair each declared expectation with its actual result (matched by label). */
 function pairExpectations(shape: ArtifactShape | null, result: GateResult | null) {
@@ -148,9 +149,7 @@ export default function GateDetail({
       <div className="row">
         <h1 style={{ margin: 0 }}>Validation gate</h1>
         <div className="spacer" />
-        {gate && (
-          <span className={`badge ${gate.state}`}>{statusLabel(gate.state)}</span>
-        )}
+        {gate && <StatusBadge status={gate.state as RunStatus} />}
       </div>
 
       {!gate && <p className="muted">Gate not found.</p>}
@@ -169,7 +168,7 @@ export default function GateDetail({
               <div className="gate-card gate-center">
                 <div className="gate-card-head">
                   <span className="gate-role">Gate</span>
-                  <span className={`badge ${gate.state}`}>{statusLabel(gate.state)}</span>
+                  <StatusBadge status={gate.state as RunStatus} />
                 </div>
                 <code className="code-block gate-format">{gate.key}</code>
                 <p className="muted">

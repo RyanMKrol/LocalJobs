@@ -3,7 +3,7 @@
 import { use } from 'react';
 import { api } from '../../../../../lib/api';
 import type { ArtifactShape } from '../../../../../lib/api';
-import { usePoll } from '../../../../../ui';
+import { WorkflowRunBackLink, usePoll } from '../../../../../ui';
 
 /**
  * The body of a definition-level contract panel: ONLY the declared expected shape
@@ -87,7 +87,7 @@ export default function StructuralGateDetail({
 
   return (
     <>
-      <p className="muted"><a href={`/workflows/${name}`}>← {name}</a></p>
+      <WorkflowRunBackLink workflowRunId={null} fallback={{ href: `/workflows/${name}`, label: name }} />
       <div className="row">
         <h1 style={{ margin: 0 }}>Validation gate</h1>
         <div className="spacer" />
