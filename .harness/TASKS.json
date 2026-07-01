@@ -7824,7 +7824,7 @@
     {
       "id": "T296",
       "title": "DAG gate padlock: increase size/stroke weight for all states",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
