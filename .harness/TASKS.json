@@ -7539,7 +7539,7 @@
     {
       "id": "T286",
       "title": "Rename .claude/commands/* with a local-jobs- prefix for easier type-ahead discovery",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
