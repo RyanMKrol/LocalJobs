@@ -432,6 +432,24 @@ job MAY colocate a service it owns).
     `markWorkItem(ctx, key, 'success', { detail: { name: ..., markdown: <path> } })` for
     markdown artifact items, OR just `markWorkItem(ctx, key, 'success')` for non-markdown
     items. The output section renders automatically — no extra wiring needed.
+  - **Output-form convention (T262) — how to add a new render form.** An output
+    item declares its render form via `detail.format` (a string, defaults to `"markdown"`
+    when absent). The read-only output endpoint (`GET /api/workflow-runs/:id/output` and
+    `GET /api/workflows/:name/output`) dispatches on `detail.format` and serves the file
+    through the matching safety guard — both guards confine reads to the job's own
+    `data/out/` tree, so all forms inherit the same path-safety properties:
+    - **`markdown` (default)**: the path comes from `detail.markdown`; served via
+      `safeOutputMarkdown` (must end in `.md`). Existing places/perfumes outputs use
+      this form with no change — `detail.format` is optional for backward compat.
+    - **Any other form** (e.g. `"json"`, `"table"`): the path comes from `detail.path`;
+      served via `safeOutputFile` (any extension allowed, same `data/out/` + realpath
+      guards). The response payload includes `format` so the dashboard renderer
+      (T282) can dispatch to the right viewer.
+    - **To add a new form**: record `{ name, format: '<key>', path: <absPath> }` in
+      `detail` via `markWorkItem`; the API serves it automatically. The renderer
+      dispatch (T282) then adds a viewer for `<key>` in the dashboard — no endpoint
+      changes needed. Keep output files under `data/out/` (the guard rejects anything
+      outside that tree).
 - Long jobs: set a realistic `timeoutMs` so a hang is killed, not left forever.
 - Heavy external calls (Places API, headless browser): rate-limit inside the
   job, and make progress observable.

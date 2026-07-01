@@ -27,6 +27,7 @@ import {
   getWorkflow,
   getWorkflowJobs,
   getWorkflowLogs,
+  getWorkItem,
   getWorkflowRun,
   getRun,
   lastWorkflowRunForWorkflow,
@@ -727,6 +728,62 @@ export function safeOutputMarkdown(candidate: string | null): string | null {
 }
 
 /**
+ * Resolve a job-recorded output path to a safe, real, absolute path — or null if
+ * it isn't a readable artifact inside a job's `data/out/` tree. Like
+ * {@link safeOutputMarkdown} but without the `.md` extension restriction, so any
+ * file format stored under `data/out/` is allowed. All other guards are identical:
+ *  - resolved + symlink-followed (realpath) so `..`/symlink escapes are caught,
+ *  - must stay under {@link JOBS_ROOT},
+ *  - must live inside a job-local `data/out/` directory,
+ *  - must be a regular file that exists.
+ * No network/paid calls — a local file stat + realpath only.
+ *
+ * Use this for declared non-markdown output forms (see Output-form convention in
+ * CLAUDE.md). For the `markdown` form continue using {@link safeOutputMarkdown}.
+ */
+export function safeOutputFile(candidate: string | null): string | null {
+  if (!candidate) return null;
+  const abs = resolvePath(candidate);
+  let real: string;
+  try {
+    real = realpathSync(abs); // follows symlinks; throws if the file is missing
+  } catch {
+    return null;
+  }
+  if (!isWithin(JOBS_ROOT, real)) return null; // escaped the jobs tree
+  if (!real.includes(`${sep}data${sep}out${sep}`)) return null; // not a job output artifact
+  try {
+    if (!statSync(real).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return real;
+}
+
+/**
+ * Read the output form declared in a work item's `detail.format` field, and return
+ * the file path to serve. Convention (see CLAUDE.md Output-form convention):
+ *  - `format === 'markdown'` or unset → serve `detail.markdown` via safeOutputMarkdown
+ *  - any other format → serve `detail.path` via safeOutputFile
+ * Returns `{ format, path }` where `path` is null when no artifact is declared.
+ */
+function resolveOutputForm(jobName: string, itemKey: string): { format: string; path: string | null } {
+  const row = getWorkItem(jobName, itemKey);
+  if (!row?.detail) return { format: 'markdown', path: workItemMarkdownPath(jobName, itemKey) };
+  let detail: Record<string, unknown>;
+  try {
+    detail = JSON.parse(row.detail) as Record<string, unknown>;
+  } catch {
+    return { format: 'markdown', path: null };
+  }
+  const format = typeof detail.format === 'string' && detail.format ? detail.format : 'markdown';
+  if (format === 'markdown') {
+    return { format, path: typeof detail.markdown === 'string' && detail.markdown ? detail.markdown : null };
+  }
+  return { format, path: typeof detail.path === 'string' && detail.path ? detail.path : null };
+}
+
+/**
  * Resolve a bulk-stuck-action request body to a `BulkStuckScope`, or null if
  * the body specifies an unknown workflow. Accepts:
  *   {} or { scope: 'all' }           → all stuck items
@@ -1351,20 +1408,23 @@ export function createApiServer(
       }
 
       // GET /api/workflows/:name/output?job=&key=  (T205)
-      // Return the markdown artifact for one workflow output item, not scoped to a
-      // specific run. Same guard as the per-run /output endpoint: safeOutputMarkdown
-      // confines the read to a .md file inside a job's own data/out/ tree.
+      // Return the artifact for one workflow output item, not scoped to a specific run.
+      // Dispatches on the item's declared output form (detail.format — see CLAUDE.md
+      // Output-form convention). The `markdown` form (or unset) uses safeOutputMarkdown
+      // (must end .md + inside data/out/). Any other declared form uses safeOutputFile
+      // (same guards, no .md restriction). Both confine reads to data/out/ trees.
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'output' && parts.length === 4) {
         const jobName = url.searchParams.get('job');
         const key = url.searchParams.get('key');
         if (!jobName || !key) return json(res, 400, { error: 'job and key query params are required' });
-        const safe = safeOutputMarkdown(workItemMarkdownPath(jobName, key));
-        if (!safe) return json(res, 200, { found: false, job: jobName, key });
+        const { format, path: candidatePath } = resolveOutputForm(jobName, key);
+        const safe = format === 'markdown' ? safeOutputMarkdown(candidatePath) : safeOutputFile(candidatePath);
+        if (!safe) return json(res, 200, { found: false, job: jobName, key, format });
         let content: string;
         try {
           content = readFileSync(safe, 'utf8');
         } catch {
-          return json(res, 200, { found: false, job: jobName, key });
+          return json(res, 200, { found: false, job: jobName, key, format });
         }
         const MAX = 512 * 1024;
         const truncated = content.length > MAX;
@@ -1372,6 +1432,7 @@ export function createApiServer(
           found: true,
           job: jobName,
           key,
+          format,
           file: relativePath(JOBS_ROOT, safe),
           bytes: Buffer.byteLength(content),
           truncated,
@@ -1608,33 +1669,35 @@ export function createApiServer(
       }
 
       // GET /api/workflow-runs/:id/output?job=<job>&key=<key>  (T110)
-      // Read-only: return the markdown artifact a job produced for one work item,
-      // for the workflow-run IO panel's output preview + full popover. The path
-      // comes from the work item's recorded detail.markdown and is confined by
-      // safeOutputMarkdown() to a `.md` file inside a job's own data/out/ tree —
-      // no path traversal, files only, and a pure local file read (never a
-      // paid/remote call), so it's safe to load on demand. "No artifact" is a
-      // benign 200 { found: false } (not every item has produced output yet).
+      // Read-only: return the artifact a job produced for one work item, for the
+      // workflow-run IO panel's output preview + full popover. Dispatches on the
+      // item's declared output form (detail.format — see CLAUDE.md Output-form
+      // convention). The `markdown` form (or unset) is confined via safeOutputMarkdown
+      // to a `.md` file in data/out/; any other declared form uses safeOutputFile
+      // (same guards, no .md restriction). Both are a pure local file read (no
+      // paid/remote calls). "No artifact" is a benign 200 { found: false }.
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'output' && parts.length === 4) {
         const run = getWorkflowRun(parts[2]);
         if (!run) return json(res, 404, { error: 'workflow run not found' });
         const jobName = url.searchParams.get('job');
         const key = url.searchParams.get('key');
         if (!jobName || !key) return json(res, 400, { error: 'job and key query params are required' });
-        const safe = safeOutputMarkdown(workItemMarkdownPath(jobName, key));
-        if (!safe) return json(res, 200, { found: false, job: jobName, key });
+        const { format, path: candidatePath } = resolveOutputForm(jobName, key);
+        const safe = format === 'markdown' ? safeOutputMarkdown(candidatePath) : safeOutputFile(candidatePath);
+        if (!safe) return json(res, 200, { found: false, job: jobName, key, format });
         let content: string;
         try {
           content = readFileSync(safe, 'utf8');
         } catch {
-          return json(res, 200, { found: false, job: jobName, key });
+          return json(res, 200, { found: false, job: jobName, key, format });
         }
-        const MAX = 512 * 1024; // cap the payload; markdown profiles are tiny, this is a safety belt
+        const MAX = 512 * 1024; // cap the payload; this is a safety belt
         const truncated = content.length > MAX;
         return json(res, 200, {
           found: true,
           job: jobName,
           key,
+          format,
           // A jobs-tree-relative path (e.g. perfumes/data/out/markdown/<id>.md) — readable, leaks no machine topology.
           file: relativePath(JOBS_ROOT, safe),
           bytes: Buffer.byteLength(content),

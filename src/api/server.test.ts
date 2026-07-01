@@ -28,6 +28,7 @@ import {
   readReviews,
   readTaskSpec,
   readWorklogContent,
+  safeOutputFile,
   safeOutputMarkdown,
   setHumanDoneEntry,
   setManualFailEntry,
@@ -543,6 +544,78 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   rmSync(okFile, { force: true });
   rmSync(wrongDir, { force: true });
   rmSync(txtFile, { force: true });
+}
+
+// ── T262: declared output form — safeOutputFile + non-markdown endpoint dispatch ──
+{
+  const jobsRoot = fileURLToPath(new URL('../jobs', import.meta.url));
+  const outDir = `${jobsRoot}/perfumes/data/out/reports`;
+  const jsonFile = `${outDir}/__t262-test__.json`;
+  const outsideFile = `${jobsRoot}/perfumes/data/raw/__t262-outside__.json`; // not under data/out
+  mkdirSync(outDir, { recursive: true });
+  mkdirSync(`${jobsRoot}/perfumes/data/raw`, { recursive: true });
+  writeFileSync(jsonFile, '{"ok":true}\n');
+  writeFileSync(outsideFile, '{"bad":true}\n');
+
+  await test('safeOutputFile: accepts any file type inside a job data/out tree', () => {
+    assert.ok(safeOutputFile(jsonFile), 'a json file under data/out is allowed');
+  });
+  await test('safeOutputFile: rejects null / traversal / outside / missing', () => {
+    assert.equal(safeOutputFile(null), null, 'null');
+    assert.equal(safeOutputFile('/etc/passwd'), null, 'outside the jobs tree');
+    assert.equal(safeOutputFile(`${outDir}/../../../../../../etc/passwd`), null, 'traversal escapes');
+    assert.equal(safeOutputFile(outsideFile), null, 'not under data/out');
+    assert.equal(safeOutputFile(`${outDir}/__no_such_file__.json`), null, 'missing file');
+  });
+
+  // Workflow output endpoint: markdown form (backward compat) vs declared non-markdown form
+  syncJob({ name: 't262-out', run: async () => {} });
+  syncWorkflow({ name: 't262-wf', jobs: [{ job: 't262-out' }] });
+  // Markdown item (existing convention — detail.markdown, no detail.format)
+  const mdFile = `${jobsRoot}/perfumes/data/out/markdown/__t262-md__.md`;
+  mkdirSync(`${jobsRoot}/perfumes/data/out/markdown`, { recursive: true });
+  writeFileSync(mdFile, '# T262\n');
+  markWorkItem('t262-out', 'md-item', 'success', { detail: { name: 'MdItem', markdown: mdFile } });
+  // Non-markdown item (detail.format + detail.path)
+  markWorkItem('t262-out', 'json-item', 'success', { detail: { name: 'JsonItem', format: 'json', path: jsonFile } });
+  // Path-unsafe item (detail.format + unsafe detail.path)
+  markWorkItem('t262-out', 'unsafe-item', 'success', { detail: { name: 'Unsafe', format: 'json', path: outsideFile } });
+  const t262RunId = createWorkflowRun('t262-wf', 'manual');
+
+  await test('output endpoint: serves markdown form byte-identically (backward compat)', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${t262RunId}/output?job=t262-out&key=md-item`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { found: boolean; format?: string; content?: string };
+      assert.equal(body.found, true);
+      assert.equal(body.format, 'markdown');
+      assert.equal(body.content, '# T262\n');
+    });
+  });
+  await test('output endpoint: serves declared non-markdown form via safeOutputFile', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${t262RunId}/output?job=t262-out&key=json-item`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { found: boolean; format?: string; content?: string };
+      assert.equal(body.found, true);
+      assert.equal(body.format, 'json');
+      assert.equal(body.content, '{"ok":true}\n');
+    });
+  });
+  await test('output endpoint: path-safety guard blocks unsafe declared path (found:false)', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${t262RunId}/output?job=t262-out&key=unsafe-item`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { found: boolean; format?: string };
+      assert.equal(body.found, false);
+      assert.equal(body.format, 'json');
+    });
+  });
+
+  finishWorkflowRun(t262RunId, 'success');
+  rmSync(jsonFile, { force: true });
+  rmSync(outsideFile, { force: true });
+  rmSync(mdFile, { force: true });
 }
 
 // ── T118: bulk stuck endpoints — scope validation + only-failed semantics ──
