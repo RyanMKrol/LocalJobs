@@ -128,12 +128,16 @@ TMDB GUID + a taste profile (genres/roles/decades/countries), and writes `snapsh
 exactly-once via the `tv-recs` ledger), drops owner-ignored shows, writes a markdown report to
 `data/out/reports/tv-recommendations.md`, and appends notified shows to the history file.
 and **workouts-sync** (`src/jobs/workouts-sync/`) — paginate the Hevy workout API
-(`https://api.hevyapp.com/v1/workouts`) and write each workout + its exercises into the existing
-DynamoDB `WORKOUTS_TABLE` / `EXERCISES_TABLE` via the shared `dynamodb` service; idempotent per
-workout id via the `work_items` ledger (new workouts are synced, already-synced ids are skipped).
-Runs daily. No static input list — inputs are discovered live from Hevy each run (like the plex
-audit workflows). Rate-limited via `src/services/hevy.service.ts`. Credentials: `HEVY_API_KEY`,
-`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `WORKOUTS_TABLE`, `EXERCISES_TABLE`.
+(`https://api.hevyapp.com/v1/workouts`) and append each newly-synced workout's full data (title,
+exercises, sets) to a local, full-history JSON file (`data/out/workouts-history.json`, no
+DynamoDB — matching the local-markdown/JSON-first direction of `listening-digest`/`projects-sync`/
+`stocks-sync`); idempotent per workout id via the `work_items` ledger (new workouts are appended,
+already-synced ids are skipped, so the history file only ever grows). Runs monthly (1st, 06:00) —
+a same-day-fresh cadence isn't needed now that nothing downstream reads it in real time. No static
+input list — inputs are discovered live from Hevy each run (like the plex audit workflows).
+Rate-limited via `src/services/hevy.service.ts`. Credentials: `HEVY_API_KEY`. A follow-up stage
+(T299) is planned to read the full history file and compute long-range per-exercise progress
+trends into a report — not yet built.
 and **listening-digest** (`src/jobs/listening-digest/`) — once a month, fetch Last.fm's own
 aggregated `user.getTopAlbums` + `user.getTopTracks` (`period=1month`), filter out albums where a
 single track accounts for ≥70% of the album's plays (a "one song on repeat" false-positive, mirrors

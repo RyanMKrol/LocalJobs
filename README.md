@@ -179,9 +179,13 @@ gitignored). Private workflows live in gitignored subfolders.
 - **tv-recommendations** — Monthly Plex TV show recommendations: snapshot the TV
   library → 8 Claude recommender branches → merge/verify/dedupe → one monthly
   digest of new picks.
-- **workouts-sync** — Daily Hevy workout ingestion: paginate the Hevy API → write
-  each workout + its exercises to the existing DynamoDB tables; idempotent per
-  workout id (new workouts synced, already-synced ids skipped). Runs daily at 06:00.
+- **workouts-sync** — Monthly Hevy workout ingestion: paginate the Hevy API →
+  append each newly-synced workout's full data (title, exercises, sets) to a
+  local full-history JSON file (`data/out/workouts-history.json`, no DynamoDB);
+  idempotent per workout id (new workouts appended, already-synced ids skipped,
+  so the history file only ever grows). Runs monthly on the 1st at 06:00. A
+  follow-up analysis stage is planned to read the full history and report
+  long-range per-exercise progress trends (not yet built).
 - **listening-digest** — Monthly Last.fm listening digest: fetch top albums + top
   tracks (`period=1month`) directly from Last.fm's own aggregation endpoints (no
   raw scrobble ingestion, no DynamoDB), filter out single-track-dominated "albums",

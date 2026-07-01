@@ -1,18 +1,20 @@
-// hevy-sync tests — hermetic: no live Hevy API calls, no live AWS writes.
-// Uses a stub fetcher + stub putter + the scratch DB (npm test sets LOCALJOBS_DB).
-// Covers: new workouts are synced and marked done; already-synced workouts are
-// skipped; exercise rows are written per workout; failures are handled gracefully.
+// hevy-sync tests — hermetic: no live Hevy API calls, no filesystem outside a scratch tmp dir.
+// Uses a stub fetcher + a scratch history-file path + the scratch DB (npm test sets LOCALJOBS_DB).
+// Covers: new workouts are recorded and marked done; already-synced workouts are skipped;
+// the history file accumulates full workout data idempotently across runs.
 import assert from 'node:assert/strict';
-import { describe, it, beforeEach } from 'node:test';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runHevySync,
-  writeWorkoutToDynamo,
+  readWorkoutsHistory,
   type HevyWorkout,
   type HevyWorkoutsPage,
-  type DynamoPutter,
 } from './hevy-sync.js';
 
 // ---------------------------------------------------------------------------
@@ -72,19 +74,6 @@ function multiPageFetcher(workouts: HevyWorkout[], pageSize: number) {
   };
 }
 
-/** Spy putter that records calls. Never throws. */
-function makePutSpy() {
-  const calls: { table: string; item: Record<string, unknown> }[] = [];
-  const put: DynamoPutter = async (table, item) => {
-    calls.push({ table, item });
-  };
-  return { put, calls };
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 // NOTE: Job name must match the constant in hevy-sync.ts
 const JOB = 'hevy-sync';
 
@@ -95,149 +84,101 @@ function uid(): string {
   return `test-workout-${Date.now()}-${++idCounter}`;
 }
 
-describe('writeWorkoutToDynamo', () => {
-  it('writes one workout row and N exercise rows', async () => {
-    const { put, calls } = makePutSpy();
-    const w = makeWorkout('w1', 3);
-    await writeWorkoutToDynamo(w, 'Workouts', 'Exercises', put);
-    // 1 workout + 3 exercises
-    assert.equal(calls.length, 4);
-    assert.equal(calls[0].table, 'Workouts');
-    assert.equal(calls[0].item['id'], 'w1');
-    assert.equal(calls[1].table, 'Exercises');
-    assert.equal(calls[1].item['workout_id'], 'w1');
-    // Exercise rows are keyed by `exercise_id` (the Exercises table's key attribute), not `id`.
-    assert.equal(calls[1].item['exercise_id'], 'w1_0');
-    assert.equal(calls[3].item['exercise_id'], 'w1_2');
-    assert.equal(calls[1].item['id'], undefined, 'exercise row must NOT carry an `id` key');
-  });
+describe('runHevySync — local history accumulation', () => {
+  let scratchDir: string;
+  let historyPath: string;
 
-  it('writes workout with no exercises (exercise_count=0)', async () => {
-    const { put, calls } = makePutSpy();
-    const w = makeWorkout('w-noex', 0);
-    await writeWorkoutToDynamo(w, 'Workouts', 'Exercises', put);
-    assert.equal(calls.length, 1, 'only the workout row, no exercise rows');
-    assert.equal(calls[0].item['exercise_count'], 0);
-  });
-
-  it('stores sets array on each exercise row', async () => {
-    const { put, calls } = makePutSpy();
-    const w = makeWorkout('w-sets', 1);
-    await writeWorkoutToDynamo(w, 'W', 'E', put);
-    const exRow = calls[1].item;
-    assert.ok(Array.isArray(exRow['sets']), 'sets should be an array');
-    assert.equal((exRow['sets'] as unknown[]).length, 1);
-  });
-});
-
-describe('runHevySync — skip already-synced workouts', () => {
   beforeEach(() => {
-    // Ensure HEVY_API_KEY is set so the guard doesn't throw.
     process.env.HEVY_API_KEY = 'test-key';
+    scratchDir = mkdtempSync(join(tmpdir(), 'workouts-history-'));
+    historyPath = join(scratchDir, 'workouts-history.json');
+  });
+
+  afterEach(() => {
+    rmSync(scratchDir, { recursive: true, force: true });
   });
 
   it('skips a workout already marked success in the ledger', async () => {
     const id = uid();
     markWorkItem(JOB, id, 'success');
 
-    const { put, calls } = makePutSpy();
     await runHevySync(fakeCtx(), {
       fetchPage: singlePageFetcher([makeWorkout(id)]),
-      putItem: put,
-      workoutsTable: 'W',
-      exercisesTable: 'E',
+      historyPath,
     });
 
-    assert.equal(calls.length, 0, 'no DynamoDB writes for already-synced workout');
+    assert.ok(!existsSync(historyPath), 'no history file written for an already-synced workout');
   });
 
-  it('syncs a new workout and marks it done', async () => {
+  it('syncs a new workout, marks it done, and writes it to the history file', async () => {
     const id = uid();
-    const { put, calls } = makePutSpy();
 
     await runHevySync(fakeCtx(), {
       fetchPage: singlePageFetcher([makeWorkout(id, 2)]),
-      putItem: put,
-      workoutsTable: 'Workouts',
-      exercisesTable: 'Exercises',
+      historyPath,
     });
 
-    // 1 workout + 2 exercises = 3 puts
-    assert.equal(calls.length, 3);
     assert.ok(isWorkItemDone(JOB, id, 3), 'ledger should mark the workout done');
+    const history = readWorkoutsHistory(historyPath);
+    assert.equal(history.length, 1);
+    assert.equal(history[0].id, id);
+    assert.equal(history[0].exercises.length, 2);
   });
 
-  it('syncs only NEW workouts when some already synced', async () => {
-    const existingId = uid();
-    const newId = uid();
-    markWorkItem(JOB, existingId, 'success');
+  it('running twice with the SAME data only appends each workout once (idempotent)', async () => {
+    const id = uid();
+    const fetchPage = singlePageFetcher([makeWorkout(id, 2)]);
 
-    const { put, calls } = makePutSpy();
+    await runHevySync(fakeCtx(), { fetchPage, historyPath });
+    await runHevySync(fakeCtx(), { fetchPage, historyPath });
+
+    const history = readWorkoutsHistory(historyPath);
+    assert.equal(history.length, 1, 'second run with identical data appends nothing new');
+  });
+
+  it('a second run with an extra new workout appends only that one new entry', async () => {
+    const id1 = uid();
+    const id2 = uid();
+
     await runHevySync(fakeCtx(), {
-      fetchPage: singlePageFetcher([makeWorkout(existingId), makeWorkout(newId)]),
-      putItem: put,
-      workoutsTable: 'W',
-      exercisesTable: 'E',
+      fetchPage: singlePageFetcher([makeWorkout(id1)]),
+      historyPath,
     });
 
-    // Only the new workout: 1 workout + 1 exercise = 2 puts
-    assert.equal(calls.length, 2);
-    const ids = calls.map((c) => c.item['id']);
-    assert.ok(ids.includes(newId), 'new workout row written');
-    assert.ok(!ids.includes(existingId), 'existing workout not re-written');
+    await runHevySync(fakeCtx(), {
+      fetchPage: singlePageFetcher([makeWorkout(id1), makeWorkout(id2)]),
+      historyPath,
+    });
+
+    const history = readWorkoutsHistory(historyPath);
+    assert.equal(history.length, 2);
+    const ids = history.map((w) => w.id);
+    assert.ok(ids.includes(id1));
+    assert.ok(ids.includes(id2));
   });
 
   it('handles multiple pages correctly', async () => {
     const ids = [uid(), uid(), uid()];
     const workouts = ids.map((id) => makeWorkout(id, 1));
 
-    const { put, calls } = makePutSpy();
-    // pageSize=2 → 2 pages
     await runHevySync(fakeCtx(), {
       fetchPage: multiPageFetcher(workouts, 2),
-      putItem: put,
-      workoutsTable: 'W',
-      exercisesTable: 'E',
+      historyPath,
     });
 
-    // 3 workouts × (1 workout row + 1 exercise row) = 6 puts
-    assert.equal(calls.length, 6);
+    const history = readWorkoutsHistory(historyPath);
+    assert.equal(history.length, 3);
     for (const id of ids) {
       assert.ok(isWorkItemDone(JOB, id, 3), `workout ${id} should be done`);
     }
   });
 
-  it('marks workout failed in ledger when putter throws, then throws at end', async () => {
-    const id = uid();
-
-    const failingPut: DynamoPutter = async () => {
-      throw new Error('DynamoDB unavailable');
-    };
-
-    await assert.rejects(
-      () =>
-        runHevySync(fakeCtx(), {
-          fetchPage: singlePageFetcher([makeWorkout(id)]),
-          putItem: failingPut,
-          workoutsTable: 'W',
-          exercisesTable: 'E',
-        }),
-      /failed to sync/,
-    );
-
-    // Ledger should record a failure (but not done).
-    assert.ok(!isWorkItemDone(JOB, id, 3), 'failed workout should not be marked done');
-  });
-
   it('no-ops gracefully when Hevy returns empty list', async () => {
-    const { put, calls } = makePutSpy();
     await runHevySync(fakeCtx(), {
       fetchPage: singlePageFetcher([]),
-      putItem: put,
-      workoutsTable: 'W',
-      exercisesTable: 'E',
+      historyPath,
     });
-    assert.equal(calls.length, 0);
+    assert.ok(!existsSync(historyPath));
   });
 
   it('throws if HEVY_API_KEY is missing', async () => {
@@ -248,14 +189,27 @@ describe('runHevySync — skip already-synced workouts', () => {
         () =>
           runHevySync(fakeCtx(), {
             fetchPage: singlePageFetcher([]),
-            putItem: async () => {},
-            workoutsTable: 'W',
-            exercisesTable: 'E',
+            historyPath,
           }),
         /HEVY_API_KEY/,
       );
     } finally {
       if (saved !== undefined) process.env.HEVY_API_KEY = saved;
     }
+  });
+
+  it('reading a missing/empty history file returns an empty array', () => {
+    assert.deepEqual(readWorkoutsHistory(join(scratchDir, 'nope.json')), []);
+  });
+
+  it('written history file is valid JSON with full workout shape preserved', async () => {
+    const id = uid();
+    await runHevySync(fakeCtx(), {
+      fetchPage: singlePageFetcher([makeWorkout(id, 1)]),
+      historyPath,
+    });
+    const raw = readFileSync(historyPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    assert.equal(parsed[0].exercises[0].sets[0].weight_kg, 60);
   });
 });

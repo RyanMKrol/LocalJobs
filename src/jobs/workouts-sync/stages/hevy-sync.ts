@@ -1,7 +1,10 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { callService } from '../../../core/services.js';
 import { isWorkItemDone, markWorkItem, workItemCounts } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
-import { dynamoPut } from '../../../services/dynamodb.service.js';
 
 const JOB_NAME = 'hevy-sync';
 const MAX_RETRIES = 3;
@@ -69,48 +72,25 @@ export function makeHevyFetcher(apiKey: string): HevyFetcher {
 }
 
 // ---------------------------------------------------------------------------
-// DynamoDB write helpers (injectable for testing)
+// Local full-history JSON accumulator (replaces the former DynamoDB writes)
 // ---------------------------------------------------------------------------
 
-export type DynamoPutter = (table: string, item: Record<string, unknown>) => Promise<void>;
+const here = dirname(fileURLToPath(import.meta.url));
+export const defaultHistoryPath = resolve(here, '../data/out/workouts-history.json');
 
-export async function writeWorkoutToDynamo(
-  workout: HevyWorkout,
-  workoutsTable: string,
-  exercisesTable: string,
-  put: DynamoPutter,
-): Promise<void> {
-  // Write the workout row (exercises stored inline AND as separate rows for the
-  // website's query patterns — mirrors the existing website backfill shape).
-  const workoutItem: Record<string, unknown> = {
-    id: workout.id,
-    title: workout.title,
-    description: workout.description,
-    start_time: workout.start_time,
-    end_time: workout.end_time,
-    updated_at: workout.updated_at,
-    created_at: workout.created_at,
-    exercise_count: workout.exercises.length,
-  };
-  await put(workoutsTable, workoutItem);
+/** Read the existing history file, or an empty array if it doesn't exist yet. */
+export function readWorkoutsHistory(path: string): HevyWorkout[] {
+  if (!existsSync(path)) return [];
+  const raw = readFileSync(path, 'utf8');
+  if (!raw.trim()) return [];
+  return JSON.parse(raw) as HevyWorkout[];
+}
 
-  // Write each exercise as a separate row keyed by `{workoutId}_{index}`.
-  for (const ex of workout.exercises) {
-    const exerciseItem: Record<string, unknown> = {
-      // The Exercises table's key attribute is `exercise_id` (NOT `id`) — writing `id` here made
-      // every put fail with "Missing the key exercise_id in the item", so nothing ever synced.
-      exercise_id: `${workout.id}_${ex.index}`,
-      workout_id: workout.id,
-      index: ex.index,
-      title: ex.title,
-      notes: ex.notes,
-      exercise_template_id: ex.exercise_template_id,
-      superset_id: ex.superset_id,
-      sets: ex.sets,
-      workout_start_time: workout.start_time,
-    };
-    await put(exercisesTable, exerciseItem);
-  }
+/** Append the given workouts (assumed new) to the history file and persist it. */
+export function appendWorkoutsHistory(path: string, existing: HevyWorkout[], newWorkouts: HevyWorkout[]): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const merged = [...existing, ...newWorkouts];
+  writeFileSync(path, JSON.stringify(merged, null, 2));
 }
 
 // ---------------------------------------------------------------------------
@@ -121,21 +101,17 @@ export async function runHevySync(
   ctx: JobContext,
   opts: {
     fetchPage?: HevyFetcher;
-    putItem?: DynamoPutter;
-    workoutsTable?: string;
-    exercisesTable?: string;
+    historyPath?: string;
   } = {},
 ): Promise<void> {
   const apiKey = process.env.HEVY_API_KEY ?? '';
   if (!apiKey) throw new Error('HEVY_API_KEY is not set');
 
-  const workoutsTable = opts.workoutsTable ?? process.env.WORKOUTS_TABLE ?? 'Workouts';
-  const exercisesTable = opts.exercisesTable ?? process.env.EXERCISES_TABLE ?? 'Exercises';
+  const historyPath = opts.historyPath ?? defaultHistoryPath;
 
   const fetchPage = opts.fetchPage ?? makeHevyFetcher(apiKey);
-  const putItem = opts.putItem ?? ((t, i) => callService('dynamodb', () => dynamoPut(t, i)));
 
-  ctx.log(`info: workouts-sync starting — tables: ${workoutsTable} / ${exercisesTable}`);
+  ctx.log(`info: workouts-sync starting — history file: ${historyPath}`);
 
   // Collect all workout ids across pages, newest first (Hevy default order).
   ctx.log('info: paginating Hevy API to discover workouts…');
@@ -169,27 +145,38 @@ export async function runHevySync(
     return;
   }
 
+  const existing = readWorkoutsHistory(historyPath);
+  ctx.log(`info: loaded ${existing.length} previously-recorded workouts from ${historyPath}`);
+
   let done = 0;
   let failed = 0;
+  const newlyAppended: HevyWorkout[] = [];
 
   for (const workout of todo) {
-    ctx.log(`info: syncing workout ${workout.id} "${workout.title}" (${workout.exercises.length} exercises)`);
+    ctx.log(`info: recording workout ${workout.id} "${workout.title}" (${workout.exercises.length} exercises)`);
     try {
-      await writeWorkoutToDynamo(workout, workoutsTable, exercisesTable, putItem);
+      newlyAppended.push(workout);
       markWorkItem(JOB_NAME, workout.id, 'success');
       done++;
-      ctx.log(`info: synced ${done}/${todo.length} — ${workout.id} "${workout.title}"`);
+      ctx.log(`info: recorded ${done}/${todo.length} — ${workout.id} "${workout.title}"`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      ctx.log(`error: failed to sync workout ${workout.id}: ${msg}`);
+      ctx.log(`error: failed to record workout ${workout.id}: ${msg}`);
       markWorkItem(JOB_NAME, workout.id, 'failed');
       failed++;
     }
-    ctx.progress((done + failed) / todo.length * 100, `${done}/${todo.length} synced`);
+    ctx.progress((done + failed) / todo.length * 100, `${done}/${todo.length} recorded`);
+  }
+
+  if (newlyAppended.length > 0) {
+    appendWorkoutsHistory(historyPath, existing, newlyAppended);
+    ctx.log(
+      `info: appended ${newlyAppended.length} new workout(s) to ${historyPath} — history now has ${existing.length + newlyAppended.length} workouts`,
+    );
   }
 
   ctx.log(
-    `info: workouts-sync complete — synced ${done}, failed ${failed} out of ${todo.length} new workouts`,
+    `info: workouts-sync complete — recorded ${done}, failed ${failed} out of ${todo.length} new workouts`,
   );
 
   if (failed > 0) {
