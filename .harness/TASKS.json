@@ -7748,7 +7748,7 @@
     {
       "id": "T293",
       "title": "Workflows list page: group into category sections",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T292"
       ],
