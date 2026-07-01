@@ -873,7 +873,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       </div>
 
       <h2>Graph</h2>
-      <div className="panel">{p && <DagFlow members={p.jobs} structuralGates={p.gates} workflowName={name} from={`/workflows/${name}`} />}</div>
+      <div className="panel dag-panel">{p && <DagFlow members={p.jobs} structuralGates={p.gates} workflowName={name} from={`/workflows/${name}`} />}</div>
 
       <h2>Runs</h2>
       <div className="panel">

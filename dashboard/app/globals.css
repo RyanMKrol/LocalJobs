@@ -212,7 +212,9 @@ tbody tr:hover { background: var(--panel-2); }
 .dag-node.failed .dag-node-status, .dag-node.timeout .dag-node-status { color: var(--red); }
 a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent); box-shadow: 0 0 0 1px rgba(88,166,255,.2), 0 1px 3px rgba(0,0,0,.3); }
 /* ── React Flow (DagFlow) ───────────────────────────────────────────────────── */
-.dag-flow-wrap { overflow: hidden; border-radius: 10px; border: 1px solid var(--border); margin: 0 18px 6px; }
+/* dag-panel: scoped padding so the beige React Flow box is evenly inset on all four sides */
+.dag-panel { padding: 18px; }
+.dag-flow-wrap { overflow: hidden; border-radius: 10px; border: 1px solid var(--border); margin: 0; }
 /* Scope React Flow overrides inside our wrapper to avoid polluting global styles */
 .dag-flow-wrap .react-flow__background { background: var(--bg); }
 .dag-flow-wrap .react-flow__controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: none; }
@@ -535,7 +537,8 @@ input[type="text"]:focus { border-color: var(--accent); }
   /* DAG: reduce height and constrain width on mobile */
   .dag { padding: 14px; }
   .dag-node { min-width: 0; }
-  .dag-flow-wrap { height: 260px !important; margin: 0 4px 6px; width: calc(100% - 8px) !important; }
+  .dag-panel { padding: 8px; }
+  .dag-flow-wrap { height: 260px !important; margin: 0; width: 100% !important; }
   /* Prevent React Flow's internal elements from spilling their containers on mobile */
   .dag-flow-wrap .react-flow__viewport,
   .dag-flow-wrap .react-flow__nodes,

@@ -415,7 +415,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
       <p className="sub">{run ? `${completedStages} of ${totalStages} stages` : ''}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}</p>
 
       {workflow && (
-        <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel dag-panel" style={{ marginBottom: 16 }}>
           <DagFlow members={workflow.jobs} statusByJob={statusByJob} runIdByJob={runIdByJob} gates={gates} from={`/workflow-runs/${id}`} workflowRunId={id} />
         </div>
       )}
