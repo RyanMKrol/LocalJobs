@@ -7906,7 +7906,7 @@
     {
       "id": "T299",
       "title": "workouts-sync: add monthly per-exercise 6-month progress report via Claude",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T298"
       ],
