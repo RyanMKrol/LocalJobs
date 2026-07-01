@@ -5,7 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import { DagFlow } from '../../components/DagFlow';
 import { api } from '../../lib/api';
 import type { IoRow, Run, WorkflowIo } from '../../lib/api';
-import { CopyLogsButton, StatusBadge, fmtDuration, fmtRelative, statusLabel, usePoll } from '../../ui';
+import type { RunStatus } from '../../lib/api';
+import { CopyLogsButton, StatusBadge, fmtDuration, fmtRelative, usePoll } from '../../ui';
 
 function latestByStage(members: Run[]): Run[] {
   const latest = new Map<string, Run>();
@@ -400,7 +401,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
       <div className="row">
         <h1 style={{ margin: 0 }}>Workflow run</h1>
         <div className="spacer" />
-        {run && <span className={`badge ${run.status}`}>{statusLabel(run.status)}</span>}
+        {run && <StatusBadge status={run.status as RunStatus} />}
         {run?.run_limit != null && (
           <span className="badge queued" title="This run was limited to N originating inputs (all their fan-out ran).">
             {run.run_limit} input{run.run_limit === 1 ? '' : 's'} limit
