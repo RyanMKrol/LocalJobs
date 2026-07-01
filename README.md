@@ -188,11 +188,16 @@ gitignored). Private workflows live in gitignored subfolders.
   and write a markdown report to `data/out/`. Idempotent per calendar month via the
   work_items ledger; a manual re-run the same month regenerates that month's file.
   Runs monthly on the 1st.
-- **projects-sync** — Weekly GitHub repo ingestion: fetch the owner's repos via the
-  GitHub REST API → filter out forks/archived/private → sort by pushed_at → write
-  the filtered list to a local `data/out/projects.json` catalog; idempotent per
-  GitHub numeric repo id (`repoId`) via the work_items ledger, refreshing fields
-  every run. Runs weekly, Sunday at 05:00.
+- **projects-sync** — Weekly GitHub repo ingestion, 2-stage DAG. Stage 1 (`github-sync`)
+  fetches the owner's repos via the GitHub REST API → filters out forks/archived/private
+  → sorts by pushed_at → writes the filtered list to a local `data/out/projects.json`
+  catalog; idempotent per GitHub numeric repo id (`repoId`) via the work_items ledger,
+  refreshing fields every run. Stage 2 (`project-summarize`) shallow-clones each cataloged
+  repo, reads its README, and asks Claude (via the shared `claude-cli` service) to write a
+  one-project markdown summary to `data/out/<repo-name>.md`; idempotent per repo by
+  comparing the catalog's `pushedAt` against the last-processed marker stored on the
+  work_items ledger — a repo unchanged since its last summary is skipped entirely (no
+  clone, no Claude call). Runs weekly, Sunday at 05:00.
 - **claude-warmer** — Proactive Claude usage-window warmer: issue one minimal `"hi"`
   prompt via the `claude-cli` service every 30 minutes so the Claude account's 5-hour
   rolling usage window is already running (or reset) by the time real work needs Claude.

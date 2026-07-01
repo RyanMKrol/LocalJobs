@@ -143,12 +143,22 @@ so there's no need to persist raw scrobbles. Single stage, not limitable (nothin
 Idempotent per calendar month via the `work_items` ledger (keyed `YYYY-MM`); a manual re-run the
 same month regenerates that month's file rather than duplicating it. Service:
 `src/services/lastfm.service.ts`. Credentials: `LAST_FM_API_KEY`, `LAST_FM_USERNAME`.
-and **projects-sync** (`src/jobs/projects-sync/`) — fetch the owner's GitHub repos via
-`GET /users/<GITHUB_USERNAME>/repos`, filter out forks/archived/private, sort by `pushed_at`
-descending, and write the filtered list to a local `data/out/projects.json` catalog (no
-DynamoDB). Idempotent per GitHub numeric repo id (`repoId`) via the `work_items` ledger — re-scans
-every run so fields (description, topics, etc.) are refreshed. Runs weekly, Sunday at 05:00.
-Service: `src/services/github.service.ts`. Credentials: `GITHUB_USERNAME`, `GITHUB_TOKEN`.
+and **projects-sync** (`src/jobs/projects-sync/`) — a 2-stage DAG. Stage 1, `github-sync`, fetches
+the owner's GitHub repos via `GET /users/<GITHUB_USERNAME>/repos`, filters out forks/archived/private,
+sorts by `pushed_at` descending, and writes the filtered list to a local `data/out/projects.json`
+catalog (no DynamoDB). Idempotent per GitHub numeric repo id (`repoId`) via the `work_items` ledger —
+re-scans every run so fields (description, topics, etc.) are refreshed. Stage 2, `project-summarize`
+(`dependsOn: ['github-sync']`), shallow-clones each cataloged repo into a gitignored
+`data/repos/<name>/` dir (pulling/reset instead of re-cloning if already present), reads its README,
+and calls the shared Claude CLI helper (`runClaude`, via the `claude-cli` service) to write a
+one-project markdown summary to `data/out/<repo-name>.md` — the standard `detail.markdown` shape
+(T110) so it appears automatically in the workflow's unified Output section (T205). Idempotent per
+repo via a commit-sha-equivalent marker (the catalog's `pushedAt`): a repo whose stored marker
+already matches the catalog's current value is skipped entirely (no clone, no Claude call) — there is
+no separate calendar-based skip. Runs weekly, Sunday at 05:00.
+Service: `src/services/github.service.ts`. Credentials: `GITHUB_USERNAME`, `GITHUB_TOKEN`. Model:
+`PROJECTS_SYNC_CLAUDE_MODEL` (defaults to a Sonnet 5 id), shares `LOCALJOBS_CLAUDE_BIN`/
+`LOCALJOBS_CLAUDE_TIMEOUT_MS` via the `claude-cli` service.
 and **claude-warmer** (`src/jobs/claude-warmer/`) — issue one minimal Claude CLI prompt (`"hi"`,
 cheapest model) every 30 minutes via `runClaude` in `src/services/claude.ts`. WHY: Claude accounts
 have a 5-hour rolling usage window; this workflow fires proactively during off-hours so the window

@@ -6,4 +6,5 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const projectsSyncConfig = {
   outDir: resolve(here, 'data', 'out'),
   catalogPath: resolve(here, 'data', 'out', 'projects.json'),
+  reposDir: resolve(here, 'data', 'repos'),
 };
