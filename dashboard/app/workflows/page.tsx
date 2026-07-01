@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { api } from '../lib/api';
 import type { StuckItem } from '../lib/api';
 import { CronBadge, StuckPopover, fmtRelative, fmtTime, statusLabel, usePoll } from '../ui';
+import { RunButton } from '../components/RunButton';
+import { Pill } from '../components/Pill';
 
 export default function Workflows() {
   const { data, error } = usePoll(() => api.workflows(), 3000);
@@ -69,7 +71,7 @@ export default function Workflows() {
                   <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  <span className={`pill ${p.enabled ? 'on' : 'off'}`}>{p.enabled ? 'on' : 'off'}</span>
+                  <Pill kind={p.enabled ? 'on' : 'off'}>{p.enabled ? 'on' : 'off'}</Pill>
                 </td>
                 <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
                 <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
@@ -85,9 +87,11 @@ export default function Workflows() {
                 </td>
                 <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
                 <td>
-                  {p.last_run?.status === 'running'
-                    ? <button className="btn btn-run" disabled title="A run is already in progress — only one run per workflow at a time">Running…</button>
-                    : <button className="btn btn-run" onClick={() => run(p.name)}>▶ Run</button>}
+                  <RunButton
+                    isRunning={p.last_run?.status === 'running'}
+                    onClick={() => run(p.name)}
+                    label="▶ Run"
+                  />
                 </td>
               </tr>
             ))}
