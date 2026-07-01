@@ -7535,6 +7535,34 @@
       "verify": [],
       "expectsTest": true,
       "spec": ".harness/tasks/T285.md"
+    },
+    {
+      "id": "T286",
+      "title": "Rename .claude/commands/* with a local-jobs- prefix for easier type-ahead discovery",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "harness",
+        "commands",
+        "docs"
+      ],
+      "facets": {
+        "layer": "harness",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        ".claude/commands/",
+        "CLAUDE.md",
+        ".harness/CLAUDE.md",
+        ".harness/HARNESS.md",
+        ".harness/designs/manual-fail-signal.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T286.md"
     }
   ]
 }
