@@ -7594,7 +7594,7 @@
     {
       "id": "T288",
       "title": "projects-sync: add clone + Claude per-project markdown summary stage",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T287"
       ],
