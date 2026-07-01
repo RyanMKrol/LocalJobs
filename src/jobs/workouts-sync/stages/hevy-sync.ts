@@ -97,7 +97,9 @@ export async function writeWorkoutToDynamo(
   // Write each exercise as a separate row keyed by `{workoutId}_{index}`.
   for (const ex of workout.exercises) {
     const exerciseItem: Record<string, unknown> = {
-      id: `${workout.id}_${ex.index}`,
+      // The Exercises table's key attribute is `exercise_id` (NOT `id`) — writing `id` here made
+      // every put fail with "Missing the key exercise_id in the item", so nothing ever synced.
+      exercise_id: `${workout.id}_${ex.index}`,
       workout_id: workout.id,
       index: ex.index,
       title: ex.title,

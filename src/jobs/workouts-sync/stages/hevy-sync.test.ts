@@ -106,8 +106,10 @@ describe('writeWorkoutToDynamo', () => {
     assert.equal(calls[0].item['id'], 'w1');
     assert.equal(calls[1].table, 'Exercises');
     assert.equal(calls[1].item['workout_id'], 'w1');
-    assert.equal(calls[1].item['id'], 'w1_0');
-    assert.equal(calls[3].item['id'], 'w1_2');
+    // Exercise rows are keyed by `exercise_id` (the Exercises table's key attribute), not `id`.
+    assert.equal(calls[1].item['exercise_id'], 'w1_0');
+    assert.equal(calls[3].item['exercise_id'], 'w1_2');
+    assert.equal(calls[1].item['id'], undefined, 'exercise row must NOT carry an `id` key');
   });
 
   it('writes workout with no exercises (exercise_count=0)', async () => {
