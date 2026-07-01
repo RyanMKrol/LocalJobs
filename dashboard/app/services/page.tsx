@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { api, type Service, type ServiceConsumerGroup } from '../lib/api';
 import { usePoll } from '../ui';
+import { Pill } from '../components/Pill';
 
 function Bar({ used, cap }: { used: number; cap: number | null }) {
   if (cap == null) return <span className="muted">no limit</span>;
@@ -150,8 +151,8 @@ export default function Services() {
                     >
                       {s.name}
                     </button>{' '}
-                    {s.paid ? <span className="pill paid">paid</span> : <span className="pill free">free</span>}
-                    {s.limits_overridden ? <span className="pill" title="Limits edited from the dashboard; preserved across code-sync"> edited</span> : null}
+                    {s.paid ? <Pill kind="paid">paid</Pill> : <Pill kind="free">free</Pill>}
+                    {s.limits_overridden ? <Pill title="Limits edited from the dashboard; preserved across code-sync"> edited</Pill> : null}
                     <div className="muted" style={{ fontSize: 12 }}>{s.description}</div>
                   </td>
                   {isEditing ? (
