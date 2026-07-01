@@ -7567,7 +7567,7 @@
     {
       "id": "T287",
       "title": "projects-sync: drop DynamoDB, write a local catalog + weekly schedule",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
