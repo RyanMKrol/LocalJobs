@@ -170,8 +170,11 @@ const workflowIoSkipped = {
 const tasks = [
   // T001 is a standalone ready pending task (no longer anyone's dependency) — a valid "Ready" example
   // with no unmet deps at all (shows the "🤖 buildable" pill, not a "needs:" pill).
+  // T294: T001 also carries prior build-attempt failure history, exercising the amber
+  // "⚠ N failed attempt(s)" pill alongside the "🤖 buildable" pill in the Ready section.
   { id: 'T001', title: 'Foundation task — ' + LONG, status: 'pending', gate: null, dependsOn: [],
-    tags: ['infra'], do: 'Set up the thing. ' + LONG, doneWhen: 'It is set up.' },
+    tags: ['infra'], do: 'Set up the thing. ' + LONG, doneWhen: 'It is set up.',
+    buildFailures: { count: 2, latestKind: 'agent-blocked', latestDetail: 'scope excludes a needed file', latestAt: '2026-06-30T12:00:00Z' } },
   // T002 depends on T001 (buildable, unmet, non-human) — T293 follow-up to T283: a task blocked
   // solely by an ordinary buildable dependency now shows in READY (not hidden), with a "needs: T001"
   // pill instead of the "🤖 buildable" pill.

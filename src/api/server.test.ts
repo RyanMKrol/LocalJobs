@@ -26,6 +26,7 @@ import {
   readHumanDone,
   readManualFail,
   readReviews,
+  readTaskBuildFailures,
   readTaskSpec,
   readWorklogContent,
   safeOutputFile,
@@ -1365,6 +1366,89 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       const b = body.tasks.find((t) => t.id === 'T002')!;
       assert.ok(typeof a.worklogContent === 'string' && (a.worklogContent as string).includes('done: built it'));
       assert.equal(b.worklogContent, undefined, 'no worklog → no worklogContent');
+    });
+  });
+
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── T294: readTaskBuildFailures + GET /api/backlog inlines buildFailures ──
+{
+  const root = mkdtempSync(join(tmpdir(), 'localjobs-buildfailures-'));
+  const baseDir = join(root, '.harness');
+  mkdirSync(baseDir, { recursive: true });
+  writeFileSync(
+    join(baseDir, 'failures.jsonl'),
+    [
+      JSON.stringify({ id: 'T-fake-1', ts: '2026-07-01T05:18:12Z', kind: 'audit-fail', detail: 'first attempt' }),
+      JSON.stringify({ id: 'T-fake-1', ts: '2026-07-01T09:16:02Z', kind: 'agent-blocked', detail: 'second, later attempt' }),
+      JSON.stringify({ id: 'T-fake-2', ts: '2026-07-01T06:00:00Z', kind: 'ci-red', detail: 'only attempt' }),
+      '', // blank lines are tolerated
+    ].join('\n') + '\n',
+  );
+
+  await test('readTaskBuildFailures: aggregates multiple rows for one id, picking the latest by ts', () => {
+    const result = readTaskBuildFailures('T-fake-1', baseDir);
+    assert.deepEqual(result, {
+      count: 2,
+      latestKind: 'agent-blocked',
+      latestDetail: 'second, later attempt',
+      latestAt: '2026-07-01T09:16:02Z',
+    });
+  });
+
+  await test('readTaskBuildFailures: a singleton row for a different id', () => {
+    const result = readTaskBuildFailures('T-fake-2', baseDir);
+    assert.deepEqual(result, {
+      count: 1,
+      latestKind: 'ci-red',
+      latestDetail: 'only attempt',
+      latestAt: '2026-07-01T06:00:00Z',
+    });
+  });
+
+  await test('readTaskBuildFailures: null for an id with no matching rows', () => {
+    assert.equal(readTaskBuildFailures('T-fake-none', baseDir), null);
+  });
+
+  await test('readTaskBuildFailures: null for traversal / invalid ids / missing file', () => {
+    assert.equal(readTaskBuildFailures('../escape', baseDir), null);
+    assert.equal(readTaskBuildFailures(null, baseDir), null);
+    assert.equal(readTaskBuildFailures(42, baseDir), null);
+    assert.equal(readTaskBuildFailures('T-fake-1', join(root, 'no-such-dir')), null);
+  });
+
+  const backlogPath = join(baseDir, 'TASKS.json');
+  writeFileSync(
+    backlogPath,
+    JSON.stringify(
+      {
+        version: 1,
+        tasks: [
+          { id: 'T-fake-1', title: 'Has failures', status: 'pending' },
+          { id: 'T-fake-2', title: 'Also has failures', status: 'pending' },
+          { id: 'T-fake-none', title: 'No failures', status: 'pending' },
+        ],
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+
+  await test('GET /api/backlog: inlines buildFailures when failures.jsonl has matching rows, omits it otherwise', async () => {
+    await withServer({ backlogPath }, async (base) => {
+      const res = await fetch(`${base}/api/backlog`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { tasks: Array<Record<string, unknown>> };
+      const a = body.tasks.find((t) => t.id === 'T-fake-1')!;
+      const c = body.tasks.find((t) => t.id === 'T-fake-none')!;
+      assert.deepEqual(a.buildFailures, {
+        count: 2,
+        latestKind: 'agent-blocked',
+        latestDetail: 'second, later attempt',
+        latestAt: '2026-07-01T09:16:02Z',
+      });
+      assert.equal(c.buildFailures, undefined, 'no matching rows → no buildFailures');
     });
   });
 

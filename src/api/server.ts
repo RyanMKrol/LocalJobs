@@ -166,6 +166,57 @@ export function readWorklogContent(id: unknown, baseDir: string): string | null 
   }
 }
 
+/** Aggregated build-attempt failure history for a task (`.harness/failures.jsonl`, T294). */
+export interface TaskBuildFailures {
+  count: number;
+  latestKind: string;
+  latestDetail: string;
+  latestAt: string;
+}
+
+/**
+ * Read `.harness/failures.jsonl` (JSON-Lines; one loop-recorded build-attempt row per
+ * line) and aggregate the rows matching `id`. `id` must be a plain task id string;
+ * `baseDir` is the backlog file's directory, so the file is confined to
+ * `.harness/failures.jsonl` (no traversal). Returns `null` when the file is absent,
+ * unreadable, or has no matching rows.
+ */
+export function readTaskBuildFailures(id: unknown, baseDir: string): TaskBuildFailures | null {
+  if (typeof id !== 'string' || !id || id.includes('/') || id.includes('..') || !id.match(/^[\w-]+$/)) return null;
+  const abs = joinPath(baseDir, 'failures.jsonl');
+  if (!isWithin(baseDir, abs)) return null; // belt-and-suspenders
+  let raw: string;
+  try {
+    raw = readFileSync(abs, 'utf8');
+  } catch {
+    return null;
+  }
+  let latest: { ts?: unknown; kind?: unknown; detail?: unknown } | null = null;
+  let count = 0;
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let row: { id?: unknown; ts?: unknown; kind?: unknown; detail?: unknown };
+    try {
+      row = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (row.id !== id) continue;
+    count += 1;
+    if (!latest || (typeof row.ts === 'string' && (typeof latest.ts !== 'string' || row.ts > latest.ts))) {
+      latest = row;
+    }
+  }
+  if (count === 0 || !latest) return null;
+  return {
+    count,
+    latestKind: typeof latest.kind === 'string' ? latest.kind : '',
+    latestDetail: typeof latest.detail === 'string' ? latest.detail : '',
+    latestAt: typeof latest.ts === 'string' ? latest.ts : '',
+  };
+}
+
 /** An entry in the owner-owned reviews store (`.harness/reviews.json`, T136). */
 export interface ReviewEntry {
   reviewed: boolean;
@@ -323,6 +374,7 @@ function readBacklog(
           const task = t as { id?: unknown; spec?: unknown };
           const specContent = readTaskSpec(task.spec, baseDir);
           const worklogContent = readWorklogContent(task.id, baseDir);
+          const buildFailures = readTaskBuildFailures(task.id, baseDir);
           const isDone = typeof task.id === 'string' ? humanDone[task.id]?.done === true : false;
           const failEntry = typeof task.id === 'string' ? manualFail[task.id] : undefined;
           const failed = failEntry?.failed === true;
@@ -335,6 +387,7 @@ function readBacklog(
             ...(failed ? { failed: true, ...(failEntry?.reason ? { failReason: failEntry.reason } : {}) } : {}),
             ...(specContent !== null ? { specContent } : {}),
             ...(worklogContent !== null ? { worklogContent } : {}),
+            ...(buildFailures !== null ? { buildFailures } : {}),
           };
         })
       : [];

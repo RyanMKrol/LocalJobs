@@ -7,6 +7,22 @@ import { usePoll } from '../ui';
 import { Pill } from '../components/Pill';
 
 /**
+ * Aggregated build-attempt failure history for a task (`.harness/failures.jsonl`, T294).
+ * Not yet part of the shared `BacklogTask` type (out of this task's scope) — read it
+ * defensively off the raw API payload instead.
+ */
+interface TaskBuildFailures {
+  count: number;
+  latestKind: string;
+  latestDetail: string;
+  latestAt: string;
+}
+
+function getBuildFailures(t: BacklogTask): TaskBuildFailures | undefined {
+  return (t as BacklogTask & { buildFailures?: TaskBuildFailures }).buildFailures;
+}
+
+/**
  * Render a task's Markdown spec (## Do / ## Done when, T131) as readable markdown.
  * XSS-safe — react-markdown with no rehype-raw, so any raw HTML is escaped, not
  * executed. Falls back to a muted note when the spec content is unavailable.
@@ -71,6 +87,7 @@ function CollapsibleRow({
   const reviewed = t.reviewed === true;
   const isHumanDone = t.done === true;
   const isFailed = t.failed === true;
+  const buildFailures = getBuildFailures(t);
 
   // When the parent signals this row should open (dependency navigation), expand it.
   useEffect(() => {
@@ -125,6 +142,15 @@ function CollapsibleRow({
         )}
         {buildable && !unmetDeps?.length && <Pill kind="buildable" style={{ flexShrink: 0 }}>🤖 buildable</Pill>}
         {human && !isHumanDone && <Pill kind="human" style={{ flexShrink: 0 }}>🔒 needs human</Pill>}
+        {!isDone && buildFailures && (
+          <Pill
+            kind="blocked"
+            style={{ flexShrink: 0 }}
+            title={`${buildFailures.latestKind}: ${buildFailures.latestDetail}`}
+          >
+            ⚠ {buildFailures.count} failed attempt{buildFailures.count === 1 ? '' : 's'}
+          </Pill>
+        )}
         {human && !isHumanDone && onMarkDone && (
           <button
             type="button"

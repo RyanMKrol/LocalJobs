@@ -271,6 +271,8 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 .pill.unreviewed { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
 /* Manual-fail flag (manual-fail-signal): a red "failed" pill overriding the green done pill. */
 .pill.failed { color: var(--red); background: color-mix(in srgb,var(--red) 12%,transparent); border-color: color-mix(in srgb,var(--red) 35%,transparent); }
+/* T294: a still-pending task with prior loop build-attempt failures/blocks (.harness/failures.jsonl) — amber/warning, distinct from both the green buildable pill and the red terminal-failed pill. */
+.pill.blocked { color: var(--yellow); background: color-mix(in srgb,var(--yellow) 16%,transparent); border-color: color-mix(in srgb,var(--yellow) 45%,transparent); font-weight: 600; }
 /* Workflow enabled/disabled state pills. */
 .pill.on  { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.off { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
