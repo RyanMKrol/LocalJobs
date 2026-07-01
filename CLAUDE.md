@@ -1059,6 +1059,24 @@ doubt, log it.
     look-at-the-screenshots step into both the builder and the sampled auditor, and
     auto-exempts these script files from the scope gate so keeping them current is never
     punished.)
+- **Shared dashboard UI components (T268) — reuse, don't re-implement.** Common
+  dashboard elements live in `dashboard/app/components/` and `dashboard/app/ui.tsx`
+  (the existing shared layer: `StatusBadge`, `ThemeControls`, `StuckPopover`, etc.).
+  New dashboard UI MUST reuse these instead of duplicating markup + class names:
+  - **`<RunButton>`** (`dashboard/app/components/RunButton.tsx`) — the workflow run-
+    trigger button wrapping `.btn.btn-run`. Props: `isRunning` (disable + show
+    "Running…" when a run is active), `busy` (disable + show "Started…" while the
+    click is in flight), `onClick`, `label`/`runningLabel` overrides, `className`.
+  - **`<Pill>`** (`dashboard/app/components/Pill.tsx`) — any label/chip wrapping
+    `.pill`. Pass `kind` for the modifier class (e.g. `kind="on"` → `className="pill
+    on"`). Existing kinds in `globals.css`: `on`/`off`, `reviewed`/`unreviewed`,
+    `done`, `failed`, `buildable`, `human`, `dep-waiting`, `paid`/`free`. New
+    enumeration labels must use `<Pill>`, not bare `<span className="pill ...">`.
+  - `DagFlow`, `WorkflowOutputSection` — existing components for the workflow DAG
+    graph and unified output panel.
+  When adding a new reusable element, add it to `dashboard/app/components/` (NOT
+  inline in a page) and document it here. Do NOT introduce a new styling system —
+  wrap the existing `globals.css` class idiom.
 - **Dashboard appearance is CSS-variable-driven + has a live theme/font switcher
   (T142 → T154 evaluation, curated down in T184).** All colours/fonts come from
   `:root` custom properties; a header **🎨** control (`ThemeControls` in
