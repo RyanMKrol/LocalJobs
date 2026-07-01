@@ -2,6 +2,7 @@
 
 import { use, useState, useCallback } from 'react';
 import { DagFlow } from '../../components/DagFlow';
+import { RunButton } from '../../components/RunButton';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api, type MissingSeason, type MovieGap, type MovieRec, type TvRec } from '../../lib/api';
 import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
@@ -785,9 +786,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
             />
           </div>
         )}
-        {p?.last_run?.status === 'running'
-          ? <button className="btn btn-run" disabled title="A run is already in progress — only one run per workflow at a time">Running…</button>
-          : <button className="btn btn-run" onClick={run} disabled={busy}>{busy ? 'Started…' : '▶ Run now'}</button>}
+        <RunButton isRunning={p?.last_run?.status === 'running'} busy={busy} onClick={run} />
       </div>
       <p className="sub wf-desc">{p?.description}</p>
 
