@@ -7654,7 +7654,7 @@
     {
       "id": "T290",
       "title": "stocks-sync: add stocks-watch stage — notify once when a position gains ≥30% since last buy",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T289"
       ],
