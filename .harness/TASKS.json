@@ -7684,7 +7684,7 @@
     {
       "id": "T291",
       "title": "Workflows list page: read-only Notifications column (+ list-endpoint effective value fix)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
