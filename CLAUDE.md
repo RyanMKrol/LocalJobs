@@ -76,6 +76,30 @@ can be relaxed for convenience. If a task would require a mutating call to
 accomplish its goal, that's a sign the task is out of scope for this repo — stop
 and flag it rather than making the call.
 
+## ⚠️ Commit + push as you go — not optional (non-negotiable)
+
+Make small, atomized commits **as each coherent change lands** — one per layer/feature,
+not a big-bang at the end of a session — and **push each commit immediately**. Don't
+batch work up "for later," don't defer a commit while you move on to the user's next
+request, and don't wait to be asked. (Respect the git hygiene rules above: never commit
+credentials or the gitignored private job folders / `TODO.md`.)
+
+**Why this is a hard rule in THIS repo specifically, not just good practice:** the
+autonomous build harness (`.harness/loop.sh`, run via `.harness/supervise.sh`) has
+`LOOP_AUTORESET=1` by default (see `.harness/harness.env`). If the working tree is dirty
+when a run starts, the loop **auto-stashes everything and hard-resets to `origin/main`**
+before building — on purpose, so an unattended run always has a clean tree to start from.
+An uncommitted session's work (a backlog sweep, a new workflow, a doc rewrite) can
+silently disappear from view this way: not lost forever (`git stash list` recovers it),
+but the loop will build against **stale state** — an old `TASKS.json`, missing doc
+updates — until a human notices the stash and reconciles it. This has already happened
+once: a full `/local-jobs-convert-ideas` sweep (13 new backlog tasks + supporting doc
+changes) sat uncommitted across an entire session before anyone caught it via
+`/local-jobs-pre-loop-checkin` — one skipped commit away from the loop silently stashing
+away a whole idea-conversion sweep. Treat "uncommitted" as "not durable" here: the moment
+a unit of work is coherent (a finished idea conversion, a completed doc update, a working
+job), commit it and push it — don't let it accumulate.
+
 ## What this project is
 
 `local-jobs` is a self-hosted job orchestrator + dashboard that runs on an
@@ -1153,10 +1177,9 @@ doubt, log it.
   Space Mono everywhere). Confine theme/font/accent CSS to `globals.css`, the
   switcher+hooks to `ui.tsx`, and font loading + the pre-paint script to
   `layout.tsx`.
-- **Commit + push as you go.** Make small, atomized commits as each coherent change
-  lands (one per layer/feature — not a big-bang), and **push each commit immediately**
-  — don't wait to be asked. (Respect the git hygiene rules above: never commit
-  credentials or the gitignored private job folders / `TODO.md`.)
+- **Commit + push as you go.** See the "⚠️ Commit + push as you go" section near the top
+  of this file — it's a hard rule here, not a style preference, because of how
+  `LOOP_AUTORESET` treats a dirty tree.
 - **Always restart what you changed — a change isn't live until you do (part of Done).**
   The daemon loads job/daemon code at startup and the dashboard serves a prebuilt
   bundle, so editing files changes nothing in the running product until you restart.
