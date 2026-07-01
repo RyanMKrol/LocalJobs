@@ -276,12 +276,18 @@ export default function Backlog() {
   );
   // Build a set of done task ids for quick dep-resolution.
   const doneIds = new Set(tasks.filter((t) => t.status === 'done' || t.done === true).map((t) => t.id));
+  // Lookup by id (covers tasks only referenced as a dependency) so we can inspect a dep's own gate.
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
   // Buildable excludes terminal statuses — a `failed` task is terminal (never re-built), so it must
   // NOT appear as ready/waiting (it would, since gate==null + status!=='done', without this guard).
   const buildable = tasks.filter((t) => t.status !== 'done' && t.status !== 'failed' && t.gate == null);
-  // Split buildable into ready (all deps done) and waiting (≥1 dep not done).
+  // Split buildable into ready (all deps done) and waiting (≥1 dep unmet AND that dep is human-gated).
+  // A task blocked solely by an unmet buildable (gate==null) dependency is noise — it's neither ready
+  // nor waiting, since the loop will get to its blocker on its own.
   const ready = buildable.filter((t) => (t.dependsOn ?? []).every((dep) => doneIds.has(dep)));
-  const waiting = buildable.filter((t) => (t.dependsOn ?? []).some((dep) => !doneIds.has(dep)));
+  const waiting = buildable.filter((t) =>
+    (t.dependsOn ?? []).some((dep) => !doneIds.has(dep) && taskById.get(dep)?.gate === 'needs-human'),
+  );
   const human = tasks.filter((t) => t.status !== 'done' && t.status !== 'failed' && t.done !== true && t.gate != null);
 
   // Unreviewed tasks currently visible in the done section (checkable).
@@ -358,7 +364,9 @@ export default function Backlog() {
           <div className="panel" style={{ padding: '0 14px' }}>
             {waiting.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
             {waiting.map((t) => {
-              const unmet = (t.dependsOn ?? []).filter((dep) => !doneIds.has(dep));
+              const unmet = (t.dependsOn ?? []).filter(
+                (dep) => !doneIds.has(dep) && taskById.get(dep)?.gate === 'needs-human',
+              );
               return (
                 <CollapsibleRow
                   key={t.id}

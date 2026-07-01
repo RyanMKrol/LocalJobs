@@ -167,13 +167,17 @@ const workflowIoSkipped = {
 };
 
 const tasks = [
-  // T001 is a ready pending task; T040 depends on it (unmet) so T040 appears in Waiting with a pill.
+  // T001 is a standalone ready pending task (no longer anyone's dependency) — a valid "Ready" example.
   { id: 'T001', title: 'Foundation task — ' + LONG, status: 'pending', gate: null, dependsOn: [],
     tags: ['infra'], do: 'Set up the thing. ' + LONG, doneWhen: 'It is set up.' },
-  // T040 depends on T001 (unmet, → Waiting section pill) AND T050 (done, → expanded-body dep link).
-  // This exercises both pill dep-click (T001) and cross-section dep navigation (T050 in Done).
+  // T098 is a needs-human blocker — T040 depends on it (unmet + human-gated) so T040 appears in
+  // Waiting with a "needs:" pill pointing only at T098 (a purely-buildable unmet dep is noise, T283).
+  { id: 'T098', title: 'A human-gated blocker', status: 'pending', gate: 'needs-human', dependsOn: [],
+    tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
+  // T040 depends on T098 (unmet + human-gated, → Waiting section pill) AND T050 (done, → expanded-body
+  // dep link). This exercises both pill dep-click (T098) and cross-section dep navigation (T050 in Done).
   { id: 'T040', title: 'Mobile dashboard styling pass — ' + LONG, status: 'pending', gate: null,
-    dependsOn: ['T001', 'T050'], tags: ['dashboard', 'ui', 'testing'], model: 'claude-opus-4-8',
+    dependsOn: ['T098', 'T050'], tags: ['dashboard', 'ui', 'testing'], model: 'claude-opus-4-8',
     effort: 'high', do: 'Make the dashboard responsive on mobile. ' + LONG, doneWhen: 'It passes. ' + LONG },
   { id: 'T099', title: 'A human-gated task', status: 'pending', gate: 'needs-human', dependsOn: [],
     tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
@@ -309,16 +313,17 @@ export const FLOWS = [
   },
   {
     // Clickable dep ids — two interactions:
-    // 1. Click T001 link in T040's "needs:" pill (Waiting section) → scrolls to T001 in Ready.
+    // 1. Click T098 link in T040's "needs:" pill (Waiting section) → scrolls to T098 in Needs a human.
     // 2. Expand T040 and click T050 in its "depends on:" body line → Done section opens + T050 expands.
     name: 'backlog-dep-click',
     path: '/backlog',
     settleMs: 1200,
     actions: async (page) => {
-      // Step 1: click T001 in the Waiting-section pill — T001 is in Ready (already open), should expand.
+      // Step 1: click T098 in the Waiting-section pill — T098 is in Needs a human (already open via
+      // <details open>), should expand.
       await page.waitForSelector('.dep-id-link', { state: 'visible', timeout: 5000 });
-      await page.click('.dep-id-link:has-text("T001")');
-      await page.waitForSelector('#task-T001', { state: 'visible', timeout: 3000 });
+      await page.click('.dep-id-link:has-text("T098")');
+      await page.waitForSelector('#task-T098', { state: 'visible', timeout: 3000 });
       await page.waitForTimeout(300);
 
       // Step 2: expand T040 (click on its row) to reveal the "depends on:" body with T050 link.
