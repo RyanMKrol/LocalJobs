@@ -7563,6 +7563,375 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T286.md"
+    },
+    {
+      "id": "T287",
+      "title": "projects-sync: drop DynamoDB, write a local catalog + weekly schedule",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "projects",
+        "refactor"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/projects-sync/",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T287.md"
+    },
+    {
+      "id": "T288",
+      "title": "projects-sync: add clone + Claude per-project markdown summary stage",
+      "status": "pending",
+      "dependsOn": [
+        "T287"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "projects",
+        "llm"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "llm-prompt",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/projects-sync/",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T288.md"
+    },
+    {
+      "id": "T289",
+      "title": "stocks-sync workflow: Trading212 read-only portfolio snapshot -> markdown list",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "stocks",
+        "trading212"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/stocks-sync/",
+        "src/services/trading212.service.ts",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md",
+        "src/services/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T289.md"
+    },
+    {
+      "id": "T290",
+      "title": "stocks-sync: add stocks-watch stage — notify once when a position gains ≥30% since last buy",
+      "status": "pending",
+      "dependsOn": [
+        "T289"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "stocks",
+        "notifications"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/stocks-sync/",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T290.md"
+    },
+    {
+      "id": "T291",
+      "title": "Workflows list page: read-only Notifications column (+ list-endpoint effective value fix)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "workflows"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "src/api/server.ts",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T291.md"
+    },
+    {
+      "id": "T292",
+      "title": "Add manifest-owned 'category' field to workflows (schema + sync, no edit UI)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflows",
+        "framework"
+      ],
+      "facets": {
+        "layer": "db",
+        "workType": "feature",
+        "risk": [
+          "touches-schema"
+        ]
+      },
+      "scope": [
+        "src/core/types.ts",
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/jobs/places/places.workflow.ts",
+        "src/jobs/perfumes/perfumes.workflow.ts",
+        "src/jobs/movies/movies.workflow.ts",
+        "src/jobs/tv-recs/tv-recs.workflow.ts",
+        "src/jobs/plex/plex.workflow.ts",
+        "src/jobs/workouts-sync/workouts-sync.workflow.ts",
+        "src/jobs/listening-digest/listening-digest.workflow.ts",
+        "src/jobs/projects-sync/projects-sync.workflow.ts",
+        "src/jobs/claude-warmer/claude-warmer.workflow.ts",
+        "src/jobs/stocks-sync/stocks-sync.workflow.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T292.md"
+    },
+    {
+      "id": "T293",
+      "title": "Workflows list page: group into category sections",
+      "status": "pending",
+      "dependsOn": [
+        "T292"
+      ],
+      "gate": null,
+      "tags": [
+        "ui",
+        "workflows"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T293.md"
+    },
+    {
+      "id": "T294",
+      "title": "Backlog view: surface pending tasks with prior failed/blocked build attempts",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "backlog",
+        "ui"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/api/server.ts",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T294.md"
+    },
+    {
+      "id": "T295",
+      "title": "claude-warmer: log the actual prompt + model on every outcome line",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "logging",
+        "claude-warmer"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "logging",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/claude-warmer/claude-warm.job.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T295.md"
+    },
+    {
+      "id": "T296",
+      "title": "DAG gate padlock: increase size/stroke weight for all states",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "dag"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T296.md"
+    },
+    {
+      "id": "T297",
+      "title": "Job timeout: user-editable override (seconds, on the job detail page)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "jobs",
+        "api",
+        "ui"
+      ],
+      "facets": {
+        "layer": "db",
+        "workType": "feature",
+        "risk": [
+          "touches-schema"
+        ]
+      },
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "dashboard/app/jobs/[name]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T297.md"
+    },
+    {
+      "id": "T298",
+      "title": "workouts-sync: drop DynamoDB, accumulate full history locally + monthly schedule",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "workouts",
+        "refactor"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/workouts-sync/",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T298.md"
+    },
+    {
+      "id": "T299",
+      "title": "workouts-sync: add monthly per-exercise 6-month progress report via Claude",
+      "status": "pending",
+      "dependsOn": [
+        "T298"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "workouts",
+        "llm"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "llm-prompt",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/workouts-sync/",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T299.md"
     }
   ]
 }

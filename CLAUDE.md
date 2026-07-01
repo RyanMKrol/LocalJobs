@@ -63,6 +63,19 @@ Before any commit: `git status` and confirm no `.env`, no real `*.job.ts`, and
 no credentials are staged. If you ever spot a secret about to be committed, stop
 and tell the user.
 
+## 🚫 Broker / trading APIs are READ-ONLY, always (non-negotiable)
+
+Any job or service that talks to a stock/investment broker API (e.g. Trading212)
+must be **strictly read-only**. This repo must **NEVER** issue a mutating request
+to a broker — no placing, cancelling, or modifying an order; no transfers; no
+account changes. Only `GET`/read endpoints (portfolio holdings, prices, account
+value, order history as data) are permitted. This applies to every broker
+integration added to this repo, present or future, not just the first one — treat
+it the same way as the secrets rule above: a hard constraint, not a default that
+can be relaxed for convenience. If a task would require a mutating call to
+accomplish its goal, that's a sign the task is out of scope for this repo — stop
+and flag it rather than making the call.
+
 ## What this project is
 
 `local-jobs` is a self-hosted job orchestrator + dashboard that runs on an

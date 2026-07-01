@@ -26,7 +26,7 @@ as needed (the full idea + any helpful context), no schema and no planning. It i
 place to dump a thought so it isn't lost and isn't interrupting in-flight work — capture is
 **non-interactive** (it enriches from what's already known, never by asking) precisely so it doesn't
 derail whatever Claude is mid-task on. Capture two ways:
-- **`/local-jobs-idea <the idea, in as much detail as you like>`** — appends a bullet to the Inbox.
+- **`/idea <the idea, in as much detail as you like>`** — appends a bullet to the Inbox.
 - Or just **hand-edit** `.harness/IDEAS.md`, or tell Claude "add an idea: …".
 
 It is **gitignored on purpose** (like `data/` folders): raw, unfleshed ideas — which may reference
@@ -66,8 +66,11 @@ service about to hit its quota? → once understood, **Phase 2** runs add-to-bac
 `ui`/`component` task scoped to the services page (+ any `api` task if a new field is needed), each
 with a real `## Done when`. Then the bullet is deleted from `IDEAS.md`.
 
-> Distribution: the `/local-jobs-idea` + `/local-jobs-convert-ideas` commands are project-local (`.claude/commands/`) for now;
-> folding this flow into the distributable `claude-skills` plugin so other projects inherit it is
+> Distribution: the `/idea` + `/local-jobs-convert-ideas` commands are project-local (`.claude/commands/`) for now;
+> `/idea` is deliberately kept UN-prefixed (unlike its `local-jobs-`-prefixed siblings, T286) so the same
+> invocation works across every repo via a keyboard macro — mirror this bare filename in other repos'
+> `.claude/commands/` rather than prefixing it there too. Folding this flow into the distributable
+> `claude-skills` plugin so other projects inherit it is
 > tracked by the harness-parity task **T188**.
 
 ## The floor (holds even on a direct edit)
