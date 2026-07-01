@@ -626,6 +626,18 @@ doubt, log it.
   The `notify_enabled` + `notify_enabled_overridden` columns are added by
   `schema.sql` (fresh DBs, default `1` = ON) + an additive `ALTER TABLE` migration in
   `index.ts` (existing DBs, per the T098 rule — no index on the new columns).
+- **A workflow's `category` is manifest-owned only — no dashboard edit UI (T292).**
+  Unlike `schedule`/`maxConcurrency`/`notifyEnabled`, `category` is a pure grouping
+  label for the workflows-list page with NO `_overridden` column and NO edit
+  endpoint: `syncWorkflow` always refreshes it from the manifest's `category` field
+  on every sync (same as `description`), so there is nothing for the owner to
+  override. Controlled values in use: `second-brain` (places, perfumes),
+  `recommendations` (movie-recommendations, tv-recommendations,
+  missing-tv-seasons), and `regular-maintenance` (workouts-sync, listening-digest,
+  projects-sync, claude-warmer, stocks-sync). A manifest with no `category` set
+  defaults to `'uncategorized'`. The `category` column is added by `schema.sql`
+  (fresh DBs, `NOT NULL DEFAULT ''`) + an additive `ALTER TABLE` migration in
+  `index.ts` (existing DBs, per the T098 rule — no index on the new column).
 - **Per-workflow "Clear output data" reset action (T203).** `POST /api/workflows/:name/reset-output`
   (mutating — loopback/token guard, refuses with **409** while a run is active) wipes all
   output state for a workflow so it re-processes from scratch on the next run.

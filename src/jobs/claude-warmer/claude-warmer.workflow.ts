@@ -14,6 +14,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'claude-warmer',
+  category: 'regular-maintenance',
   description:
     'Issue a minimal Claude CLI prompt every 30 min to warm the 5-hour usage window. ' +
     'Soft-fails gracefully if the upstream plan limit is reached.',

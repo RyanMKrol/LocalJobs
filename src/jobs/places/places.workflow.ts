@@ -19,6 +19,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'places',
+  category: 'second-brain',
   description: 'Enriches your Google saved places with structured data and prose summaries. It ingests saved-place CSVs exported from Google Takeout, resolves each venue\'s opaque CID to a canonical place_id via a headless browser, fetches full details from the Google Places API, then generates a Gemini-written summary and writes a formatted markdown profile — running daily with spend governed by per-day service quotas so it steadily drains the backlog without blowing the monthly cap.',
   schedule: '0 3 * * *',
   maxConcurrency: 1,

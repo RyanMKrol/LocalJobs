@@ -11,6 +11,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'listening-digest',
+  category: 'regular-maintenance',
   description:
     'Monthly markdown digest of top albums/tracks from Last.fm (period=1month), written to data/out/.',
   schedule: '0 6 1 * *',

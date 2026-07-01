@@ -222,6 +222,12 @@ test('workflows ends migrated: notify_enabled columns added (defaults 1 / 0) (T2
   assert.equal(w.notify_enabled_overridden, 0, 'pre-existing workflow defaults to NOT overridden');
 });
 
+test("workflows ends migrated: category column added (defaults '') (T292)", () => {
+  assert.ok(cols('workflows').includes('category'), 'category column added');
+  const w = migrated.prepare('SELECT category FROM workflows WHERE name = ?').get('places') as { category: string };
+  assert.equal(w.category, '', 'pre-existing workflow defaults to empty category (re-synced to manifest value at daemon start)');
+});
+
 test('jobs ends migrated: legacy schedule + enabled columns dropped (T070)', () => {
   assert.ok(!cols('jobs').includes('schedule'), 'schedule column dropped');
   assert.ok(!cols('jobs').includes('enabled'), 'enabled column dropped');

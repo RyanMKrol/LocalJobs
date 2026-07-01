@@ -35,6 +35,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'movie-recommendations',
+  category: 'recommendations',
   description: 'Audits your Plex movie library for FRANCHISE GAPS (films you own some-but-not-all of, via the TMDB Collections API — no quality filter) AND surfaces taste-based RECOMMENDATIONS: 8 Claude recommender branches (3 stratified-random + 5 targeted: auteur-completion, top-genre-canon, thin-genre round-out, older-era classics, world cinema) over a stratified library sample, merged with code-side TMDB verification (real, un-owned, never re-recommended), cross-branch dedup, and per-genre balancing. Pushes ONE monthly digest with separate Gaps + Recommendations sections. Both halves dedupe per tmdb id so nothing repeats; the owner can ignore-to-suppress either a gap or a recommendation.',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,

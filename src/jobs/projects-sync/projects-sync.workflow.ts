@@ -17,6 +17,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'projects-sync',
+  category: 'regular-maintenance',
   description:
     'Fetch GitHub repos, filter forks/archived, sort by activity, write the filtered ' +
     'catalog to data/out/projects.json, then clone + Claude-summarize each repo into ' +

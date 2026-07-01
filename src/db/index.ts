@@ -76,6 +76,14 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec('ALTER TABLE workflows ADD COLUMN notify_enabled_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Additive migration: manifest-owned category label on workflows (T292). Unlike
+  // the overrides above, `category` has no `_overridden` column — it's always
+  // refreshed from the manifest on sync (see upsertWorkflowStmt). No index on this
+  // column, so no bootstrap-index trap (T098).
+  if (!wfCols.some((c) => c.name === 'category')) {
+    db.exec("ALTER TABLE workflows ADD COLUMN category TEXT NOT NULL DEFAULT ''");
+  }
+
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
   migrateRenamePlexWorkflow(db);

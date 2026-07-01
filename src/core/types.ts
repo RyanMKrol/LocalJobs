@@ -212,6 +212,13 @@ export interface WorkflowDefinition {
    * (T285) — same shape as `maxConcurrency`/`schedule`.
    */
   notifyEnabled?: boolean;
+  /**
+   * Grouping label for the workflows-list page. Manifest-owned, code-synced on
+   * every sync — unlike `schedule`/`maxConcurrency`/`notifyEnabled` there is NO
+   * dashboard edit UI and NO `_overridden` column; a synced row's `category`
+   * always tracks the manifest. Omit to default to `'uncategorized'`.
+   */
+  category?: string;
   /** Re-run the whole pass in cycles until no retryable work remains. Default false. */
   repeatUntilStable?: boolean;
   /** Max cycles when repeatUntilStable. Default 1. */

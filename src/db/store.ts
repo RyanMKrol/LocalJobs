@@ -879,10 +879,11 @@ export function backfillMonthlyUsage(jobName: string, count: number): void {
 // override — the same reconcile the user-owned `enabled` flag and the service limits
 // get. description is code-owned and always refreshed.
 const upsertWorkflowStmt = db.prepare(`
-  INSERT INTO workflows (name, description, schedule, enabled, max_concurrency, notify_enabled)
-  VALUES (@name, @description, @schedule, 1, @maxConcurrency, @notifyEnabled)
+  INSERT INTO workflows (name, description, category, schedule, enabled, max_concurrency, notify_enabled)
+  VALUES (@name, @description, @category, @schedule, 1, @maxConcurrency, @notifyEnabled)
   ON CONFLICT(name) DO UPDATE SET
     description     = excluded.description,
+    category        = excluded.category,
     schedule        = CASE WHEN schedule_overridden = 1 THEN schedule ELSE excluded.schedule END,
     max_concurrency = CASE WHEN max_concurrency_overridden = 1 THEN max_concurrency ELSE excluded.max_concurrency END,
     notify_enabled  = CASE WHEN notify_enabled_overridden = 1 THEN notify_enabled ELSE excluded.notify_enabled END
@@ -890,12 +891,14 @@ const upsertWorkflowStmt = db.prepare(`
 
 /** Upsert a workflow + REPLACE its membership/edges. `enabled`, an overridden
  *  `schedule`, an overridden `max_concurrency`, and an overridden `notify_enabled`
- *  are preserved across the sync. */
+ *  are preserved across the sync. `category` is manifest-owned and always
+ *  refreshed from code (no override, unlike the other three). */
 export function syncWorkflow(def: WorkflowDefinition): void {
   const tx = db.transaction(() => {
     upsertWorkflowStmt.run({
       name: def.name,
       description: def.description ?? '',
+      category: def.category ?? 'uncategorized',
       schedule: def.schedule ?? null,
       maxConcurrency: def.maxConcurrency ?? null,
       notifyEnabled: def.notifyEnabled === false ? 0 : 1,
@@ -910,6 +913,7 @@ export function syncWorkflow(def: WorkflowDefinition): void {
 export interface WorkflowRow {
   name: string;
   description: string;
+  category: string;
   schedule: string | null;
   enabled: number;
   schedule_overridden: number;

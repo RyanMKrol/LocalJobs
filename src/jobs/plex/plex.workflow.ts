@@ -16,6 +16,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'missing-tv-seasons',
+  category: 'recommendations',
   description: 'Audits your Plex TV library for newly-released COMPLETE seasons you don\'t own. It snapshots section 5 by GUID (each show + its highest owned regular season), checks TMDB by tmdb:// id for the highest aired regular season and which missing seasons are fully aired (ended/canceled shows included — revivals happen), then pushes ONE weekly digest of the newly-detected missing seasons. Deduped per (show, season) via the work-item ledger so each backlog season is announced exactly once; the first run is one big digest of the whole current backlog.',
   schedule: '0 9 * * 1',
   maxConcurrency: 1,

@@ -118,6 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_job_usage ON job_usage(job_name, ts);
 CREATE TABLE IF NOT EXISTS workflows (
   name                    TEXT PRIMARY KEY,
   description             TEXT NOT NULL DEFAULT '',
+  category                TEXT NOT NULL DEFAULT '',  -- manifest-owned grouping label; always refreshed from code on sync
   schedule                TEXT,                       -- cron, or NULL for manual-only
   enabled                 INTEGER NOT NULL DEFAULT 1,
   schedule_overridden     INTEGER NOT NULL DEFAULT 0, -- 1 = user edited the schedule; code-sync preserves it

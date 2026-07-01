@@ -7,7 +7,7 @@ import {
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop,
   ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoreSurfacedItems, isWorkItemDone,
-  listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
+  listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, usageThisMonth,
@@ -109,6 +109,23 @@ console.log('  ✓ updateWorkflowConcurrency: set + max_concurrency_overridden r
   assert.equal(updateWorkflowNotifyEnabled('t-no-such-wf', false), undefined, 'unknown workflow → undefined');
 }
 console.log('  ✓ updateWorkflowNotifyEnabled: set + notify_enabled_overridden reconcile across sync (T285)');
+
+// ── manifest-owned category (T292): always tracks the manifest, no override ──
+{
+  syncWorkflow({ name: 't-cat-a', category: 'second-brain', jobs: [{ job: 't-a' }] });
+  syncWorkflow({ name: 't-cat-b', jobs: [{ job: 't-a' }] });
+
+  assert.equal(getWorkflow('t-cat-a')?.category, 'second-brain', 'category matches manifest value');
+  assert.equal(getWorkflow('t-cat-b')?.category, 'uncategorized', 'omitted category defaults to uncategorized');
+
+  const rows = listWorkflows();
+  assert.equal(rows.find((r) => r.name === 't-cat-a')?.category, 'second-brain', 'listWorkflows surfaces category');
+
+  // re-sync with a DIFFERENT category value updates the stored value (no preservation/override)
+  syncWorkflow({ name: 't-cat-a', category: 'recommendations', jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-cat-a')?.category, 'recommendations', 'category always tracks the manifest across re-sync');
+}
+console.log('  ✓ category: manifest-owned, always refreshed from code, defaults to uncategorized (T292)');
 
 // workflow run + linked member runs + skip + logs
 const pr = createWorkflowRun('t-pipe', 'manual');

@@ -11,6 +11,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'workouts-sync',
+  category: 'regular-maintenance',
   description:
     'Paginate Hevy workout API and write workouts + exercises into DynamoDB. ' +
     'Idempotent per workout id via the work_items ledger.',

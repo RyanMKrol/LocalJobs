@@ -22,6 +22,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  */
 const workflow: WorkflowDefinition = {
   name: 'stocks-sync',
+  category: 'regular-maintenance',
   description:
     'Fetch the owner\'s Trading212 open equity positions (read-only), write a local ' +
     'portfolio.json + portfolio.md snapshot, and push a one-time alert when a position rises ' +
