@@ -281,13 +281,37 @@ export default function Backlog() {
   // Buildable excludes terminal statuses — a `failed` task is terminal (never re-built), so it must
   // NOT appear as ready/waiting (it would, since gate==null + status!=='done', without this guard).
   const buildable = tasks.filter((t) => t.status !== 'done' && t.status !== 'failed' && t.gate == null);
-  // Split buildable into ready (all deps done) and waiting (≥1 dep unmet AND that dep is human-gated).
-  // A task blocked solely by an unmet buildable (gate==null) dependency is noise — it's neither ready
-  // nor waiting, since the loop will get to its blocker on its own.
-  const ready = buildable.filter((t) => (t.dependsOn ?? []).every((dep) => doneIds.has(dep)));
-  const waiting = buildable.filter((t) =>
-    (t.dependsOn ?? []).some((dep) => !doneIds.has(dep) && taskById.get(dep)?.gate === 'needs-human'),
-  );
+
+  // Walk a task's FULL transitive dependency chain and collect the ids of any not-yet-resolved
+  // human-gated task (`gate === 'needs-human' | 'gate'`) reachable anywhere in it — not just direct
+  // deps. Memoized (tasks form a DAG; a `seen` guard also protects against an accidental cycle).
+  // A task is only genuinely blocked-on-a-human if a gated task sits somewhere upstream; being
+  // blocked solely by an ordinary buildable (gate==null) task is NOT a human blocker — the harness
+  // will get to that blocker on its own (T293 follow-up to T283: those were being hidden entirely).
+  const transitiveHumanBlockersCache = new Map<string, string[]>();
+  function transitiveHumanBlockers(id: string, seen: Set<string> = new Set()): string[] {
+    const cached = transitiveHumanBlockersCache.get(id);
+    if (cached) return cached;
+    if (seen.has(id)) return []; // cycle guard — shouldn't happen, TASKS.json is a validated DAG
+    seen.add(id);
+    const t = taskById.get(id);
+    const blockers: string[] = [];
+    for (const dep of t?.dependsOn ?? []) {
+      if (doneIds.has(dep)) continue; // resolved — not a blocker
+      const depTask = taskById.get(dep);
+      if (depTask?.gate != null) blockers.push(dep); // direct human-gated blocker
+      else blockers.push(...transitiveHumanBlockers(dep, seen));
+    }
+    transitiveHumanBlockersCache.set(id, blockers);
+    return blockers;
+  }
+
+  // Ready = buildable AND no human-gated task anywhere upstream (whether directly depended on or
+  // several hops away) — this includes tasks with unmet deps, as long as every one of those deps
+  // (transitively) resolves without a human. Waiting = buildable but blocked, somewhere upstream, by
+  // an unresolved human-gated task.
+  const ready = buildable.filter((t) => transitiveHumanBlockers(t.id).length === 0);
+  const waiting = buildable.filter((t) => transitiveHumanBlockers(t.id).length > 0);
   const human = tasks.filter((t) => t.status !== 'done' && t.status !== 'failed' && t.done !== true && t.gate != null);
 
   // Unreviewed tasks currently visible in the done section (checkable).
@@ -343,17 +367,25 @@ export default function Backlog() {
           <summary className="section-heading-summary">
             🤖 Ready ({ready.length})
           </summary>
+          <p className="sub">
+            Everything the harness can build with no human involved — either right now, or once an
+            earlier, equally-buildable task in its chain lands.
+          </p>
           <div className="panel" style={{ padding: '0 14px' }}>
             {ready.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
-            {ready.map((t) => (
-              <CollapsibleRow
-                key={t.id}
-                t={t}
-                forceExpanded={openTaskId === t.id}
-                highlighted={highlightId === t.id}
-                onOpenTask={openTask}
-              />
-            ))}
+            {ready.map((t) => {
+              const unmet = (t.dependsOn ?? []).filter((dep) => !doneIds.has(dep));
+              return (
+                <CollapsibleRow
+                  key={t.id}
+                  t={t}
+                  unmetDeps={unmet}
+                  forceExpanded={openTaskId === t.id}
+                  highlighted={highlightId === t.id}
+                  onOpenTask={openTask}
+                />
+              );
+            })}
           </div>
         </details>
 
@@ -364,9 +396,7 @@ export default function Backlog() {
           <div className="panel" style={{ padding: '0 14px' }}>
             {waiting.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
             {waiting.map((t) => {
-              const unmet = (t.dependsOn ?? []).filter(
-                (dep) => !doneIds.has(dep) && taskById.get(dep)?.gate === 'needs-human',
-              );
+              const unmet = transitiveHumanBlockers(t.id);
               return (
                 <CollapsibleRow
                   key={t.id}

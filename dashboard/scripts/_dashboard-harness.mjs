@@ -167,11 +167,17 @@ const workflowIoSkipped = {
 };
 
 const tasks = [
-  // T001 is a standalone ready pending task (no longer anyone's dependency) — a valid "Ready" example.
+  // T001 is a standalone ready pending task (no longer anyone's dependency) — a valid "Ready" example
+  // with no unmet deps at all (shows the "🤖 buildable" pill, not a "needs:" pill).
   { id: 'T001', title: 'Foundation task — ' + LONG, status: 'pending', gate: null, dependsOn: [],
     tags: ['infra'], do: 'Set up the thing. ' + LONG, doneWhen: 'It is set up.' },
+  // T002 depends on T001 (buildable, unmet, non-human) — T293 follow-up to T283: a task blocked
+  // solely by an ordinary buildable dependency now shows in READY (not hidden), with a "needs: T001"
+  // pill instead of the "🤖 buildable" pill.
+  { id: 'T002', title: 'Depends on a buildable task — ' + LONG, status: 'pending', gate: null,
+    dependsOn: ['T001'], tags: ['infra'], do: 'Build on top of the foundation. ' + LONG, doneWhen: 'Done.' },
   // T098 is a needs-human blocker — T040 depends on it (unmet + human-gated) so T040 appears in
-  // Waiting with a "needs:" pill pointing only at T098 (a purely-buildable unmet dep is noise, T283).
+  // Waiting with a "needs:" pill pointing only at T098.
   { id: 'T098', title: 'A human-gated blocker', status: 'pending', gate: 'needs-human', dependsOn: [],
     tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
   // T040 depends on T098 (unmet + human-gated, → Waiting section pill) AND T050 (done, → expanded-body
@@ -179,6 +185,11 @@ const tasks = [
   { id: 'T040', title: 'Mobile dashboard styling pass — ' + LONG, status: 'pending', gate: null,
     dependsOn: ['T098', 'T050'], tags: ['dashboard', 'ui', 'testing'], model: 'claude-opus-4-8',
     effort: 'high', do: 'Make the dashboard responsive on mobile. ' + LONG, doneWhen: 'It passes. ' + LONG },
+  // T041 depends ONLY on T040 (gate:null, not itself human-gated) — but T040 is transitively blocked
+  // by T098. Exercises the TRANSITIVE walk: T041 must land in Waiting (not Ready) with its "needs:"
+  // pill pointing at T098 (the actual upstream human blocker), not T040 (its direct, non-human dep).
+  { id: 'T041', title: 'Transitively blocked by a human gate — ' + LONG, status: 'pending', gate: null,
+    dependsOn: ['T040'], tags: ['dashboard'], do: 'Depends on T040. ' + LONG, doneWhen: 'Done.' },
   { id: 'T099', title: 'A human-gated task', status: 'pending', gate: 'needs-human', dependsOn: [],
     tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
   // A done task (exercises the "Mark failed" button) and a done task already marked
