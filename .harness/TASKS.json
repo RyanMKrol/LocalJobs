@@ -7623,7 +7623,7 @@
     {
       "id": "T289",
       "title": "stocks-sync workflow: Trading212 read-only portfolio snapshot -> markdown list",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
