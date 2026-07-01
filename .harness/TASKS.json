@@ -7324,7 +7324,7 @@
     {
       "id": "T277",
       "title": "Migrate the gate detail pages to the shared component library",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T268"
       ],
