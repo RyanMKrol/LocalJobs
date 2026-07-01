@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api, type BacklogTask } from '../lib/api';
 import { usePoll } from '../ui';
+import { Pill } from '../components/Pill';
 
 /**
  * Render a task's Markdown spec (## Do / ## Done when, T131) as readable markdown.
@@ -109,7 +110,7 @@ function CollapsibleRow({
         <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
         <span style={{ flex: 1 }}>{t.title}</span>
         {unmetDeps && unmetDeps.length > 0 && (
-          <span className="pill dep-waiting" style={{ flexShrink: 0 }}>
+          <Pill kind="dep-waiting" style={{ flexShrink: 0 }}>
             needs:{' '}
             {unmetDeps.map((dep, i) => (
               <span key={dep}>
@@ -120,10 +121,10 @@ function CollapsibleRow({
                 }
               </span>
             ))}
-          </span>
+          </Pill>
         )}
-        {buildable && !unmetDeps?.length && <span className="pill buildable" style={{ flexShrink: 0 }}>🤖 buildable</span>}
-        {human && !isHumanDone && <span className="pill human" style={{ flexShrink: 0 }}>🔒 needs human</span>}
+        {buildable && !unmetDeps?.length && <Pill kind="buildable" style={{ flexShrink: 0 }}>🤖 buildable</Pill>}
+        {human && !isHumanDone && <Pill kind="human" style={{ flexShrink: 0 }}>🔒 needs human</Pill>}
         {human && !isHumanDone && onMarkDone && (
           <button
             type="button"
@@ -143,13 +144,13 @@ function CollapsibleRow({
         )}
         {isDone && (
           <div className="done-status-cluster" onClick={(e) => e.stopPropagation()}>
-            <span className={`pill ${reviewed ? 'reviewed' : 'unreviewed'}`}>
+            <Pill kind={reviewed ? 'reviewed' : 'unreviewed'}>
               {reviewed ? '👁 reviewed' : 'not reviewed'}
-            </span>
+            </Pill>
             {isFailed ? (
-              <span className="pill failed" title={t.failReason ?? undefined}>✗ failed</span>
+              <Pill kind="failed" title={t.failReason ?? undefined}>✗ failed</Pill>
             ) : (
-              <span className="pill done">✓ done</span>
+              <Pill kind="done">✓ done</Pill>
             )}
             {onMarkFailed ? (
               <button
@@ -207,7 +208,7 @@ function CollapsibleRow({
           {t.tags && t.tags.length > 0 && (
             <div style={{ marginTop: 8 }}>
               {t.tags.map((tag) => (
-                <span key={tag} className="pill" style={{ marginRight: 4 }}>{tag}</span>
+                <Pill key={tag} style={{ marginRight: 4 }}>{tag}</Pill>
               ))}
             </div>
           )}
