@@ -7044,7 +7044,7 @@
     {
       "id": "T267",
       "title": "claude-warmer workflow: minimal Claude ping every 30 min to start the usage window early",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
