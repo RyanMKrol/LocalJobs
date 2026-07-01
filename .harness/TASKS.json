@@ -6876,7 +6876,7 @@
     {
       "id": "T260",
       "title": "Service Consumers modal: use the theme font, not the code font (follow-up to T238)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T244"
       ],
