@@ -7071,7 +7071,7 @@
     {
       "id": "T268",
       "title": "Create a shared dashboard UI component library (scan pages + extract RunButton/Pill/etc.) + convention",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
