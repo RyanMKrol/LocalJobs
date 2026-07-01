@@ -29,12 +29,32 @@ const isServiceFile = (f: string) => f.endsWith('.service.ts') || f.endsWith('.s
 // private job MAY colocate a service it owns.
 const servicesDir = resolve(__dirname, '..', 'services');
 
-function findFiles(dir: string, pred: (f: string) => boolean): string[] {
+/**
+ * Recursively find files matching `pred`, NEVER descending into a directory
+ * literally named `data` — the documented job-local resource convention
+ * (`src/jobs/**\/data/`) is always gitignored, input/output only, never code.
+ * This matters more than it looks: a workflow can generate a `data/` tree that
+ * itself contains job/workflow-shaped files (e.g. `projects-sync`'s
+ * clone-and-summarize stage shallow-clones the owner's own GitHub repos into
+ * `data/repos/<name>/`, and cloning THIS repo produces a full copy of every
+ * `*.job.ts`/`*.workflow.ts` file under `src/jobs/`). Since job/workflow lookup
+ * is by NAME, not by file path, an undetected duplicate discovered inside a
+ * `data/` tree can silently shadow the real definition (`jobs.find`/`workflows`
+ * pick whichever sorts first) — found live: `stocks-sync`, `tv-recs`,
+ * `workouts-sync`, and even `projects-sync` itself were all being served from a
+ * stale clone nested under `projects-sync/data/repos/LocalJobs/`, not the real,
+ * currently-edited source.
+ */
+export function findFiles(dir: string, pred: (f: string) => boolean): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...findFiles(full, pred));
-    else if (pred(entry.name)) out.push(full);
+    if (entry.isDirectory()) {
+      if (entry.name === 'data') continue;
+      out.push(...findFiles(full, pred));
+    } else if (pred(entry.name)) {
+      out.push(full);
+    }
   }
   return out;
 }
@@ -46,10 +66,22 @@ async function loadDefault<T>(file: string): Promise<T | undefined> {
 
 // ──────────────────────────────── jobs ────────────────────────────────
 const loadedJobs: JobDefinition[] = [];
+const seenJobNames = new Set<string>();
 for (const file of findFiles(__dirname, isJobFile).sort()) {
   const def = await loadDefault<JobDefinition>(file);
-  if (def && typeof def.name === 'string' && typeof def.run === 'function') loadedJobs.push(def);
-  else console.warn(`[registry] ${file} has no valid default JobDefinition export — skipped`);
+  if (!def || typeof def.name !== 'string' || typeof def.run !== 'function') {
+    console.warn(`[registry] ${file} has no valid default JobDefinition export — skipped`);
+    continue;
+  }
+  // Mirrors the workflow duplicate-name guard below — a job name collision (e.g.
+  // a stray copy discovered from a workflow's own generated output) fails LOUD
+  // and keeps the first-discovered definition, rather than silently shadowing.
+  if (seenJobNames.has(def.name)) {
+    console.warn(`[registry] job "${def.name}" (${file}) is invalid — skipped: duplicate job name "${def.name}"`);
+    continue;
+  }
+  seenJobNames.add(def.name);
+  loadedJobs.push(def);
 }
 
 export const jobs: JobDefinition[] = loadedJobs;

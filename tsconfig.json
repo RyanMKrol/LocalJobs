@@ -13,5 +13,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dashboard"]
+  "exclude": ["node_modules", "dashboard", "src/**/data/**"]
 }

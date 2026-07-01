@@ -1260,6 +1260,31 @@ doubt, log it.
 - Changing job code without restarting the daemon = no effect.
 - SQLite datetimes are UTC strings without `Z`; the dashboard appends `Z` when
   parsing (see `app/ui.tsx`). Preserve that.
+- **Never let `data/` folders be scanned for code, by anything.** The job registry
+  (`src/jobs/registry.ts`), `tsconfig.json`, and the test runner
+  (`scripts/run-tests.ts`) all now explicitly exclude any directory literally named
+  `data` from their recursive walks. This was a real incident: `projects-sync`'s
+  clone-and-summarize stage (T288) shallow-clones the owner's own GitHub repos into
+  `src/jobs/projects-sync/data/repos/<name>/` — cloning `LocalJobs` (this very repo)
+  produced a full copy of every `*.job.ts`/`*.workflow.ts` file under `src/jobs/`,
+  nested inside a `data/` tree. Job/workflow lookup is by NAME not file path
+  (`jobs.find(j => j.name === name)`), and `findFiles(...).sort()` orders by full
+  path string — so for any workflow whose folder name sorts alphabetically AFTER
+  `projects-sync` (`stocks-sync`, `tv-recs`, `workouts-sync`, and even
+  `projects-sync` itself via its own nested self-clone), the STALE CLONED COPY
+  silently won and shadowed the real one. Workflows have a duplicate-name guard
+  (logs `is invalid — skipped: duplicate workflow name`) but jobs did not — a
+  shadowed job's relative imports (`../../../db/store.js` etc.) resolve INSIDE the
+  clone, so it ran against its own copy of the ENTIRE framework, including a
+  separate SQLite file it created inside the clone (`data/repos/LocalJobs/data/jobs.db`).
+  Symptom: workflow runs reporting "skipped (nothing to do)" or writing real output
+  to the wrong path, while the real `data/out/` stayed stale or was never created.
+  If you ever see a job/workflow behaving as if it's running OLD code that doesn't
+  match the current source, or writing output somewhere unexpected, suspect this
+  class of bug first — check for any `data/repos/`-style generated tree under
+  `src/jobs/**` that a workflow might have produced, and confirm the registry
+  still excludes `data/` (`src/jobs/registry.test.ts`'s sibling
+  `registry-find-files.test.ts` is the hermetic regression guard for this).
 
 ## Autonomous build harness (Ralph loop)
 

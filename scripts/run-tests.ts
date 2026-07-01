@@ -14,8 +14,15 @@ function walk(dir: string): string[] {
   const out: string[] = [];
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) out.push(...walk(p));
-    else if (e.name.endsWith('.test.ts') || e.name.endsWith('.test.js')) out.push(p);
+    if (e.isDirectory()) {
+      // Never descend into a `data/` folder — job-local output (e.g. projects-sync's
+      // repo clones under data/repos/) can itself contain `*.test.ts`-shaped files
+      // that must never be mistaken for this repo's own tests.
+      if (e.name === 'data') continue;
+      out.push(...walk(p));
+    } else if (e.name.endsWith('.test.ts') || e.name.endsWith('.test.js')) {
+      out.push(p);
+    }
   }
   return out;
 }
