@@ -7879,7 +7879,7 @@
     {
       "id": "T298",
       "title": "workouts-sync: drop DynamoDB, accumulate full history locally + monthly schedule",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
