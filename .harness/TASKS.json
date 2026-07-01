@@ -6849,7 +6849,7 @@
     {
       "id": "T259",
       "title": "Graph padding: evenly inset the React Flow box inside the OUTER panel (follow-up to T250)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
