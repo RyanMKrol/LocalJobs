@@ -6926,7 +6926,7 @@
     {
       "id": "T262",
       "title": "Decouple Output section — BACKEND: declared output form + API serves it (renderer dispatch is T282)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
