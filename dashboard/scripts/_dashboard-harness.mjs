@@ -181,6 +181,7 @@ export function fixtureFor(pathname) {
   if (pathname.startsWith('/api/jobs/')) return { job: job() };
   if (pathname.startsWith('/api/runs/')) return { run: run(), logs };
   if (pathname === '/api/services') return { services: [service(), service({ name: 'gemini', paid: 1 }), service({ name: 'fragrantica', paid: 0, daily_cap: null, monthly_cap: null })] };
+  if (pathname.startsWith('/api/services/') && pathname.endsWith('/consumers')) return { consumers: [{ workflow_name: 'places', jobs: [{ job_name: 'places-enrich', last_used: NOW }, { job_name: 'places-enrich-with-llm', last_used: NOW }] }, { workflow_name: 'perfumes', jobs: [{ job_name: 'perfumes-build', last_used: NOW }] }] };
   if (pathname === '/api/backlog') return { tasks };
   return {};
 }
@@ -248,6 +249,19 @@ export const FLOWS = [
       await page.evaluate(() =>
         document.querySelectorAll('details:not([open])').forEach((d) => d.setAttribute('open', '')),
       );
+    },
+  },
+  {
+    // The "Consumers of …" modal, opened by clicking a service name on the Services page.
+    // viewport: true — the modal backdrop covers only the viewport.
+    name: 'service-consumers-modal',
+    path: '/services',
+    viewport: true,
+    actions: async (page) => {
+      // Click the first service button to open the consumers modal.
+      await page.click('button.btn.secondary:has-text("google-places")');
+      await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
     },
   },
   {

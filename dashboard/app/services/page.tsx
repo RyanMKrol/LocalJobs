@@ -39,7 +39,7 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
       <div className="db-modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
         <div className="consumers-modal-body">
         <div className="consumers-modal-header">
-          <strong>Consumers of <span className="mono">{name}</span></strong>
+          <strong>Consumers of {name}</strong>
           <button className="btn secondary" onClick={onClose}>✕ Close</button>
         </div>
         {error && <p className="muted">⚠ Could not load consumers ({error}).</p>}
@@ -52,7 +52,7 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
           <div key={group.workflow_name ?? '__none__'} style={{ marginBottom: 12 }}>
             {group.workflow_name ? (
               <div style={{ marginBottom: 4 }}>
-                <a href={`/workflows/${group.workflow_name}`} className="mono" style={{ fontWeight: 600 }}>
+                <a href={`/workflows/${group.workflow_name}`} style={{ fontWeight: 600 }}>
                   {group.workflow_name}
                 </a>
               </div>
@@ -62,7 +62,7 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
             <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'none' }}>
               {group.jobs.map((j) => (
                 <li key={j.job_name} style={{ marginBottom: 2, fontSize: 13 }}>
-                  <a href={`/jobs/${j.job_name}`} className="mono">{j.job_name}</a>
+                  <a href={`/jobs/${j.job_name}`}>{j.job_name}</a>
                   <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>last used {new Date(j.last_used + 'Z').toLocaleString()}</span>
                 </li>
               ))}
