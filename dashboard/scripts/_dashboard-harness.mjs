@@ -124,13 +124,19 @@ const workflowIo = {
 };
 
 const tasks = [
+  // T001 is a ready pending task; T040 depends on it (unmet) so T040 appears in Waiting with a pill.
+  { id: 'T001', title: 'Foundation task — ' + LONG, status: 'pending', gate: null, dependsOn: [],
+    tags: ['infra'], do: 'Set up the thing. ' + LONG, doneWhen: 'It is set up.' },
+  // T040 depends on T001 (unmet, → Waiting section pill) AND T050 (done, → expanded-body dep link).
+  // This exercises both pill dep-click (T001) and cross-section dep navigation (T050 in Done).
   { id: 'T040', title: 'Mobile dashboard styling pass — ' + LONG, status: 'pending', gate: null,
-    dependsOn: ['T001', 'T002', 'T003'], tags: ['dashboard', 'ui', 'testing'], model: 'claude-opus-4-8',
+    dependsOn: ['T001', 'T050'], tags: ['dashboard', 'ui', 'testing'], model: 'claude-opus-4-8',
     effort: 'high', do: 'Make the dashboard responsive on mobile. ' + LONG, doneWhen: 'It passes. ' + LONG },
   { id: 'T099', title: 'A human-gated task', status: 'pending', gate: 'needs-human', dependsOn: [],
     tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
   // A done task (exercises the "Mark failed" button) and a done task already marked
   // failed (exercises the red "failed" pill + "Undo fail" button) — manual-fail-signal.
+  // T050 is intentionally a dep target from T040 above, exercising cross-section dep navigation.
   { id: 'T050', title: 'A finished task — ' + LONG, status: 'done', gate: null, dependsOn: [],
     tags: ['ui'], reviewed: true },
   { id: 'T051', title: 'A finished task the owner marked failed', status: 'failed', gate: null,
@@ -249,6 +255,30 @@ export const FLOWS = [
       await page.evaluate(() =>
         document.querySelectorAll('details:not([open])').forEach((d) => d.setAttribute('open', '')),
       );
+    },
+  },
+  {
+    // Clickable dep ids — two interactions:
+    // 1. Click T001 link in T040's "needs:" pill (Waiting section) → scrolls to T001 in Ready.
+    // 2. Expand T040 and click T050 in its "depends on:" body line → Done section opens + T050 expands.
+    name: 'backlog-dep-click',
+    path: '/backlog',
+    settleMs: 1200,
+    actions: async (page) => {
+      // Step 1: click T001 in the Waiting-section pill — T001 is in Ready (already open), should expand.
+      await page.waitForSelector('.dep-id-link', { state: 'visible', timeout: 5000 });
+      await page.click('.dep-id-link:has-text("T001")');
+      await page.waitForSelector('#task-T001', { state: 'visible', timeout: 3000 });
+      await page.waitForTimeout(300);
+
+      // Step 2: expand T040 (click on its row) to reveal the "depends on:" body with T050 link.
+      await page.click('#task-T040 .done-row');
+      await page.waitForSelector('#task-T040 .task-expand-body', { state: 'visible', timeout: 3000 });
+
+      // Step 3: click T050 dep link in the body → Done section (collapsed) should open + T050 highlighted.
+      await page.click('#task-T040 .dep-id-link:has-text("T050")');
+      await page.waitForSelector('#task-T050', { state: 'visible', timeout: 3000 });
+      await page.waitForTimeout(500);
     },
   },
   {

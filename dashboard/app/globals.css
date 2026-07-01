@@ -274,6 +274,29 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 /* Workflow enabled/disabled state pills. */
 .pill.on  { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.off { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
+/* Clickable dependency id chip — inline button that looks like a mono link. */
+.dep-id-link {
+  display: inline;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-family: var(--font-mono, monospace);
+  font-size: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb,var(--accent) 50%,transparent);
+}
+.dep-id-link:hover { text-decoration-color: var(--accent); }
+/* Brief highlight flash when navigating to a dependency row. */
+@keyframes task-highlight-flash {
+  0%   { background: color-mix(in srgb,var(--accent) 25%,transparent); }
+  100% { background: transparent; }
+}
+.task-row-highlight { animation: task-highlight-flash 1.6s ease-out; border-radius: 4px; }
 /* Backlog task rows: separator between rows, but not below the last row (avoids a
    double-border / extra-gap at the panel bottom that looks thicker than inter-row spacing). */
 .done-row { border-bottom: 1px solid var(--border); }

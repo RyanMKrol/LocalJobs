@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api, type BacklogTask } from '../lib/api';
 import { usePoll } from '../ui';
@@ -21,6 +21,20 @@ function TaskSpec({ t, small }: { t: BacklogTask; small?: boolean }) {
   );
 }
 
+/** A single clickable dependency id chip that scrolls to and expands the referenced task. */
+function DepIdLink({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
+  return (
+    <button
+      type="button"
+      className="dep-id-link mono"
+      onClick={(e) => { e.stopPropagation(); onOpen(id); }}
+      title={`Jump to ${id}`}
+    >
+      {id}
+    </button>
+  );
+}
+
 /** Shared compact row that collapses/expands for all three backlog sections. */
 function CollapsibleRow({
   t,
@@ -30,6 +44,9 @@ function CollapsibleRow({
   onMarkDone,
   onMarkFailed,
   unmetDeps,
+  forceExpanded,
+  highlighted,
+  onOpenTask,
 }: {
   t: BacklogTask;
   selectable?: boolean;
@@ -38,6 +55,9 @@ function CollapsibleRow({
   onMarkDone?: (id: string) => void;
   onMarkFailed?: (id: string) => void;
   unmetDeps?: string[];
+  forceExpanded?: boolean;
+  highlighted?: boolean;
+  onOpenTask?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
@@ -51,8 +71,13 @@ function CollapsibleRow({
   const isHumanDone = t.done === true;
   const isFailed = t.failed === true;
 
+  // When the parent signals this row should open (dependency navigation), expand it.
+  useEffect(() => {
+    if (forceExpanded) setExpanded(true);
+  }, [forceExpanded]);
+
   return (
-    <div>
+    <div id={`task-${t.id}`} className={highlighted ? 'task-row-highlight' : undefined}>
       <div
         className={`row done-row${expanded ? ' expanded' : ''}`}
         style={{
@@ -84,7 +109,18 @@ function CollapsibleRow({
         <span className="mono" style={{ fontWeight: 700, minWidth: 48 }}>{t.id}</span>
         <span style={{ flex: 1 }}>{t.title}</span>
         {unmetDeps && unmetDeps.length > 0 && (
-          <span className="pill dep-waiting" style={{ flexShrink: 0 }}>needs: {unmetDeps.join(', ')}</span>
+          <span className="pill dep-waiting" style={{ flexShrink: 0 }}>
+            needs:{' '}
+            {unmetDeps.map((dep, i) => (
+              <span key={dep}>
+                {i > 0 && ', '}
+                {onOpenTask
+                  ? <DepIdLink id={dep} onOpen={onOpenTask} />
+                  : <span className="mono">{dep}</span>
+                }
+              </span>
+            ))}
+          </span>
         )}
         {buildable && !unmetDeps?.length && <span className="pill buildable" style={{ flexShrink: 0 }}>🤖 buildable</span>}
         {human && !isHumanDone && <span className="pill human" style={{ flexShrink: 0 }}>🔒 needs human</span>}
@@ -147,7 +183,16 @@ function CollapsibleRow({
         <div className="task-expand-body">
           {t.dependsOn && t.dependsOn.length > 0 && (
             <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-              depends on: <span className="mono">{t.dependsOn.join(', ')}</span>
+              depends on:{' '}
+              {t.dependsOn.map((dep, i) => (
+                <span key={dep}>
+                  {i > 0 && ', '}
+                  {onOpenTask
+                    ? <DepIdLink id={dep} onOpen={onOpenTask} />
+                    : <span className="mono">{dep}</span>
+                  }
+                </span>
+              ))}
             </div>
           )}
           <TaskSpec t={t} small />
@@ -189,6 +234,30 @@ export default function Backlog() {
   // Non-fatal warning when the review was saved + committed locally but the push
   // to GitHub didn't go through (offline / no remote). The commit still persists.
   const [pushWarning, setPushWarning] = useState<string | null>(null);
+
+  // Dependency navigation: the id of the task that should be scrolled-to + expanded.
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  const openTask = useCallback((id: string) => {
+    setOpenTaskId(id);
+    setHighlightId(id);
+    // Defer to next paint so any state updates (section open, row expand) can render first.
+    setTimeout(() => {
+      const el = document.getElementById(`task-${id}`);
+      if (el) {
+        // Expand any closed <details> ancestors so the row is visible.
+        let node: Element | null = el.parentElement;
+        while (node) {
+          if (node instanceof HTMLDetailsElement && !node.open) node.open = true;
+          node = node.parentElement;
+        }
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      // Clear highlight after animation finishes.
+      setTimeout(() => setHighlightId(null), 1600);
+    }, 50);
+  }, []);
 
   const tasks = data?.tasks ?? [];
   const taskNum = (id: string) => parseInt(id.replace(/^T/, ''), 10) || 0;
@@ -269,7 +338,15 @@ export default function Backlog() {
           </summary>
           <div className="panel" style={{ padding: '0 14px' }}>
             {ready.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
-            {ready.map((t) => <CollapsibleRow key={t.id} t={t} />)}
+            {ready.map((t) => (
+              <CollapsibleRow
+                key={t.id}
+                t={t}
+                forceExpanded={openTaskId === t.id}
+                highlighted={highlightId === t.id}
+                onOpenTask={openTask}
+              />
+            ))}
           </div>
         </details>
 
@@ -281,7 +358,16 @@ export default function Backlog() {
             {waiting.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
             {waiting.map((t) => {
               const unmet = (t.dependsOn ?? []).filter((dep) => !doneIds.has(dep));
-              return <CollapsibleRow key={t.id} t={t} unmetDeps={unmet} />;
+              return (
+                <CollapsibleRow
+                  key={t.id}
+                  t={t}
+                  unmetDeps={unmet}
+                  forceExpanded={openTaskId === t.id}
+                  highlighted={highlightId === t.id}
+                  onOpenTask={openTask}
+                />
+              );
             })}
           </div>
         </details>
@@ -293,7 +379,16 @@ export default function Backlog() {
           <p className="sub">The loop skips these — work them manually.</p>
           <div className="panel" style={{ padding: '0 14px' }}>
             {human.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
-            {human.map((t) => <CollapsibleRow key={t.id} t={t} onMarkDone={t.gate === 'needs-human' ? refresh : undefined} />)}
+            {human.map((t) => (
+              <CollapsibleRow
+                key={t.id}
+                t={t}
+                onMarkDone={t.gate === 'needs-human' ? refresh : undefined}
+                forceExpanded={openTaskId === t.id}
+                highlighted={highlightId === t.id}
+                onOpenTask={openTask}
+              />
+            ))}
           </div>
         </details>
 
@@ -348,6 +443,9 @@ export default function Backlog() {
                 checked={selected.has(t.id)}
                 onCheck={toggleOne}
                 onMarkFailed={refresh}
+                forceExpanded={openTaskId === t.id}
+                highlighted={highlightId === t.id}
+                onOpenTask={openTask}
               />
             ))}
           </div>
