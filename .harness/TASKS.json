@@ -7476,7 +7476,7 @@
     {
       "id": "T284",
       "title": "Add /pre-loop-checkin — read-only sanity pass before starting a loop run",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
