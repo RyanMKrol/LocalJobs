@@ -1,13 +1,14 @@
 import type { JobDefinition } from '../../../core/types.js';
-import { runGithubSync } from './github-sync.js';
+import { runGithubSync, githubSyncInputKeys } from './github-sync.js';
 
 const job: JobDefinition = {
   name: 'github-sync',
   description:
-    'Fetch GitHub repos, filter forks/archived, sort by activity, ' +
-    'and upsert each to the DynamoDB projects table. Idempotent per repoId.',
+    'Fetch GitHub repos, filter forks/archived/private, sort by activity, ' +
+    'and write the filtered catalog to data/out/projects.json. Idempotent per repoId.',
   timeoutMs: 120_000,
   maxRetries: 3,
+  inputKeys: githubSyncInputKeys,
   async run(ctx) {
     await runGithubSync(ctx);
   },

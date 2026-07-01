@@ -1,7 +1,9 @@
+import { mkdirSync, writeFileSync } from 'fs';
+
 import { callService } from '../../../core/services.js';
 import { markWorkItem, workItemCounts } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
-import { dynamoPut } from '../../../services/dynamodb.service.js';
+import { projectsSyncConfig } from '../config.js';
 
 const JOB_NAME = 'github-sync';
 const GITHUB_API = 'https://api.github.com';
@@ -27,23 +29,20 @@ export interface GitHubRepo {
   pushed_at: string | null;
   created_at: string;
   updated_at: string;
+  default_branch: string;
 }
 
-export interface ProjectsTableItem {
+/** The trimmed projection written to data/out/projects.json. */
+export interface CatalogEntry {
   repoId: string;
   name: string;
   fullName: string;
   description: string;
   url: string;
-  homepage: string;
   language: string;
-  stars: number;
-  forks: number;
   topics: string[];
   pushedAt: string;
-  createdAt: string;
-  updatedAt: string;
-  syncedAt: string;
+  defaultBranch: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,29 +93,34 @@ export function filterAndSortRepos(repos: GitHubRepo[]): GitHubRepo[] {
     });
 }
 
-// ---------------------------------------------------------------------------
-// DynamoDB write helper (injectable for testing)
-// ---------------------------------------------------------------------------
-
-export type DynamoPutter = (table: string, item: Record<string, unknown>) => Promise<void>;
-
-export function repoToTableItem(repo: GitHubRepo, syncedAt: string): ProjectsTableItem {
+export function repoToCatalogEntry(repo: GitHubRepo): CatalogEntry {
   return {
     repoId: String(repo.id),
     name: repo.name,
     fullName: repo.full_name,
     description: repo.description ?? '',
     url: repo.html_url,
-    homepage: repo.homepage ?? '',
     language: repo.language ?? '',
-    stars: repo.stargazers_count,
-    forks: repo.forks_count,
     topics: repo.topics ?? [],
     pushedAt: repo.pushed_at ?? repo.created_at,
-    createdAt: repo.created_at,
-    updatedAt: repo.updated_at,
-    syncedAt,
+    defaultBranch: repo.default_branch,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Catalog write (injectable for testing — avoids touching the real data dir)
+// ---------------------------------------------------------------------------
+
+export type CatalogWriter = (entries: CatalogEntry[]) => void;
+
+export function writeCatalog(entries: CatalogEntry[]): void {
+  mkdirSync(projectsSyncConfig.outDir, { recursive: true });
+  writeFileSync(projectsSyncConfig.catalogPath, JSON.stringify(entries, null, 2));
+}
+
+/** Root stage (T094): each filtered repo id is an originating input. */
+export function repoIdsFromCatalog(entries: CatalogEntry[]): string[] {
+  return entries.map((e) => e.repoId);
 }
 
 // ---------------------------------------------------------------------------
@@ -127,22 +131,18 @@ export async function runGithubSync(
   ctx: JobContext,
   opts: {
     fetchRepos?: ReposFetcher;
-    putItem?: DynamoPutter;
-    projectsTable?: string;
-    syncedAt?: string;
+    writeCatalog?: CatalogWriter;
   } = {},
 ): Promise<void> {
   const username = process.env.GITHUB_USERNAME ?? '';
   if (!username) throw new Error('GITHUB_USERNAME is not set');
 
   const token = process.env.GITHUB_TOKEN ?? '';
-  const projectsTable = opts.projectsTable ?? process.env.PROJECTS_TABLE ?? 'Projects';
-  const syncedAt = opts.syncedAt ?? new Date().toISOString();
 
   const fetchRepos = opts.fetchRepos ?? ((u, t) => callService('github', () => fetchAllRepos(u, t)));
-  const putItem = opts.putItem ?? ((t, i) => callService('dynamodb', () => dynamoPut(t, i)));
+  const writeCatalogFn = opts.writeCatalog ?? writeCatalog;
 
-  ctx.log(`info: projects-sync starting — user: ${username}, table: ${projectsTable}`);
+  ctx.log(`info: projects-sync starting — user: ${username}`);
   if (!token) ctx.log('warn: GITHUB_TOKEN not set — using unauthenticated requests (60 req/hr limit)');
 
   ctx.log('info: fetching repos from GitHub…');
@@ -151,7 +151,7 @@ export async function runGithubSync(
 
   const filtered = filterAndSortRepos(allRepos);
   ctx.log(
-    `info: after filter (no forks, no archived, no private): ${filtered.length} repos to upsert` +
+    `info: after filter (no forks, no archived, no private): ${filtered.length} repos to catalog` +
     ` (${allRepos.length - filtered.length} excluded)`,
   );
 
@@ -160,38 +160,35 @@ export async function runGithubSync(
     `info: ledger: ${counts['success'] ?? 0} previously synced, ${counts['failed'] ?? 0} failed`,
   );
 
-  if (filtered.length === 0) {
-    ctx.log('info: no repos to upsert — done');
-    ctx.progress(100, 'no repos to upsert');
+  const entries = filtered.map(repoToCatalogEntry);
+  writeCatalogFn(entries);
+  ctx.log(`info: wrote ${entries.length} repos to data/out/projects.json`);
+
+  if (entries.length === 0) {
+    ctx.log('info: no repos to record — done');
+    ctx.progress(100, 'no repos to record');
     return;
   }
 
   let done = 0;
-  let failed = 0;
-
-  for (const repo of filtered) {
-    const repoId = String(repo.id);
-    ctx.log(`info: upserting repo ${repoId} "${repo.name}" (stars=${repo.stargazers_count})`);
-    try {
-      const item = repoToTableItem(repo, syncedAt);
-      await putItem(projectsTable, item as unknown as Record<string, unknown>);
-      markWorkItem(JOB_NAME, repoId, 'success');
-      done++;
-      ctx.log(`info: upserted ${done}/${filtered.length} — ${repo.full_name}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      ctx.log(`error: failed to upsert repo ${repoId} "${repo.name}": ${msg}`);
-      markWorkItem(JOB_NAME, repoId, 'failed');
-      failed++;
-    }
-    ctx.progress(((done + failed) / filtered.length) * 100, `${done}/${filtered.length} upserted`);
+  for (const entry of entries) {
+    markWorkItem(JOB_NAME, entry.repoId, 'success');
+    done++;
+    ctx.log(`info: recorded ${done}/${entries.length} — ${entry.fullName}`);
+    ctx.progress((done / entries.length) * 100, `${done}/${entries.length} recorded`);
   }
 
-  ctx.log(
-    `info: projects-sync complete — upserted ${done}, failed ${failed} out of ${filtered.length} repos`,
-  );
+  ctx.log(`info: projects-sync complete — recorded ${done} out of ${entries.length} repos`);
+}
 
-  if (failed > 0) {
-    throw new Error(`${failed} repo(s) failed to upsert — see logs above`);
+/** Root stage inputKeys(): the repo ids in the last-written catalog. */
+export async function githubSyncInputKeys(): Promise<string[]> {
+  try {
+    const { readFileSync } = await import('fs');
+    const raw = readFileSync(projectsSyncConfig.catalogPath, 'utf-8');
+    const entries = JSON.parse(raw) as CatalogEntry[];
+    return repoIdsFromCatalog(entries);
+  } catch {
+    return [];
   }
 }

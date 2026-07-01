@@ -188,10 +188,11 @@ gitignored). Private workflows live in gitignored subfolders.
   and write a markdown report to `data/out/`. Idempotent per calendar month via the
   work_items ledger; a manual re-run the same month regenerates that month's file.
   Runs monthly on the 1st.
-- **projects-sync** — Daily GitHub repo ingestion: fetch the owner's repos via the
-  GitHub REST API → filter out forks/archived/private → sort by pushed_at → upsert
-  the filtered list to the DynamoDB projects table; idempotent upsert keyed by
-  GitHub numeric repo id (`repoId`), refreshing fields every run. Runs daily at 05:00.
+- **projects-sync** — Weekly GitHub repo ingestion: fetch the owner's repos via the
+  GitHub REST API → filter out forks/archived/private → sort by pushed_at → write
+  the filtered list to a local `data/out/projects.json` catalog; idempotent per
+  GitHub numeric repo id (`repoId`) via the work_items ledger, refreshing fields
+  every run. Runs weekly, Sunday at 05:00.
 - **claude-warmer** — Proactive Claude usage-window warmer: issue one minimal `"hi"`
   prompt via the `claude-cli` service every 30 minutes so the Claude account's 5-hour
   rolling usage window is already running (or reset) by the time real work needs Claude.

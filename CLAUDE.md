@@ -145,10 +145,10 @@ same month regenerates that month's file rather than duplicating it. Service:
 `src/services/lastfm.service.ts`. Credentials: `LAST_FM_API_KEY`, `LAST_FM_USERNAME`.
 and **projects-sync** (`src/jobs/projects-sync/`) — fetch the owner's GitHub repos via
 `GET /users/<GITHUB_USERNAME>/repos`, filter out forks/archived/private, sort by `pushed_at`
-descending, and upsert the filtered list into the DynamoDB `PROJECTS_TABLE` via the shared
-`dynamodb` service. Idempotent upsert keyed by GitHub numeric repo id (`repoId`) — re-scans
-every run so fields (stars, description, etc.) are refreshed. Runs daily at 05:00. Service:
-`src/services/github.service.ts`. Credentials: `GITHUB_USERNAME`, `GITHUB_TOKEN`, `PROJECTS_TABLE`.
+descending, and write the filtered list to a local `data/out/projects.json` catalog (no
+DynamoDB). Idempotent per GitHub numeric repo id (`repoId`) via the `work_items` ledger — re-scans
+every run so fields (description, topics, etc.) are refreshed. Runs weekly, Sunday at 05:00.
+Service: `src/services/github.service.ts`. Credentials: `GITHUB_USERNAME`, `GITHUB_TOKEN`.
 and **claude-warmer** (`src/jobs/claude-warmer/`) — issue one minimal Claude CLI prompt (`"hi"`,
 cheapest model) every 30 minutes via `runClaude` in `src/services/claude.ts`. WHY: Claude accounts
 have a 5-hour rolling usage window; this workflow fires proactively during off-hours so the window

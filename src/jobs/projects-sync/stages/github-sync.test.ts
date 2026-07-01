@@ -1,19 +1,22 @@
-// github-sync tests — hermetic: no live GitHub API calls, no live AWS writes.
-// Uses a stub fetcher + stub putter + the scratch DB (npm test sets LOCALJOBS_DB).
-// Covers: filtering forks/archived/private; sorting by pushed_at; upsert writes
-// item with correct fields; already-synced repos are overwritten (refresh pattern);
-// putter failure is recorded and re-thrown at end.
+// github-sync tests — hermetic: no live GitHub API calls, no filesystem writes to
+// the real job data dir. Uses a stub fetcher + stub catalog writer + the scratch DB
+// (npm test sets LOCALJOBS_DB).
+// Covers: filtering forks/archived/private; sorting by pushed_at; catalog entries
+// have correct fields; ledger records one success row per repo id; repeat runs
+// re-record (refresh pattern, no skip-if-done).
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 
-import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runGithubSync,
   filterAndSortRepos,
-  repoToTableItem,
+  repoToCatalogEntry,
+  repoIdsFromCatalog,
   type GitHubRepo,
-  type DynamoPutter,
+  type CatalogEntry,
+  type CatalogWriter,
 } from './github-sync.js';
 
 // ---------------------------------------------------------------------------
@@ -47,16 +50,17 @@ function makeRepo(overrides: Partial<GitHubRepo> = {}): GitHubRepo {
     pushed_at: '2026-01-10T12:00:00Z',
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2026-01-10T12:00:00Z',
+    default_branch: 'main',
     ...overrides,
   };
 }
 
-function makePutSpy() {
-  const calls: { table: string; item: Record<string, unknown> }[] = [];
-  const put: DynamoPutter = async (table, item) => {
-    calls.push({ table, item });
+function makeCatalogWriterSpy() {
+  const calls: CatalogEntry[][] = [];
+  const write: CatalogWriter = (entries) => {
+    calls.push(entries);
   };
-  return { put, calls };
+  return { write, calls };
 }
 
 let idCounter = 0;
@@ -112,31 +116,43 @@ describe('filterAndSortRepos', () => {
 });
 
 // ---------------------------------------------------------------------------
-// repoToTableItem
+// repoToCatalogEntry
 // ---------------------------------------------------------------------------
 
-describe('repoToTableItem', () => {
+describe('repoToCatalogEntry', () => {
   it('maps all fields correctly', () => {
-    const repo = makeRepo({ id: 42, description: 'hello', homepage: 'https://example.com' });
-    const item = repoToTableItem(repo, '2026-01-01T00:00:00.000Z');
-    assert.equal(item.repoId, '42');
-    assert.equal(item.description, 'hello');
-    assert.equal(item.homepage, 'https://example.com');
-    assert.equal(item.syncedAt, '2026-01-01T00:00:00.000Z');
+    const repo = makeRepo({ id: 42, description: 'hello', default_branch: 'develop' });
+    const entry = repoToCatalogEntry(repo);
+    assert.equal(entry.repoId, '42');
+    assert.equal(entry.description, 'hello');
+    assert.equal(entry.defaultBranch, 'develop');
   });
 
-  it('defaults null description/homepage/language to empty string', () => {
-    const repo = makeRepo({ description: null, homepage: null, language: null });
-    const item = repoToTableItem(repo, 'now');
-    assert.equal(item.description, '');
-    assert.equal(item.homepage, '');
-    assert.equal(item.language, '');
+  it('defaults null description/language to empty string', () => {
+    const repo = makeRepo({ description: null, language: null });
+    const entry = repoToCatalogEntry(repo);
+    assert.equal(entry.description, '');
+    assert.equal(entry.language, '');
   });
 
   it('uses created_at for pushedAt when pushed_at is null', () => {
     const repo = makeRepo({ pushed_at: null, created_at: '2025-05-01T00:00:00Z' });
-    const item = repoToTableItem(repo, 'now');
-    assert.equal(item.pushedAt, '2025-05-01T00:00:00Z');
+    const entry = repoToCatalogEntry(repo);
+    assert.equal(entry.pushedAt, '2025-05-01T00:00:00Z');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// repoIdsFromCatalog
+// ---------------------------------------------------------------------------
+
+describe('repoIdsFromCatalog', () => {
+  it('returns the repoId of each entry', () => {
+    const entries: CatalogEntry[] = [
+      { repoId: '1', name: 'a', fullName: 'u/a', description: '', url: '', language: '', topics: [], pushedAt: '', defaultBranch: 'main' },
+      { repoId: '2', name: 'b', fullName: 'u/b', description: '', url: '', language: '', topics: [], pushedAt: '', defaultBranch: 'main' },
+    ];
+    assert.deepEqual(repoIdsFromCatalog(entries), ['1', '2']);
   });
 });
 
@@ -160,8 +176,7 @@ describe('runGithubSync', () => {
         () =>
           runGithubSync(fakeCtx(), {
             fetchRepos: async () => [],
-            putItem: async () => {},
-            projectsTable: 'P',
+            writeCatalog: () => {},
           }),
         /GITHUB_USERNAME/,
       );
@@ -170,37 +185,34 @@ describe('runGithubSync', () => {
     }
   });
 
-  it('upserts a new repo and marks it done in the ledger', async () => {
+  it('writes the catalog and marks each repo done in the ledger', async () => {
     const repo = makeRepo({ id: uid() });
-    const { put, calls } = makePutSpy();
+    const { write, calls } = makeCatalogWriterSpy();
 
     await runGithubSync(fakeCtx(), {
       fetchRepos: async () => [repo],
-      putItem: put,
-      projectsTable: 'Projects',
-      syncedAt: '2026-01-01T00:00:00.000Z',
+      writeCatalog: write,
     });
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].table, 'Projects');
-    assert.equal(calls[0].item['repoId'], String(repo.id));
+    assert.equal(calls[0].length, 1);
+    assert.equal(calls[0][0].repoId, String(repo.id));
     assert.ok(isWorkItemDone(JOB, String(repo.id), 3), 'repo should be marked done');
   });
 
-  it('re-upserts a repo already in the ledger (refresh pattern)', async () => {
+  it('re-records a repo already in the ledger (refresh pattern)', async () => {
     const repo = makeRepo({ id: uid() });
-    markWorkItem(JOB, String(repo.id), 'success');
+    const { write: write1 } = makeCatalogWriterSpy();
+    await runGithubSync(fakeCtx(), { fetchRepos: async () => [repo], writeCatalog: write1 });
 
-    const { put, calls } = makePutSpy();
+    const { write, calls } = makeCatalogWriterSpy();
     await runGithubSync(fakeCtx(), {
       fetchRepos: async () => [repo],
-      putItem: put,
-      projectsTable: 'P',
-      syncedAt: 'now',
+      writeCatalog: write,
     });
 
-    // Projects-sync always refreshes (unlike workouts which skips done items)
-    assert.equal(calls.length, 1, 'repo is always re-upserted on each run');
+    assert.equal(calls.length, 1, 'catalog is always re-written on each run');
+    assert.equal(calls[0].length, 1);
   });
 
   it('excludes forks and archived repos before writing', async () => {
@@ -208,51 +220,27 @@ describe('runGithubSync', () => {
     const fork = makeRepo({ id: uid(), fork: true });
     const archived = makeRepo({ id: uid(), archived: true });
 
-    const { put, calls } = makePutSpy();
+    const { write, calls } = makeCatalogWriterSpy();
     await runGithubSync(fakeCtx(), {
       fetchRepos: async () => [normal, fork, archived],
-      putItem: put,
-      projectsTable: 'P',
-      syncedAt: 'now',
+      writeCatalog: write,
     });
 
-    assert.equal(calls.length, 1, 'only the non-fork non-archived repo is written');
-    assert.equal(calls[0].item['repoId'], String(normal.id));
+    assert.equal(calls[0].length, 1, 'only the non-fork non-archived repo is written');
+    assert.equal(calls[0][0].repoId, String(normal.id));
   });
 
   it('handles empty repo list gracefully', async () => {
-    const { put, calls } = makePutSpy();
+    const { write, calls } = makeCatalogWriterSpy();
     await runGithubSync(fakeCtx(), {
       fetchRepos: async () => [],
-      putItem: put,
-      projectsTable: 'P',
-      syncedAt: 'now',
+      writeCatalog: write,
     });
-    assert.equal(calls.length, 0);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].length, 0);
   });
 
-  it('marks repo failed in ledger when putter throws, then throws at end', async () => {
-    const repo = makeRepo({ id: uid() });
-
-    const failingPut: DynamoPutter = async () => {
-      throw new Error('DynamoDB unavailable');
-    };
-
-    await assert.rejects(
-      () =>
-        runGithubSync(fakeCtx(), {
-          fetchRepos: async () => [repo],
-          putItem: failingPut,
-          projectsTable: 'P',
-          syncedAt: 'now',
-        }),
-      /failed to upsert/,
-    );
-
-    assert.ok(!isWorkItemDone(JOB, String(repo.id), 3), 'failed repo should not be marked done');
-  });
-
-  it('upserts multiple repos and reports progress', async () => {
+  it('records multiple repos and reports progress', async () => {
     const repos = [makeRepo({ id: uid() }), makeRepo({ id: uid() }), makeRepo({ id: uid() })];
     const progressCalls: number[] = [];
     const ctx: JobContext = {
@@ -264,15 +252,16 @@ describe('runGithubSync', () => {
       rootAllowed: () => true,
     };
 
-    const { put, calls } = makePutSpy();
+    const { write, calls } = makeCatalogWriterSpy();
     await runGithubSync(ctx, {
       fetchRepos: async () => repos,
-      putItem: put,
-      projectsTable: 'P',
-      syncedAt: 'now',
+      writeCatalog: write,
     });
 
-    assert.equal(calls.length, 3);
+    assert.equal(calls[0].length, 3);
+    for (const repo of repos) {
+      assert.ok(isWorkItemDone(JOB, String(repo.id), 3), `repo ${repo.id} should be marked done`);
+    }
     assert.ok(progressCalls.length >= 3, 'progress called at least once per repo');
     assert.equal(progressCalls[progressCalls.length - 1], 100, 'final progress is 100');
   });
