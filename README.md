@@ -161,7 +161,7 @@ see `CLAUDE.md`.
 
 ## Shipped example workflows
 
-Five worked examples are published under `src/jobs/` (their `data/` stays
+Nine worked examples are published under `src/jobs/` (their `data/` stays
 gitignored). Private workflows live in gitignored subfolders.
 
 - **places** — Google Saved Places enrichment: parse CSVs → resolve CIDs →
@@ -182,10 +182,12 @@ gitignored). Private workflows live in gitignored subfolders.
 - **workouts-sync** — Daily Hevy workout ingestion: paginate the Hevy API → write
   each workout + its exercises to the existing DynamoDB tables; idempotent per
   workout id (new workouts synced, already-synced ids skipped). Runs daily at 06:00.
-- **listens-sync** — Every-4-hours Last.fm scrobble ingestion: fetch recent scrobbles
-  via `user.getRecentTracks` (5-hour lookback window) → optionally enrich album art
-  via Spotify → write each scrobble to the DynamoDB listens table; idempotent per
-  (trackId, scrobbledAt) via the work_items ledger. Runs every 4 hours.
+- **listening-digest** — Monthly Last.fm listening digest: fetch top albums + top
+  tracks (`period=1month`) directly from Last.fm's own aggregation endpoints (no
+  raw scrobble ingestion, no DynamoDB), filter out single-track-dominated "albums",
+  and write a markdown report to `data/out/`. Idempotent per calendar month via the
+  work_items ledger; a manual re-run the same month regenerates that month's file.
+  Runs monthly on the 1st.
 - **projects-sync** — Daily GitHub repo ingestion: fetch the owner's repos via the
   GitHub REST API → filter out forks/archived/private → sort by pushed_at → upsert
   the filtered list to the DynamoDB projects table; idempotent upsert keyed by

@@ -6,7 +6,7 @@ import type { ServiceDefinition } from '../core/types.js';
  *  pace ourselves to ~30 req/min out of courtesy. */
 const service: ServiceDefinition = {
   name: 'lastfm',
-  description: 'Last.fm API — recent-tracks scrobble ingestion.',
+  description: 'Last.fm API — monthly top-albums/top-tracks listening digest.',
   ratePerMinute: Number(process.env.LASTFM_RATE_PER_MIN ?? 30),
   paid: false,
 };
