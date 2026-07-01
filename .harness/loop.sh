@@ -61,6 +61,30 @@ read -r -a FLAGS <<<"$CLAUDE_FLAGS"
 log() { printf '[loop] %s\n' "$*" >&2; }
 board() { [ -x "$POSTFLIGHT" ] && "$POSTFLIGHT" >/dev/null 2>&1 || true; }
 
+# _hms <seconds> → human duration like "4h 34m" / "12m" / "45s"
+_hms() {
+  local s="$1" h m
+  h=$(( s / 3600 )); m=$(( (s % 3600) / 60 ))
+  if [ "$h" -gt 0 ]; then printf '%dh %dm' "$h" "$m"
+  elif [ "$m" -gt 0 ]; then printf '%dm' "$m"
+  else printf '%ds' "$s"; fi
+}
+# rl_banner <seconds-to-sleep> [extra-note] — human-readable usage-limit banner: echoes what Claude
+# reported, how long we sleep, and the WALL-CLOCK resume time (so it can be sanity-checked against the
+# reset Claude quoted). Mirrors supervise.sh's boxed style.
+rl_banner() {
+  local secs="$1" note="${2:-}" reset_txt resume
+  reset_txt="$(grep -oiE 'resets[^)]*\)' "$WORKLOG/.claude-out" 2>/dev/null | tail -1)"
+  resume="$(date -v+"${secs}"S '+%a %H:%M %Z' 2>/dev/null || echo "in $(_hms "$secs")")"
+  log "══════════════════════════════════════════════════════════════════════"
+  log "🛑 Claude usage/session limit hit — NOT a failure; the loop will auto-resume."
+  [ -n "$reset_txt" ] && log "   Claude says: ${reset_txt}"
+  [ -n "$note" ] && log "   $note"
+  log "   ⏳ Sleeping $(_hms "$secs")  →  resuming ~${resume}, then RE-ATTEMPT the same task COLD."
+  log "   ✅ SAFE TO Ctrl-C NOW — nothing is running."
+  log "══════════════════════════════════════════════════════════════════════"
+}
+
 command -v jq >/dev/null 2>&1 || { log "jq is required to parse TASKS.json — install it (brew install jq)"; exit 3; }
 [ -f "$BACKLOG" ] || { log "no .harness/TASKS.json — nothing to build"; exit 3; }
 
@@ -707,7 +731,7 @@ EOF
     arc=0; set +e; run_claude "$am" "$ae" "$(audit_prompt "$id" "$spec" "$diff" "$visual")" || arc=$?; set -e
     if [ "$arc" = 10 ]; then
       arl="$(rl_reset_wait "$WORKLOG/.claude-out" || true)"; arl="${arl:-$rlpoll}"
-      log "auditor rate-limited — waiting ${arl}s (NOT an audit fail)"; sleep "$arl"; continue
+      rl_banner "$arl" "(this is the AUDIT step, not the build — NOT an audit fail)"; sleep "$arl"; continue
     fi
     break
   done
@@ -839,10 +863,10 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
     if [ "$rc" = 10 ]; then
       rl_wait="$(rl_reset_wait "$WORKLOG/.claude-out" || true)"
       if [ -n "$rl_wait" ]; then
-        log "Claude usage/rate limit hit — Claude reports a reset; waiting ${rl_wait}s (until ~reset + ${RL_BUFFER}s), then RE-ATTEMPT COLD (not a failure)."
+        rl_banner "$rl_wait" "(that's the reported reset + a $(_hms "$RL_BUFFER") cushion)"
         sleep "$rl_wait"
       else
-        log "Claude usage/rate limit hit (no parseable reset time) — exponential backoff ${rl_sleep}s (cap ${RL_EXP_MAX}s), will RE-ATTEMPT COLD (not a failure)."
+        rl_banner "$rl_sleep" "No reset time in the notice — exponential backoff (cap $(_hms "$RL_EXP_MAX"))."
         sleep "$rl_sleep"
         rl_sleep=$(( rl_sleep * 2 )); [ "$rl_sleep" -gt "$RL_EXP_MAX" ] && rl_sleep="$RL_EXP_MAX"
       fi
