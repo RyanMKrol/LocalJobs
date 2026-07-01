@@ -183,9 +183,12 @@ gitignored). Private workflows live in gitignored subfolders.
   append each newly-synced workout's full data (title, exercises, sets) to a
   local full-history JSON file (`data/out/workouts-history.json`, no DynamoDB);
   idempotent per workout id (new workouts appended, already-synced ids skipped,
-  so the history file only ever grows). Runs monthly on the 1st at 06:00. A
-  follow-up analysis stage is planned to read the full history and report
-  long-range per-exercise progress trends (not yet built).
+  so the history file only ever grows). Then a second stage computes a
+  per-exercise 6-month progress report — best single set, total volume, and
+  estimated 1-rep-max (Epley formula), comparing the most recently completed
+  calendar month against the same month 6 months prior — and uses Claude to
+  narrate it into `data/out/workouts-progress.md` (raw comparison also written
+  to `data/out/progress-data.json`). Runs monthly on the 1st at 06:00.
 - **listening-digest** — Monthly Last.fm listening digest: fetch top albums + top
   tracks (`period=1month`) directly from Last.fm's own aggregation endpoints (no
   raw scrobble ingestion, no DynamoDB), filter out single-track-dominated "albums",

@@ -135,9 +135,18 @@ DynamoDB — matching the local-markdown/JSON-first direction of `listening-dige
 already-synced ids are skipped, so the history file only ever grows). Runs monthly (1st, 06:00) —
 a same-day-fresh cadence isn't needed now that nothing downstream reads it in real time. No static
 input list — inputs are discovered live from Hevy each run (like the plex audit workflows).
-Rate-limited via `src/services/hevy.service.ts`. Credentials: `HEVY_API_KEY`. A follow-up stage
-(T299) is planned to read the full history file and compute long-range per-exercise progress
-trends into a report — not yet built.
+Rate-limited via `src/services/hevy.service.ts`. Credentials: `HEVY_API_KEY`. Stage 2,
+`workouts-progress` (`dependsOn: ['hevy-sync']`), reads the full history file and computes a
+per-exercise 6-month progress comparison — baseline period = the calendar month exactly 6 months
+before the current period, current period = the most recently completed calendar month — across
+three metrics: best single set (highest `weight_kg`, ties broken by `reps`), total volume
+(`sum(weight_kg * reps)`), and estimated 1-rep-max (Epley: `weight_kg * (1 + reps / 30)`, max across
+the period). Sets with a null `weight_kg`/`reps` (duration/distance-based exercises) are skipped
+from all three metrics; an exercise with no usable sets in either period is excluded entirely. The
+raw comparison is written to `data/out/progress-data.json`, then fed to `runClaude` (the shared
+Claude CLI helper) to narrate it into `data/out/workouts-progress.md`. Idempotent per calendar month
+via the `work_items` ledger (mirrors `listening-digest`) — a manual re-run the same month
+regenerates the report (same static filename) rather than duplicating it.
 and **listening-digest** (`src/jobs/listening-digest/`) — once a month, fetch Last.fm's own
 aggregated `user.getTopAlbums` + `user.getTopTracks` (`period=1month`), filter out albums where a
 single track accounts for ≥70% of the album's plays (a "one song on repeat" false-positive, mirrors
