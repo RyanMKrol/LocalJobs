@@ -7801,7 +7801,7 @@
     {
       "id": "T295",
       "title": "claude-warmer: log the actual prompt + model on every outcome line",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
