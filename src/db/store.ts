@@ -22,7 +22,7 @@ const upsertJobStmt = db.prepare(`
   VALUES (@name, @description, @timeout_ms, @max_retries)
   ON CONFLICT(name) DO UPDATE SET
     description = excluded.description,
-    timeout_ms  = excluded.timeout_ms,
+    timeout_ms  = CASE WHEN timeout_ms_overridden = 1 THEN timeout_ms ELSE excluded.timeout_ms END,
     max_retries = excluded.max_retries
 `);
 
@@ -39,6 +39,7 @@ export interface JobRow {
   name: string;
   description: string;
   timeout_ms: number;
+  timeout_ms_overridden: number;
   max_retries: number;
   created_at: string;
 }
@@ -49,6 +50,20 @@ export function getJob(name: string): JobRow | undefined {
 
 export function listJobs(): JobRow[] {
   return db.prepare('SELECT * FROM jobs ORDER BY name').all() as JobRow[];
+}
+
+/**
+ * Persist a USER override of a job's `timeoutMs` (T297) — mirrors
+ * `updateWorkflowSchedule`/`updateWorkflowConcurrency`: a dashboard edit takes
+ * ownership so a later `syncJob` (code re-sync / daemon restart) preserves it
+ * instead of reverting to the manifest value.
+ */
+export function updateJobTimeout(name: string, timeoutMs: number): JobRow | undefined {
+  const info = db
+    .prepare('UPDATE jobs SET timeout_ms = ?, timeout_ms_overridden = 1 WHERE name = ?')
+    .run(timeoutMs, name);
+  if (info.changes === 0) return undefined;
+  return getJob(name);
 }
 
 // ---- runs ----

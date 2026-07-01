@@ -33,6 +33,7 @@ import {
   lastWorkflowRunForWorkflow,
   lastRunForJob,
   listJobs,
+  updateJobTimeout,
   listWorkflowRunsForWorkflow,
   listWorkflows,
   listRecentWorkflowRuns,
@@ -1373,6 +1374,26 @@ export function createApiServer(
         const removed = pruneOrphanedWorkItems(jobName, keys);
         console.log(`[api] prune ${jobName}: removed ${removed.length} orphaned work_item(s)`);
         return json(res, 200, { ok: true, job: jobName, removed });
+      }
+
+      // POST /api/jobs/:name/timeout  { timeoutMs }
+      // Persist a USER override of the job's `timeoutMs` (T297) — mirrors the
+      // workflow schedule/maxConcurrency overrides, but scoped to a JOB row: unlike
+      // schedule/enabled (workflow-only, T070), timeoutMs is a genuinely job-scoped
+      // execution parameter. The executor already reads the DB row's value in
+      // preference to the manifest constant, so no executor change is needed for
+      // the override to take effect on the next run. Guarded by the same
+      // loopback/token mutation check as /toggle, /run, /schedule, /concurrency.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'jobs' && parts[3] === 'timeout') {
+        const jobName = parts[2];
+        const body = await readBody(req);
+        const timeoutMs = body.timeoutMs;
+        if (typeof timeoutMs !== 'number' || !Number.isInteger(timeoutMs) || timeoutMs < 0) {
+          return json(res, 400, { error: 'timeoutMs must be a non-negative integer (milliseconds)' });
+        }
+        const updated = updateJobTimeout(jobName, timeoutMs);
+        if (!updated) return json(res, 404, { error: 'job not found' });
+        return json(res, 200, { ok: true, job: updated });
       }
 
       // NOTE: there is intentionally NO POST /api/jobs/:name/toggle (T070). The

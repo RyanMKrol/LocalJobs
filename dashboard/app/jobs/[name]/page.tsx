@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, use } from 'react';
+import { Fragment, use, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '../../lib/api';
 import { StatusBadge, backFrom, fmtDuration, fmtRelative, usePoll } from '../../ui';
@@ -23,6 +23,37 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
     try { await Promise.all(stuck.map((s) => api.unstick(s.job_name, s.item_key))); } catch { /* ignore */ }
   }
 
+  // Inline timeout editor (T297) — dashboard shows/accepts SECONDS, converting
+  // to/from milliseconds at the API boundary; mirrors the workflow schedule editor.
+  const [editingTimeout, setEditingTimeout] = useState(false);
+  const [timeoutDraft, setTimeoutDraft] = useState('');
+  const [timeoutErr, setTimeoutErr] = useState<string | null>(null);
+  const [savingTimeout, setSavingTimeout] = useState(false);
+
+  function startEditTimeout() {
+    setTimeoutDraft(String(Math.round((job?.timeout_ms ?? 0) / 1000)));
+    setTimeoutErr(null);
+    setEditingTimeout(true);
+  }
+  function cancelEditTimeout() {
+    setEditingTimeout(false);
+    setTimeoutErr(null);
+  }
+  async function saveTimeout() {
+    setSavingTimeout(true);
+    setTimeoutErr(null);
+    try {
+      const seconds = Number(timeoutDraft);
+      if (!Number.isFinite(seconds) || seconds < 0) throw new Error('timeout must be a non-negative number of seconds');
+      await api.updateJobTimeout(name, Math.round(seconds * 1000));
+      setEditingTimeout(false);
+    } catch (e) {
+      setTimeoutErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingTimeout(false);
+    }
+  }
+
   return (
     <>
       <p className="muted"><a href={back.href}>← {back.label}</a></p>
@@ -38,7 +69,35 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
 
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
         <div className="kv">
-          <div className="k">Timeout</div><div>{job?.timeout_ms ? `${job.timeout_ms} ms` : 'none'}</div>
+          <div className="k">Timeout</div>
+          <div>
+            {editingTimeout ? (
+              <div className="schedule-edit">
+                <input
+                  className="mono schedule-input"
+                  type="number"
+                  min={0}
+                  value={timeoutDraft}
+                  onChange={(e) => setTimeoutDraft(e.target.value)}
+                  placeholder="seconds (0 = none)"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveTimeout(); if (e.key === 'Escape') cancelEditTimeout(); }}
+                />
+                <button className="btn btn-sm" onClick={saveTimeout} disabled={savingTimeout}>
+                  {savingTimeout ? 'Saving…' : 'Save'}
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={cancelEditTimeout} disabled={savingTimeout}>Cancel</button>
+                {timeoutErr && <span className="schedule-err">{timeoutErr}</span>}
+              </div>
+            ) : (
+              <span className="schedule-view">
+                <span className="mono" style={{ whiteSpace: 'nowrap' }}>
+                  {job?.timeout_ms ? `${Math.round(job.timeout_ms / 1000)}s` : 'none'}
+                </span>
+                <span className="schedule-edit-link" onClick={startEditTimeout}>Edit</span>
+              </span>
+            )}
+          </div>
           <div className="k">Max retries</div><div>{job?.max_retries ?? 0}</div>
         </div>
       </div>

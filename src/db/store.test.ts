@@ -10,7 +10,7 @@ import {
   listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
-  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, usageThisMonth,
+  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, updateJobTimeout, getJob, usageThisMonth,
   bulkUnstickItems, bulkIgnoreItems,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
@@ -55,6 +55,28 @@ assert.equal(getWorkflowJobs('t-pipe').length, 3);
   assert.equal(updateWorkflowSchedule('t-no-such-wf', '0 1 * * *'), undefined, 'unknown workflow → undefined');
 }
 console.log('  ✓ updateWorkflowSchedule: set/clear + schedule_overridden reconcile across sync (T135)');
+
+// ── editable job timeoutMs (T297): user-owned override reconciled across code-sync ──
+{
+  syncJob({ name: 't-timeout', timeoutMs: 60_000, run: async () => {} });
+  assert.equal(getJob('t-timeout')?.timeout_ms, 60_000, 'code timeoutMs seeded');
+  assert.equal(getJob('t-timeout')?.timeout_ms_overridden, 0, 'not overridden initially');
+
+  // user edits the timeout → flips timeout_ms_overridden
+  const updated = updateJobTimeout('t-timeout', 120_000);
+  assert.equal(updated?.timeout_ms, 120_000, 'updateJobTimeout sets the value');
+  assert.equal(updated?.timeout_ms_overridden, 1, 'updateJobTimeout flips timeout_ms_overridden');
+
+  // a CODE-sync with the SAME original manifest timeoutMs now PRESERVES the user's
+  // override (the reconcile, mirroring schedule/maxConcurrency)
+  syncJob({ name: 't-timeout', timeoutMs: 60_000, run: async () => {} });
+  assert.equal(getJob('t-timeout')?.timeout_ms, 120_000, 'overridden timeout survives re-sync');
+  assert.equal(getJob('t-timeout')?.timeout_ms_overridden, 1, 'override flag survives re-sync');
+
+  // unknown job → undefined (no row touched)
+  assert.equal(updateJobTimeout('t-no-such-job', 1000), undefined, 'unknown job → undefined');
+}
+console.log('  ✓ updateJobTimeout: set + timeout_ms_overridden reconcile across sync (T297)');
 
 // ── editable maxConcurrency (T169): user-owned override reconciled across code-sync ──
 {

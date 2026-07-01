@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   name         TEXT PRIMARY KEY,
   description  TEXT NOT NULL DEFAULT '',
   timeout_ms   INTEGER NOT NULL DEFAULT 0, -- 0 = no timeout
+  timeout_ms_overridden INTEGER NOT NULL DEFAULT 0, -- user-editable override (T297), mirrors workflow schedule/maxConcurrency overrides
   max_retries  INTEGER NOT NULL DEFAULT 0,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -233,6 +233,14 @@ test('jobs ends migrated: legacy schedule + enabled columns dropped (T070)', () 
   assert.ok(!cols('jobs').includes('enabled'), 'enabled column dropped');
 });
 
+test('jobs ends migrated: timeout_ms_overridden column added (defaults 0 = code-owned) (T297)', () => {
+  assert.ok(cols('jobs').includes('timeout_ms_overridden'), 'timeout_ms_overridden column added');
+  const j = migrated.prepare('SELECT timeout_ms_overridden FROM jobs WHERE name = ?').get('resolve') as {
+    timeout_ms_overridden: number;
+  };
+  assert.equal(j.timeout_ms_overridden, 0, 'pre-existing job defaults to NOT overridden');
+});
+
 test("legacy 'dismissed' work_item is migrated to 'ignored' (T033)", () => {
   const r = migrated.prepare('SELECT status FROM work_items WHERE item_key = ?').get('cid-3') as { status: string };
   assert.equal(r.status, 'ignored');

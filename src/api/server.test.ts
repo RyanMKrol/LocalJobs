@@ -12,7 +12,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { jobs, workflows } from '../jobs/registry.js';
-import { createWorkflowRun, finishWorkflowRun, getWorkflow, markWorkItem, recordServiceConsumer, syncJob, syncWorkflow } from '../db/store.js';
+import { createWorkflowRun, finishWorkflowRun, getJob, getWorkflow, markWorkItem, recordServiceConsumer, syncJob, syncWorkflow } from '../db/store.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
@@ -277,6 +277,66 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   rescheduleWorkflow('sched-api-wf', null); // clear any live cron this test left registered
   { const i = jobs.indexOf(schedJob); if (i >= 0) jobs.splice(i, 1); }
   { const i = workflows.indexOf(schedWf); if (i >= 0) workflows.splice(i, 1); }
+}
+
+// ── editable job timeoutMs (T297): POST /api/jobs/:name/timeout validates + persists
+// a user override, mirroring the schedule override tests above. ──
+{
+  const timeoutJob: JobDefinition = { name: 'timeout-api-job', timeoutMs: 60_000, run: async () => {} };
+  syncJob(timeoutJob); jobs.push(timeoutJob);
+
+  await test('job timeout: a valid non-negative integer is accepted (200), persisted + overridden', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/jobs/timeout-api-job/timeout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timeoutMs: 120_000 }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; job: { timeout_ms: number } };
+      assert.equal(body.job.timeout_ms, 120_000);
+      assert.equal(getJob('timeout-api-job')?.timeout_ms, 120_000, 'persisted to the DB');
+      assert.equal(getJob('timeout-api-job')?.timeout_ms_overridden, 1, 'flagged as user-overridden');
+    });
+  });
+
+  await test('job timeout: 0 is accepted (no timeout)', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/jobs/timeout-api-job/timeout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timeoutMs: 0 }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(getJob('timeout-api-job')?.timeout_ms, 0);
+    });
+  });
+
+  await test('job timeout: a negative value is rejected 400 and never persisted', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/jobs/timeout-api-job/timeout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timeoutMs: -5 }),
+      });
+      assert.equal(res.status, 400);
+      assert.equal(getJob('timeout-api-job')?.timeout_ms, 0, 'unchanged from the prior test');
+    });
+  });
+
+  await test('job timeout: a non-integer value is rejected 400', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/jobs/timeout-api-job/timeout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timeoutMs: 12.5 }),
+      });
+      assert.equal(res.status, 400);
+    });
+  });
+
+  await test('job timeout: unknown job → 404', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/jobs/__no_such_job__/timeout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timeoutMs: 1000 }),
+      });
+      assert.equal(res.status, 404);
+    });
+  });
+
+  { const i = jobs.indexOf(timeoutJob); if (i >= 0) jobs.splice(i, 1); }
 }
 
 // ── editable maxConcurrency (T169): POST /api/workflows/:name/concurrency validates

@@ -532,6 +532,20 @@ export const api = {
     if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
     return data as { ok: boolean; notify_enabled: boolean };
   },
+  // Persist a user override of a job's timeoutMs (T297) — mirrors
+  // updateWorkflowSchedule/updateWorkflowConcurrency, but scoped to a job row.
+  // The API stays in milliseconds; the caller converts from the seconds shown in
+  // the UI. Surfaces the server's 400 validation error as the thrown message.
+  updateJobTimeout: async (name: string, timeoutMs: number) => {
+    const res = await fetch(`${API_BASE}/api/jobs/${encodeURIComponent(name)}/timeout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timeoutMs }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; job?: { timeout_ms: number } };
+    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+    return data as { ok: boolean; job: { timeout_ms: number } };
+  },
   cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
   // Clear all output data for a workflow (T203): work_items + runs/logs + data/out/*.
   // Preserves: input data (data/raw), chrome-profile, settings, definition tables.

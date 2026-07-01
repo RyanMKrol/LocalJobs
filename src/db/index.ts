@@ -84,6 +84,16 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec("ALTER TABLE workflows ADD COLUMN category TEXT NOT NULL DEFAULT ''");
   }
 
+  // Additive migration: user-owned timeoutMs override on jobs (T297). Same shape
+  // as the workflow schedule/maxConcurrency overrides: `timeout_ms` is seeded from
+  // the manifest on sync, a dashboard edit flips `timeout_ms_overridden` and a
+  // later code-sync preserves the user's value (see upsertJobStmt). No index on
+  // this column, so no bootstrap-index trap (T098).
+  const jobCols = db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[];
+  if (!jobCols.some((c) => c.name === 'timeout_ms_overridden')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN timeout_ms_overridden INTEGER NOT NULL DEFAULT 0');
+  }
+
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
   migrateRenamePlexWorkflow(db);
