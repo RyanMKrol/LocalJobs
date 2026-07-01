@@ -94,7 +94,7 @@ function GateEdge({
   const hasGate = !!gateState;
 
   const lockColor = isFailed ? 'var(--red)' : isPassed ? 'var(--green)' : 'var(--muted)';
-  const lockSize = isFailed ? 16 : 12;
+  const lockSize = isFailed ? 20 : 16;
 
   // SVG padlock: shackle arc + body rectangle, stroked in the state colour.
   const padlockSvg = (
@@ -103,7 +103,7 @@ function GateEdge({
       viewBox="0 0 16 16"
       fill="none"
       stroke={lockColor}
-      strokeWidth={isFailed ? 1.8 : 1.5}
+      strokeWidth={isFailed ? 2.1 : 1.8}
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{ display: 'block', flexShrink: 0 }}
