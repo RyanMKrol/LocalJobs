@@ -7709,7 +7709,7 @@
     {
       "id": "T292",
       "title": "Add manifest-owned 'category' field to workflows (schema + sync, no edit UI)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
