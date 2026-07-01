@@ -7500,7 +7500,7 @@
     {
       "id": "T285",
       "title": "Per-workflow notifyEnabled toggle — turn off push notifications for a noisy workflow",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
