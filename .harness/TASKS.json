@@ -7774,7 +7774,7 @@
     {
       "id": "T294",
       "title": "Backlog view: surface pending tasks with prior failed/blocked build attempts",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
