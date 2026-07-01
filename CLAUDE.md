@@ -172,10 +172,18 @@ from Trading212 (https://docs.trading212.com/api) via a **strictly read-only** i
 broker-agnostic `{ ticker, quantity, averageBuyPrice, currentPrice, currentValue }` array) and
 `data/out/portfolio.md` (one row per position, including the price difference since purchase —
 `currentPrice - averageBuyPrice` — as both an absolute amount and a percentage). No DynamoDB,
-matching the local-markdown-first direction of `projects-sync`/`listening-digest`. Single stage
+matching the local-markdown-first direction of `projects-sync`/`listening-digest`. Stage 1
 (`stocks-snapshot`), idempotent per ticker via the `work_items` ledger; current price/value come
 directly from Trading212's own portfolio endpoint (no separate market-data API or credential).
-Runs daily (schedule editable from the dashboard). Service: `src/services/trading212.service.ts`.
+Stage 2 (`stocks-watch`, `dependsOn: ['stocks-snapshot']`) reads that snapshot and sends **one**
+push (via `push()` from `src/core/notifier.ts`, not the generic aggregate `notifyWorkflow`) when
+any position's current price is 30% or more above its average buy price — a "re-scan +
+notification-log" idempotent stage (mirrors `missing-tv-seasons`'s notify stage): a fresh breach
+of the 30% threshold notifies once, staying above 30% doesn't re-notify every run, and a position
+that drops back below 30% has its `stocks-watch` ledger row reset (marked `skipped`, which
+`isWorkItemDone` treats as not-done) so a later re-breach notifies again. Multiple positions
+freshly breaching in the same run are combined into a single push, not one per position. Runs
+daily (schedule editable from the dashboard). Service: `src/services/trading212.service.ts`.
 Credentials: `TRADING212_API_KEY_ID`, `TRADING212_API_SECRET_KEY`.
 Private workflows are added as gitignored subfolders.
 

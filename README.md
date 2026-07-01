@@ -203,14 +203,18 @@ gitignored). Private workflows live in gitignored subfolders.
   rolling usage window is already running (or reset) by the time real work needs Claude.
   Soft-fails gracefully if the upstream plan limit is reached; no local quota cap needed.
   Runs every 30 minutes (`*/30 * * * *`).
-- **stocks-sync** — Daily Trading212 portfolio snapshot, strictly **read-only** (GET-only,
-  no order placement/cancellation/account mutation — see the "Broker / trading APIs are
-  READ-ONLY" rule). Single stage (`stocks-snapshot`) calls Trading212's open-positions
-  endpoint (https://docs.trading212.com/api) and writes a broker-agnostic snapshot to a
-  local `data/out/portfolio.json` (structured) + `data/out/portfolio.md` (one row per
-  position with the price difference since purchase, as both an absolute amount and a
-  percentage) — no DynamoDB. Idempotent per ticker via the work_items ledger. Runs daily
-  (schedule editable from the dashboard).
+- **stocks-sync** — Daily Trading212 portfolio snapshot + gain-alert, strictly **read-only**
+  (GET-only, no order placement/cancellation/account mutation — see the "Broker / trading APIs
+  are READ-ONLY" rule). 2-stage DAG. Stage 1 (`stocks-snapshot`) calls Trading212's
+  open-positions endpoint (https://docs.trading212.com/api) and writes a broker-agnostic
+  snapshot to a local `data/out/portfolio.json` (structured) + `data/out/portfolio.md` (one
+  row per position with the price difference since purchase, as both an absolute amount and a
+  percentage) — no DynamoDB. Idempotent per ticker via the work_items ledger. Stage 2
+  (`stocks-watch`, depends on `stocks-snapshot`) sends **one** push whenever a held position's
+  current price is 30% or more above its average buy price — notified once per breach episode
+  (staying above 30% doesn't re-notify every run); if the position later drops back below 30%
+  its ledger row resets, so a future re-breach notifies again. Runs daily (schedule editable
+  from the dashboard).
 
 ## Dashboard pages
 
