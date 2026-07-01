@@ -7018,7 +7018,7 @@
     {
       "id": "T266",
       "title": "Backlog: clickable dependency ids that scroll to + expand the referenced task",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
