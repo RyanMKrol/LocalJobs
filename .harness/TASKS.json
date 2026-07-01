@@ -7451,7 +7451,7 @@
     {
       "id": "T283",
       "title": "Backlog: only show needs-human blockers in Waiting on dependencies",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
