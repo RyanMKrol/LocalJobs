@@ -26,7 +26,7 @@ as needed (the full idea + any helpful context), no schema and no planning. It i
 place to dump a thought so it isn't lost and isn't interrupting in-flight work — capture is
 **non-interactive** (it enriches from what's already known, never by asking) precisely so it doesn't
 derail whatever Claude is mid-task on. Capture two ways:
-- **`/idea <the idea, in as much detail as you like>`** — appends a bullet to the Inbox.
+- **`/local-jobs-idea <the idea, in as much detail as you like>`** — appends a bullet to the Inbox.
 - Or just **hand-edit** `.harness/IDEAS.md`, or tell Claude "add an idea: …".
 
 It is **gitignored on purpose** (like `data/` folders): raw, unfleshed ideas — which may reference
@@ -34,10 +34,10 @@ private jobs — stay local and never hit the public repo. The *mechanism* trave
 this committed doc; each project grows its own private inbox. This is distinct from the committed
 `TASKS.json` backlog — the inbox is transient working state, the backlog is the durable record.
 
-### Step 2 — convert: a per-idea TWO-PHASE interview, looped over the whole inbox (`/convert-ideas`)
+### Step 2 — convert: a per-idea TWO-PHASE interview, looped over the whole inbox (`/local-jobs-convert-ideas`)
 
 Conversion is its OWN process — it **leans on `ralph-loop-add-to-backlog` but is NOT the bare skill**.
-`/convert-ideas` sweeps the **whole inbox** in one invocation, but converts the ideas **one at a
+`/local-jobs-convert-ideas` sweeps the **whole inbox** in one invocation, but converts the ideas **one at a
 time**: each idea gets its own full excavation before any shaping. The batch is purely an ergonomic
 loop — it never lets you shape several half-formed ideas at once. For each idea, a probing front-end
 runs first:
@@ -66,7 +66,7 @@ service about to hit its quota? → once understood, **Phase 2** runs add-to-bac
 `ui`/`component` task scoped to the services page (+ any `api` task if a new field is needed), each
 with a real `## Done when`. Then the bullet is deleted from `IDEAS.md`.
 
-> Distribution: the `/idea` + `/convert-ideas` commands are project-local (`.claude/commands/`) for now;
+> Distribution: the `/local-jobs-idea` + `/local-jobs-convert-ideas` commands are project-local (`.claude/commands/`) for now;
 > folding this flow into the distributable `claude-skills` plugin so other projects inherit it is
 > tracked by the harness-parity task **T188**.
 
@@ -113,7 +113,7 @@ matching `FLOWS` entry; the `convert-ideas` / `ralph-loop-add-to-backlog` flow i
 
 When the owner judges a `done` task to have actually failed, that is recorded in the owner-owned
 `.harness/manual-fail.json` overlay — **never** by hand-editing it, and never by the loop. Use the
-`/mark-task-failed` command or `.harness/mark-failed.sh <TNNN> "<reason>"` (the dashboard's "Mark
+`/local-jobs-mark-task-failed` command or `.harness/mark-failed.sh <TNNN> "<reason>"` (the dashboard's "Mark
 failed" button writes the same file). The loop READS this overlay to correct calibration — a false
 success is re-counted as a failure for difficulty tuning and dropped from its cell's audited-success
 count, so that `(layer × workType)` cell is built with a stronger model and audited more often. At

@@ -130,7 +130,7 @@ weakness is a **false success**: a task marked `done` (green CI + passed/skipped
 later judges not actually done. Left alone it teaches the tuner the cheap tier works AND suppresses the
 cell's audit rate — the same bug class keeps slipping through. The owner overturns it via the
 committed `.harness/manual-fail.json` overlay (`POST /api/backlog/:id/failed`, the Backlog "Mark
-failed" button, or the portable `.harness/mark-failed.sh` / `/mark-task-failed` for no-dashboard
+failed" button, or the portable `.harness/mark-failed.sh` / `/local-jobs-mark-task-failed` for no-dashboard
 projects). The loop READS this overlay (never writes it): `policy.jq`/`pick_base` re-count a
 manually-failed task as a failure for tier selection, and `audit_gate` excludes it from the cell's
 confirmed-audited count — so that `(layer × workType)` cell is then built with a **stronger model** and

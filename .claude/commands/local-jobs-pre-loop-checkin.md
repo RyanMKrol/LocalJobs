@@ -5,7 +5,7 @@ argument-hint: (optional) a task id to focus on, e.g. T215 — omit for a full s
 
 You are vetting the autonomous build harness (`.harness/loop.sh`, run via `.harness/supervise.sh`)
 **BEFORE** the owner starts an unattended run. This is the pre-run mirror of
-`.claude/commands/loop-recover.md` — but where that command diagnoses AND FIXES state after an
+`.claude/commands/local-jobs-loop-recover.md` — but where that command diagnoses AND FIXES state after an
 interrupt, this command only **looks and reports**. It never changes anything.
 
 Focus target: `$ARGUMENTS` (if a task id is given, narrow check 1 and check 4 to it but still run
@@ -26,7 +26,7 @@ the global checks 2 and 3; if empty, do a full sweep of the backlog).
   `clean`, `restore`, `checkout --`, `rebase`, branch create/delete. `git status`/`git log`/`git
   fetch`/`git rev-list`/`git rev-parse` (read-only) are fine.
 - If you notice something that genuinely needs fixing, **report it** — do not fix it here. Point the
-  owner at `/loop-recover` (if it's interrupt-shaped state damage) or at hand-editing the backlog
+  owner at `/local-jobs-loop-recover` (if it's interrupt-shaped state damage) or at hand-editing the backlog
   themselves.
 
 ---
@@ -79,7 +79,7 @@ Report:
 - **if a `loop.sh`/`supervise.sh` process is alive OR the lock is held by a live PID** — say so
   plainly and recommend **NOT** starting a second run (T105's "one active run" guard is per-workflow
   inside the daemon, it does NOT prevent two `loop.sh` processes stepping on each other's git state).
-- if the lock dir exists but its `pid` is dead, note it as stale (a human/`/loop-recover` can clear
+- if the lock dir exists but its `pid` is dead, note it as stale (a human/`/local-jobs-loop-recover` can clear
   it — do not clear it yourself here).
 
 ## 3. Dependency short-circuits (informational only)
@@ -144,9 +144,9 @@ Consolidate everything above into ONE report the owner can read in one glance be
 - **Task definition quality**: list of tasks with issues, or "all clear".
 - **Verdict**: a plain **GO** (safe to start `.harness/supervise.sh`) or **NO-GO** (name the blocking
   issue(s) and what the owner should do — e.g. "mark T210 done in the dashboard first", "a loop
-  process is already running, don't start another", "run `/loop-recover` first"). If everything is
+  process is already running, don't start another", "run `/local-jobs-loop-recover` first"). If everything is
   clean but there are informational-only notes (short-circuits, auto-resolving blockers), say **GO
   with notes**.
 
 Remember: you changed nothing. If asked to fix anything found here, direct the owner to
-`/loop-recover` (interrupt-shaped state damage) or a manual edit — never do it from this command.
+`/local-jobs-loop-recover` (interrupt-shaped state damage) or a manual edit — never do it from this command.

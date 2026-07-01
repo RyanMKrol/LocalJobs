@@ -263,7 +263,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
     `reconcile_overlays`) — an authoritative TERMINAL status the loop skips (it does NOT
     re-open/rebuild; the re-do is a separate follow-up task). The Backlog page shows a
     **"Mark failed"** button on done tasks; the portable
-    `.harness/mark-failed.sh` (and `/mark-task-failed` command) write the same file for
+    `.harness/mark-failed.sh` (and `/local-jobs-mark-task-failed` command) write the same file for
     projects with no dashboard. Full design: `.harness/designs/manual-fail-signal.md`.
   All three overlay files are disjoint git paths from TASKS.json and from each other,
   so no writer ever conflicts with the loop or another file. The dashboard/API still
@@ -1199,13 +1199,13 @@ this in addition to everything above:
       reason, at }`). The owner's "this DONE task actually failed" correction. Set via `POST
       /api/backlog/:id/failed` (done tasks only, reason required; `{failed:false}` undoes), the
       Backlog page's "Mark failed" button, OR the portable `.harness/mark-failed.sh` (the
-      `/mark-task-failed` command) for projects with no dashboard. Same atomic write+commit+push
+      `/local-jobs-mark-task-failed` command) for projects with no dashboard. Same atomic write+commit+push
       pattern. **The loop READS this overlay** (it still never WRITES it) to correct calibration —
       `policy.jq`/`pick_base` re-count the task as a failure for tier tuning, and `audit_gate` drops it
       from its cell's confirmed-audited count (built stronger + audited more). It ALSO reconciles it →
       `TASKS.json` `status=failed` (see below). Design: `.harness/designs/manual-fail-signal.md`.
     The agent must not hand-edit any of these overlay files — they are UI / owner actions. (To mark
-    a task failed when asked, use `/mark-task-failed` or `.harness/mark-failed.sh`, never a hand-edit.)
+    a task failed when asked, use `/local-jobs-mark-task-failed` or `.harness/mark-failed.sh`, never a hand-edit.)
     - **Overlay → status reconcile (T261/T279, `reconcile_overlays` in `loop.sh`).** The loop NEVER
       writes the overlay files, but at PRE-FLIGHT it reads `human-done`/`manual-fail` and promotes their
       verdicts into `TASKS.json` `status`: human-done → `status=done` (so a needs-human blocker actually

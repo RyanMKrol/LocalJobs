@@ -82,7 +82,7 @@ Two ways to write the same overlay; both commit + push `[skip ci]` under the **s
 
 - **Portable (any project, no dashboard):** `.harness/mark-failed.sh <TNNN> "<reason>"`
   (and `--undo <TNNN>`). It reuses the loop's lock + paths (sourced with `LOOP_SOURCE_ONLY=1`, so the
-  lock path stays byte-identical). The `/mark-task-failed` Claude command documents and drives it.
+  lock path stays byte-identical). The `/local-jobs-mark-task-failed` Claude command documents and drives it.
 - **Dashboard (this project):** a **"Mark failed"** button on the Backlog page → `POST
   /api/backlog/:id/failed` → the same overlay file. Restricted to `done` tasks (you're overturning a
   recorded success); a failed task shows a red chip and counts as reviewed.

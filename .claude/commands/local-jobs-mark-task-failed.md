@@ -27,7 +27,7 @@ slipping through.
 
 It does **NOT** change the task's `status` or re-open it for a rebuild — the loop owns task status,
 and re-opening is deliberately out of scope. After marking it failed, either fix the work yourself or
-author a follow-up task with `/convert-ideas` (or the add-to-backlog skill).
+author a follow-up task with `/local-jobs-convert-ideas` (or the add-to-backlog skill).
 
 ## How to do it
 
