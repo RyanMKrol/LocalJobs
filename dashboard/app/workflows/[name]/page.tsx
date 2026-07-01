@@ -764,6 +764,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
     try { await api.runWorkflow(name, limit ? Number(limit) : undefined); } finally { setTimeout(() => setBusy(false), 1200); }
   }
   async function toggle() { if (p) await api.toggleWorkflow(name, p.enabled === 0); }
+  async function toggleNotify() { if (p) await api.updateWorkflowNotify(name, !p.effective_notify_enabled); }
 
   return (
     <>
@@ -865,6 +866,12 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
                 <span className="schedule-edit-link" onClick={startEditConc}>Edit</span>
               </span>
             )}
+          </div>
+          <div className="k">Notifications</div>
+          <div>
+            <span className="toggle" onClick={toggleNotify}>
+              <input type="checkbox" checked={!!p?.effective_notify_enabled} readOnly /> {p?.effective_notify_enabled ? 'notifications on' : 'notifications off'} (click to toggle)
+            </span>
           </div>
           <div className="k">Next run</div><div className="muted">{p?.next_run ? fmtTime(p.next_run) : '—'}</div>
           <div className="k">Stuck items</div><div style={{ color: p?.stuck ? 'var(--red)' : undefined }}>{p?.stuck ?? 0}</div>

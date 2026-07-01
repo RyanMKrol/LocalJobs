@@ -533,6 +533,31 @@ doubt, log it.
   **Unlimited** checkbox — when checked, `0` is persisted and the read view shows
   "Unlimited" instead of a number. `effective_max_concurrency = 0` in the API payload
   signals the unlimited state to the UI (Infinity cannot serialise as JSON).
+- **A workflow's push notifications are user-editable + code-reconciled (T285).**
+  Whether the run-end aggregate push notification (T189) fires joins `schedule` +
+  `maxConcurrency` + `enabled` + service limits as a user-owned, override-flagged,
+  code-reconciled workflow property — same mechanism end-to-end, binary on/off only
+  (no per-status "only notify on failure" mode). `POST /api/workflows/:name/notify
+  { notifyEnabled }` (`updateWorkflowNotifyEnabled` in `store.ts`) persists the value
+  and flips `notify_enabled_overridden = 1`, so a later `syncWorkflow` PRESERVES it
+  (`notify_enabled = CASE WHEN notify_enabled_overridden = 1 THEN notify_enabled ELSE
+  excluded.notify_enabled END` in `upsertWorkflowStmt`) instead of reverting to the
+  manifest value; the manifest's `notifyEnabled` (default `true`) SEEDS
+  `notify_enabled` on sync. `runWorkflow` reads the **EFFECTIVE** value
+  (`effectiveWorkflowNotifyEnabled(def)` = DB `notify_enabled` ?? manifest
+  `notifyEnabled` ?? `true`) FRESH each run and gates ONLY the single T189 aggregate
+  `notifyWorkflow(...)` call at the end of `runWorkflowInner` (not per-stage — there
+  are none since T189) — when disabled it logs a clear "Notifications disabled…"
+  line instead so the run's own log still narrates why no push went out. An edit
+  takes effect on the **next run without a daemon restart**. The API VALIDATES the
+  body is a boolean (else **400**) before it reaches the store and exposes
+  `effective_notify_enabled` on the `GET /api/workflows/:name` payload for the
+  detail page's click-to-toggle "Notifications" row (same affordance as the
+  `enabled` toggle — no Save button); it's a mutating endpoint behind the same
+  loopback/token guard as `/toggle`, `/run`, `/schedule`, `/concurrency`, `/limits`.
+  The `notify_enabled` + `notify_enabled_overridden` columns are added by
+  `schema.sql` (fresh DBs, default `1` = ON) + an additive `ALTER TABLE` migration in
+  `index.ts` (existing DBs, per the T098 rule — no index on the new columns).
 - **Per-workflow "Clear output data" reset action (T203).** `POST /api/workflows/:name/reset-output`
   (mutating — loopback/token guard, refuses with **409** while a run is active) wipes all
   output state for a workflow so it re-processes from scratch on the next run.

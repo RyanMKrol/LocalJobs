@@ -10,7 +10,7 @@ import {
   listRunsForWorkflowRun, listServices, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
-  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, usageThisMonth,
+  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, usageThisMonth,
   bulkUnstickItems, bulkIgnoreItems,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
@@ -84,6 +84,31 @@ console.log('  ✓ updateWorkflowSchedule: set/clear + schedule_overridden recon
   assert.equal(updateWorkflowConcurrency('t-no-such-wf', 3), undefined, 'unknown workflow → undefined');
 }
 console.log('  ✓ updateWorkflowConcurrency: set + max_concurrency_overridden reconcile across sync (T169)');
+
+// ── editable notifyEnabled (T285): user-owned override reconciled across code-sync ──
+{
+  syncWorkflow({ name: 't-notify', jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-notify')?.notify_enabled, 1, 'default notifyEnabled ON when manifest omits it');
+  assert.equal(getWorkflow('t-notify')?.notify_enabled_overridden, 0, 'not overridden initially');
+
+  // manifest explicitly false is seeded (non-overridden)
+  syncWorkflow({ name: 't-notify', notifyEnabled: false, jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-notify')?.notify_enabled, 0, 'non-overridden value refreshes from manifest');
+
+  // user edits → flips notify_enabled_overridden
+  const updated = updateWorkflowNotifyEnabled('t-notify', true);
+  assert.equal(updated?.notify_enabled, 1, 'updateWorkflowNotifyEnabled sets the value');
+  assert.equal(updated?.notify_enabled_overridden, 1, 'updateWorkflowNotifyEnabled flips the override flag');
+
+  // a CODE-sync now PRESERVES the user's value (the reconcile, like schedule/concurrency)
+  syncWorkflow({ name: 't-notify', notifyEnabled: false, jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-notify')?.notify_enabled, 1, 'overridden value survives re-sync');
+  assert.equal(getWorkflow('t-notify')?.notify_enabled_overridden, 1, 'override flag survives re-sync');
+
+  // unknown workflow → undefined (no row touched)
+  assert.equal(updateWorkflowNotifyEnabled('t-no-such-wf', false), undefined, 'unknown workflow → undefined');
+}
+console.log('  ✓ updateWorkflowNotifyEnabled: set + notify_enabled_overridden reconcile across sync (T285)');
 
 // workflow run + linked member runs + skip + logs
 const pr = createWorkflowRun('t-pipe', 'manual');

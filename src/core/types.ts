@@ -206,6 +206,12 @@ export interface WorkflowDefinition {
    * modest. Strictly-linear workflows are unaffected (one ready stage at a time).
    */
   maxConcurrency?: number;
+  /**
+   * Whether the run-end aggregate push notification (T189) fires for this
+   * workflow. Default true. User-editable + code-reconciled from the dashboard
+   * (T285) — same shape as `maxConcurrency`/`schedule`.
+   */
+  notifyEnabled?: boolean;
   /** Re-run the whole pass in cycles until no retryable work remains. Default false. */
   repeatUntilStable?: boolean;
   /** Max cycles when repeatUntilStable. Default 1. */

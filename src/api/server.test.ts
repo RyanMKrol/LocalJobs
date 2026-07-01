@@ -338,6 +338,55 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   { const i = workflows.indexOf(concWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
+// ── editable notifyEnabled (T285): POST /api/workflows/:name/notify validates
+// (boolean) server-side, persists a user override, and surfaces the effective
+// value on the GET payload. ──
+{
+  const notifyJob: JobDefinition = { name: 'notify-api-job', run: async () => {} };
+  syncJob(notifyJob); jobs.push(notifyJob);
+  const notifyWf: WorkflowDefinition = { name: 'notify-api-wf', jobs: [{ job: 'notify-api-job' }] };
+  syncWorkflow(notifyWf); workflows.push(notifyWf);
+
+  await test('notify: a valid value is accepted (200), persisted + overridden, surfaced on GET', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/notify-api-wf/notify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notifyEnabled: false }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(((await res.json()) as { notify_enabled: boolean }).notify_enabled, false);
+      assert.equal(getWorkflow('notify-api-wf')?.notify_enabled, 0, 'persisted to the DB');
+      assert.equal(getWorkflow('notify-api-wf')?.notify_enabled_overridden, 1, 'flagged as user-overridden');
+      const get = await fetch(`${base}/api/workflows/notify-api-wf`);
+      const wf = ((await get.json()) as { workflow: { effective_notify_enabled: boolean } }).workflow;
+      assert.equal(wf.effective_notify_enabled, false, 'effective value surfaced on the workflow payload');
+    });
+  });
+
+  for (const bad of [1, 'x', null] as const) {
+    await test(`notify: a non-boolean value (${bad}) is rejected 400`, async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/workflows/notify-api-wf/notify`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notifyEnabled: bad }),
+        });
+        assert.equal(res.status, 400);
+        assert.match(((await res.json()) as { error?: string }).error ?? '', /boolean/);
+      });
+    });
+  }
+
+  await test('notify: unknown workflow → 404', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/__no_such_wf__/notify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notifyEnabled: true }),
+      });
+      assert.equal(res.status, 404);
+    });
+  });
+
+  { const i = jobs.indexOf(notifyJob); if (i >= 0) jobs.splice(i, 1); }
+  { const i = workflows.indexOf(notifyWf); if (i >= 0) workflows.splice(i, 1); }
+}
+
 // ── one active run per workflow (T105): POST /api/workflows/:name/run must reject
 // a duplicate start with 409 while a run is already active, instead of appearing to
 // start a second run. A seeded 'running' workflow_run row makes the guard observe an

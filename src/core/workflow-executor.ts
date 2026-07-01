@@ -58,6 +58,19 @@ export function effectiveWorkflowConcurrency(def: WorkflowDefinition): number {
   return raw === UNLIMITED_CONCURRENCY_SENTINEL ? Infinity : raw;
 }
 
+/**
+ * The EFFECTIVE notify-enabled flag for a workflow (T285): the DB `notify_enabled`
+ * (user override when set, else the synced manifest value) else the manifest's
+ * `notifyEnabled` else `true` (default ON). Reading the DB row keeps it
+ * user-editable + code-reconciled. Shared by `runWorkflow` and the API's workflow
+ * payload so both report the same value.
+ */
+export function effectiveWorkflowNotifyEnabled(def: WorkflowDefinition): boolean {
+  const row = getWorkflow(def.name);
+  if (row) return row.notify_enabled !== 0;
+  return def.notifyEnabled !== false;
+}
+
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
@@ -432,6 +445,13 @@ async function runWorkflowInner(
   // notifyWorkflow accepts WorkflowRunStatus; a 'skipped' (noop) run is
   // quiet/benign — map it to 'success' for the aggregate notification.
   const notifyStatus = status === 'skipped' ? 'success' : status;
-  await notifyWorkflow(def.name, workflowRunId, notifyStatus, log);
+  // Gate the single T189 aggregate notification on the EFFECTIVE notifyEnabled
+  // (T285) — user override when set, else the manifest default (true). Read fresh
+  // each run so a dashboard toggle takes effect on the NEXT run, no restart.
+  if (effectiveWorkflowNotifyEnabled(def)) {
+    await notifyWorkflow(def.name, workflowRunId, notifyStatus, log);
+  } else {
+    log(`Notifications disabled for workflow "${def.name}" — skipping push notification`);
+  }
   return { workflowRunId };
 }

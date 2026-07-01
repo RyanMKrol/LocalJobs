@@ -13,9 +13,9 @@ import { jobs } from '../jobs/registry.js';
 import {
   createWorkflowRun, createRun, finishRun, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots,
   lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,
-  rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow, updateWorkflowConcurrency, getWorkflow,
+  rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, getWorkflow,
 } from '../db/store.js';
-import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress, effectiveWorkflowConcurrency, UNLIMITED_CONCURRENCY_SENTINEL } from './workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress, effectiveWorkflowConcurrency, effectiveWorkflowNotifyEnabled, UNLIMITED_CONCURRENCY_SENTINEL } from './workflow-executor.js';
 import { _setFetchForTest, _resetFetchForTest } from './notifier.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 
@@ -585,6 +585,51 @@ try {
     // Exactly one aggregate push (notifyWorkflow)
     const workflowPushes = pushTitles.filter(t => t.includes('t189-notify workflow'));
     assert.equal(workflowPushes.length, 1, `Expected 1 workflow push, got: ${JSON.stringify(pushTitles)}`);
+  });
+
+  // T285: notifyEnabled=false (either via manifest default or a user override)
+  // skips the aggregate notifyWorkflow call entirely, but the run still logs why.
+  await test('T285: notify_enabled=0 skips notifyWorkflow but logs the skip', async () => {
+    const def: WorkflowDefinition = {
+      name: 't285-notify-off',
+      jobs: [{ job: 'pp-a' }],
+      notifyEnabled: false,
+    };
+    syncWorkflow(def);
+    assert.equal(effectiveWorkflowNotifyEnabled(def), false, 'manifest notifyEnabled:false is effective');
+
+    const pushTitles: string[] = [];
+    const fakeFetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const title = (init?.headers as Record<string, string>)?.['Title'] ?? '';
+      pushTitles.push(title);
+      return new Response('', { status: 200 });
+    };
+    _setFetchForTest(fakeFetch as typeof fetch);
+    config.ntfyTopic = 'test-topic';
+    let workflowRunId = '';
+    try {
+      const result = await runWorkflow(def, 'manual');
+      workflowRunId = result.workflowRunId ?? '';
+    } finally {
+      config.ntfyTopic = '';
+      _resetFetchForTest();
+    }
+
+    assert.equal(pushTitles.length, 0, `Expected no push notifications, got: ${JSON.stringify(pushTitles)}`);
+    const logs = getWorkflowLogs(workflowRunId).map((l) => l.message);
+    assert.ok(
+      logs.some((m) => m.includes('Notifications disabled') && m.includes('t285-notify-off')),
+      `Expected a log line noting notifications were skipped, got: ${JSON.stringify(logs)}`,
+    );
+  });
+
+  await test('T285: updateWorkflowNotifyEnabled override is reflected in effectiveWorkflowNotifyEnabled', async () => {
+    const def: WorkflowDefinition = { name: 't285-notify-override', jobs: [{ job: 'pp-a' }] };
+    syncWorkflow(def);
+    assert.equal(effectiveWorkflowNotifyEnabled(def), true, 'default ON');
+    updateWorkflowNotifyEnabled('t285-notify-override', false);
+    assert.equal(effectiveWorkflowNotifyEnabled(def), false, 'override takes effect immediately');
+    assert.equal(getWorkflow('t285-notify-override')?.notify_enabled_overridden, 1);
   });
 
   // T201: unlimited concurrency sentinel (0) round-trip.

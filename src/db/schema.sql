@@ -112,6 +112,9 @@ CREATE INDEX IF NOT EXISTS idx_job_usage ON job_usage(job_name, ts);
 -- the same reconcile `enabled` and the service limits get. `max_concurrency` is
 -- the same shape (T169): the manifest's maxConcurrency seeds it on sync, a
 -- dashboard edit flips `max_concurrency_overridden` and code-sync preserves it.
+-- `notify_enabled` is the same shape again (T285): the manifest's notifyEnabled
+-- (default true) seeds it on sync, a dashboard toggle flips
+-- `notify_enabled_overridden` and code-sync preserves it.
 CREATE TABLE IF NOT EXISTS workflows (
   name                    TEXT PRIMARY KEY,
   description             TEXT NOT NULL DEFAULT '',
@@ -120,6 +123,8 @@ CREATE TABLE IF NOT EXISTS workflows (
   schedule_overridden     INTEGER NOT NULL DEFAULT 0, -- 1 = user edited the schedule; code-sync preserves it
   max_concurrency         INTEGER,                    -- bounded parallelism for independent stages; NULL = use code default
   max_concurrency_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited maxConcurrency; code-sync preserves it
+  notify_enabled          INTEGER NOT NULL DEFAULT 1, -- 1 = send the run-end aggregate push notification
+  notify_enabled_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited notifyEnabled; code-sync preserves it
   created_at              TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

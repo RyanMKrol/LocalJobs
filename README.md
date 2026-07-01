@@ -206,7 +206,9 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
 - **Workflows** — every workflow with schedule, enabled state, member-job count,
   and last/next run. Drill in to reach member jobs.
 - **Workflow detail** — ▶ Run now, enable toggle, editable schedule, editable max
-  concurrency, full run history, and a **Danger zone → Clear output data** action.
+  concurrency, a click-to-toggle **Notifications** switch (on/off for the run-end
+  push notification; default on), full run history, and a **Danger zone → Clear
+  output data** action.
 - **Workflow run detail** — live logs, per-stage outcomes, overall progress bar,
   cancel button (while running), and an Input → Output mapping panel scoped to
   this run.

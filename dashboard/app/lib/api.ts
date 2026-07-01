@@ -74,6 +74,12 @@ export interface Workflow {
   /** Effective bounded parallelism the next run will use — override / manifest / default (T169).
    *  `0` means unlimited (no cap, all ready stages launch together — T201 sentinel). */
   effective_max_concurrency?: number;
+  /** Raw user-override of notify-enabled (0/1), or absent when not set (T285). */
+  notify_enabled?: number;
+  /** 1 when the owner has edited notifyEnabled from the dashboard (T285); code-sync then preserves it. */
+  notify_enabled_overridden?: number;
+  /** Effective notify-enabled the next run will use — override / manifest / default true (T285). */
+  effective_notify_enabled?: boolean;
   created_at: string;
   last_run: WorkflowRun | null;
   next_run: string | null;
@@ -513,6 +519,18 @@ export const api = {
     const data = (await res.json().catch(() => ({}))) as { error?: string; max_concurrency?: number };
     if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
     return data as { ok: boolean; max_concurrency: number };
+  },
+  // Persist a user override of whether a workflow sends its run-end push
+  // notification (T285). Takes effect on the NEXT run (no daemon restart).
+  updateWorkflowNotify: async (name: string, notifyEnabled: boolean) => {
+    const res = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notifyEnabled }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; notify_enabled?: boolean };
+    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+    return data as { ok: boolean; notify_enabled: boolean };
   },
   cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
   // Clear all output data for a workflow (T203): work_items + runs/logs + data/out/*.

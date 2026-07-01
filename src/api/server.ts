@@ -8,7 +8,7 @@ import { config } from '../config.js';
 import { acquireRepoLock, resolveRepoPaths } from '../core/repo-lock.js';
 import { type Gate, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
-import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY } from '../core/workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../core/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import { Cron } from 'croner';
 import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
@@ -56,6 +56,7 @@ import {
   setWorkflowEnabled,
   updateWorkflowSchedule,
   updateWorkflowConcurrency,
+  updateWorkflowNotifyEnabled,
   stuckCount,
   stuckItems,
   unstickWorkItem,
@@ -1351,7 +1352,10 @@ export function createApiServer(
           ? (getWorkflow(p.name)?.max_concurrency ?? wfDef.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY)
           : (p.max_concurrency ?? DEFAULT_WORKFLOW_CONCURRENCY);
         const effective_max_concurrency = rawEff;
-        return json(res, 200, { workflow: { ...p, effective_max_concurrency, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
+        // Effective notify-enabled (T285): the user override / synced manifest value /
+        // default true — the same value runWorkflow gates the aggregate notification on.
+        const effective_notify_enabled = wfDef ? effectiveWorkflowNotifyEnabled(wfDef) : p.notify_enabled !== 0;
+        return json(res, 200, { workflow: { ...p, effective_max_concurrency, effective_notify_enabled, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
       }
 
       // GET /api/workflows/:name/gates/:producer/:key
@@ -1520,6 +1524,25 @@ export function createApiServer(
         }
         updateWorkflowConcurrency(name, n);
         return json(res, 200, { ok: true, max_concurrency: n });
+      }
+
+      // POST /api/workflows/:name/notify  { notifyEnabled }
+      // Persist a USER override of whether the workflow sends the run-end aggregate
+      // push notification (T285). Mirrors the concurrency override: user-owned +
+      // code-reconciled (via `notify_enabled_overridden`, like `enabled`/`schedule`/
+      // `max_concurrency`). `runWorkflow` reads the effective value FRESH each run, so
+      // a toggle takes effect on the NEXT run with no daemon restart. The body MUST be
+      // a boolean — else 400. Unknown workflow → 404. Mutating, so it goes through the
+      // same loopback/token guard as /toggle, /run, /schedule, /concurrency, /limits.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'notify') {
+        const name = parts[2];
+        if (!getWorkflow(name)) return json(res, 404, { error: 'workflow not found' });
+        const body = await readBody(req);
+        if (typeof body.notifyEnabled !== 'boolean') {
+          return json(res, 400, { error: 'notifyEnabled must be a boolean' });
+        }
+        updateWorkflowNotifyEnabled(name, body.notifyEnabled);
+        return json(res, 200, { ok: true, notify_enabled: body.notifyEnabled });
       }
 
       // POST /api/workflows/:name/reset-output

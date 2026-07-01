@@ -211,6 +211,17 @@ test('workflows ends migrated: max_concurrency columns added (defaults NULL / 0)
   assert.equal(w.max_concurrency_overridden, 0, 'pre-existing workflow defaults to NOT overridden');
 });
 
+test('workflows ends migrated: notify_enabled columns added (defaults 1 / 0) (T285)', () => {
+  assert.ok(cols('workflows').includes('notify_enabled'), 'notify_enabled column added');
+  assert.ok(cols('workflows').includes('notify_enabled_overridden'), 'notify_enabled_overridden column added');
+  const w = migrated.prepare('SELECT notify_enabled, notify_enabled_overridden FROM workflows WHERE name = ?').get('places') as {
+    notify_enabled: number;
+    notify_enabled_overridden: number;
+  };
+  assert.equal(w.notify_enabled, 1, 'pre-existing workflow defaults to notify_enabled ON');
+  assert.equal(w.notify_enabled_overridden, 0, 'pre-existing workflow defaults to NOT overridden');
+});
+
 test('jobs ends migrated: legacy schedule + enabled columns dropped (T070)', () => {
   assert.ok(!cols('jobs').includes('schedule'), 'schedule column dropped');
   assert.ok(!cols('jobs').includes('enabled'), 'enabled column dropped');

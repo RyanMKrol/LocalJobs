@@ -879,16 +879,18 @@ export function backfillMonthlyUsage(jobName: string, count: number): void {
 // override — the same reconcile the user-owned `enabled` flag and the service limits
 // get. description is code-owned and always refreshed.
 const upsertWorkflowStmt = db.prepare(`
-  INSERT INTO workflows (name, description, schedule, enabled, max_concurrency)
-  VALUES (@name, @description, @schedule, 1, @maxConcurrency)
+  INSERT INTO workflows (name, description, schedule, enabled, max_concurrency, notify_enabled)
+  VALUES (@name, @description, @schedule, 1, @maxConcurrency, @notifyEnabled)
   ON CONFLICT(name) DO UPDATE SET
     description     = excluded.description,
     schedule        = CASE WHEN schedule_overridden = 1 THEN schedule ELSE excluded.schedule END,
-    max_concurrency = CASE WHEN max_concurrency_overridden = 1 THEN max_concurrency ELSE excluded.max_concurrency END
+    max_concurrency = CASE WHEN max_concurrency_overridden = 1 THEN max_concurrency ELSE excluded.max_concurrency END,
+    notify_enabled  = CASE WHEN notify_enabled_overridden = 1 THEN notify_enabled ELSE excluded.notify_enabled END
 `);
 
 /** Upsert a workflow + REPLACE its membership/edges. `enabled`, an overridden
- *  `schedule`, and an overridden `max_concurrency` are preserved across the sync. */
+ *  `schedule`, an overridden `max_concurrency`, and an overridden `notify_enabled`
+ *  are preserved across the sync. */
 export function syncWorkflow(def: WorkflowDefinition): void {
   const tx = db.transaction(() => {
     upsertWorkflowStmt.run({
@@ -896,6 +898,7 @@ export function syncWorkflow(def: WorkflowDefinition): void {
       description: def.description ?? '',
       schedule: def.schedule ?? null,
       maxConcurrency: def.maxConcurrency ?? null,
+      notifyEnabled: def.notifyEnabled === false ? 0 : 1,
     });
     db.prepare('DELETE FROM workflow_jobs WHERE workflow_name = ?').run(def.name);
     const ins = db.prepare('INSERT INTO workflow_jobs (workflow_name, job_name, depends_on) VALUES (?, ?, ?)');
@@ -912,6 +915,8 @@ export interface WorkflowRow {
   schedule_overridden: number;
   max_concurrency: number | null;
   max_concurrency_overridden: number;
+  notify_enabled: number;
+  notify_enabled_overridden: number;
   created_at: string;
 }
 
@@ -959,6 +964,21 @@ export function updateWorkflowConcurrency(name: string, n: number): WorkflowRow 
   const info = db
     .prepare('UPDATE workflows SET max_concurrency = ?, max_concurrency_overridden = 1 WHERE name = ?')
     .run(n, name);
+  if (info.changes === 0) return undefined;
+  return getWorkflow(name);
+}
+
+/**
+ * Persist a USER override of whether a workflow sends the run-end aggregate push
+ * notification (from the dashboard, T285). Sets `notify_enabled` and flips
+ * `notify_enabled_overridden = 1` so a later code-sync keeps the user's value —
+ * the same ownership reconcile `enabled`/`schedule`/`max_concurrency` get. Returns
+ * the updated row, or undefined if the workflow doesn't exist (no row touched).
+ */
+export function updateWorkflowNotifyEnabled(name: string, enabled: boolean): WorkflowRow | undefined {
+  const info = db
+    .prepare('UPDATE workflows SET notify_enabled = ?, notify_enabled_overridden = 1 WHERE name = ?')
+    .run(enabled ? 1 : 0, name);
   if (info.changes === 0) return undefined;
   return getWorkflow(name);
 }
