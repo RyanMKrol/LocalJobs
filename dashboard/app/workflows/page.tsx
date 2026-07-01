@@ -48,11 +48,11 @@ export default function Workflows() {
       <div className="panel">
         <table>
           <thead>
-            <tr><th>Workflow</th><th style={{ textAlign: 'center' }}>Enabled</th><th style={{ textAlign: 'center' }}>Stages</th><th style={{ textAlign: 'center' }}>Schedule</th><th style={{ textAlign: 'center' }}>Last run</th><th>Next</th><th></th></tr>
+            <tr><th>Workflow</th><th style={{ textAlign: 'center' }}>Enabled</th><th style={{ textAlign: 'center' }}>Notifications</th><th style={{ textAlign: 'center' }}>Stages</th><th style={{ textAlign: 'center' }}>Schedule</th><th style={{ textAlign: 'center' }}>Last run</th><th>Next</th><th></th></tr>
           </thead>
           <tbody>
             {workflows.length === 0 && (
-              <tr><td colSpan={7} className="muted">No workflows yet — drop a <span className="mono">*.workflow.ts</span> in src/jobs.</td></tr>
+              <tr><td colSpan={8} className="muted">No workflows yet — drop a <span className="mono">*.workflow.ts</span> in src/jobs.</td></tr>
             )}
             {workflows.map((p) => (
               <tr key={p.name}>
@@ -72,6 +72,9 @@ export default function Workflows() {
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <Pill kind={p.enabled ? 'on' : 'off'}>{p.enabled ? 'on' : 'off'}</Pill>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <Pill kind={p.effective_notify_enabled ? 'on' : 'off'}>{p.effective_notify_enabled ? 'on' : 'off'}</Pill>
                 </td>
                 <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
                 <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>

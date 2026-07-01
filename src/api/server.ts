@@ -1328,7 +1328,11 @@ export function createApiServer(
 
       // GET /api/workflows
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflows' && parts.length === 2) {
-        const rows = listWorkflows().map((p) => ({ ...p, ...workflowView(p.name) }));
+        const rows = listWorkflows().map((p) => {
+          const wfDef = getWorkflowDefinition(p.name);
+          const effective_notify_enabled = wfDef ? effectiveWorkflowNotifyEnabled(wfDef) : p.notify_enabled !== 0;
+          return { ...p, effective_notify_enabled, ...workflowView(p.name) };
+        });
         return json(res, 200, { workflows: rows });
       }
 

@@ -387,6 +387,34 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   { const i = workflows.indexOf(notifyWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
+// ── T291: GET /api/workflows (the list endpoint) must surface the EFFECTIVE
+// notify-enabled value (via effectiveWorkflowNotifyEnabled), computed the same
+// way the single-workflow detail endpoint already does, rather than omitting it
+// or leaking the raw integer DB column. Seed a workflow with a manifest default
+// of notifyEnabled:false, not user-overridden, and confirm the list endpoint's
+// effective_notify_enabled reflects that manifest default. ──
+{
+  const notifyListJob: JobDefinition = { name: 'notify-list-job', run: async () => {} };
+  syncJob(notifyListJob); jobs.push(notifyListJob);
+  const notifyListWf: WorkflowDefinition = { name: 'notify-list-wf', jobs: [{ job: 'notify-list-job' }], notifyEnabled: false };
+  syncWorkflow(notifyListWf); workflows.push(notifyListWf);
+
+  await test('T291: GET /api/workflows exposes effective_notify_enabled reflecting the manifest default', async () => {
+    await withServer({}, async (base) => {
+      assert.equal(getWorkflow('notify-list-wf')?.notify_enabled, 0, 'raw DB column seeded from the manifest default');
+      assert.equal(getWorkflow('notify-list-wf')?.notify_enabled_overridden, 0, 'not user-overridden');
+      const res = await fetch(`${base}/api/workflows`);
+      const body = (await res.json()) as { workflows: { name: string; effective_notify_enabled?: boolean }[] };
+      const row = body.workflows.find((w) => w.name === 'notify-list-wf');
+      assert.ok(row, 'workflow present in the list response');
+      assert.equal(row!.effective_notify_enabled, false, 'effective value reflects the manifest default, computed via effectiveWorkflowNotifyEnabled');
+    });
+  });
+
+  { const i = jobs.indexOf(notifyListJob); if (i >= 0) jobs.splice(i, 1); }
+  { const i = workflows.indexOf(notifyListWf); if (i >= 0) workflows.splice(i, 1); }
+}
+
 // ── one active run per workflow (T105): POST /api/workflows/:name/run must reject
 // a duplicate start with 409 while a run is already active, instead of appearing to
 // start a second run. A seeded 'running' workflow_run row makes the guard observe an

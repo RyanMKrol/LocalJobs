@@ -62,7 +62,7 @@ const stuckItem = (over) => ({
 
 const workflow = (over) => ({
   name: 'places', description: 'A worked-example workflow: ' + LONG, schedule: '0 3 * * 1-5',
-  enabled: 1, created_at: NOW, last_run: workflowRun(), next_run: NOW, jobs: members,
+  enabled: 1, effective_notify_enabled: true, created_at: NOW, last_run: workflowRun(), next_run: NOW, jobs: members,
   stuck: 2, runs: [workflowRun(), workflowRun({ id: '2', status: 'partial' })],
   gates: structuralGates, ...over,
 });
@@ -231,7 +231,7 @@ const tvRecs = {
 export function fixtureFor(pathname) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
   if (pathname === '/api/ignored') return { ignored: [stuckItem({ item_key: LONG + '-ign' })] };
-  if (pathname === '/api/workflows') return { workflows: [workflow(), workflow({ name: 'perfumes', enabled: 0 })] };
+  if (pathname === '/api/workflows') return { workflows: [workflow(), workflow({ name: 'perfumes', enabled: 0, effective_notify_enabled: false })] };
   if (pathname === '/api/workflow-runs') return { runs: [workflowRun(), workflowRun({ id: '2', status: 'failed' })] };
   if (pathname === '/api/movie-recs') return movieRecs;
   if (pathname === '/api/tv-recs') return tvRecs;
