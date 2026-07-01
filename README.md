@@ -190,6 +190,11 @@ gitignored). Private workflows live in gitignored subfolders.
   GitHub REST API → filter out forks/archived/private → sort by pushed_at → upsert
   the filtered list to the DynamoDB projects table; idempotent upsert keyed by
   GitHub numeric repo id (`repoId`), refreshing fields every run. Runs daily at 05:00.
+- **claude-warmer** — Proactive Claude usage-window warmer: issue one minimal `"hi"`
+  prompt via the `claude-cli` service every 30 minutes so the Claude account's 5-hour
+  rolling usage window is already running (or reset) by the time real work needs Claude.
+  Soft-fails gracefully if the upstream plan limit is reached; no local quota cap needed.
+  Runs every 30 minutes (`*/30 * * * *`).
 
 ## Dashboard pages
 
