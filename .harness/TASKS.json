@@ -8152,7 +8152,7 @@
     {
       "id": "T308",
       "title": "Hardcode dashboard theme to sunny-8bit+baloo; replace picker with light/dark sun toggle",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
