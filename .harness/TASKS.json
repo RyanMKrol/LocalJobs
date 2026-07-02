@@ -8402,7 +8402,7 @@
     {
       "id": "T317",
       "title": "Pin projects-sync's Claude model + add --effort (medium) support to project-summarize",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
