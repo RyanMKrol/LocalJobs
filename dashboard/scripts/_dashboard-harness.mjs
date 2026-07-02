@@ -237,13 +237,27 @@ const rec = (over) => ({
   genre: 'Science Fiction', tmdbRating: 8.4, notified: false, ignored: false, ...over,
 });
 
+// T333: ~15 ACTIVE (non-ignored) rows — a realistic magnitude that genuinely overflows the
+// 520px .movie-gaps-scroll max-height, so the scroll-container bug (and its fix) is actually
+// reproducible/visible rather than vacuously passing with a short, non-overflowing list.
 const movieRecs = {
-  generatedAt: NOW, pooled: 12,
+  generatedAt: NOW, pooled: 20,
   recommendations: [
     rec({ tmdbId: 100, title: 'Inception', year: 2010, lens: 'cerebral', genre: 'Science Fiction', tmdbRating: 8.4 }),
     rec({ tmdbId: 101, title: 'Arrival', year: 2016, lens: 'cerebral', genre: 'Science Fiction', tmdbRating: 7.9 }),
     rec({ tmdbId: 102, title: 'Parasite', year: 2019, lens: 'serendipity', genre: 'Drama', tmdbRating: 8.5, notified: true }),
     rec({ tmdbId: 103, title: 'Mad Max: Fury Road', year: 2015, lens: 'high-octane', genre: 'Action', tmdbRating: 7.8 }),
+    rec({ tmdbId: 104, title: 'The Grand Budapest Hotel', year: 2014, lens: 'auteur', genre: 'Comedy', tmdbRating: 8.1 }),
+    rec({ tmdbId: 105, title: 'Spirited Away', year: 2001, lens: 'canon', genre: 'Animation', tmdbRating: 8.5 }),
+    rec({ tmdbId: 106, title: 'City of God', year: 2002, lens: 'world-cinema', genre: 'Crime', tmdbRating: 8.6 }),
+    rec({ tmdbId: 107, title: 'The Third Man', year: 1949, lens: 'older-era', genre: 'Mystery', tmdbRating: 8.1 }),
+    rec({ tmdbId: 108, title: 'Whiplash', year: 2014, lens: 'thin-genre', genre: 'Drama', tmdbRating: 8.4 }),
+    rec({ tmdbId: 109, title: 'Blade Runner 2049', year: 2017, lens: 'cerebral', genre: 'Science Fiction', tmdbRating: 8.0 }),
+    rec({ tmdbId: 110, title: 'Amélie', year: 2001, lens: 'world-cinema', genre: 'Romance', tmdbRating: 8.3 }),
+    rec({ tmdbId: 111, title: 'No Country for Old Men', year: 2007, lens: 'canon', genre: 'Thriller', tmdbRating: 8.1 }),
+    rec({ tmdbId: 112, title: 'Chungking Express', year: 1994, lens: 'auteur', genre: 'Drama', tmdbRating: 7.9 }),
+    rec({ tmdbId: 113, title: 'Oldboy', year: 2003, lens: 'thin-genre', genre: 'Thriller', tmdbRating: 8.4 }),
+    rec({ tmdbId: 114, title: 'Seven Samurai', year: 1954, lens: 'older-era', genre: 'Action', tmdbRating: 8.6 }),
     rec({ tmdbId: 200, title: 'An Ignored Film', year: 2000, lens: 'serendipity', genre: 'Drama', tmdbRating: 6.0, ignored: true }),
   ],
 };
@@ -313,12 +327,25 @@ const movieRecsRunJobs = movieRecsMembers.map((m, i) => run({
   id: `movie-recs-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'movie-recs-run',
 }));
 
+// T333: bumped to ~15 active rows too (same shared .movie-gaps-scroll/.panel CSS as movieRecs).
 const tvRecs = {
-  generatedAt: NOW, pooled: 8,
+  generatedAt: NOW, pooled: 16,
   recommendations: [
     { tmdbId: 300, title: 'Severance', year: 2022, reason: 'Workplace thriller.', lens: 'cerebral', genre: 'Drama', tmdbRating: 8.7, notified: false, ignored: false },
     { tmdbId: 301, title: 'The Bear', year: 2022, reason: 'Intense kitchen drama.', lens: 'serendipity', genre: 'Drama', tmdbRating: 8.6, notified: true, ignored: false },
     { tmdbId: 302, title: 'Dark', year: 2017, reason: 'Mind-bending time travel.', lens: 'cerebral', genre: 'Science Fiction', tmdbRating: 8.8, notified: false, ignored: false },
+    { tmdbId: 303, title: 'Fleabag', year: 2016, reason: 'Sharp dark comedy.', lens: 'auteur', genre: 'Comedy', tmdbRating: 8.5, notified: false, ignored: false },
+    { tmdbId: 304, title: 'Chernobyl', year: 2019, reason: 'Gripping historical drama.', lens: 'canon', genre: 'Drama', tmdbRating: 8.7, notified: false, ignored: false },
+    { tmdbId: 305, title: 'Better Call Saul', year: 2015, reason: 'A slow-burn character study.', lens: 'canon', genre: 'Crime', tmdbRating: 8.8, notified: false, ignored: false },
+    { tmdbId: 306, title: 'Money Heist', year: 2017, reason: 'World cinema heist thriller.', lens: 'world-cinema', genre: 'Crime', tmdbRating: 8.2, notified: false, ignored: false },
+    { tmdbId: 307, title: 'The Wire', year: 2002, reason: 'Older-era institutional drama.', lens: 'older-era', genre: 'Crime', tmdbRating: 9.0, notified: false, ignored: false },
+    { tmdbId: 308, title: 'Atlanta', year: 2016, reason: 'Genre-bending surreal comedy.', lens: 'thin-genre', genre: 'Comedy', tmdbRating: 8.1, notified: false, ignored: false },
+    { tmdbId: 309, title: 'Twin Peaks', year: 1990, reason: 'Auteur-driven mystery.', lens: 'auteur', genre: 'Mystery', tmdbRating: 8.4, notified: false, ignored: false },
+    { tmdbId: 310, title: 'Broadchurch', year: 2013, reason: 'Serendipitous crime pick.', lens: 'serendipity', genre: 'Crime', tmdbRating: 8.2, notified: false, ignored: false },
+    { tmdbId: 311, title: 'Babylon Berlin', year: 2017, reason: 'World cinema noir.', lens: 'world-cinema', genre: 'Crime', tmdbRating: 8.3, notified: false, ignored: false },
+    { tmdbId: 312, title: 'Cheers', year: 1982, reason: 'Older-era sitcom classic.', lens: 'older-era', genre: 'Comedy', tmdbRating: 8.0, notified: false, ignored: false },
+    { tmdbId: 313, title: 'Kaamelott', year: 2005, reason: 'Thin-genre comedy pick.', lens: 'thin-genre', genre: 'Comedy', tmdbRating: 8.0, notified: false, ignored: false },
+    { tmdbId: 314, title: 'The Leftovers', year: 2014, reason: 'Canon prestige drama.', lens: 'canon', genre: 'Drama', tmdbRating: 8.4, notified: false, ignored: false },
     { tmdbId: 400, title: 'An Ignored Show', year: 2010, reason: 'Not interested.', lens: 'serendipity', genre: 'Comedy', tmdbRating: 5.5, notified: false, ignored: true },
   ],
 };
@@ -535,6 +562,46 @@ export const FLOWS = [
       await page.waitForFunction(
         (prev) => document.documentElement.getAttribute('data-mode') !== prev,
         before,
+        { timeout: 5000 },
+      );
+    },
+  },
+  {
+    // T333: genuinely EXERCISES the .movie-gaps-scroll mouse-wheel scroll (not just a
+    // screenshot) — the movieRecs fixture now has ~15 active rows, enough to overflow the
+    // 520px max-height. A real Playwright wheel event is driven over the container, then
+    // waitForFunction asserts scrollTop actually increased — mirroring the assertion-via-
+    // waitForFunction pattern in 'overview-theme-toggle' above. If the CSS regresses (the
+    // .panel flex-shrink fix is reverted), scrollTop never moves and this throws/fails hard.
+    name: 'movie-recs-scrolled',
+    path: '/workflows/movie-recommendations',
+    waitFor: ['.movie-gaps-scroll table'],
+    actions: async (page) => {
+      const scrollBox = page.locator('.movie-gaps-scroll');
+      await scrollBox.scrollIntoViewIfNeeded();
+      const box = await scrollBox.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.wheel(0, 400);
+      await page.waitForFunction(
+        () => document.querySelector('.movie-gaps-scroll')?.scrollTop > 0,
+        { timeout: 5000 },
+      );
+    },
+  },
+  {
+    // T333: same shared .movie-gaps-scroll/.panel CSS on the TV-recs page — cover the
+    // second real call site of the fix, not just movie-recommendations.
+    name: 'tv-recs-scrolled',
+    path: '/workflows/tv-recommendations',
+    waitFor: ['.movie-gaps-scroll table'],
+    actions: async (page) => {
+      const scrollBox = page.locator('.movie-gaps-scroll');
+      await scrollBox.scrollIntoViewIfNeeded();
+      const box = await scrollBox.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.wheel(0, 400);
+      await page.waitForFunction(
+        () => document.querySelector('.movie-gaps-scroll')?.scrollTop > 0,
         { timeout: 5000 },
       );
     },
