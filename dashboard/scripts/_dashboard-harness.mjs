@@ -71,7 +71,7 @@ const workflow = (over) => ({
 const service = (over) => ({
   name: 'google-places', description: 'Google Places API — ' + LONG, rate_per_minute: 60,
   daily_cap: 100, monthly_cap: 3000, paid: 1, limits_overridden: 1,
-  used_today: 42, used_month: 1234, rate_last_min: 12, ...over,
+  used_today: 42, used_month: 123456, rate_last_min: 12, ...over,
 });
 
 const job = (over) => ({

@@ -11,7 +11,7 @@ function Bar({ used, cap }: { used: number; cap: number | null }) {
   const cls = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
   return (
     <div>
-      <div className="mono" style={{ fontSize: 12 }}>{used} / {cap}</div>
+      <div className="mono" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{used} / {cap}</div>
       <div className="ubar"><span className={cls} style={{ width: `${pct}%` }} /></div>
     </div>
   );
