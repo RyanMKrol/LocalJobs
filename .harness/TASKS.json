@@ -8230,7 +8230,7 @@
     {
       "id": "T311",
       "title": "Add aggregate GET /api/logs endpoint across run_logs + workflow_run_logs",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
