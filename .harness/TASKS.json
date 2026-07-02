@@ -8128,7 +8128,7 @@
     {
       "id": "T307",
       "title": "Workflows page: fix vertical gap between category panels",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
