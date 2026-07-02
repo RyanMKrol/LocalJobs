@@ -8495,7 +8495,7 @@
     {
       "id": "T320",
       "title": "projects-sync: give project-summarize real filesystem tool-access to the cloned repo",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T319"
       ],
