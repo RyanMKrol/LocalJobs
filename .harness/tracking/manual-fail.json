@@ -23,5 +23,10 @@
     "failed": true,
     "reason": "I don't see any background colour changing in response to Validation Gates succeeding. The padlock itself is green, but the background colour around it is still a sort of beige colour. I would prefer that the padlock remains a single colour, and the background of the tile behind the padlock is what changes in order to demonstrate the status of the Validation Gate.",
     "at": "2026-07-02T22:12:19.778Z"
+  },
+  "T339": {
+    "failed": true,
+    "reason": "The headers inside the tables on both pages are still incorrect. The headers are hugging the left margin of each of the tables. This is not right.",
+    "at": "2026-07-02T22:42:58.516Z"
   }
 }
