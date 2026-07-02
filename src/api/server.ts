@@ -168,7 +168,7 @@ export function readWorklogContent(id: unknown, baseDir: string): string | null 
   }
 }
 
-/** Aggregated build-attempt failure history for a task (`.harness/failures.jsonl`, T294). */
+/** Aggregated build-attempt failure history for a task (`.harness/ledgers/failures.jsonl`, T294). */
 export interface TaskBuildFailures {
   count: number;
   latestKind: string;
@@ -177,15 +177,15 @@ export interface TaskBuildFailures {
 }
 
 /**
- * Read `.harness/failures.jsonl` (JSON-Lines; one loop-recorded build-attempt row per
+ * Read `.harness/ledgers/failures.jsonl` (JSON-Lines; one loop-recorded build-attempt row per
  * line) and aggregate the rows matching `id`. `id` must be a plain task id string;
  * `baseDir` is the backlog file's directory, so the file is confined to
- * `.harness/failures.jsonl` (no traversal). Returns `null` when the file is absent,
+ * `.harness/ledgers/failures.jsonl` (no traversal). Returns `null` when the file is absent,
  * unreadable, or has no matching rows.
  */
 export function readTaskBuildFailures(id: unknown, baseDir: string): TaskBuildFailures | null {
   if (typeof id !== 'string' || !id || id.includes('/') || id.includes('..') || !id.match(/^[\w-]+$/)) return null;
-  const abs = joinPath(baseDir, 'failures.jsonl');
+  const abs = joinPath(baseDir, 'ledgers', 'failures.jsonl');
   if (!isWithin(baseDir, abs)) return null; // belt-and-suspenders
   let raw: string;
   try {

@@ -1,5 +1,5 @@
 // repo-lock.ts — the SHARED advisory lock used by both the autonomous loop
-// (.harness/loop.sh) and the daemon API so their git operations are mutually
+// (.harness/scripts/loop.sh) and the daemon API so their git operations are mutually
 // exclusive. It is an mkdir-based lock DIRECTORY with a `pid` file inside,
 // living at `<git-common-dir>/<basename(repo-root)>-loop.lock`.
 //

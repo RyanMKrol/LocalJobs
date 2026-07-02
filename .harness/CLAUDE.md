@@ -3,7 +3,7 @@
 Loaded whenever Claude works with files in `.harness/` — notably when adding or editing backlog
 tasks in `TASKS.json`. It keeps the harness's own authoring rules *with* the harness, so they travel
 with it and surface at the authoring moment. (Repo-wide conventions are in the root `CLAUDE.md`; the
-loop's design is in `HARNESS.md` + `designs/`.)
+loop's design is in `docs/HARNESS.md` + `docs/designs/`.)
 
 ## Adding a backlog task → invoke the add-to-backlog skill
 
@@ -75,8 +75,8 @@ just the model summary.
 - **Shape → write to a scratch file, not `TASKS.json` directly.** Once an agent is satisfied, it writes
   its decided task(s) (title, scope, facets, spec content, everything except a real id) to its own
   `.harness/.pending-tasks/<slug>.json` and stops. No lock, no git, no `IDEAS.md` edit at this stage.
-- **Consolidate once, at the end.** After every launched agent reports back, `.harness/consolidate-ideas.sh`
-  (a permanent, tested script — see `.harness/consolidate-ideas.mjs` for the id-allocation/spec-write/
+- **Consolidate once, at the end.** After every launched agent reports back, `.harness/scripts/consolidate-ideas.sh`
+  (a permanent, tested script — see `.harness/scripts/consolidate-ideas.mjs` for the id-allocation/spec-write/
   merge logic) reads all pending files, allocates ids, resolves temp-id `dependsOn` references, writes
   `tasks/TNNN.md` specs, updates `TASKS.json`, commits + pushes, removes every converted idea's bullet
   from `.harness/IDEAS.md` (by FUZZY text match — normalized/reflowed comparison, re-read fresh under
@@ -114,10 +114,10 @@ real task(s).
 
 If the skill isn't available and you edit `TASKS.json` directly, the non-negotiable invariant is:
 **every BUILDABLE task MUST carry `facets: { layer, workType, risk[] }`**, with values chosen ONLY
-from `facets.json`'s controlled vocabulary (use the task's `scope` paths to pick the `layer`).
+from `config/facets.json`'s controlled vocabulary (use the task's `scope` paths to pick the `layer`).
 `needs-human` (gated) tasks are **carved out** — they get NO facets. A buildable task missing facets
 gets no auto-tuning and the loop **pre-flight WARNs** about it. Background:
-`designs/difficulty-autotune.md`.
+`docs/designs/difficulty-autotune.md`.
 
 ### UI tasks must get VISUAL confirmation (`facets.layer == ui`)
 
@@ -153,13 +153,13 @@ matching `FLOWS` entry; the `convert-ideas` / `ralph-loop-add-to-backlog` flow i
 
 When the owner judges a `done` task to have actually failed, that is recorded in the owner-owned
 `.harness/manual-fail.json` overlay — **never** by hand-editing it, and never by the loop. Use the
-`/local-jobs-mark-task-failed` command or `.harness/mark-failed.sh <TNNN> "<reason>"` (the dashboard's "Mark
+`/local-jobs-mark-task-failed` command or `.harness/scripts/mark-failed.sh <TNNN> "<reason>"` (the dashboard's "Mark
 failed" button writes the same file). The loop READS this overlay to correct calibration — a false
 success is re-counted as a failure for difficulty tuning and dropped from its cell's audited-success
 count, so that `(layer × workType)` cell is built with a stronger model and audited more often. At
 pre-flight the loop ALSO reconciles it → `TASKS.json` `status=failed` (T279, `reconcile_overlays`) — a
 terminal status the loop skips; it does NOT re-open/rebuild the task (the re-do is a separate
-follow-up). The loop still never WRITES the overlay file. Full design: `designs/manual-fail-signal.md`.
+follow-up). The loop still never WRITES the overlay file. Full design: `docs/designs/manual-fail-signal.md`.
 
 ## `scope` is the rigour dial — pick its granularity deliberately
 
@@ -194,23 +194,26 @@ This auto-exemption was added after a task scoped to `package.json` failed scope
 ## Bumping the base model (preserve calibration — migrate the ledger in lockstep)
 
 When a new model ships and you switch the harness to it, the difficulty calibration in
-`outcomes.jsonl`/`failures.jsonl` must be **migrated in lockstep**, or it is silently lost.
-`policy.jq` maps each historic row's `(model, effort)` to a ladder **index** via `tidx`, and
-**drops any row whose tuple isn't on the current ladder** (`select($s >= 0 and $f >= 0)`). So if you
-change the ladder in `facets.json` but leave the ledger referencing the old id, every historic row
-becomes `tidx = -1` → dropped → every `(layer × workType)` cell cold-starts from the floor again.
+`ledgers/outcomes.jsonl`/`ledgers/failures.jsonl` must be **migrated in lockstep**, or it is silently
+lost. `scripts/policy.jq` maps each historic row's `(model, effort)` to a ladder **index** via `tidx`,
+and **drops any row whose tuple isn't on the current ladder** (`select($s >= 0 and $f >= 0)`). So if
+you change the ladder in `config/facets.json` but leave the ledger referencing the old id, every
+historic row becomes `tidx = -1` → dropped → every `(layer × workType)` cell cold-starts from the
+floor again.
 
 Procedure (done for `claude-sonnet-4-6 → claude-sonnet-5`, 2026-07-01):
 1. **Pin the FULL id.** From `claude-sonnet-4-6` on, model IDs are a **dateless pinned snapshot** (not
    an evergreen alias) — so `claude-sonnet-5` is the correct thing to pin (no `-YYYYMMDD`). Confirm the
    exact id from Anthropic's models doc; do not guess.
-2. **Config:** update the `MODEL` default in `harness.env` + `loop.sh`, and the sonnet tiers in the
-   `facets.json` `.tiers.ladder`. Leave the Opus ceiling + `policy.auditorModel` unless bumping those too.
-3. **Migrate the ledger 1:1:** `sed 's/<oldid>/<newid>/g'` over `outcomes.jsonl` + `failures.jsonl`
-   (and the gitignored `worklog/.failures.buf` so a pending flush stays consistent). Because the new
-   model takes the SAME ladder positions, this preserves every cell's learned difficulty exactly.
-   Leave worklog narrative (`*.md`) alone — it's historical record, not policy-consumed.
-4. **Verify calibration is unchanged:** run `policy.jq` per cell against (old ledger + old ladder) vs
+2. **Config:** update the `MODEL` default in `config/harness.env` + `scripts/loop.sh`, and the sonnet
+   tiers in the `config/facets.json` `.tiers.ladder`. Leave the Opus ceiling + `policy.auditorModel`
+   unless bumping those too.
+3. **Migrate the ledger 1:1:** `sed 's/<oldid>/<newid>/g'` over `ledgers/outcomes.jsonl` +
+   `ledgers/failures.jsonl` (and the gitignored `worklog/.failures.buf` so a pending flush stays
+   consistent). Because the new model takes the SAME ladder positions, this preserves every cell's
+   learned difficulty exactly. Leave worklog narrative (`*.md`) alone — it's historical record, not
+   policy-consumed.
+4. **Verify calibration is unchanged:** run `scripts/policy.jq` per cell against (old ledger + old ladder) vs
    (new ledger + new ladder); every cell's chosen start-tier must be identical. (It's a slightly
    *pessimistic* prior if the new model is stronger — safe; the ladder still escalates.)
 

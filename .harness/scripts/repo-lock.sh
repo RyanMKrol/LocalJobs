@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# .harness/repo-lock.sh — shared mkdir-based repo lock, SOURCEABLE from a bash script.
+# .harness/scripts/repo-lock.sh — shared mkdir-based repo lock, SOURCEABLE from a bash script.
 #
 # ⚠️ Lock path derivation MUST stay byte-identical to loop.sh's acquire_lock (GIT_COMMON/NAME/
 # lock-dir-name) and src/core/repo-lock.ts's resolveRepoPaths — all three coordinate the SAME
@@ -15,7 +15,7 @@
 # by the time anyone checks it, and the lock provides NO protection. Do the whole
 # acquire → work → release sequence as ONE script:
 #
-#   source .harness/repo-lock.sh
+#   source .harness/scripts/repo-lock.sh   (or "$HERE/repo-lock.sh" if self-relative from a sibling script)
 #   acquire_lock || exit 1
 #   trap release_lock EXIT          # always release, even on error/early exit
 #   ...critical section: read/modify/write TASKS.json, tasks/*.md, IDEAS.md, git commit + push...

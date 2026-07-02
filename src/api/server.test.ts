@@ -1479,9 +1479,10 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 {
   const root = mkdtempSync(join(tmpdir(), 'localjobs-buildfailures-'));
   const baseDir = join(root, '.harness');
-  mkdirSync(baseDir, { recursive: true });
+  const ledgersDir = join(baseDir, 'ledgers');
+  mkdirSync(ledgersDir, { recursive: true });
   writeFileSync(
-    join(baseDir, 'failures.jsonl'),
+    join(ledgersDir, 'failures.jsonl'),
     [
       JSON.stringify({ id: 'T-fake-1', ts: '2026-07-01T05:18:12Z', kind: 'audit-fail', detail: 'first attempt' }),
       JSON.stringify({ id: 'T-fake-1', ts: '2026-07-01T09:16:02Z', kind: 'agent-blocked', detail: 'second, later attempt' }),
@@ -1562,7 +1563,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 // loop.sh's helpers (LOOP_SOURCE_ONLY=1) and call `prompt <id>`; the output must embed
 // the task's ## Do / ## Done when from .harness/tasks/<id>.md. Skipped if jq is absent.
 {
-  const loopSh = fileURLToPath(new URL('../../.harness/loop.sh', import.meta.url));
+  const loopSh = fileURLToPath(new URL('../../.harness/scripts/loop.sh', import.meta.url));
   const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
   let hasJq = true;
   try {

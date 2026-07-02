@@ -25,7 +25,7 @@
 // that were deliberately deferred (owner declined, no pending file written — see the plex-file-naming
 // worked example in the skill) are correctly invisible to this script; their bullet stays untouched.
 //
-// Usage: node .harness/consolidate-ideas.mjs
+// Usage: node .harness/scripts/consolidate-ideas.mjs
 // Writes .harness/.pending-tasks/.consolidation-summary.json — the wrapper script reads this to know
 // which files to `git add` and to build the commit message, then deletes it once committed.
 

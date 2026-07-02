@@ -5,10 +5,10 @@ coding-conventions rulebook; this file is how the loop *works*.
 
 ## 1. What it is
 
-A single **sequential** shell loop (`.harness/loop.sh`) that builds the `.harness/TASKS.json`
+A single **sequential** shell loop (`.harness/scripts/loop.sh`) that builds the `.harness/TASKS.json`
 backlog **one fully-verified task at a time**, working **directly on `main` in this checkout** —
 no git worktree, no per-task branches. The whole harness lives under the hidden `.harness/` folder
-to stay separate from project source. `.harness/supervise.sh` re-launches the loop on a cadence so
+to stay separate from project source. `.harness/scripts/supervise.sh` re-launches the loop on a cadence so
 it spans many token-refresh windows.
 
 ### Why in-place (not the worktree variant)
@@ -104,20 +104,20 @@ builder. A task that can't be done cold in one pass is mis-sized → split it.
 ## 6. Model selection (auto-tuned — no per-task models)
 
 Tasks do **not** carry per-task `model`/`effort`/`escalation` — difficulty is **auto-tuned** (see
-`designs/difficulty-autotune.md`). The loop rides ONE global tier ladder (`facets.json →
-.tiers.ladder`, cheapest→priciest) and a policy (`policy.jq`) picks each task's START tier from its
+`designs/difficulty-autotune.md`). The loop rides ONE global tier ladder (`config/facets.json →
+.tiers.ladder`, cheapest→priciest) and a policy (`scripts/policy.jq`) picks each task's START tier from its
 `(layer × work-type)` facet cell's escalation history (the cheapest tier clearing floor 0.75 with ≥6
 samples; else the cold-start floor). After `MAX_ATTEMPTS` soft failures on a tier the loop climbs the
 ladder; past the top tier it stops for a human. The ladder is deliberately SHORT (4 tiers:
 `sonnet/low → sonnet/medium → sonnet/high → opus/high`), so a doomed task BLOCKS to a human after at
 most `4×MAX_ATTEMPTS` attempts rather than burning the most expensive opus-effort tiers — if
 `opus/high` can't do it twice, a human glance is cheaper than throwing `opus/max` at it. Every built
-task's outcome is captured to `.harness/outcomes.jsonl` (the sole calibration input; forward-only).
-The **cold-start floor** is the cheapest tier (`sonnet/low`, set in `harness.env`) — used until a cell
+task's outcome is captured to `.harness/ledgers/outcomes.jsonl` (the sole calibration input; forward-only).
+The **cold-start floor** is the cheapest tier (`sonnet/low`, set in `config/harness.env`) — used until a cell
 has enough samples.
 
-**Two distinct ledgers.** `outcomes.jsonl` is one TERMINAL row per built task (where it ended up:
-final tier, total soft-fails, blocked?) and feeds calibration. `failures.jsonl` is one row per FAILED
+**Two distinct ledgers.** `ledgers/outcomes.jsonl` is one TERMINAL row per built task (where it ended up:
+final tier, total soft-fails, blocked?) and feeds calibration. `ledgers/failures.jsonl` is one row per FAILED
 ATTEMPT (`{id, ts, kind, rung, attempt, model, effort, detail}`) with the cause — `scope-creep`,
 `audit-fail`, `ci-red`, `test-missing`, … — so you can see the FULL escalation history (what failed
 at each rung, and whether the causes were all the same), not just the summary. It's diagnostics only
@@ -130,8 +130,8 @@ weakness is a **false success**: a task marked `done` (green CI + passed/skipped
 later judges not actually done. Left alone it teaches the tuner the cheap tier works AND suppresses the
 cell's audit rate — the same bug class keeps slipping through. The owner overturns it via the
 committed `.harness/manual-fail.json` overlay (`POST /api/backlog/:id/failed`, the Backlog "Mark
-failed" button, or the portable `.harness/mark-failed.sh` / `/local-jobs-mark-task-failed` for no-dashboard
-projects). The loop READS this overlay (never writes it): `policy.jq`/`pick_base` re-count a
+failed" button, or the portable `.harness/scripts/mark-failed.sh` / `/local-jobs-mark-task-failed` for no-dashboard
+projects). The loop READS this overlay (never writes it): `scripts/policy.jq`/`pick_base` re-count a
 manually-failed task as a failure for tier selection, and `audit_gate` excludes it from the cell's
 confirmed-audited count — so that `(layer × workType)` cell is then built with a **stronger model** and
 **audited more often**. It does not change task status or re-open the task.
@@ -160,7 +160,7 @@ agent must not edit it.
       "id": "T001", "title": "…", "status": "pending",   // pending | done  (SHELL-owned)
       // NOTE: NO `reviewed` field — since T136 it lives in owner-owned .harness/reviews.json
       "dependsOn": [], "gate": null,                      // gate: null | "gate" | "needs-human"
-      "facets": { "layer": "ui", "workType": "style", "risk": [] },  // difficulty auto-tuning (OMIT for needs-human); values from .harness/facets.json
+      "facets": { "layer": "ui", "workType": "style", "risk": [] },  // difficulty auto-tuning (OMIT for needs-human); values from .harness/config/facets.json
       "scope": ["src/…"], "verify": [], "expectsTest": false,  // expectsTest: true → audit's structural gate requires a test in the diff (§5)
       "spec": ".harness/tasks/T001.md"                    // do/doneWhen live in this MD (T131); NO per-task model/effort/escalation
     }
@@ -173,7 +173,7 @@ one-time human step (the agent prepares around it and records `failed:blocked`).
 
 **`facets` — difficulty auto-tuning (see `designs/difficulty-autotune.md`).** Each BUILDABLE task
 carries `facets: { layer, workType, risk[] }`, chosen from the controlled vocabulary in
-`.harness/facets.json`. The loop's policy reads them to pick the task's STARTING tier from escalation
+`.harness/config/facets.json`. The loop's policy reads them to pick the task's STARTING tier from escalation
 history (the outcomes ledger); until a `(layer × work-type)` cell has ≥ `minN` samples it cold-starts
 at the cheapest floor (`sonnet/low`). `needs-human` tasks are CARVED OUT — they get **no** `facets`
 and never enter calibration. Facets are normally assigned by the add-to-backlog skill; a buildable
@@ -246,10 +246,10 @@ The agent's final action writes one line to `.harness/worklog/.result`: `done <T
 ## 10. Running it
 
 ```sh
-DRY_RUN=1 .harness/loop.sh     # print the task it would build next
-.harness/loop.sh               # build one task (or as many as fit the window)
-.harness/supervise.sh          # leave running: re-launches the loop each ~5h15m window
-.harness/postflight.sh         # zero-token status board (also written to .harness/worklog/STATUS.md)
+DRY_RUN=1 .harness/scripts/loop.sh     # print the task it would build next
+.harness/scripts/loop.sh               # build one task (or as many as fit the window)
+.harness/scripts/supervise.sh          # leave running: re-launches the loop each ~5h15m window
+.harness/scripts/postflight.sh         # zero-token status board (also written to .harness/worklog/STATUS.md)
 ```
 
 Requirements: `jq`, `gh` (authenticated), Node 22. One loop at a time (a lock in `.git` enforces it).

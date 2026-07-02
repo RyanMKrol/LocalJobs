@@ -8760,10 +8760,10 @@
         "CLAUDE.md",
         "README.md",
         ".harness/CLAUDE.md",
-        ".harness/HARNESS.md",
+        ".harness/docs/HARNESS.md",
         ".harness/README.md",
-        ".harness/LIMITATIONS.md",
-        ".harness/designs/**",
+        ".harness/docs/LIMITATIONS.md",
+        ".harness/docs/designs/**",
         ".claude/commands/**",
         "src/services/CLAUDE.md"
       ],

@@ -11,28 +11,33 @@
 # spec file per task) with zero shared-resource contention, so there's nothing to serialize until this
 # single pass runs, once, after every launched unit has reported back.
 #
-# ⚠️ Run this via `bash .harness/consolidate-ideas.sh` (not `source` it, not run it under zsh) —
-# repo-lock.sh derives its lock path from ${BASH_SOURCE[0]}, which only resolves correctly when the
-# script is actually executed by bash.
+# ⚠️ Run this via `bash .harness/scripts/consolidate-ideas.sh` (not `source` it, not run it under
+# zsh) — repo-lock.sh derives its lock path from ${BASH_SOURCE[0]}, which only resolves correctly
+# when the script is actually executed by bash.
 #
 # Usage:
-#   .harness/consolidate-ideas.sh              # consolidate + commit + push
-#   NO_PUSH=1 .harness/consolidate-ideas.sh     # consolidate + commit but don't push (offline)
+#   .harness/scripts/consolidate-ideas.sh              # consolidate + commit + push
+#   NO_PUSH=1 .harness/scripts/consolidate-ideas.sh     # consolidate + commit but don't push (offline)
 #
 # Safe to re-run: it only ever processes whatever .pending-tasks/*.json files still exist on disk
 # (a straggler unit that reports back after a prior consolidation just gets picked up next run).
 set -euo pipefail
 
+# Anchor to THIS script's own location (self-relative — T327 normalized this off the old
+# cwd-relative `source .harness/repo-lock.sh`, which broke the moment this script no longer lived
+# directly at the repo-root-relative ".harness/" depth it assumed), then cd to the repo root so
+# every ".harness/..." path below (TASKS.json, tasks/, .pending-tasks/) still resolves as before.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$HERE/.."
+ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
+cd "$ROOT"
 
-source .harness/repo-lock.sh
+source "$HERE/repo-lock.sh"
 acquire_lock || exit 1
 trap release_lock EXIT
 
 # --- everything below runs while holding the lock ---
 
-node .harness/consolidate-ideas.mjs
+node "$HERE/consolidate-ideas.mjs"
 
 SUMMARY=.harness/.pending-tasks/.consolidation-summary.json
 if [ ! -f "$SUMMARY" ]; then

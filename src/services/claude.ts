@@ -14,7 +14,7 @@ import { callService } from '../core/services.js';
  *
  * (Perfumes keeps its own `perfumes/claude.ts` for now — migrating it onto this
  * shared helper is a follow-up; it was out of scope for T146. See
- * `.harness/LIMITATIONS.md`.)
+ * `.harness/docs/LIMITATIONS.md`.)
  */
 export interface ClaudeResult {
   ok: boolean;

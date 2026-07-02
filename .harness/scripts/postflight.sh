@@ -7,14 +7,14 @@
 # so it's fast, reliable, and free to run every cycle.
 #
 # Output goes to stdout AND to .harness/worklog/STATUS.md (overwritten each run).
-# Usage:  .harness/postflight.sh     Exit: 0 always (informational; never fails a cycle).
+# Usage:  .harness/scripts/postflight.sh     Exit: 0 always (informational; never fails a cycle).
 set -uo pipefail
 
 HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git -C "$HARNESS_DIR" rev-parse --show-toplevel)"
 NAME="$(basename "$ROOT")"
-BACKLOG="$HARNESS_DIR/TASKS.json"
-WORKLOG="$HARNESS_DIR/worklog"
+BACKLOG="$HARNESS_DIR/../TASKS.json"
+WORKLOG="$HARNESS_DIR/../worklog"
 STATUS_FILE="$WORKLOG/STATUS.md"
 mkdir -p "$WORKLOG"
 

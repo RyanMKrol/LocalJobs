@@ -7,7 +7,7 @@ import { usePoll } from '../ui';
 import { Pill } from '../components/Pill';
 
 /**
- * Aggregated build-attempt failure history for a task (`.harness/failures.jsonl`, T294).
+ * Aggregated build-attempt failure history for a task (`.harness/ledgers/failures.jsonl`, T294).
  * Not yet part of the shared `BacklogTask` type (out of this task's scope) — read it
  * defensively off the raw API payload instead.
  */

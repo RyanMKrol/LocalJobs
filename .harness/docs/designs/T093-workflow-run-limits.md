@@ -510,6 +510,6 @@ just N perfumes" end-to-end.
 | `dashboard/app/workflows/[name]/page.tsx` | limit number input beside Run now |
 | `dashboard/app/workflow-runs/[id]/page.tsx` | "limited · N" badge |
 | tests | `*.test.ts` for resolution rule, `selectPendingRoots`, back-compat (unset env ⇒ unlimited), scheduled-run-stays-unlimited |
-| docs | `README.md` (Run control + Triggering jobs), `CLAUDE.md` (lineage convention + schema list), `.harness/LIMITATIONS.md` (pending-definition trade-off) |
+| docs | `README.md` (Run control + Triggering jobs), `CLAUDE.md` (lineage convention + schema list), `.harness/docs/LIMITATIONS.md` (pending-definition trade-off) |
 </content>
 </invoke>

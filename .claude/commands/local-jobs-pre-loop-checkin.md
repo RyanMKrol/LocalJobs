@@ -3,7 +3,7 @@ description: Read-only pre-flight check-in on the harness backlog before startin
 argument-hint: (optional) a task id to focus on, e.g. T215 — omit for a full sweep
 ---
 
-You are vetting the autonomous build harness (`.harness/loop.sh`, run via `.harness/supervise.sh`)
+You are vetting the autonomous build harness (`.harness/scripts/loop.sh`, run via `.harness/scripts/supervise.sh`)
 **BEFORE** the owner starts an unattended run. This is the pre-run mirror of
 `.claude/commands/local-jobs-loop-recover.md` — but where that command diagnoses AND FIXES state after an
 interrupt, this command only **looks and reports**. It never changes anything.
@@ -17,7 +17,7 @@ the global checks 2 and 3; if empty, do a full sweep of the backlog).
 
 - **You MUST NOT edit `.harness/TASKS.json`.** Not `status`, not `facets`, not anything — this
   command only reads it.
-- **You MUST NOT write, commit, or push ANY file.** No worklog entries, no `.harness/outcomes.jsonl`
+- **You MUST NOT write, commit, or push ANY file.** No worklog entries, no `.harness/ledgers/outcomes.jsonl`
   rows, no scratch files. This is purely observational.
 - **You MUST NOT touch `.harness/reviews.json`, `.harness/human-done.json`, or
   `.harness/manual-fail.json`.** Those are dashboard/owner-owned overlay files; you only ever READ
@@ -113,8 +113,8 @@ For every `pending`, non-`needs-human` task (or just the focus task if `$ARGUMEN
 jq -r '.tasks[]|select(.status=="pending" and .gate==null)
   |select((.facets|not) or (.facets.layer|not) or (.facets.workType|not))|.id' .harness/TASKS.json
 
-VALID_LAYERS="$(jq -r '.facets.layer.values|keys[]' .harness/facets.json)"
-VALID_WORKTYPES="$(jq -r '.facets["work-type"].values|keys[]' .harness/facets.json)"
+VALID_LAYERS="$(jq -r '.facets.layer.values|keys[]' .harness/config/facets.json)"
+VALID_WORKTYPES="$(jq -r '.facets["work-type"].values|keys[]' .harness/config/facets.json)"
 # then for each task with facets present, confirm .facets.layer is in VALID_LAYERS
 # and .facets.workType is in VALID_WORKTYPES — flag any that aren't
 
@@ -142,7 +142,7 @@ Consolidate everything above into ONE report the owner can read in one glance be
 - **Session hygiene**: dirty tree? ahead/behind? loop already running / lock held?
 - **Dependency short-circuits**: list or "none found".
 - **Task definition quality**: list of tasks with issues, or "all clear".
-- **Verdict**: a plain **GO** (safe to start `.harness/supervise.sh`) or **NO-GO** (name the blocking
+- **Verdict**: a plain **GO** (safe to start `.harness/scripts/supervise.sh`) or **NO-GO** (name the blocking
   issue(s) and what the owner should do — e.g. "mark T210 done in the dashboard first", "a loop
   process is already running, don't start another", "run `/local-jobs-loop-recover` first"). If everything is
   clean but there are informational-only notes (short-circuits, auto-resolving blockers), say **GO

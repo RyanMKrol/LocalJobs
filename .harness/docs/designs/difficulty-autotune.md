@@ -36,7 +36,7 @@ A **facet** is one labelled axis describing a task. We describe each buildable t
 The **calibration keys on `layer × work-type`**; `risk` refines once a cell is dense. Feature-area
 labels (movies/plex/…) stay descriptive only — they don't predict difficulty.
 
-**Source of truth: `.harness/facets.json`** — declares the controlled vocabulary (+ definitions +
+**Source of truth: `.harness/config/facets.json`** — declares the controlled vocabulary (+ definitions +
 difficulty hints), the global tier ladder, and the policy knobs. Three consumers read it: authoring
 (picks values from it), calibration/policy (validate + know the cell space), and a human (curates).
 
@@ -60,7 +60,7 @@ the **cold-start prior**. local-jobs' ladder (7 tiers):
 
 ## 3. Capture — the ledger  *(BUILT)*
 
-`loop.sh`'s `mark_done`/`block_task` append one JSON row per built task to **`.harness/outcomes.jsonl`**:
+`.harness/scripts/loop.sh`'s `mark_done`/`block_task` append one JSON row per built task to **`.harness/ledgers/outcomes.jsonl`**:
 `{ id, ts, facets, scopeSize, startModel/Effort, finalModel/Effort, succeededRung, topRung,
 attemptsAtRung, totalSoftFails, blocked, reason }`.
 
@@ -75,14 +75,14 @@ attemptsAtRung, totalSoftFails, blocked, reason }`.
 
 ## 4. Calibration + policy — the decision  *(BUILT)*
 
-`.harness/policy.jq` reads the ledger and, for a task's `(layer × work-type)` cell, expands each row
+`.harness/scripts/policy.jq` reads the ledger and, for a task's `(layer × work-type)` cell, expands each row
 into per-tier pass/fail events (every tier from start up to the success tier failed; the success tier
 passed; a blocked row failed at every tier it reached), then returns:
 
 > the **cheapest tier** whose historical first-attempt success rate for that cell is **≥ floor (0.75)**
 > with **≥ minN (6)** samples; otherwise the **authored difficulty** (cold-start prior).
 
-`loop.sh`'s `pick_base` runs it at task selection; the rung machinery rides the global ladder offset
+`.harness/scripts/loop.sh`'s `pick_base` runs it at task selection; the rung machinery rides the global ladder offset
 by that base (`cur_base`). Validated across cold-start, no-blind-downgrade, upgrade-on-escalation,
 minN/floor guards, and discovered-downgrade. Robust: missing facets / empty ledger / any error → the
 prior, so it can never break the loop.

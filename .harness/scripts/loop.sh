@@ -7,7 +7,7 @@
 # living entirely under .harness/ to keep it separate from the project source. It was chosen
 # because the real jobs (places/perfumes) + their data live UNTRACKED in this checkout, so an
 # isolated worktree off origin/main couldn't see them; the safety model is git itself (every
-# task is a commit on main, trivially reverted). See .harness/HARNESS.md for the full design.
+# task is a commit on main, trivially reverted). See .harness/docs/HARNESS.md for the full design.
 #
 # Each iteration:
 #   SELECT (shell)  — from .harness/TASKS.json: the next not-done task whose dependsOn are all
@@ -17,9 +17,16 @@
 #   GATE   (shell)  — pre-push guard (refuse if anything sensitive is staged) → push main →
 #                     watch GitHub CI → green: mark the task done; red: STOP for a human.
 #
-# Usage:  .harness/loop.sh [TNNN]          # optional: force a specific task id this run
-#         DRY_RUN=1 .harness/loop.sh       # print the task it WOULD build, then exit
-# Config: .harness/harness.env (sourced if present) and/or the environment.
+# Usage:  .harness/scripts/loop.sh [TNNN]          # optional: force a specific task id this run
+#         DRY_RUN=1 .harness/scripts/loop.sh       # print the task it WOULD build, then exit
+# Config: .harness/config/harness.env (sourced if present) and/or the environment.
+#
+# This script lives in .harness/scripts/ (T327 reorg) — HARNESS_DIR below is THIS directory, so
+# every reference to a file that stayed at the .harness/ top level (TASKS.json, worklog/,
+# human-done.json, manual-fail.json) is "$HARNESS_DIR/../<file>", and every reference to a file
+# that moved into a sibling subfolder (config/, ledgers/, docs/) is "$HARNESS_DIR/../<subfolder>/<file>".
+# Scripts that stayed in scripts/ alongside this one (postflight.sh, policy.jq) are still
+# "$HARNESS_DIR/<file>".
 set -euo pipefail
 
 HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,15 +34,15 @@ ROOT="$(git -C "$HARNESS_DIR" rev-parse --show-toplevel)"
 GIT_COMMON="$(git -C "$ROOT" rev-parse --git-common-dir)"
 case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$ROOT/$GIT_COMMON" ;; esac   # make absolute
 
-[ -f "$HARNESS_DIR/harness.env" ] && . "$HARNESS_DIR/harness.env"
+[ -f "$HARNESS_DIR/../config/harness.env" ] && . "$HARNESS_DIR/../config/harness.env"
 
-BACKLOG="$HARNESS_DIR/TASKS.json"
-WORKLOG="$HARNESS_DIR/worklog"
-OUTCOMES="$HARNESS_DIR/outcomes.jsonl"             # append-only escalation ledger — the SOLE input to difficulty calibration (forward-only); ONE terminal row per task
-FAILURES="$HARNESS_DIR/failures.jsonl"             # append-only PER-ATTEMPT failure ledger — ONE row per failed attempt (kind+cause). Diagnostics only, NOT calibration; committed so causes are queryable across tasks
+BACKLOG="$HARNESS_DIR/../TASKS.json"
+WORKLOG="$HARNESS_DIR/../worklog"
+OUTCOMES="$HARNESS_DIR/../ledgers/outcomes.jsonl" # append-only escalation ledger — the SOLE input to difficulty calibration (forward-only); ONE terminal row per task
+FAILURES="$HARNESS_DIR/../ledgers/failures.jsonl" # append-only PER-ATTEMPT failure ledger — ONE row per failed attempt (kind+cause). Diagnostics only, NOT calibration; committed so causes are queryable across tasks
 FAILBUF="$WORKLOG/.failures.buf"                   # gitignored scratch buffer for the current task's failures: survives cold_reset (git clean -fd keeps ignored files), flushed into FAILURES at each terminal event
-MANUAL_FAIL="$HARNESS_DIR/manual-fail.json"        # owner-owned overlay (id → {failed,reason,at}); dashboard/command-written, never WRITTEN by the loop. Read for calibration (manual_fail_ids) AND reconciled → TASKS.json status=failed at pre-flight (T279, reconcile_overlays)
-HUMAN_DONE="$HARNESS_DIR/human-done.json"          # owner-owned overlay (id → {done,at}) for needs-human tasks; dashboard-written, never WRITTEN by the loop. Reconciled → TASKS.json status=done at pre-flight so dependents unblock (T261, reconcile_overlays)
+MANUAL_FAIL="$HARNESS_DIR/../manual-fail.json"     # owner-owned overlay (id → {failed,reason,at}); dashboard/command-written, never WRITTEN by the loop. Read for calibration (manual_fail_ids) AND reconciled → TASKS.json status=failed at pre-flight (T279, reconcile_overlays)
+HUMAN_DONE="$HARNESS_DIR/../human-done.json"       # owner-owned overlay (id → {done,at}) for needs-human tasks; dashboard-written, never WRITTEN by the loop. Reconciled → TASKS.json status=done at pre-flight so dependents unblock (T261, reconcile_overlays)
 NAME="$(basename "$ROOT")"
 MODEL="${MODEL:-claude-sonnet-5}"               # COLD-START FLOOR — cheapest tier; the policy tunes UP from here (pin the full id; the bare alias drifts)
 EFFORT="${EFFORT:-low}"                            # low|medium|high|xhigh|max — cheapest by default (bias-cheap; the ladder escalates on failure)
@@ -261,14 +268,14 @@ run_integrate_hook() {
 # by a policy-chosen START tier (cur_base). rung 0 = the policy's start tier; escalation walks UP the
 # global ladder. Tasks no longer carry per-task model/effort/escalation — the cold-start prior is the
 # global floor (sonnet/low) until the (layer × work-type) cell has enough ledger samples.
-FACETS="$HARNESS_DIR/facets.json"
+FACETS="$HARNESS_DIR/../config/facets.json"
 TIER_TUPLES=()   # portable (bash 3.2 — no mapfile): read the ladder into an array
 while IFS= read -r _t; do TIER_TUPLES+=("$_t"); done \
   < <(jq -r '.tiers.ladder[] | "\(.model) \(.effort)"' "$FACETS" 2>/dev/null)
 [ "${#TIER_TUPLES[@]}" -gt 0 ] || TIER_TUPLES=("$MODEL $EFFORT")     # fallback if facets.json absent
 POLICY_FLOOR="$(jq -r '.policy.floor // 0.75' "$FACETS" 2>/dev/null || echo 0.75)"
 POLICY_MINN="$(jq -r '.policy.minN // 6' "$FACETS" 2>/dev/null || echo 6)"
-POLICY_JQ="$HARNESS_DIR/policy.jq"               # .harness/policy.jq, alongside this loop
+POLICY_JQ="$HARNESS_DIR/policy.jq"               # .harness/scripts/policy.jq, alongside this loop
 # Verification-aware calibration knobs (the blocking audit gate — designs/audit-verification.md §4.6).
 AUDIT_START_N="$(jq -r '.policy.auditStartN // 3' "$FACETS" 2>/dev/null || echo 3)"
 AUDIT_FLOOR_N="$(jq -r '.policy.auditFloorN // 8' "$FACETS" 2>/dev/null || echo 8)"
@@ -478,7 +485,7 @@ prompt() {
   cat <<'EOF'
 You work DIRECTLY on the `main` branch in the primary checkout — NO worktree, NO new branches.
 Do NOT create/switch branches. Do NOT push. Do NOT merge. The loop pushes + gates on CI after you finish.
-You run head-less and unattended. Obey CLAUDE.md and .harness/HARNESS.md exactly.
+You run head-less and unattended. Obey CLAUDE.md and .harness/docs/HARNESS.md exactly.
 
 1. ORIENT. Read CLAUDE.md and README.md (current state). Find this task:
    `jq '.tasks[]|select(.id=="<TASK>")' .harness/TASKS.json` (read its scope/verify and all other
@@ -508,7 +515,7 @@ You run head-less and unattended. Obey CLAUDE.md and .harness/HARNESS.md exactly
    HALTS the whole run if any sensitive path is staged — so stage precisely.
 
 4. DOCS IN LOCKSTEP (same commit) — but ONLY docs that are in your SCOPE. If a convention/feature
-   change needs README.md / CLAUDE.md / .harness/LIMITATIONS.md AND that file is in your scope, update
+   change needs README.md / CLAUDE.md / .harness/docs/LIMITATIONS.md AND that file is in your scope, update
    it. If a needed doc is NOT in your scope, do NOT edit it (that trips the scope gate) — record
    `failed:blocked` noting the missing doc so a human can add it to scope. Do NOT edit
    .harness/TASKS.json — the loop owns task status. Write your notes to .harness/worklog/<TASK>.md

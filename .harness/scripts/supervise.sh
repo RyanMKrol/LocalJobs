@@ -12,7 +12,7 @@
 # window no matter how long a cycle takes. Default 5h + 15m buffer (tokens refresh ~5h after
 # first use; the buffer avoids firing just before reset). Tune for your own quota window.
 #
-# Usage:  .harness/supervise.sh [interval_seconds] [max_cycles]
+# Usage:  .harness/scripts/supervise.sh [interval_seconds] [max_cycles]
 #   interval_seconds  default 18900 (5h15m)
 #   max_cycles        default 0 (run forever)
 # Tip: the loop streams its own progress; this just paces and re-launches it.

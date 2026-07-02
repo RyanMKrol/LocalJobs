@@ -184,7 +184,7 @@ call finding out), does NOT need `Edit`, and never touches `.harness/TASKS.json`
 > **(If flagged) hard-dependency partner:** `<another unit's slug, if Stage 1 flagged a foundation/
 > dependent relationship with a concurrently-running unit — use this slug in your dependsOn, see below>`
 >
-> **1. Explore.** Read root `CLAUDE.md`, `.harness/HARNESS.md` §8.1 (task schema), `.harness/facets.json`
+> **1. Explore.** Read root `CLAUDE.md`, `.harness/docs/HARNESS.md` §8.1 (task schema), `.harness/config/facets.json`
 > (facet vocabulary), and whatever source/dashboard paths the idea text(s) anchor to. Work out the
 > likely itch/problem, feasibility, relevant files, and a first-pass decomposition.
 >
@@ -325,12 +325,12 @@ call finding out), does NOT need `Edit`, and never touches `.harness/TASKS.json`
 
 ## Stage 3 — ONE consolidation pass (main thread, after every launched unit reports back)
 
-Once every unit from the current wave has reported done, run **`.harness/consolidate-ideas.sh`** —
-a permanent, tested framework script (paired with `.harness/consolidate-ideas.mjs`), not something
+Once every unit from the current wave has reported done, run **`.harness/scripts/consolidate-ideas.sh`** —
+a permanent, tested framework script (paired with `.harness/scripts/consolidate-ideas.mjs`), not something
 to re-derive from pseudocode each sweep:
 
 ```bash
-bash .harness/consolidate-ideas.sh
+bash .harness/scripts/consolidate-ideas.sh
 ```
 
 Run it directly with `bash` — do not `source` it, and do not invoke it under a non-bash interactive
@@ -364,10 +364,10 @@ Read the script's own stdout (it prints a full summary: allocated ids, any dropp
 match/no-match per unit) — a `no bullet match` warning means a bullet was left in `IDEAS.md` despite
 its idea being converted, and needs manual cleanup or a closer look at why the fuzzy match missed it.
 
-Offline / don't want to push yet: `NO_PUSH=1 bash .harness/consolidate-ideas.sh` (commits locally only).
+Offline / don't want to push yet: `NO_PUSH=1 bash .harness/scripts/consolidate-ideas.sh` (commits locally only).
 
 If a straggler unit reports back AFTER you've already run consolidation, just run
-`bash .harness/consolidate-ideas.sh` again — it's idempotent, and only ever processes whatever
+`bash .harness/scripts/consolidate-ideas.sh` again — it's idempotent, and only ever processes whatever
 `.pending-tasks/*.json` files still exist on disk (running it with an empty pending dir is a no-op:
 it prints "nothing to consolidate" and exits 0). Stage 0 also invokes this exact script on any
 leftover files from a prior interrupted sweep, before Stage 1 even runs.

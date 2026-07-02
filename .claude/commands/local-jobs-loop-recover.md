@@ -3,7 +3,7 @@ description: Evaluate the autonomous loop after a manual interrupt and clean up 
 argument-hint: (optional) a task id to focus on, e.g. T215 — omit for a full sweep
 ---
 
-You are recovering the autonomous build loop (`.harness/loop.sh`, run via `.harness/supervise.sh`)
+You are recovering the autonomous build loop (`.harness/scripts/loop.sh`, run via `.harness/scripts/supervise.sh`)
 after it was **manually interrupted** (Ctrl+C). A clean interrupt is rare to get exactly right: the
 loop can be killed mid-flow and leave inconsistent state behind. Your job is to **evaluate the loop's
 health, find every problem the interrupt may have caused, fix them properly and robustly, and leave
@@ -111,7 +111,7 @@ git log --oneline -25 | grep -iE "T<id>"                              # code com
 git branch -r --contains <code-sha>                                  # is the work on origin/main?
 gh run list --workflow CI --limit 30 --json headSha,status,conclusion --jq '.[]|select(.headSha=="<full-sha>")|"\(.status)/\(.conclusion)"'
 git reflog | grep -iE "mark done|T<id>"                              # did mark_done ever run?
-grep -c '"id":"T<id>"' .harness/outcomes.jsonl                       # outcome row present?
+grep -c '"id":"T<id>"' .harness/ledgers/outcomes.jsonl                       # outcome row present?
 ls .harness/worklog/T<id>.audit.md                                   # was it audited?
 ```
 A task is an **orphan to fix** when: code is on `origin/main` + CI green, but `status=pending` with no
@@ -140,8 +140,8 @@ TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -nc --arg ts "$TS" '{id:"T<id>",ts:$ts,facets:<from TASKS.json>,scopeSize:<scope length>,
   startModel:"claude-sonnet-4-6",startEffort:"low",finalModel:"…",finalEffort:"…",
   succeededRung:<n>,topRung:<n>,attemptsAtRung:0,totalSoftFails:0,blocked:false,reason:"",
-  verification:"audited|ci-only"}' >> .harness/outcomes.jsonl
-jq -e . .harness/outcomes.jsonl >/dev/null   # must stay valid (one JSON object per line)
+  verification:"audited|ci-only"}' >> .harness/ledgers/outcomes.jsonl
+jq -e . .harness/ledgers/outcomes.jsonl >/dev/null   # must stay valid (one JSON object per line)
 ```
 Outcome-row rules:
 - `facets` from TASKS.json; `scopeSize` = `.scope|length`.
@@ -160,21 +160,21 @@ Outcome-row rules:
 - Remove **stale/wrong** `outcomes.jsonl` rows: e.g. a `blocked` row for a task that was later
   re-scoped and actually succeeded, or rows whose `(finalModel, finalEffort)` tuple is no longer on
   the ladder (calibration drops those anyway — remove for cleanliness). Keep the file valid
-  (`jq -e . .harness/outcomes.jsonl`), one JSON object per line.
+  (`jq -e . .harness/ledgers/outcomes.jsonl`), one JSON object per line.
 - Leave the harmless revert/build-summary churn commits in history (see guardrails).
 
 ## 6. Final readiness verification
 
 ```bash
-DRY_RUN=1 .harness/loop.sh 2>&1 | grep -iE "would build|nothing eligible|REFUS"  # next task; proves orphan won't be re-selected
+DRY_RUN=1 .harness/scripts/loop.sh 2>&1 | grep -iE "would build|nothing eligible|REFUS"  # next task; proves orphan won't be re-selected
 gh auth status 2>&1 | grep -i "logged in"          # loop needs gh to gate CI
-grep CI_WORKFLOW .harness/harness.env; grep -m1 '^name:' .github/workflows/ci.yml   # must match
+grep CI_WORKFLOW .harness/config/harness.env; grep -m1 '^name:' .github/workflows/ci.yml   # must match
 git status --porcelain                              # empty -> startup guard passes
 ```
 
 ## 7. Commit, push, report
 
-- Stage **only** the files you changed (`.harness/TASKS.json`, `.harness/outcomes.jsonl`, any
+- Stage **only** the files you changed (`.harness/TASKS.json`, `.harness/ledgers/outcomes.jsonl`, any
   `worklog/<id>.md`). One commit, message explaining the interrupt-orphan recovery + what was fixed.
   `git push` (push after committing — always). Report the SHA.
 - Finish with a concise **report**: a health table (processes / lock / tree / scratch / ledger / CI /

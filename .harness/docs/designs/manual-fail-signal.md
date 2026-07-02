@@ -80,7 +80,7 @@ Net effect: marking a UI task failed makes future UI tasks both **built with a s
 Two ways to write the same overlay; both commit + push `[skip ci]` under the **shared repo lock**
 (`repo-lock.ts` / the loop's `acquire_lock`) so they never race the loop:
 
-- **Portable (any project, no dashboard):** `.harness/mark-failed.sh <TNNN> "<reason>"`
+- **Portable (any project, no dashboard):** `.harness/scripts/mark-failed.sh <TNNN> "<reason>"`
   (and `--undo <TNNN>`). It reuses the loop's lock + paths (sourced with `LOOP_SOURCE_ONLY=1`, so the
   lock path stays byte-identical). The `/local-jobs-mark-task-failed` Claude command documents and drives it.
 - **Dashboard (this project):** a **"Mark failed"** button on the Backlog page → `POST

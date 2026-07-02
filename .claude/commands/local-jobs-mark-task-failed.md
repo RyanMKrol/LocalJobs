@@ -10,7 +10,7 @@ $ARGUMENTS
 ## What this is
 
 The autonomous build harness (the "Ralph loop") records every task it finishes as a **success** in
-its calibration ledger (`.harness/outcomes.jsonl`). Sometimes a task is marked `done` and passes CI
+its calibration ledger (`.harness/ledgers/outcomes.jsonl`). Sometimes a task is marked `done` and passes CI
 + the sampled audit, yet the owner looks at the result and judges it **not actually done** (e.g. a
 UI element that's in the DOM but never renders). Left uncorrected, that false success quietly
 degrades the harness: it teaches the difficulty tuner that the cheap model works for that kind of
@@ -37,17 +37,17 @@ git operations). It needs no dashboard and no daemon. Run it from the repo root:
 
 ```bash
 # Mark a done task failed (a reason is REQUIRED — say what was actually wrong):
-.harness/mark-failed.sh <TNNN> "<concise reason>"
+.harness/scripts/mark-failed.sh <TNNN> "<concise reason>"
 
 # Undo a previous mark:
-.harness/mark-failed.sh --undo <TNNN>
+.harness/scripts/mark-failed.sh --undo <TNNN>
 ```
 
 Steps for you (Claude) to follow:
 1. **Parse the arguments** into a task id (`T<digits>`) and a reason (everything after the id), or an
    `--undo <TNNN>` form. If the owner gave a task id but no reason for a (non-undo) mark, ASK them for
    a one-line reason before running — the reason is mandatory and is the record of what was wrong.
-2. **Run `.harness/mark-failed.sh`** with those arguments (it validates that the id exists and is a
+2. **Run `.harness/scripts/mark-failed.sh`** with those arguments (it validates that the id exists and is a
    `done` task, writes `.harness/manual-fail.json`, and commits + pushes under the lock). If the
    script reports the task isn't `done`, relay that — only recorded successes can be overturned.
 3. **Report** what was marked (id + reason), and that it was committed/pushed. Briefly note the
@@ -63,4 +63,4 @@ Steps for you (Claude) to follow:
   on a git path disjoint from everything the loop writes, so it never conflicts with the loop.
 - Projects with the dashboard can also do this from the Backlog page's **"Mark failed"** button,
   which writes the same overlay file. The script and the button are interchangeable.
-- Full design + rationale: `.harness/designs/manual-fail-signal.md`.
+- Full design + rationale: `.harness/docs/designs/manual-fail-signal.md`.

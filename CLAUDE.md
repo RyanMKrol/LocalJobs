@@ -85,8 +85,8 @@ request, and don't wait to be asked. (Respect the git hygiene rules above: never
 credentials or the gitignored private job folders / `TODO.md`.)
 
 **Why this is a hard rule in THIS repo specifically, not just good practice:** the
-autonomous build harness (`.harness/loop.sh`, run via `.harness/supervise.sh`) has
-`LOOP_AUTORESET=1` by default (see `.harness/harness.env`). If the working tree is dirty
+autonomous build harness (`.harness/scripts/loop.sh`, run via `.harness/scripts/supervise.sh`) has
+`LOOP_AUTORESET=1` by default (see `.harness/config/harness.env`). If the working tree is dirty
 when a run starts, the loop **auto-stashes everything and hard-resets to `origin/main`**
 before building — on purpose, so an unattended run always has a clean tree to start from.
 An uncommitted session's work (a backlog sweep, a new workflow, a doc rewrite) can
@@ -383,8 +383,8 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
     `reconcile_overlays`) — an authoritative TERMINAL status the loop skips (it does NOT
     re-open/rebuild; the re-do is a separate follow-up task). The Backlog page shows a
     **"Mark failed"** button on done tasks; the portable
-    `.harness/mark-failed.sh` (and `/local-jobs-mark-task-failed` command) write the same file for
-    projects with no dashboard. Full design: `.harness/designs/manual-fail-signal.md`.
+    `.harness/scripts/mark-failed.sh` (and `/local-jobs-mark-task-failed` command) write the same file for
+    projects with no dashboard. Full design: `.harness/docs/designs/manual-fail-signal.md`.
   All three overlay files are disjoint git paths from TASKS.json and from each other,
   so no writer ever conflicts with the loop or another file. The dashboard/API still
   write ONLY the overlays and NEVER touch TASKS.json — the decoupling holds. The loop is
@@ -415,7 +415,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/jobs/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/jobs/` AND `*.service.ts` under BOTH `src/services/` and `src/jobs/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
-| `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/LIMITATIONS.md`.) |
+| `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/docs/LIMITATIONS.md`.) |
 | `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
 | `src/jobs/tv-recs/` | TV show recommendations workflow. `tv-recs.workflow.ts` (monthly schedule, maxConcurrency 4); `config.ts` / `types.ts` / `lib.ts` / `recs.ts` (pure recommendation helpers); `stages/tv-snapshot.job.ts` + `tv-snapshot.ts` (Plex TV snapshot → `snapshot.json` + `taste-profile.json`); `stages/tv-rec-*.job.ts` (8 branch jobs); `stages/tv-rec-merge.job.ts` + `tv-rec-merge.ts` (TMDB-verify/dedupe/balance/top-up → `recommendations.json`); `stages/tv-recs-notify.job.ts` + `tv-recs-notify.ts` (monthly digest + report → `data/out/reports/tv-recommendations.md`). Reuses `src/jobs/plex/client.ts` for Plex connectivity. |
 | `src/jobs/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
@@ -1339,7 +1339,7 @@ doubt, log it.
 
 ## Autonomous build harness (Ralph loop)
 
-An autonomous builder (`.harness/loop.sh`, design in `.harness/HARNESS.md`) can grind through a
+An autonomous builder (`.harness/scripts/loop.sh`, design in `.harness/docs/HARNESS.md`) can grind through a
 curated backlog one fully-verified task at a time. The whole harness lives under the hidden
 `.harness/` folder, separate from project source. **When you are invoked by the loop**, obey
 this in addition to everything above:
@@ -1366,14 +1366,14 @@ this in addition to everything above:
     - **`failed` (manual-fail-signal):** lives in `.harness/manual-fail.json` (`id → { failed,
       reason, at }`). The owner's "this DONE task actually failed" correction. Set via `POST
       /api/backlog/:id/failed` (done tasks only, reason required; `{failed:false}` undoes), the
-      Backlog page's "Mark failed" button, OR the portable `.harness/mark-failed.sh` (the
+      Backlog page's "Mark failed" button, OR the portable `.harness/scripts/mark-failed.sh` (the
       `/local-jobs-mark-task-failed` command) for projects with no dashboard. Same atomic write+commit+push
       pattern. **The loop READS this overlay** (it still never WRITES it) to correct calibration —
       `policy.jq`/`pick_base` re-count the task as a failure for tier tuning, and `audit_gate` drops it
       from its cell's confirmed-audited count (built stronger + audited more). It ALSO reconciles it →
-      `TASKS.json` `status=failed` (see below). Design: `.harness/designs/manual-fail-signal.md`.
+      `TASKS.json` `status=failed` (see below). Design: `.harness/docs/designs/manual-fail-signal.md`.
     The agent must not hand-edit any of these overlay files — they are UI / owner actions. (To mark
-    a task failed when asked, use `/local-jobs-mark-task-failed` or `.harness/mark-failed.sh`, never a hand-edit.)
+    a task failed when asked, use `/local-jobs-mark-task-failed` or `.harness/scripts/mark-failed.sh`, never a hand-edit.)
     - **Overlay → status reconcile (T261/T279, `reconcile_overlays` in `loop.sh`).** The loop NEVER
       writes the overlay files, but at PRE-FLIGHT it reads `human-done`/`manual-fail` and promotes their
       verdicts into `TASKS.json` `status`: human-done → `status=done` (so a needs-human blocker actually
@@ -1401,9 +1401,9 @@ this in addition to everything above:
 - **Backlog authoring → invoke the `ralph-loop-add-to-backlog` skill (see `.harness/CLAUDE.md`).**
   Adding tasks goes through that skill (it assigns facets, pairs chooser/review tasks, runs the
   poor-fit/layer gate). Floor even on a direct `TASKS.json` edit: every BUILDABLE task carries
-  `facets` from `.harness/facets.json` (`needs-human` tasks omit them); the loop pre-flight warns
+  `facets` from `.harness/config/facets.json` (`needs-human` tasks omit them); the loop pre-flight warns
   about misses. Full rule lives in `.harness/CLAUDE.md` (loaded when you work in `.harness/`).
-- **Definition of Done mirrors CI** (`.harness/HARNESS.md` §5): `npx tsc --noEmit`, `npm test`, and
+- **Definition of Done mirrors CI** (`.harness/docs/HARNESS.md` §5): `npx tsc --noEmit`, `npm test`, and
   `npm --prefix dashboard run build` for any `dashboard/` change — all green before you commit.
 - **Verify correctness — paid calls allowed, frugally.** The ONE hard rule is **never exceed a
   service's monthly cap** (the `service_usage` quota enforces this — `callService` throws

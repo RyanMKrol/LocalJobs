@@ -15,9 +15,9 @@
 # work yourself or author a follow-up task.
 #
 # Usage:
-#   .harness/mark-failed.sh <TNNN> "<reason>"     # mark T<NNN> failed, with a short reason
-#   .harness/mark-failed.sh --undo <TNNN>         # clear a previous manual-fail
-#   NO_PUSH=1 .harness/mark-failed.sh <TNNN> ...  # write+commit but don't push (offline)
+#   .harness/scripts/mark-failed.sh <TNNN> "<reason>"     # mark T<NNN> failed, with a short reason
+#   .harness/scripts/mark-failed.sh --undo <TNNN>         # clear a previous manual-fail
+#   NO_PUSH=1 .harness/scripts/mark-failed.sh <TNNN> ...  # write+commit but don't push (offline)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
