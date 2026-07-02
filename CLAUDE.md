@@ -162,21 +162,30 @@ sorts by `pushed_at` descending, and writes the filtered list to a local `data/o
 catalog (no DynamoDB). Idempotent per GitHub numeric repo id (`repoId`) via the `work_items` ledger —
 re-scans every run so fields (description, topics, etc.) are refreshed. Stage 2, `project-summarize`
 (`dependsOn: ['github-sync']`), shallow-clones each cataloged repo into a gitignored
-`data/repos/<name>/` dir (pulling/reset instead of re-cloning if already present), reads its README,
-and calls the shared Claude CLI helper (`runClaude`, via the `claude-cli` service) to write a
-one-project markdown summary to `data/out/<repo-name>.md` — the standard `detail.markdown` shape
-(T110) so it appears automatically in the workflow's unified Output section (T205). **The output
-is an enforced template contract (T319, mirroring perfumes' `profile.template.md` pattern):**
-`buildSummaryPrompt` embeds `src/jobs/projects-sync/project.template.md` (override via
-`PROJECTS_SYNC_TEMPLATE_PATH`, config key `projectsSyncConfig.templatePath`) and instructs Claude
-to follow it exactly — YAML frontmatter (`name`/`full_name`/`url`/`language`/`topics`/`status`/
-`last_pushed`/`themes`/`domain`) plus fixed `##` sections (`What It Is`/`Tech Stack`/`Status`/
-`Structure`/`Themes & Interests`/`Notable Technical Approaches`/`Sources`) designed so the whole
-corpus of summaries is queryable for cross-project questions ("what kind of work am I interested
-in", "what have I built in domain X"). `templateShapeViolations` validates the response post-hoc
-(leading `---` + every required heading); a shape mismatch throws with the missing pieces named,
-routing through the existing `catch` → `markWorkItem(..., 'failed', ...)` path — no new failure
-mechanism. Idempotent per
+`data/repos/<name>/` dir (pulling/reset instead of re-cloning if already present), then calls Claude
+via a **DIFFERENT invocation shape from the shared `runClaude` helper (T320)**: `src/jobs/projects-sync/claude-repo.ts`'s
+`runClaudeWithRepoAccess` spawns the CLI with `cwd` set to the cloned repo dir and
+`--add-dir <repoDir> --allowedTools Read Glob Grep` (real, scoped, READ-ONLY filesystem tool access
+— deliberately no `Bash`/`Write`/`Edit` or any mutating tool), so Claude explores the actual checked-out
+project (package.json, source layout, README, other docs) itself instead of relying on a prompt-embedded
+README slice. It is still gated through the same `claude-cli` service (`callService`, same rate-limit/quota
+meter) as `runClaude` — only the CLI args/cwd differ; `src/services/claude.ts`'s `runClaude` itself is
+UNCHANGED and still used, unmodified, by the perfumes build stage and the movies recommender branches.
+The prompt (`buildSummaryPrompt`) still embeds the catalog metadata GitHub knows (name/description/
+language/topics/pushedAt/url — unreachable from local file exploration alone) and instructs Claude to
+explore the repo itself for everything else, writing a one-project markdown summary to
+`data/out/<repo-name>.md` — the standard `detail.markdown` shape (T110) so it appears automatically in
+the workflow's unified Output section (T205). **The output is an enforced template contract (T319,
+mirroring perfumes' `profile.template.md` pattern):** `buildSummaryPrompt` embeds
+`src/jobs/projects-sync/project.template.md` (override via `PROJECTS_SYNC_TEMPLATE_PATH`, config key
+`projectsSyncConfig.templatePath`) and instructs Claude to follow it exactly — YAML frontmatter
+(`name`/`full_name`/`url`/`language`/`topics`/`status`/`last_pushed`/`themes`/`domain`) plus fixed `##`
+sections (`What It Is`/`Tech Stack`/`Status`/`Structure`/`Themes & Interests`/`Notable Technical
+Approaches`/`Sources`) designed so the whole corpus of summaries is queryable for cross-project questions
+("what kind of work am I interested in", "what have I built in domain X"). `templateShapeViolations`
+validates the response post-hoc (leading `---` + every required heading); a shape mismatch throws with
+the missing pieces named, routing through the existing `catch` → `markWorkItem(..., 'failed', ...)` path
+— no new failure mechanism. Idempotent per
 repo via a commit-sha-equivalent marker (the catalog's `pushedAt`): a repo whose stored marker
 already matches the catalog's current value is skipped entirely (no clone, no Claude call) — there is
 no separate calendar-based skip. Runs weekly, Sunday at 05:00.

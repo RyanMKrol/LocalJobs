@@ -10,6 +10,7 @@ import { describe, it, beforeEach } from 'node:test';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { runProjectSummarize, buildSummaryPrompt } from './project-summarize.js';
+import { buildRepoAccessArgs, REPO_ACCESS_ALLOWED_TOOLS } from '../claude-repo.js';
 import type { CatalogEntry } from './github-sync.js';
 
 function fakeCtx(): JobContext {
@@ -79,8 +80,7 @@ describe('project-summarize', () => {
     await runProjectSummarize(fakeCtx(), {
       readCatalog: () => [entry],
       cloneOrPull: async (url, dest) => { cloneCalls.push([url, dest]); },
-      readReadme: () => '# My Repo\nDoes cool stuff.',
-      summarize: async (prompt) => { claudeCalls.push(prompt); return { ok: true, text: conformantSummary(entry) }; },
+      summarizeWithRepoAccess: async (prompt) => { claudeCalls.push(prompt); return { ok: true, text: conformantSummary(entry) }; },
       writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
     });
 
@@ -112,8 +112,7 @@ describe('project-summarize', () => {
     await runProjectSummarize(fakeCtx(), {
       readCatalog: () => [entry],
       cloneOrPull: async (url, dest) => { cloneCalls.push([url, dest]); },
-      readReadme: () => '',
-      summarize: async (prompt) => { claudeCalls.push(prompt); return { ok: true, text: '' }; },
+      summarizeWithRepoAccess: async (prompt) => { claudeCalls.push(prompt); return { ok: true, text: '' }; },
       writeMarkdown: () => {},
     });
 
@@ -121,12 +120,12 @@ describe('project-summarize', () => {
     assert.equal(claudeCalls.length, 0);
   });
 
-  it('builds a prompt that includes repo metadata and README content', () => {
+  it('builds a prompt that includes repo metadata and instructs Claude to explore the repo itself', () => {
     const entry = makeEntry({ description: 'Does a thing', language: 'Go' });
-    const prompt = buildSummaryPrompt(entry, '# Readme body');
+    const prompt = buildSummaryPrompt(entry);
     assert.match(prompt, /Does a thing/);
     assert.match(prompt, /Go/);
-    assert.match(prompt, /Readme body/);
+    assert.match(prompt, /Explore it/);
   });
 
   it('accepts a template-conformant summary — marks success and writes markdown', async () => {
@@ -136,8 +135,7 @@ describe('project-summarize', () => {
     await runProjectSummarize(fakeCtx(), {
       readCatalog: () => [entry],
       cloneOrPull: async () => {},
-      readReadme: () => '# My Repo',
-      summarize: async () => ({ ok: true, text: conformantSummary(entry) }),
+      summarizeWithRepoAccess: async () => ({ ok: true, text: conformantSummary(entry) }),
       writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
     });
 
@@ -164,8 +162,7 @@ describe('project-summarize', () => {
     await runProjectSummarize(fakeCtx(), {
       readCatalog: () => [entry],
       cloneOrPull: async () => {},
-      readReadme: () => '',
-      summarize: async () => ({ ok: true, text: nonConformant }),
+      summarizeWithRepoAccess: async () => ({ ok: true, text: nonConformant }),
       writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
     });
 
@@ -173,5 +170,43 @@ describe('project-summarize', () => {
     const row = getWorkItem('project-summarize', entry.repoId);
     assert.ok(row);
     assert.equal(row!.status, 'failed');
+  });
+
+  it('calls summarizeWithRepoAccess with the cloned repo dir as the target directory', async () => {
+    const entry = makeEntry();
+    let seenRepoDir: string | undefined;
+
+    await runProjectSummarize(fakeCtx(), {
+      readCatalog: () => [entry],
+      cloneOrPull: async () => {},
+      summarizeWithRepoAccess: async (_prompt, _model, repoDir) => {
+        seenRepoDir = repoDir;
+        return { ok: true, text: conformantSummary(entry) };
+      },
+      writeMarkdown: () => {},
+    });
+
+    assert.ok(seenRepoDir);
+    assert.match(seenRepoDir!, /my-repo$/);
+  });
+});
+
+describe('claude-repo invocation args', () => {
+  it('builds args with cwd-scoped --add-dir and read-only --allowedTools', () => {
+    const repoDir = '/tmp/some-cloned-repo';
+    const args = buildRepoAccessArgs('claude-sonnet-5', repoDir, 'medium');
+
+    const addDirIdx = args.indexOf('--add-dir');
+    assert.ok(addDirIdx !== -1);
+    assert.equal(args[addDirIdx + 1], repoDir);
+
+    const allowedIdx = args.indexOf('--allowedTools');
+    assert.ok(allowedIdx !== -1);
+    const allowed = args.slice(allowedIdx + 1, allowedIdx + 1 + REPO_ACCESS_ALLOWED_TOOLS.length);
+    assert.deepEqual(allowed, REPO_ACCESS_ALLOWED_TOOLS);
+
+    for (const mutating of ['Bash', 'Write', 'Edit']) {
+      assert.ok(!args.includes(mutating), `expected ${mutating} not to be in allowed-tools args`);
+    }
   });
 });

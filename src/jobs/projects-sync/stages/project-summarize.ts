@@ -43,15 +43,13 @@ const FALLBACK_TEMPLATE = [
   '',
 ].join('\n');
 
-import { runClaude } from '../../../services/claude.js';
+import { runClaudeWithRepoAccess } from '../claude-repo.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { projectsSyncConfig } from '../config.js';
 import type { CatalogEntry } from './github-sync.js';
 
 const JOB_NAME = 'project-summarize';
-
-const README_CANDIDATES = ['README.md', 'Readme.md', 'README', 'readme.md'];
 
 export const claudeModel = process.env.PROJECTS_SYNC_CLAUDE_MODEL ?? 'claude-sonnet-5';
 export const claudeEffort = process.env.PROJECTS_SYNC_CLAUDE_EFFORT ?? 'medium';
@@ -86,27 +84,18 @@ export async function cloneOrPullRepo(repoUrl: string, dest: string): Promise<vo
   }
 }
 
-export type ClaudeSummarizer = (prompt: string, model: string, effort?: string) => Promise<{ ok: boolean; text: string; error?: string }>;
+export type ClaudeSummarizer = (prompt: string, model: string, repoDir: string, effort?: string) => Promise<{ ok: boolean; text: string; error?: string }>;
 
 // ---------------------------------------------------------------------------
-// Repo context (README + metadata)
+// Prompt building — Claude has its own read-only filesystem access to the
+// cloned repo (via runClaudeWithRepoAccess), so the prompt embeds only the
+// catalog metadata GitHub knows (name/description/language/topics/pushedAt/url
+// — there is no way to learn these from local file exploration alone) and
+// instructs Claude to explore the repo itself (package.json, source layout,
+// README, other docs) rather than embedding README text inline.
 // ---------------------------------------------------------------------------
 
-export function readRepoReadme(repoDir: string): string {
-  for (const name of README_CANDIDATES) {
-    const path = resolve(repoDir, name);
-    if (existsSync(path)) {
-      try {
-        return readFileSync(path, 'utf-8');
-      } catch {
-        return '';
-      }
-    }
-  }
-  return '';
-}
-
-export function buildSummaryPrompt(entry: CatalogEntry, readme: string): string {
+export function buildSummaryPrompt(entry: CatalogEntry): string {
   const template = existsSync(projectsSyncConfig.templatePath)
     ? readFileSync(projectsSyncConfig.templatePath, 'utf-8')
     : FALLBACK_TEMPLATE;
@@ -123,14 +112,15 @@ export function buildSummaryPrompt(entry: CatalogEntry, readme: string): string 
     `Last pushed: ${entry.pushedAt}`,
     `URL: ${entry.url}`,
     ``,
-    `README contents:`,
-    readme ? readme.slice(0, 8000) : '(no README found)',
+    `The project's repository is checked out at your current working directory. Explore it`,
+    `yourself using your read-only tools (package.json, source layout, README, other docs you`,
+    `find) to learn what it actually is, its tech stack, structure, and notable approaches.`,
     ``,
     `Cover: what the project is, what it's for / what it covers, its last-commit date and an`,
     `active/dormant judgement, and the broader interests/domains/technical approaches it reflects`,
     `(these support later cross-project queries like "what kind of work is Ryan interested in").`,
-    `NEVER invent facts you cannot support from the data above — use "unknown" or leave prose`,
-    `honest about gaps.`,
+    `NEVER invent facts you cannot support from the data above or from files you actually read —`,
+    `use "unknown" or leave prose honest about gaps.`,
     ``,
     `Reply with ONLY the Markdown file content, starting at the opening "---" — no code fences,`,
     `no commentary.`,
@@ -180,8 +170,7 @@ export async function runProjectSummarize(
   opts: {
     readCatalog?: () => CatalogEntry[];
     cloneOrPull?: GitCloneOrPull;
-    summarize?: ClaudeSummarizer;
-    readReadme?: (repoDir: string) => string;
+    summarizeWithRepoAccess?: ClaudeSummarizer;
     writeMarkdown?: (path: string, content: string) => void;
   } = {},
 ): Promise<void> {
@@ -190,8 +179,7 @@ export async function runProjectSummarize(
     return JSON.parse(raw) as CatalogEntry[];
   });
   const cloneOrPull = opts.cloneOrPull ?? cloneOrPullRepo;
-  const summarize = opts.summarize ?? runClaude;
-  const readReadme = opts.readReadme ?? readRepoReadme;
+  const summarize = opts.summarizeWithRepoAccess ?? runClaudeWithRepoAccess;
   const writeMarkdown = opts.writeMarkdown ?? ((path: string, content: string) => {
     mkdirSync(projectsSyncConfig.outDir, { recursive: true });
     writeFileSync(path, content);
@@ -228,11 +216,8 @@ export async function runProjectSummarize(
       ctx.log(`info: cloning/pulling ${entry.url} -> ${dest}`);
       await cloneOrPull(entry.url, dest);
 
-      const readme = readReadme(dest);
-      ctx.log(`info: read README for ${entry.fullName} (${readme.length} chars)`);
-
-      const prompt = buildSummaryPrompt(entry, readme);
-      const result = await summarize(prompt, claudeModel, claudeEffort);
+      const prompt = buildSummaryPrompt(entry);
+      const result = await summarize(prompt, claudeModel, dest, claudeEffort);
       if (!result.ok) {
         throw new Error(`claude summarize failed: ${result.error ?? 'unknown error'}`);
       }
