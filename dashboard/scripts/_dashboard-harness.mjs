@@ -371,15 +371,19 @@ export const FLOWS = [
     },
   },
   {
-    // The 🎨 theme/font/mode picker popover, opened from the header.
-    // viewport: true — the modal backdrop only covers the viewport, so a fullPage
-    // screenshot shows the page below the fold un-dimmed, misrepresenting how it looks.
-    name: 'overview-theme-picker',
+    // T308: the theme/font/mode picker popover was replaced by a single sun/moon
+    // toggle button — click it and capture the resulting (opposite-of-default)
+    // data-mode so the toggled look is visible in a screenshot.
+    name: 'overview-theme-toggle',
     path: '/',
-    viewport: true,
     actions: async (page) => {
+      const before = await page.evaluate(() => document.documentElement.getAttribute('data-mode'));
       await page.click('.theme-trigger');
-      await page.waitForSelector('.theme-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForFunction(
+        (prev) => document.documentElement.getAttribute('data-mode') !== prev,
+        before,
+        { timeout: 5000 },
+      );
     },
   },
 ];

@@ -368,26 +368,20 @@ export function StuckPopover({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Theme-family / font / motion switcher (T184 — curated from the T142/T154
-   evaluation set down to the owner's keepers)
+   Light/dark mode toggle (T308 — supersedes the T184 theme-family/font
+   switcher; the dashboard's theme + font are now hardcoded in globals.css /
+   layout.tsx). `useTheme`/`useFont`/`useMotion` and the FONTS/THEMES arrays
+   from the old switcher are left below (unused) for T309 to remove.
 
-   Mirrors the existing persisted-chooser pattern: small `use…()` hooks back
-   each axis with localStorage and apply it to `document.documentElement`
-   (`data-theme` / `data-font` / `data-motion`), so every page reacts live and
-   the choice survives reloads. A pre-paint script in layout.tsx sets the same
-   attributes BEFORE first paint (no flash).
-
-   The switcher chooses the theme FAMILY (`default` / `pixel-picnic` /
-   `sunny-8bit`) and the light/dark MODE (Dark/Light/System, T190). System (the
-   default) follows the OS `prefers-color-scheme`; Dark/Light force a fixed mode.
-   The choice persists to `localStorage` under `localjobs.mode`. The `default`
-   family's DARK mode is the original pre-T142 dark look (the :root palette), so
-   an untouched dashboard on a dark-OS viewer is exactly the familiar dark
-   dashboard; logs keep their fixed dark-terminal palette in BOTH modes.
+   `useMode` backs a single `data-mode` html attribute with localStorage under
+   `localjobs.mode`, so every page reacts live and the choice survives reloads.
+   A pre-paint script in layout.tsx sets the same attribute BEFORE first paint
+   (no flash). The untouched (nothing stored) state follows the OS
+   `prefers-color-scheme`; once toggled it's an explicit, persisted choice —
+   strictly binary, no "System" option to return to.
    ────────────────────────────────────────────────────────────────────────── */
 
-// Three theme FAMILIES (T184). Each has a light + dark palette in globals.css;
-// the mode is chosen by the viewer (Dark/Light/System), not here.
+// Three theme FAMILIES (T184, unused since T308 — kept for T309 to remove).
 export type ThemeId = 'default' | 'pixel-picnic' | 'sunny-8bit';
 
 export const THEMES: { id: ThemeId; label: string; emoji: string }[] = [
@@ -396,8 +390,7 @@ export const THEMES: { id: ThemeId; label: string; emoji: string }[] = [
   { id: 'sunny-8bit',   label: 'Sunny 8-bit',  emoji: '🕹️' },
 ];
 
-// Three fonts (T184): the unset System default, Baloo 2 (rounded body), and
-// Space Mono. Baloo 2 uses a lighter heading weight so headers read crisp.
+// Three fonts (T184, unused since T308 — kept for T309 to remove).
 export type FontId = 'system' | 'baloo' | 'spacemono';
 
 export const FONTS: { id: FontId; label: string }[] = [
@@ -412,7 +405,8 @@ const prefersReducedMotion = () => {
 };
 
 /** Back a single `data-*` html attribute with localStorage. `fallback` is the
- *  "untouched" value: it removes the attribute + key (so the default look wins). */
+ *  "untouched" value: it removes the attribute + key (so the default look wins).
+ *  Unused since T308 (kept for T309 to remove along with useTheme/useFont). */
 function useHtmlPref<T extends string>(key: string, attr: string, fallback: T) {
   const [val, setVal] = useState<T>(fallback);
 
@@ -439,57 +433,51 @@ function useHtmlPref<T extends string>(key: string, attr: string, fallback: T) {
 export function useTheme() { return useHtmlPref<ThemeId>('localjobs.theme', 'data-theme', 'default'); }
 export function useFont() { return useHtmlPref<FontId>('localjobs.font', 'data-font', 'system'); }
 
-// Three mode choices (T190): explicit Dark/Light, or System (follow OS preference).
-export type ModeId = 'dark' | 'light' | 'system';
-
-export const MODES: { id: ModeId; label: string }[] = [
-  { id: 'system', label: 'System' },
-  { id: 'light',  label: 'Light' },
-  { id: 'dark',   label: 'Dark' },
-];
+// Binary mode (T308 — supersedes the T190 Dark/Light/System tri-state; there is
+// no "System" choice to pick once toggled, only the untouched pre-toggle state
+// follows the OS preference).
+export type ModeId = 'dark' | 'light';
 
 /** Pure helper: maps the stored mode choice + OS dark-preference → effective data-mode value.
- *  Default (no stored choice) = System. */
+ *  No stored choice = follow the OS preference. */
 export function resolveMode(stored: ModeId | null, osPrefersDark: boolean): 'light' | 'dark' {
   if (stored === 'dark') return 'dark';
   if (stored === 'light') return 'light';
   return osPrefersDark ? 'dark' : 'light';
 }
 
-/** User-chosen Dark/Light/System mode, written to the `data-mode` html attribute.
- *  The pre-paint script sets it first (no flash); this keeps it in sync after
- *  hydration and reacts to OS-preference changes when System is selected. */
-export function useMode(): [ModeId, (m: ModeId) => void] {
-  const [mode, setMode] = useState<ModeId>('system');
+/** Light/dark mode, written to the `data-mode` html attribute. The pre-paint
+ *  script sets it first (no flash); this keeps it in sync after hydration and,
+ *  until the viewer makes an explicit choice, reacts live to OS-preference
+ *  changes. `toggle()` flips the EFFECTIVE mode and persists it as an explicit
+ *  choice — there is no way back to following the OS preference afterwards. */
+export function useMode(): [ModeId, () => void] {
+  const [mode, setMode] = useState<ModeId>('dark');
 
   useEffect(() => {
     const stored = window.localStorage.getItem('localjobs.mode') as ModeId | null;
-    const validModes: ModeId[] = ['dark', 'light', 'system'];
-    const effective = stored && validModes.includes(stored) ? stored : 'system';
-    setMode(effective);
-
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       const cur = window.localStorage.getItem('localjobs.mode') as ModeId | null;
-      document.documentElement.setAttribute('data-mode', resolveMode(cur as ModeId | null, mq.matches));
+      const effective = resolveMode(cur, mq.matches);
+      setMode(effective);
+      document.documentElement.setAttribute('data-mode', effective);
     };
     apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
+    if (!stored) {
+      mq.addEventListener('change', apply);
+      return () => mq.removeEventListener('change', apply);
+    }
   }, []);
 
-  const update = (v: ModeId) => {
-    setMode(v);
-    if (v === 'system') {
-      window.localStorage.removeItem('localjobs.mode');
-    } else {
-      window.localStorage.setItem('localjobs.mode', v);
-    }
-    const osPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.setAttribute('data-mode', resolveMode(v, osPrefersDark));
+  const toggle = () => {
+    const next: ModeId = mode === 'dark' ? 'light' : 'dark';
+    setMode(next);
+    window.localStorage.setItem('localjobs.mode', next);
+    document.documentElement.setAttribute('data-mode', next);
   };
 
-  return [mode, update];
+  return [mode, toggle];
 }
 
 /** Reduce-motion / minimal-emoji toggle. Tri-state storage: explicit 'reduced' /
@@ -573,95 +561,24 @@ function fallbackCopy(text: string) {
 }
 
 /**
- * Compact, unobtrusive settings control rendered in the header on EVERY page: a
- * single 🎨 button that opens a small popover offering Theme · Font · Reduce
- * motion. Built as a fixed-position modal so it never widens the header (keeps
- * the mobile check green) and is reachable at phone width.
+ * Compact, unobtrusive control rendered in the header on EVERY page (T308): a
+ * single sun/moon icon button that flips light↔dark mode directly on click —
+ * no popover/modal, no theme-family or font choice.
  */
 export function ThemeControls() {
-  const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useTheme();
-  const [font, setFont] = useFont();
-  const [reduced, setReduced] = useMotion();
-  const [mode, setMode] = useMode();
+  const [mode, toggle] = useMode();
+  const isDark = mode === 'dark';
 
   return (
     <div className="theme-controls">
       <button
         className="theme-trigger"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        title="Theme & font"
+        onClick={toggle}
+        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       >
-        🎨<span className="theme-trigger-label"> Theme</span>
+        <span aria-hidden="true">{isDark ? '🌙' : '☀️'}</span>
       </button>
-      {open && (
-        <div className="db-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className="db-modal theme-modal" role="dialog" aria-modal="true" aria-label="Theme settings">
-            <div className="db-modal-header">
-              <span>🎨 Appearance</span>
-              <button className="db-modal-close" onClick={() => setOpen(false)} aria-label="Close">×</button>
-            </div>
-            <div className="db-modal-body">
-              <div className="theme-section">
-                <div className="theme-section-label">Theme</div>
-                <div className="theme-grid">
-                  {THEMES.map((t) => (
-                    <button
-                      key={t.id}
-                      className={`theme-opt${theme === t.id ? ' active' : ''}`}
-                      onClick={() => setTheme(t.id)}
-                      title={`${t.label} theme`}
-                    >
-                      <span aria-hidden="true">{t.emoji}</span> {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="theme-section">
-                <div className="theme-section-label">Font</div>
-                <div className="theme-grid">
-                  {FONTS.map((f) => (
-                    <button
-                      key={f.id}
-                      className={`theme-opt${font === f.id ? ' active' : ''}`}
-                      onClick={() => setFont(f.id)}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="theme-section">
-                <div className="theme-section-label">Mode</div>
-                <div className="theme-grid">
-                  {MODES.map((m) => (
-                    <button
-                      key={m.id}
-                      className={`theme-opt${mode === m.id ? ' active' : ''}`}
-                      onClick={() => setMode(m.id)}
-                      title={m.id === 'system' ? 'Follow OS preference (default)' : `Force ${m.label} mode`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="theme-section-hint">System follows your OS dark/light preference.</p>
-              </div>
-
-              <div className="theme-section">
-                <label className="toggle theme-motion">
-                  <input type="checkbox" checked={reduced} onChange={(e) => setReduced(e.target.checked)} />
-                  Reduce motion &amp; minimise emoji
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

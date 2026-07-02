@@ -1,6 +1,6 @@
 import './globals.css';
 import type { ReactNode } from 'react';
-import { Baloo_2, Space_Mono } from 'next/font/google';
+import { Baloo_2 } from 'next/font/google';
 import { ThemeControls } from './ui';
 
 export const metadata = {
@@ -15,36 +15,24 @@ export const viewport = {
   initialScale: 1,
 };
 
-// ── Curated font set (T184) ─────────────────────────────────────────────────
-// The owner picked the two keepers from the T142/T154 experiment: Baloo 2 (a
-// rounded body face) and Space Mono. The third option is the unset System
-// default. Each is loaded once via next/font/google (self-hosted, `display:
-// swap` so there's no blocking FOUC) and exposes a CSS custom property attached
-// to <html>; the font *switcher* remaps `--font-display`/`--font-body`/
-// `--font-mono` to one of them via `html[data-font="…"]` in globals.css.
+// ── Hardcoded font (T308) ────────────────────────────────────────────────────
+// The dashboard's appearance is hardcoded to the sunny-8bit theme + Baloo 2 —
+// no theme/font switcher. Loaded once via next/font/google (self-hosted,
+// `display: swap` so there's no blocking FOUC) and exposed as a CSS custom
+// property attached to <html>; globals.css's base `:root` maps
+// `--font-display`/`--font-body` to it.
 const baloo = Baloo_2({ subsets: ['latin'], variable: '--font-baloo', display: 'swap' });
-const spaceMono = Space_Mono({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-spacemono', display: 'swap' });
 
-const fontVars = [baloo, spaceMono].map((f) => f.variable).join(' ');
+const fontVars = baloo.variable;
 
-// Inline pre-paint script: applies the persisted theme-family / font / motion / mode
-// choices to <html> BEFORE first paint so there's no flash. Mirrors
-// useTheme/useFont/useMotion/useMode in ui.tsx.
-// Mode (localjobs.mode): 'dark'→force dark, 'light'→force light, 'system'/absent→
-// follow OS prefers-color-scheme. The `default` family's DARK mode is the original
-// pre-T142 dark look (the :root palette); its light mode is the new counterpart.
-// Nothing stored keeps the system font; motion honours the OS `prefers-reduced-motion`
-// until overridden.
+// Inline pre-paint script: applies the persisted light/dark mode choice to <html>
+// BEFORE first paint so there's no flash. Mirrors useMode in ui.tsx.
+// 'dark'→force dark, 'light'→force light, absent→follow OS prefers-color-scheme.
 const PREPAINT = `(function(){try{
 var d=document.documentElement,L=window.localStorage;
 var mo=L.getItem('localjobs.mode');
 var dark=mo==='dark'||(mo!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
 d.setAttribute('data-mode',dark?'dark':'light');
-var t=L.getItem('localjobs.theme'); if(t&&t!=='default') d.setAttribute('data-theme',t);
-var f=L.getItem('localjobs.font'); if(f&&f!=='system') d.setAttribute('data-font',f);
-var m=L.getItem('localjobs.motion');
-var reduced=m==='reduced'||(m==null&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-if(reduced) d.setAttribute('data-motion','reduced');
 }catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
