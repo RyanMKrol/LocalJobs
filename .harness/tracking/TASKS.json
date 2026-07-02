@@ -8641,7 +8641,7 @@
     {
       "id": "T326",
       "title": "Remove the \"TMDB status\" column from the Missing Seasons table (Franchise Gaps unaffected)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
