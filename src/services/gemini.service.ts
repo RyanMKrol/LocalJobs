@@ -13,6 +13,7 @@ const dailyCap = Number(process.env.PLACES_LLM_DAILY_CAP ?? dailyFromMonthly(mon
 
 const service: ServiceDefinition = {
   name: 'gemini',
+  category: 'api',
   description: 'Google Gemini API (paid). Editorial / LLM enrichment.',
   ratePerMinute: Number(process.env.GEMINI_RATE_PER_MIN ?? 10),
   dailyCap,

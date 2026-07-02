@@ -8,6 +8,7 @@ import type { ServiceDefinition } from '../core/types.js';
  */
 const service: ServiceDefinition = {
   name: 'hevy',
+  category: 'api',
   description: 'Hevy workout API — paginated workout ingestion.',
   ratePerMinute: Number(process.env.HEVY_RATE_PER_MIN ?? 20),
   dailyCap: Number(process.env.HEVY_DAILY_CAP ?? 500),

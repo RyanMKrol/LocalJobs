@@ -7,6 +7,7 @@ import type { ServiceDefinition } from '../core/types.js';
  *  imports nothing from a workflow. Not paid, so no daily/monthly quota. */
 const service: ServiceDefinition = {
   name: 'tmdb',
+  category: 'api',
   description: 'The Movie DB API (free). Season/episode metadata for the Plex new-seasons audit.',
   ratePerMinute: Number(process.env.TMDB_RATE_PER_MIN ?? 600),
   paid: false,

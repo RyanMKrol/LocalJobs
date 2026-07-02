@@ -13,6 +13,7 @@ import type { ServiceDefinition } from '../core/types.js';
  */
 const service: ServiceDefinition = {
   name: 'trading212',
+  category: 'api',
   description:
     'Trading212 Public API (https://docs.trading212.com/api) — READ-ONLY portfolio ' +
     'fetch only. No mutating requests are ever made.',

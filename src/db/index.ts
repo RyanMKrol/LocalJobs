@@ -44,6 +44,14 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec('ALTER TABLE services ADD COLUMN limits_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Additive migration: manifest-owned category label on services (T305, mirrors the
+  // workflows `category` migration below). No `_overridden` column — always refreshed
+  // from the manifest on sync (see upsertServiceStmt). No index on this column, so no
+  // bootstrap-index trap (T098).
+  if (!svcCols.some((c) => c.name === 'category')) {
+    db.exec("ALTER TABLE services ADD COLUMN category TEXT NOT NULL DEFAULT ''");
+  }
+
   // Additive migration: user-owned schedule override flag on workflows (T135).
   // Like `limits_overridden` on services, this lets a dashboard edit take ownership
   // of the cron `schedule` so a later code-sync preserves it (see upsertWorkflowStmt).

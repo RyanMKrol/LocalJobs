@@ -123,6 +123,7 @@ export async function dynamoBatchWrite(
 
 const service: ServiceDefinition = {
   name: 'dynamodb',
+  category: 'api',
   description: 'AWS DynamoDB — shared ingestion client (free-tier-aware).',
   ratePerMinute: Number(process.env.DYNAMODB_RATE_PER_MIN ?? 30),
   dailyCap,

@@ -681,6 +681,25 @@ console.log('  ✓ run-limit fan-out: ALL descendants of the selected root run; 
 }
 console.log('  ✓ service limit override persists + survives code-sync (reconciled like enabled)');
 
+// ── service `category` is manifest-owned only — always tracks code, no override (T305) ──
+{
+  syncService({ name: 't-cat-a', category: 'cli-tool', paid: false });
+  syncService({ name: 't-cat-b', paid: false }); // no category set
+
+  assert.equal(getServiceRow('t-cat-a')?.category, 'cli-tool', 'category matches manifest value');
+  assert.equal(getServiceRow('t-cat-b')?.category, 'uncategorized', 'omitted category falls back to uncategorized');
+
+  const listed = listServices();
+  assert.equal(listed.find((s) => s.name === 't-cat-a')?.category, 'cli-tool');
+  assert.equal(listed.find((s) => s.name === 't-cat-b')?.category, 'uncategorized');
+
+  // re-sync with a DIFFERENT category value must update it — unlike rate/daily/monthly
+  // caps, category has no `_overridden` column and no preservation behavior.
+  syncService({ name: 't-cat-a', category: 'api', paid: false });
+  assert.equal(getServiceRow('t-cat-a')?.category, 'api', 'category always tracks the latest manifest value');
+}
+console.log('  ✓ service category is manifest-owned, always refreshed on sync (T305)');
+
 // ── callService enforces the OVERRIDE, not just the code default (T018) ──
 // A tighter user override must take effect: lowering the monthly quota below the
 // code default makes callService soft-fail earlier.

@@ -960,6 +960,18 @@ doubt, log it.
   `dailyFromMonthly`), NOT in a workflow config. The registry discovers services
   from `src/services/` (and still scans `src/jobs/` so a private job MAY colocate a
   service it owns).
+- **A service's `category` is manifest-owned only — no dashboard edit UI (T305,
+  mirrors workflow `category` from T292).** Like workflow `category`, a service's
+  `category` is a pure grouping label (for the Services dashboard page) with NO
+  `_overridden` column and NO edit endpoint: `syncService` always refreshes it from
+  the manifest's `category` field on every sync (same as `description`/`paid`), so
+  there is nothing for the owner to override. Controlled values: `'cli-tool'`
+  (`claude-cli`), `'website-scrape'` (`fragrantica`), `'api'` (the remaining
+  services — `gemini`, `github`, `google-places`, `hevy`, `lastfm`, `tmdb`,
+  `trading212`, `dynamodb`). A manifest with no `category` set defaults to
+  `'uncategorized'`. The `category` column is added by `schema.sql` (fresh DBs) +
+  an additive `ALTER TABLE` migration in `index.ts` (existing DBs, per the T098
+  rule — no index on the new column).
 - **Services (cross-job shared APIs).** For an external dependency called from
   multiple jobs (e.g. Gemini, Google Places, Fragrantica, Claude CLI), define a
   self-contained `ServiceDefinition` in `src/services/<name>.service.ts` and call

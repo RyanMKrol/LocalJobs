@@ -268,4 +268,8 @@ export interface ServiceDefinition {
   monthlyCap?: number;
   /** Whether calls cost real money (paid APIs get extra care in testing/UI). */
   paid?: boolean;
+  /** Grouping label for the Services dashboard page. Controlled values:
+   *  'cli-tool' | 'website-scrape' | 'api'. Omit to fall back to 'uncategorized'.
+   *  Manifest-owned only — no dashboard edit UI, refreshed from code on every sync. */
+  category?: string;
 }

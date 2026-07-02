@@ -9,6 +9,7 @@ import type { ServiceDefinition } from '../core/types.js';
  *  no marginal per-call charge under the plan. */
 const service: ServiceDefinition = {
   name: 'claude-cli',
+  category: 'cli-tool',
   description: 'Claude Code CLI (`claude -p`). No local cap: usage is capped UPSTREAM by the Claude plan and fails out gracefully when hit (the loop backs off; jobs soft-fail). Sequential use.',
   paid: false,
 };

@@ -12,6 +12,7 @@ const dailyCap = Number(process.env.PLACES_ENRICH_DAILY_CAP ?? dailyFromMonthly(
 
 const service: ServiceDefinition = {
   name: 'google-places',
+  category: 'api',
   description: 'Google Places API (paid / limited free tier). Place details enrichment.',
   ratePerMinute: Number(process.env.PLACES_RATE_PER_MIN ?? 30),
   dailyCap,

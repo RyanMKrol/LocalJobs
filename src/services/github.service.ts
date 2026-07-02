@@ -11,6 +11,7 @@ import type { ServiceDefinition } from '../core/types.js';
  */
 const service: ServiceDefinition = {
   name: 'github',
+  category: 'api',
   description: 'GitHub REST API — fetch user repos, rate-limited conservatively.',
   ratePerMinute: Number(process.env.GITHUB_RATE_PER_MIN ?? 30),
   dailyCap: Number(process.env.GITHUB_DAILY_CAP ?? 200),

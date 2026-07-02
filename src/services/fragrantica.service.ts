@@ -11,6 +11,7 @@ import type { ServiceDefinition } from '../core/types.js';
  *  needed: reputable cookies AND human-paced timing. */
 const service: ServiceDefinition = {
   name: 'fragrantica',
+  category: 'website-scrape',
   description: 'Fragrantica page fetches (headless). Free; fixed-spacing to dodge Cloudflare.',
   minIntervalMs: Number(process.env.PERFUMES_FETCH_DELAY_MS ?? 12_000),
   maxJitterMs: Number(process.env.PERFUMES_FETCH_JITTER_MS ?? 6000),

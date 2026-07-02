@@ -184,6 +184,7 @@ CREATE INDEX IF NOT EXISTS idx_workflow_run_logs ON workflow_run_logs(workflow_r
 CREATE TABLE IF NOT EXISTS services (
   name              TEXT PRIMARY KEY,
   description       TEXT NOT NULL DEFAULT '',
+  category          TEXT NOT NULL DEFAULT '',
   rate_per_minute   INTEGER,                 -- NULL = no throttle
   daily_cap         INTEGER,                 -- NULL = no daily quota
   monthly_cap       INTEGER,                 -- NULL = no monthly quota
