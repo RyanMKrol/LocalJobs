@@ -17,14 +17,17 @@ Rules:
   a thought precisely so it doesn't interrupt the current flow; honour that.
 - If `.harness/IDEAS.md` doesn't exist yet, create it with a `# Ideas inbox` heading and a `## Inbox`
   section, then add the bullet.
-- Append under `## Inbox` as `- <the idea text>`, preserving any existing bullets. **Capture as much
-  as you can** — the full substance of what the user described, in their meaning, PLUS any context
-  you already have that will help understand it later: relevant code anchors (`path:line`), the root
-  cause, related tasks/ideas, and why it matters. There is **no length limit** — a long, detailed
-  bullet is good. The ONE thing you must not do is *resolve* the idea: no design decisions, no
-  scoping, no acceptance criteria, no choosing between options, no inventing requirements the user
-  didn't imply. That deeper digging is deferred to `/local-jobs-convert-ideas`. Enrich ONLY from what you
-  already know — never by asking. In short: capture everything that helps *understand* the idea;
-  defer everything that *decides* it.
+- Append under `## Inbox` as a **numbered bullet** (`<N>. <the idea text>`), preserving any existing
+  bullets. `N` is one greater than the HIGHEST bullet number currently in the file (scan every
+  existing `<digits>. ` bullet under `## Inbox` and take max + 1 — do NOT just count bullets, since a
+  converted/deleted idea leaves a gap and numbers are never renumbered or reused, see T328). If the
+  inbox is empty, start at `1`. **Capture as much as you can** — the full substance of what the user
+  described, in their meaning, PLUS any context you already have that will help understand it later:
+  relevant code anchors (`path:line`), the root cause, related tasks/ideas, and why it matters. There
+  is **no length limit** — a long, detailed bullet is good. The ONE thing you must not do is *resolve*
+  the idea: no design decisions, no scoping, no acceptance criteria, no choosing between options, no
+  inventing requirements the user didn't imply. That deeper digging is deferred to
+  `/local-jobs-convert-ideas`. Enrich ONLY from what you already know — never by asking. In short:
+  capture everything that helps *understand* the idea; defer everything that *decides* it.
 - `.harness/IDEAS.md` is gitignored and private — do NOT commit it.
 - Confirm with a one-line acknowledgement of what was captured. Nothing more.

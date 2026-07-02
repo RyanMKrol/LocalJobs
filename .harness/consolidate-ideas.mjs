@@ -170,13 +170,17 @@ if (fs.existsSync(IDEAS_PATH)) {
   if (inboxHeaderIdx === -1) {
     console.error('WARNING: could not find "## Inbox" header in IDEAS.md — skipping bullet removal');
   } else {
+    // IDEAS.md's ## Inbox uses sequentially numbered bullets ("1. ", "2. ", ...) since T328 —
+    // previously it used literal "- " bullets. NUMBERED_BULLET_RE matches a top-level bullet start;
+    // update this in lockstep with IDEAS.md's actual format if it ever changes again.
+    const NUMBERED_BULLET_RE = /^\d+\.\s/;
     const bulletSpans = [];
     let i = inboxHeaderIdx + 1;
     while (i < lines.length) {
-      if (lines[i].startsWith('- ')) {
+      if (NUMBERED_BULLET_RE.test(lines[i])) {
         const start = i;
         let j = i + 1;
-        while (j < lines.length && !lines[j].startsWith('- ') && !lines[j].startsWith('## ')) j++;
+        while (j < lines.length && !NUMBERED_BULLET_RE.test(lines[j]) && !lines[j].startsWith('## ')) j++;
         bulletSpans.push({ start, end: j, text: lines.slice(start, j).join('\n') });
         i = j;
       } else if (lines[i].startsWith('## ')) {
