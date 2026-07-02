@@ -8295,7 +8295,7 @@
     {
       "id": "T313",
       "title": "Scope the workflow-run IO mapping endpoint to a single stage via ?job=",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
