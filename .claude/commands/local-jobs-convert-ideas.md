@@ -368,3 +368,11 @@ correctly. `.harness/IDEAS.md`, `.harness/.pending-tasks/`, and `.harness/.pendi
 gitignored — never commit any of them. Everything else was committed + pushed inside Stage 3's single
 consolidation pass, so there's nothing left to commit unless that step reported a failed push (retry it
 here if so).
+
+**If the sweep produced ≥1 new task, close your report by suggesting the owner run
+`/local-jobs-pre-loop-checkin` before starting an unattended run.** Freshly-authored tasks are exactly
+what that check validates (facets present + drawn from the controlled vocabulary, a spec file exists
+with non-empty `## Do`/`## Done when` sections, non-empty `scope`) — running it now catches an authoring
+slip while it's still fresh, rather than the loop discovering it mid-run. Phrase it as a suggestion, not
+a requirement — this command's job ends at a correctly-committed backlog; whether/when to start a run is
+the owner's call.
