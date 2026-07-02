@@ -8436,7 +8436,7 @@
     {
       "id": "T318",
       "title": "Bump MOVIES_RECS_MODEL's code fallback default from claude-sonnet-4-6 to claude-sonnet-5",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
