@@ -69,7 +69,7 @@ const workflow = (over) => ({
 });
 
 const service = (over) => ({
-  name: 'google-places', description: 'Google Places API — ' + LONG, rate_per_minute: 60,
+  name: 'google-places', description: 'Google Places API — ' + LONG, category: 'api', rate_per_minute: 60,
   daily_cap: 100, monthly_cap: 3000, paid: 1, limits_overridden: 1,
   used_today: 42, used_month: 123456, rate_last_min: 12, ...over,
 });
@@ -258,7 +258,7 @@ export function fixtureFor(pathname) {
   if (pathname.endsWith('/runs') && pathname.startsWith('/api/jobs/')) return { runs: [run(), run({ id: '2', status: 'failed' })] };
   if (pathname.startsWith('/api/jobs/')) return { job: job() };
   if (pathname.startsWith('/api/runs/')) return { run: run(), logs };
-  if (pathname === '/api/services') return { services: [service(), service({ name: 'gemini', paid: 1 }), service({ name: 'fragrantica', paid: 0, daily_cap: null, monthly_cap: null })] };
+  if (pathname === '/api/services') return { services: [service(), service({ name: 'gemini', paid: 1 }), service({ name: 'fragrantica', category: 'website-scrape', paid: 0, daily_cap: null, monthly_cap: null }), service({ name: 'claude-cli', category: 'cli-tool', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null }), service({ name: 'legacy-service', category: 'uncategorized', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null })] };
   if (pathname.startsWith('/api/services/') && pathname.endsWith('/consumers')) return { consumers: [{ workflow_name: 'places', jobs: [{ job_name: 'places-enrich', last_used: NOW }, { job_name: 'places-enrich-with-llm', last_used: NOW }] }, { workflow_name: 'perfumes', jobs: [{ job_name: 'perfumes-build', last_used: NOW }] }] };
   if (pathname === '/api/backlog') return { tasks };
   return {};

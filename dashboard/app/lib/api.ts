@@ -221,6 +221,7 @@ export interface WorkflowRunOutput {
 export interface Service {
   name: string;
   description: string;
+  category: string;
   rate_per_minute: number | null;
   daily_cap: number | null;
   monthly_cap: number | null;

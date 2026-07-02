@@ -76,11 +76,22 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
   );
 }
 
-export default function Services() {
-  const { data, error } = usePoll(() => api.services(), 3000);
-  const services = [...(data?.services ?? [])].sort(
+const CATEGORY_GROUPS = [
+  { key: 'cli-tool', label: 'CLI tools' },
+  { key: 'website-scrape', label: 'Website scrapes' },
+  { key: 'api', label: 'APIs' },
+  { key: 'uncategorized', label: 'Uncategorized' },
+] as const;
+
+function sortServices(services: Service[]): Service[] {
+  return [...services].sort(
     (a, b) => (a.paid ? 1 : 0) - (b.paid ? 1 : 0) || a.name.localeCompare(b.name)
   );
+}
+
+export default function Services() {
+  const { data, error } = usePoll(() => api.services(), 3000);
+  const allServices = data?.services ?? [];
 
   // The row currently being edited, plus its draft values (kept local so polling
   // doesn't clobber typing).
@@ -130,64 +141,75 @@ export default function Services() {
       {viewingConsumers && (
         <ConsumersPanel name={viewingConsumers} onClose={() => setViewingConsumers(null)} />
       )}
-      <div className="panel">
-        <table>
-          <thead>
-            <tr>
-              <th>Service</th><th>Rate / min</th><th>Rate / day</th><th>Rate / month</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {services.length === 0 && <tr><td colSpan={5} className="muted">No services defined.</td></tr>}
-            {services.map((s) => {
-              const isEditing = editing === s.name;
-              return (
-                <tr key={s.name}>
-                  <td>
-                    <button
-                      className="btn secondary"
-                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, marginBottom: 2 }}
-                      onClick={() => setViewingConsumers(s.name)}
-                    >
-                      {s.name}
-                    </button>{' '}
-                    {s.paid ? <Pill kind="paid">paid</Pill> : <Pill kind="free">free</Pill>}
-                    {s.limits_overridden ? <Pill title="Limits edited from the dashboard; preserved across code-sync"> edited</Pill> : null}
-                    <div className="muted" style={{ fontSize: 12 }}>{s.description}</div>
-                  </td>
-                  {isEditing ? (
-                    <>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <input type="text" className="mono limit-input" value={draft.rate} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))} />
-                        {draft.rate !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, rate: '' }))}>✕</button>}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <input type="text" className="mono limit-input" value={draft.daily} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, daily: e.target.value }))} />
-                        {draft.daily !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, daily: '' }))}>✕</button>}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <input type="text" className="mono limit-input" value={draft.monthly} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, monthly: e.target.value }))} />
-                        {draft.monthly !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, monthly: '' }))}>✕</button>}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="btn" onClick={() => save(s.name)} disabled={busy}>{busy ? 'Saving…' : '✓ Save'}</button>{' '}
-                        <button className="btn secondary" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td><Bar used={s.rate_last_min} cap={s.rate_per_minute} /></td>
-                      <td><Bar used={s.used_today} cap={s.daily_cap} /></td>
-                      <td><Bar used={s.used_month} cap={s.monthly_cap} /></td>
-                      <td><button className="btn secondary" onClick={() => startEdit(s)}>✎ Edit limits</button></td>
-                    </>
-                  )}
+      {allServices.length === 0 && (
+        <div className="panel">
+          <p className="muted">No services defined.</p>
+        </div>
+      )}
+      {CATEGORY_GROUPS.map(({ key, label }) => {
+        const services = sortServices(allServices.filter((s) => (s.category || 'uncategorized') === key));
+        if (services.length === 0) return null;
+        return (
+          <div className="panel" key={key}>
+            <h2>{label}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Service</th><th>Rate / min</th><th>Rate / day</th><th>Rate / month</th><th></th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {services.map((s) => {
+                  const isEditing = editing === s.name;
+                  return (
+                    <tr key={s.name}>
+                      <td>
+                        <button
+                          className="btn secondary"
+                          style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, marginBottom: 2 }}
+                          onClick={() => setViewingConsumers(s.name)}
+                        >
+                          {s.name}
+                        </button>{' '}
+                        {s.paid ? <Pill kind="paid">paid</Pill> : <Pill kind="free">free</Pill>}
+                        {s.limits_overridden ? <Pill title="Limits edited from the dashboard; preserved across code-sync"> edited</Pill> : null}
+                        <div className="muted" style={{ fontSize: 12 }}>{s.description}</div>
+                      </td>
+                      {isEditing ? (
+                        <>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <input type="text" className="mono limit-input" value={draft.rate} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))} />
+                            {draft.rate !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, rate: '' }))}>✕</button>}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <input type="text" className="mono limit-input" value={draft.daily} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, daily: e.target.value }))} />
+                            {draft.daily !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, daily: '' }))}>✕</button>}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <input type="text" className="mono limit-input" value={draft.monthly} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, monthly: e.target.value }))} />
+                            {draft.monthly !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, monthly: '' }))}>✕</button>}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <button className="btn" onClick={() => save(s.name)} disabled={busy}>{busy ? 'Saving…' : '✓ Save'}</button>{' '}
+                            <button className="btn secondary" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td><Bar used={s.rate_last_min} cap={s.rate_per_minute} /></td>
+                          <td><Bar used={s.used_today} cap={s.daily_cap} /></td>
+                          <td><Bar used={s.used_month} cap={s.monthly_cap} /></td>
+                          <td><button className="btn secondary" onClick={() => startEdit(s)}>✎ Edit limits</button></td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
     </>
   );
 }
