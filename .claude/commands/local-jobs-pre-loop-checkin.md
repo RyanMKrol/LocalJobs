@@ -132,6 +132,23 @@ jq -r '.tasks[]|select(.status=="pending" and .gate==null)
 
 Report every task that fails any of (a)-(d), naming which specific check failed.
 
+## 5. Ideas inbox — unconverted ideas (informational only)
+
+```bash
+if [ -f .harness/IDEAS.md ]; then
+  grep -c '^- ' .harness/IDEAS.md 2>/dev/null || echo 0
+else
+  echo 0
+fi
+```
+
+`.harness/IDEAS.md` is a private, gitignored capture scratchpad (see `.harness/CLAUDE.md` § "Ideas
+inbox & the two-step flow") — an unattended loop run only ever builds from `.harness/TASKS.json`, so
+any bullet still sitting in the inbox is completely invisible to it, no matter how long the run goes.
+This check is purely a count (an approximate top-level-bullet count is fine here — this command never
+needs the precise parsing the conversion skill does), and it never affects the GO/NO-GO verdict; it's
+a heads-up, not a blocker.
+
 ---
 
 ## Final report — go / no-go
@@ -142,6 +159,7 @@ Consolidate everything above into ONE report the owner can read in one glance be
 - **Session hygiene**: dirty tree? ahead/behind? loop already running / lock held?
 - **Dependency short-circuits**: list or "none found".
 - **Task definition quality**: list of tasks with issues, or "all clear".
+- **Ideas inbox**: N unconverted idea(s) pending (or "none pending").
 - **Verdict**: a plain **GO** (safe to start `.harness/supervise.sh`) or **NO-GO** (name the blocking
   issue(s) and what the owner should do — e.g. "mark T210 done in the dashboard first", "a loop
   process is already running, don't start another", "run `/local-jobs-loop-recover` first"). If everything is
@@ -150,3 +168,11 @@ Consolidate everything above into ONE report the owner can read in one glance be
 
 Remember: you changed nothing. If asked to fix anything found here, direct the owner to
 `/local-jobs-loop-recover` (interrupt-shaped state damage) or a manual edit — never do it from this command.
+
+**If the ideas inbox has ≥1 unconverted idea, close your report by nudging the owner to run
+`/local-jobs-convert-ideas` before kicking off `supervise.sh`** — otherwise those ideas just sit idle
+for the whole unattended run instead of becoming buildable work. Phrase it as a suggestion alongside
+the verdict (e.g. "GO — note: 3 ideas are still sitting unconverted in the inbox; consider running
+`/local-jobs-convert-ideas` first so the loop has that work to build too"), not as a blocking condition —
+this command's verdict is about whether it's SAFE to start a run, and an unconverted idea is never a
+safety issue, just missed opportunity.
