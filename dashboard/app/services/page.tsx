@@ -152,7 +152,14 @@ export default function Services() {
         return (
           <div className="panel" key={key}>
             <h2>{label}</h2>
-            <table>
+            <table className="services-table">
+              <colgroup>
+                <col style={{ width: '40%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '12%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Service</th><th>Rate / min</th><th>Rate / day</th><th>Rate / month</th><th></th>

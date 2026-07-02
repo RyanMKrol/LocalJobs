@@ -90,6 +90,7 @@ h2 { font-size: 16px; margin: 28px 0 12px; color: var(--muted); text-transform: 
 .cards { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 
 table { width: 100%; border-collapse: collapse; }
+.services-table { table-layout: fixed; }
 th, td { text-align: left; padding: 8px 18px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
 tr:last-child td { border-bottom: none; }
@@ -581,6 +582,7 @@ select:focus { border-color: var(--accent); }
      swiping the panel. */
   .panel:has(> table) { overflow-x: auto; }
   th, td { padding: 8px 10px; }
+  .services-table { table-layout: auto; }
 
   /* Key/value blocks stack (label above value) instead of a fixed 160px column. */
   .kv { grid-template-columns: 1fr; gap: 1px 0; }
