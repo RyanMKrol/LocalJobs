@@ -101,9 +101,6 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
     }
   }
 
-  // Hide the section entirely when there's nothing to show and no error.
-  if (!error && items.length === 0 && data !== undefined) return null;
-
   const label = items.length === 1 ? '1 item' : `${items.length} items`;
 
   return (

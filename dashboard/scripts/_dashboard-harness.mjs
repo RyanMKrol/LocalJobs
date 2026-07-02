@@ -383,6 +383,18 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/workflows/movie-recommendations') {
     return { workflow: workflow({ name: 'movie-recommendations', category: 'recommendations', jobs: movieRecsMembers, gates: [] }) };
   }
+  if (pathname.endsWith('/output-items')) {
+    if (pathname === '/api/workflows/places/output-items') {
+      return {
+        items: [
+          { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, name: 'A Resolved Place', hasMarkdown: true, updatedAt: NOW },
+          { jobName: 'places-enrich-with-llm', itemKey: 'place:second', name: null, hasMarkdown: false, updatedAt: NOW },
+        ],
+        terminalJobs: ['places-enrich-with-llm'],
+      };
+    }
+    return { items: [], terminalJobs: [] };
+  }
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
   if (pathname.endsWith('/runs') && pathname.startsWith('/api/jobs/')) return { runs: [run(), run({ id: '2', status: 'failed' })] };
   if (pathname.startsWith('/api/jobs/')) return { job: job() };
@@ -419,6 +431,7 @@ export const PAGES = [
   { name: 'workflows',               path: '/workflows' },
   { name: 'workflow',                path: '/workflows/places',               waitFor: ['.rf-dag-node'] },
   { name: 'workflow-movie-recs',     path: '/workflows/movie-recommendations', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-empty-output',   path: '/workflows/workouts-sync',         waitFor: ['.rf-dag-node'] },
   { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
   { name: 'workflow-missing-tv-seasons', path: '/workflows/missing-tv-seasons', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
