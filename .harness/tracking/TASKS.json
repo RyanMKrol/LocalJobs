@@ -9062,7 +9062,7 @@
     {
       "id": "T343",
       "title": "Fix header mode icon flicker on full-page navigation (lazy-init useMode from DOM)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
