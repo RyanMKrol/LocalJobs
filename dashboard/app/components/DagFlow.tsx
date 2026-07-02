@@ -233,6 +233,28 @@ function buildLayout(
   const wave = computeLayers(members);
   const colX = (job: string) => 16 + (wave.get(job) ?? 0) * (NODE_W + RANK_SEP);
 
+  // Dagre's Y is only guaranteed non-overlapping among nodes it placed in the SAME rank.
+  // Since X is pinned to the true wave column (not dagre's own rank), a node's dagre rank
+  // can legitimately differ from the wave column it's actually drawn in — e.g. franchise-gaps
+  // is one dagre-rank closer to its consumer than the rec-* branches, so dagre's Y for it can
+  // coincidentally land very close to a node from a DIFFERENT rank that happens to share its
+  // visual column. Re-derive Y per wave-column: keep dagre's relative (crossing-minimised) order
+  // within the column, but assign evenly-spaced Y positions so every node actually drawn beside
+  // another has the same guaranteed gap, regardless of which dagre rank it came from.
+  const columnY = new Map<string, number>();
+  {
+    const byWave = new Map<number, string[]>();
+    for (const m of members) {
+      const w = wave.get(m.job_name) ?? 0;
+      if (!byWave.has(w)) byWave.set(w, []);
+      byWave.get(w)!.push(m.job_name);
+    }
+    for (const jobNames of byWave.values()) {
+      jobNames.sort((a, b) => g.node(a).y - g.node(b).y);
+      jobNames.forEach((job, i) => columnY.set(job, i * (NODE_H + NODE_SEP)));
+    }
+  }
+
   // Gate data lookup: "producer\x00consumer" → gate info
   const runGateHref = (runId: string, g2: { producer: string; key: string }) =>
     `/workflow-runs/${runId}/gates/${encodeURIComponent(g2.producer)}/${encodeURIComponent(g2.key)}`;
@@ -254,7 +276,7 @@ function buildLayout(
 
   // Stage nodes
   for (const m of members) {
-    const { y } = g.node(m.job_name);          // dagre's vertical position (crossing-minimised order)
+    const y = (columnY.get(m.job_name) ?? 0) + NODE_H / 2; // re-derived Y, self-consistent within the wave column
     const x = colX(m.job_name) + NODE_W / 2;    // X pinned to the node's true wave column
     const status = statusByJob?.[m.job_name] ?? 'pending';
     const runId = runIdByJob?.[m.job_name];

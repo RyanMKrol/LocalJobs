@@ -273,6 +273,46 @@ const missingSeasons = {
   ],
 };
 
+// T332: the real movie-recommendations 9-node fan-out (movie-snapshot → 8 rec-* branches +
+// franchise-gaps → rec-merge → movie-gaps-notify — see src/jobs/movies/movies.workflow.ts).
+// Modeled as a RUN-scoped view (statusByJob + gates populated, mirroring a completed run) so
+// visual-check can actually reproduce/confirm the run-view-only rec-auteur/franchise-gaps
+// spacing bug (T332), which never showed up under the generic 3-node `workflowRun`/`gates`
+// fixture the `workflow-run` PAGES entry uses.
+const movieRecsMembers = [
+  { job_name: 'movie-snapshot', depends_on: [] },
+  { job_name: 'franchise-gaps', depends_on: ['movie-snapshot'] },
+  { job_name: 'rec-random-1', depends_on: ['movie-snapshot'] },
+  { job_name: 'rec-random-2', depends_on: ['movie-snapshot'] },
+  { job_name: 'rec-random-3', depends_on: ['movie-snapshot'] },
+  { job_name: 'rec-auteur', depends_on: ['movie-snapshot'] },
+  { job_name: 'rec-canon', depends_on: ['movie-snapshot'] },
+  { job_name: 'rec-thin-genre', depends_on: ['movie-snapshot'] },
+  { job_name: 'rec-older-era', depends_on: ['movie-snapshot'] },
+  { job_name: 'rec-world-cinema', depends_on: ['movie-snapshot'] },
+  {
+    job_name: 'rec-merge',
+    depends_on: ['rec-random-1', 'rec-random-2', 'rec-random-3', 'rec-auteur', 'rec-canon', 'rec-thin-genre', 'rec-older-era', 'rec-world-cinema'],
+  },
+  { job_name: 'movie-gaps-notify', depends_on: ['franchise-gaps', 'rec-merge'] },
+];
+const movieRecsWorkflowRun = workflowRun({ id: 'movie-recs-run', workflow_name: 'movie-recommendations' });
+const movieRecsStatusByJob = Object.fromEntries(movieRecsMembers.map((m) => [m.job_name, 'success']));
+const movieRecsRunIdByJob = Object.fromEntries(movieRecsMembers.map((m) => [m.job_name, 'movie-recs-run']));
+// One passed gate per movie-snapshot → wave-1 node edge (the movieSnapshotContract gate every
+// franchise-gaps AND rec-* branch consumes), plus the rec-merge/notify boundaries.
+const movieRecsGates = [
+  ...movieRecsMembers.filter((m) => m.depends_on.includes('movie-snapshot')).map((m) => ({
+    key: 'snapshot.json', producer: 'movie-snapshot', consumer: m.job_name, state: 'passed',
+    description: 'produces — snapshot.json is a non-empty per-movie library snapshot · consumes — every branch reads the same snapshot',
+  })),
+  { key: 'gaps.json', producer: 'franchise-gaps', consumer: 'movie-gaps-notify', state: 'passed', description: 'produces — franchise gap candidates · consumes — the notify stage reads them' },
+  { key: 'recommendations.json', producer: 'rec-merge', consumer: 'movie-gaps-notify', state: 'passed', description: 'produces — merged, TMDB-verified recommendations · consumes — the notify stage reads them' },
+];
+const movieRecsRunJobs = movieRecsMembers.map((m, i) => run({
+  id: `movie-recs-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'movie-recs-run',
+}));
+
 const tvRecs = {
   generatedAt: NOW, pooled: 8,
   recommendations: [
@@ -304,6 +344,8 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflows/')) return structuralGateDetail;
   if (pathname === '/api/workflow-runs/skipped/io') return workflowIoSkipped;
   if (pathname === '/api/workflow-runs/skipped') return { run: workflowRunSkipped, jobs: membersSkipped, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/movie-recs-run/io') return workflowIoSkipped;
+  if (pathname === '/api/workflow-runs/movie-recs-run') return { run: movieRecsWorkflowRun, jobs: movieRecsRunJobs, logs, gates: movieRecsGates };
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) {
     const job = searchParams?.get('job');
     if (job === 'places-enrich') return workflowIoScopedToEnrich;
@@ -311,6 +353,9 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.' };
   if (pathname.startsWith('/api/workflow-runs/')) return { run: workflowRun(), jobs: [run(), run({ id: '2', job_name: 'places-enrich', status: 'failed' })], logs, gates };
+  if (pathname === '/api/workflows/movie-recommendations') {
+    return { workflow: workflow({ name: 'movie-recommendations', category: 'recommendations', jobs: movieRecsMembers, gates: [] }) };
+  }
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
   if (pathname.endsWith('/runs') && pathname.startsWith('/api/jobs/')) return { runs: [run(), run({ id: '2', status: 'failed' })] };
   if (pathname.startsWith('/api/jobs/')) return { job: job() };
@@ -350,6 +395,7 @@ export const PAGES = [
   { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
   { name: 'workflow-missing-tv-seasons', path: '/workflows/missing-tv-seasons', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-movie-recs', path: '/workflow-runs/movie-recs-run',   waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-skipped',    path: '/workflow-runs/skipped',          waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
