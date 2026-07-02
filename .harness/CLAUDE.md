@@ -55,6 +55,14 @@ just the model summary.
   standard add-to-backlog interview lacks; it expects an already-formed feature). Default to MORE
   questions; assume nothing is fleshed out. Every question names which specific idea it's about, since
   several agents may be asking things at overlapping times.
+- **Agents don't have `AskUserQuestion` — it's main-thread-only.** A per-unit agent can't block on a
+  live prompt itself, so a genuine open question is relayed THROUGH the coordinator, not asked
+  directly: the agent writes it durably to `.harness/.pending-questions/<slug>.json` (so it survives
+  even if the coordinating session ends before relaying it — don't rely on conversation memory alone
+  for anything that must survive an interruption), the coordinator batches every open question across
+  every unit into `AskUserQuestion` calls to the owner, then resumes each blocked unit via `SendMessage`
+  with its answers. An agent that can make a confident, low-risk judgment call instead of blocking
+  should just do that (documented in its `report`) rather than manufacturing a question.
 - **De-dup pass (before launching any agents).** Scan the full inbox for ideas that are the same or
   substantially overlap (semantic similarity, not exact-text match) and surface suspected duplicate
   groups to the owner to merge or drop — do NOT auto-merge.
@@ -67,15 +75,21 @@ just the model summary.
 - **Shape → write to a scratch file, not `TASKS.json` directly.** Once an agent is satisfied, it writes
   its decided task(s) (title, scope, facets, spec content, everything except a real id) to its own
   `.harness/.pending-tasks/<slug>.json` and stops. No lock, no git, no `IDEAS.md` edit at this stage.
-- **Consolidate once, at the end.** After every launched agent reports back, one pass (not a subagent)
-  reads all pending files, allocates ids, resolves temp-id `dependsOn` references, writes
+- **Consolidate once, at the end.** After every launched agent reports back, `.harness/consolidate-ideas.sh`
+  (a permanent, tested script — see `.harness/consolidate-ideas.mjs` for the id-allocation/spec-write/
+  merge logic) reads all pending files, allocates ids, resolves temp-id `dependsOn` references, writes
   `tasks/TNNN.md` specs, updates `TASKS.json`, commits + pushes, removes every converted idea's bullet
-  from `.harness/IDEAS.md` (by exact text match, re-read fresh under the lock), and deletes the
-  consumed pending files. This is the ONLY step that ever touches the repo lock in a sweep.
+  from `.harness/IDEAS.md` (by FUZZY text match — normalized/reflowed comparison, re-read fresh under
+  the lock, since a pending file's recorded bullet text won't byte-match the hand-wrapped markdown),
+  and deletes the consumed pending files. This is the ONLY step that ever touches the repo lock in a
+  sweep.
 - **Recovery check, before anything else.** A sweep starts by checking for leftover
-  `.harness/.pending-tasks/*.json` files from a prior interrupted run (consolidate those first, before
-  touching the current inbox) and for `IDEAS.md` bullets that plausibly already became a task in a
-  recent commit (confirm with the owner rather than re-interviewing from scratch).
+  `.harness/.pending-tasks/*.json` files (fully-shaped units never consolidated — consolidate those
+  first) AND leftover `.harness/.pending-questions/*.json` files (units blocked on an owner answer that
+  never arrived — relay their recorded questions, then launch a fresh agent per unit to finish, seeded
+  with what's on disk) from a prior interrupted run, before touching the current inbox; and for
+  `IDEAS.md` bullets that plausibly already became a task in a recent commit (confirm with the owner
+  rather than re-interviewing from scratch).
 - **Delete on convert.** As each idea's task lands (or resolves to "no action needed"), its bullet is
   removed from `.harness/IDEAS.md` — during the consolidation pass, never earlier. The resulting
   `TASKS.json` task (+ its spec MD) is the record; the inbox stays a clean, transient surface. (No

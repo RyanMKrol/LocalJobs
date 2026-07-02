@@ -62,6 +62,13 @@ TODO.md
 # ids + commits, then deletes the consumed files. Never committed — see the skill's Stage 2/3.
 .harness/.pending-tasks/
 
+# /local-jobs-convert-ideas scratch: a per-unit agent blocked on a genuine open question (it has
+# no AskUserQuestion — that's main-thread-only) writes its questions here durably BEFORE ending
+# its turn, so the question survives even if the coordinating session ends before relaying it to
+# the owner. Deleted once the unit is unblocked and finishes shaping. Never committed — see the
+# skill's Stage 0/2.
+.harness/.pending-questions/
+
 # harness: atomic-write temps for TASKS.json + the owner-owned reviews store (T136).
 # .harness/reviews.json itself IS committed (owner-owned; the daemon commits+pushes it).
 .harness/TASKS.json.tmp

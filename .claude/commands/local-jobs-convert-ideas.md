@@ -28,6 +28,49 @@ an agent owns a cluster of several ideas, it must name the SPECIFIC idea within 
 the cluster) — this is the one thing that makes concurrent interviews usable instead of confusing.
 Bake this into every agent's instructions below; don't skip it.
 
+⚠️ **`AskUserQuestion` is NOT available to Stage 2 agents — it is main-thread/interactive-only.**
+Agents launched via the `Agent` tool run as background subagents; they have no way to block on a live
+interactive prompt, so a per-unit agent that tries to call `AskUserQuestion` will find it missing from
+its tool list (confirmed via `ToolSearch` in practice — don't make agents waste a call rediscovering
+this each sweep; the brief below tells them directly). **Questions are relayed through YOU (the main
+thread), not asked directly by the subagent.**
+
+**Don't rely on your own conversation memory to carry open questions — that's a dropped-question risk
+(long-sweep context pressure, a summarization event, or the session ending mid-relay all lose it).**
+An agent with a genuine open question writes it to a **durable file**,
+`.harness/.pending-questions/<slug>.json` (schema below), as well as putting it in its final report
+text — the file is the authoritative record; the report text is just for your immediate visibility.
+This mirrors why completed units write `.harness/.pending-tasks/<slug>.json` instead of you just
+remembering their shape: anything that must survive an interruption goes on disk, not in memory.
+
+The actual flow, once every Stage 2 agent reports back:
+1. An agent that reached a genuine open question (not something it could reasonably decide itself)
+   writes `.harness/.pending-questions/<slug>.json` (see schema in the agent brief below), does NOT
+   write its pending-tasks file, and puts the same question(s) in its final report text — still
+   prefixed per-idea as above.
+2. An agent that could make a confident, low-risk, well-documented judgment call instead of blocking
+   (e.g. reusing an existing styling convention already used elsewhere in the same file) SHOULD do
+   that and write its pending-tasks file directly, recording the judgment call in its `report` field
+   for the owner to override later if needed — don't manufacture a question just because the tool is
+   missing.
+3. Once you've heard back from every launched unit, run `ls .harness/.pending-questions/*.json` and
+   read each file — **this is the authoritative list of open questions, not your recollection of report
+   texts.** Collect every question across every file and relay them to the owner via `AskUserQuestion`,
+   batching up to 4 questions per call (several calls in sequence if there are more) — keep each
+   question's per-idea prefix from the file.
+4. For every unit that's still blocked, `SendMessage` its `agentId` with the owner's answers relevant
+   to that unit (only that unit's, not everyone else's) and ask it to delete its own
+   `.harness/.pending-questions/<slug>.json` and finish shaping + write its pending-tasks file now. A
+   unit may need more than one relay round if its questions open new questions — each round rewrites
+   the same pending-questions file (or the agent deletes it once it can proceed).
+5. Only proceed to Stage 3 once every launched unit has EITHER written a pending-tasks file OR (for a
+   genuinely deferred idea — see the interview step below) explicitly confirmed it's writing none, AND
+   `.harness/.pending-questions/` is empty.
+
+**Crash/interruption recovery for open questions is Stage 0's job** (see its new step below) — if the
+whole sweep dies while units are blocked, the durable `.pending-questions/*.json` files are exactly
+what lets a FUTURE sweep pick the thread back up instead of silently losing it.
+
 ---
 
 ## Stage 0 — recovery check (main thread, serial, before anything else)
@@ -44,7 +87,22 @@ a prior run never reached its final write.
    before doing anything else — this flushes the backlog into real tasks so today's sweep starts clean
    and nobody has to re-answer already-settled questions.
 
-2. **Stale `IDEAS.md` bullets for already-converted ideas.** Some interruptions land between "task
+2. **Leftover pending-QUESTION files.** `mkdir -p .harness/.pending-questions` then
+   `ls .harness/.pending-questions/*.json`. Each file represents a unit that was blocked on a genuine
+   open question when a PRIOR sweep ended before the question was ever relayed to the owner (a crash,
+   a Ctrl+C, or the session ending mid-relay — see the warning above `## Stage 2`). Don't silently drop
+   these — the idea's bullet is still sitting in `IDEAS.md` waiting on an answer nobody gave. For each
+   file: read it (schema: `{ agentSlug, ideaBullets, questions, report }`), relay its `questions` to the
+   owner via `AskUserQuestion` (same per-idea-prefixed batching as a live sweep), then launch a FRESH
+   agent for that unit — you do not need (and should not assume) the original agent is still resumable
+   across a new session — seeded with the pending-questions file's full content (idea bullets, what a
+   prior agent already worked out, the questions it asked) plus the owner's answers, and instruct it to
+   pick up from there: finish shaping, write `.harness/.pending-tasks/<slug>.json`, and delete the old
+   `.harness/.pending-questions/<slug>.json`. Once every leftover question file is resolved this way,
+   run Stage 3 to flush the resulting pending-tasks files before continuing to Stage 1 — this ensures
+   Stage 1 reads an `IDEAS.md` that no longer carries bullets for already-resolved ideas.
+
+3. **Stale `IDEAS.md` bullets for already-converted ideas.** Some interruptions land between "task
    committed" and "bullet removed" (observed live in a real sweep — a task landed cleanly but its
    source bullet stayed in the inbox because the removal step never ran). Before interviewing anyone,
    do a lightweight, fuzzy cross-check: skim `git log --oneline -15` for recent `backlog: add …`
@@ -100,9 +158,11 @@ cluster) that proceeds to Stage 2 — every unit launches together, in one wave.
 There is no batch cap and no staggering for any reason — including hard-dependency pairs (tell both
 agents in that pair the other's slug so they can cross-reference; do not launch one after the other).
 
-**Each per-unit agent gets this brief** (fresh agent, full tool access — it needs `AskUserQuestion`,
-`Read`/`Grep`/`Glob`/`Bash` for exploration, and `Write` for its own scratch file — it does NOT need
-`Edit`, and never touches `.harness/TASKS.json`, `.harness/tasks/`, `.harness/IDEAS.md`, or git):
+**Each per-unit agent gets this brief** (fresh agent, full tool access — it needs `Read`/`Grep`/`Glob`/
+`Bash` for exploration and `Write` for its own scratch file — it does NOT have `AskUserQuestion` (main-
+thread-only, see the warning above — tell the agent this directly so it doesn't waste a `ToolSearch`
+call finding out), does NOT need `Edit`, and never touches `.harness/TASKS.json`, `.harness/tasks/`,
+`.harness/IDEAS.md`, or git):
 
 > You are converting ONE idea — or a small cluster of tightly-related ideas, if you were told you own
 > more than one — from the owner's backlog inbox into task data. Work through these phases yourself,
@@ -123,23 +183,55 @@ agents in that pair the other's slug so they can cross-reference; do not launch 
 > (facet vocabulary), and whatever source/dashboard paths the idea text(s) anchor to. Work out the
 > likely itch/problem, feasibility, relevant files, and a first-pass decomposition.
 >
-> **2. Interview — loop until YOU are genuinely satisfied, not for a fixed number of rounds.** Ask the
-> owner via `AskUserQuestion` (batch up to 4 questions per call) to settle: what they actually want
-> (don't assume anything is fleshed out), the decomposition (one task or several — see the atomise
-> rule below), `scope`, `design`, `verify`, `facets` (`layer`/`workType`/`risk`, from `facets.json`'s
-> controlled vocabulary), `gate` (`null`/`"gate"`/`"needs-human"`, including the chooser/review/
-> hardcode three-task pattern from `.harness/CLAUDE.md` when the idea offers multiple options to pick
-> between), and `dependsOn`. If an answer opens a new question, ask another round — there's no cap,
-> just make sure each round is asking something new. **Every question you ask must open by naming the
-> specific idea it's about** (e.g. "For the idea about <short summary>: …") so the owner can tell your
-> questions apart from another agent's questions arriving at the same time — including other ideas
-> inside your OWN cluster, if you own more than one.
+> **2. Interview — settle what you can yourself; surface only genuine open questions.** You do **NOT**
+> have `AskUserQuestion` — it's not in your tool list (main-thread/interactive-only), so don't try it
+> or spend a `ToolSearch` call confirming that. Work out from your exploration + judgment: what the
+> owner actually wants (don't assume anything is fleshed out), the decomposition (one task or several —
+> see the atomise rule below), `scope`, `design`, `verify`, `facets` (`layer`/`workType`/`risk`, from
+> `facets.json`'s controlled vocabulary), `gate` (`null`/`"gate"`/`"needs-human"`, including the
+> chooser/review/hardcode three-task pattern from `.harness/CLAUDE.md` when the idea offers multiple
+> options to pick between), and `dependsOn`.
+>
+> For anything you can decide with reasonable confidence — a low-risk styling choice, reusing a
+> convention already established elsewhere in the file, an unambiguous reading of the idea text — just
+> decide it and note the judgment call in your final `report`; don't manufacture a question for
+> something you could reasonably call yourself. Reserve actual questions for things that are genuinely
+> ambiguous, consequential, or risky (multiple real interpretations that would produce meaningfully
+> different tasks; a decision the owner clearly needs to make, like whether to take on new risk).
+>
+> **If you have genuine open questions, do NOT write your pending-tasks file yet.** Instead, use the
+> `Write` tool to create `.harness/.pending-questions/<slug>.json` — this is the DURABLE record of what
+> you're blocked on (don't rely on your report text alone reaching the coordinator; the file survives
+> even if the coordinator's session ends before it relays your question):
+> ```jsonc
+> {
+>   "agentSlug": "<slug>",
+>   "ideaBullets": ["<verbatim idea text 1>", "<verbatim idea text 2, if a cluster>"],
+>   "questions": ["<question 1, opening with which idea it's about>", "<question 2>"],
+>   "report": "<what you've worked out so far, so a fresh agent could pick this up without re-exploring>"
+> }
+> ```
+> Then ALSO put the same questions in your final report text (for the coordinator's immediate
+> visibility) — **every question must open by naming the specific idea it's about** (e.g. "For the idea
+> about <short summary>: …"), same rule as always. The coordinator will batch your questions with
+> everyone else's, get them answered by the owner, and send you a follow-up message with the answers
+> relevant to your unit — at that point, **delete `.harness/.pending-questions/<slug>.json`** and finish
+> shaping + write your pending-tasks file (below). You may need more than one round if an answer opens a
+> genuinely new question (just rewrite the pending-questions file with the new question); don't ask
+> something you could have decided yourself.
 >
 > **If your interview concludes no task is actually warranted** (a pure check-in idea that resolves to
 > "already fine, no change needed"): don't invent a trivial task just to have one. Leave `tasks: []` in
 > your pending file (below) but still record the idea's bullet text and a `report` explaining the
 > resolution — the consolidation step still removes your idea's bullet from `IDEAS.md` even with zero
 > tasks.
+>
+> **If the owner's answer is to defer/decline the idea entirely** (see the risk-decision case in the
+> worked example below): delete `.harness/.pending-questions/<slug>.json` if you wrote one, and don't
+> write a pending-tasks file at all — writing one (even with `tasks: []`) tells the consolidation pass
+> the idea is "resolved" and removes its bullet from `IDEAS.md`, which is wrong for a genuine deferral.
+> Just confirm in your final report that you're stopping with no files left behind, so the bullet stays
+> in the inbox for a future sweep.
 >
 > **Atomise (non-negotiable).** A task is too big when it spans multiple layers (`db`+`core`+`ui`),
 > carries broad/full-stack `risk` flags, or has a multi-part `## Done when` with independent acceptance
@@ -250,12 +342,17 @@ Do ONE check yourself (not a subagent):
 - Every task's `spec` path has a matching file on disk.
 - `.harness/.pending-tasks/` is empty (or contains only units from a wave still in flight, if you're
   checking mid-sweep).
+- `.harness/.pending-questions/` is empty (or contains only units genuinely still waiting on an owner
+  answer, if you're checking mid-sweep) — a leftover file here after the sweep is declared done means a
+  question was never relayed; go relay it rather than leaving it to silently rot until the next sweep's
+  Stage 0 happens to find it.
 - `.harness/IDEAS.md` — confirm every converted idea's bullet is gone (including "no action needed"
   resolutions) and every un-converted one (dropped in de-dup, or deferred) is still present.
 
 Report a short summary across the whole sweep: each idea → the task id(s) it became (or "no action
 needed"), any de-dup merges/drops, any dropped/unresolved cross-idea `dependsOn` the owner should link
-manually, and confirmation the inbox and pending-tasks scratch dir are left correctly. Both
-`.harness/IDEAS.md` and `.harness/.pending-tasks/` are gitignored — never commit either. Everything
-else was committed + pushed inside Stage 3's single consolidation pass, so there's nothing left to
-commit unless that step reported a failed push (retry it here if so).
+manually, and confirmation the inbox and pending-tasks/pending-questions scratch dirs are left
+correctly. `.harness/IDEAS.md`, `.harness/.pending-tasks/`, and `.harness/.pending-questions/` are all
+gitignored — never commit any of them. Everything else was committed + pushed inside Stage 3's single
+consolidation pass, so there's nothing left to commit unless that step reported a failed push (retry it
+here if so).
