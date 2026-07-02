@@ -194,61 +194,48 @@ agents in that pair the other's slug so they can cross-reference; do not launch 
 
 ## Stage 3 — ONE consolidation pass (main thread, after every launched unit reports back)
 
-Once every unit from the current wave has reported done, run consolidation YOURSELF — not a subagent.
-This step is now mostly mechanical (id allocation + file writes + one commit), and doing it directly
-avoids spawning an agent just to hold a lock for a few seconds. (Stage 0 may also invoke this exact
-procedure early, on leftover files, before Stage 1 even runs.)
-
-⚠️ **Environment note:** in this environment the Bash tool's interactive shell is `zsh`, but
-`.harness/repo-lock.sh` relies on bash-only `${BASH_SOURCE[0]}` and only derives its lock path
-correctly when actually executed BY bash. **Always write the critical section below to a temp `.sh`
-file (e.g. via the `Write` tool) and run it with `bash /path/to/script.sh`** — never `source
-.harness/repo-lock.sh` directly in a Bash tool call here; sourcing it under zsh silently corrupts the
-derived lock path and produces garbled `git`/`cd` errors.
+Once every unit from the current wave has reported done, run **`.harness/consolidate-ideas.sh`** —
+a permanent, tested framework script (paired with `.harness/consolidate-ideas.mjs`), not something
+to re-derive from pseudocode each sweep:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-source .harness/repo-lock.sh
-acquire_lock || exit 1
-trap release_lock EXIT
-# --- everything below runs while holding the lock — NOTHING collidable is decided before this line ---
-# 1. Re-read TASKS.json NOW, fresh from disk — compute the starting id from the CURRENT highest id,
-#    zero-padded to the same width. This is the ONLY place in the whole sweep an id is ever chosen,
-#    so there is nothing left to collide over.
-# 2. Read every .harness/.pending-tasks/*.json file. For each task across every file (stable order,
-#    e.g. sorted by agentSlug then array index), allocate the next sequential id. Build a
-#    tempId -> realId lookup as you go.
-# 3. Resolve every task's dependsOn: a real existing "Txxx" id passes through unchanged; a tempId
-#    reference resolves via the lookup from step 2; a tempId with no match (its unit produced no
-#    task, e.g. "no action needed") is DROPPED and noted for the final report so the owner can wire
-#    it up by hand if still wanted.
-# 4. Write .harness/tasks/TNNN.md for every task (from its specDo/specDoneWhen strings) — skip this
-#    entirely for units whose "tasks" array is empty (a resolved "no action needed" idea).
-# 5. Build the full new-tasks array (real ids + resolved dependsOn) into new-tasks.json, then:
-#      jq --slurpfile add new-tasks.json '.tasks += $add[0]' .harness/TASKS.json > TASKS.json.tmp \
-#        && jq empty TASKS.json.tmp && mv TASKS.json.tmp .harness/TASKS.json
-# 6. Remove every consumed idea's bullet(s) from .harness/IDEAS.md — re-read IDEAS.md fresh, RIGHT
-#    NOW under the lock (never from an earlier snapshot), and remove each one by exact text match
-#    using the "ideaBullets" arrays recorded in the pending files (including for empty-tasks units —
-#    their bullet is removed too, since their idea WAS resolved, just with no task). If a bullet's
-#    exact text is no longer present (already removed some other way), skip it rather than erroring —
-#    this is the only bullet-removal step in the whole flow, so there is no race to guard against, but
-#    a defensive skip costs nothing.
-# 7. git add ONLY .harness/TASKS.json + the new .harness/tasks/TNNN.md file(s). NEVER git add -A/.,
-#    NEVER stage IDEAS.md (gitignored), .harness/.pending-tasks/ (scratch, gitignored), data/, .env*,
-#    credentials.
-# 8. git commit (heredoc message enumerating every new task id, e.g. "backlog: add T304-T310 from
-#    idea conversion sweep"), then git push. On rejection: git fetch origin && git rebase origin/main,
-#    retry once; if it still fails, report it — the commit is safe locally either way.
-# 9. Delete every .harness/.pending-tasks/*.json file consumed in this pass — their content is now
-#    durably represented by the git commit, so nothing is lost by removing the scratch copy.
-release_lock
+bash .harness/consolidate-ideas.sh
 ```
 
-If a straggler unit reports back AFTER you've already run consolidation, just run Stage 3 again for
-it alone — it's cheap and idempotent (it only ever processes whatever `.pending-tasks/*.json` files
-still exist on disk).
+Run it directly with `bash` — do not `source` it, and do not invoke it under a non-bash interactive
+shell (this environment's Bash tool shell is `zsh`; the script's shebang + explicit `bash` invocation
+sidesteps that, but don't second-guess it by sourcing `repo-lock.sh` yourself in a raw Bash call).
+
+**What it does** (id allocation + file writes + one commit — see the header comments in both files
+for the full mechanics): re-reads `TASKS.json` fresh under the shared repo lock and computes the next
+sequential id from the current highest; reads every `.harness/.pending-tasks/*.json` file (stable
+order) and allocates each task a real id, building a `tempId -> realId` map as it goes; resolves every
+task's `dependsOn` (a real existing `Txxx` id passes through unchanged, a `tempId` resolves via the
+map, an unresolvable `tempId` — e.g. its unit produced zero tasks — is dropped and reported); writes
+`.harness/tasks/TNNN.md` for every task from its `specDo`/`specDoneWhen` (skipped for empty-`tasks`
+units); merges the new tasks into `TASKS.json`; removes every consumed idea's bullet from `IDEAS.md`
+via **fuzzy match** (normalized: backticks stripped, whitespace collapsed — a pending file's recorded
+`ideaBullets` text is a reflowed paragraph, so it won't byte-match the hand-line-wrapped markdown;
+exact match would silently fail to remove anything); `git add`s ONLY `TASKS.json` + the new
+`tasks/TNNN.md` files (never `-A`/`.`, never stages `IDEAS.md` or `.pending-tasks/`, both gitignored);
+commits with an auto-generated message enumerating the new task ids, then pushes (fetch+rebase+retry
+on rejection); deletes the consumed pending files.
+
+A unit that was **deliberately deferred** (owner declined mid-interview — see the `plex-file-naming`
+worked example) writes no pending file at all, so it's correctly invisible to this pass: no task, no
+bullet removal, the idea stays in the inbox untouched for a future sweep.
+
+Read the script's own stdout (it prints a full summary: allocated ids, any dropped `dependsOn`, bullet
+match/no-match per unit) — a `no bullet match` warning means a bullet was left in `IDEAS.md` despite
+its idea being converted, and needs manual cleanup or a closer look at why the fuzzy match missed it.
+
+Offline / don't want to push yet: `NO_PUSH=1 bash .harness/consolidate-ideas.sh` (commits locally only).
+
+If a straggler unit reports back AFTER you've already run consolidation, just run
+`bash .harness/consolidate-ideas.sh` again — it's idempotent, and only ever processes whatever
+`.pending-tasks/*.json` files still exist on disk (running it with an empty pending dir is a no-op:
+it prints "nothing to consolidate" and exits 0). Stage 0 also invokes this exact script on any
+leftover files from a prior interrupted sweep, before Stage 1 even runs.
 
 ---
 
