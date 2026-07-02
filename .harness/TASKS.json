@@ -7932,6 +7932,109 @@
       ],
       "expectsTest": true,
       "spec": ".harness/tasks/T299.md"
+    },
+    {
+      "id": "T300",
+      "title": "stocks-sync: split stocks-watch into check + notify stages (fix skip-status)",
+      "status": "pending",
+      "dependsOn": [
+        "T290"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "stocks",
+        "bugfix"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/stocks-sync/",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T300.md"
+    },
+    {
+      "id": "T301",
+      "title": "stocks-snapshot: also fetch the Stocks & Shares ISA account (optional second credential pair)",
+      "status": "pending",
+      "dependsOn": [
+        "T300"
+      ],
+      "gate": null,
+      "tags": [
+        "pipeline",
+        "stocks",
+        "bugfix"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/stocks-sync/",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T301.md"
+    },
+    {
+      "id": "T302",
+      "title": "Human review: stocks-sync workflow end-to-end",
+      "status": "pending",
+      "dependsOn": [
+        "T300",
+        "T301"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "needs-human",
+        "review",
+        "stocks"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T302.md"
+    },
+    {
+      "id": "T303",
+      "title": "Services page: fix 'used / cap' number wrapping",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "services"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T303.md"
     }
   ]
 }
