@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { isWorkItemDone } from '../../../db/store.js';
+import { isWorkItemDone, workflowTerminalItems } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runListeningDigest,
@@ -54,7 +54,7 @@ function tracksFetcher(tracks: LastFmTopTrack[]): TopTracksFetcher {
   return async () => ({ toptracks: { track: tracks } });
 }
 
-const JOB = 'listening-digest';
+const JOB = 'lastfm-digest';
 
 describe('toArray', () => {
   it('wraps a bare object in a 1-item array', () => {
@@ -198,6 +198,16 @@ describe('runListeningDigest — normal behaviour', () => {
     assert.match(content, /Airbag/);
 
     assert.ok(isWorkItemDone(JOB, '2026-07', 3), 'month should be marked done in the ledger');
+
+    // Regression guard for the wrong-JOB_NAME bug (T346): the workflow detail
+    // page's unified Output section queries the terminal job's ledger by its
+    // REAL registered job name ('lastfm-digest'), not the workflow name — so
+    // the digest must surface there after a run.
+    const outputItems = workflowTerminalItems(['lastfm-digest']);
+    assert.ok(
+      outputItems.some((item) => item.jobName === 'lastfm-digest' && item.itemKey === '2026-07'),
+      'digest item should surface in workflowTerminalItems under the real job name',
+    );
   });
 
   it('re-running the same month overwrites the file rather than erroring', async () => {

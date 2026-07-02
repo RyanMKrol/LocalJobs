@@ -12,7 +12,7 @@ import type {
   LastFmTopTracksResponse,
 } from '../types.js';
 
-const JOB_NAME = 'listening-digest';
+const JOB_NAME = 'lastfm-digest';
 
 // ---------------------------------------------------------------------------
 // Helpers
