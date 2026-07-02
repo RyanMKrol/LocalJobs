@@ -8101,7 +8101,7 @@
     {
       "id": "T306",
       "title": "Services dashboard page: group into category sections",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T305"
       ],
