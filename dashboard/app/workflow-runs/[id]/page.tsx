@@ -28,6 +28,21 @@ function itemLabel(key: string, detail: IoRow['inputDetail']): string {
   return key;
 }
 
+/** Formats a { currentPrice, averageBuyPrice } pair off a work-item detail blob, or
+ *  null when the detail doesn't carry both as numbers (e.g. non-price work items). */
+function priceDetail(detail: unknown): { current: number; avg: number } | null {
+  if (!detail || typeof detail !== 'object') return null;
+  const d = detail as Record<string, unknown>;
+  if (typeof d.currentPrice !== 'number' || typeof d.averageBuyPrice !== 'number') return null;
+  return { current: d.currentPrice, avg: d.averageBuyPrice };
+}
+function formatPriceDetail(p: { current: number; avg: number }): string {
+  const diff = p.current - p.avg;
+  const pct = p.avg === 0 ? 0 : (diff / p.avg) * 100;
+  const sign = diff >= 0 ? '+' : '';
+  return `$${p.current.toFixed(2)} (avg $${p.avg.toFixed(2)}, ${sign}${diff.toFixed(2)} / ${sign}${pct.toFixed(1)}%)`;
+}
+
 /**
  * Derive a human title + a short excerpt from a produced markdown profile, so
  * the IO panel can show a meaningful preview of the output without rendering the
@@ -186,12 +201,15 @@ function OutputCell(
       ? (row.outputDetail as Record<string, unknown>).markdown as string
       : null;
 
+  const outPrice = priceDetail(row.outputDetail);
+
   // No markdown path recorded — show key/name, no preview (no fetch needed).
   if (!mdPath) {
     return (
       <>
         <div className="mono" style={{ fontSize: '0.82em' }}>{row.outputKey}</div>
         {detailName && <div className="muted" style={{ fontSize: '0.88em' }}>{detailName}</div>}
+        {outPrice && <div className="muted" style={{ fontSize: '0.88em' }}>{formatPriceDetail(outPrice)}</div>}
       </>
     );
   }
@@ -210,6 +228,7 @@ function OutputCell(
     <div className="out-meta">
       <button type="button" className="out-meta-link" onClick={open} title={mdPath}>{shortName}</button>
       <span className="out-meta-info muted">click to preview</span>
+      {outPrice && <div className="muted" style={{ fontSize: '0.88em' }}>{formatPriceDetail(outPrice)}</div>}
     </div>
   );
 }
@@ -381,6 +400,9 @@ function IoPanel({ runId, members }: { runId: string; members: WorkflowMember[] 
                           <div className="mono" style={{ fontSize: '0.82em' }}>{row.inputKey}</div>
                           {row.inputDetail && typeof (row.inputDetail as Record<string, unknown>).name === 'string' && (
                             <div className="muted" style={{ fontSize: '0.88em' }}>{itemLabel(row.inputKey, row.inputDetail)}</div>
+                          )}
+                          {priceDetail(row.inputDetail) && (
+                            <div className="muted" style={{ fontSize: '0.88em' }}>{formatPriceDetail(priceDetail(row.inputDetail)!)}</div>
                           )}
                         </td>
                         <td>

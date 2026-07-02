@@ -194,6 +194,44 @@ const workflowIoSkipped = {
   selectedJob: null, scopedProducerJobs: [], scopedConsumerJobs: [],
 };
 
+// T350: a stocks-sync-shaped IO row — `detail.currentPrice`/`detail.averageBuyPrice`
+// (no `markdown`), landing on the INPUT side since `stocks-snapshot` is the DAG's first
+// wave. Exercises the generic price-pair rendering in the IO panel (distinct from every
+// other fixture above, which is places-shaped `{ name, markdown }`).
+const stocksMembers = [
+  { job_name: 'stocks-snapshot', depends_on: [] },
+  { job_name: 'stocks-watch', depends_on: ['stocks-snapshot'] },
+  { job_name: 'stocks-notify', depends_on: ['stocks-watch'] },
+];
+const stocksWorkflowRun = workflowRun({ id: 'stocks', workflow_name: 'stocks-sync' });
+const stocksRunJobs = stocksMembers.map((m, i) => run({
+  id: `stocks-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'stocks',
+}));
+const workflowIoStocks = {
+  io: [
+    ioRow({
+      inputJob: 'stocks-snapshot', inputKey: 'invest:AAPL', inputStatus: 'success',
+      inputDetail: { name: 'AAPL', currentPrice: 198.32, averageBuyPrice: 150.0 },
+      outputJob: 'stocks-notify', outputKey: 'invest:AAPL', outputStatus: 'success',
+      outputDetail: null,
+    }),
+    ioRow({
+      inputJob: 'stocks-snapshot', inputKey: 'isa:VUSA', inputStatus: 'success',
+      inputDetail: { name: 'VUSA', currentPrice: 82.1, averageBuyPrice: 90.5 },
+      outputJob: 'stocks-notify', outputKey: 'isa:VUSA', outputStatus: 'success',
+      outputDetail: null,
+    }),
+  ],
+  firstWave: ['stocks-snapshot'],
+  lastWave: ['stocks-notify'],
+  scoped: true,
+  emptyReason: null,
+  note: '',
+  selectedJob: null,
+  scopedProducerJobs: [],
+  scopedConsumerJobs: [],
+};
+
 const tasks = [
   // T001 is a standalone ready pending task (no longer anyone's dependency) — a valid "Ready" example
   // with no unmet deps at all (shows the "🤖 buildable" pill, not a "needs:" pill).
@@ -373,6 +411,8 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/workflow-runs/skipped') return { run: workflowRunSkipped, jobs: membersSkipped, logs, gates: [] };
   if (pathname === '/api/workflow-runs/movie-recs-run/io') return workflowIoSkipped;
   if (pathname === '/api/workflow-runs/movie-recs-run') return { run: movieRecsWorkflowRun, jobs: movieRecsRunJobs, logs, gates: movieRecsGates };
+  if (pathname === '/api/workflow-runs/stocks/io') return workflowIoStocks;
+  if (pathname === '/api/workflow-runs/stocks') return { run: stocksWorkflowRun, jobs: stocksRunJobs, logs, gates: [] };
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) {
     const job = searchParams?.get('job');
     if (job === 'places-enrich') return workflowIoScopedToEnrich;
@@ -382,6 +422,9 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname.startsWith('/api/workflow-runs/')) return { run: workflowRun(), jobs: [run(), run({ id: '2', job_name: 'places-enrich', status: 'failed' })], logs, gates };
   if (pathname === '/api/workflows/movie-recommendations') {
     return { workflow: workflow({ name: 'movie-recommendations', category: 'recommendations', jobs: movieRecsMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/stocks-sync') {
+    return { workflow: workflow({ name: 'stocks-sync', category: 'regular-maintenance', jobs: stocksMembers, gates: [] }) };
   }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
@@ -437,6 +480,7 @@ export const PAGES = [
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-movie-recs', path: '/workflow-runs/movie-recs-run',   waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-skipped',    path: '/workflow-runs/skipped',          waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-stocks-io',  path: '/workflow-runs/stocks',           waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },
