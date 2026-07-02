@@ -1,5 +1,5 @@
 ---
-description: Convert EVERY idea in the inbox into backlog tasks — one independent agent per idea, running in parallel
+description: Convert EVERY idea in the inbox into backlog tasks — one agent per idea/cluster, fully parallel, with a single consolidation pass instead of per-agent locking
 argument-hint: [optional — a single idea to start with; omit to sweep the whole inbox]
 ---
 
@@ -8,66 +8,120 @@ of the ideas → tasks flow documented in `.harness/CLAUDE.md` § "Ideas inbox &
 leans on the `ralph-loop-add-to-backlog` schema (task object shape, `## Do`/`## Done when` spec
 convention, facets vocabulary) but is NOT that bare skill.
 
-**Model: one independent agent per idea, running the whole thing end-to-end, in parallel.** The old
-approach converted ideas one at a time — think, ask, think more, shape, write — fully serially. That
-wastes the owner's time: an idea that only needed one quick answer had to wait behind one that needed
-five. Instead, each idea gets its OWN agent that owns its entire lifecycle: explore → interview (as
-many rounds as IT needs, not a fixed count) → shape → write, under a shared lock for the write step.
-All these agents launch together and run independently. If idea A's agent is satisfied after one
-round of questions, it goes straight to shaping and committing in the background while idea B's agent
-is still on its third round of follow-ups — nobody waits on anybody else except at the shared lock,
-and that's only held for the few seconds it takes to append a task and commit.
+**Model: one agent per idea, or per tightly-related cluster of ideas — fully parallel, no per-agent
+locking.** Earlier versions of this skill had every per-idea agent take the shared repo lock itself to
+allocate a task id and commit directly to `TASKS.json` — under real concurrent use this caused
+task-id collisions, a race where an agent's `IDEAS.md` bullet-removal silently misfired, and forced an
+artificial "batch of 4-6" cap purely to keep lock contention manageable. This version removes the
+contention by construction instead of just serializing it: **every per-idea agent writes ONLY to its
+own uniquely-named scratch file** (no shared resource touched during interview/shaping at all), and a
+**single consolidation pass**, run once at the end, allocates every task id, resolves cross-idea
+`dependsOn` links, writes `TASKS.json` + spec files, commits, pushes, and cleans up `IDEAS.md` — all in
+one locked step instead of one per idea. Because agents no longer contend over anything, **there is no
+batch-size cap and no staggering**: launch every independent unit in ONE wave. The only grouping that
+still matters is **shared answer-space** — cluster ideas under the SAME agent when answering one idea's
+interview question would plausibly change what you'd ask (or how you'd shape) another; see Stage 1.
 
 **Because multiple agents may be asking you things at overlapping times, every question any agent
-asks MUST be prefixed with which idea it's about** (a short quoted snippet or title is enough) — this
-is the one thing that makes concurrent interviews usable instead of confusing. Bake this into every
-agent's instructions below; don't skip it.
+asks MUST be prefixed with which idea it's about** (a short quoted snippet or title is enough — and if
+an agent owns a cluster of several ideas, it must name the SPECIFIC idea within its cluster, not just
+the cluster) — this is the one thing that makes concurrent interviews usable instead of confusing.
+Bake this into every agent's instructions below; don't skip it.
 
 ---
 
-## Stage 0 — build the worklist, de-dup, spot cross-idea dependencies (main thread, serial)
+## Stage 0 — recovery check (main thread, serial, before anything else)
 
-Read `.harness/IDEAS.md`'s `## Inbox`. Collect every bullet into a worklist. If the inbox is empty,
-say so and stop. If the owner is clearly mid-build on something else, say so and offer to defer the
-whole sweep.
+Before touching the current inbox, check whether a PREVIOUS sweep was interrupted — this avoids
+re-interviewing the owner about work that's already fully decided (or even already committed) because
+a prior run never reached its final write.
+
+1. **Leftover pending-task files.** `mkdir -p .harness/.pending-tasks` then
+   `ls .harness/.pending-tasks/*.json` (glob may match nothing — that's fine, means no leftovers). Each
+   file that exists represents a unit (one idea, or a shared-answer-space cluster) that was FULLY
+   interviewed and shaped in a prior run but never consolidated — the run ended before Stage 3 (a
+   crash, a Ctrl+C, the owner closing the session) ran. If any exist, **run Stage 3 on them right now**,
+   before doing anything else — this flushes the backlog into real tasks so today's sweep starts clean
+   and nobody has to re-answer already-settled questions.
+
+2. **Stale `IDEAS.md` bullets for already-converted ideas.** Some interruptions land between "task
+   committed" and "bullet removed" (observed live in a real sweep — a task landed cleanly but its
+   source bullet stayed in the inbox because the removal step never ran). Before interviewing anyone,
+   do a lightweight, fuzzy cross-check: skim `git log --oneline -15` for recent `backlog: add …`
+   commits and `.harness/TASKS.json`'s most recent ~10 entries' titles. For any CURRENT inbox bullet
+   that plausibly matches one of those — same file/component/feature — surface it to the owner via
+   `AskUserQuestion`: *"This bullet looks like it might already be covered by `<task id/title>` —
+   already done, or still wanted?"* Only remove the bullet (no new task) if the owner confirms; this
+   check is fuzzy and judgment-based, so never silently drop a bullet without asking.
+
+---
+
+## Stage 1 — build the worklist, de-dup, group by shared answer-space (main thread, serial)
+
+Read `.harness/IDEAS.md`'s `## Inbox` (after Stage 0's flush/cleanup). Collect every remaining bullet
+into a worklist. If the inbox is empty, say so and stop. If the owner is clearly mid-build on something
+else, say so and offer to defer the whole sweep.
 
 **De-dup pass.** Scan the full worklist for ideas that are the same idea or substantially overlap —
 SEMANTIC similarity, not exact-text match. Group suspected duplicates and surface each group to the
 owner via `AskUserQuestion`: present the overlapping bullets, explain why you think they're the same,
 ask whether to merge or drop one. Do NOT auto-merge.
 
-**Relation pass.** While you're looking at the whole worklist anyway, flag any pair where one idea
-is clearly a *foundation* the other *builds on* (not a duplicate — genuinely sequential work). Note
-these pairs; they change how you batch Stage 1 below.
+**Grouping pass — replaces the old "relation pass."** Look at the whole remaining worklist for two
+distinct kinds of relationship, and treat them differently:
 
-Whatever remains after de-dup is the worklist that proceeds to Stage 1.
+- **Shared answer-space → put them on the SAME agent.** Two (or more) ideas share answer-space when
+  the answer to one idea's interview question would plausibly change what you'd ask — or how you'd
+  shape — another idea. Concrete signals: both ideas touch the same page/component/file and a design
+  choice in one determines what "done" means for the other; the idea text itself cross-references
+  another idea explicitly (e.g. "discuss this together with…"); one idea is really a refinement or
+  qualification of another's scope. Judgment call — ask yourself "if I answered idea A's questions
+  first, would that change any question I'd ask for idea B?" If yes, assign ONE agent the whole
+  cluster, to interview end-to-end (it may interleave questions across the cluster's ideas in whatever
+  order makes sense, always naming which specific idea a given question is about).
+- **Hard dependency, but NO shared answer-space → still SEPARATE agents, launched in the SAME wave.**
+  One idea is a foundation the other builds on (needs its eventual task id in `dependsOn`), but the
+  dependent's own shaping doesn't depend on the foundation's answers — it just needs a reference to
+  resolve later. Thanks to Stage 2's tempId scheme, these no longer need to be staggered: tell both
+  agents each other's assigned slug/tempId at launch, and Stage 3's consolidation resolves the real
+  link once both are known. Note the pair, but do not delay either agent's launch.
+- **Genuinely orthogonal → separate agents, no relationship at all.** Everything else. Do NOT group
+  these down for the sake of a smaller batch — there is no lock contention to protect against anymore,
+  and conservative batching wastes the owner's time for no benefit.
+
+Whatever remains after de-dup is the set of **agent units** (a unit = one idea, or a shared-answer-space
+cluster) that proceeds to Stage 2 — every unit launches together, in one wave.
 
 ---
 
-## Stage 1 — parallel per-idea agents (explore → interview loop → shape → locked write)
+## Stage 2 — parallel per-unit agents (explore → interview loop → shape → OWN scratch file only)
 
-**Batching.** Ideas with no relation to each other launch together, in a single message (multiple
-`Agent` tool calls at once) — that's what makes them genuinely concurrent. For a pair flagged as
-foundation→dependent in Stage 0, launch the foundation idea's agent first, let it finish completely
-(so its real task id exists in `TASKS.json`), THEN launch the dependent idea's agent with that id
-available to put in `dependsOn`. Everything else fans out together. If `$ARGUMENTS` names a specific
-idea, no special ordering is needed for it (it's not "first" in any meaningful sense anymore — there's
-no serial interview queue) — just include it in the appropriate batch. If the worklist is unusually
-large, keep any one batch to roughly 4-6 concurrently-interviewing agents so your questions don't get
-too interleaved to follow; queue the rest into a following batch.
+**Launch every agent unit from Stage 1 together, in ONE message (all `Agent` tool calls at once).**
+There is no batch cap and no staggering for any reason — including hard-dependency pairs (tell both
+agents in that pair the other's slug so they can cross-reference; do not launch one after the other).
 
-**Each per-idea agent gets this brief** (fresh agent, full tool access — it needs `AskUserQuestion`,
-`Read`/`Grep`/`Glob`/`Bash`, and `Write`/`Edit`):
+**Each per-unit agent gets this brief** (fresh agent, full tool access — it needs `AskUserQuestion`,
+`Read`/`Grep`/`Glob`/`Bash` for exploration, and `Write` for its own scratch file — it does NOT need
+`Edit`, and never touches `.harness/TASKS.json`, `.harness/tasks/`, `.harness/IDEAS.md`, or git):
 
-> You are converting ONE idea from the owner's backlog inbox into TASKS.json task(s). Work through
-> these phases yourself, end to end — nobody else is doing any part of this for you, and nobody is
-> waiting for you before doing their own idea, so take the time you actually need.
+> You are converting ONE idea — or a small cluster of tightly-related ideas, if you were told you own
+> more than one — from the owner's backlog inbox into task data. Work through these phases yourself,
+> end to end. Nobody else is doing any part of this for you, and nobody is waiting for you before
+> doing their own idea (other agents are converting other ideas concurrently right now), so take the
+> time you actually need. You are NOT racing anyone for a shared resource — you only ever write to
+> your own uniquely-named file, so there is nothing to contend over.
 >
-> **The idea (verbatim):** `<idea bullet text>`
+> **The idea(s) (verbatim):** `<idea bullet text — or N bullet texts if you own a cluster>`
+>
+> **(If you own a cluster) why these are grouped:** `<one line explaining the shared answer-space —
+> so you understand why you own more than one idea>`
+>
+> **(If flagged) hard-dependency partner:** `<another unit's slug, if Stage 1 flagged a foundation/
+> dependent relationship with a concurrently-running unit — use this slug in your dependsOn, see below>`
 >
 > **1. Explore.** Read root `CLAUDE.md`, `.harness/HARNESS.md` §8.1 (task schema), `.harness/facets.json`
-> (facet vocabulary), and whatever source/dashboard paths the idea text anchors to. Work out the likely
-> itch/problem, feasibility, relevant files, and a first-pass decomposition.
+> (facet vocabulary), and whatever source/dashboard paths the idea text(s) anchor to. Work out the
+> likely itch/problem, feasibility, relevant files, and a first-pass decomposition.
 >
 > **2. Interview — loop until YOU are genuinely satisfied, not for a fixed number of rounds.** Ask the
 > owner via `AskUserQuestion` (batch up to 4 questions per call) to settle: what they actually want
@@ -76,90 +130,145 @@ too interleaved to follow; queue the rest into a following batch.
 > controlled vocabulary), `gate` (`null`/`"gate"`/`"needs-human"`, including the chooser/review/
 > hardcode three-task pattern from `.harness/CLAUDE.md` when the idea offers multiple options to pick
 > between), and `dependsOn`. If an answer opens a new question, ask another round — there's no cap,
-> just make sure each round is asking something new, not re-litigating an answered point. **Every
-> question you ask must open by naming this idea** (e.g. "For the idea about <short summary>: …") so
-> the owner can tell your questions apart from another idea's agent asking at the same time.
+> just make sure each round is asking something new. **Every question you ask must open by naming the
+> specific idea it's about** (e.g. "For the idea about <short summary>: …") so the owner can tell your
+> questions apart from another agent's questions arriving at the same time — including other ideas
+> inside your OWN cluster, if you own more than one.
+>
+> **If your interview concludes no task is actually warranted** (a pure check-in idea that resolves to
+> "already fine, no change needed"): don't invent a trivial task just to have one. Leave `tasks: []` in
+> your pending file (below) but still record the idea's bullet text and a `report` explaining the
+> resolution — the consolidation step still removes your idea's bullet from `IDEAS.md` even with zero
+> tasks.
 >
 > **Atomise (non-negotiable).** A task is too big when it spans multiple layers (`db`+`core`+`ui`),
-> carries broad/full-stack `risk` flags, or has a multi-part `## Done when` with independent
-> acceptance criteria. Split into the smallest self-contained, separately-verifiable units — typically
-> backend logic+tests first, then a dependent UI-surfacing task, then any cross-cutting follow-up.
+> carries broad/full-stack `risk` flags, or has a multi-part `## Done when` with independent acceptance
+> criteria. Split into the smallest self-contained, separately-verifiable units.
 >
-> **If your exploration surfaces a relationship to ANOTHER idea currently being converted** (not
-> flagged for you already) that you can't resolve yourself: ask the owner about it, and if the other
-> idea's task doesn't exist yet in `TASKS.json` by the time you're ready to write, don't block waiting
-> for it — write your task without that `dependsOn` link and say so clearly in your final report so the
-> owner can add the edge manually.
+> **Cross-referencing another unit's task.** If your idea has a hard dependency on another idea being
+> converted in this same sweep, reference it by the **tempId** you were given for it (e.g.
+> `"needs-hardcode-theme-1"`) in your task's `dependsOn` — NOT a real task id, which doesn't exist yet.
+> If your OWN exploration surfaces a dependency nobody flagged at launch, ask the owner about it; if
+> you can't confirm the other unit's slug, just name the relationship in your `report` so the
+> consolidation step (or the owner) can wire it up by hand.
 >
-> **3. Once satisfied, shape + write — the ENTIRE critical section as ONE bash script in ONE Bash tool
-> call.** Acquire and release must happen in the same live shell process — see
-> `.harness/repo-lock.sh`'s header comment for why (the stale-lock reclaim is PID-liveness based, so
-> splitting this across multiple Bash calls makes the lock meaningless):
-> ```bash
-> source .harness/repo-lock.sh
-> acquire_lock || exit 1
-> trap release_lock EXIT
-> # --- everything below runs while holding the lock ---
-> # 1. Re-read TASKS.json NOW (another idea's agent may have appended while you were interviewing) —
-> #    compute the next id(s) from the CURRENT highest id, zero-padded to the same width.
-> # 2. Write .harness/tasks/TNNN.md for each new task: `## Do` (1-3 sentences, self-contained — the
-> #    eventual builder is a FRESH agent with none of this conversation's context: no ambiguous
-> #    referents like "the ID"/"the page", cite concrete anchors like path/file.ts:NNN where known)
-> #    and `## Done when` (concrete, runnable where possible; for UI/behavioural tasks require
-> #    verification against the real running thing, not just build/tests-pass).
-> # 3. Build the new task object(s) (schema below) into new-tasks.json, then:
-> #      jq --slurpfile add new-tasks.json '.tasks += $add[0]' .harness/TASKS.json > TASKS.json.tmp \
-> #        && jq empty TASKS.json.tmp && mv TASKS.json.tmp .harness/TASKS.json
-> # 4. Remove ONLY this idea's bullet from .harness/IDEAS.md.
-> # 5. git add ONLY the specific files you touched: .harness/TASKS.json + the new tasks/TNNN.md
-> #    file(s). NEVER `git add -A`/`.`, NEVER stage IDEAS.md (gitignored), data/, .env*, credentials.
-> # 6. git commit (heredoc message, e.g. "backlog: add TNNN <title> (from idea)"), then git push.
-> #    On push rejection: git fetch origin && git rebase origin/main, retry once; if it still fails,
-> #    say so in your report but don't treat it as a failure — the commit is safe locally.
-> release_lock   # trap also covers this, but call it explicitly for a clean early exit too
-> ```
-> Task object schema (per `HARNESS.md` §8.1 — re-read it live, this is a reference copy):
+> **3. Once satisfied, shape your task(s) and write ONE local file — no lock, no git, no `TASKS.json`
+> edit.** Pick a short kebab-case slug for your unit (e.g. `hardcode-theme`, `services-categorization`)
+> and use the `Write` tool to create `.harness/.pending-tasks/<slug>.json`:
 > ```jsonc
 > {
->   "id": "TNNN", "title": "<concise title>", "status": "pending", "dependsOn": ["<ids>"],
->   "gate": null, "tags": ["<type>"], "facets": { "layer": "...", "workType": "...", "risk": [] },
->   "scope": ["<files/globs>"], "design": null, "verify": [], "expectsTest": false,
->   "spec": ".harness/tasks/TNNN.md"
+>   "agentSlug": "<slug>",
+>   "ideaBullets": ["<verbatim idea text 1>", "<verbatim idea text 2, if a cluster>"],
+>   "tasks": [
+>     {
+>       "tempId": "<slug>-1",
+>       "title": "<concise title>",
+>       "dependsOn": ["<other-slug>-1", "T292"],
+>       "gate": null,
+>       "tags": ["<type>"],
+>       "facets": { "layer": "...", "workType": "...", "risk": [] },
+>       "scope": ["<files/globs>"],
+>       "design": null,
+>       "verify": [],
+>       "expectsTest": false,
+>       "specDo": "<the '## Do' body text, self-contained for a FRESH builder agent with none of this\n conversation's context: no ambiguous referents like \"the ID\"/\"the page\", cite concrete\n anchors like path/file.ts:NNN where known>",
+>       "specDoneWhen": "<the '## Done when' body text, concrete and runnable where possible>"
+>     }
+>   ],
+>   "report": "<your understanding, facet mismatches, unresolved cross-unit references, anything the\n            owner should know>"
 > }
 > ```
-> Ids monotonic from the current max (re-read under the lock, not from memory). `status` always
-> `"pending"`. `needs-human`/gated tasks omit `facets`. Any task with `facets.layer == "ui"` MUST have
-> a `## Done when` that requires: build the dashboard, run `node dashboard/scripts/visual-check.mjs`,
+> `needs-human`/gated tasks omit `facets`. Any task with `facets.layer == "ui"` MUST have a
+> `specDoneWhen` that requires: build the dashboard, run `node dashboard/scripts/visual-check.mjs`,
 > look at the screenshots, confirm the specific thing renders — and if the change only appears after
 > an interaction (modal/expand/click), also require adding/updating a `FLOWS` entry in
-> `dashboard/scripts/_dashboard-harness.mjs`.
+> `dashboard/scripts/_dashboard-harness.mjs`. **Do NOT touch `.harness/IDEAS.md`, `.harness/TASKS.json`,
+> `.harness/tasks/`, or git** — the consolidation step does all of that in one pass, once, for every
+> unit, at the end. Just write your one JSON file and stop.
 >
-> **4. Report back**: your understanding of the idea, the task id(s) you created, any facet mismatches
-> (append to `facet-misfits.jsonl` per its format if truly nothing in `facets.json` fits), any
-> cross-idea `dependsOn` you couldn't resolve, and any push retry.
-
-Launch the current batch's agents together (one message, N `Agent` calls). Because each agent's
-critical section is a single locked script, concurrent writers naturally queue for their turn on the
-lock rather than racing — an agent that finishes its interview early is never blocked by one still
-mid-conversation with you.
+> **4. Report back**: your understanding, the slug you used, any facet mismatches (append to
+> `facet-misfits.jsonl` per its format if truly nothing in `facets.json` fits), any cross-unit
+> references you made or couldn't resolve, and confirmation your pending file was written.
 
 ---
 
-## Stage 2 — report + final validation (main thread, after each batch returns)
+## Stage 3 — ONE consolidation pass (main thread, after every launched unit reports back)
 
-Once a batch's agents have all reported back, do ONE check yourself (not a subagent):
+Once every unit from the current wave has reported done, run consolidation YOURSELF — not a subagent.
+This step is now mostly mechanical (id allocation + file writes + one commit), and doing it directly
+avoids spawning an agent just to hold a lock for a few seconds. (Stage 0 may also invoke this exact
+procedure early, on leftover files, before Stage 1 even runs.)
+
+⚠️ **Environment note:** in this environment the Bash tool's interactive shell is `zsh`, but
+`.harness/repo-lock.sh` relies on bash-only `${BASH_SOURCE[0]}` and only derives its lock path
+correctly when actually executed BY bash. **Always write the critical section below to a temp `.sh`
+file (e.g. via the `Write` tool) and run it with `bash /path/to/script.sh`** — never `source
+.harness/repo-lock.sh` directly in a Bash tool call here; sourcing it under zsh silently corrupts the
+derived lock path and produces garbled `git`/`cd` errors.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+source .harness/repo-lock.sh
+acquire_lock || exit 1
+trap release_lock EXIT
+# --- everything below runs while holding the lock — NOTHING collidable is decided before this line ---
+# 1. Re-read TASKS.json NOW, fresh from disk — compute the starting id from the CURRENT highest id,
+#    zero-padded to the same width. This is the ONLY place in the whole sweep an id is ever chosen,
+#    so there is nothing left to collide over.
+# 2. Read every .harness/.pending-tasks/*.json file. For each task across every file (stable order,
+#    e.g. sorted by agentSlug then array index), allocate the next sequential id. Build a
+#    tempId -> realId lookup as you go.
+# 3. Resolve every task's dependsOn: a real existing "Txxx" id passes through unchanged; a tempId
+#    reference resolves via the lookup from step 2; a tempId with no match (its unit produced no
+#    task, e.g. "no action needed") is DROPPED and noted for the final report so the owner can wire
+#    it up by hand if still wanted.
+# 4. Write .harness/tasks/TNNN.md for every task (from its specDo/specDoneWhen strings) — skip this
+#    entirely for units whose "tasks" array is empty (a resolved "no action needed" idea).
+# 5. Build the full new-tasks array (real ids + resolved dependsOn) into new-tasks.json, then:
+#      jq --slurpfile add new-tasks.json '.tasks += $add[0]' .harness/TASKS.json > TASKS.json.tmp \
+#        && jq empty TASKS.json.tmp && mv TASKS.json.tmp .harness/TASKS.json
+# 6. Remove every consumed idea's bullet(s) from .harness/IDEAS.md — re-read IDEAS.md fresh, RIGHT
+#    NOW under the lock (never from an earlier snapshot), and remove each one by exact text match
+#    using the "ideaBullets" arrays recorded in the pending files (including for empty-tasks units —
+#    their bullet is removed too, since their idea WAS resolved, just with no task). If a bullet's
+#    exact text is no longer present (already removed some other way), skip it rather than erroring —
+#    this is the only bullet-removal step in the whole flow, so there is no race to guard against, but
+#    a defensive skip costs nothing.
+# 7. git add ONLY .harness/TASKS.json + the new .harness/tasks/TNNN.md file(s). NEVER git add -A/.,
+#    NEVER stage IDEAS.md (gitignored), .harness/.pending-tasks/ (scratch, gitignored), data/, .env*,
+#    credentials.
+# 8. git commit (heredoc message enumerating every new task id, e.g. "backlog: add T304-T310 from
+#    idea conversion sweep"), then git push. On rejection: git fetch origin && git rebase origin/main,
+#    retry once; if it still fails, report it — the commit is safe locally either way.
+# 9. Delete every .harness/.pending-tasks/*.json file consumed in this pass — their content is now
+#    durably represented by the git commit, so nothing is lost by removing the scratch copy.
+release_lock
+```
+
+If a straggler unit reports back AFTER you've already run consolidation, just run Stage 3 again for
+it alone — it's cheap and idempotent (it only ever processes whatever `.pending-tasks/*.json` files
+still exist on disk).
+
+---
+
+## Stage 4 — final validation + report (main thread)
+
+Do ONE check yourself (not a subagent):
 
 - `jq empty .harness/TASKS.json` — still valid JSON.
 - No duplicate ids, every `dependsOn` id exists, no cycles.
 - Every buildable task has a `facets` object with values from `facets.json`'s vocabulary; needs-human
   tasks have none.
 - Every task's `spec` path has a matching file on disk.
-- `.harness/IDEAS.md` — confirm every converted idea's bullet is gone and every un-converted one
-  (dropped in de-dup, or deferred) is still present.
+- `.harness/.pending-tasks/` is empty (or contains only units from a wave still in flight, if you're
+  checking mid-sweep).
+- `.harness/IDEAS.md` — confirm every converted idea's bullet is gone (including "no action needed"
+  resolutions) and every un-converted one (dropped in de-dup, or deferred) is still present.
 
-Then move to the next batch (if any), and finally report a short summary across the whole sweep: each
-idea → the task id(s) it became, any de-dup merges/drops, any unresolved cross-idea `dependsOn` the
-owner should link manually, and confirmation the inbox is left correctly. `.harness/IDEAS.md` is
-gitignored — never commit it. `TASKS.json` + `tasks/TNNN.md` changes were already committed + pushed
-per-idea inside each agent's locked critical section, so there's nothing left to commit unless an
-agent reported a failed push (retry it here if so).
+Report a short summary across the whole sweep: each idea → the task id(s) it became (or "no action
+needed"), any de-dup merges/drops, any dropped/unresolved cross-idea `dependsOn` the owner should link
+manually, and confirmation the inbox and pending-tasks scratch dir are left correctly. Both
+`.harness/IDEAS.md` and `.harness/.pending-tasks/` are gitignored — never commit either. Everything
+else was committed + pushed inside Stage 3's single consolidation pass, so there's nothing left to
+commit unless that step reported a failed push (retry it here if so).

@@ -34,37 +34,60 @@ private jobs — stay local and never hit the public repo. The *mechanism* trave
 this committed doc; each project grows its own private inbox. This is distinct from the committed
 `TASKS.json` backlog — the inbox is transient working state, the backlog is the durable record.
 
-### Step 2 — convert: a per-idea TWO-PHASE interview, looped over the whole inbox (`/local-jobs-convert-ideas`)
+### Step 2 — convert: parallel per-idea agents + a single consolidation pass (`/local-jobs-convert-ideas`)
 
 Conversion is its OWN process — it **leans on `ralph-loop-add-to-backlog` but is NOT the bare skill**.
-`/local-jobs-convert-ideas` sweeps the **whole inbox** in one invocation, but converts the ideas **one at a
-time**: each idea gets its own full excavation before any shaping. The batch is purely an ergonomic
-loop — it never lets you shape several half-formed ideas at once. For each idea, a probing front-end
-runs first:
-- **Phase 1 — idea excavation.** Treat the idea as one vague sentence. Probe the owner FIRST: what's
-  the underlying itch/problem, what are they actually after, rough shape, why it matters — *before*
-  any task-shaping. Default to MORE questions here; assume nothing is fleshed out. (This phase is
-  exactly what the standard add-to-backlog interview lacks — it expects an already-formed feature.)
-- **De-dup pass (before converting anything).** Scan the full inbox for ideas that are the same or
+`/local-jobs-convert-ideas` sweeps the **whole inbox in one invocation**, and converts ideas **in
+parallel, not one at a time**: every idea (or tightly-related cluster of ideas — see below) gets its
+own agent that owns explore → interview → shape end-to-end, and every independent unit launches
+together in one wave — there is no serial queue and no artificial batch-size cap. What used to make
+this unsafe to parallelize (every agent racing the shared repo lock to allocate a task id and commit
+directly) is now avoided by construction: each per-idea agent writes ONLY to its own uniquely-named
+scratch file under `.harness/.pending-tasks/` (no shared resource touched at all during
+interview/shaping), and a **single consolidation pass**, run once after every agent reports back,
+allocates every task id, resolves cross-idea `dependsOn` links, writes `TASKS.json` + spec files,
+commits, pushes, and cleans up `IDEAS.md` — all in one locked step instead of one per idea. Full
+mechanics (the pending-file schema, the consolidation script, the recovery check for an interrupted
+prior sweep) live in the skill itself, `.claude/commands/local-jobs-convert-ideas.md` — this section is
+just the model summary.
+- **Explore + interview per unit.** Each agent treats its idea(s) as vague and probes the owner first:
+  underlying itch/problem, rough shape, why it matters — *before* any task-shaping (this is what the
+  standard add-to-backlog interview lacks; it expects an already-formed feature). Default to MORE
+  questions; assume nothing is fleshed out. Every question names which specific idea it's about, since
+  several agents may be asking things at overlapping times.
+- **De-dup pass (before launching any agents).** Scan the full inbox for ideas that are the same or
   substantially overlap (semantic similarity, not exact-text match) and surface suspected duplicate
-  groups to the owner to merge or drop — do NOT auto-merge. Genuinely related-but-distinct ideas
-  (one a foundation the other builds on) are NOT duplicates and become a `dependsOn` edge instead.
-- **Phase 2 — task shaping.** Feed the now-understood idea into the **`ralph-loop-add-to-backlog`**
-  interview (DoD, scope, dependsOn, facets, spec MD) → a schema-correct task. Related ideas (one a
-  foundation the other builds on) become a `dependsOn` edge, not a merge.
-- **Discipline:** finish one idea completely (excavate → shape → delete) before starting the next, and
-  ideally don't run the sweep while mid-build on something else — that context-juggling is the root
-  problem this whole flow solves.
-- **Delete on convert.** As each idea's task lands, remove that idea's bullet from `.harness/IDEAS.md`.
-  The resulting `TASKS.json` task (+ its spec MD) is the record; the inbox stays a clean, transient
-  surface. (No "converted" archive — the inbox is gitignored, so there'd be no history of it anyway.)
+  groups to the owner to merge or drop — do NOT auto-merge.
+- **Grouping by shared answer-space, not just `dependsOn`.** Two ideas go to the SAME agent when
+  answering one idea's interview question would plausibly change what you'd ask (or how you'd shape)
+  the other — not only when one is a strict foundation the other builds on. A genuine foundation→
+  dependent pair with no shared answer-space still gets two separate agents, launched in the same
+  wave, cross-referencing each other by a temporary id that the consolidation pass resolves once both
+  are known.
+- **Shape → write to a scratch file, not `TASKS.json` directly.** Once an agent is satisfied, it writes
+  its decided task(s) (title, scope, facets, spec content, everything except a real id) to its own
+  `.harness/.pending-tasks/<slug>.json` and stops. No lock, no git, no `IDEAS.md` edit at this stage.
+- **Consolidate once, at the end.** After every launched agent reports back, one pass (not a subagent)
+  reads all pending files, allocates ids, resolves temp-id `dependsOn` references, writes
+  `tasks/TNNN.md` specs, updates `TASKS.json`, commits + pushes, removes every converted idea's bullet
+  from `.harness/IDEAS.md` (by exact text match, re-read fresh under the lock), and deletes the
+  consumed pending files. This is the ONLY step that ever touches the repo lock in a sweep.
+- **Recovery check, before anything else.** A sweep starts by checking for leftover
+  `.harness/.pending-tasks/*.json` files from a prior interrupted run (consolidate those first, before
+  touching the current inbox) and for `IDEAS.md` bullets that plausibly already became a task in a
+  recent commit (confirm with the owner rather than re-interviewing from scratch).
+- **Delete on convert.** As each idea's task lands (or resolves to "no action needed"), its bullet is
+  removed from `.harness/IDEAS.md` — during the consolidation pass, never earlier. The resulting
+  `TASKS.json` task (+ its spec MD) is the record; the inbox stays a clean, transient surface. (No
+  "converted" archive — the inbox is gitignored, so there'd be no history of it anyway.)
 
 **Worked example.** Inbox bullet: *"The services page could show each service's daily usage vs its
-cap."* → **Phase 1** surfaces: is this a sparkline or a number? daily-only or also monthly? does it
-need a new endpoint or is the data already on `GET /api/services/:name`? what's the itch — spotting a
-service about to hit its quota? → once understood, **Phase 2** runs add-to-backlog and produces a
-`ui`/`component` task scoped to the services page (+ any `api` task if a new field is needed), each
-with a real `## Done when`. Then the bullet is deleted from `IDEAS.md`.
+cap."* → its agent's interview surfaces: is this a sparkline or a number? daily-only or also monthly?
+does it need a new endpoint or is the data already on `GET /api/services/:name`? what's the itch —
+spotting a service about to hit its quota? → once understood, it runs the add-to-backlog shape (DoD,
+scope, dependsOn, facets, spec MD) and writes a `ui`/`component` task (+ any `api` task if a new field
+is needed) to its own pending file. The bullet is deleted from `IDEAS.md` once consolidation lands the
+real task(s).
 
 > Distribution: the `/idea` + `/local-jobs-convert-ideas` commands are project-local (`.claude/commands/`) for now;
 > `/idea` is deliberately kept UN-prefixed (unlike its `local-jobs-`-prefixed siblings, T286) so the same

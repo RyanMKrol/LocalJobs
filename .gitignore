@@ -57,6 +57,11 @@ TODO.md
 # themselves stay local and are DELETED once converted into a TASKS.json task.
 .harness/IDEAS.md
 
+# /local-jobs-convert-ideas scratch: per-unit agents each write one file here (decided task
+# data, no id yet) instead of racing for the repo lock; a single consolidation pass allocates
+# ids + commits, then deletes the consumed files. Never committed — see the skill's Stage 2/3.
+.harness/.pending-tasks/
+
 # harness: atomic-write temps for TASKS.json + the owner-owned reviews store (T136).
 # .harness/reviews.json itself IS committed (owner-owned; the daemon commits+pushes it).
 .harness/TASKS.json.tmp
