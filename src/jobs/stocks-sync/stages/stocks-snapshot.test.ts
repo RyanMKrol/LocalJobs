@@ -11,6 +11,7 @@ import {
   normalizePosition,
   priceDiff,
   buildPortfolioMarkdown,
+  positionKey,
   type Trading212Position,
   type NormalizedPosition,
   type PortfolioWriter,
@@ -63,6 +64,13 @@ describe('normalizePosition', () => {
     assert.equal(normalized.averageBuyPrice, 200);
     assert.equal(normalized.currentPrice, 250);
     assert.equal(normalized.currentValue, 1250);
+    assert.equal(normalized.account, 'invest');
+  });
+
+  it('tags a position with the given account', () => {
+    const pos = makePosition({ ticker: 'VUSA_EQ' });
+    const normalized = normalizePosition(pos, 'isa');
+    assert.equal(normalized.account, 'isa');
   });
 });
 
@@ -74,6 +82,7 @@ describe('priceDiff', () => {
   it('computes absolute + percentage gain', () => {
     const { absolute, percent } = priceDiff({
       ticker: 'X',
+      account: 'invest',
       quantity: 1,
       averageBuyPrice: 100,
       currentPrice: 130,
@@ -86,6 +95,7 @@ describe('priceDiff', () => {
   it('computes a loss as negative', () => {
     const { absolute, percent } = priceDiff({
       ticker: 'X',
+      account: 'invest',
       quantity: 1,
       averageBuyPrice: 100,
       currentPrice: 80,
@@ -103,11 +113,33 @@ describe('priceDiff', () => {
 describe('buildPortfolioMarkdown', () => {
   it('renders one row per position with a diff column', () => {
     const md = buildPortfolioMarkdown([
-      { ticker: 'AAPL_US_EQ', quantity: 10, averageBuyPrice: 100, currentPrice: 130, currentValue: 1300 },
+      {
+        ticker: 'AAPL_US_EQ',
+        account: 'invest',
+        quantity: 10,
+        averageBuyPrice: 100,
+        currentPrice: 130,
+        currentValue: 1300,
+      },
     ]);
     assert.match(md, /AAPL_US_EQ/);
     assert.match(md, /\+30\.00/);
     assert.match(md, /\+30\.00%/);
+    assert.match(md, /Invest/);
+  });
+
+  it('visibly distinguishes the ISA account', () => {
+    const md = buildPortfolioMarkdown([
+      {
+        ticker: 'VUSA_EQ',
+        account: 'isa',
+        quantity: 5,
+        averageBuyPrice: 50,
+        currentPrice: 55,
+        currentValue: 275,
+      },
+    ]);
+    assert.match(md, /ISA/);
   });
 });
 
@@ -169,7 +201,7 @@ describe('runStocksSnapshot', () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0].length, 1);
     assert.equal(calls[0][0].ticker, pos.ticker);
-    assert.ok(isWorkItemDone(JOB, pos.ticker, 3), 'ticker should be marked done');
+    assert.ok(isWorkItemDone(JOB, positionKey('invest', pos.ticker), 3), 'ticker should be marked done');
   });
 
   it('handles empty position list gracefully', async () => {
@@ -205,9 +237,74 @@ describe('runStocksSnapshot', () => {
 
     assert.equal(calls[0].length, 2);
     for (const pos of positions) {
-      assert.ok(isWorkItemDone(JOB, pos.ticker, 3), `ticker ${pos.ticker} should be marked done`);
+      assert.ok(isWorkItemDone(JOB, positionKey('invest', pos.ticker), 3), `ticker ${pos.ticker} should be marked done`);
     }
     assert.ok(progressCalls.length >= 2, 'progress called at least once per position');
     assert.equal(progressCalls[progressCalls.length - 1], 100, 'final progress is 100');
+  });
+
+  it('fetches only Invest positions when ISA credentials are unset (unchanged behavior)', async () => {
+    delete process.env.TRADING212_ISA_API_KEY_ID;
+    delete process.env.TRADING212_ISA_API_SECRET_KEY;
+
+    let fetchCalls = 0;
+    const investPos = makePosition({ ticker: `NOISA_${Date.now()}_EQ` });
+    const { write, calls } = makeWriterSpy();
+
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async () => {
+        fetchCalls++;
+        return [investPos];
+      },
+      writePortfolio: write,
+    });
+
+    assert.equal(fetchCalls, 1, 'no second fetch is made when ISA credentials are unset');
+    assert.equal(calls[0].length, 1);
+    assert.equal(calls[0][0].account, 'invest');
+  });
+
+  it('fetches both Invest and ISA positions when ISA credentials are set, tagged by account', async () => {
+    process.env.TRADING212_ISA_API_KEY_ID = 'isa-key-id';
+    process.env.TRADING212_ISA_API_SECRET_KEY = 'isa-secret-key';
+
+    const investPos = makePosition({ ticker: `BOTH_INVEST_${Date.now()}_EQ` });
+    const isaPos = makePosition({ ticker: `BOTH_ISA_${Date.now()}_EQ` });
+    const { write, calls } = makeWriterSpy();
+
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async (keyId) => (keyId === 'isa-key-id' ? [isaPos] : [investPos]),
+      writePortfolio: write,
+    });
+
+    delete process.env.TRADING212_ISA_API_KEY_ID;
+    delete process.env.TRADING212_ISA_API_SECRET_KEY;
+
+    assert.equal(calls[0].length, 2);
+    const byAccount = Object.fromEntries(calls[0].map((p) => [p.account, p.ticker]));
+    assert.equal(byAccount['invest'], investPos.ticker);
+    assert.equal(byAccount['isa'], isaPos.ticker);
+  });
+
+  it('same ticker in both accounts produces two distinct, non-colliding ledger entries', async () => {
+    process.env.TRADING212_ISA_API_KEY_ID = 'isa-key-id';
+    process.env.TRADING212_ISA_API_SECRET_KEY = 'isa-secret-key';
+
+    const sharedTicker = `SHARED_${Date.now()}_EQ`;
+    const investPos = makePosition({ ticker: sharedTicker, averagePrice: 100, currentPrice: 110 });
+    const isaPos = makePosition({ ticker: sharedTicker, averagePrice: 50, currentPrice: 60 });
+    const { write } = makeWriterSpy();
+
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async (keyId) => (keyId === 'isa-key-id' ? [isaPos] : [investPos]),
+      writePortfolio: write,
+    });
+
+    delete process.env.TRADING212_ISA_API_KEY_ID;
+    delete process.env.TRADING212_ISA_API_SECRET_KEY;
+
+    assert.ok(isWorkItemDone(JOB, positionKey('invest', sharedTicker), 3));
+    assert.ok(isWorkItemDone(JOB, positionKey('isa', sharedTicker), 3));
+    assert.notEqual(positionKey('invest', sharedTicker), positionKey('isa', sharedTicker));
   });
 });

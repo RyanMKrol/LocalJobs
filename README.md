@@ -216,7 +216,12 @@ gitignored). Private workflows live in gitignored subfolders.
   open-positions endpoint (https://docs.trading212.com/api) and writes a broker-agnostic
   snapshot to a local `data/out/portfolio.json` (structured) + `data/out/portfolio.md` (one
   row per position with the price difference since purchase, as both an absolute amount and a
-  percentage) — no DynamoDB. Idempotent per ticker via the work_items ledger. Stage 2
+  percentage) — no DynamoDB. Also fetches an OPTIONAL second Stocks & Shares ISA account
+  (Trading212 API keys are scoped one key/secret pair per account) when
+  `TRADING212_ISA_API_KEY_ID` + `TRADING212_ISA_API_SECRET_KEY` are both set; each position is
+  tagged with which account it came from (`invest`/`isa`), shown as an Account column in
+  `portfolio.md`, and keyed by a composite `account:ticker` ledger key so the same ticker held in
+  both accounts never collides. Idempotent per `account:ticker` via the work_items ledger. Stage 2
   (`stocks-watch`, depends on `stocks-snapshot`) checks EVERY position's gain since average buy
   price EVERY run and records it in the ledger unconditionally, then writes this run's fresh
   30%+ breaches to `data/out/fresh-breaches.json` — the check always reports success when it

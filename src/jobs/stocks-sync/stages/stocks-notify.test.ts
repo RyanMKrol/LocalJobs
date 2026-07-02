@@ -49,7 +49,7 @@ const MSFT = 'T300NOTIFY-MSFT';
 const TSLA = 'T300NOTIFY-TSLA';
 
 function pos(ticker: string, avg: number, current: number): NormalizedPosition {
-  return { ticker, quantity: 1, averageBuyPrice: avg, currentPrice: current, currentValue: current };
+  return { ticker, account: 'invest', quantity: 1, averageBuyPrice: avg, currentPrice: current, currentValue: current };
 }
 
 // (a) no fresh breaches -> stocks-notify sends nothing and is a legitimate noop

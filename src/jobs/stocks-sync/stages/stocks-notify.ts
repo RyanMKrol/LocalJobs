@@ -9,7 +9,8 @@ export type PushFn = typeof push;
 
 export function formatBreachLine(b: BreachLine): string {
   const sign = b.gain >= 0 ? '+' : '';
-  return `${b.ticker} ${sign}${b.gain.toFixed(0)}% since last buy ($${b.averageBuyPrice.toFixed(2)} → $${b.currentPrice.toFixed(2)})`;
+  const label = b.account === 'isa' ? `${b.ticker} (ISA)` : b.ticker;
+  return `${label} ${sign}${b.gain.toFixed(0)}% since last buy ($${b.averageBuyPrice.toFixed(2)} → $${b.currentPrice.toFixed(2)})`;
 }
 
 export function buildDigest(breaches: BreachLine[]): { title: string; body: string } {

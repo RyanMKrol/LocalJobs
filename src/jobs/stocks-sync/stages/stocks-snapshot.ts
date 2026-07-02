@@ -27,6 +27,9 @@ export interface Trading212Position {
   pieQuantity: number;
 }
 
+/** Which Trading212 account a position was fetched from. */
+export type Trading212Account = 'invest' | 'isa';
+
 /** The broker-agnostic, normalized shape written to data/out/portfolio.json. */
 export interface NormalizedPosition {
   ticker: string;
@@ -34,6 +37,12 @@ export interface NormalizedPosition {
   averageBuyPrice: number;
   currentPrice: number;
   currentValue: number;
+  account: Trading212Account;
+}
+
+/** Composite ledger/lookup key — tickers can collide across accounts (T301). */
+export function positionKey(account: Trading212Account, ticker: string): string {
+  return `${account}:${ticker}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,13 +76,14 @@ export async function fetchPortfolio(apiKeyId: string, apiSecretKey: string): Pr
 // Normalize (broker-agnostic — no Trading212-specific field names)
 // ---------------------------------------------------------------------------
 
-export function normalizePosition(pos: Trading212Position): NormalizedPosition {
+export function normalizePosition(pos: Trading212Position, account: Trading212Account = 'invest'): NormalizedPosition {
   return {
     ticker: pos.ticker,
     quantity: pos.quantity,
     averageBuyPrice: pos.averagePrice,
     currentPrice: pos.currentPrice,
     currentValue: pos.quantity * pos.currentPrice,
+    account,
   };
 }
 
@@ -95,13 +105,13 @@ export function buildPortfolioMarkdown(positions: NormalizedPosition[]): string 
   const lines: string[] = [];
   lines.push('# Portfolio snapshot');
   lines.push('');
-  lines.push('| Ticker | Quantity | Avg buy price | Current price | Diff | Diff % |');
-  lines.push('|---|---|---|---|---|---|');
+  lines.push('| Account | Ticker | Quantity | Avg buy price | Current price | Diff | Diff % |');
+  lines.push('|---|---|---|---|---|---|---|');
   for (const p of positions) {
     const { absolute, percent } = priceDiff(p);
     const sign = absolute >= 0 ? '+' : '';
     lines.push(
-      `| ${p.ticker} | ${fmt(p.quantity)} | ${fmt(p.averageBuyPrice)} | ${fmt(p.currentPrice)} | ` +
+      `| ${p.account === 'isa' ? 'ISA' : 'Invest'} | ${p.ticker} | ${fmt(p.quantity)} | ${fmt(p.averageBuyPrice)} | ${fmt(p.currentPrice)} | ` +
         `${sign}${fmt(absolute)} | ${sign}${fmt(percent)}% |`,
     );
   }
@@ -137,6 +147,10 @@ export async function runStocksSnapshot(
   if (!apiKeyId) throw new Error('TRADING212_API_KEY_ID is not set');
   if (!apiSecretKey) throw new Error('TRADING212_API_SECRET_KEY is not set');
 
+  const isaApiKeyId = process.env.TRADING212_ISA_API_KEY_ID ?? '';
+  const isaApiSecretKey = process.env.TRADING212_ISA_API_SECRET_KEY ?? '';
+  const hasIsaCreds = Boolean(isaApiKeyId && isaApiSecretKey);
+
   const fetchPortfolioFn =
     opts.fetchPortfolio ??
     ((keyId, secret) => callService('trading212', () => fetchPortfolio(keyId, secret)));
@@ -144,13 +158,22 @@ export async function runStocksSnapshot(
 
   ctx.log('info: stocks-sync starting — fetching open positions from Trading212 (read-only)');
 
-  const rawPositions = await fetchPortfolioFn(apiKeyId, apiSecretKey);
-  ctx.log(`info: fetched ${rawPositions.length} open position(s) from Trading212`);
+  const rawInvestPositions = await fetchPortfolioFn(apiKeyId, apiSecretKey);
+  ctx.log(`info: fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
+
+  let positions = rawInvestPositions.map((p) => normalizePosition(p, 'invest'));
+
+  if (hasIsaCreds) {
+    const rawIsaPositions = await fetchPortfolioFn(isaApiKeyId, isaApiSecretKey);
+    ctx.log(`info: fetched ${rawIsaPositions.length} open position(s) from Trading212 ISA account`);
+    positions = positions.concat(rawIsaPositions.map((p) => normalizePosition(p, 'isa')));
+  } else {
+    ctx.log('info: no ISA credentials configured (TRADING212_ISA_API_KEY_ID / _SECRET_KEY) — Invest account only');
+  }
 
   const counts = workItemCounts(JOB_NAME);
   ctx.log(`info: ledger: ${counts['success'] ?? 0} previously recorded`);
 
-  const positions = rawPositions.map(normalizePosition);
   writePortfolioFn(positions);
   ctx.log(
     `info: wrote ${positions.length} position(s) to data/out/portfolio.json and data/out/portfolio.md`,
@@ -165,10 +188,10 @@ export async function runStocksSnapshot(
   let done = 0;
   for (const p of positions) {
     const { absolute, percent } = priceDiff(p);
-    markWorkItem(JOB_NAME, p.ticker, 'success');
+    markWorkItem(JOB_NAME, positionKey(p.account, p.ticker), 'success');
     done++;
     ctx.log(
-      `info: recorded ${done}/${positions.length} — ${p.ticker}: qty ${p.quantity}, ` +
+      `info: recorded ${done}/${positions.length} — [${p.account}] ${p.ticker}: qty ${p.quantity}, ` +
         `avg ${p.averageBuyPrice}, current ${p.currentPrice}, diff ${absolute.toFixed(2)} (${percent.toFixed(2)}%)`,
     );
     ctx.progress((done / positions.length) * 100, `${done}/${positions.length} recorded`);
@@ -183,7 +206,7 @@ export async function stocksSnapshotInputKeys(): Promise<string[]> {
     const { readFileSync } = await import('fs');
     const raw = readFileSync(stocksSyncConfig.portfolioJsonPath, 'utf-8');
     const positions = JSON.parse(raw) as NormalizedPosition[];
-    return positions.map((p) => p.ticker);
+    return positions.map((p) => positionKey(p.account, p.ticker));
   } catch {
     return [];
   }

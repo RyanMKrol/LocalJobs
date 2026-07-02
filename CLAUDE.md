@@ -182,12 +182,20 @@ and **stocks-sync** (`src/jobs/stocks-sync/`) — pull the owner's current open 
 from Trading212 (https://docs.trading212.com/api) via a **strictly read-only** integration
 (GET-only, HTTP Basic auth with the key id as username and the secret key as password — see
 `src/services/CLAUDE.md`) and write a local snapshot: `data/out/portfolio.json` (structured,
-broker-agnostic `{ ticker, quantity, averageBuyPrice, currentPrice, currentValue }` array) and
-`data/out/portfolio.md` (one row per position, including the price difference since purchase —
-`currentPrice - averageBuyPrice` — as both an absolute amount and a percentage). No DynamoDB,
-matching the local-markdown-first direction of `projects-sync`/`listening-digest`. Stage 1
-(`stocks-snapshot`), idempotent per ticker via the `work_items` ledger; current price/value come
-directly from Trading212's own portfolio endpoint (no separate market-data API or credential).
+broker-agnostic `{ ticker, quantity, averageBuyPrice, currentPrice, currentValue, account }` array)
+and `data/out/portfolio.md` (one row per position, including an Account column and the price
+difference since purchase — `currentPrice - averageBuyPrice` — as both an absolute amount and a
+percentage). No DynamoDB, matching the local-markdown-first direction of
+`projects-sync`/`listening-digest`. **Also fetches an OPTIONAL second Stocks & Shares ISA account
+(T301)** — Trading212 API keys are scoped ONE key/secret pair PER ACCOUNT, so Invest and ISA each
+need their own separately-generated credentials — via `TRADING212_ISA_API_KEY_ID` /
+`TRADING212_ISA_API_SECRET_KEY`; when both are set, `fetchPortfolio` is called a second time with
+those credentials and the resulting positions are tagged `account: 'isa'` (vs `'invest'`) and
+merged into the same combined list. Unset ISA credentials mean Invest-only, unchanged from
+pre-T301 behavior. Stage 1 (`stocks-snapshot`), idempotent per **`account:ticker`** composite key
+(`positionKey`) via the `work_items` ledger — NOT ticker alone, since the same ticker can be held
+in both accounts and a bare-ticker key would collide; current price/value come directly from
+Trading212's own portfolio endpoint (no separate market-data API or credential).
 Stage 2 (`stocks-watch`, `dependsOn: ['stocks-snapshot']`) reads that snapshot and, EVERY run, for
 EVERY position, computes its gain since average buy price and calls `markWorkItem` unconditionally
 — so this check stage always has ledger activity and can never be misclassified as noop by the
@@ -195,7 +203,7 @@ framework's `hasJobAdvancedAnyItem` heuristic (T300; the pre-T300 combined stage
 ledger on a fresh breach or a threshold-drop reset, so a quiet run with nothing breaching called
 `markWorkItem` zero times and was wrongly reported as skipped even though it did real work). Whether
 a position is a **fresh** breach (>=30% AND not already notified) is tracked on a SEPARATE ledger
-key (`<ticker>::notified`, distinct from the per-run check key `<ticker>`) — a fresh breach sets it,
+key (`<account:ticker>::notified`, distinct from the per-run check key `<account:ticker>`) — a fresh breach sets it,
 staying above 30% leaves it untouched, and dropping back below 30% resets it (marked `skipped`,
 which `isWorkItemDone` treats as not-done) so a later re-crossing is fresh again. This run's fresh
 breaches are written to `data/out/fresh-breaches.json` (empty array if none) for the next stage.

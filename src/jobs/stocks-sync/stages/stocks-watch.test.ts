@@ -39,8 +39,13 @@ const TSLA = 'T300TSLA';
 const GOOG = 'T300GOOG';
 const AMZN = 'T300AMZN';
 
-function pos(ticker: string, avg: number, current: number): NormalizedPosition {
-  return { ticker, quantity: 1, averageBuyPrice: avg, currentPrice: current, currentValue: current };
+function pos(
+  ticker: string,
+  avg: number,
+  current: number,
+  account: 'invest' | 'isa' = 'invest',
+): NormalizedPosition {
+  return { ticker, account, quantity: 1, averageBuyPrice: avg, currentPrice: current, currentValue: current };
 }
 
 // (a) a run with NO position breaching still records ledger activity for
@@ -102,6 +107,27 @@ function pos(ticker: string, avg: number, current: number): NormalizedPosition {
   const tickers = breaches.map((b) => b.ticker).sort();
   assert.deepEqual(tickers, [GOOG, AMZN].sort());
   console.log('  ✓ multiple simultaneous fresh breaches are all recorded');
+}
+
+// (f) T301 — the SAME ticker held in both Invest and ISA accounts must not
+// collide on the ledger: each account's breach state is tracked independently.
+{
+  const SHARED = 'T301SHARED';
+  writePortfolio([pos(SHARED, 100, 135, 'invest'), pos(SHARED, 100, 105, 'isa')]);
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  const breaches = readFreshBreaches() as Array<{ ticker: string; account: string }>;
+  assert.equal(breaches.length, 1, 'only the Invest leg breaches; the ISA leg does not');
+  assert.equal(breaches[0].ticker, SHARED);
+  assert.equal(breaches[0].account, 'invest');
+
+  // Now the ISA leg also breaches — it must be reported as its OWN fresh
+  // breach, not suppressed by the Invest leg already being notified.
+  writePortfolio([pos(SHARED, 100, 140, 'invest'), pos(SHARED, 100, 145, 'isa')]);
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  const breaches2 = readFreshBreaches() as Array<{ ticker: string; account: string }>;
+  assert.equal(breaches2.length, 1, 'the invest leg is already notified; only the newly-breaching ISA leg is fresh');
+  assert.equal(breaches2[0].account, 'isa');
+  console.log('  ✓ same ticker in both accounts tracked as distinct, non-colliding ledger entries');
 }
 
 console.log('  ✓ stocks-watch tests passed');

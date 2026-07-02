@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { stocksSyncConfig } from '../config.js';
-import type { NormalizedPosition } from './stocks-snapshot.js';
+import { positionKey, type NormalizedPosition, type Trading212Account } from './stocks-snapshot.js';
 
 /** The work_items key-space for the position-check + notified-episode ledgers. */
 export const WATCH_JOB = 'stocks-watch';
@@ -22,6 +22,7 @@ export function isBreaching(position: NormalizedPosition): boolean {
 
 export interface BreachLine {
   ticker: string;
+  account: Trading212Account;
   gain: number;
   averageBuyPrice: number;
   currentPrice: number;
@@ -29,7 +30,8 @@ export interface BreachLine {
 
 export function formatBreachLine(b: BreachLine): string {
   const sign = b.gain >= 0 ? '+' : '';
-  return `${b.ticker} ${sign}${b.gain.toFixed(0)}% since last buy ($${b.averageBuyPrice.toFixed(2)} → $${b.currentPrice.toFixed(2)})`;
+  const label = b.account === 'isa' ? `${b.ticker} (ISA)` : b.ticker;
+  return `${label} ${sign}${b.gain.toFixed(0)}% since last buy ($${b.averageBuyPrice.toFixed(2)} → $${b.currentPrice.toFixed(2)})`;
 }
 
 export function buildDigest(breaches: BreachLine[]): { title: string; body: string } {
@@ -89,16 +91,19 @@ export async function runStocksWatch(
   for (const position of positions) {
     processed++;
     const gain = gainPct(position);
-    const notifiedKey = `${position.ticker}::notified`;
+    const key = positionKey(position.account, position.ticker);
+    const label = `[${position.account}] ${position.ticker}`;
+    const notifiedKey = `${key}::notified`;
     const alreadyNotified = isWorkItemDone(WATCH_JOB, notifiedKey, 1);
 
     if (gain >= BREACH_THRESHOLD_PCT) {
       if (alreadyNotified) {
-        ctx.log(`info: ${position.ticker}: gain ${gain.toFixed(1)}% — still above threshold, already notified, skipping`);
+        ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — still above threshold, already notified, skipping`);
       } else {
-        ctx.log(`info: ${position.ticker}: gain ${gain.toFixed(1)}% — FRESH breach of ${BREACH_THRESHOLD_PCT}%`);
+        ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — FRESH breach of ${BREACH_THRESHOLD_PCT}%`);
         freshBreaches.push({
           ticker: position.ticker,
+          account: position.account,
           gain,
           averageBuyPrice: position.averageBuyPrice,
           currentPrice: position.currentPrice,
@@ -106,13 +111,13 @@ export async function runStocksWatch(
         markWorkItem(WATCH_JOB, notifiedKey, 'success');
       }
     } else if (alreadyNotified) {
-      ctx.log(`info: ${position.ticker}: gain ${gain.toFixed(1)}% — dropped back below threshold, resetting ledger`);
+      ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — dropped back below threshold, resetting ledger`);
       markWorkItem(WATCH_JOB, notifiedKey, 'skipped');
     } else {
-      ctx.log(`info: ${position.ticker}: gain ${gain.toFixed(1)}% — below threshold`);
+      ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — below threshold`);
     }
 
-    markWorkItem(WATCH_JOB, position.ticker, 'success', {
+    markWorkItem(WATCH_JOB, key, 'success', {
       detail: { gainPct: gain, breaching: gain >= BREACH_THRESHOLD_PCT },
     });
 
