@@ -8378,7 +8378,7 @@
     {
       "id": "T316",
       "title": "Flatten Franchise Gaps into one bordered table + fix low-contrast text",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
