@@ -8727,7 +8727,7 @@
     {
       "id": "T330",
       "title": "Remove redundant \"Errors only\" pill from Logs page filter bar",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
