@@ -9242,7 +9242,7 @@
     {
       "id": "T350",
       "title": "Render current/average-buy price detail in the workflow-run IO panel",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T349"
       ],
