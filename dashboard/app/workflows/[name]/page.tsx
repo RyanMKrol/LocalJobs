@@ -2,7 +2,6 @@
 
 import { Fragment, use, useState, useCallback } from 'react';
 import { DagFlow } from '../../components/DagFlow';
-import { Pill } from '../../components/Pill';
 import { RunButton } from '../../components/RunButton';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api, type MissingSeason, type MovieGap, type MovieRec, type TvRec } from '../../lib/api';
@@ -589,13 +588,13 @@ function MissingSeasonsManager() {
         <div className="panel">
           <table>
             <thead>
-              <tr><th>Season</th><th>TMDB status</th><th></th></tr>
+              <tr><th>Season</th><th></th></tr>
             </thead>
             <tbody>
               {groupByShow(active).map(([meta, nums]) => (
                 <Fragment key={meta.tmdbId}>
                   <tr className="table-group-header">
-                    <td colSpan={3}>
+                    <td colSpan={2}>
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                         <span>
                           <a href={`https://www.themoviedb.org/tv/${meta.tmdbId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>
@@ -625,7 +624,6 @@ function MissingSeasonsManager() {
                           Season {season}
                           {row.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
                         </td>
-                        <td><Pill kind="info">{meta.tmdbStatus}</Pill></td>
                         <td>
                           <button className="btn btn-sm" onClick={() => ignore(row)} disabled={busy === key}>
                             {busy === key ? 'Ignoring…' : '✕ Ignore'}
@@ -653,7 +651,7 @@ function MissingSeasonsManager() {
           </p>
           <table>
             <thead>
-              <tr><th>Show</th><th>Season</th><th>TMDB status</th></tr>
+              <tr><th>Show</th><th>Season</th></tr>
             </thead>
             <tbody>
               {[...ignored].sort((a, b) => a.title.localeCompare(b.title) || a.season - b.season).map((s) => (
@@ -664,7 +662,6 @@ function MissingSeasonsManager() {
                     </a>
                   </td>
                   <td>Season {s.season}</td>
-                  <td>{s.tmdbStatus}</td>
                 </tr>
               ))}
             </tbody>
