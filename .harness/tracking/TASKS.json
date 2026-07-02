@@ -9188,7 +9188,7 @@
     {
       "id": "T348",
       "title": "Add WorkflowDefinition outputJob override so the Output section can source items from a non-terminal stage (fixes stocks-sync)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
