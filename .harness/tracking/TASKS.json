@@ -7380,7 +7380,7 @@
     {
       "id": "T280",
       "title": "Stream the loop's Claude output live (decide + apply the streaming flag)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -8665,7 +8665,7 @@
     {
       "id": "T327",
       "title": "Reorganize .harness/ into subdirectories by kind (docs/config/ledgers/scripts)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -8682,7 +8682,7 @@
     {
       "id": "T328",
       "title": "Convert IDEAS.md inbox bullets to numbered style (in lockstep with the consolidation parser)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
