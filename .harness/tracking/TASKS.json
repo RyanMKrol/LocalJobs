@@ -8799,7 +8799,7 @@
     {
       "id": "T333",
       "title": "Fix movie-recommendations Recommendations panel not being mouse-wheel scrollable",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
