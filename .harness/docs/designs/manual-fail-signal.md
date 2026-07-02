@@ -77,17 +77,21 @@ Net effect: marking a UI task failed makes future UI tasks both **built with a s
 
 ## 5. Interfaces
 
-Two ways to write the same overlay; both commit + push `[skip ci]` under the **shared repo lock**
-(`repo-lock.ts` / the loop's `acquire_lock`) so they never race the loop:
-
-- **Portable (any project, no dashboard):** `.harness/scripts/mark-failed.sh <TNNN> "<reason>"`
-  (and `--undo <TNNN>`). It reuses the loop's lock + paths (sourced with `LOOP_SOURCE_ONLY=1`, so the
-  lock path stays byte-identical). The `/local-jobs-mark-task-failed` Claude command documents and drives it.
 - **Dashboard (this project):** a **"Mark failed"** button on the Backlog page → `POST
-  /api/backlog/:id/failed` → the same overlay file. Restricted to `done` tasks (you're overturning a
-  recorded success); a failed task shows a red chip and counts as reviewed.
+  /api/backlog/:id/failed` → the overlay file, committed + pushed `[skip ci]` under the **shared repo
+  lock** (`repo-lock.ts` / the loop's `acquire_lock`) so it never races the loop. Restricted to `done`
+  tasks (you're overturning a recorded success); a failed task shows a red chip and counts as
+  reviewed.
 
-Both validate that the target is a real `done` task. `manual-fail.json` seeds as `{}` and is committed.
+A portable, no-dashboard interface (`.harness/scripts/mark-failed.sh <TNNN> "<reason>"` +
+`--undo`, driven by the `/local-jobs-mark-task-failed` Claude command) used to exist alongside the
+dashboard button, sharing the loop's lock + paths (sourced with `LOOP_SOURCE_ONLY=1`). Both were
+**removed** — every project running this harness now has a dashboard, so the second interface was
+unused dead weight. If a genuinely dashboard-less project needs this again, re-derive it from this
+design's overlay-file shape rather than resurrecting the deleted script verbatim (the removal reason
+was "nobody uses it", not "the approach was wrong").
+
+Validates that the target is a real `done` task. `manual-fail.json` seeds as `{}` and is committed.
 
 ## 6. Why this shape
 
@@ -95,6 +99,8 @@ Both validate that the target is a real `done` task. `manual-fail.json` seeds as
   loop-owned ledger — the readers subtract the overlay.
 - **Decoupled:** a disjoint, owner-owned file, exactly like `reviews.json`/`human-done.json`; no new
   contention with the loop.
-- **Portable:** the mechanism is a JSON overlay + a shell script + jq reads, so a project that adopts this
-  harness gets the full benefit with no dashboard, daemon, or database. The dashboard button is a
-  convenience layer over the same file.
+- **Portable in principle:** the mechanism is a JSON overlay + jq reads, so a project that adopts this
+  harness could get the full benefit with no dashboard, daemon, or database via a small script
+  reading/writing the same overlay shape — the dashboard button is a convenience layer over that
+  file, not the file's only possible writer. (The actual portable script + command that used to
+  provide this were removed as unused — see §5.)

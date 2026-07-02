@@ -128,7 +128,13 @@ all_tasks()    { tj -r '.tasks[].id'; }
 task_done()    { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="done"' >/dev/null; }
 deps_for()     { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.dependsOn[]?' | tr '\n' ' '; }
 task_gated()   { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.gate!=null' >/dev/null; }
-task_blocked() { [ -f "$WORKLOG/$1.md" ] && grep -qiE 'failed:blocked|needs-human' "$WORKLOG/$1.md"; }
+# A loop-exhausted task, status=blocked set directly by block_task(). The worklog-marker check is
+# kept as a fallback for tasks blocked before status=blocked existed (never backfilled) — a task
+# blocked going forward gets BOTH, but the status check alone covers every new one.
+task_blocked() {
+  tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="blocked"' >/dev/null \
+    || { [ -f "$WORKLOG/$1.md" ] && grep -qiE 'failed:blocked|needs-human' "$WORKLOG/$1.md"; }
+}
 # A task the owner marked FAILED, reconciled into TASKS.json status=failed (T279). Terminal: the loop
 # must NEVER (re)select it — the re-do is a separate follow-up task, not an auto-reopen.
 task_failed()  { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="failed"' >/dev/null; }
@@ -793,17 +799,20 @@ fi
 cur_task=""; cur_attempts=0; cur_rung=0; cur_base=0; cur_verification="ci-only"
 
 # Give up on ONE task WITHOUT halting the loop: discard any local unpushed work, record a
-# failed:blocked marker in the task's worklog (so select_task skips it), push that, and move on.
+# failed:blocked marker in the task's worklog AND a real status=blocked on TASKS.json (so
+# select_task skips it via task_blocked() below, and the task is dashboard-visible the same way
+# a manual-fail is), push that, and move on.
 block_task() {
   local id="$1" reason="$2"
   git -C "$ROOT" reset --hard "origin/$MAIN_BRANCH" 2>/dev/null || true
   mkdir -p "$WORKLOG"
   printf '\n---\nfailed:blocked %s — %s\n' "$id" "$reason" >>"$WORKLOG/$id.md"
+  set_task_status "$id" blocked || log "WARN: failed to set status=blocked for $id"
   record_outcome "$id" true "$reason"               # blocked → ledger row (succeededRung=null, topRung=cur_rung, reason kept)
   flush_failures                                     # fold this task's buffered per-attempt failures into the committed FAILURES ledger
   # Stage always-present files first; add FAILURES only if it exists (see mark_done — a single add with a
   # missing failures.jsonl stages nothing and silently drops this commit).
-  git -C "$ROOT" add "$WORKLOG/$id.md" "$OUTCOMES" 2>/dev/null || true
+  git -C "$ROOT" add "$BACKLOG" "$WORKLOG/$id.md" "$OUTCOMES" 2>/dev/null || true
   if [ -f "$FAILURES" ]; then git -C "$ROOT" add "$FAILURES" 2>/dev/null || true; fi
   git -C "$ROOT" commit -q -m "$id: blocked, needs human — skipping [skip ci]" 2>/dev/null || true
   git -C "$ROOT" push origin "HEAD:$MAIN_BRANCH" 2>/dev/null || log "WARN: couldn't push block marker for $id"

@@ -152,14 +152,29 @@ matching `FLOWS` entry; the `convert-ideas` / `ralph-loop-add-to-backlog` flow i
 ## Marking a task FAILED (owner correction of a false success)
 
 When the owner judges a `done` task to have actually failed, that is recorded in the owner-owned
-`.harness/tracking/manual-fail.json` overlay — **never** by hand-editing it, and never by the loop. Use the
-`/local-jobs-mark-task-failed` command or `.harness/scripts/mark-failed.sh <TNNN> "<reason>"` (the dashboard's "Mark
-failed" button writes the same file). The loop READS this overlay to correct calibration — a false
+`.harness/tracking/manual-fail.json` overlay — **never** by hand-editing it, and never by the loop.
+Use the dashboard's "Mark failed" button (the sole interface — a portable, no-dashboard
+`mark-failed.sh` script + `/local-jobs-mark-task-failed` command used to exist alongside it; both
+were removed as redundant once every project running this harness had a dashboard). The loop READS
+this overlay to correct calibration — a false
 success is re-counted as a failure for difficulty tuning and dropped from its cell's audited-success
 count, so that `(layer × workType)` cell is built with a stronger model and audited more often. At
 pre-flight the loop ALSO reconciles it → `TASKS.json` `status=failed` (T279, `reconcile_overlays`) — a
 terminal status the loop skips; it does NOT re-open/rebuild the task (the re-do is a separate
 follow-up). The loop still never WRITES the overlay file. Full design: `docs/designs/manual-fail-signal.md`.
+
+## Marking a task BLOCKED (the loop's own give-up signal — distinct from FAILED)
+
+When the loop itself can't complete a task (the agent reports `failed:blocked` mid-attempt, or
+`MAX_ATTEMPTS` is exhausted at the top model tier), `block_task()` in `loop.sh` writes the usual
+`failed:blocked <id> — <reason>` worklog marker AND sets `TASKS.json` `status="blocked"` directly
+via `set_task_status` — no overlay involved, since (unlike the owner-driven FAILED case above) the
+loop already unconditionally owns `status` writes. `blocked` is terminal for selection
+(`task_blocked()` checks `status=="blocked"`, falling back to the legacy worklog-marker grep for
+tasks blocked before this existed). Calibration-wise, a blocked row was ALREADY treated exactly like
+a manual-fail row in both `policy.jq`'s tier-selection branch and `audit_gate()`'s confirmed-audited
+count (a blocked outcome was never counted as a success to begin with) — so this status is purely a
+visibility upgrade, not a new calibration mechanism.
 
 ## `scope` is the rigour dial — pick its granularity deliberately
 

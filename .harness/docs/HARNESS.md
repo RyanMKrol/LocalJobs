@@ -129,13 +129,26 @@ between attempts) and flushed into the committed ledger when the task terminates
 weakness is a **false success**: a task marked `done` (green CI + passed/skipped audit) that the owner
 later judges not actually done. Left alone it teaches the tuner the cheap tier works AND suppresses the
 cell's audit rate — the same bug class keeps slipping through. The owner overturns it via the
-committed `.harness/tracking/manual-fail.json` overlay (`POST /api/backlog/:id/failed`, the Backlog "Mark
-failed" button, or the portable `.harness/scripts/mark-failed.sh` / `/local-jobs-mark-task-failed` for no-dashboard
-projects). The loop READS this overlay (never writes it): `scripts/policy.jq`/`pick_base` re-count a
+committed `.harness/tracking/manual-fail.json` overlay (`POST /api/backlog/:id/failed`, or the Backlog
+"Mark failed" button — the sole interface; a portable, no-dashboard `mark-failed.sh` script +
+`/local-jobs-mark-task-failed` command used to exist alongside it, removed as redundant once every
+project running this harness had a dashboard). The loop READS this overlay (never writes it):
+`scripts/policy.jq`/`pick_base` re-count a
 manually-failed task as a failure for tier selection, and `audit_gate` excludes it from the cell's
 confirmed-audited count — so that `(layer × workType)` cell is then built with a **stronger model** and
 **audited more often**. It does not change task status or re-open the task.
 `needs-human` tasks are carved out entirely (no facets, no calibration).
+
+**The loop's own give-up signal — `status="blocked"` (distinct from owner manual-fail above).** When
+`block_task()` gives up on a task (an agent-reported `failed:blocked` mid-attempt, or `MAX_ATTEMPTS`
+exhausted at the top tier), it writes the `failed:blocked <id> — <reason>` worklog marker AND sets
+`TASKS.json` `status="blocked"` directly (`set_task_status`, no overlay — the loop already
+unconditionally owns `status`). `task_blocked()` (in `select_task()` and `postflight.sh`) checks
+`status=="blocked"` first, falling back to the legacy worklog-marker grep for tasks blocked before
+this status existed. A blocked outcome row (`blocked:true` in `outcomes.jsonl`) was ALREADY treated
+identically to a manual-fail row by both `policy.jq`'s tier-selection branch and `audit_gate`'s
+confirmed-audited count — so `status="blocked"` is a visibility upgrade (dashboard-queryable the same
+way `failed` is), not a new calibration path.
 
 ## 7. Usage-limit backoff (pause + cold re-attempt)
 

@@ -28,7 +28,12 @@ task_title()   { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.title'; }
 deps_for()     { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.dependsOn[]?' | tr '\n' ' '; }
 is_gate()      { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.gate=="gate"' >/dev/null; }
 needs_human()  { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.gate=="needs-human"' >/dev/null; }
-task_blocked() { [ -f "$WORKLOG/$1.md" ] && grep -qiE 'failed:blocked|needs-human' "$WORKLOG/$1.md"; }
+# Mirrors loop.sh's task_blocked(): status=blocked (set by block_task()) OR the legacy worklog
+# marker for tasks blocked before status=blocked existed (never backfilled).
+task_blocked() {
+  tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="blocked"' >/dev/null \
+    || { [ -f "$WORKLOG/$1.md" ] && grep -qiE 'failed:blocked|needs-human' "$WORKLOG/$1.md"; }
+}
 
 board=(); needs=(); ready=0; done_all=1
 for t in $(all_tasks); do
