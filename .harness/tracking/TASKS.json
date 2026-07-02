@@ -8965,7 +8965,7 @@
     {
       "id": "T339",
       "title": "Fix table header/cell padding on Services + Workflows pages (shared th/td rule)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
