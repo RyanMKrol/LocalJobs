@@ -417,7 +417,7 @@ export default function Backlog() {
 
         <details open style={{ marginTop: 28 }}>
           <summary className="section-heading-summary">
-            ⏳ Waiting on dependencies ({waiting.length})
+            ⏳ Waiting on Human Tasks ({waiting.length})
           </summary>
           <div className="panel" style={{ padding: '0 14px' }}>
             {waiting.length === 0 && <p className="muted" style={{ padding: '8px 0' }}>None.</p>}
@@ -439,7 +439,7 @@ export default function Backlog() {
 
         <details open style={{ marginTop: 28 }}>
           <summary className="section-heading-summary">
-            🔒 Needs a human ({human.length})
+            🔒 Human Tasks ({human.length})
           </summary>
           <p className="sub">The loop skips these — work them manually.</p>
           <div className="panel" style={{ padding: '0 14px' }}>
