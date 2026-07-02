@@ -188,7 +188,14 @@ export async function runStocksSnapshot(
   let done = 0;
   for (const p of positions) {
     const { absolute, percent } = priceDiff(p);
-    markWorkItem(JOB_NAME, positionKey(p.account, p.ticker), 'success');
+    markWorkItem(JOB_NAME, positionKey(p.account, p.ticker), 'success', {
+      detail: {
+        name: `${p.ticker}${p.account === 'isa' ? ' (ISA)' : ''}`,
+        currentPrice: p.currentPrice,
+        averageBuyPrice: p.averageBuyPrice,
+        markdown: stocksSyncConfig.portfolioMdPath,
+      },
+    });
     done++;
     ctx.log(
       `info: recorded ${done}/${positions.length} — [${p.account}] ${p.ticker}: qty ${p.quantity}, ` +

@@ -4,8 +4,9 @@
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 
-import { isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
+import { stocksSyncConfig } from '../config.js';
 import {
   runStocksSnapshot,
   normalizePosition,
@@ -202,6 +203,23 @@ describe('runStocksSnapshot', () => {
     assert.equal(calls[0].length, 1);
     assert.equal(calls[0][0].ticker, pos.ticker);
     assert.ok(isWorkItemDone(JOB, positionKey('invest', pos.ticker), 3), 'ticker should be marked done');
+  });
+
+  it('records currentPrice/averageBuyPrice/markdown in the ledger detail', async () => {
+    const pos = makePosition({ ticker: `DETAIL_${Date.now()}_EQ`, averagePrice: 100, currentPrice: 130 });
+    const { write } = makeWriterSpy();
+
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async () => [pos],
+      writePortfolio: write,
+    });
+
+    const row = getWorkItem(JOB, positionKey('invest', pos.ticker));
+    assert.ok(row, 'ledger row should exist');
+    const detail = JSON.parse(row!.detail!);
+    assert.equal(detail.currentPrice, 130);
+    assert.equal(detail.averageBuyPrice, 100);
+    assert.equal(detail.markdown, stocksSyncConfig.portfolioMdPath);
   });
 
   it('handles empty position list gracefully', async () => {
