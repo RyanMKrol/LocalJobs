@@ -3,9 +3,12 @@
 //
 // Reads every .harness/.pending-tasks/<slug>.json file (one per idea, or per shared-answer-space
 // cluster — see .claude/commands/local-jobs-convert-ideas.md), allocates real sequential task ids,
-// resolves cross-unit tempId `dependsOn` references, writes .harness/tasks/TNNN.md spec files from
-// each task's specDo/specDoneWhen, merges the new tasks into TASKS.json, and removes each converted
-// idea's bullet from IDEAS.md.
+// resolves cross-unit tempId `dependsOn` references, writes .harness/tasks/TNNN.md spec files by
+// COPYING each task's referenced `specFile` (a real markdown file the per-unit agent wrote alongside
+// this JSON, e.g. `<tempId>.md` — NOT a JSON string field; writing markdown as an actual file instead
+// of an escaped string lets agents be fully expressive with headers/code fences/lists instead of
+// compressing the spec to fit a flat string), merges the new tasks into TASKS.json, and removes each
+// converted idea's bullet from IDEAS.md.
 //
 // This is pure data-processing — it does NOT touch git and does NOT take the repo lock itself.
 // Run it via consolidate-ideas.sh, which wraps it in the shared repo-lock.sh mutex and handles the
@@ -107,12 +110,24 @@ if (droppedDeps.length) {
   for (const d of droppedDeps) console.log(`  ${d.realId} (${d.tempId}) -> "${d.dep}": ${d.reason}`);
 }
 
-// ---- 4. Write tasks/TNNN.md spec files ----
+// ---- 4. Write tasks/TNNN.md spec files by copying each task's referenced specFile ----
 fs.mkdirSync(TASKS_DIR, { recursive: true });
+const consumedSpecFiles = [];
 for (const a of allocatedTasks) {
+  if (!a.raw.specFile) {
+    throw new Error(`${a.tempId} (unit "${a.unit.data.agentSlug}") has no "specFile" field — every task must reference a real markdown spec file written alongside the unit's .json file. Refusing to write an empty spec.`);
+  }
+  const specSrcPath = path.join(PENDING_DIR, a.raw.specFile);
+  if (!fs.existsSync(specSrcPath)) {
+    throw new Error(`${a.tempId} (unit "${a.unit.data.agentSlug}") references specFile "${a.raw.specFile}" but ${specSrcPath} does not exist.`);
+  }
+  const content = fs.readFileSync(specSrcPath, 'utf8');
+  if (!/^## Do\b/m.test(content) || !/^## Done when\b/m.test(content)) {
+    console.log(`WARNING: ${a.tempId}'s spec file (${a.raw.specFile}) is missing a "## Do" or "## Done when" heading — copying it as-is, but this likely needs a manual look.`);
+  }
   const mdPath = path.join(TASKS_DIR, `${a.realId}.md`);
-  const content = `## Do\n\n${a.raw.specDo}\n\n## Done when\n\n${a.raw.specDoneWhen}\n`;
   fs.writeFileSync(mdPath, content, 'utf8');
+  consumedSpecFiles.push(a.raw.specFile);
 }
 
 // ---- 5. Build final task objects ----
@@ -222,6 +237,7 @@ const summary = {
   droppedDeps,
   removedBulletCount,
   pendingFilesConsumed: pendingFiles,
+  specFilesConsumed: consumedSpecFiles,
   suggestedCommitMessage,
 };
 fs.writeFileSync(SUMMARY_PATH, JSON.stringify(summary, null, 2), 'utf8');

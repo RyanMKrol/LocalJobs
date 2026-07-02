@@ -2,12 +2,14 @@
 #
 # consolidate-ideas.sh — Stage 3 of /local-jobs-convert-ideas: the ONE locked consolidation pass.
 #
-# Runs consolidate-ideas.mjs (id allocation, dependsOn resolution, tasks/TNNN.md spec files,
-# TASKS.json merge, IDEAS.md bullet removal) under the shared repo lock, then commits + pushes the
-# result and cleans up the consumed .harness/.pending-tasks/*.json scratch files. This is the ONLY
-# step in the whole ideas->tasks flow that touches the repo lock or git — every per-idea agent in
-# Stage 2 writes to its own pending file with zero shared-resource contention, so there's nothing to
-# serialize until this single pass runs, once, after every launched unit has reported back.
+# Runs consolidate-ideas.mjs (id allocation, dependsOn resolution, tasks/TNNN.md spec files copied
+# verbatim from each task's real markdown specFile, TASKS.json merge, IDEAS.md bullet removal) under
+# the shared repo lock, then commits + pushes the result and cleans up the consumed
+# .harness/.pending-tasks/*.json unit files AND the per-task *.md specFile scratch files they
+# referenced. This is the ONLY step in the whole ideas->tasks flow that touches the repo lock or git —
+# every per-idea agent in Stage 2 writes to its own pending files (a .json unit file + one real .md
+# spec file per task) with zero shared-resource contention, so there's nothing to serialize until this
+# single pass runs, once, after every launched unit has reported back.
 #
 # ⚠️ Run this via `bash .harness/consolidate-ideas.sh` (not `source` it, not run it under zsh) —
 # repo-lock.sh derives its lock path from ${BASH_SOURCE[0]}, which only resolves correctly when the
@@ -69,6 +71,9 @@ fi
 
 echo "--- cleaning up consumed pending files ---"
 for f in $(jq -r '.pendingFilesConsumed[]' "$SUMMARY"); do
+  rm -f ".harness/.pending-tasks/$f"
+done
+for f in $(jq -r '.specFilesConsumed[]?' "$SUMMARY"); do
   rm -f ".harness/.pending-tasks/$f"
 done
 rm -f "$SUMMARY"

@@ -256,9 +256,34 @@ call finding out), does NOT need `Edit`, and never touches `.harness/TASKS.json`
 > you can't confirm the other unit's slug, just name the relationship in your `report` so the
 > consolidation step (or the owner) can wire it up by hand.
 >
-> **3. Once satisfied, shape your task(s) and write ONE local file — no lock, no git, no `TASKS.json`
-> edit.** Pick a short kebab-case slug for your unit (e.g. `hardcode-theme`, `services-categorization`)
-> and use the `Write` tool to create `.harness/.pending-tasks/<slug>.json`:
+> **3. Once satisfied, shape your task(s) and write your local files — no lock, no git, no `TASKS.json`
+> edit.** Pick a short kebab-case slug for your unit (e.g. `hardcode-theme`, `services-categorization`).
+>
+> **Write the spec as a REAL markdown file per task FIRST — not as a JSON string field.** For every
+> task, use the `Write` tool to create `.harness/.pending-tasks/<tempId>.md` (e.g.
+> `hardcode-theme-1.md`) containing the actual `## Do` / `## Done when` spec, written as genuine
+> markdown:
+> ```markdown
+> ## Do
+>
+> <self-contained for a FRESH builder agent with none of this conversation's context: no ambiguous
+> referents like "the ID"/"the page", cite concrete anchors like path/file.ts:NNN where known. Use
+> real markdown — headers, code fences, nested lists, tables, whatever the content actually calls
+> for. This is the builder's ENTIRE brief; don't compress it to fit a flat string.>
+>
+> ## Done when
+>
+> <concrete, runnable where possible. Same rule — use real markdown structure (a numbered checklist
+> of acceptance criteria often reads far better here than a single paragraph).>
+> ```
+> This is deliberate: `specDo`/`specDoneWhen` as JSON string fields (the old shape of this schema)
+> forced you to author a two-section markdown document through JSON-string escaping — every quote,
+> backtick fence, and newline had to survive being embedded in a string literal, which both risks
+> silent corruption and subtly discourages writing the richly-structured spec a real task deserves.
+> Writing the actual `.md` file removes that friction entirely: be as expressive as the task needs.
+>
+> **Then write ONE local JSON file** — `.harness/.pending-tasks/<slug>.json` — referencing each task's
+> spec file by name (not its content):
 > ```jsonc
 > {
 >   "agentSlug": "<slug>",
@@ -275,20 +300,22 @@ call finding out), does NOT need `Edit`, and never touches `.harness/TASKS.json`
 >       "design": null,
 >       "verify": [],
 >       "expectsTest": false,
->       "specDo": "<the '## Do' body text, self-contained for a FRESH builder agent with none of this\n conversation's context: no ambiguous referents like \"the ID\"/\"the page\", cite concrete\n anchors like path/file.ts:NNN where known>",
->       "specDoneWhen": "<the '## Done when' body text, concrete and runnable where possible>"
+>       "specFile": "<tempId>.md"
 >     }
 >   ],
 >   "report": "<your understanding, facet mismatches, unresolved cross-unit references, anything the\n            owner should know>"
 > }
 > ```
-> `needs-human`/gated tasks omit `facets`. Any task with `facets.layer == "ui"` MUST have a
-> `specDoneWhen` that requires: build the dashboard, run `node dashboard/scripts/visual-check.mjs`,
-> look at the screenshots, confirm the specific thing renders — and if the change only appears after
-> an interaction (modal/expand/click), also require adding/updating a `FLOWS` entry in
-> `dashboard/scripts/_dashboard-harness.mjs`. **Do NOT touch `.harness/IDEAS.md`, `.harness/TASKS.json`,
-> `.harness/tasks/`, or git** — the consolidation step does all of that in one pass, once, for every
-> unit, at the end. Just write your one JSON file and stop.
+> `specFile` is just the bare filename — it lives alongside this JSON file in the same
+> `.harness/.pending-tasks/` directory, so the consolidation pass can find it without needing a full
+> path. `needs-human`/gated tasks omit `facets` but still get a `specFile` — everyone gets a real spec.
+> Any task with `facets.layer == "ui"` MUST have its `## Done when` require: build the dashboard, run
+> `node dashboard/scripts/visual-check.mjs`, look at the screenshots, confirm the specific thing
+> renders — and if the change only appears after an interaction (modal/expand/click), also require
+> adding/updating a `FLOWS` entry in `dashboard/scripts/_dashboard-harness.mjs`. **Do NOT touch
+> `.harness/IDEAS.md`, `.harness/TASKS.json`, `.harness/tasks/`, or git** — the consolidation step does
+> all of that in one pass, once, for every unit, at the end. Just write your `.md` file(s) + one JSON
+> file and stop.
 >
 > **4. Report back**: your understanding, the slug you used, any facet mismatches (append to
 > `facet-misfits.jsonl` per its format if truly nothing in `facets.json` fits), any cross-unit
@@ -316,14 +343,18 @@ sequential id from the current highest; reads every `.harness/.pending-tasks/*.j
 order) and allocates each task a real id, building a `tempId -> realId` map as it goes; resolves every
 task's `dependsOn` (a real existing `Txxx` id passes through unchanged, a `tempId` resolves via the
 map, an unresolvable `tempId` — e.g. its unit produced zero tasks — is dropped and reported); writes
-`.harness/tasks/TNNN.md` for every task from its `specDo`/`specDoneWhen` (skipped for empty-`tasks`
-units); merges the new tasks into `TASKS.json`; removes every consumed idea's bullet from `IDEAS.md`
-via **fuzzy match** (normalized: backticks stripped, whitespace collapsed — a pending file's recorded
-`ideaBullets` text is a reflowed paragraph, so it won't byte-match the hand-line-wrapped markdown;
-exact match would silently fail to remove anything); `git add`s ONLY `TASKS.json` + the new
+`.harness/tasks/TNNN.md` for every task by **reading its referenced `specFile` and copying that
+markdown content verbatim** (not reconstructing it from JSON string fields — there's nothing to
+reconstruct, the real spec content already exists as a file; skipped for empty-`tasks` units, and the
+script errors loudly if a task's `specFile` is missing or unreadable rather than silently writing an
+empty spec); merges the new tasks into `TASKS.json`; removes every consumed idea's bullet from
+`IDEAS.md` via **fuzzy match** (normalized: backticks stripped, whitespace collapsed — a pending
+file's recorded `ideaBullets` text is a reflowed paragraph, so it won't byte-match the hand-line-wrapped
+markdown; exact match would silently fail to remove anything); `git add`s ONLY `TASKS.json` + the new
 `tasks/TNNN.md` files (never `-A`/`.`, never stages `IDEAS.md` or `.pending-tasks/`, both gitignored);
 commits with an auto-generated message enumerating the new task ids, then pushes (fetch+rebase+retry
-on rejection); deletes the consumed pending files.
+on rejection); deletes the consumed pending files — both the unit's `.json` file AND every per-task
+`.md` spec file it referenced.
 
 A unit that was **deliberately deferred** (owner declined mid-interview — see the `plex-file-naming`
 worked example) writes no pending file at all, so it's correctly invisible to this pass: no task, no
