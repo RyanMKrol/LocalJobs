@@ -9010,7 +9010,7 @@
     {
       "id": "T341",
       "title": "Align columns across the Services page's per-category tables (nice-to-have)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T339"
       ],
