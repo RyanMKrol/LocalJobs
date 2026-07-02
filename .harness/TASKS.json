@@ -8014,7 +8014,7 @@
     {
       "id": "T303",
       "title": "Services page: fix 'used / cap' number wrapping",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
