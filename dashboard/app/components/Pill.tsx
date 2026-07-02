@@ -18,6 +18,7 @@ import type { CSSProperties } from 'react';
  *   human             – needs-human gate
  *   dep-waiting       – waiting on dependency
  *   paid / free       – service billing type
+ *   info              – full-contrast status label (e.g. an external status string)
  */
 
 interface PillProps {

@@ -1,7 +1,8 @@
 'use client';
 
-import { use, useState, useCallback } from 'react';
+import { Fragment, use, useState, useCallback } from 'react';
 import { DagFlow } from '../../components/DagFlow';
+import { Pill } from '../../components/Pill';
 import { RunButton } from '../../components/RunButton';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api, type MissingSeason, type MovieGap, type MovieRec, type TvRec } from '../../lib/api';
@@ -574,84 +575,90 @@ function MissingSeasonsManager() {
         </p>
       )}
 
-      <div className="movie-gaps-scroll">
-        {groupByShow(active).map(([meta, nums]) => (
-          <div className="panel" key={meta.tmdbId}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-              <h3 style={{ fontSize: 15, marginTop: 0, marginBottom: 0 }}>
-                <a href={`https://www.themoviedb.org/tv/${meta.tmdbId}`} target="_blank" rel="noreferrer">
-                  {meta.title}
-                </a>
-                {meta.year ? <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>({meta.year})</span> : null}
-              </h3>
-              <button
-                className="btn btn-sm"
-                onClick={() => ignoreShow(meta, nums)}
-                disabled={busyShow === meta.tmdbId}
-                style={{ flexShrink: 0 }}
-              >
-                {busyShow === meta.tmdbId ? 'Ignoring…' : '✕ Ignore all'}
-              </button>
-            </div>
-            <table>
-              <thead>
-                <tr><th>Season</th><th>TMDB status</th><th></th></tr>
-              </thead>
-              <tbody>
-                {nums.map((season) => {
-                  const row = all.find((s) => s.tmdbId === meta.tmdbId && s.season === season)!;
-                  const key = `${meta.tmdbId}:${season}`;
-                  return (
-                    <tr key={season}>
-                      <td>
-                        Season {season}
-                        {row.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
-                      </td>
-                      <td className="muted">{meta.tmdbStatus}</td>
-                      <td>
-                        <button className="btn btn-sm" onClick={() => ignore(row)} disabled={busy === key}>
-                          {busy === key ? 'Ignoring…' : '✕ Ignore'}
+      {active.length > 0 && (
+        <div className="panel">
+          <table>
+            <thead>
+              <tr><th>Season</th><th>TMDB status</th><th></th></tr>
+            </thead>
+            <tbody>
+              {groupByShow(active).map(([meta, nums]) => (
+                <Fragment key={meta.tmdbId}>
+                  <tr className="table-group-header">
+                    <td colSpan={3}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                        <span>
+                          <a href={`https://www.themoviedb.org/tv/${meta.tmdbId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>
+                            {meta.title}
+                          </a>
+                          {meta.year ? <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>({meta.year})</span> : null}
+                        </span>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => ignoreShow(meta, nums)}
+                          disabled={busyShow === meta.tmdbId}
+                          style={{ flexShrink: 0 }}
+                        >
+                          {busyShow === meta.tmdbId ? 'Ignoring…' : '✕ Ignore all'}
                         </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ))}
-
-        {active.length === 0 && data?.generatedAt != null && (
-          <p className="muted" style={{ fontSize: 13 }}>No active missing seasons — all clear!</p>
-        )}
-
-        {ignored.length > 0 && (
-          <div className="panel">
-            <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Suppressed by you — never reported or notified again.
-            </p>
-            <table>
-              <thead>
-                <tr><th>Show</th><th>Season</th><th>TMDB status</th></tr>
-              </thead>
-              <tbody>
-                {[...ignored].sort((a, b) => a.title.localeCompare(b.title) || a.season - b.season).map((s) => (
-                  <tr key={`${s.tmdbId}:${s.season}`} className="muted">
-                    <td>
-                      <a href={`https://www.themoviedb.org/tv/${s.tmdbId}`} target="_blank" rel="noreferrer">
-                        {s.title}
-                      </a>
+                      </div>
                     </td>
-                    <td>Season {s.season}</td>
-                    <td>{s.tmdbStatus}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                  {nums.map((season) => {
+                    const row = all.find((s) => s.tmdbId === meta.tmdbId && s.season === season)!;
+                    const key = `${meta.tmdbId}:${season}`;
+                    return (
+                      <tr key={`${meta.tmdbId}-${season}`}>
+                        <td>
+                          Season {season}
+                          {row.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
+                        </td>
+                        <td><Pill kind="info">{meta.tmdbStatus}</Pill></td>
+                        <td>
+                          <button className="btn btn-sm" onClick={() => ignore(row)} disabled={busy === key}>
+                            {busy === key ? 'Ignoring…' : '✕ Ignore'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {active.length === 0 && data?.generatedAt != null && (
+        <p className="muted" style={{ fontSize: 13 }}>No active missing seasons — all clear!</p>
+      )}
+
+      {ignored.length > 0 && (
+        <div className="panel">
+          <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Suppressed by you — never reported or notified again.
+          </p>
+          <table>
+            <thead>
+              <tr><th>Show</th><th>Season</th><th>TMDB status</th></tr>
+            </thead>
+            <tbody>
+              {[...ignored].sort((a, b) => a.title.localeCompare(b.title) || a.season - b.season).map((s) => (
+                <tr key={`${s.tmdbId}:${s.season}`} className="muted">
+                  <td>
+                    <a href={`https://www.themoviedb.org/tv/${s.tmdbId}`} target="_blank" rel="noreferrer">
+                      {s.title}
+                    </a>
+                  </td>
+                  <td>Season {s.season}</td>
+                  <td>{s.tmdbStatus}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }

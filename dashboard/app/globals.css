@@ -185,6 +185,8 @@ tbody tr:hover { background: var(--panel-2); }
 /* Action column in grouped tables — compact, just wide enough for the button. */
 .movie-gaps-scroll table th:last-child,
 .movie-gaps-scroll table td:last-child { width: 1%; white-space: nowrap; }
+/* Full-width row-group header (show/collection name) inside a flattened single-table listing. */
+.table-group-header td { background: var(--panel-2); font-weight: 600; padding: 8px 14px; }
 .mono { font-family: var(--font-mono); }
 .code-block { display: block; font-family: var(--font-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -282,6 +284,8 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 /* Workflow enabled/disabled state pills. */
 .pill.on  { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.off { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
+/* T315: full-contrast status pill — unlike the base .pill's --muted text, this uses --text so it stays legible in low-contrast theme/mode combos (e.g. sunny-8bit light). */
+.pill.info { color: var(--text); background: var(--panel-2); border-color: var(--border); }
 /* Clickable dependency id chip — inline button that looks like a mono link. */
 .dep-id-link {
   display: inline;

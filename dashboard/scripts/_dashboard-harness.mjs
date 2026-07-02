@@ -248,6 +248,19 @@ const movieRecs = {
   ],
 };
 
+// T315: missing-tv-seasons fixture — exercises the flattened row-group-header table
+// (a show with 2+ missing seasons), the "notified" marker, and the separate Ignored panel.
+const missingSeasons = {
+  generatedAt: NOW,
+  shows: [
+    { tmdbId: 500, title: 'The Wire', year: 2002, season: 3, tmdbStatus: 'Ended', notified: false, ignored: false },
+    { tmdbId: 500, title: 'The Wire', year: 2002, season: 4, tmdbStatus: 'Ended', notified: true, ignored: false },
+    { tmdbId: 501, title: LONG, year: 2015, season: 2, tmdbStatus: 'Ended', notified: false, ignored: false },
+    { tmdbId: 502, title: 'Fargo', year: 2014, season: 5, tmdbStatus: 'Returning Series', notified: false, ignored: false },
+    { tmdbId: 503, title: 'An Ignored Show', year: 2010, season: 1, tmdbStatus: 'Ended', notified: false, ignored: true },
+  ],
+};
+
 const tvRecs = {
   generatedAt: NOW, pooled: 8,
   recommendations: [
@@ -273,6 +286,7 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/movie-recs') return movieRecs;
   if (pathname === '/api/tv-recs') return tvRecs;
   if (pathname === '/api/movie-gaps') return { generatedAt: NOW, gaps: [], collectionsChecked: 0, collectionExamples: {} };
+  if (pathname === '/api/missing-seasons') return missingSeasons;
   // Sub-routes must precede the generic `/api/workflow-runs/<id>` catch-all below.
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflow-runs/')) return gateInspection;
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflows/')) return structuralGateDetail;
@@ -322,6 +336,7 @@ export const PAGES = [
   { name: 'workflow',                path: '/workflows/places',               waitFor: ['.rf-dag-node'] },
   { name: 'workflow-movie-recs',     path: '/workflows/movie-recommendations', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-missing-tv-seasons', path: '/workflows/missing-tv-seasons', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-skipped',    path: '/workflow-runs/skipped',          waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
