@@ -8035,6 +8035,29 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T303.md"
+    },
+    {
+      "id": "T304",
+      "title": "Rename Backlog page headings to 'Waiting on Human Tasks' / 'Human Tasks'",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "backlog"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/backlog/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T304.md"
     }
   ]
 }
