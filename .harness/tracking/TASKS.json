@@ -8934,7 +8934,7 @@
     {
       "id": "T338",
       "title": "Add sector/diversification breakdown to stock-digest via a new Finnhub stock-metadata service",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T337"
       ],
