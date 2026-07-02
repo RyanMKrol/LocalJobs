@@ -8538,6 +8538,734 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T321.md"
+    },
+    {
+      "id": "T322",
+      "title": "Add POST /api/workflows/reset-output-all bulk output-reset endpoint",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "api",
+        "danger"
+      ],
+      "scope": [
+        "src/api/server.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T322.md",
+      "facets": {
+        "layer": "api",
+        "workType": "endpoint",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T323",
+      "title": "Add Admin nav tab + page with bulk \"delete all workflow output\" action",
+      "status": "pending",
+      "dependsOn": [
+        "T322"
+      ],
+      "gate": null,
+      "tags": [
+        "ui",
+        "danger"
+      ],
+      "scope": [
+        "dashboard/app/layout.tsx",
+        "dashboard/app/admin/**"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T323.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T324",
+      "title": "Make .table-group-header visually distinct (not just bold) on Missing Seasons + Franchise Gaps tables",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "styling",
+        "table-group-header"
+      ],
+      "scope": [
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T324.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T325",
+      "title": "Hide redundant per-group \"Ignore all\" button when a group has only one item (Missing Seasons + Franchise Gaps)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "component",
+        "redundant-control"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T325.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T326",
+      "title": "Remove the \"TMDB status\" column from the Missing Seasons table (Franchise Gaps unaffected)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "component",
+        "column-removal"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T326.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T327",
+      "title": "Reorganize .harness/ into subdirectories by kind (docs/config/ledgers/scripts)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "harness",
+        "needs-human"
+      ],
+      "scope": [
+        ".harness/**"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T327.md"
+    },
+    {
+      "id": "T328",
+      "title": "Convert IDEAS.md inbox bullets to numbered style (in lockstep with the consolidation parser)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "harness",
+        "docs",
+        "needs-human"
+      ],
+      "scope": [
+        ".harness/IDEAS.md",
+        ".harness/consolidate-ideas.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T328.md"
+    },
+    {
+      "id": "T329",
+      "title": "Add clickable column-header sorting to the IO mapping panel",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/components/SortTh.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T329.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T330",
+      "title": "Remove redundant \"Errors only\" pill from Logs page filter bar",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/logs/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T330.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T331",
+      "title": "Human audit: repo markdown docs for staleness, verbosity, inconsistency",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "docs",
+        "needs-human"
+      ],
+      "scope": [
+        "CLAUDE.md",
+        "README.md",
+        ".harness/CLAUDE.md",
+        ".harness/HARNESS.md",
+        ".harness/README.md",
+        ".harness/LIMITATIONS.md",
+        ".harness/designs/**",
+        ".claude/commands/**",
+        "src/services/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T331.md"
+    },
+    {
+      "id": "T332",
+      "title": "Fix rec-auteur/franchise-gaps node overlap on movie-recommendations RUN-view DAG graph",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "bugfix"
+      ],
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T332.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T333",
+      "title": "Fix movie-recommendations Recommendations panel not being mouse-wheel scrollable",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "bugfix"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T333.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T334",
+      "title": "projects-sync: make project-summarize prompt/template ask for substantive multi-paragraph sections, not one-liners",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "projects-sync",
+        "job",
+        "template"
+      ],
+      "scope": [
+        "src/jobs/projects-sync/project.template.md",
+        "src/jobs/projects-sync/stages/project-summarize.ts",
+        "src/jobs/projects-sync/stages/project-summarize.test.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T334.md",
+      "facets": {
+        "layer": "job",
+        "workType": "llm-prompt",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T335",
+      "title": "Relabel dashboard 'Services' nav tab + page heading to 'Integrations'",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "services"
+      ],
+      "scope": [
+        "dashboard/app/layout.tsx",
+        "dashboard/app/services/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T335.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T336",
+      "title": "Delete stale listens-backfill/listens-sync workflow rows + orphaned spotify service from data/jobs.db",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "cleanup",
+        "db"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "scripts/cleanup-listens-spotify.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npx tsx scripts/cleanup-listens-spotify.ts (run once against the real data/jobs.db, then re-run to confirm idempotency/no-op on second run)"
+      ],
+      "spec": ".harness/tasks/T336.md",
+      "facets": {
+        "layer": "db",
+        "workType": "migration",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T337",
+      "title": "Add stock-digest workflow: weekly Claude-narrated portfolio holdings + performance-movers report",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "job",
+        "feature",
+        "new-workflow"
+      ],
+      "scope": [
+        "src/jobs/stock-digest/**",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T337.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T338",
+      "title": "Add sector/diversification breakdown to stock-digest via a new Finnhub stock-metadata service",
+      "status": "pending",
+      "dependsOn": [
+        "T337"
+      ],
+      "gate": null,
+      "tags": [
+        "job",
+        "service",
+        "feature",
+        "external-api"
+      ],
+      "scope": [
+        "src/jobs/stock-digest/**",
+        "src/services/finnhub.service.ts",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T338.md",
+      "facets": {
+        "layer": "service",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T339",
+      "title": "Fix table header/cell padding on Services + Workflows pages (shared th/td rule)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T339.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T340",
+      "title": "Add consistent spacing between stacked category panels (Services + Workflows)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/workflows/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T340.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T341",
+      "title": "Align columns across the Services page's per-category tables (nice-to-have)",
+      "status": "pending",
+      "dependsOn": [
+        "T339"
+      ],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T341.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T342",
+      "title": "Extract a shared table/category-panel component and migrate Services + Workflows onto it",
+      "status": "pending",
+      "dependsOn": [
+        "T339",
+        "T340"
+      ],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/components/*.tsx",
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/workflows/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T342.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T343",
+      "title": "Fix header mode icon flicker on full-page navigation (lazy-init useMode from DOM)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "bugfix"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T343.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T344",
+      "title": "Reintroduce a selectable System mode via a 3-state cycle on the header mode button",
+      "status": "pending",
+      "dependsOn": [
+        "T343"
+      ],
+      "gate": null,
+      "tags": [
+        "ui",
+        "feature"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/layout.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T344.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T345",
+      "title": "Box the TV Recommendations empty state + establish a reusable boxed-empty-state CSS convention",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T345.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T346",
+      "title": "Fix listening-digest work-item ledger job-name mismatch (JOB_NAME constant)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "job",
+        "bugfix",
+        "output-section"
+      ],
+      "scope": [
+        "src/jobs/listening-digest/stages/listening-digest.ts",
+        "src/jobs/listening-digest/stages/listening-digest.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T346.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T347",
+      "title": "Guarantee WorkflowOutputSection always renders an explicit state, never silently vanishes",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "dashboard",
+        "bugfix",
+        "output-section"
+      ],
+      "scope": [
+        "dashboard/app/components/WorkflowOutputSection.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T347.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T348",
+      "title": "Add WorkflowDefinition outputJob override so the Output section can source items from a non-terminal stage (fixes stocks-sync)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "api",
+        "framework",
+        "feature",
+        "output-section"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "src/jobs/stocks-sync/stocks-sync.workflow.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T348.md",
+      "facets": {
+        "layer": "api",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T349",
+      "title": "Record ticker/price detail on stocks-snapshot's work-item ledger rows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "job",
+        "bugfix",
+        "io-panel"
+      ],
+      "scope": [
+        "src/jobs/stocks-sync/stages/stocks-snapshot.ts",
+        "src/jobs/stocks-sync/stages/stocks-snapshot.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T349.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T350",
+      "title": "Render current/average-buy price detail in the workflow-run IO panel",
+      "status": "pending",
+      "dependsOn": [
+        "T349"
+      ],
+      "gate": null,
+      "tags": [
+        "ui",
+        "dashboard",
+        "component",
+        "io-panel"
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T350.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
     }
   ]
 }
