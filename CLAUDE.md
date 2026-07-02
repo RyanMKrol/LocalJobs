@@ -1295,6 +1295,13 @@ doubt, log it.
   When adding a new reusable element, add it to `dashboard/app/components/` (NOT
   inline in a page) and document it here. Do NOT introduce a new styling system —
   wrap the existing `globals.css` class idiom.
+- **Boxed empty-state convention (T345) — `.empty-state-panel`.** A "nothing here
+  yet" message should render inside `<div className="panel"><p
+  className="empty-state-panel">…</p></div>`, NOT as a bare `<p className="muted">`
+  floating on the page background. `.empty-state-panel` (`globals.css`) horizontally
+  AND vertically centres a short sentence within its `.panel` wrapper — reuse it for
+  future empty states instead of duplicating ad-hoc centring CSS. (A related,
+  IO-panel-specific class, `.io-empty-state`, predates this and is left as-is.)
 - **Dashboard appearance is CSS-variable-driven + has a live theme/font switcher
   (T142 → T154 evaluation, curated down in T184).** All colours/fonts come from
   `:root` custom properties; a header **🎨** control (`ThemeControls` in

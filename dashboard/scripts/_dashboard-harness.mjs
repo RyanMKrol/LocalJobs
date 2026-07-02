@@ -476,6 +476,20 @@ export const FLOWS = [
     waitFor: ['table th.sort-th-active'],
   },
   {
+    // TV-recs EMPTY state (no run yet) — a page-level route override (takes precedence over
+    // the context-level routeApi) makes /api/tv-recs return generatedAt: null just for this
+    // capture, so the boxed empty-state panel (T345) is actually screenshotted.
+    name: 'tv-recs-empty',
+    path: '/workflows/tv-recommendations',
+    settleMs: 1200,
+    actions: async (page) => {
+      await page.route('**/api/tv-recs', async (route) => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ generatedAt: null, pooled: 0, recommendations: [] }) });
+      });
+      await page.reload({ waitUntil: 'networkidle' });
+    },
+  },
+  {
     // The Backlog "Done" section is collapsed by default — expand every <details> so the
     // done rows (and their reviewed/done/failed chips + buttons) are visible.
     name: 'backlog-expanded',

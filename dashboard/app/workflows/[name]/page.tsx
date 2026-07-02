@@ -103,9 +103,11 @@ function TvRecsManager() {
       {err && <p className="error">{err}</p>}
 
       {data && data.generatedAt == null && (
-        <p className="muted" style={{ fontSize: 13 }}>
-          No recommendations yet. Run the workflow manually — the recommended shows will appear here.
-        </p>
+        <div className="panel">
+          <p className="empty-state-panel">
+            No recommendations yet. Run the workflow manually — the recommended shows will appear here.
+          </p>
+        </div>
       )}
 
       {data && data.generatedAt != null && (

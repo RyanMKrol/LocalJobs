@@ -148,6 +148,8 @@ tbody tr:hover { background: var(--panel-2); }
 .io-footnote { color: var(--muted); font-size: 0.8em; margin: 0; padding: 8px 14px; border-top: 1px solid var(--border); display: flex; align-items: center; }
 /* Input→Output empty-state (T195) — muted, padded, centred placeholder. */
 .io-empty-state { color: var(--muted); font-size: 0.9em; text-align: center; padding: 24px 16px; margin: 0; }
+/* Boxed empty-state convention: a panel containing nothing but a single centred sentence — for "nothing here yet" states across the dashboard */
+.empty-state-panel { display: flex; align-items: center; justify-content: center; min-height: 96px; padding: 24px 16px; text-align: center; color: var(--muted); font-size: 0.9em; margin: 0; }
 /* IO table scroll container (T148) — height-capped, both-axis scroll, sticky header. */
 .io-table-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
 .io-table-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
