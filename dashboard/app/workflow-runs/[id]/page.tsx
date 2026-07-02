@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { DagFlow } from '../../components/DagFlow';
 import { api } from '../../lib/api';
-import type { IoRow, Run, WorkflowIo } from '../../lib/api';
+import type { IoRow, Run, WorkflowIo, WorkflowMember } from '../../lib/api';
 import type { RunStatus } from '../../lib/api';
 import { CopyLogsButton, StatusBadge, fmtDuration, fmtRelative, usePoll } from '../../ui';
 
@@ -240,10 +240,12 @@ function rowEffectiveState(row: IoRow, singleStage: boolean): string {
 const IO_FILTER_STATES = ['all', 'success', 'failed', 'skipped'] as const;
 type IoFilterState = typeof IO_FILTER_STATES[number];
 
-function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
-  const { io, firstWave, lastWave, emptyReason, note } = data;
+function IoPanel({ runId, members }: { runId: string; members: WorkflowMember[] }) {
   const [modal, setModal] = useState<ModalState | null>(null);
   const [filter, setFilter] = useState<IoFilterState>('all');
+  const [selectedJob, setSelectedJob] = useState<string | null>(null);
+
+  const { data } = usePoll(() => api.workflowRunIo(runId, selectedJob ?? undefined), 5000, [runId, selectedJob]);
 
   // Opens the preview popover immediately (with a loading state) and resolves
   // the content Promise to fill it in — so the column never fetches on mount.
@@ -256,8 +258,12 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
     },
     [],
   );
+  if (!data) return null;
+  const { io, firstWave, lastWave, emptyReason, note, scopedProducerJobs, scopedConsumerJobs } = data;
   if (io.length === 0 && firstWave.length === 0) return null;
-  const singleStage = firstWave.length > 0 && firstWave[0] === lastWave?.[0];
+  const singleStage = selectedJob != null
+    ? (scopedProducerJobs?.length === 1 && scopedProducerJobs[0] === scopedConsumerJobs?.[0])
+    : (firstWave.length > 0 && firstWave[0] === lastWave?.[0]);
   const emptyMessage = emptyReason === 'pre-feature'
     ? "Per-run input/output isn't recorded for runs created before this feature."
     : 'This run processed no new items.';
@@ -271,10 +277,43 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
 
   const filtered = filter === 'all' ? io : io.filter((r) => rowEffectiveState(r, singleStage) === filter);
 
+  const inputHeader = selectedJob != null && !singleStage
+    ? `Input (${scopedProducerJobs.join(', ')})`
+    : 'Input';
+  const outputHeader = selectedJob != null && !singleStage
+    ? `Output (${selectedJob})`
+    : 'Output';
+
+  const selectJob = (jobName: string | null) => {
+    setSelectedJob(jobName);
+    setFilter('all');
+  };
+
   return (
     <>
       <h2>Input → Output mapping{io.length > 0 ? ` · ${io.length.toLocaleString()} items` : ''}</h2>
       <div className="panel" style={{ overflow: 'hidden' }}>
+        {members.length > 1 && (
+          <div className="io-job-filter-bar">
+            <button
+              type="button"
+              className={`io-job-filter-chip${selectedJob === null ? ' active' : ''}`}
+              onClick={() => selectJob(null)}
+            >
+              All stages
+            </button>
+            {members.map((m) => (
+              <button
+                key={m.job_name}
+                type="button"
+                className={`io-job-filter-chip${selectedJob === m.job_name ? ' active' : ''}`}
+                onClick={() => selectJob(m.job_name)}
+              >
+                {m.job_name}
+              </button>
+            ))}
+          </div>
+        )}
         {io.length === 0 ? (
           <p className="io-empty-state">{emptyMessage}</p>
         ) : (
@@ -303,9 +342,9 @@ function IoPanel({ runId, data }: { runId: string; data: WorkflowIo }) {
                 <table>
                   <thead>
                     <tr>
-                      <th>Input</th>
+                      <th>{inputHeader}</th>
                       <th>State</th>
-                      {!singleStage && <th>Output</th>}
+                      {!singleStage && <th>{outputHeader}</th>}
                       {!singleStage && <th>Output state</th>}
                     </tr>
                   </thead>
@@ -367,10 +406,6 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   const logs = data?.logs ?? [];
   const gates = data?.gates ?? [];
 
-  // IO mapping panel: poll at a slower cadence (it reads the global work-item
-  // ledger, not run-scoped state, so rapid polling isn't needed).
-  const { data: ioData } = usePoll(() => api.workflowRunIo(id), 5000, [id]);
-
   async function cancel() {
     setBusy(true);
     try { await api.cancelWorkflowRun(id); } catch { /* poll will reflect new status */ } finally { setTimeout(() => setBusy(false), 1200); }
@@ -421,7 +456,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {ioData && <IoPanel runId={id} data={ioData} />}
+      {workflow && <IoPanel runId={id} members={workflow.jobs} />}
 
       <h2>Member runs</h2>
       <div className="panel">

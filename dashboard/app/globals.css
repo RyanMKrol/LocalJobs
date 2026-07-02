@@ -160,6 +160,12 @@ tbody tr:hover { background: var(--panel-2); }
 .io-filter-chip--failed.active  { background: rgba(248,81,73,.12); border-color: rgba(248,81,73,.5); color: var(--red); }
 .io-filter-chip--skipped.active { background: rgba(110,118,129,.12); border-color: rgba(110,118,129,.5); color: var(--muted); }
 .io-filter-count { font-variant-numeric: tabular-nums; margin-left: 2px; opacity: 0.75; }
+/* Per-stage job-scoped filter chip bar (T314) — a second, independent filter dimension
+   sitting ABOVE the state-filter bar: choosing a pill here re-fetches a different
+   dataset (that stage's own input→output pairing), rather than filtering client-side. */
+.io-job-filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 12px 14px 0; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.io-job-filter-chip { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 0.8em; padding: 3px 10px; font-family: var(--font-mono, monospace); transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.io-job-filter-chip.active { background: rgba(88,166,255,.12); border-color: var(--accent); color: var(--accent); }
 /* Inline input→output state transition arrow (T226) */
 .io-state-arrow { margin-left: 4px; color: var(--muted); font-size: 0.88em; white-space: nowrap; }
 /* Recent workflow runs scroll container (T185) — bounded height ~12 rows, sticky header. */

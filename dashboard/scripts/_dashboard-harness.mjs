@@ -150,6 +150,32 @@ const workflowIo = {
   scoped: true,
   emptyReason: null,
   note: '',
+  selectedJob: null,
+  scopedProducerJobs: [],
+  scopedConsumerJobs: [],
+};
+
+// Job-scoped IO view (T314): `?job=places-enrich` re-scopes the mapping to that ONE
+// stage's own pairing (input = its predecessor's ledger row, output = its own ledger
+// row) — deliberately DIFFERENT rows/statuses from `workflowIo` above so a screenshot
+// visibly differs when a job pill is selected.
+const workflowIoScopedToEnrich = {
+  io: [
+    ioRow({ outputJob: 'places-enrich', outputKey: 'place:ChIJ' + LONG, outputStatus: 'success',
+            outputDetail: { name: 'A Resolved Place With A Long Name — enriched fields only' } }),
+    ioRow({ inputKey: 'cid:second-place', outputJob: 'places-enrich', outputKey: 'place:second',
+            outputStatus: 'success', outputDetail: { name: 'A Place Successfully Enriched (not yet LLM-summarized)' } }),
+    ioRow({ inputKey: 'cid:fourth-place', outputJob: 'places-enrich', outputKey: 'place:fourth',
+            outputStatus: 'failed', outputDetail: { name: 'Enrichment failed for this place' } }),
+  ],
+  firstWave: ['places-resolve'],
+  lastWave: ['places-enrich-with-llm'],
+  scoped: true,
+  emptyReason: null,
+  note: '',
+  selectedJob: 'places-enrich',
+  scopedProducerJobs: ['places-resolve'],
+  scopedConsumerJobs: ['places-enrich'],
 };
 
 // A run/stage that did no work (T258 noop detection) — settles 'skipped' instead of
@@ -165,6 +191,7 @@ const membersSkipped = members.map((m, i) => run({
 const workflowIoSkipped = {
   io: [], firstWave: ['places-resolve'], lastWave: ['places-enrich-with-llm'],
   scoped: true, emptyReason: null, note: '',
+  selectedJob: null, scopedProducerJobs: [], scopedConsumerJobs: [],
 };
 
 const tasks = [
@@ -231,8 +258,8 @@ const tvRecs = {
   ],
 };
 
-// Map an /api/* pathname to a fixture body.
-export function fixtureFor(pathname) {
+// Map an /api/* pathname (+ optional search params) to a fixture body.
+export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
   if (pathname === '/api/ignored') return { ignored: [stuckItem({ item_key: LONG + '-ign' })] };
   if (pathname === '/api/workflows') return { workflows: [
@@ -251,7 +278,11 @@ export function fixtureFor(pathname) {
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflows/')) return structuralGateDetail;
   if (pathname === '/api/workflow-runs/skipped/io') return workflowIoSkipped;
   if (pathname === '/api/workflow-runs/skipped') return { run: workflowRunSkipped, jobs: membersSkipped, logs, gates: [] };
-  if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) return workflowIo;
+  if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) {
+    const job = searchParams?.get('job');
+    if (job === 'places-enrich') return workflowIoScopedToEnrich;
+    return workflowIo;
+  }
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.' };
   if (pathname.startsWith('/api/workflow-runs/')) return { run: workflowRun(), jobs: [run(), run({ id: '2', job_name: 'places-enrich', status: 'failed' })], logs, gates };
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
@@ -393,6 +424,20 @@ export const FLOWS = [
     },
   },
   {
+    // T314: clicking a per-stage job pill on the workflow-run IO panel re-fetches
+    // (server-side, via ?job=) that ONE stage's own input→output pairing, relabels
+    // the column headers, and resets the state-filter pills back to 'all'.
+    name: 'io-panel-job-scoped',
+    path: '/workflow-runs/1',
+    waitFor: ['.io-job-filter-bar'],
+    actions: async (page) => {
+      // :text-is() for an EXACT match — "places-enrich-with-llm" also contains the
+      // substring "places-enrich", so a has-text() selector would match both chips.
+      await page.click('.io-job-filter-chip:text-is("places-enrich")');
+      await page.waitForTimeout(400);
+    },
+  },
+  {
     // T308: the theme/font/mode picker popover was replaced by a single sun/moon
     // toggle button — click it and capture the resulting (opposite-of-default)
     // data-mode so the toggled look is visible in a screenshot.
@@ -440,7 +485,7 @@ export function startDashboard(port) {
 export async function routeApi(ctx) {
   await ctx.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixtureFor(url.pathname)) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixtureFor(url.pathname, url.searchParams)) });
   });
 }
 

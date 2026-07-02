@@ -203,6 +203,12 @@ export interface WorkflowIo {
    */
   emptyReason: 'no-new' | 'pre-feature' | null;
   note: string;
+  /** Set when the `?job=` param scoped this response to one stage's own pairing (T314). */
+  selectedJob: string | null;
+  /** The stage(s) whose ledger rows supply the Input column when `selectedJob` is set. */
+  scopedProducerJobs: string[];
+  /** The stage(s) whose ledger rows supply the Output column when `selectedJob` is set. */
+  scopedConsumerJobs: string[];
 }
 
 /** Response from GET /api/workflow-runs/:id/output (T110) — a job's produced
@@ -517,7 +523,8 @@ export const api = {
     get<StructuralGateDetail>(
       `/api/workflows/${encodeURIComponent(name)}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
     ),
-  workflowRunIo: (id: string) => get<WorkflowIo>(`/api/workflow-runs/${id}/io`),
+  workflowRunIo: (id: string, job?: string) =>
+    get<WorkflowIo>(`/api/workflow-runs/${id}/io${job ? `?job=${encodeURIComponent(job)}` : ''}`),
   workflowRunOutput: (id: string, job: string, key: string) =>
     get<WorkflowRunOutput>(
       `/api/workflow-runs/${id}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,
