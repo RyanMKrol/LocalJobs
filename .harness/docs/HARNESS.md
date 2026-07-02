@@ -189,8 +189,11 @@ calibration can weight audit-confirmed successes (see `designs/audit-verificatio
 
 **`do`/`doneWhen` live in a per-task Markdown spec (T131).** Each task's *what to build* and *the
 bar for done* are NOT flat strings in TASKS.json — they live in a per-task Markdown file at
-`.harness/tasks/TNNN.md` with exactly two sections, `## Do` and `## Done when`, referenced by the
-task's `spec` field (a repo-relative path). This is more expressive than a JSON string and renders
+`.harness/tasks/TNNN.md` with `## Do` and `## Done when` sections, referenced by the
+task's `spec` field (a repo-relative path). A task authored via `/local-jobs-convert-ideas` also
+gets a leading `## Overview` — one or two plain-language sentences giving the gist of the task at a
+glance, before the denser Do/Done-when detail; this is a later addition, so pre-existing specs
+without one are left as-is (no backfill). This is more expressive than a JSON string and renders
 cleanly on the dashboard. TASKS.json keeps **every other field** (the orchestration fields above —
 `status`, `dependsOn`, `gate`, `facets`, `scope`, `tags`, `verify`, `design` — but NOT `reviewed`,
 which lives in `.harness/tracking/reviews.json`, see below). The loop's per-task prompt reads all orchestration fields from JSON and

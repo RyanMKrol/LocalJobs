@@ -1463,7 +1463,11 @@ this in addition to everything above:
 - **Task `do`/`doneWhen` live in a per-task Markdown spec (T131).** A task's *what to build* and
   *bar for done* are NOT flat strings in `.harness/tracking/TASKS.json` — they live in `.harness/tasks/TNNN.md`
   with two sections, `## Do` and `## Done when`, referenced by the JSON task's `spec` field (a
-  repo-relative path). TASKS.json keeps every OTHER field (`status`, `dependsOn`, `gate`,
+  repo-relative path). **A task authored via `/local-jobs-convert-ideas` also gets a leading `##
+  Overview`** — one or two sentences of plain, human-readable language capturing the point of the
+  task at a glance, before the denser `## Do`/`## Done when` detail. This is a later addition to the
+  convention: existing specs written before it don't have one and are NOT backfilled — it only applies
+  going forward, to newly-authored specs. TASKS.json keeps every OTHER field (`status`, `dependsOn`, `gate`,
   `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design` — but NOT `reviewed`, which
   lives in `.harness/tracking/reviews.json` since T136). The loop's prompt
   reads the orchestration fields from JSON and appends the spec MD verbatim; `GET /api/backlog`

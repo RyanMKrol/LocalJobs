@@ -5,8 +5,8 @@ argument-hint: [optional — a single idea to start with; omit to sweep the whol
 
 Convert ideas from `.harness/tracking/IDEAS.md` into well-formed backlog tasks. This is the deliberate Step 2
 of the ideas → tasks flow documented in `.harness/CLAUDE.md` § "Ideas inbox & the two-step flow". It
-leans on the `ralph-loop-add-to-backlog` schema (task object shape, `## Do`/`## Done when` spec
-convention, facets vocabulary) but is NOT that bare skill.
+leans on the `ralph-loop-add-to-backlog` schema (task object shape, `## Overview`/`## Do`/`## Done when`
+spec convention, facets vocabulary) but is NOT that bare skill.
 
 **Model: one agent per idea, or per tightly-related cluster of ideas — fully parallel, no per-agent
 locking.** Earlier versions of this skill had every per-idea agent take the shared repo lock itself to
@@ -261,9 +261,16 @@ call finding out), does NOT need `Edit`, and never touches `.harness/tracking/TA
 >
 > **Write the spec as a REAL markdown file per task FIRST — not as a JSON string field.** For every
 > task, use the `Write` tool to create `.harness/.pending-tasks/<tempId>.md` (e.g.
-> `hardcode-theme-1.md`) containing the actual `## Do` / `## Done when` spec, written as genuine
-> markdown:
+> `hardcode-theme-1.md`) containing the actual `## Overview` / `## Do` / `## Done when` spec, written
+> as genuine markdown:
 > ```markdown
+> ## Overview
+>
+> <ONE or TWO sentences, plain human-readable language, no jargon-dump. This is the "what are we
+> actually trying to do here, at a glance" line — someone skimming the backlog should understand the
+> POINT of the task from this alone, without having to parse the denser Do/Done-when sections below.
+> Not a restatement of the title; not a scoping/acceptance-criteria list — just the plain-English gist.>
+>
 > ## Do
 >
 > <self-contained for a FRESH builder agent with none of this conversation's context: no ambiguous
@@ -281,6 +288,10 @@ call finding out), does NOT need `Edit`, and never touches `.harness/tracking/TA
 > backtick fence, and newline had to survive being embedded in a string literal, which both risks
 > silent corruption and subtly discourages writing the richly-structured spec a real task deserves.
 > Writing the actual `.md` file removes that friction entirely: be as expressive as the task needs.
+> The `## Overview` section is a separate, later addition to this same convention (existing tasks
+> authored before it don't have one — that's fine, nothing backfills them) — its whole point is
+> to be the thing someone reads FIRST and fastest, before the denser Do/Done-when detail, so keep it
+> short even when the rest of the spec is long.
 >
 > **Then write ONE local JSON file** — `.harness/.pending-tasks/<slug>.json` — referencing each task's
 > spec file by name (not its content):

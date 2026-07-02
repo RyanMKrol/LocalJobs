@@ -15,7 +15,7 @@ schema-correct task object + its `tasks/TNNN.md` spec. Prefer it over hand-editi
 ## Ideas inbox & the two-step flow (ideas → tasks)
 
 Tasks are NOT authored directly from a raw thought. A backlog task carries a high planning bar
-(spec MD with `## Do`/`## Done when`, `scope`, `dependsOn`, `facets`, `verify`), so a half-formed
+(spec MD with `## Overview`/`## Do`/`## Done when`, `scope`, `dependsOn`, `facets`, `verify`), so a half-formed
 idea dumped straight in — especially several at once — produces rushed, low-quality specs. We split
 capture from planning into **two deliberate steps**, with **ideas as a first-class harness concept**.
 

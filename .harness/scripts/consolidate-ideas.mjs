@@ -125,6 +125,9 @@ for (const a of allocatedTasks) {
   if (!/^## Do\b/m.test(content) || !/^## Done when\b/m.test(content)) {
     console.log(`WARNING: ${a.tempId}'s spec file (${a.raw.specFile}) is missing a "## Do" or "## Done when" heading — copying it as-is, but this likely needs a manual look.`);
   }
+  if (!/^## Overview\b/m.test(content)) {
+    console.log(`WARNING: ${a.tempId}'s spec file (${a.raw.specFile}) is missing a "## Overview" heading (a 1-2 sentence plain-language summary at the top) — copying it as-is, but this likely needs a manual look.`);
+  }
   const mdPath = path.join(TASKS_DIR, `${a.realId}.md`);
   fs.writeFileSync(mdPath, content, 'utf8');
   consumedSpecFiles.push(a.raw.specFile);
