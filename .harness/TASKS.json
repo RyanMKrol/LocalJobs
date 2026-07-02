@@ -8124,6 +8124,30 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T306.md"
+    },
+    {
+      "id": "T307",
+      "title": "Workflows page: fix vertical gap between category panels",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "workflows"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T307.md"
     }
   ]
 }
