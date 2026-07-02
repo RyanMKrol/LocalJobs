@@ -8701,7 +8701,7 @@
     {
       "id": "T329",
       "title": "Add clickable column-header sorting to the IO mapping panel",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
