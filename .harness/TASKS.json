@@ -8058,6 +8058,72 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T304.md"
+    },
+    {
+      "id": "T305",
+      "title": "Add manifest-owned 'category' field to services (schema + sync, no edit UI)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "services",
+        "framework"
+      ],
+      "facets": {
+        "layer": "service",
+        "workType": "feature",
+        "risk": [
+          "touches-schema"
+        ]
+      },
+      "scope": [
+        "src/core/types.ts",
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/services/claude-cli.service.ts",
+        "src/services/fragrantica.service.ts",
+        "src/services/gemini.service.ts",
+        "src/services/github.service.ts",
+        "src/services/google-places.service.ts",
+        "src/services/hevy.service.ts",
+        "src/services/lastfm.service.ts",
+        "src/services/tmdb.service.ts",
+        "src/services/trading212.service.ts",
+        "src/services/dynamodb.service.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T305.md"
+    },
+    {
+      "id": "T306",
+      "title": "Services dashboard page: group into category sections",
+      "status": "pending",
+      "dependsOn": [
+        "T305"
+      ],
+      "gate": null,
+      "tags": [
+        "ui",
+        "services"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T306.md"
     }
   ]
 }
