@@ -67,9 +67,9 @@ export default function Workflows() {
         group: workflows.filter((p) => (p.category || 'uncategorized') === key),
       }))
         .filter(({ group }) => group.length > 0)
-        .map(({ key, label, group }, index) => {
+        .map(({ key, label, group }) => {
         return (
-          <div className="panel" key={key} style={index > 0 ? { marginTop: 28 } : undefined}>
+          <div className="panel" key={key}>
             <h2>{label}</h2>
             <table>
               <thead>
