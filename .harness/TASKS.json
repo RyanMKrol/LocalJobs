@@ -8321,7 +8321,7 @@
     {
       "id": "T314",
       "title": "Add per-stage filter pills to the Input → Output mapping panel",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T313"
       ],
