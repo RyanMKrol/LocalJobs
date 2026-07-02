@@ -8203,6 +8203,341 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T309.md"
+    },
+    {
+      "id": "T310",
+      "title": "DAG gate padlock: tinted background fill for all three gate states",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "dag"
+      ],
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T310.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T311",
+      "title": "Add aggregate GET /api/logs endpoint across run_logs + workflow_run_logs",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "api",
+        "logs"
+      ],
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/store.ts",
+        "src/api/server.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T311.md",
+      "facets": {
+        "layer": "api",
+        "workType": "endpoint",
+        "risk": [
+          "touches-schema"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T312",
+      "title": "Add a global Logs nav tab + page",
+      "status": "pending",
+      "dependsOn": [
+        "T311"
+      ],
+      "gate": null,
+      "tags": [
+        "ui",
+        "logs"
+      ],
+      "scope": [
+        "dashboard/app/layout.tsx",
+        "dashboard/app/logs/**",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "spec": ".harness/tasks/T312.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T313",
+      "title": "Scope the workflow-run IO mapping endpoint to a single stage via ?job=",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "api"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/db/store.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T313.md",
+      "facets": {
+        "layer": "api",
+        "workType": "endpoint",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T314",
+      "title": "Add per-stage filter pills to the Input → Output mapping panel",
+      "status": "pending",
+      "dependsOn": [
+        "T313"
+      ],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "spec": ".harness/tasks/T314.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T315",
+      "title": "Flatten Missing Seasons into one bordered table + fix low-contrast text",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/components/Pill.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T315.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T316",
+      "title": "Flatten Franchise Gaps into one bordered table + fix low-contrast text",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T316.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T317",
+      "title": "Pin projects-sync's Claude model + add --effort (medium) support to project-summarize",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "config",
+        "claude-cli"
+      ],
+      "scope": [
+        "src/services/claude.ts",
+        "src/services/claude.test.ts",
+        "src/jobs/projects-sync/stages/project-summarize.ts",
+        "src/jobs/projects-sync/stages/project-summarize.test.ts",
+        ".env",
+        ".env.example",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T317.md",
+      "facets": {
+        "layer": "service",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T318",
+      "title": "Bump MOVIES_RECS_MODEL's code fallback default from claude-sonnet-4-6 to claude-sonnet-5",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "config"
+      ],
+      "scope": [
+        "src/jobs/movies/config.ts",
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T318.md",
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T319",
+      "title": "projects-sync: add enforced second-brain output template for project-summarize",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "projects-sync",
+        "job",
+        "template"
+      ],
+      "scope": [
+        "src/jobs/projects-sync/project.template.md",
+        "src/jobs/projects-sync/config.ts",
+        "src/jobs/projects-sync/stages/project-summarize.ts",
+        "src/jobs/projects-sync/stages/project-summarize.test.ts",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T319.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T320",
+      "title": "projects-sync: give project-summarize real filesystem tool-access to the cloned repo",
+      "status": "pending",
+      "dependsOn": [
+        "T319"
+      ],
+      "gate": null,
+      "tags": [
+        "projects-sync",
+        "job",
+        "llm-prompt"
+      ],
+      "scope": [
+        "src/jobs/projects-sync/stages/project-summarize.ts",
+        "src/jobs/projects-sync/stages/project-summarize.test.ts",
+        "src/jobs/projects-sync/claude-repo.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T320.md",
+      "facets": {
+        "layer": "job",
+        "workType": "llm-prompt",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T321",
+      "title": "Owner review: workouts-sync output — 2026-06 data gap and schedule/window check",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "review",
+        "needs-human"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T321.md"
     }
   ]
 }
