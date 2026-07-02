@@ -8148,6 +8148,61 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T307.md"
+    },
+    {
+      "id": "T308",
+      "title": "Hardcode dashboard theme to sunny-8bit+baloo; replace picker with light/dark sun toggle",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "theme"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/layout.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T308.md"
+    },
+    {
+      "id": "T309",
+      "title": "Delete dead pixel-picnic/default/spacemono/reduce-motion/emoji-minimise theme code",
+      "status": "pending",
+      "dependsOn": [
+        "T308"
+      ],
+      "gate": null,
+      "tags": [
+        "ui",
+        "theme",
+        "cleanup"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/layout.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T309.md"
     }
   ]
 }
