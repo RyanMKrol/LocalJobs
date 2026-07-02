@@ -32,7 +32,7 @@ export const moviesConfig = {
   /** Append-only recommended-film history, fed back into branch prompts. */
   recsHistoryOut: resolve(dataDir, 'out', 'recs-history.json'),
   /** The (free) Claude model the recommender branches use. */
-  recsModel: process.env.MOVIES_RECS_MODEL ?? 'claude-sonnet-4-6',
+  recsModel: process.env.MOVIES_RECS_MODEL ?? 'claude-sonnet-5',
   /** Owned-library sample size each branch shows Claude (stratified). */
   recsSampleSize: Number(process.env.MOVIES_RECS_SAMPLE ?? 50),
   /** How many films each branch is asked for (headroom after filtering, T162). */
