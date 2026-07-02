@@ -114,7 +114,7 @@ jq -r '.tasks[]|select(.status=="pending" and .gate==null)
   |select((.facets|not) or (.facets.layer|not) or (.facets.workType|not))|.id' .harness/TASKS.json
 
 VALID_LAYERS="$(jq -r '.facets.layer.values|keys[]' .harness/facets.json)"
-VALID_WORKTYPES="$(jq -r '.facets.workType.values|keys[]' .harness/facets.json)"
+VALID_WORKTYPES="$(jq -r '.facets["work-type"].values|keys[]' .harness/facets.json)"
 # then for each task with facets present, confirm .facets.layer is in VALID_LAYERS
 # and .facets.workType is in VALID_WORKTYPES — flag any that aren't
 
