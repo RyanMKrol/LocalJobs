@@ -182,7 +182,12 @@ mirroring perfumes' `profile.template.md` pattern):** `buildSummaryPrompt` embed
 (`name`/`full_name`/`url`/`language`/`topics`/`status`/`last_pushed`/`themes`/`domain`) plus fixed `##`
 sections (`What It Is`/`Tech Stack`/`Status`/`Structure`/`Themes & Interests`/`Notable Technical
 Approaches`/`Sources`) designed so the whole corpus of summaries is queryable for cross-project questions
-("what kind of work am I interested in", "what have I built in domain X"). `templateShapeViolations`
+("what kind of work am I interested in", "what have I built in domain X"). **Each section is expected to
+be a couple of substantive paragraphs grounded in real repo exploration (T334), not a one-line
+restatement of the catalog metadata** — both the template's per-section guidance and `buildSummaryPrompt`
+explicitly ask for this depth (while keeping the existing "never invent facts" honesty instruction
+intact; a small/dormant project may honestly say a section has little to add rather than pad it).
+`templateShapeViolations`
 validates the response post-hoc (leading `---` + every required heading); a shape mismatch throws with
 the missing pieces named, routing through the existing `catch` → `markWorkItem(..., 'failed', ...)` path
 — no new failure mechanism. Idempotent per

@@ -13,24 +13,35 @@ domain: "One-line problem-domain description."
 # repo-name — owner/repo-name
 
 ## What It Is
-A short paragraph describing the project: what it does and why it exists.
+A couple of substantive paragraphs describing what the project actually does, who
+it's for, and why it exists — grounded in what you found exploring the repo (its
+README, entry points, package metadata), not a one-line restatement of the catalog
+description above.
 
 ## Tech Stack
-Languages, frameworks, and notable dependencies.
+A couple of substantive paragraphs naming the specific languages, frameworks,
+libraries, and notable dependencies you found (e.g. in package.json/requirements/
+go.mod), and how they fit together — not just a bare list.
 
 ## Status
-Last commit date, plus an active/dormant judgement with brief reasoning.
+Last commit date, plus an active/dormant judgement with real reasoning: what the
+commit history, issues, or structure suggest about how actively this is maintained
+or used.
 
 ## Structure
-Notable directories, entry points, or architecture at a glance.
+A couple of substantive paragraphs on the notable directories, entry points, and
+architecture you actually observed while exploring the repo — how the pieces fit
+together, not just a directory listing.
 
 ## Themes & Interests
-Prose expansion of the `themes` / `domain` frontmatter — what broader interest,
-skill, or problem area this project reflects.
+A couple of substantive paragraphs expanding on the `themes` / `domain`
+frontmatter — what broader interest, skill, or problem area this project reflects,
+drawing connections to what you actually saw in the code and docs.
 
 ## Notable Technical Approaches
-Anything interesting about HOW it's built — patterns, techniques, integrations —
-so a future cross-project query can surface specifics, not just descriptions.
+A couple of substantive paragraphs on anything interesting about HOW it's built —
+specific patterns, techniques, or integrations you found while exploring — so a
+future cross-project query can surface concrete specifics, not just descriptions.
 
 ## Sources
 - https://github.com/owner/repo-name

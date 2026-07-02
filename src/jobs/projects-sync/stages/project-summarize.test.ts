@@ -128,6 +128,14 @@ describe('project-summarize', () => {
     assert.match(prompt, /Explore it/);
   });
 
+  it('builds a prompt that instructs substantive per-section depth without pressuring invention', () => {
+    const entry = makeEntry();
+    const prompt = buildSummaryPrompt(entry);
+    assert.match(prompt, /substantive paragraphs/);
+    assert.match(prompt, /not a[\s\S]*single generic sentence/);
+    assert.match(prompt, /NEVER invent facts/);
+  });
+
   it('accepts a template-conformant summary — marks success and writes markdown', async () => {
     const entry = makeEntry();
 
