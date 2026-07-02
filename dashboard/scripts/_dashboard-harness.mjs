@@ -375,12 +375,13 @@ export const PAGES = [
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
   {
-    // Logs page with the 'Errors only' quick-toggle active — shows the level filter
-    // narrowed to just error-level lines.
+    // Logs page with the 'error' level pill active — shows the level filter
+    // narrowed to just error-level lines (the redundant 'Errors only' chip was
+    // removed since this pill alone already produces the same state, T330).
     name: 'logs-errors-only',
     path: '/logs',
     actions: async (page) => {
-      await page.click('button:has-text("Errors only")');
+      await page.click('.io-filter-chip:has-text("error")');
       await page.waitForTimeout(200);
     },
   },

@@ -73,11 +73,6 @@ export default function LogsPage() {
     setLevels((prev) => (prev.includes(lvl) ? prev.filter((l) => l !== lvl) : [...prev, lvl]));
   }
 
-  const errorsOnly = levels.length === 1 && levels[0] === 'error';
-  function toggleErrorsOnly() {
-    setLevels(errorsOnly ? [] : ['error']);
-  }
-
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
@@ -107,13 +102,6 @@ export default function LogsPage() {
               {lvl}
             </button>
           ))}
-          <button
-            type="button"
-            className={`io-filter-chip${errorsOnly ? ' active io-filter-chip--failed' : ''}`}
-            onClick={toggleErrorsOnly}
-          >
-            Errors only
-          </button>
           <span className="spacer" />
           {WINDOW_OPTIONS.map((w) => (
             <button
