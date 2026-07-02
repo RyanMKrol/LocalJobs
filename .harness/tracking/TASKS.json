@@ -8856,7 +8856,7 @@
     {
       "id": "T335",
       "title": "Relabel dashboard 'Services' nav tab + page heading to 'Integrations'",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
