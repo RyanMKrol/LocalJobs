@@ -8353,7 +8353,7 @@
     {
       "id": "T315",
       "title": "Flatten Missing Seasons into one bordered table + fix low-contrast text",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
