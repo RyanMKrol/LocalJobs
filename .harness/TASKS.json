@@ -8062,7 +8062,7 @@
     {
       "id": "T305",
       "title": "Add manifest-owned 'category' field to services (schema + sync, no edit UI)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
