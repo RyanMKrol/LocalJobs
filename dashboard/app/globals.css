@@ -486,6 +486,23 @@ input[type="text"] {
 input[type="number"]:focus,
 input[type="text"]:focus { border-color: var(--accent); }
 
+select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+select:focus { border-color: var(--accent); }
+
+/* Logs page (T312) — filter panel wraps the shared .io-filter-bar chip row + a
+   scope-select/search row; the log lines below reuse the existing .logs/.lvl-* view. */
+.logs-filter-panel { padding-bottom: 10px; }
+.logs-scope-row { flex-wrap: wrap; }
+
 /* Shared limit input class — used by the workflow run-limit and Services edit-limits fields */
 .limit-input { width: 4.5rem; }
 

@@ -270,6 +270,20 @@ export interface LogLine {
   message: string;
 }
 
+/** One line from the global cross-cutting log feed (T311/T312) — merges
+ *  per-job run_logs and per-workflow workflow_run_logs, newest first. */
+export interface GlobalLogLine {
+  id: number;
+  ts: string;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  source: 'job' | 'workflow';
+  jobName: string | null;
+  workflowName: string | null;
+  runId: string | null;
+  workflowRunId: string | null;
+}
+
 export interface BacklogTask {
   id: string;
   title: string;
@@ -403,6 +417,16 @@ export type BulkScope =
   | { type: 'job'; job: string }
   | { type: 'workflow'; workflow: string };
 
+/** Builds a query string from a params object, omitting undefined/empty values. */
+function buildQuery(params: Record<string, string | number | undefined>): string {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === '') continue;
+    usp.set(k, String(v));
+  }
+  return usp.toString();
+}
+
 function scopeBody(scope: BulkScope): Record<string, string> {
   if (scope.type === 'all') return { scope: 'all' };
   if (scope.type === 'job') return { scope: 'job', job: scope.job };
@@ -463,6 +487,20 @@ export const api = {
   tvRecs: () => get<TvRecs>('/api/tv-recs'),
   ignoreTvRec: (tmdbId: number) =>
     post<{ ok: boolean; ignored: number }>(`/api/tv-recs/${tmdbId}/ignore`),
+
+  // Global cross-cutting log feed (T311/T312): merges every job + workflow run's
+  // logs, newest first. `level` is a comma-joined subset of info/warn/error (omit
+  // for all levels); `job`/`workflow` are mutually exclusive scope filters.
+  globalLogs: (params: {
+    level?: string;
+    job?: string;
+    workflow?: string;
+    q?: string;
+    windowHours?: number;
+    before?: string;
+    limit?: number;
+  }) =>
+    get<{ logs: GlobalLogLine[]; nextCursor: string | null }>(`/api/logs?${buildQuery(params)}`),
 
   recentWorkflowRuns: (limit = 50) => get<{ runs: WorkflowRun[] }>(`/api/workflow-runs?limit=${limit}`),
   workflows: () => get<{ workflows: Workflow[] }>('/api/workflows'),
