@@ -399,7 +399,10 @@ export function resolveMode(stored: ModeId | null, osPrefersDark: boolean): 'lig
  *  changes. `toggle()` flips the EFFECTIVE mode and persists it as an explicit
  *  choice — there is no way back to following the OS preference afterwards. */
 export function useMode(): [ModeId, () => void] {
-  const [mode, setMode] = useState<ModeId>('dark');
+  const [mode, setMode] = useState<ModeId>(() => {
+    if (typeof document === 'undefined') return 'dark';
+    return document.documentElement.getAttribute('data-mode') === 'light' ? 'light' : 'dark';
+  });
 
   useEffect(() => {
     const stored = window.localStorage.getItem('localjobs.mode') as ModeId | null;
