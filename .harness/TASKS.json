@@ -8178,7 +8178,7 @@
     {
       "id": "T309",
       "title": "Delete dead pixel-picnic/default/spacemono/reduce-motion/emoji-minimise theme code",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T308"
       ],
