@@ -8908,7 +8908,7 @@
     {
       "id": "T337",
       "title": "Add stock-digest workflow: weekly Claude-narrated portfolio holdings + performance-movers report",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
