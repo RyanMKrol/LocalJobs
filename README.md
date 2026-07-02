@@ -212,16 +212,20 @@ gitignored). Private workflows live in gitignored subfolders.
   Runs every 30 minutes (`*/30 * * * *`).
 - **stocks-sync** — Daily Trading212 portfolio snapshot + gain-alert, strictly **read-only**
   (GET-only, no order placement/cancellation/account mutation — see the "Broker / trading APIs
-  are READ-ONLY" rule). 2-stage DAG. Stage 1 (`stocks-snapshot`) calls Trading212's
+  are READ-ONLY" rule). 3-stage DAG. Stage 1 (`stocks-snapshot`) calls Trading212's
   open-positions endpoint (https://docs.trading212.com/api) and writes a broker-agnostic
   snapshot to a local `data/out/portfolio.json` (structured) + `data/out/portfolio.md` (one
   row per position with the price difference since purchase, as both an absolute amount and a
   percentage) — no DynamoDB. Idempotent per ticker via the work_items ledger. Stage 2
-  (`stocks-watch`, depends on `stocks-snapshot`) sends **one** push whenever a held position's
-  current price is 30% or more above its average buy price — notified once per breach episode
-  (staying above 30% doesn't re-notify every run); if the position later drops back below 30%
-  its ledger row resets, so a future re-breach notifies again. Runs daily (schedule editable
-  from the dashboard).
+  (`stocks-watch`, depends on `stocks-snapshot`) checks EVERY position's gain since average buy
+  price EVERY run and records it in the ledger unconditionally, then writes this run's fresh
+  30%+ breaches to `data/out/fresh-breaches.json` — the check always reports success when it
+  ran (it can never legitimately show as skipped/noop). Stage 3 (`stocks-notify`, depends on
+  `stocks-watch`) reads `fresh-breaches.json` and sends **one** push naming every freshly
+  breaching position, or does nothing if the file is empty (a real, expected noop, unlike
+  stocks-watch). Notified once per breach episode (staying above 30% doesn't re-notify every
+  run); if a position later drops back below 30% its notified-flag resets, so a future
+  re-breach notifies again. Runs daily (schedule editable from the dashboard).
 
 ## Dashboard pages
 

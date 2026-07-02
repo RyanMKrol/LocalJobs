@@ -4,8 +4,8 @@ import { runStocksWatch } from './stocks-watch.js';
 const job: JobDefinition = {
   name: 'stocks-watch',
   description:
-    'Notify once when a held position\'s current price is 30% or more above its average buy ' +
-    'price, resetting so a later re-breach after dropping back below 30% notifies again.',
+    'Check every held position\'s gain since average buy price and record whether it ' +
+    'freshly breached 30%+, writing this run\'s fresh breaches for stocks-notify to send.',
   timeoutMs: 60_000,
   maxRetries: 3,
   async run(ctx) {

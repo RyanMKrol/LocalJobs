@@ -1,18 +1,15 @@
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 
-import { push } from '../../../core/notifier.js';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { stocksSyncConfig } from '../config.js';
 import type { NormalizedPosition } from './stocks-snapshot.js';
 
-/** The work_items key-space for the "already-notified this breach episode" ledger. */
+/** The work_items key-space for the position-check + notified-episode ledgers. */
 export const WATCH_JOB = 'stocks-watch';
 
 /** A position rises 30% or more above its average buy price to count as a breach. */
 export const BREACH_THRESHOLD_PCT = 30;
-
-export type PushFn = typeof push;
 
 export function gainPct(position: NormalizedPosition): number {
   if (position.averageBuyPrice === 0) return 0;
@@ -53,22 +50,33 @@ export function readPortfolio(path: string): NormalizedPosition[] {
 }
 
 /**
- * "Re-scan + notification-log" idempotency (mirrors missing-tv-seasons' notify
- * stage, per root CLAUDE.md): a ledger row per ticker means "already notified
- * for the CURRENT breach episode". A position freshly crossing >=30% notifies
- * once; staying above 30% notifies nothing further; dropping back under 30%
- * clears the row (marked `skipped`, which isWorkItemDone treats as NOT done)
- * so a later re-crossing notifies again.
+ * Check stage (T300 — split from the combined check+notify stage). Reads the
+ * portfolio snapshot and, for EVERY position on EVERY run, computes gainPct
+ * and records it via an UNCONDITIONAL `markWorkItem(ticker, 'success')` call —
+ * so this stage always has ledger activity and can never be misclassified as
+ * noop by the framework's `hasJobAdvancedAnyItem` heuristic, even when nothing
+ * breaches.
+ *
+ * "Already notified for the current breach episode" is tracked on a SEPARATE
+ * ledger key (`${ticker}::notified`) from the per-run check row (`ticker`)
+ * above, so the unconditional per-run success marker doesn't erase the
+ * notify-once-per-episode state: a position still above 30% that was already
+ * notified stays untouched on its notified row; dropping back below 30%
+ * resets that row to `skipped` (isWorkItemDone treats that as NOT done) so a
+ * later re-crossing notifies again.
+ *
+ * This run's fresh-breach tickers are written to data/out/fresh-breaches.json
+ * (empty array if none) for the downstream `stocks-notify` stage to send.
  */
 export async function runStocksWatch(
   ctx: JobContext,
   opts: {
-    push?: PushFn;
     portfolioPath?: string;
+    freshBreachesPath?: string;
   } = {},
 ): Promise<void> {
-  const pushFn = opts.push ?? push;
   const portfolioPath = opts.portfolioPath ?? stocksSyncConfig.portfolioJsonPath;
+  const freshBreachesPath = opts.freshBreachesPath ?? stocksSyncConfig.freshBreachesJsonPath;
 
   ctx.log('info: stocks-watch starting — checking positions for a 30%+ gain since average buy price');
 
@@ -81,7 +89,8 @@ export async function runStocksWatch(
   for (const position of positions) {
     processed++;
     const gain = gainPct(position);
-    const alreadyNotified = isWorkItemDone(WATCH_JOB, position.ticker, 1);
+    const notifiedKey = `${position.ticker}::notified`;
+    const alreadyNotified = isWorkItemDone(WATCH_JOB, notifiedKey, 1);
 
     if (gain >= BREACH_THRESHOLD_PCT) {
       if (alreadyNotified) {
@@ -94,24 +103,22 @@ export async function runStocksWatch(
           averageBuyPrice: position.averageBuyPrice,
           currentPrice: position.currentPrice,
         });
-        markWorkItem(WATCH_JOB, position.ticker, 'success');
+        markWorkItem(WATCH_JOB, notifiedKey, 'success');
       }
     } else if (alreadyNotified) {
       ctx.log(`info: ${position.ticker}: gain ${gain.toFixed(1)}% — dropped back below threshold, resetting ledger`);
-      markWorkItem(WATCH_JOB, position.ticker, 'skipped');
+      markWorkItem(WATCH_JOB, notifiedKey, 'skipped');
     } else {
       ctx.log(`info: ${position.ticker}: gain ${gain.toFixed(1)}% — below threshold`);
     }
+
+    markWorkItem(WATCH_JOB, position.ticker, 'success', {
+      detail: { gainPct: gain, breaching: gain >= BREACH_THRESHOLD_PCT },
+    });
+
     ctx.progress((processed / Math.max(positions.length, 1)) * 100, `${processed}/${positions.length} checked`);
   }
 
-  if (freshBreaches.length === 0) {
-    ctx.log('info: stocks-watch complete — no fresh breaches, no notification sent');
-    return;
-  }
-
-  const digest = buildDigest(freshBreaches);
-  ctx.log(`info: sending ONE push for ${freshBreaches.length} fresh breach(es): ${digest.title}`);
-  await pushFn(digest.title, digest.body, { job: 'stocks-watch' });
-  ctx.log('info: stocks-watch complete — notification sent');
+  writeFileSync(freshBreachesPath, JSON.stringify(freshBreaches, null, 2));
+  ctx.log(`info: stocks-watch complete — ${freshBreaches.length} fresh breach(es) written to ${freshBreachesPath}`);
 }

@@ -1,17 +1,16 @@
-// stocks-watch tests — breach detection + notify-once-per-episode ledger.
-// Hermetic: injected push capture fn, synthetic portfolio.json, scratch DB
-// (npm test points LOCALJOBS_DB at /tmp). Covers all scenarios from T290's
-// Done-when: fresh breach notifies, sustained breach doesn't re-notify, a
-// drop-then-recross notifies again, no breaches sends nothing, and multiple
-// simultaneous fresh breaches send exactly ONE push listing all of them.
+// stocks-watch (check stage) tests — T300: reproduces the exact noop-detection
+// scenario the framework's hasJobAdvancedAnyItem evaluates, confirming the
+// check stage is NEVER misclassified as noop even when nothing breaches, by
+// recording an unconditional per-position ledger write every run.
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { JobContext } from '../../../core/types.js';
+import { hasJobAdvancedAnyItem } from '../../../db/store.js';
 import type { NormalizedPosition } from './stocks-snapshot.js';
-import { runStocksWatch } from './stocks-watch.js';
+import { runStocksWatch, WATCH_JOB } from './stocks-watch.js';
 
 function fakeCtx(): JobContext {
   return {
@@ -22,87 +21,87 @@ function fakeCtx(): JobContext {
   };
 }
 
-interface CapturedPush {
-  title: string;
-  body: string;
-}
+const dir = mkdtempSync(join(tmpdir(), 'stocks-watch-'));
+const portfolioPath = join(dir, 'portfolio.json');
+const freshBreachesPath = join(dir, 'fresh-breaches.json');
 
-function capturingPush() {
-  const sent: CapturedPush[] = [];
-  const push = (async (title: string, body: string) => {
-    sent.push({ title, body });
-    return { ok: true };
-  }) as unknown as typeof import('../../../core/notifier.js').push;
-  return { sent, push };
-}
-
-const portfolioPath = join(mkdtempSync(join(tmpdir(), 'stocks-watch-')), 'portfolio.json');
 function writePortfolio(positions: NormalizedPosition[]) {
   writeFileSync(portfolioPath, JSON.stringify(positions));
 }
 
+function readFreshBreaches(): Array<{ ticker: string }> {
+  return JSON.parse(readFileSync(freshBreachesPath, 'utf-8'));
+}
+
 // Use distinct tickers so this test is independent of any other ledger rows.
-const AAPL = 'T290AAPL';
-const MSFT = 'T290MSFT';
-const TSLA = 'T290TSLA';
+const MSFT = 'T300MSFT';
+const TSLA = 'T300TSLA';
+const GOOG = 'T300GOOG';
+const AMZN = 'T300AMZN';
 
 function pos(ticker: string, avg: number, current: number): NormalizedPosition {
   return { ticker, quantity: 1, averageBuyPrice: avg, currentPrice: current, currentValue: current };
 }
 
-// (a) a fresh breach triggers exactly one push mentioning that ticker.
+// (a) a run with NO position breaching still records ledger activity for
+// every checked position — hasJobAdvancedAnyItem must return true.
 {
-  const { sent, push } = capturingPush();
-  writePortfolio([pos(AAPL, 150, 198)]); // +32%
-  await runStocksWatch(fakeCtx(), { push, portfolioPath });
-  assert.equal(sent.length, 1, 'fresh breach sends exactly one push');
-  assert.match(sent[0].body, /AAPL/);
-  assert.match(sent[0].body, /\+32%/);
-  console.log('  ✓ fresh breach triggers one push mentioning the ticker');
-}
-
-// (b) already-notified breach that stays >=30% triggers no further push.
-{
-  const { sent, push } = capturingPush();
-  writePortfolio([pos(AAPL, 150, 200)]); // still well above 30%, already notified
-  await runStocksWatch(fakeCtx(), { push, portfolioPath });
-  assert.equal(sent.length, 0, 'a sustained breach does not re-notify');
-  console.log('  ✓ sustained breach above threshold sends no further push');
-}
-
-// (c) drop back under 30% clears the ledger row; a later re-cross notifies again.
-{
-  const { sent, push } = capturingPush();
-  writePortfolio([pos(AAPL, 150, 160)]); // ~+6.7%, below threshold
-  await runStocksWatch(fakeCtx(), { push, portfolioPath });
-  assert.equal(sent.length, 0, 'dropping below threshold sends no push');
-
-  const { sent: sent2, push: push2 } = capturingPush();
-  writePortfolio([pos(AAPL, 150, 200)]); // re-crosses 30%
-  await runStocksWatch(fakeCtx(), { push: push2, portfolioPath });
-  assert.equal(sent2.length, 1, 're-crossing after a reset notifies again');
-  assert.match(sent2[0].body, /AAPL/);
-  console.log('  ✓ drop below threshold resets ledger; later re-cross notifies again');
-}
-
-// (d) no position >=30% sends zero pushes.
-{
-  const { sent, push } = capturingPush();
+  const workflowRunId = 'wf-run-t300-no-breach';
+  process.env.LOCALJOBS_WORKFLOW_RUN_ID = workflowRunId;
   writePortfolio([pos(MSFT, 100, 105), pos(TSLA, 200, 210)]);
-  await runStocksWatch(fakeCtx(), { push, portfolioPath });
-  assert.equal(sent.length, 0, 'no breaches sends zero pushes');
-  console.log('  ✓ no breaches sends zero pushes');
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  delete process.env.LOCALJOBS_WORKFLOW_RUN_ID;
+
+  assert.equal(
+    hasJobAdvancedAnyItem(workflowRunId, WATCH_JOB),
+    true,
+    'stocks-watch must record ledger activity even when nothing breaches, so it is never misclassified as noop',
+  );
+  assert.deepEqual(readFreshBreaches(), [], 'no breaches writes an empty fresh-breaches.json');
+  console.log('  ✓ no-breach run still advances ledger items (never misclassified as noop)');
 }
 
-// (e) multiple positions freshly crossing >=30% in the same run send exactly ONE push.
+// (b) a fresh breach is recorded in fresh-breaches.json for stocks-notify to consume.
 {
-  const { sent, push } = capturingPush();
-  writePortfolio([pos(MSFT, 100, 135), pos(TSLA, 200, 280)]); // +35%, +40%
-  await runStocksWatch(fakeCtx(), { push, portfolioPath });
-  assert.equal(sent.length, 1, 'multiple fresh breaches in one run send exactly one push');
-  assert.match(sent[0].body, /MSFT/);
-  assert.match(sent[0].body, /TSLA/);
-  console.log('  ✓ multiple simultaneous fresh breaches send exactly one combined push');
+  writePortfolio([pos(MSFT, 100, 135)]); // +35%
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  const breaches = readFreshBreaches();
+  assert.equal(breaches.length, 1);
+  assert.equal(breaches[0].ticker, MSFT);
+  console.log('  ✓ fresh breach is written to fresh-breaches.json');
+}
+
+// (c) staying above threshold (already notified) does not re-appear in fresh-breaches.json.
+{
+  writePortfolio([pos(MSFT, 100, 140)]); // still well above 30%, already notified
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  assert.deepEqual(readFreshBreaches(), [], 'a sustained breach is not re-reported as fresh');
+  console.log('  ✓ sustained breach above threshold is not re-reported as fresh');
+}
+
+// (d) dropping back under 30% resets the notified-flag; a later re-cross is fresh again.
+{
+  writePortfolio([pos(MSFT, 100, 106)]); // ~+6%, below threshold
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  assert.deepEqual(readFreshBreaches(), [], 'dropping below threshold reports no fresh breach');
+
+  writePortfolio([pos(MSFT, 100, 140)]); // re-crosses 30%
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  const breaches = readFreshBreaches();
+  assert.equal(breaches.length, 1, 're-crossing after a reset is reported as fresh again');
+  assert.equal(breaches[0].ticker, MSFT);
+  console.log('  ✓ drop below threshold resets notified-flag; later re-cross is fresh again');
+}
+
+// (e) multiple positions freshly crossing >=30% in the same run are all included.
+{
+  writePortfolio([pos(GOOG, 100, 135), pos(AMZN, 200, 280)]); // +35%, +40%, both never seen before
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  const breaches = readFreshBreaches();
+  assert.equal(breaches.length, 2, 'multiple simultaneous fresh breaches are all included');
+  const tickers = breaches.map((b) => b.ticker).sort();
+  assert.deepEqual(tickers, [GOOG, AMZN].sort());
+  console.log('  ✓ multiple simultaneous fresh breaches are all recorded');
 }
 
 console.log('  ✓ stocks-watch tests passed');
