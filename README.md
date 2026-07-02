@@ -236,17 +236,24 @@ gitignored). Private workflows live in gitignored subfolders.
   run); if a position later drops back below 30% its notified-flag resets, so a future
   re-breach notifies again. Runs daily (schedule editable from the dashboard).
 - **stock-digest** — Weekly Claude-narrated markdown summary of current stock
-  holdings, DISTINCT from `stocks-sync` (own folder, own workflow, own weekly
-  schedule — `'0 8 * * 1'`, Monday 08:00, deliberately after `stocks-sync`'s
-  daily 07:00 run so a same-day-fresh snapshot is usually available). Single
-  stage (`stock-digest-build`) reads `stocks-sync`'s `data/out/portfolio.json`
-  directly via a plain relative import of its config/types — the two workflows
-  are NOT DAG-linked (the framework has no cross-workflow `dependsOn`), so this
-  is a same-repo cross-workflow file read, not a wired dependency; a missing or
-  empty portfolio file logs a WARN and cleanly skips the run instead of
-  crashing. It computes each position's gain since average buy price and its
-  share of total portfolio value, ranks the biggest winners/losers, and asks
-  Claude to narrate a holdings + performance report to
+  holdings, performance movers, and a sector/diversification breakdown, DISTINCT
+  from `stocks-sync` (own folder, own workflow, own weekly schedule —
+  `'0 8 * * 1'`, Monday 08:00, deliberately after `stocks-sync`'s daily 07:00
+  run so a same-day-fresh snapshot is usually available). Two-stage DAG:
+  `stock-sector-lookup` → `stock-digest-build`. Both stages read `stocks-sync`'s
+  `data/out/portfolio.json` directly via a plain relative import of its
+  config/types — the two workflows are NOT DAG-linked (the framework has no
+  cross-workflow `dependsOn`), so this is a same-repo cross-workflow file read,
+  not a wired dependency; a missing or empty portfolio file logs a WARN and
+  cleanly skips the run instead of crashing. `stock-sector-lookup` resolves each
+  currently-held ticker's industry via the Finnhub company-profile API
+  (`FINNHUB_API_KEY`), writing `data/out/sectors.json`; idempotent per ticker via
+  the work_items ledger (already-resolved tickers are skipped on later runs). A
+  missing/unset key soft-skips the lookup, and `stock-digest-build` simply omits
+  the diversification section. `stock-digest-build` computes each position's
+  gain since average buy price and its share of total portfolio value, ranks the
+  biggest winners/losers, groups portfolio value by resolved industry, and asks
+  Claude to narrate a holdings + performance + diversification report to
   `data/out/stock-digest-<ISO-week>.md`. Idempotent per ISO week via the
   work_items ledger. Markdown-only output — no push notification is sent.
   Runs weekly, Monday at 08:00.

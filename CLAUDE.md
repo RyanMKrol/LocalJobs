@@ -245,29 +245,47 @@ Credentials: `TRADING212_API_KEY_ID`, `TRADING212_API_SECRET_KEY`.
 and **stock-digest** (`src/jobs/stock-digest/`) — a weekly, Claude-narrated markdown summary of the
 owner's current stock holdings, DISTINCT from `stocks-sync` (which only snapshots + threshold-alerts;
 `stock-digest` is its own workflow, own folder, own schedule, per explicit owner direction — not a
-stage bolted onto `stocks-sync`). Single stage (`stock-digest-build`), not limitable (nothing to fan
-out over), scheduled weekly (`'0 8 * * 1'`, Monday 08:00) — deliberately AFTER `stocks-sync`'s daily
-`'0 7 * * *'` run so a same-day-fresh snapshot is typically available. **Cross-workflow read (a new
-pattern in this repo, T337 — no other workflow reads another workflow's `data/out/` output):** the
-stage imports `stocksSyncConfig` (for `portfolioJsonPath`) and the `NormalizedPosition` type directly
-from `../stocks-sync/config.js` / `../stocks-sync/stages/stocks-snapshot.js` — a plain relative import
-within the same repo, no absolute path, no duplicated shape. The two workflows are **NOT DAG-linked**
-(the framework has no cross-workflow `dependsOn`); `stock-digest` just reads whatever `portfolio.json`
-currently exists on disk at run time. A missing or empty portfolio file (stocks-sync hasn't run yet,
-or ran with zero positions) is handled with a clear WARN log and a clean skip, not a crash. The stage
-computes, in code (never left to Claude to infer), each position's gain since average buy price
-(`(currentPrice - averageBuyPrice) / averageBuyPrice`, the same formula `stocks-watch` uses) and its
-share of total current portfolio value, ranks the top winners/losers, and feeds a structured JSON
-facts object to `runClaude` (`src/services/claude.ts`) asking it to narrate a holdings section (ticker,
-quantity, current value, % of total portfolio) and a performance section (winners/losers, biggest %
-movers) as markdown — Claude narrates/formats prose, it never invents the numbers. Output is written
-to `data/out/stock-digest-<weekKey>.md` (ISO week key, e.g. `2026-W27`) and recorded via
-`markWorkItem(ctx, weekKey, 'success', { detail: { markdown } })` (T110), so it surfaces in the
-workflow's unified Output section automatically. Idempotent per ISO week via the `work_items` ledger —
-a manual re-run the same week regenerates that week's file rather than duplicating it. **Markdown-only
-output — no push notification is sent anywhere in this workflow**, mirroring `listening-digest`.
-Model: `STOCK_DIGEST_CLAUDE_MODEL` (defaults to a Sonnet 5 id) at effort `STOCK_DIGEST_CLAUDE_EFFORT`
-(defaults to `medium`), gated through the same `claude-cli` service as every other Claude caller.
+stage bolted onto `stocks-sync`). **Two-stage DAG (T338, was single-stage as of T337):**
+`stock-sector-lookup` → `stock-digest-build` (`dependsOn: ['stock-sector-lookup']`). Not limitable
+(nothing to fan out over), scheduled weekly (`'0 8 * * 1'`, Monday 08:00) — deliberately AFTER
+`stocks-sync`'s daily `'0 7 * * *'` run so a same-day-fresh snapshot is typically available.
+**Cross-workflow read (a pattern from T337 — no other workflow reads another workflow's `data/out/`
+output):** both stages import `stocksSyncConfig` (for `portfolioJsonPath`) and the
+`NormalizedPosition` type directly from `../stocks-sync/config.js` /
+`../stocks-sync/stages/stocks-snapshot.js` — a plain relative import within the same repo, no
+absolute path, no duplicated shape. The two workflows are **NOT DAG-linked** (the framework has no
+cross-workflow `dependsOn`); `stock-digest` just reads whatever `portfolio.json` currently exists on
+disk at run time. A missing or empty portfolio file (stocks-sync hasn't run yet, or ran with zero
+positions) is handled with a clear WARN log and a clean skip, not a crash, in both stages.
+
+Stage 1, `stock-sector-lookup`, resolves each currently-held ticker's industry via a new **Finnhub**
+service (`src/services/finnhub.service.ts`, `GET /stock/profile2?symbol=<TICKER>&token=<KEY>`,
+read-only/GET-only, gated through `callService('finnhub', ...)`) and writes a ticker→industry map to
+`data/out/sectors.json`. Idempotent per ticker via the `work_items` ledger — a ticker already
+recorded `success` is skipped on later runs (industry classification rarely changes, and this
+conserves the free-tier quota); a newly-appeared ticker is looked up fresh. Credentials:
+`FINNHUB_API_KEY` — unset key soft-skips the whole stage (clear WARN, no crash), which just means
+`stock-digest-build`'s diversification section is omitted that run.
+
+Stage 2, `stock-digest-build`, computes, in code (never left to Claude to infer), each position's
+gain since average buy price (`(currentPrice - averageBuyPrice) / averageBuyPrice`, the same formula
+`stocks-watch` uses) and its share of total current portfolio value, ranks the top winners/losers,
+groups portfolio value by resolved Finnhub industry (`sectorBreakdown` — % of total value per
+industry; tickers with no resolved sector are excluded from the breakdown, and the breakdown/whole
+diversification section is simply omitted when `sectors.json` is missing or has no resolved
+entries), and feeds a structured JSON facts object to `runClaude` (`src/services/claude.ts`) asking
+it to narrate a holdings section (ticker, quantity, current value, % of total portfolio), a
+performance section (winners/losers, biggest % movers), and — when sector data exists — a
+diversification section (% of portfolio value per industry, explicitly noted as Finnhub's own
+industry classification rather than a formal GICS sector) as markdown — Claude narrates/formats
+prose, it never invents the numbers. Output is written to `data/out/stock-digest-<weekKey>.md` (ISO
+week key, e.g. `2026-W27`) and recorded via `markWorkItem(ctx, weekKey, 'success', { detail: {
+markdown } })` (T110), so it surfaces in the workflow's unified Output section automatically.
+Idempotent per ISO week via the `work_items` ledger — a manual re-run the same week regenerates that
+week's file rather than duplicating it. **Markdown-only output — no push notification is sent
+anywhere in this workflow**, mirroring `listening-digest`. Model: `STOCK_DIGEST_CLAUDE_MODEL`
+(defaults to a Sonnet 5 id) at effort `STOCK_DIGEST_CLAUDE_EFFORT` (defaults to `medium`), gated
+through the same `claude-cli` service as every other Claude caller.
 Private workflows are added as gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a

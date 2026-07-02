@@ -5,7 +5,8 @@ import type { JobContext } from '../../../core/types.js';
 import { runClaude } from '../../../services/claude.js';
 import { stocksSyncConfig } from '../../stocks-sync/config.js';
 import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
-import { stockDigestConfig, reportPathFor } from '../config.js';
+import { stockDigestConfig, reportPathFor, sectorsJsonPath } from '../config.js';
+import { readSectorMap, type SectorMap } from './stock-sector-lookup.js';
 
 const JOB_NAME = 'stock-digest-build';
 
@@ -77,6 +78,33 @@ export interface HoldingSummary {
   portfolioSharePct: number;
 }
 
+export interface SectorShare {
+  industry: string;
+  valuePct: number;
+}
+
+/**
+ * % of total portfolio VALUE held per Finnhub industry classification.
+ * Tickers with no resolved sector (missing from the map, or a null/unknown
+ * lookup) are excluded from the breakdown entirely — a degraded/partial
+ * sector map still produces a (partial) breakdown rather than failing.
+ */
+export function sectorBreakdown(positions: NormalizedPosition[], sectors: SectorMap): SectorShare[] {
+  const totalValue = positions.reduce((sum, p) => sum + p.currentValue, 0);
+  if (totalValue === 0) return [];
+
+  const byIndustry = new Map<string, number>();
+  for (const p of positions) {
+    const industry = sectors[p.ticker];
+    if (!industry) continue;
+    byIndustry.set(industry, (byIndustry.get(industry) ?? 0) + p.currentValue);
+  }
+
+  return [...byIndustry.entries()]
+    .map(([industry, value]) => ({ industry, valuePct: (value / totalValue) * 100 }))
+    .sort((a, b) => b.valuePct - a.valuePct);
+}
+
 export interface StockDigestFacts {
   weekLabel: string;
   generatedAtIso: string;
@@ -84,9 +112,14 @@ export interface StockDigestFacts {
   holdings: HoldingSummary[];
   winners: Mover[];
   losers: Mover[];
+  sectorBreakdown: SectorShare[];
 }
 
-export function buildFacts(positions: NormalizedPosition[], now: Date): StockDigestFacts {
+export function buildFacts(
+  positions: NormalizedPosition[],
+  now: Date,
+  sectors: SectorMap = {},
+): StockDigestFacts {
   const totalValue = positions.reduce((sum, p) => sum + p.currentValue, 0);
   const holdings: HoldingSummary[] = positions
     .map((p) => ({
@@ -107,17 +140,28 @@ export function buildFacts(positions: NormalizedPosition[], now: Date): StockDig
     holdings,
     winners,
     losers,
+    sectorBreakdown: sectorBreakdown(positions, sectors),
   };
 }
 
 export function buildDigestPrompt(facts: StockDigestFacts): string {
+  const sections = [
+    `# Stock Digest — ${facts.weekLabel}`,
+    '## Holdings — a plain read of current positions (ticker, quantity, current value, % of total portfolio value)',
+    '## Performance — winners/losers since purchase, biggest % movers',
+  ];
+  if (facts.sectorBreakdown.length > 0) {
+    sections.push(
+      '## Diversification — % of total portfolio value grouped by industry (`sectorBreakdown`). ' +
+        'Note plainly that this is Finnhub\'s own industry classification, not a formal GICS sector, ' +
+        'and that any ticker with no resolved industry is excluded from this breakdown.',
+    );
+  }
   return [
     'You are writing a short weekly personal-finance markdown report narrating the structured facts below.',
     'Do NOT invent any numbers — use only the figures provided. Write clear, concise prose plus tables.',
     'Structure the report as:',
-    `# Stock Digest — ${facts.weekLabel}`,
-    '## Holdings — a plain read of current positions (ticker, quantity, current value, % of total portfolio value)',
-    '## Performance — winners/losers since purchase, biggest % movers',
+    ...sections,
     '',
     'Structured facts (JSON):',
     JSON.stringify(facts, null, 2),
@@ -148,12 +192,14 @@ export async function runStockDigestBuild(
   ctx: JobContext,
   opts: {
     portfolioPath?: string;
+    sectorsPath?: string;
     outDir?: string;
     now?: Date;
     claudeRunner?: ClaudeRunner;
   } = {},
 ): Promise<void> {
   const portfolioPath = opts.portfolioPath ?? stocksSyncConfig.portfolioJsonPath;
+  const sectorsPath = opts.sectorsPath ?? sectorsJsonPath;
   const outDir = opts.outDir ?? stockDigestConfig.outDir;
   const now = opts.now ?? new Date();
   const key = weekKey(now);
@@ -173,7 +219,15 @@ export async function runStockDigestBuild(
 
   ctx.log(`info: read ${positions.length} position(s) from ${portfolioPath}`);
 
-  const facts = buildFacts(positions, now);
+  const sectors = readSectorMap(sectorsPath);
+  const sectorCount = Object.values(sectors).filter(Boolean).length;
+  if (sectorCount === 0) {
+    ctx.log(`warn: no resolved sectors found at ${sectorsPath} — digest will omit the diversification section`);
+  } else {
+    ctx.log(`info: read ${sectorCount} resolved sector(s) from ${sectorsPath}`);
+  }
+
+  const facts = buildFacts(positions, now, sectors);
   ctx.log(`info: total portfolio value: ${facts.totalValue.toFixed(2)}`);
   for (const h of facts.holdings) {
     ctx.log(
@@ -187,6 +241,13 @@ export async function runStockDigestBuild(
   ctx.log(
     `info: top losers: ${facts.losers.map((m) => `${m.ticker} ${m.gainPct.toFixed(1)}%`).join(', ') || 'none'}`,
   );
+  if (facts.sectorBreakdown.length > 0) {
+    for (const s of facts.sectorBreakdown) {
+      ctx.log(`info: sector "${s.industry}": ${s.valuePct.toFixed(1)}% of portfolio`);
+    }
+  } else {
+    ctx.log('info: sector breakdown empty — no tickers had a resolved industry; section omitted from digest');
+  }
 
   const prompt = buildDigestPrompt(facts);
   ctx.log(`info: calling Claude (${claudeModel}, effort ${claudeEffort}) to narrate the digest…`);

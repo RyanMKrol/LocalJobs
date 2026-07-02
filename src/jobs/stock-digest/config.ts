@@ -14,3 +14,6 @@ export const stockDigestConfig = {
 export function reportPathFor(weekKey: string, outDir: string = stockDigestConfig.outDir): string {
   return resolve(outDir, `stock-digest-${weekKey}.md`);
 }
+
+/** "data/out/sectors.json" — ticker -> resolved Finnhub industry map. */
+export const sectorsJsonPath = resolve(stockDigestConfig.outDir, 'sectors.json');

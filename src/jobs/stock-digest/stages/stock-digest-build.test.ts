@@ -20,6 +20,7 @@ import {
   pickMovers,
   buildFacts,
   readPortfolio,
+  sectorBreakdown,
   type ClaudeRunner,
 } from './stock-digest-build.js';
 import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
@@ -116,6 +117,51 @@ describe('buildFacts', () => {
   });
 });
 
+describe('sectorBreakdown', () => {
+  it('groups portfolio value % by resolved industry, sorted descending', () => {
+    const positions = [
+      pos({ ticker: 'A', currentValue: 100 }),
+      pos({ ticker: 'B', currentValue: 300 }),
+      pos({ ticker: 'C', currentValue: 600 }),
+    ];
+    const sectors = { A: 'Tech', B: 'Tech', C: 'Retail' };
+    const breakdown = sectorBreakdown(positions, sectors);
+    assert.deepEqual(breakdown, [
+      { industry: 'Retail', valuePct: 60 },
+      { industry: 'Tech', valuePct: 40 },
+    ]);
+  });
+
+  it('excludes tickers with no resolved sector', () => {
+    const positions = [pos({ ticker: 'A', currentValue: 100 }), pos({ ticker: 'B', currentValue: 900 })];
+    const breakdown = sectorBreakdown(positions, { A: 'Tech', B: null });
+    assert.deepEqual(breakdown, [{ industry: 'Tech', valuePct: 10 }]);
+  });
+
+  it('returns an empty array when no sectors are known at all', () => {
+    const positions = [pos({ ticker: 'A', currentValue: 100 })];
+    assert.deepEqual(sectorBreakdown(positions, {}), []);
+  });
+
+  it('returns an empty array when total value is 0', () => {
+    assert.deepEqual(sectorBreakdown([pos({ currentValue: 0 })], { AAPL: 'Tech' }), []);
+  });
+});
+
+describe('buildFacts diversification', () => {
+  it('includes sectorBreakdown when sectors are provided', () => {
+    const positions = [pos({ ticker: 'A', currentValue: 1000 })];
+    const facts = buildFacts(positions, new Date('2026-07-02T12:00:00Z'), { A: 'Tech' });
+    assert.deepEqual(facts.sectorBreakdown, [{ industry: 'Tech', valuePct: 100 }]);
+  });
+
+  it('defaults to an empty sectorBreakdown when no sector map is passed', () => {
+    const positions = [pos({ ticker: 'A', currentValue: 1000 })];
+    const facts = buildFacts(positions, new Date('2026-07-02T12:00:00Z'));
+    assert.deepEqual(facts.sectorBreakdown, []);
+  });
+});
+
 describe('readPortfolio', () => {
   it('returns an empty array when the file does not exist', () => {
     assert.deepEqual(readPortfolio('/nonexistent/path/portfolio.json'), []);
@@ -191,6 +237,46 @@ describe('runStockDigestBuild', () => {
     assert.ok(existsSync(mdPath));
     assert.match(readFileSync(mdPath, 'utf8'), /narrated report/);
     assert.equal(isWorkItemDone(JOB, key, 1), true);
+  });
+
+  it('degrades gracefully (no crash) when sectors.json is missing', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-digest-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos()]));
+    const outDir = join(dir, 'out');
+    let capturedPrompt = '';
+    const claudeRunner: ClaudeRunner = async (prompt) => {
+      capturedPrompt = prompt;
+      return { ok: true, text: 'ok', rateLimited: false };
+    };
+
+    await runStockDigestBuild(fakeCtx(), {
+      portfolioPath,
+      sectorsPath: join(dir, 'nope-sectors.json'),
+      outDir,
+      claudeRunner,
+    });
+
+    assert.doesNotMatch(capturedPrompt, /Diversification/);
+  });
+
+  it('includes the diversification section when sectors.json has resolved data', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-digest-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'AAPL', currentValue: 1000 })]));
+    const sectorsPath = join(dir, 'sectors.json');
+    writeFileSync(sectorsPath, JSON.stringify({ AAPL: 'Technology' }));
+    const outDir = join(dir, 'out');
+    let capturedPrompt = '';
+    const claudeRunner: ClaudeRunner = async (prompt) => {
+      capturedPrompt = prompt;
+      return { ok: true, text: 'ok', rateLimited: false };
+    };
+
+    await runStockDigestBuild(fakeCtx(), { portfolioPath, sectorsPath, outDir, claudeRunner });
+
+    assert.match(capturedPrompt, /Diversification/);
+    assert.match(capturedPrompt, /Technology/);
   });
 
   it('throws when the Claude call fails', async () => {
