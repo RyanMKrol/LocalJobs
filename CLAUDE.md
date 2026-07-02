@@ -170,8 +170,9 @@ repo via a commit-sha-equivalent marker (the catalog's `pushedAt`): a repo whose
 already matches the catalog's current value is skipped entirely (no clone, no Claude call) — there is
 no separate calendar-based skip. Runs weekly, Sunday at 05:00.
 Service: `src/services/github.service.ts`. Credentials: `GITHUB_USERNAME`, `GITHUB_TOKEN`. Model:
-`PROJECTS_SYNC_CLAUDE_MODEL` (defaults to a Sonnet 5 id), shares `LOCALJOBS_CLAUDE_BIN`/
-`LOCALJOBS_CLAUDE_TIMEOUT_MS` via the `claude-cli` service.
+`PROJECTS_SYNC_CLAUDE_MODEL` (defaults to a Sonnet 5 id) at effort `PROJECTS_SYNC_CLAUDE_EFFORT`
+(defaults to `medium`), shares `LOCALJOBS_CLAUDE_BIN`/`LOCALJOBS_CLAUDE_TIMEOUT_MS` via the
+`claude-cli` service.
 and **claude-warmer** (`src/jobs/claude-warmer/`) — issue one minimal Claude CLI prompt (`"hi"`,
 cheapest model) every 30 minutes via `runClaude` in `src/services/claude.ts`. WHY: Claude accounts
 have a 5-hour rolling usage window; this workflow fires proactively during off-hours so the window

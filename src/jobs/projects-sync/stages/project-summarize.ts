@@ -13,6 +13,7 @@ const JOB_NAME = 'project-summarize';
 const README_CANDIDATES = ['README.md', 'Readme.md', 'README', 'readme.md'];
 
 export const claudeModel = process.env.PROJECTS_SYNC_CLAUDE_MODEL ?? 'claude-sonnet-5';
+export const claudeEffort = process.env.PROJECTS_SYNC_CLAUDE_EFFORT ?? 'medium';
 
 // ---------------------------------------------------------------------------
 // Injectable git clone/pull + Claude call (real implementations shell out /
@@ -44,7 +45,7 @@ export async function cloneOrPullRepo(repoUrl: string, dest: string): Promise<vo
   }
 }
 
-export type ClaudeSummarizer = (prompt: string, model: string) => Promise<{ ok: boolean; text: string; error?: string }>;
+export type ClaudeSummarizer = (prompt: string, model: string, effort?: string) => Promise<{ ok: boolean; text: string; error?: string }>;
 
 // ---------------------------------------------------------------------------
 // Repo context (README + metadata)
@@ -162,7 +163,7 @@ export async function runProjectSummarize(
       ctx.log(`info: read README for ${entry.fullName} (${readme.length} chars)`);
 
       const prompt = buildSummaryPrompt(entry, readme);
-      const result = await summarize(prompt, claudeModel);
+      const result = await summarize(prompt, claudeModel, claudeEffort);
       if (!result.ok) {
         throw new Error(`claude summarize failed: ${result.error ?? 'unknown error'}`);
       }

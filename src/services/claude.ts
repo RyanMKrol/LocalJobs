@@ -36,13 +36,22 @@ const claudeTimeoutMs = Number(process.env.LOCALJOBS_CLAUDE_TIMEOUT_MS ?? 300_00
  * json` envelope's `.result`. Runs in a neutral cwd so it doesn't inherit this
  * repo's CLAUDE.md. Never throws — returns a result object.
  */
-export function runClaude(prompt: string, model: string): Promise<ClaudeResult> {
-  return callService('claude-cli', () => spawnClaude(prompt, model));
+export function runClaude(prompt: string, model: string, effort?: string): Promise<ClaudeResult> {
+  return callService('claude-cli', () => spawnClaude(prompt, model, effort));
 }
 
-function spawnClaude(prompt: string, model: string): Promise<ClaudeResult> {
+/**
+ * Build the CLI argv for a `claude -p` call. `effort` maps to the CLI's separate
+ * `--effort <low|medium|high|xhigh|max>` reasoning-effort flag; omitted when not
+ * provided so existing callers keep the CLI's default behavior unchanged.
+ */
+export function buildClaudeArgs(model: string, effort?: string): string[] {
+  return ['-p', '--output-format', 'json', '--model', model, ...(effort ? ['--effort', effort] : []), '--dangerously-skip-permissions'];
+}
+
+function spawnClaude(prompt: string, model: string, effort?: string): Promise<ClaudeResult> {
   return new Promise((resolvePromise) => {
-    const args = ['-p', '--output-format', 'json', '--model', model, '--dangerously-skip-permissions'];
+    const args = buildClaudeArgs(model, effort);
     let child;
     try {
       child = spawn(claudeBin, args, { cwd: tmpdir(), stdio: ['pipe', 'pipe', 'pipe'] });
