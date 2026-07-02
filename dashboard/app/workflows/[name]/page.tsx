@@ -410,82 +410,90 @@ function MovieGapsManager() {
         </p>
       )}
 
-      <div className="movie-gaps-scroll">
-        {groupByCollection(active).map(([cname, films]) => {
-          const example = data?.collectionExamples?.[cname];
-          return (
-          <div className="panel" key={cname}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-              <h3 style={{ fontSize: 15, marginTop: 0, marginBottom: 0 }}>{cname}</h3>
-              <button
-                className="btn btn-sm"
-                onClick={() => ignoreCollection(cname, films)}
-                disabled={busyCollection === cname}
-                style={{ flexShrink: 0 }}
-              >
-                {busyCollection === cname ? 'Ignoring…' : '✕ Ignore all'}
-              </button>
-            </div>
-            {example && (
-              <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
-                You own: {example.title}{example.year != null ? ` (${example.year})` : ''}
-              </p>
-            )}
-            <table className="gaps-table">
-              <thead>
-                <tr><th>Film</th><th>Year</th><th>TMDB</th><th></th></tr>
-              </thead>
-              <tbody>
-                {films.map((g) => (
-                  <tr key={g.tmdbId}>
-                    <td>
-                      <a href={`https://www.themoviedb.org/movie/${g.tmdbId}`} target="_blank" rel="noreferrer">
-                        {g.title}
-                      </a>
-                      {g.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
-                    </td>
-                    <td>{g.year ?? '—'}</td>
-                    <td>{g.tmdbRating != null ? g.tmdbRating.toFixed(1) : '—'}</td>
-                    <td>
-                      <button className="btn btn-sm" onClick={() => ignore(g)} disabled={busy === g.tmdbId}>
-                        {busy === g.tmdbId ? 'Ignoring…' : '✕ Ignore'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          );
-        })}
+      {active.length > 0 && (
+        <div className="panel">
+          <table>
+            <thead>
+              <tr><th>Film</th><th>Year</th><th>TMDB</th><th></th></tr>
+            </thead>
+            <tbody>
+              {groupByCollection(active).map(([cname, films]) => {
+                const example = data?.collectionExamples?.[cname];
+                return (
+                  <Fragment key={cname}>
+                    <tr className="table-group-header">
+                      <td colSpan={4}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                          <span>
+                            {cname}
+                            {example && (
+                              <span className="muted" style={{ fontWeight: 400, marginLeft: 6, fontSize: 12 }}>
+                                You own: {example.title}{example.year != null ? ` (${example.year})` : ''}
+                              </span>
+                            )}
+                          </span>
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => ignoreCollection(cname, films)}
+                            disabled={busyCollection === cname}
+                            style={{ flexShrink: 0 }}
+                          >
+                            {busyCollection === cname ? 'Ignoring…' : '✕ Ignore all'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {films.map((g) => (
+                      <tr key={g.tmdbId}>
+                        <td>
+                          <a href={`https://www.themoviedb.org/movie/${g.tmdbId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>
+                            {g.title}
+                          </a>
+                          {g.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
+                        </td>
+                        <td>{g.year ?? '—'}</td>
+                        <td>{g.tmdbRating != null ? g.tmdbRating.toFixed(1) : '—'}</td>
+                        <td>
+                          <button className="btn btn-sm" onClick={() => ignore(g)} disabled={busy === g.tmdbId}>
+                            {busy === g.tmdbId ? 'Ignoring…' : '✕ Ignore'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-        {ignored.length > 0 && (
-          <div className="panel">
-            <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Suppressed by you — never reported or notified, even though you don&apos;t own them.
-            </p>
-            <table>
-              <thead>
-                <tr><th>Film</th><th>Collection</th><th>Year</th></tr>
-              </thead>
-              <tbody>
-                {ignored.map((g) => (
-                  <tr key={g.tmdbId} className="muted">
-                    <td>
-                      <a href={`https://www.themoviedb.org/movie/${g.tmdbId}`} target="_blank" rel="noreferrer">
-                        {g.title}
-                      </a>
-                    </td>
-                    <td>{g.collectionName}</td>
-                    <td>{g.year ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {ignored.length > 0 && (
+        <div className="panel">
+          <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Suppressed by you — never reported or notified, even though you don&apos;t own them.
+          </p>
+          <table>
+            <thead>
+              <tr><th>Film</th><th>Collection</th><th>Year</th></tr>
+            </thead>
+            <tbody>
+              {ignored.map((g) => (
+                <tr key={g.tmdbId} className="muted">
+                  <td>
+                    <a href={`https://www.themoviedb.org/movie/${g.tmdbId}`} target="_blank" rel="noreferrer">
+                      {g.title}
+                    </a>
+                  </td>
+                  <td>{g.collectionName}</td>
+                  <td>{g.year ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }

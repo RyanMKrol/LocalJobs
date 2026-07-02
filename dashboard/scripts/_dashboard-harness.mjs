@@ -250,6 +250,18 @@ const movieRecs = {
 
 // T315: missing-tv-seasons fixture — exercises the flattened row-group-header table
 // (a show with 2+ missing seasons), the "notified" marker, and the separate Ignored panel.
+const movieGaps = {
+  generatedAt: NOW,
+  collectionsChecked: 8,
+  collectionExamples: { 'The Bourne Collection': { title: 'The Bourne Identity', year: 2002 } },
+  gaps: [
+    { collectionId: 1, collectionName: 'The Bourne Collection', tmdbId: 600, title: 'The Bourne Supremacy', year: 2004, tmdbRating: 7.2, notified: false, ignored: false },
+    { collectionId: 1, collectionName: 'The Bourne Collection', tmdbId: 601, title: 'The Bourne Ultimatum', year: 2007, tmdbRating: 7.6, notified: true, ignored: false },
+    { collectionId: 2, collectionName: LONG, tmdbId: 602, title: 'Some Sequel', year: 2018, tmdbRating: 6.1, notified: false, ignored: false },
+    { collectionId: 3, collectionName: 'An Ignored Collection', tmdbId: 603, title: 'An Ignored Film', year: 2011, tmdbRating: 5.4, notified: false, ignored: true },
+  ],
+};
+
 const missingSeasons = {
   generatedAt: NOW,
   shows: [
@@ -285,7 +297,7 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/workflow-runs') return { runs: [workflowRun(), workflowRun({ id: '2', status: 'failed' })] };
   if (pathname === '/api/movie-recs') return movieRecs;
   if (pathname === '/api/tv-recs') return tvRecs;
-  if (pathname === '/api/movie-gaps') return { generatedAt: NOW, gaps: [], collectionsChecked: 0, collectionExamples: {} };
+  if (pathname === '/api/movie-gaps') return movieGaps;
   if (pathname === '/api/missing-seasons') return missingSeasons;
   // Sub-routes must precede the generic `/api/workflow-runs/<id>` catch-all below.
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflow-runs/')) return gateInspection;
