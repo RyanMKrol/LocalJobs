@@ -28,5 +28,10 @@
     "failed": true,
     "reason": "The headers inside the tables on both pages are still incorrect. The headers are hugging the left margin of each of the tables. This is not right.",
     "at": "2026-07-02T22:42:58.516Z"
+  },
+  "T343": {
+    "failed": true,
+    "reason": "The validation was insufficient. When you navigate between pages, there is still a flicker of both the entire theme styling and also specifically the button where you check what theme is currently active.",
+    "at": "2026-07-02T22:44:22.266Z"
   }
 }
