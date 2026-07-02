@@ -8039,7 +8039,7 @@
     {
       "id": "T304",
       "title": "Rename Backlog page headings to 'Waiting on Human Tasks' / 'Human Tasks'",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
