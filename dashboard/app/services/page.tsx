@@ -134,8 +134,8 @@ export default function Services() {
 
   return (
     <>
-      <h1>Services</h1>
-      <p className="sub">Shared external dependencies with cross-job rate limits + quotas. Auto-refreshes. Edit a limit to override the code default — overrides are preserved across daemon restarts / code-sync. Click a service name to see which workflows/jobs use it.</p>
+      <h1>Integrations</h1>
+      <p className="sub">Shared external dependencies and tools with cross-job rate limits + quotas. Auto-refreshes. Edit a limit to override the code default — overrides are preserved across daemon restarts / code-sync. Click a service name to see which workflows/jobs use it.</p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {err && <p className="muted" style={{ color: 'var(--red)' }}>⚠ {err}</p>}
       {viewingConsumers && (
