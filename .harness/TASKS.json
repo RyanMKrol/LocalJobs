@@ -7936,7 +7936,7 @@
     {
       "id": "T300",
       "title": "stocks-sync: split stocks-watch into check + notify stages (fix skip-status)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T290"
       ],
