@@ -9137,7 +9137,7 @@
     {
       "id": "T346",
       "title": "Fix listening-digest work-item ledger job-name mismatch (JOB_NAME constant)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
