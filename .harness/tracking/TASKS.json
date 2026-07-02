@@ -7389,7 +7389,7 @@
       ],
       "facets": null,
       "scope": [
-        ".harness/harness.env"
+        ".harness/config/harness.env"
       ],
       "design": null,
       "verify": [],
