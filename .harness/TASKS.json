@@ -7964,7 +7964,7 @@
     {
       "id": "T301",
       "title": "stocks-snapshot: also fetch the Stocks & Shares ISA account (optional second credential pair)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T300"
       ],
