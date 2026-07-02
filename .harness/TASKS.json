@@ -8462,7 +8462,7 @@
     {
       "id": "T319",
       "title": "projects-sync: add enforced second-brain output template for project-summarize",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
