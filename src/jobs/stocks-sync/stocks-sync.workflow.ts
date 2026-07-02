@@ -27,6 +27,12 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * *checking* work being mislabeled skipped was the bug.
  *
  * Runs daily (schedule editable from the dashboard).
+ *
+ * `outputJob: 'stocks-snapshot'` (T348): the DAG's terminal stage, `stocks-notify`, is a pure
+ * notify-trigger that structurally never records work_items rows, so the unified Output section
+ * (T205, which by default reads the terminal wave) would always show empty. `stocks-snapshot` is
+ * the stage with real per-item output (the ticker positions), so the Output section is overridden
+ * to read from it instead.
  */
 const workflow: WorkflowDefinition = {
   name: 'stocks-sync',
@@ -37,6 +43,7 @@ const workflow: WorkflowDefinition = {
     '30%+ above its average buy price.',
   schedule: '0 7 * * *',
   maxConcurrency: 1,
+  outputJob: 'stocks-snapshot',
   jobs: [
     { job: 'stocks-snapshot' },
     { job: 'stocks-watch', dependsOn: ['stocks-snapshot'] },

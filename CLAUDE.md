@@ -241,7 +241,10 @@ in that case (there was genuinely nothing to send this run) — only the checkin
 mislabeled skipped was the bug this split fixes. Multiple positions freshly breaching in the same
 run are combined into a single push, not one per position. Runs daily (schedule editable from the
 dashboard). Service: `src/services/trading212.service.ts`.
-Credentials: `TRADING212_API_KEY_ID`, `TRADING212_API_SECRET_KEY`.
+Credentials: `TRADING212_API_KEY_ID`, `TRADING212_API_SECRET_KEY`. **`outputJob: 'stocks-snapshot'`
+(T348)**: the DAG's true terminal stage, `stocks-notify`, never records `work_items` rows (it's a
+pure notify-trigger), so the workflow manifest overrides the unified Output section (T205) to read
+`stocks-snapshot`'s ledger instead, showing the current ticker positions.
 and **stock-digest** (`src/jobs/stock-digest/`) — a weekly, Claude-narrated markdown summary of the
 owner's current stock holdings, DISTINCT from `stocks-sync` (which only snapshots + threshold-alerts;
 `stock-digest` is its own workflow, own folder, own schedule, per explicit owner direction — not a
@@ -607,6 +610,17 @@ job MAY colocate a service it owns).
     `markWorkItem(ctx, key, 'success', { detail: { name: ..., markdown: <path> } })` for
     markdown artifact items, OR just `markWorkItem(ctx, key, 'success')` for non-markdown
     items. The output section renders automatically — no extra wiring needed.
+  - **`outputJob` override for a non-terminal output stage (T348).** Some workflows are
+    shaped build-then-notify, where the DAG's TERMINAL stage is a pure notify-trigger that
+    structurally never records `work_items` rows (e.g. `stocks-sync`'s `stocks-notify`, which
+    just reads `fresh-breaches.json` and optionally sends one push) — for these the generic
+    Output section would always be empty even though a real, meaningful ledger exists one
+    stage earlier. `WorkflowDefinition.outputJob` (an optional field on the manifest, like
+    `category`) names a different member job whose ledger the Output section should read
+    instead; `GET /api/workflows/:name/output-items` uses it (falling back to the terminal
+    wave if unset or if the name isn't an actual member) in place of `lastWave`. It's
+    opt-in and manifest-owned only — no dashboard edit UI, no `_overridden` column, same as
+    `category`.
   - **Output-form convention (T262) — how to add a new render form.** An output
     item declares its render form via `detail.format` (a string, defaults to `"markdown"`
     when absent). The read-only output endpoint (`GET /api/workflow-runs/:id/output` and

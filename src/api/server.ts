@@ -1539,7 +1539,10 @@ export function createApiServer(
         } catch {
           return json(res, 200, { items: [] as OutputItem[], terminalJobs: [] as string[] });
         }
-        return json(res, 200, { items: workflowTerminalItems(lastWave), terminalJobs: lastWave });
+        const def = getWorkflowDefinition(name);
+        const outputJobs =
+          def?.outputJob && refs.some((r) => r.job === def.outputJob) ? [def.outputJob] : lastWave;
+        return json(res, 200, { items: workflowTerminalItems(outputJobs), terminalJobs: outputJobs });
       }
 
       // GET /api/workflows/:name/output?job=&key=  (T205)

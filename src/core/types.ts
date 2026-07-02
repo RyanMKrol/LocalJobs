@@ -219,6 +219,15 @@ export interface WorkflowDefinition {
    * always tracks the manifest. Omit to default to `'uncategorized'`.
    */
   category?: string;
+  /**
+   * Override which member job's work_items ledger the unified Output section
+   * (T205) reads from, for workflows whose DAG terminal stage legitimately
+   * records NO per-item ledger rows (e.g. a pure notify-trigger stage like
+   * stocks-sync's `stocks-notify`). Must name an existing member job of this
+   * workflow. When unset (the common case), the Output section reads the
+   * DAG's terminal wave, exactly as before.
+   */
+  outputJob?: string;
   /** Re-run the whole pass in cycles until no retryable work remains. Default false. */
   repeatUntilStable?: boolean;
   /** Max cycles when repeatUntilStable. Default 1. */

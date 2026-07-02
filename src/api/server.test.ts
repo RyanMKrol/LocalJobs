@@ -2197,4 +2197,52 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   }
 }
 
+// ── T348: outputJob override routes the Output section to a non-terminal stage ──
+{
+  syncJob({ name: 't348-first', run: async () => {} });
+  syncJob({ name: 't348-last', run: async () => {} });
+  jobs.push({ name: 't348-first', run: async () => {} }, { name: 't348-last', run: async () => {} });
+  const t348DefaultWf = { name: 't348-default-wf', jobs: [{ job: 't348-first' }, { job: 't348-last', dependsOn: ['t348-first'] }] };
+  const t348OverrideWf = {
+    name: 't348-override-wf',
+    jobs: [{ job: 't348-first' }, { job: 't348-last', dependsOn: ['t348-first'] }],
+    outputJob: 't348-first',
+  };
+  syncWorkflow(t348DefaultWf);
+  syncWorkflow(t348OverrideWf);
+  workflows.push(t348DefaultWf, t348OverrideWf);
+  markWorkItem('t348-first', 'pos-1', 'success');
+  // The terminal stage never records anything (mirrors stocks-notify).
+
+  await test('output-items: no outputJob override — reads the terminal wave (empty here) as before', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/t348-default-wf/output-items`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { items: unknown[]; terminalJobs: string[] };
+      assert.deepEqual(body.terminalJobs, ['t348-last']);
+      assert.equal(body.items.length, 0, 'terminal stage has no ledger rows');
+    });
+  });
+
+  await test('output-items: outputJob override reads the named member job instead of the terminal wave', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/t348-override-wf/output-items`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { items: Array<{ jobName: string; itemKey: string }>; terminalJobs: string[] };
+      assert.deepEqual(body.terminalJobs, ['t348-first']);
+      assert.equal(body.items.length, 1);
+      assert.equal(body.items[0]?.jobName, 't348-first');
+      assert.equal(body.items[0]?.itemKey, 'pos-1');
+    });
+  });
+
+  // Cleanup registry stubs.
+  for (const n of ['t348-first', 't348-last']) {
+    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
+  }
+  for (const n of ['t348-default-wf', 't348-override-wf']) {
+    const i = workflows.findIndex((x) => x.name === n); if (i >= 0) workflows.splice(i, 1);
+  }
+}
+
 console.log(`\n  ${passed} assertions passed`);
