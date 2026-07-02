@@ -1,4 +1,9 @@
-# T329 — Move TASKS.json/IDEAS.md + owner-owned overlay files into .harness/tracking/
+# T327 follow-up — Move TASKS.json/IDEAS.md + owner-owned overlay files into .harness/tracking/
+
+(Not a numbered backlog task — an ad-hoc follow-up to T327 done interactively in the same session.
+Filed as `T327-tracking-followup.md`, not `T329.md`, since T329 is a real, separate, still-pending
+backlog task — "Add clickable column-header sorting to the IO mapping panel" — and using its id here
+would have collided with its own future worklog.)
 
 Follow-up to T327, done interactively in the same session at the owner's request: "the
 human-done/manual-fail/reviews files and even TASKS.json and IDEAS.md" were still loose files at
