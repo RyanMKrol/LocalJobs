@@ -161,7 +161,7 @@ see `CLAUDE.md`.
 
 ## Shipped example workflows
 
-Nine worked examples are published under `src/jobs/` (their `data/` stays
+Ten worked examples are published under `src/jobs/` (their `data/` stays
 gitignored). Private workflows live in gitignored subfolders.
 
 - **places** — Google Saved Places enrichment: parse CSVs → resolve CIDs →
@@ -235,6 +235,21 @@ gitignored). Private workflows live in gitignored subfolders.
   stocks-watch). Notified once per breach episode (staying above 30% doesn't re-notify every
   run); if a position later drops back below 30% its notified-flag resets, so a future
   re-breach notifies again. Runs daily (schedule editable from the dashboard).
+- **stock-digest** — Weekly Claude-narrated markdown summary of current stock
+  holdings, DISTINCT from `stocks-sync` (own folder, own workflow, own weekly
+  schedule — `'0 8 * * 1'`, Monday 08:00, deliberately after `stocks-sync`'s
+  daily 07:00 run so a same-day-fresh snapshot is usually available). Single
+  stage (`stock-digest-build`) reads `stocks-sync`'s `data/out/portfolio.json`
+  directly via a plain relative import of its config/types — the two workflows
+  are NOT DAG-linked (the framework has no cross-workflow `dependsOn`), so this
+  is a same-repo cross-workflow file read, not a wired dependency; a missing or
+  empty portfolio file logs a WARN and cleanly skips the run instead of
+  crashing. It computes each position's gain since average buy price and its
+  share of total portfolio value, ranks the biggest winners/losers, and asks
+  Claude to narrate a holdings + performance report to
+  `data/out/stock-digest-<ISO-week>.md`. Idempotent per ISO week via the
+  work_items ledger. Markdown-only output — no push notification is sent.
+  Runs weekly, Monday at 08:00.
 
 ## Dashboard pages
 
