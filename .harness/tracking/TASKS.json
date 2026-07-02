@@ -8880,7 +8880,7 @@
     {
       "id": "T336",
       "title": "Delete stale listens-backfill/listens-sync workflow rows + orphaned spotify service from data/jobs.db",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
