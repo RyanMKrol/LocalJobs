@@ -9085,7 +9085,7 @@
     {
       "id": "T344",
       "title": "Reintroduce a selectable System mode via a 3-state cycle on the header mode button",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T343"
       ],
