@@ -9217,7 +9217,7 @@
     {
       "id": "T349",
       "title": "Record ticker/price detail on stocks-snapshot's work-item ledger rows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
