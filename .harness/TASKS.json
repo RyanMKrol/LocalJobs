@@ -8260,7 +8260,7 @@
     {
       "id": "T312",
       "title": "Add a global Logs nav tab + page",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T311"
       ],
