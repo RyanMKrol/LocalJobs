@@ -12,6 +12,8 @@ import {
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, updateJobTimeout, getJob, usageThisMonth,
   bulkUnstickItems, bulkIgnoreItems,
+  deleteWorkflowCompletely, deleteJobCompletely, deleteServiceCompletely,
+  recordServiceConsumer, listServiceConsumers,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 import { db } from './index.js';
@@ -1038,3 +1040,94 @@ console.log('  ✓ T210 ignoreSurfacedItems: bulk-dismiss ignores only supplied 
   assert.equal(noopRun?.status, 'skipped', 'setRunNoop changes the run status to skipped');
 }
 console.log('  ✓ T258 noop detection: skipped items not re-selected, hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop');
+
+// T336 — full-delete admin helpers: deleteWorkflowCompletely / deleteJobCompletely / deleteServiceCompletely.
+{
+  // Target workflow/job/service (to be deleted) + an untouched sibling (to prove scoping).
+  syncJob({ name: 't336-target-job', run: async () => {} });
+  syncJob({ name: 't336-other-job', run: async () => {} });
+  syncWorkflow({ name: 't336-target-wf', jobs: [{ job: 't336-target-job' }] });
+  syncWorkflow({ name: 't336-other-wf', jobs: [{ job: 't336-other-job' }] });
+  syncService({ name: 't336-target-svc', ratePerMinute: 5, paid: false });
+  syncService({ name: 't336-other-svc', ratePerMinute: 5, paid: false });
+
+  // work_items + work_item_runs for the target job.
+  const wfRunId = createWorkflowRun('t336-target-wf', 'manual');
+  markWorkItem('t336-target-job', 'item-1', 'success', { workflowRunId: wfRunId });
+  markWorkItem('t336-other-job', 'item-1', 'success');
+
+  // runs + run_logs for the target job.
+  const runId = createRun('t336-target-job', 'workflow', 1, wfRunId);
+  addWorkflowLog(wfRunId, 'a log line for the target run');
+  finishRun(runId, 'success', { exitCode: 0 });
+  finishWorkflowRun(wfRunId, 'success');
+  const otherWfRunId = createWorkflowRun('t336-other-wf', 'manual');
+  const otherRunId = createRun('t336-other-job', 'workflow', 1, otherWfRunId);
+  finishRun(otherRunId, 'success', { exitCode: 0 });
+  finishWorkflowRun(otherWfRunId, 'success');
+
+  // service_usage + service_consumers for the target service.
+  recordServiceCall('t336-target-svc');
+  recordServiceCall('t336-target-svc');
+  recordServiceConsumer('t336-target-svc', 't336-target-job');
+  recordServiceCall('t336-other-svc');
+  recordServiceConsumer('t336-other-svc', 't336-other-job');
+
+  // ── deleteWorkflowCompletely removes the workflow + its runs, leaves the sibling ──
+  const wfResult = deleteWorkflowCompletely('t336-target-wf');
+  assert.equal(wfResult.workflows, 1, 'workflows row deleted');
+  assert.equal(wfResult.workflowJobs, 1, 'workflow_jobs row deleted');
+  assert.equal(wfResult.workflowRuns, 1, 'workflow_runs row deleted');
+  assert.equal(wfResult.workflowRunLogs, 1, 'workflow_run_logs row deleted');
+  assert.equal(getWorkflow('t336-target-wf'), undefined, 'workflow gone');
+  assert.equal(getWorkflowRun(wfRunId), undefined, 'workflow run gone');
+  assert.ok(getWorkflow('t336-other-wf'), 'sibling workflow untouched');
+  assert.ok(getWorkflowRun(otherWfRunId), 'sibling workflow run untouched');
+
+  // ── deleteJobCompletely removes the job + its runs/work_items, leaves the sibling ──
+  const jobResult = deleteJobCompletely('t336-target-job');
+  assert.equal(jobResult.jobs, 1, 'jobs row deleted');
+  assert.equal(jobResult.runs, 1, 'runs row deleted');
+  assert.equal(jobResult.runLogs, 0, 'run_logs deleted (or already none for this run)');
+  assert.equal(jobResult.workItems, 1, 'work_items row deleted');
+  assert.equal(jobResult.workItemRuns, 1, 'work_item_runs row deleted');
+  assert.equal(getJob('t336-target-job'), undefined, 'job gone');
+  assert.equal(getWorkItem('t336-target-job', 'item-1'), undefined, 'work item gone');
+  assert.ok(getJob('t336-other-job'), 'sibling job untouched');
+  assert.ok(getWorkItem('t336-other-job', 'item-1'), 'sibling work item untouched');
+
+  // ── deleteServiceCompletely removes the service + usage/consumers, leaves the sibling ──
+  const svcResult = deleteServiceCompletely('t336-target-svc');
+  assert.equal(svcResult.services, 1, 'services row deleted');
+  assert.equal(svcResult.serviceConsumers, 1, 'service_consumers row deleted');
+  assert.equal(svcResult.serviceUsage, 2, 'service_usage rows deleted');
+  assert.equal(serviceCallsThisMonth('t336-target-svc'), 0, 'target service usage gone');
+  assert.equal(listServiceConsumers('t336-target-svc').length, 0, 'target service consumers gone');
+  assert.equal(serviceCallsThisMonth('t336-other-svc'), 1, 'sibling service usage untouched');
+  assert.equal(listServiceConsumers('t336-other-svc').length, 1, 'sibling service consumers untouched');
+
+  // ── idempotency: a second call on an already-deleted name is a no-op ──
+  assert.deepEqual(
+    deleteWorkflowCompletely('t336-target-wf'),
+    { workflows: 0, workflowJobs: 0, workflowRuns: 0, workflowRunLogs: 0 },
+    'deleteWorkflowCompletely no-op on second call',
+  );
+  assert.deepEqual(
+    deleteJobCompletely('t336-target-job'),
+    { jobs: 0, runs: 0, runLogs: 0, workItems: 0, workItemRuns: 0 },
+    'deleteJobCompletely no-op on second call',
+  );
+  assert.deepEqual(
+    deleteServiceCompletely('t336-target-svc'),
+    { services: 0, serviceConsumers: 0, serviceUsage: 0 },
+    'deleteServiceCompletely no-op on second call',
+  );
+
+  // Also no-op for a name that never existed.
+  assert.deepEqual(
+    deleteWorkflowCompletely('t336-never-existed'),
+    { workflows: 0, workflowJobs: 0, workflowRuns: 0, workflowRunLogs: 0 },
+    'deleteWorkflowCompletely no-op for unknown name',
+  );
+}
+console.log('  ✓ T336 full-delete admin helpers: deleteWorkflowCompletely / deleteJobCompletely / deleteServiceCompletely (cross-table cleanup + idempotency)');

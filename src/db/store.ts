@@ -1645,6 +1645,73 @@ export function resetWorkflowOutput(workflowName: string): WorkflowResetResult {
   return { jobNames, ...result };
 }
 
+// ─────────────────── One-off admin: full delete of a stale definition ───────────────────
+// Unlike resetWorkflowOutput (which clears OUTPUT but keeps the definition rows),
+// these remove the DEFINITION itself + everything under it — for permanently
+// retiring a workflow/job/service whose code no longer exists. MANUAL ONLY,
+// intended for one-off cleanup scripts (see scripts/cleanup-listens-spotify.ts).
+
+export interface WorkflowDeleteResult {
+  workflows: number;
+  workflowJobs: number;
+  workflowRuns: number;
+  workflowRunLogs: number;
+}
+
+/** Delete a workflow definition and everything under it. Idempotent (no-op if absent). */
+export function deleteWorkflowCompletely(workflowName: string): WorkflowDeleteResult {
+  const tx = db.transaction(() => {
+    const workflowRunLogs = db.prepare(
+      'DELETE FROM workflow_run_logs WHERE workflow_run_id IN (SELECT id FROM workflow_runs WHERE workflow_name = ?)'
+    ).run(workflowName).changes;
+    const workflowRuns = db.prepare('DELETE FROM workflow_runs WHERE workflow_name = ?').run(workflowName).changes;
+    const workflowJobs = db.prepare('DELETE FROM workflow_jobs WHERE workflow_name = ?').run(workflowName).changes;
+    const workflows = db.prepare('DELETE FROM workflows WHERE name = ?').run(workflowName).changes;
+    return { workflows, workflowJobs, workflowRuns, workflowRunLogs };
+  });
+  return tx();
+}
+
+export interface JobDeleteResult {
+  jobs: number;
+  runs: number;
+  runLogs: number;
+  workItems: number;
+  workItemRuns: number;
+}
+
+/** Delete a job definition and everything under it. Idempotent (no-op if absent). */
+export function deleteJobCompletely(jobName: string): JobDeleteResult {
+  const tx = db.transaction(() => {
+    const runLogs = db.prepare(
+      'DELETE FROM run_logs WHERE run_id IN (SELECT id FROM runs WHERE job_name = ?)'
+    ).run(jobName).changes;
+    const runs = db.prepare('DELETE FROM runs WHERE job_name = ?').run(jobName).changes;
+    const workItemRuns = db.prepare('DELETE FROM work_item_runs WHERE job_name = ?').run(jobName).changes;
+    const workItems = db.prepare('DELETE FROM work_items WHERE job_name = ?').run(jobName).changes;
+    const jobs = db.prepare('DELETE FROM jobs WHERE name = ?').run(jobName).changes;
+    return { jobs, runs, runLogs, workItems, workItemRuns };
+  });
+  return tx();
+}
+
+export interface ServiceDeleteResult {
+  services: number;
+  serviceConsumers: number;
+  serviceUsage: number;
+}
+
+/** Delete a service definition and everything under it. Idempotent (no-op if absent). */
+export function deleteServiceCompletely(serviceName: string): ServiceDeleteResult {
+  const tx = db.transaction(() => {
+    const serviceUsage = db.prepare('DELETE FROM service_usage WHERE service = ?').run(serviceName).changes;
+    const serviceConsumers = db.prepare('DELETE FROM service_consumers WHERE service_name = ?').run(serviceName).changes;
+    const services = db.prepare('DELETE FROM services WHERE name = ?').run(serviceName).changes;
+    return { services, serviceConsumers, serviceUsage };
+  });
+  return tx();
+}
+
 // ─────────────────── Read-only DB browser (dashboard) ───────────────────
 // A generic, strictly READ-ONLY view of the SQLite tables for ad-hoc browsing
 // from the dashboard, so the local DB can be inspected without building a
