@@ -9113,7 +9113,7 @@
     {
       "id": "T345",
       "title": "Box the TV Recommendations empty state + establish a reusable boxed-empty-state CSS convention",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
