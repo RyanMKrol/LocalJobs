@@ -1776,15 +1776,43 @@ export function createApiServer(
         const refs = getWorkflowJobs(run.workflow_name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
         let firstWave: string[] = [];
         let lastWave: string[] = [];
+        let dependencies: Map<string, string[]> = new Map();
         try {
           const dag = buildDag(refs);
           firstWave = dag.waves[0] ?? [];
           lastWave = dag.waves[dag.waves.length - 1] ?? [];
+          dependencies = dag.dependencies;
           // If the workflow is a single stage, first == last — show it as both input and output.
         } catch {
-          return json(res, 200, { io: [], firstWave: [], lastWave: [], scoped: false, emptyReason: null, note: 'workflow DAG could not be parsed' });
+          return json(res, 200, {
+            io: [],
+            firstWave: [],
+            lastWave: [],
+            scoped: false,
+            emptyReason: null,
+            note: 'workflow DAG could not be parsed',
+            selectedJob: null,
+            scopedProducerJobs: [],
+            scopedConsumerJobs: [],
+          });
         }
-        const { rows, scoped } = workItemIoRows(firstWave, lastWave, run.id);
+        const jobParam = url.searchParams.get('job');
+        let producerJobs = firstWave;
+        let consumerJobs = lastWave;
+        if (jobParam != null) {
+          if (!refs.some((r) => r.job === jobParam)) {
+            return json(res, 400, { error: `unknown job "${jobParam}" for this workflow` });
+          }
+          const predecessors = dependencies.get(jobParam) ?? [];
+          if (predecessors.length === 0) {
+            producerJobs = [jobParam];
+            consumerJobs = [jobParam];
+          } else {
+            producerJobs = predecessors;
+            consumerJobs = [jobParam];
+          }
+        }
+        const { rows, scoped } = workItemIoRows(producerJobs, consumerJobs, run.id);
         // Distinguish an old pre-feature run (workflow has NO linkage at all) from a
         // re-run that simply advanced nothing new (the workflow HAS linkage elsewhere).
         const emptyReason = scoped || rows.length > 0
@@ -1798,6 +1826,9 @@ export function createApiServer(
           emptyReason,
           // Honest caveat shown as a footnote when there ARE rows.
           note: 'One output is shown per input (fan-out is collapsed to its first output).',
+          selectedJob: jobParam ?? null,
+          scopedProducerJobs: jobParam != null ? producerJobs : [],
+          scopedConsumerJobs: jobParam != null ? consumerJobs : [],
         });
       }
 

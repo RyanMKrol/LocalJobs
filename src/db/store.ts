@@ -618,7 +618,14 @@ export function selectPendingRoots(
 }
 
 /**
- * Input→output mapping across a workflow's first and last stages (T095, T139).
+ * Input→output mapping between two sets of stages in a workflow (T095, T139, T313).
+ *
+ * Callers pick which stages to join: either the whole workflow's first/last wave
+ * (the default overview panel), or — for inspecting one intermediate stage — that
+ * stage's direct predecessor(s) as "producer" and the stage itself as "consumer"
+ * (a stage with no predecessors self-pairs: producer == consumer == that stage).
+ * This function itself is agnostic to wave semantics; it just joins whichever
+ * `producerJobs`' ledger rows to whichever `consumerJobs`' ledger rows by root_key.
  *
  * When `workflowRunId` is given the mapping is genuinely RUN-SCOPED: it lists only
  * the originating roots THIS run advanced (from the `work_item_runs` linkage —

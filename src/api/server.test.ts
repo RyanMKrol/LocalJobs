@@ -1605,6 +1605,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
     await withServer({}, async (base) => {
       const a = (await (await fetch(`${base}/api/workflow-runs/${ioRunA}/io`)).json()) as {
         io: { inputKey: string }[]; scoped: boolean; emptyReason: string | null; note: string;
+        selectedJob: string | null; scopedProducerJobs: string[]; scopedConsumerJobs: string[];
       };
       assert.equal(a.scoped, true, 'run with linkage is scoped');
       assert.deepEqual(a.io.map((r) => r.inputKey), ['k1'], 'only this run\'s input');
@@ -1616,6 +1617,69 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       assert.equal(empty.scoped, false, 'no-linkage run is not scoped');
       assert.equal(empty.io.length, 0, 'no global ledger dump');
       assert.equal(empty.emptyReason, 'no-new', 'workflow has linkage elsewhere → no-new (not pre-feature)');
+
+      // Default (no ?job) response carries neutral-default new fields (T313).
+      assert.equal(a.selectedJob, null, 'no job param -> selectedJob null');
+      assert.deepEqual(a.scopedProducerJobs, [], 'no job param -> scopedProducerJobs empty');
+      assert.deepEqual(a.scopedConsumerJobs, [], 'no job param -> scopedConsumerJobs empty');
+    });
+  });
+}
+
+// ── T313: GET /api/workflow-runs/:id/io?job=<X> scopes to a single stage's own
+// direct predecessor(s) -> itself, instead of the whole-workflow first/last wave.
+{
+  syncJob({ name: 'io3-first', run: async () => {} });
+  syncJob({ name: 'io3-mid', run: async () => {} });
+  syncJob({ name: 'io3-last', run: async () => {} });
+  syncWorkflow({
+    name: 'io3-api-wf',
+    jobs: [
+      { job: 'io3-first' },
+      { job: 'io3-mid', dependsOn: ['io3-first'] },
+      { job: 'io3-last', dependsOn: ['io3-mid'] },
+    ],
+  });
+
+  const io3Run = createWorkflowRun('io3-api-wf', 'manual');
+  markWorkItem('io3-first', 'r1', 'success', { workflowRunId: io3Run });
+  markWorkItem('io3-mid', 'r1', 'success', { rootKey: 'r1', workflowRunId: io3Run });
+  markWorkItem('io3-last', 'r1', 'success', { rootKey: 'r1', workflowRunId: io3Run });
+
+  await test('GET /api/workflow-runs/:id/io?job=<root job> self-pairs producer/consumer (T313)', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${io3Run}/io?job=io3-first`)).json()) as {
+        selectedJob: string; scopedProducerJobs: string[]; scopedConsumerJobs: string[];
+        io: { inputKey: string; outputStatus: string | null }[];
+      };
+      assert.equal(body.selectedJob, 'io3-first');
+      assert.deepEqual(body.scopedProducerJobs, ['io3-first']);
+      assert.deepEqual(body.scopedConsumerJobs, ['io3-first']);
+      assert.deepEqual(body.io.map((r) => r.inputKey), ['r1']);
+    });
+  });
+
+  await test('GET /api/workflow-runs/:id/io?job=<mid job> scopes to its direct predecessor(s) (T313)', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${io3Run}/io?job=io3-mid`)).json()) as {
+        selectedJob: string; scopedProducerJobs: string[]; scopedConsumerJobs: string[];
+        io: { inputKey: string; outputJob: string | null; outputStatus: string | null }[];
+      };
+      assert.equal(body.selectedJob, 'io3-mid');
+      assert.deepEqual(body.scopedProducerJobs, ['io3-first']);
+      assert.deepEqual(body.scopedConsumerJobs, ['io3-mid']);
+      assert.equal(body.io.length, 1);
+      assert.equal(body.io[0].outputJob, 'io3-mid', 'output reflects the mid stage itself, not the terminal stage');
+      assert.equal(body.io[0].outputStatus, 'success');
+    });
+  });
+
+  await test('GET /api/workflow-runs/:id/io?job=<unknown job> -> 400 (T313)', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${io3Run}/io?job=not-a-real-job`);
+      assert.equal(res.status, 400);
+      const body = (await res.json()) as { error: string };
+      assert.match(body.error, /unknown job/);
     });
   });
 }
