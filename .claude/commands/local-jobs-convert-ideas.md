@@ -59,13 +59,18 @@ The actual flow, once every Stage 2 agent reports back:
    batching up to 4 questions per call (several calls in sequence if there are more) — keep each
    question's per-idea prefix from the file.
 4. For every unit that's still blocked, `SendMessage` its `agentId` with the owner's answers relevant
-   to that unit (only that unit's, not everyone else's) and ask it to delete its own
-   `.harness/.pending-questions/<slug>.json` and finish shaping + write its pending-tasks file now. A
-   unit may need more than one relay round if its questions open new questions — each round rewrites
-   the same pending-questions file (or the agent deletes it once it can proceed).
+   to that unit (only that unit's, not everyone else's). **Don't assume the answers fully unblock it** —
+   tell the agent explicitly to check: if the answers settle everything, delete its own
+   `.harness/.pending-questions/<slug>.json` and finish shaping + write its pending-tasks file; if the
+   answers open a genuinely NEW question, it should instead **overwrite**
+   `.harness/.pending-questions/<slug>.json` with the new question(s) (same schema, same file — not a
+   second file) and report back still-blocked, same as its first round. Loop steps 3-4 again for any
+   unit that comes back still-blocked — there's no cap on rounds, only on asking something it could
+   have decided itself.
 5. Only proceed to Stage 3 once every launched unit has EITHER written a pending-tasks file OR (for a
    genuinely deferred idea — see the interview step below) explicitly confirmed it's writing none, AND
-   `.harness/.pending-questions/` is empty.
+   `.harness/.pending-questions/` is empty — an unexpected leftover file at this point means a unit
+   came back still-blocked and got missed in a relay round; check for it before declaring the sweep done.
 
 **Crash/interruption recovery for open questions is Stage 0's job** (see its new step below) — if the
 whole sweep dies while units are blocked, the durable `.pending-questions/*.json` files are exactly
@@ -215,10 +220,17 @@ call finding out), does NOT need `Edit`, and never touches `.harness/TASKS.json`
 > visibility) — **every question must open by naming the specific idea it's about** (e.g. "For the idea
 > about <short summary>: …"), same rule as always. The coordinator will batch your questions with
 > everyone else's, get them answered by the owner, and send you a follow-up message with the answers
-> relevant to your unit — at that point, **delete `.harness/.pending-questions/<slug>.json`** and finish
-> shaping + write your pending-tasks file (below). You may need more than one round if an answer opens a
-> genuinely new question (just rewrite the pending-questions file with the new question); don't ask
-> something you could have decided yourself.
+> relevant to your unit.
+>
+> **When you get that follow-up message, check whether the answers actually settle everything before
+> you proceed** — don't assume one round is always enough:
+> - If yes, **delete `.harness/.pending-questions/<slug>.json`** and finish shaping + write your
+>   pending-tasks file (below).
+> - If the answers open a genuinely NEW question you couldn't have decided yourself, **overwrite**
+>   `.harness/.pending-questions/<slug>.json` with the new question(s) (same file, same schema — don't
+>   leave the old, now-answered questions in it) and end your turn again with the new question(s) in
+>   your report, exactly as the first round. There's no cap on rounds — just don't re-ask anything the
+>   answers already covered, and don't manufacture a question you could reasonably decide yourself.
 >
 > **If your interview concludes no task is actually warranted** (a pure check-in idea that resolves to
 > "already fine, no change needed"): don't invent a trivial task just to have one. Leave `tasks: []` in
