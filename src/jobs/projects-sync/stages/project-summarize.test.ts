@@ -36,6 +36,39 @@ function makeEntry(overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   };
 }
 
+function conformantSummary(entry: CatalogEntry): string {
+  return [
+    '---',
+    `name: "${entry.name}"`,
+    `full_name: "${entry.fullName}"`,
+    `url: "${entry.url}"`,
+    `language: "${entry.language}"`,
+    'topics: []',
+    'status: "active"',
+    `last_pushed: "${entry.pushedAt}"`,
+    'themes: ["personal automation"]',
+    'domain: "A test domain."',
+    '---',
+    '',
+    `# ${entry.name}`,
+    '',
+    '## What It Is',
+    'Cool project.',
+    '## Tech Stack',
+    'TypeScript.',
+    '## Status',
+    'Active.',
+    '## Structure',
+    'Flat.',
+    '## Themes & Interests',
+    'Automation.',
+    '## Notable Technical Approaches',
+    'Nothing special.',
+    '## Sources',
+    `- ${entry.url}`,
+  ].join('\n');
+}
+
 describe('project-summarize', () => {
   it('clones + summarizes a repo whose stored marker differs from the catalog value', async () => {
     const entry = makeEntry();
@@ -47,7 +80,7 @@ describe('project-summarize', () => {
       readCatalog: () => [entry],
       cloneOrPull: async (url, dest) => { cloneCalls.push([url, dest]); },
       readReadme: () => '# My Repo\nDoes cool stuff.',
-      summarize: async (prompt) => { claudeCalls.push(prompt); return { ok: true, text: '# Summary\nCool project.' }; },
+      summarize: async (prompt) => { claudeCalls.push(prompt); return { ok: true, text: conformantSummary(entry) }; },
       writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
     });
 
@@ -94,5 +127,51 @@ describe('project-summarize', () => {
     assert.match(prompt, /Does a thing/);
     assert.match(prompt, /Go/);
     assert.match(prompt, /Readme body/);
+  });
+
+  it('accepts a template-conformant summary — marks success and writes markdown', async () => {
+    const entry = makeEntry();
+
+    const writtenFiles: Array<[string, string]> = [];
+    await runProjectSummarize(fakeCtx(), {
+      readCatalog: () => [entry],
+      cloneOrPull: async () => {},
+      readReadme: () => '# My Repo',
+      summarize: async () => ({ ok: true, text: conformantSummary(entry) }),
+      writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
+    });
+
+    assert.equal(writtenFiles.length, 1);
+    const row = getWorkItem('project-summarize', entry.repoId);
+    assert.ok(row);
+    assert.equal(row!.status, 'success');
+  });
+
+  it('rejects a summary missing a required section — marks failed, writes no markdown', async () => {
+    const entry = makeEntry();
+    const nonConformant = [
+      '---',
+      `name: "${entry.name}"`,
+      '---',
+      '',
+      '## What It Is',
+      'It does a thing.',
+      '## Sources',
+      `- ${entry.url}`,
+    ].join('\n');
+
+    const writtenFiles: Array<[string, string]> = [];
+    await runProjectSummarize(fakeCtx(), {
+      readCatalog: () => [entry],
+      cloneOrPull: async () => {},
+      readReadme: () => '',
+      summarize: async () => ({ ok: true, text: nonConformant }),
+      writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
+    });
+
+    assert.equal(writtenFiles.length, 0);
+    const row = getWorkItem('project-summarize', entry.repoId);
+    assert.ok(row);
+    assert.equal(row!.status, 'failed');
   });
 });

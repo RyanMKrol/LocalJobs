@@ -201,10 +201,14 @@ gitignored). Private workflows live in gitignored subfolders.
   catalog; idempotent per GitHub numeric repo id (`repoId`) via the work_items ledger,
   refreshing fields every run. Stage 2 (`project-summarize`) shallow-clones each cataloged
   repo, reads its README, and asks Claude (via the shared `claude-cli` service) to write a
-  one-project markdown summary to `data/out/<repo-name>.md`; idempotent per repo by
-  comparing the catalog's `pushedAt` against the last-processed marker stored on the
-  work_items ledger — a repo unchanged since its last summary is skipped entirely (no
-  clone, no Claude call). Runs weekly, Sunday at 05:00.
+  one-project markdown summary to `data/out/<repo-name>.md` that MUST follow the enforced
+  `project.template.md` output contract (YAML frontmatter incl. `themes`/`domain` plus fixed
+  `##` sections like `Themes & Interests` and `Notable Technical Approaches`, designed as a
+  queryable cross-project "second brain" corpus, override via `PROJECTS_SYNC_TEMPLATE_PATH`) —
+  a response missing the frontmatter marker or any required section is rejected and the item
+  marked failed. Idempotent per repo by comparing the catalog's `pushedAt` against the
+  last-processed marker stored on the work_items ledger — a repo unchanged since its last
+  summary is skipped entirely (no clone, no Claude call). Runs weekly, Sunday at 05:00.
 - **claude-warmer** — Proactive Claude usage-window warmer: issue one minimal `"hi"`
   prompt via the `claude-cli` service every 30 minutes so the Claude account's 5-hour
   rolling usage window is already running (or reset) by the time real work needs Claude.

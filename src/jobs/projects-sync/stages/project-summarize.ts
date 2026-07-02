@@ -2,6 +2,47 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
+const REQUIRED_HEADINGS = [
+  '## What It Is',
+  '## Tech Stack',
+  '## Status',
+  '## Structure',
+  '## Themes & Interests',
+  '## Notable Technical Approaches',
+  '## Sources',
+];
+
+const FALLBACK_TEMPLATE = [
+  '---',
+  'name: ""',
+  'full_name: ""',
+  'url: ""',
+  'language: ""',
+  'topics: []',
+  'status: ""',
+  'last_pushed: ""',
+  'themes: []',
+  'domain: ""',
+  '---',
+  '',
+  '# Name — owner/repo',
+  '',
+  '## What It Is',
+  '',
+  '## Tech Stack',
+  '',
+  '## Status',
+  '',
+  '## Structure',
+  '',
+  '## Themes & Interests',
+  '',
+  '## Notable Technical Approaches',
+  '',
+  '## Sources',
+  '',
+].join('\n');
+
 import { runClaude } from '../../../services/claude.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
@@ -66,9 +107,14 @@ export function readRepoReadme(repoDir: string): string {
 }
 
 export function buildSummaryPrompt(entry: CatalogEntry, readme: string): string {
+  const template = existsSync(projectsSyncConfig.templatePath)
+    ? readFileSync(projectsSyncConfig.templatePath, 'utf-8')
+    : FALLBACK_TEMPLATE;
+
   return [
-    `Write a short markdown summary of the following GitHub project.`,
-    `Cover: what the project is, what it's for / what it covers, and its last-commit date.`,
+    `Write a summary of the following GitHub project for a personal "second brain" corpus.`,
+    `Produce a single Markdown file that EXACTLY follows the TEMPLATE at the end — same YAML`,
+    `frontmatter keys, same section headings, valid YAML, no extra keys.`,
     ``,
     `Name: ${entry.fullName}`,
     `Description: ${entry.description || '(none)'}`,
@@ -79,7 +125,30 @@ export function buildSummaryPrompt(entry: CatalogEntry, readme: string): string 
     ``,
     `README contents:`,
     readme ? readme.slice(0, 8000) : '(no README found)',
+    ``,
+    `Cover: what the project is, what it's for / what it covers, its last-commit date and an`,
+    `active/dormant judgement, and the broader interests/domains/technical approaches it reflects`,
+    `(these support later cross-project queries like "what kind of work is Ryan interested in").`,
+    `NEVER invent facts you cannot support from the data above — use "unknown" or leave prose`,
+    `honest about gaps.`,
+    ``,
+    `Reply with ONLY the Markdown file content, starting at the opening "---" — no code fences,`,
+    `no commentary.`,
+    ``,
+    '--- TEMPLATE ---',
+    template,
   ].join('\n');
+}
+
+/** Returns the missing pieces (leading frontmatter marker and/or required
+ *  section headings) that a generated summary must contain, or [] if it's shaped correctly. */
+export function templateShapeViolations(md: string): string[] {
+  const missing: string[] = [];
+  if (!md.startsWith('---')) missing.push('leading "---" frontmatter marker');
+  for (const heading of REQUIRED_HEADINGS) {
+    if (!md.includes(heading)) missing.push(`"${heading}" section`);
+  }
+  return missing;
 }
 
 export function repoMarkdownPath(repoName: string): string {
@@ -166,6 +235,11 @@ export async function runProjectSummarize(
       const result = await summarize(prompt, claudeModel, claudeEffort);
       if (!result.ok) {
         throw new Error(`claude summarize failed: ${result.error ?? 'unknown error'}`);
+      }
+
+      const violations = templateShapeViolations(result.text);
+      if (violations.length > 0) {
+        throw new Error(`summary output missing template shape: ${violations.join(', ')}`);
       }
 
       const mdPath = repoMarkdownPath(entry.name);
