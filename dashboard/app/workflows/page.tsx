@@ -61,11 +61,15 @@ export default function Workflows() {
           <p className="muted">No workflows yet — drop a <span className="mono">*.workflow.ts</span> in src/jobs.</p>
         </div>
       )}
-      {CATEGORY_GROUPS.map(({ key, label }) => {
-        const group = workflows.filter((p) => (p.category || 'uncategorized') === key);
-        if (group.length === 0) return null;
+      {CATEGORY_GROUPS.map(({ key, label }) => ({
+        key,
+        label,
+        group: workflows.filter((p) => (p.category || 'uncategorized') === key),
+      }))
+        .filter(({ group }) => group.length > 0)
+        .map(({ key, label, group }, index) => {
         return (
-          <div className="panel" key={key}>
+          <div className="panel" key={key} style={index > 0 ? { marginTop: 28 } : undefined}>
             <h2>{label}</h2>
             <table>
               <thead>
