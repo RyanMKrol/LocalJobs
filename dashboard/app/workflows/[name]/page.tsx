@@ -3,12 +3,12 @@
 import { Fragment, use, useState, useCallback } from 'react';
 import { DagFlow } from '../../components/DagFlow';
 import { RunButton } from '../../components/RunButton';
+import { SortTh, type SortDir } from '../../components/SortTh';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api, type MissingSeason, type MovieGap, type MovieRec, type TvRec } from '../../lib/api';
 import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
 
 type RecSortCol = 'title' | 'year' | 'genre' | 'lens' | 'tmdb';
-type SortDir = 'asc' | 'desc';
 
 function sortRecs<T extends { title: string; year: number | null; genre: string; lens: string; tmdbRating: number | null }>(
   recs: T[], col: RecSortCol, dir: SortDir,
@@ -22,17 +22,6 @@ function sortRecs<T extends { title: string; year: number | null; genre: string;
     else if (col === 'tmdb') cmp = (a.tmdbRating ?? 0) - (b.tmdbRating ?? 0);
     return dir === 'asc' ? cmp : -cmp;
   });
-}
-
-function SortTh({ label, col, active, dir, onSort }: {
-  label: string; col: RecSortCol; active: RecSortCol; dir: SortDir; onSort: (c: RecSortCol) => void;
-}) {
-  const isActive = col === active;
-  return (
-    <th className={`sort-th${isActive ? ' sort-th-active' : ''}`} onClick={() => onSort(col)} title={`Sort by ${label}`}>
-      {label}{isActive ? (dir === 'asc' ? ' ▲' : ' ▼') : ''}
-    </th>
-  );
 }
 
 /** Workflow names that show the Missing seasons section. */

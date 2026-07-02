@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { DagFlow } from '../../components/DagFlow';
+import { SortTh, type SortDir } from '../../components/SortTh';
 import { api } from '../../lib/api';
 import type { IoRow, Run, WorkflowIo, WorkflowMember } from '../../lib/api';
 import type { RunStatus } from '../../lib/api';
@@ -240,10 +241,34 @@ function rowEffectiveState(row: IoRow, singleStage: boolean): string {
 const IO_FILTER_STATES = ['all', 'success', 'failed', 'skipped'] as const;
 type IoFilterState = typeof IO_FILTER_STATES[number];
 
+type IoSortCol = 'input' | 'state' | 'output' | 'outputState';
+
+/** Sorts by the input key/name, input status, output key/name, or output status —
+ *  string comparisons (mirrors sortRecs' plain string-column precedent). */
+function sortIoRows(rows: IoRow[], col: IoSortCol, dir: SortDir): IoRow[] {
+  return [...rows].sort((a, b) => {
+    let cmp = 0;
+    if (col === 'input') cmp = itemLabel(a.inputKey, a.inputDetail).localeCompare(itemLabel(b.inputKey, b.inputDetail));
+    else if (col === 'state') cmp = a.inputStatus.localeCompare(b.inputStatus);
+    else if (col === 'output') cmp = (a.outputKey ?? '').localeCompare(b.outputKey ?? '');
+    else if (col === 'outputState') cmp = (a.outputStatus ?? '').localeCompare(b.outputStatus ?? '');
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
 function IoPanel({ runId, members }: { runId: string; members: WorkflowMember[] }) {
   const [modal, setModal] = useState<ModalState | null>(null);
   const [filter, setFilter] = useState<IoFilterState>('all');
   const [selectedJob, setSelectedJob] = useState<string | null>(null);
+  // No default sort column — natural incoming order until the owner clicks a
+  // header, matching handleSort's existing "first click sorts desc" semantics.
+  const [sortCol, setSortCol] = useState<IoSortCol | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const handleSort = useCallback((col: IoSortCol) => {
+    setSortDir((prev) => (col === sortCol ? (prev === 'asc' ? 'desc' : 'asc') : 'desc'));
+    setSortCol(col);
+  }, [sortCol]);
 
   const { data } = usePoll(() => api.workflowRunIo(runId, selectedJob ?? undefined), 5000, [runId, selectedJob]);
 
@@ -275,7 +300,8 @@ function IoPanel({ runId, members }: { runId: string; members: WorkflowMember[] 
     stateCounts[s] = (stateCounts[s] ?? 0) + 1;
   }
 
-  const filtered = filter === 'all' ? io : io.filter((r) => rowEffectiveState(r, singleStage) === filter);
+  const filteredByState = filter === 'all' ? io : io.filter((r) => rowEffectiveState(r, singleStage) === filter);
+  const filtered = sortCol ? sortIoRows(filteredByState, sortCol, sortDir) : filteredByState;
 
   const inputHeader = selectedJob != null && !singleStage
     ? `Input (${scopedProducerJobs.join(', ')})`
@@ -342,10 +368,10 @@ function IoPanel({ runId, members }: { runId: string; members: WorkflowMember[] 
                 <table>
                   <thead>
                     <tr>
-                      <th>{inputHeader}</th>
-                      <th>State</th>
-                      {!singleStage && <th>{outputHeader}</th>}
-                      {!singleStage && <th>Output state</th>}
+                      <SortTh label={inputHeader} col="input" active={sortCol} dir={sortDir} onSort={handleSort} />
+                      <SortTh label="State" col="state" active={sortCol} dir={sortDir} onSort={handleSort} />
+                      {!singleStage && <SortTh label={outputHeader} col="output" active={sortCol} dir={sortDir} onSort={handleSort} />}
+                      {!singleStage && <SortTh label="Output state" col="outputState" active={sortCol} dir={sortDir} onSort={handleSort} />}
                     </tr>
                   </thead>
                   <tbody>

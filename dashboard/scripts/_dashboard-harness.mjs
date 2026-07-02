@@ -465,6 +465,18 @@ export const FLOWS = [
     },
   },
   {
+    // T329: the workflow-run IoPanel table headers are now sortable — click the
+    // "State" header to sort the currently-filtered rows and show the ▲/▼ marker.
+    name: 'io-panel-sorted-by-state',
+    path: '/workflow-runs/1',
+    waitFor: ['table th.sort-th'],
+    actions: async (page) => {
+      await page.click('table th.sort-th:has-text("State")');
+      await page.waitForSelector('table th.sort-th-active', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(200);
+    },
+  },
+  {
     // T308: the theme/font/mode picker popover was replaced by a single sun/moon
     // toggle button — click it and capture the resulting (opposite-of-default)
     // data-mode so the toggled look is visible in a screenshot.
