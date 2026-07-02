@@ -94,6 +94,7 @@ function GateEdge({
   const hasGate = !!gateState;
 
   const lockColor = isFailed ? 'var(--red)' : isPassed ? 'var(--green)' : 'var(--muted)';
+  const lockFill = `color-mix(in srgb, ${lockColor} 18%, transparent)`;
   const lockSize = isFailed ? 20 : 16;
 
   // SVG padlock: shackle arc + body rectangle, stroked in the state colour.
@@ -112,7 +113,7 @@ function GateEdge({
       {/* Shackle arc */}
       <path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2" />
       {/* Body */}
-      <rect x="2.5" y="7" width="11" height="8" rx="1.5" fill={isFailed ? 'color-mix(in srgb,var(--red) 18%,transparent)' : 'none'} />
+      <rect x="2.5" y="7" width="11" height="8" rx="1.5" fill={lockFill} />
     </svg>
   );
 
