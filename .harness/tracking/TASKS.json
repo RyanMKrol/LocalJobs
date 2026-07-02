@@ -8987,7 +8987,7 @@
     {
       "id": "T340",
       "title": "Add consistent spacing between stacked category panels (Services + Workflows)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
