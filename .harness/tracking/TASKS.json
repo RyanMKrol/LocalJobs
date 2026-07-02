@@ -9162,7 +9162,7 @@
     {
       "id": "T347",
       "title": "Guarantee WorkflowOutputSection always renders an explicit state, never silently vanishes",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
