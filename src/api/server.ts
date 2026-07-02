@@ -81,11 +81,18 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
-// The harness backlog (.harness/TASKS.json), resolved relative to this file so it
-// works regardless of the daemon's cwd. This is a READ-ONLY pass-through for the
-// dashboard — the loop owns `status`, and the human-owned `reviewed` flag now lives
-// in its OWN owner-owned file (`.harness/reviews.json`, T136), NOT in TASKS.json.
-const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/TASKS.json', import.meta.url));
+// The real .harness/ directory (T329) — the anchor for tasks/, worklog/, and ledgers/,
+// which do NOT move even though the backlog + overlay files below live one level deeper
+// in .harness/tracking/. Kept SEPARATE from BACKLOG_PATH's own directory on purpose: see
+// readBacklog's `harnessDir` param.
+const HARNESS_DIR = fileURLToPath(new URL('../../.harness/', import.meta.url));
+
+// The harness backlog (.harness/tracking/TASKS.json, moved off the .harness/ top level
+// in T329 alongside the overlay files below), resolved relative to this file so it works
+// regardless of the daemon's cwd. This is a READ-ONLY pass-through for the dashboard —
+// the loop owns `status`, and the human-owned `reviewed` flag now lives in its OWN
+// owner-owned file (`.harness/tracking/reviews.json`, T136), NOT in TASKS.json.
+const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/tracking/TASKS.json', import.meta.url));
 
 // The owner-owned reviews store (T136). `reviewed` is the ONE human/dashboard-owned
 // piece of backlog state, and it is the SOLE source of truth here — it no longer
@@ -94,13 +101,13 @@ const BACKLOG_PATH = fileURLToPath(new URL('../../.harness/TASKS.json', import.m
 // atomically writes it AND, under the SAME lock loop.sh uses, commits + pushes it
 // (see `commitReviewsFile`). Because reviews.json is a DISJOINT git path from
 // everything the loop commits (TASKS.json / worklog), the two writers never conflict.
-const REVIEWS_PATH = fileURLToPath(new URL('../../.harness/reviews.json', import.meta.url));
+const REVIEWS_PATH = fileURLToPath(new URL('../../.harness/tracking/reviews.json', import.meta.url));
 
 // The owner-owned human-done store (T208). `done` records that a needs-human task
 // was completed by the owner. The file is a committed JSON map
 // `id → { done: true, at: ISO-8601 }`. `POST /api/backlog/:id/done` atomically
 // writes it AND commits+pushes under the SAME lock. Marking done implies reviewed.
-const HUMAN_DONE_PATH = fileURLToPath(new URL('../../.harness/human-done.json', import.meta.url));
+const HUMAN_DONE_PATH = fileURLToPath(new URL('../../.harness/tracking/human-done.json', import.meta.url));
 
 // The owner-owned manual-fail store (manual-fail-signal). `failed` records that the
 // owner judged a DONE task to have actually failed. The file is a committed JSON map
@@ -109,7 +116,7 @@ const HUMAN_DONE_PATH = fileURLToPath(new URL('../../.harness/human-done.json', 
 // it; it only READS it to correct calibration (re-count the task as a failure for tier
 // tuning + drop it from the cell's audited-success count). Disjoint git path, so it
 // never conflicts with the loop. Marking failed implies reviewed (the owner looked).
-const MANUAL_FAIL_PATH = fileURLToPath(new URL('../../.harness/manual-fail.json', import.meta.url));
+const MANUAL_FAIL_PATH = fileURLToPath(new URL('../../.harness/tracking/manual-fail.json', import.meta.url));
 
 /** Default the reviews-store path to sit beside a given backlog file. */
 function reviewsPathFor(backlogPath: string): string {
@@ -129,18 +136,20 @@ function manualFailPathFor(backlogPath: string): string {
 /**
  * Read a task's Markdown spec (its `## Do` / `## Done when` sections — the SOLE
  * source of do/doneWhen since T131). `specRel` is the JSON `spec` path, relative
- * to the repo root; `baseDir` is the backlog file's directory so it resolves the
- * same regardless of cwd. Confined to a `.harness/tasks/*.md` file (no traversal,
- * markdown only) — a local file read, never a network/paid call. Returns the file
- * text, or null if the field is absent / unreadable / outside the allowed dir.
+ * to the repo root; `harnessDir` is the REAL `.harness/` directory (which directly
+ * contains `tasks/` — NOT the backlog file's own directory, since T329 moved
+ * `TASKS.json` into `.harness/tracking/`) so it resolves the same regardless of
+ * cwd. Confined to a `.harness/tasks/*.md` file (no traversal, markdown only) — a
+ * local file read, never a network/paid call. Returns the file text, or null if
+ * the field is absent / unreadable / outside the allowed dir.
  */
-export function readTaskSpec(specRel: unknown, baseDir: string): string | null {
+export function readTaskSpec(specRel: unknown, harnessDir: string): string | null {
   if (typeof specRel !== 'string' || !specRel) return null;
-  // The repo root is the backlog file's parent's parent (.harness/TASKS.json).
-  const repoRoot = dirname(baseDir);
+  // The repo root is .harness/'s parent.
+  const repoRoot = dirname(harnessDir);
   const abs = resolvePath(repoRoot, specRel);
   if (!abs.toLowerCase().endsWith('.md')) return null;
-  const tasksDir = joinPath(baseDir, 'tasks');
+  const tasksDir = joinPath(harnessDir, 'tasks');
   if (!isWithin(tasksDir, abs)) return null; // must live under .harness/tasks/
   try {
     return readFileSync(abs, 'utf8');
@@ -151,13 +160,14 @@ export function readTaskSpec(specRel: unknown, baseDir: string): string | null {
 
 /**
  * Read a task's committed worklog (`.harness/worklog/<id>.md`). `id` must be a
- * plain task id string; `baseDir` is the backlog file's directory. Confined to
- * `.harness/worklog/*.md` (no traversal, markdown only). Returns the file text,
- * or null when the file is absent or the id fails the safety check.
+ * plain task id string; `harnessDir` is the REAL `.harness/` directory (see
+ * `readTaskSpec`'s doc comment — NOT the backlog file's own directory). Confined
+ * to `.harness/worklog/*.md` (no traversal, markdown only). Returns the file
+ * text, or null when the file is absent or the id fails the safety check.
  */
-export function readWorklogContent(id: unknown, baseDir: string): string | null {
+export function readWorklogContent(id: unknown, harnessDir: string): string | null {
   if (typeof id !== 'string' || !id || id.includes('/') || id.includes('..') || !id.match(/^[\w-]+$/)) return null;
-  const worklogDir = joinPath(baseDir, 'worklog');
+  const worklogDir = joinPath(harnessDir, 'worklog');
   const abs = joinPath(worklogDir, `${id}.md`);
   if (!isWithin(worklogDir, abs)) return null; // belt-and-suspenders
   if (!abs.toLowerCase().endsWith('.md')) return null;
@@ -179,14 +189,14 @@ export interface TaskBuildFailures {
 /**
  * Read `.harness/ledgers/failures.jsonl` (JSON-Lines; one loop-recorded build-attempt row per
  * line) and aggregate the rows matching `id`. `id` must be a plain task id string;
- * `baseDir` is the backlog file's directory, so the file is confined to
- * `.harness/ledgers/failures.jsonl` (no traversal). Returns `null` when the file is absent,
- * unreadable, or has no matching rows.
+ * `harnessDir` is the REAL `.harness/` directory (see `readTaskSpec`'s doc comment — NOT the
+ * backlog file's own directory), so the file is confined to `.harness/ledgers/failures.jsonl`
+ * (no traversal). Returns `null` when the file is absent, unreadable, or has no matching rows.
  */
-export function readTaskBuildFailures(id: unknown, baseDir: string): TaskBuildFailures | null {
+export function readTaskBuildFailures(id: unknown, harnessDir: string): TaskBuildFailures | null {
   if (typeof id !== 'string' || !id || id.includes('/') || id.includes('..') || !id.match(/^[\w-]+$/)) return null;
-  const abs = joinPath(baseDir, 'ledgers', 'failures.jsonl');
-  if (!isWithin(baseDir, abs)) return null; // belt-and-suspenders
+  const abs = joinPath(harnessDir, 'ledgers', 'failures.jsonl');
+  if (!isWithin(harnessDir, abs)) return null; // belt-and-suspenders
   let raw: string;
   try {
     raw = readFileSync(abs, 'utf8');
@@ -219,13 +229,13 @@ export function readTaskBuildFailures(id: unknown, baseDir: string): TaskBuildFa
   };
 }
 
-/** An entry in the owner-owned reviews store (`.harness/reviews.json`, T136). */
+/** An entry in the owner-owned reviews store (`.harness/tracking/reviews.json`, T136). */
 export interface ReviewEntry {
   reviewed: boolean;
   at?: string;
 }
 
-/** An entry in the owner-owned human-done store (`.harness/human-done.json`, T208). */
+/** An entry in the owner-owned human-done store (`.harness/tracking/human-done.json`, T208). */
 export interface HumanDoneEntry {
   done: boolean;
   at?: string;
@@ -357,15 +367,20 @@ export function readReviews(path: string = REVIEWS_PATH): Record<string, ReviewE
  * `done` is `humanDone[id]?.done ?? false`. When `done` is true, `reviewed` is
  * also forced true (done implies reviewed). Also inlines each task's Markdown spec
  * content (`spec` → `specContent`, T131).
+ *
+ * `harnessDir` is the directory that DIRECTLY contains `tasks/`, `worklog/`, and
+ * `ledgers/` — since T329 this is NO LONGER always `dirname(path)` (the backlog file
+ * itself lives one level deeper, in `.harness/tracking/`), so it's threaded through
+ * separately rather than derived from the backlog path.
  */
 function readBacklog(
   path: string = BACKLOG_PATH,
   reviewsPath: string = reviewsPathFor(path),
   humanDonePath: string = humanDonePathFor(path),
   manualFailPath: string = manualFailPathFor(path),
+  harnessDir: string = HARNESS_DIR,
 ): { tasks: unknown[]; error?: string } {
   try {
-    const baseDir = dirname(path);
     const reviews = readReviews(reviewsPath);
     const humanDone = readHumanDone(humanDonePath);
     const manualFail = readManualFail(manualFailPath);
@@ -374,9 +389,9 @@ function readBacklog(
       ? parsed.tasks.map((t) => {
           if (!(t && typeof t === 'object' && !Array.isArray(t))) return t;
           const task = t as { id?: unknown; spec?: unknown };
-          const specContent = readTaskSpec(task.spec, baseDir);
-          const worklogContent = readWorklogContent(task.id, baseDir);
-          const buildFailures = readTaskBuildFailures(task.id, baseDir);
+          const specContent = readTaskSpec(task.spec, harnessDir);
+          const worklogContent = readWorklogContent(task.id, harnessDir);
+          const buildFailures = readTaskBuildFailures(task.id, harnessDir);
           const isDone = typeof task.id === 'string' ? humanDone[task.id]?.done === true : false;
           const failEntry = typeof task.id === 'string' ? manualFail[task.id] : undefined;
           const failed = failEntry?.failed === true;
@@ -1001,6 +1016,11 @@ export function createApiServer(
     reviewsPath?: string;
     humanDonePath?: string;
     manualFailPath?: string;
+    // The REAL .harness/ directory (directly containing tasks/worklog/ledgers) — see
+    // readBacklog's doc comment. Defaults to production HARNESS_DIR; tests that model
+    // .harness/ as a flat temp dir (backlogPath + tasks/ + worklog/ + ledgers/ all
+    // siblings) override this to that same temp dir.
+    harnessDir?: string;
     // Injectable for tests: commit+push the reviews file. Defaults to the real git
     // path (resolves the repo from the reviews dir; no-ops outside a git repo).
     commitReviews?: (reviewsPath: string, id: string, reviewed: boolean) => Promise<CommitReviewsResult>;
@@ -1014,6 +1034,7 @@ export function createApiServer(
   const reviewsPath = opts.reviewsPath ?? reviewsPathFor(backlogPath);
   const humanDonePath = opts.humanDonePath ?? humanDonePathFor(backlogPath);
   const manualFailPath = opts.manualFailPath ?? manualFailPathFor(backlogPath);
+  const harnessDir = opts.harnessDir ?? HARNESS_DIR;
   const commitReviews = opts.commitReviews ?? defaultCommitReviews;
   const commitReviewsBulk = opts.commitReviewsBulk ?? defaultCommitReviewsBulk;
   const commitHumanDone = opts.commitHumanDone ?? defaultCommitHumanDone;
@@ -1921,10 +1942,10 @@ export function createApiServer(
 
       // GET /api/backlog — the harness TASKS.json backlog (read-only). Each task's
       // human-review flag `reviewed` is OVERLAID from the owner-owned reviews store
-      // (.harness/reviews.json, T136) and human-done store (.harness/human-done.json,
+      // (.harness/tracking/reviews.json, T136) and human-done store (.harness/tracking/human-done.json,
       // T208). A human-done task shows done=true and reviewed=true (done implies reviewed).
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'backlog' && parts.length === 2) {
-        return json(res, 200, readBacklog(backlogPath, reviewsPath, humanDonePath, manualFailPath));
+        return json(res, 200, readBacklog(backlogPath, reviewsPath, humanDonePath, manualFailPath, harnessDir));
       }
 
       // POST /api/backlog/:id/reviewed  { reviewed: bool } — the ONE dashboard→harness
@@ -1955,14 +1976,14 @@ export function createApiServer(
       }
 
       // POST /api/backlog/:id/done — mark a needs-human task done in the owner-owned
-      // human-done store (.harness/human-done.json, T208). Only applies to tasks with
+      // human-done store (.harness/tracking/human-done.json, T208). Only applies to tasks with
       // gate === 'needs-human'. Marking done implies reviewed. Serialized via the same
       // in-process mutex as reviewed POSTs; committed+pushed under the repo lock.
       if (method === 'POST' && parts[0] === 'api' && parts[1] === 'backlog' && parts[3] === 'done' && parts.length === 4) {
         const id = decodeURIComponent(parts[2]);
         if (!/^T\d+$/.test(id)) return json(res, 400, { error: 'invalid task id' });
         // Validate: only needs-human tasks may be marked done via this endpoint.
-        const backlog = readBacklog(backlogPath, reviewsPath, humanDonePath);
+        const backlog = readBacklog(backlogPath, reviewsPath, humanDonePath, manualFailPath, harnessDir);
         const task = (backlog.tasks as Array<{ id?: string; gate?: string | null }>).find((t) => t.id === id);
         if (!task) return json(res, 400, { error: `task ${id} not found in backlog` });
         if (task.gate !== 'needs-human') return json(res, 400, { error: `task ${id} is not a needs-human task` });
@@ -1995,7 +2016,7 @@ export function createApiServer(
         const failed = body.failed === undefined ? true : body.failed === true;
         const reason = typeof body.reason === 'string' ? body.reason : '';
         if (failed) {
-          const backlog = readBacklog(backlogPath, reviewsPath, humanDonePath, manualFailPath);
+          const backlog = readBacklog(backlogPath, reviewsPath, humanDonePath, manualFailPath, harnessDir);
           const task = (backlog.tasks as Array<{ id?: string; status?: string }>).find((t) => t.id === id);
           if (!task) return json(res, 400, { error: `task ${id} not found in backlog` });
           if (task.status !== 'done') return json(res, 400, { error: `task ${id} is '${task.status}', not 'done' — manual-fail overturns a recorded success` });

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# loop.sh — single SEQUENTIAL "Ralph loop" that builds the .harness/TASKS.json backlog, ONE
-# fully-verified task at a time, working DIRECTLY ON `main` in this checkout.
+# loop.sh — single SEQUENTIAL "Ralph loop" that builds the .harness/tracking/TASKS.json backlog,
+# ONE fully-verified task at a time, working DIRECTLY ON `main` in this checkout.
 #
 # This is the IN-PLACE variant of the Ralph harness (no git worktree, no per-task branches),
 # living entirely under .harness/ to keep it separate from the project source. It was chosen
@@ -10,8 +10,8 @@
 # task is a commit on main, trivially reverted). See .harness/docs/HARNESS.md for the full design.
 #
 # Each iteration:
-#   SELECT (shell)  — from .harness/TASKS.json: the next not-done task whose dependsOn are all
-#                     done and which is NOT a 🚦 gate / 🔒 needs-human / blocked task. None → stop.
+#   SELECT (shell)  — from .harness/tracking/TASKS.json: the next not-done task whose dependsOn
+#                     are all done and which is NOT a 🚦 gate / 🔒 needs-human / blocked task. None → stop.
 #   WORK   (claude) — one `claude -p` (per-task model/effort) builds the task IN THIS CHECKOUT
 #                     on main, runs the Definition of Done, and COMMITS (does NOT push).
 #   GATE   (shell)  — pre-push guard (refuse if anything sensitive is staged) → push main →
@@ -22,11 +22,11 @@
 # Config: .harness/config/harness.env (sourced if present) and/or the environment.
 #
 # This script lives in .harness/scripts/ (T327 reorg) — HARNESS_DIR below is THIS directory, so
-# every reference to a file that stayed at the .harness/ top level (TASKS.json, worklog/,
-# human-done.json, manual-fail.json) is "$HARNESS_DIR/../<file>", and every reference to a file
-# that moved into a sibling subfolder (config/, ledgers/, docs/) is "$HARNESS_DIR/../<subfolder>/<file>".
-# Scripts that stayed in scripts/ alongside this one (postflight.sh, policy.jq) are still
-# "$HARNESS_DIR/<file>".
+# every reference to a file that stayed at the .harness/ top level (worklog/) is
+# "$HARNESS_DIR/../<file>"; every reference to a file that moved into a sibling subfolder
+# (config/, ledgers/, docs/, tracking/ — the backlog + owner-owned overlay files, T329) is
+# "$HARNESS_DIR/../<subfolder>/<file>". Scripts that stayed in scripts/ alongside this one
+# (postflight.sh, policy.jq) are still "$HARNESS_DIR/<file>".
 set -euo pipefail
 
 HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,13 +36,13 @@ case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$ROOT/$GIT_COMMON" ;; esac   # make 
 
 [ -f "$HARNESS_DIR/../config/harness.env" ] && . "$HARNESS_DIR/../config/harness.env"
 
-BACKLOG="$HARNESS_DIR/../TASKS.json"
+BACKLOG="$HARNESS_DIR/../tracking/TASKS.json"
 WORKLOG="$HARNESS_DIR/../worklog"
 OUTCOMES="$HARNESS_DIR/../ledgers/outcomes.jsonl" # append-only escalation ledger — the SOLE input to difficulty calibration (forward-only); ONE terminal row per task
 FAILURES="$HARNESS_DIR/../ledgers/failures.jsonl" # append-only PER-ATTEMPT failure ledger — ONE row per failed attempt (kind+cause). Diagnostics only, NOT calibration; committed so causes are queryable across tasks
 FAILBUF="$WORKLOG/.failures.buf"                   # gitignored scratch buffer for the current task's failures: survives cold_reset (git clean -fd keeps ignored files), flushed into FAILURES at each terminal event
-MANUAL_FAIL="$HARNESS_DIR/../manual-fail.json"     # owner-owned overlay (id → {failed,reason,at}); dashboard/command-written, never WRITTEN by the loop. Read for calibration (manual_fail_ids) AND reconciled → TASKS.json status=failed at pre-flight (T279, reconcile_overlays)
-HUMAN_DONE="$HARNESS_DIR/../human-done.json"       # owner-owned overlay (id → {done,at}) for needs-human tasks; dashboard-written, never WRITTEN by the loop. Reconciled → TASKS.json status=done at pre-flight so dependents unblock (T261, reconcile_overlays)
+MANUAL_FAIL="$HARNESS_DIR/../tracking/manual-fail.json" # owner-owned overlay (id → {failed,reason,at}); dashboard/command-written, never WRITTEN by the loop. Read for calibration (manual_fail_ids) AND reconciled → TASKS.json status=failed at pre-flight (T279, reconcile_overlays)
+HUMAN_DONE="$HARNESS_DIR/../tracking/human-done.json"   # owner-owned overlay (id → {done,at}) for needs-human tasks; dashboard-written, never WRITTEN by the loop. Reconciled → TASKS.json status=done at pre-flight so dependents unblock (T261, reconcile_overlays)
 NAME="$(basename "$ROOT")"
 MODEL="${MODEL:-claude-sonnet-5}"               # COLD-START FLOOR — cheapest tier; the policy tunes UP from here (pin the full id; the bare alias drifts)
 EFFORT="${EFFORT:-low}"                            # low|medium|high|xhigh|max — cheapest by default (bias-cheap; the ladder escalates on failure)
@@ -93,7 +93,7 @@ rl_banner() {
 }
 
 command -v jq >/dev/null 2>&1 || { log "jq is required to parse TASKS.json — install it (brew install jq)"; exit 3; }
-[ -f "$BACKLOG" ] || { log "no .harness/TASKS.json — nothing to build"; exit 3; }
+[ -f "$BACKLOG" ] || { log "no .harness/tracking/TASKS.json — nothing to build"; exit 3; }
 
 # Paths that must NEVER be pushed (data, secrets, browser profiles). TASKS.json + worklog ARE
 # committed intentionally, so they are NOT blocked here.
@@ -102,7 +102,7 @@ SENSITIVE_RE='(^|/)data/|(^|/)\.env($|\.)|chrome-profile|\.pem$|\.key$|\.p12$|se
 # --- Concurrency guard: only one loop at a time (exit, don't queue) ----------
 # ⚠️ The lock path below ($GIT_COMMON/${NAME}-loop.lock + a `pid` file + stale-pid
 # reclaim) MUST stay byte-identical to src/core/repo-lock.ts, which the daemon uses
-# to serialize its `.harness/reviews.json` commit+push against this loop (T136). If
+# to serialize its `.harness/tracking/reviews.json` commit+push against this loop (T136). If
 # you change the derivation here (GIT_COMMON / NAME / lock name / pid protocol),
 # change repo-lock.ts in the same commit, and vice-versa.
 acquire_lock() {
@@ -137,7 +137,7 @@ task_failed()  { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="failed
 task_spec_rel() { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.spec // empty'; }
 
 # manual_fail_ids — the JSON array of task ids the OWNER manually marked FAILED via the
-# .harness/manual-fail.json overlay (designs/manual-fail-signal.md). The loop NEVER writes this file
+# .harness/tracking/manual-fail.json overlay (designs/manual-fail-signal.md). The loop NEVER writes this file
 # (it's owner-owned, like reviews.json/human-done.json); it only READS it to CORRECT calibration: a
 # falsely-recorded success is re-counted as a failure for tier selection AND dropped from a cell's
 # confirmed-audited count so auditing of that cell rises again. Robust: missing/garbled file → [].
@@ -488,7 +488,7 @@ Do NOT create/switch branches. Do NOT push. Do NOT merge. The loop pushes + gate
 You run head-less and unattended. Obey CLAUDE.md and .harness/docs/HARNESS.md exactly.
 
 1. ORIENT. Read CLAUDE.md and README.md (current state). Find this task:
-   `jq '.tasks[]|select(.id=="<TASK>")' .harness/TASKS.json` (read its scope/verify and all other
+   `jq '.tasks[]|select(.id=="<TASK>")' .harness/tracking/TASKS.json` (read its scope/verify and all other
    orchestration fields). The task's `do` + `done-when` live in the Markdown spec at the JSON `spec`
    path (.harness/tasks/<TASK>.md, sections '## Do' / '## Done when') — its FULL TEXT is also
    appended at the end of this prompt. You are starting COLD on a CLEAN tree: do NOT look for or rely
@@ -518,7 +518,7 @@ You run head-less and unattended. Obey CLAUDE.md and .harness/docs/HARNESS.md ex
    change needs README.md / CLAUDE.md / .harness/docs/LIMITATIONS.md AND that file is in your scope, update
    it. If a needed doc is NOT in your scope, do NOT edit it (that trips the scope gate) — record
    `failed:blocked` noting the missing doc so a human can add it to scope. Do NOT edit
-   .harness/TASKS.json — the loop owns task status. Write your notes to .harness/worklog/<TASK>.md
+   .harness/tracking/TASKS.json — the loop owns task status. Write your notes to .harness/worklog/<TASK>.md
    (always allowed).
 
 5. COMMIT (do NOT push) with message `<TASK>: <summary>`, staging your intended files explicitly.

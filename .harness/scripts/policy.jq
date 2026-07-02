@@ -11,7 +11,7 @@
 #   auditFloorN, floored there (never zero). See designs/audit-verification.md §4.6.
 #
 # $failedIds (tier branch): a JSON array of task ids the OWNER manually marked FAILED (the
-#   .harness/manual-fail.json overlay — designs/manual-fail-signal.md). A success outcome row whose
+#   .harness/tracking/manual-fail.json overlay — designs/manual-fail-signal.md). A success outcome row whose
 #   id is in this set is RE-INTERPRETED as a failure at every rung it used (exactly like a blocked
 #   row), so a falsely-recorded success no longer teaches the calibrator that its (cheap) tier works.
 #   The audit-suppression correction lives in the loop's separate audit-count query, not here.

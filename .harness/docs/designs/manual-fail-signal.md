@@ -29,7 +29,7 @@ harness needs a way to learn from that — not just a cosmetic "rejected" flag.
 
 ## 2. The signal: an owner-owned overlay the loop reads, never writes
 
-A task is marked failed in **`.harness/manual-fail.json`** — a committed, owner-owned map:
+A task is marked failed in **`.harness/tracking/manual-fail.json`** — a committed, owner-owned map:
 
 ```json
 { "T223": { "failed": true, "reason": "padlock never renders on the DAG", "at": "2026-06-29T…Z" } }

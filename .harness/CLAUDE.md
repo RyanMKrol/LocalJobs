@@ -19,7 +19,7 @@ Tasks are NOT authored directly from a raw thought. A backlog task carries a hig
 idea dumped straight in — especially several at once — produces rushed, low-quality specs. We split
 capture from planning into **two deliberate steps**, with **ideas as a first-class harness concept**.
 
-### Step 1 — capture: the ideas inbox (`.harness/IDEAS.md`)
+### Step 1 — capture: the ideas inbox (`.harness/tracking/IDEAS.md`)
 
 A **gitignored**, zero-ceremony scratchpad: a single `## Inbox` list, one bullet per idea, as detailed
 as needed (the full idea + any helpful context), no schema and no planning. It is the low-friction
@@ -27,7 +27,7 @@ place to dump a thought so it isn't lost and isn't interrupting in-flight work �
 **non-interactive** (it enriches from what's already known, never by asking) precisely so it doesn't
 derail whatever Claude is mid-task on. Capture two ways:
 - **`/idea <the idea, in as much detail as you like>`** — appends a bullet to the Inbox.
-- Or just **hand-edit** `.harness/IDEAS.md`, or tell Claude "add an idea: …".
+- Or just **hand-edit** `.harness/tracking/IDEAS.md`, or tell Claude "add an idea: …".
 
 It is **gitignored on purpose** (like `data/` folders): raw, unfleshed ideas — which may reference
 private jobs — stay local and never hit the public repo. The *mechanism* travels with the harness via
@@ -79,7 +79,7 @@ just the model summary.
   (a permanent, tested script — see `.harness/scripts/consolidate-ideas.mjs` for the id-allocation/spec-write/
   merge logic) reads all pending files, allocates ids, resolves temp-id `dependsOn` references, writes
   `tasks/TNNN.md` specs, updates `TASKS.json`, commits + pushes, removes every converted idea's bullet
-  from `.harness/IDEAS.md` (by FUZZY text match — normalized/reflowed comparison, re-read fresh under
+  from `.harness/tracking/IDEAS.md` (by FUZZY text match — normalized/reflowed comparison, re-read fresh under
   the lock, since a pending file's recorded bullet text won't byte-match the hand-wrapped markdown),
   and deletes the consumed pending files. This is the ONLY step that ever touches the repo lock in a
   sweep.
@@ -91,7 +91,7 @@ just the model summary.
   `IDEAS.md` bullets that plausibly already became a task in a recent commit (confirm with the owner
   rather than re-interviewing from scratch).
 - **Delete on convert.** As each idea's task lands (or resolves to "no action needed"), its bullet is
-  removed from `.harness/IDEAS.md` — during the consolidation pass, never earlier. The resulting
+  removed from `.harness/tracking/IDEAS.md` — during the consolidation pass, never earlier. The resulting
   `TASKS.json` task (+ its spec MD) is the record; the inbox stays a clean, transient surface. (No
   "converted" archive — the inbox is gitignored, so there'd be no history of it anyway.)
 
@@ -152,7 +152,7 @@ matching `FLOWS` entry; the `convert-ideas` / `ralph-loop-add-to-backlog` flow i
 ## Marking a task FAILED (owner correction of a false success)
 
 When the owner judges a `done` task to have actually failed, that is recorded in the owner-owned
-`.harness/manual-fail.json` overlay — **never** by hand-editing it, and never by the loop. Use the
+`.harness/tracking/manual-fail.json` overlay — **never** by hand-editing it, and never by the loop. Use the
 `/local-jobs-mark-task-failed` command or `.harness/scripts/mark-failed.sh <TNNN> "<reason>"` (the dashboard's "Mark
 failed" button writes the same file). The loop READS this overlay to correct calibration — a false
 success is re-counted as a failure for difficulty tuning and dropped from its cell's audited-success

@@ -3,8 +3,8 @@
 # postflight.sh — read-only, ZERO-TOKEN status board for the in-place loop.
 #
 # Counterpart to loop.sh: it reports what the backlog looks like, reading the SAME local
-# sources the loop uses — .harness/TASKS.json + .harness/worklog/. It never invokes Claude,
-# so it's fast, reliable, and free to run every cycle.
+# sources the loop uses — .harness/tracking/TASKS.json + .harness/worklog/. It never invokes
+# Claude, so it's fast, reliable, and free to run every cycle.
 #
 # Output goes to stdout AND to .harness/worklog/STATUS.md (overwritten each run).
 # Usage:  .harness/scripts/postflight.sh     Exit: 0 always (informational; never fails a cycle).
@@ -13,13 +13,13 @@ set -uo pipefail
 HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git -C "$HARNESS_DIR" rev-parse --show-toplevel)"
 NAME="$(basename "$ROOT")"
-BACKLOG="$HARNESS_DIR/../TASKS.json"
+BACKLOG="$HARNESS_DIR/../tracking/TASKS.json"
 WORKLOG="$HARNESS_DIR/../worklog"
 STATUS_FILE="$WORKLOG/STATUS.md"
 mkdir -p "$WORKLOG"
 
 command -v jq >/dev/null 2>&1 || { echo "[postflight] jq required to parse TASKS.json" >&2; exit 0; }
-[ -f "$BACKLOG" ] || { echo "[postflight] no .harness/TASKS.json" >&2; exit 0; }
+[ -f "$BACKLOG" ] || { echo "[postflight] no .harness/tracking/TASKS.json" >&2; exit 0; }
 
 tj()           { jq "$@" "$BACKLOG" 2>/dev/null; }
 all_tasks()    { tj -r '.tasks[].id'; }

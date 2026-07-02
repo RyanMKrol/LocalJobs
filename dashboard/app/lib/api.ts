@@ -606,8 +606,8 @@ export const api = {
   serviceConsumers: (name: string) =>
     get<{ consumers: ServiceConsumerGroup[] }>(`/api/services/${name}/consumers`),
 
-  // Harness backlog (.harness/TASKS.json). Read-only EXCEPT the human-owned
-  // `reviewed` flag, which lives in the owner-owned .harness/reviews.json (T136).
+  // Harness backlog (.harness/tracking/TASKS.json). Read-only EXCEPT the human-owned
+  // `reviewed` flag, which lives in the owner-owned .harness/tracking/reviews.json (T136).
   // `markReviewed` writes it AND the daemon commits + pushes it to GitHub under the
   // loop lock; the response reports whether the push succeeded (`pushed`) and a
   // non-fatal `warning` if it didn't (e.g. offline) — the commit still persists.

@@ -26,7 +26,7 @@ set -euo pipefail
 # Anchor to THIS script's own location (self-relative — T327 normalized this off the old
 # cwd-relative `source .harness/repo-lock.sh`, which broke the moment this script no longer lived
 # directly at the repo-root-relative ".harness/" depth it assumed), then cd to the repo root so
-# every ".harness/..." path below (TASKS.json, tasks/, .pending-tasks/) still resolves as before.
+# every ".harness/..." path below (tracking/TASKS.json, tasks/, .pending-tasks/) still resolves as before.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 cd "$ROOT"
@@ -45,10 +45,10 @@ if [ ! -f "$SUMMARY" ]; then
   exit 0
 fi
 
-jq empty .harness/TASKS.json
+jq empty .harness/tracking/TASKS.json
 
 NEW_MD_FILES=$(jq -r '.allocatedTasks[].realId' "$SUMMARY" | sed 's#^#.harness/tasks/#; s#$#.md#')
-git add .harness/TASKS.json
+git add .harness/tracking/TASKS.json
 for f in $NEW_MD_FILES; do
   git add "$f"
 done

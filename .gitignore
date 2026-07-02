@@ -44,7 +44,7 @@ data/*
 TODO.md
 
 # --- Ralph build harness: transient scratch only ---
-# The backlog (.harness/TASKS.json) and per-task worklog ARE committed; only the loop's
+# The backlog (.harness/tracking/TASKS.json) and per-task worklog ARE committed; only the loop's
 # transient scratch is ignored.
 .harness/worklog/.result
 .harness/worklog/.claude-out
@@ -55,7 +55,7 @@ TODO.md
 # The ideas inbox is a PRIVATE, transient capture scratchpad (raw, unfleshed ideas —
 # may reference private jobs). The mechanism travels via .harness/CLAUDE.md; the ideas
 # themselves stay local and are DELETED once converted into a TASKS.json task.
-.harness/IDEAS.md
+.harness/tracking/IDEAS.md
 
 # /local-jobs-convert-ideas scratch: per-unit agents each write one file here (decided task
 # data, no id yet) instead of racing for the repo lock; a single consolidation pass allocates
@@ -70,6 +70,6 @@ TODO.md
 .harness/.pending-questions/
 
 # harness: atomic-write temps for TASKS.json + the owner-owned reviews store (T136).
-# .harness/reviews.json itself IS committed (owner-owned; the daemon commits+pushes it).
-.harness/TASKS.json.tmp
-.harness/reviews.json.tmp*
+# .harness/tracking/reviews.json itself IS committed (owner-owned; the daemon commits+pushes it).
+.harness/tracking/TASKS.json.tmp
+.harness/tracking/reviews.json.tmp*

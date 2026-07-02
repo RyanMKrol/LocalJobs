@@ -15,12 +15,12 @@ the global checks 2 and 3; if empty, do a full sweep of the backlog).
 
 ## ⚠️ Guardrails (read-only / advisory-ONLY — do not violate)
 
-- **You MUST NOT edit `.harness/TASKS.json`.** Not `status`, not `facets`, not anything — this
+- **You MUST NOT edit `.harness/tracking/TASKS.json`.** Not `status`, not `facets`, not anything — this
   command only reads it.
 - **You MUST NOT write, commit, or push ANY file.** No worklog entries, no `.harness/ledgers/outcomes.jsonl`
   rows, no scratch files. This is purely observational.
-- **You MUST NOT touch `.harness/reviews.json`, `.harness/human-done.json`, or
-  `.harness/manual-fail.json`.** Those are dashboard/owner-owned overlay files; you only ever READ
+- **You MUST NOT touch `.harness/tracking/reviews.json`, `.harness/tracking/human-done.json`, or
+  `.harness/tracking/manual-fail.json`.** Those are dashboard/owner-owned overlay files; you only ever READ
   them (to check whether a needs-human blocker is about to auto-reconcile).
 - **You MUST NOT run any destructive or mutating git command** — no `commit`, `push`, `add`, `reset`,
   `clean`, `restore`, `checkout --`, `rebase`, branch create/delete. `git status`/`git log`/`git
@@ -38,18 +38,18 @@ Find every `gate:"needs-human"` task that appears in the `dependsOn` array of so
 
 ```bash
 # every needs-human task id
-jq -r '.tasks[]|select(.gate=="needs-human")|.id' .harness/TASKS.json
+jq -r '.tasks[]|select(.gate=="needs-human")|.id' .harness/tracking/TASKS.json
 
 # for each needs-human id NH, find buildable blockees
-jq -r --arg nh "T<id>" '.tasks[]|select(.status=="pending" and .gate==null and (.dependsOn // [] | index($nh)))|.id' .harness/TASKS.json
+jq -r --arg nh "T<id>" '.tasks[]|select(.status=="pending" and .gate==null and (.dependsOn // [] | index($nh)))|.id' .harness/tracking/TASKS.json
 
 # is NH already marked done by the owner (about to auto-reconcile on next loop pre-flight)?
-jq -r --arg nh "T<id>" '.[$nh].done // false' .harness/human-done.json 2>/dev/null || echo "false"
+jq -r --arg nh "T<id>" '.[$nh].done // false' .harness/tracking/human-done.json 2>/dev/null || echo "false"
 ```
 
 For each needs-human blocker with ≥1 buildable dependent, report:
 - the blocker id + how many/which tasks it blocks,
-- whether `.harness/human-done.json` already has `done:true` for it — if so, note it will
+- whether `.harness/tracking/human-done.json` already has `done:true` for it — if so, note it will
   auto-reconcile to `status:"done"` on the loop's next pre-flight (`reconcile_overlays` in
   `loop.sh`) and unblock its dependents **on its own, no action needed**,
 - if NOT yet marked done, flag it as **owner action needed now** — otherwise the loop will idle on
@@ -98,7 +98,7 @@ jq -r '
   | ($t.dependsOn // [])[]
   | select($status[.] == "done")
   | "\($t.id) depends on \(.) which is already done"
-' .harness/TASKS.json
+' .harness/tracking/TASKS.json
 ```
 
 List every match found (or "none found"). Do **not** attempt to rewrite `dependsOn` arrays — this is
@@ -111,7 +111,7 @@ For every `pending`, non-`needs-human` task (or just the focus task if `$ARGUMEN
 ```bash
 # a) facets present with a layer + workType drawn from facets.json's vocabulary
 jq -r '.tasks[]|select(.status=="pending" and .gate==null)
-  |select((.facets|not) or (.facets.layer|not) or (.facets.workType|not))|.id' .harness/TASKS.json
+  |select((.facets|not) or (.facets.layer|not) or (.facets.workType|not))|.id' .harness/tracking/TASKS.json
 
 VALID_LAYERS="$(jq -r '.facets.layer.values|keys[]' .harness/config/facets.json)"
 VALID_WORKTYPES="$(jq -r '.facets["work-type"].values|keys[]' .harness/config/facets.json)"
@@ -119,7 +119,7 @@ VALID_WORKTYPES="$(jq -r '.facets["work-type"].values|keys[]' .harness/config/fa
 # and .facets.workType is in VALID_WORKTYPES — flag any that aren't
 
 # b) spec file exists
-jq -r '.tasks[]|select(.status=="pending" and .gate==null)|[.id,.spec]|@tsv' .harness/TASKS.json \
+jq -r '.tasks[]|select(.status=="pending" and .gate==null)|[.id,.spec]|@tsv' .harness/tracking/TASKS.json \
   | while IFS=$'\t' read -r id spec; do [ -f "$spec" ] || echo "$id: missing spec file $spec"; done
 
 # c) spec has non-empty '## Do' and '## Done when' sections
@@ -127,7 +127,7 @@ jq -r '.tasks[]|select(.status=="pending" and .gate==null)|[.id,.spec]|@tsv' .ha
 
 # d) scope is a non-empty array
 jq -r '.tasks[]|select(.status=="pending" and .gate==null)
-  |select((.scope|type != "array") or (.scope|length==0))|.id' .harness/TASKS.json
+  |select((.scope|type != "array") or (.scope|length==0))|.id' .harness/tracking/TASKS.json
 ```
 
 Report every task that fails any of (a)-(d), naming which specific check failed.

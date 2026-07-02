@@ -5,7 +5,7 @@ coding-conventions rulebook; this file is how the loop *works*.
 
 ## 1. What it is
 
-A single **sequential** shell loop (`.harness/scripts/loop.sh`) that builds the `.harness/TASKS.json`
+A single **sequential** shell loop (`.harness/scripts/loop.sh`) that builds the `.harness/tracking/TASKS.json`
 backlog **one fully-verified task at a time**, working **directly on `main` in this checkout** —
 no git worktree, no per-task branches. The whole harness lives under the hidden `.harness/` folder
 to stay separate from project source. `.harness/scripts/supervise.sh` re-launches the loop on a cadence so
@@ -45,7 +45,7 @@ Because the loop pushes to a **public** repo autonomously and this checkout cont
 the loop refuses to push if the pending commits (`origin/main..HEAD`) touch any sensitive path:
 `data/`, `.env*`, `chrome-profile/`, `*.pem`/`*.key`/`*.p12`, `service-account*`, or
 `credentials.json`. A trip **halts the run** for a human. The agent is instructed to stage files
-explicitly (never `git add -A`). (`.harness/TASKS.json` + `.harness/worklog/` are committed on
+explicitly (never `git add -A`). (`.harness/tracking/TASKS.json` + `.harness/worklog/` are committed on
 purpose, so they are not blocked.)
 
 ## 5. Definition of Done (must mirror CI exactly)
@@ -129,7 +129,7 @@ between attempts) and flushed into the committed ledger when the task terminates
 weakness is a **false success**: a task marked `done` (green CI + passed/skipped audit) that the owner
 later judges not actually done. Left alone it teaches the tuner the cheap tier works AND suppresses the
 cell's audit rate — the same bug class keeps slipping through. The owner overturns it via the
-committed `.harness/manual-fail.json` overlay (`POST /api/backlog/:id/failed`, the Backlog "Mark
+committed `.harness/tracking/manual-fail.json` overlay (`POST /api/backlog/:id/failed`, the Backlog "Mark
 failed" button, or the portable `.harness/scripts/mark-failed.sh` / `/local-jobs-mark-task-failed` for no-dashboard
 projects). The loop READS this overlay (never writes it): `scripts/policy.jq`/`pick_base` re-count a
 manually-failed task as a failure for tier selection, and `audit_gate` excludes it from the cell's
@@ -147,7 +147,7 @@ window). `supervise.sh`'s ~5 h 15 m cadence is the outer backstop.
 
 ## 8. TASKS.json schema (committed; shell-owned status)
 
-`.harness/TASKS.json` is the backlog and the source of truth for done/not-done + dependency order.
+`.harness/tracking/TASKS.json` is the backlog and the source of truth for done/not-done + dependency order.
 It is **committed** to the repo, but the **shell owns task status**: the loop sets a task's
 `status` to `done` (and commits that one-line change with `[skip ci]`) only after CI is green — the
 agent must not edit it.
@@ -158,7 +158,7 @@ agent must not edit it.
   "tasks": [
     {
       "id": "T001", "title": "…", "status": "pending",   // pending | done  (SHELL-owned)
-      // NOTE: NO `reviewed` field — since T136 it lives in owner-owned .harness/reviews.json
+      // NOTE: NO `reviewed` field — since T136 it lives in owner-owned .harness/tracking/reviews.json
       "dependsOn": [], "gate": null,                      // gate: null | "gate" | "needs-human"
       "facets": { "layer": "ui", "workType": "style", "risk": [] },  // difficulty auto-tuning (OMIT for needs-human); values from .harness/config/facets.json
       "scope": ["src/…"], "verify": [], "expectsTest": false,  // expectsTest: true → audit's structural gate requires a test in the diff (§5)
@@ -193,7 +193,7 @@ bar for done* are NOT flat strings in TASKS.json — they live in a per-task Mar
 task's `spec` field (a repo-relative path). This is more expressive than a JSON string and renders
 cleanly on the dashboard. TASKS.json keeps **every other field** (the orchestration fields above —
 `status`, `dependsOn`, `gate`, `facets`, `scope`, `tags`, `verify`, `design` — but NOT `reviewed`,
-which lives in `.harness/reviews.json`, see below). The loop's per-task prompt reads all orchestration fields from JSON and
+which lives in `.harness/tracking/reviews.json`, see below). The loop's per-task prompt reads all orchestration fields from JSON and
 **appends the spec MD's full text** (`task_spec_rel` + `cat` in `loop.sh prompt()`);
 `GET /api/backlog` inlines the file as `specContent` (`readTaskSpec`, confined to
 `.harness/tasks/*.md`) and the Backlog page renders it as markdown.
@@ -204,11 +204,11 @@ own committed files, and **the loop NEVER writes either file** (it only ever wri
 `status` + the worklog). The loop's `jq` status write and the daemon's overlay writes can never
 conflict — different files, always clean merges.
 
-- **`.harness/reviews.json`** — `id → { "reviewed": bool, "at": <ISO-8601> }`. Set via
+- **`.harness/tracking/reviews.json`** — `id → { "reviewed": bool, "at": <ISO-8601> }`. Set via
   `POST /api/backlog/:id/reviewed { reviewed }` or bulk `POST /api/backlog/reviewed-bulk`. Atomically
   writes the file (read-modify-write, temp-file + rename, field-scoped) then commits+pushes under the
   repo lock. `GET /api/backlog` overlays `reviewed = reviews[id]?.reviewed ?? false`.
-- **`.harness/human-done.json`** (T208) — `id → { "done": true, "at": <ISO-8601> }`. Set via
+- **`.harness/tracking/human-done.json`** (T208) — `id → { "done": true, "at": <ISO-8601> }`. Set via
   `POST /api/backlog/:id/done` (needs-human tasks ONLY — 400 otherwise). Same atomic write+commit+push
   pattern. `GET /api/backlog` overlays `done=true` and derives `reviewed=true` (done implies reviewed).
   TASKS.json `status` is NEVER modified. The Backlog page shows a **"Mark done"** button on

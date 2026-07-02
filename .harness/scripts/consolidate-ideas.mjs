@@ -38,9 +38,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = execFileSync('git', ['-C', HERE, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
 
 const PENDING_DIR = path.join(REPO, '.harness/.pending-tasks');
-const TASKS_PATH = path.join(REPO, '.harness/TASKS.json');
+const TASKS_PATH = path.join(REPO, '.harness/tracking/TASKS.json');
 const TASKS_DIR = path.join(REPO, '.harness/tasks');
-const IDEAS_PATH = path.join(REPO, '.harness/IDEAS.md');
+const IDEAS_PATH = path.join(REPO, '.harness/tracking/IDEAS.md');
 const SUMMARY_PATH = path.join(PENDING_DIR, '.consolidation-summary.json');
 
 function normalize(s) {

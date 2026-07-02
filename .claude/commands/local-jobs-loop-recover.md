@@ -106,7 +106,7 @@ sees a CI run for a `[skip ci]` commit, times out (~`CI_TIMEOUT`), treats "no ru
 
 **Detect** (per pending task, or the focus task):
 ```bash
-jq -r '.tasks[]|select(.status=="pending")|.id' .harness/TASKS.json   # candidates
+jq -r '.tasks[]|select(.status=="pending")|.id' .harness/tracking/TASKS.json   # candidates
 git log --oneline -25 | grep -iE "T<id>"                              # code commit? mark-done commit?
 git branch -r --contains <code-sha>                                  # is the work on origin/main?
 gh run list --workflow CI --limit 30 --json headSha,status,conclusion --jq '.[]|select(.headSha=="<full-sha>")|"\(.status)/\(.conclusion)"'
@@ -132,8 +132,8 @@ it done.**
 **Fix each verified orphan** (mirror what `mark_done` would have written):
 ```bash
 # a) status -> done (atomic, validated)
-jq '(.tasks[]|select(.id=="T<id>")|.status)="done"' .harness/TASKS.json > .harness/TASKS.json.tmp \
-  && jq -e '.tasks|length' .harness/TASKS.json.tmp >/dev/null && mv .harness/TASKS.json.tmp .harness/TASKS.json
+jq '(.tasks[]|select(.id=="T<id>")|.status)="done"' .harness/tracking/TASKS.json > .harness/tracking/TASKS.json.tmp \
+  && jq -e '.tasks|length' .harness/tracking/TASKS.json.tmp >/dev/null && mv .harness/tracking/TASKS.json.tmp .harness/tracking/TASKS.json
 
 # b) ONE accurate outcome row
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -174,7 +174,7 @@ git status --porcelain                              # empty -> startup guard pas
 
 ## 7. Commit, push, report
 
-- Stage **only** the files you changed (`.harness/TASKS.json`, `.harness/ledgers/outcomes.jsonl`, any
+- Stage **only** the files you changed (`.harness/tracking/TASKS.json`, `.harness/ledgers/outcomes.jsonl`, any
   `worklog/<id>.md`). One commit, message explaining the interrupt-orphan recovery + what was fixed.
   `git push` (push after committing — always). Report the SHA.
 - Finish with a concise **report**: a health table (processes / lock / tree / scratch / ledger / CI /

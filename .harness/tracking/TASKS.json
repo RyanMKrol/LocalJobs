@@ -8691,8 +8691,8 @@
         "needs-human"
       ],
       "scope": [
-        ".harness/IDEAS.md",
-        ".harness/consolidate-ideas.mjs"
+        ".harness/tracking/IDEAS.md",
+        ".harness/scripts/consolidate-ideas.mjs"
       ],
       "design": null,
       "verify": [],

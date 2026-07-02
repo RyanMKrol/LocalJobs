@@ -43,7 +43,7 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   are the backstop.
 
 - **The harness pushes its own backlog status commits to `main`.**
-  *Why:* `.harness/TASKS.json` is committed and the shell flips `status` to `done` after green CI.
+  *Why:* `.harness/tracking/TASKS.json` is committed and the shell flips `status` to `done` after green CI.
   *Impact:* one extra tiny `[skip ci]` commit per completed task in history.
   *Revisit:* squash/clean up if the noise ever bothers you.
 
@@ -439,11 +439,11 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   single-cycle break.
 
 - **The dashboard's `reviewed` write now lives in its own file + commits/pushes under the loop
-  lock (T136 — supersedes the T124 note).** *Why:* T124 wrote `reviewed` into `.harness/TASKS.json`
+  lock (T136 — supersedes the T124 note).** *Why:* T124 wrote `reviewed` into `.harness/tracking/TASKS.json`
   via atomic rename but with NO file lock and NO commit — so a click could (a) race the loop's `jq`
   status rewrite (last-writer-wins on the whole file) and (b) never reach GitHub (a working-tree
   reset silently lost it). T136 fixes both: `reviewed` moved OUT of TASKS.json into the owner-owned
-  `.harness/reviews.json`, the daemon writes it atomically AND commits+pushes it under the SAME
+  `.harness/tracking/reviews.json`, the daemon writes it atomically AND commits+pushes it under the SAME
   mkdir lock loop.sh uses (`src/core/repo-lock.ts`). Because reviews.json is a DISJOINT git path
   from everything the loop commits (TASKS.json / worklog), merges are always clean and the two
   writers can never clobber each other. *Impact:* the push is **best-effort** — if the box is

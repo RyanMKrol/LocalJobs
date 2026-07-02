@@ -18,7 +18,7 @@ task, and it suppresses how often that category gets audited — so the same cla
 slipping through.
 
 **Marking a task failed is the correction.** It writes the task into the owner-owned overlay
-`.harness/manual-fail.json`, which the loop READS (never writes) to:
+`.harness/tracking/manual-fail.json`, which the loop READS (never writes) to:
 1. **Re-count that task as a failure for difficulty tuning** — so future tasks in the same
    `(layer × workType)` cell start at a **stronger model tier**, not the cheap one a false success
    vouched for.
@@ -48,7 +48,7 @@ Steps for you (Claude) to follow:
    `--undo <TNNN>` form. If the owner gave a task id but no reason for a (non-undo) mark, ASK them for
    a one-line reason before running — the reason is mandatory and is the record of what was wrong.
 2. **Run `.harness/scripts/mark-failed.sh`** with those arguments (it validates that the id exists and is a
-   `done` task, writes `.harness/manual-fail.json`, and commits + pushes under the lock). If the
+   `done` task, writes `.harness/tracking/manual-fail.json`, and commits + pushes under the lock). If the
    script reports the task isn't `done`, relay that — only recorded successes can be overturned.
 3. **Report** what was marked (id + reason), and that it was committed/pushed. Briefly note the
    effect: the task's `(layer × workType)` cell will now be built with a stronger model and audited
@@ -59,7 +59,7 @@ Steps for you (Claude) to follow:
 
 - This is **owner-driven only** — never mark a task failed on your own initiative; only when the
   owner explicitly asks.
-- The overlay (`.harness/manual-fail.json`) is **committed** (like `reviews.json`/`human-done.json`),
+- The overlay (`.harness/tracking/manual-fail.json`) is **committed** (like `reviews.json`/`human-done.json`),
   on a git path disjoint from everything the loop writes, so it never conflicts with the loop.
 - Projects with the dashboard can also do this from the Backlog page's **"Mark failed"** button,
   which writes the same overlay file. The script and the button are interchangeable.

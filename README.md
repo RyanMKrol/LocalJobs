@@ -259,7 +259,7 @@ Nav: **Overview · Workflows · Services · Database · Backlog**
   limits, and a consumer list (which workflows/jobs have called each service).
 - **Database** — read-only SQLite view: named common queries + a table browser.
   Not a free-form SQL editor.
-- **Backlog** — human-readable render of the harness task list (`.harness/TASKS.json`),
+- **Backlog** — human-readable render of the harness task list (`.harness/tracking/TASKS.json`),
   with per-task Do/Done-when rendered from spec files, and a reviewed toggle that
   commits + pushes durably to GitHub.
 

@@ -381,7 +381,7 @@ export default function Backlog() {
         <h1 style={{ margin: 0 }}>Backlog</h1>
       </div>
       <p className="sub">
-        The harness task list (<span className="mono">.harness/TASKS.json</span>), rendered.
+        The harness task list (<span className="mono">.harness/tracking/TASKS.json</span>), rendered.
         {' '}{tasks.length} task(s) · {ready.length} ready · {waiting.length} waiting · {human.length} need a human · {allDone.length} done ({reviewedCount} reviewed). Auto-refreshes.
       </p>
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}

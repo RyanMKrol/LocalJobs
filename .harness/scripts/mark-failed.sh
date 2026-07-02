@@ -2,11 +2,11 @@
 #
 # mark-failed.sh — manually mark a DONE task as FAILED (the owner's "this was not actually done"
 # signal), or undo it. This is the PORTABLE interface to the manual-fail overlay
-# (.harness/manual-fail.json): it works in ANY project that has this harness, with NO dashboard and
+# (.harness/tracking/manual-fail.json): it works in ANY project that has this harness, with NO dashboard and
 # NO daemon required. (Projects that DO have the dashboard get the same thing via a "Mark failed"
 # button, which writes the same file.) See designs/manual-fail-signal.md for the why.
 #
-# What it does: writes/removes an entry in .harness/manual-fail.json, then commits + pushes it
+# What it does: writes/removes an entry in .harness/tracking/manual-fail.json, then commits + pushes it
 # `[skip ci]` under the SAME repo lock the loop uses (so it never races the loop's git ops). The
 # loop never writes this file; it only READS it to CORRECT calibration — a falsely-recorded success
 # is re-counted as a failure for difficulty tuning AND dropped from its (layer×workType) cell's

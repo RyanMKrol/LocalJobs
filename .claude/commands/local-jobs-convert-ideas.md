@@ -3,7 +3,7 @@ description: Convert EVERY idea in the inbox into backlog tasks — one agent pe
 argument-hint: [optional — a single idea to start with; omit to sweep the whole inbox]
 ---
 
-Convert ideas from `.harness/IDEAS.md` into well-formed backlog tasks. This is the deliberate Step 2
+Convert ideas from `.harness/tracking/IDEAS.md` into well-formed backlog tasks. This is the deliberate Step 2
 of the ideas → tasks flow documented in `.harness/CLAUDE.md` § "Ideas inbox & the two-step flow". It
 leans on the `ralph-loop-add-to-backlog` schema (task object shape, `## Do`/`## Done when` spec
 convention, facets vocabulary) but is NOT that bare skill.
@@ -111,7 +111,7 @@ a prior run never reached its final write.
    committed" and "bullet removed" (observed live in a real sweep — a task landed cleanly but its
    source bullet stayed in the inbox because the removal step never ran). Before interviewing anyone,
    do a lightweight, fuzzy cross-check: skim `git log --oneline -15` for recent `backlog: add …`
-   commits and `.harness/TASKS.json`'s most recent ~10 entries' titles. For any CURRENT inbox bullet
+   commits and `.harness/tracking/TASKS.json`'s most recent ~10 entries' titles. For any CURRENT inbox bullet
    that plausibly matches one of those — same file/component/feature — surface it to the owner via
    `AskUserQuestion`: *"This bullet looks like it might already be covered by `<task id/title>` —
    already done, or still wanted?"* Only remove the bullet (no new task) if the owner confirms; this
@@ -121,7 +121,7 @@ a prior run never reached its final write.
 
 ## Stage 1 — build the worklist, de-dup, group by shared answer-space (main thread, serial)
 
-Read `.harness/IDEAS.md`'s `## Inbox` (after Stage 0's flush/cleanup). Collect every remaining bullet
+Read `.harness/tracking/IDEAS.md`'s `## Inbox` (after Stage 0's flush/cleanup). Collect every remaining bullet
 into a worklist. If the inbox is empty, say so and stop. If the owner is clearly mid-build on something
 else, say so and offer to defer the whole sweep.
 
@@ -166,8 +166,8 @@ agents in that pair the other's slug so they can cross-reference; do not launch 
 **Each per-unit agent gets this brief** (fresh agent, full tool access — it needs `Read`/`Grep`/`Glob`/
 `Bash` for exploration and `Write` for its own scratch file — it does NOT have `AskUserQuestion` (main-
 thread-only, see the warning above — tell the agent this directly so it doesn't waste a `ToolSearch`
-call finding out), does NOT need `Edit`, and never touches `.harness/TASKS.json`, `.harness/tasks/`,
-`.harness/IDEAS.md`, or git):
+call finding out), does NOT need `Edit`, and never touches `.harness/tracking/TASKS.json`, `.harness/tasks/`,
+`.harness/tracking/IDEAS.md`, or git):
 
 > You are converting ONE idea — or a small cluster of tightly-related ideas, if you were told you own
 > more than one — from the owner's backlog inbox into task data. Work through these phases yourself,
@@ -313,7 +313,7 @@ call finding out), does NOT need `Edit`, and never touches `.harness/TASKS.json`
 > `node dashboard/scripts/visual-check.mjs`, look at the screenshots, confirm the specific thing
 > renders — and if the change only appears after an interaction (modal/expand/click), also require
 > adding/updating a `FLOWS` entry in `dashboard/scripts/_dashboard-harness.mjs`. **Do NOT touch
-> `.harness/IDEAS.md`, `.harness/TASKS.json`, `.harness/tasks/`, or git** — the consolidation step does
+> `.harness/tracking/IDEAS.md`, `.harness/tracking/TASKS.json`, `.harness/tasks/`, or git** — the consolidation step does
 > all of that in one pass, once, for every unit, at the end. Just write your `.md` file(s) + one JSON
 > file and stop.
 >
@@ -378,7 +378,7 @@ leftover files from a prior interrupted sweep, before Stage 1 even runs.
 
 Do ONE check yourself (not a subagent):
 
-- `jq empty .harness/TASKS.json` — still valid JSON.
+- `jq empty .harness/tracking/TASKS.json` — still valid JSON.
 - No duplicate ids, every `dependsOn` id exists, no cycles.
 - Every buildable task has a `facets` object with values from `facets.json`'s vocabulary; needs-human
   tasks have none.
@@ -389,13 +389,13 @@ Do ONE check yourself (not a subagent):
   answer, if you're checking mid-sweep) — a leftover file here after the sweep is declared done means a
   question was never relayed; go relay it rather than leaving it to silently rot until the next sweep's
   Stage 0 happens to find it.
-- `.harness/IDEAS.md` — confirm every converted idea's bullet is gone (including "no action needed"
+- `.harness/tracking/IDEAS.md` — confirm every converted idea's bullet is gone (including "no action needed"
   resolutions) and every un-converted one (dropped in de-dup, or deferred) is still present.
 
 Report a short summary across the whole sweep: each idea → the task id(s) it became (or "no action
 needed"), any de-dup merges/drops, any dropped/unresolved cross-idea `dependsOn` the owner should link
 manually, and confirmation the inbox and pending-tasks/pending-questions scratch dirs are left
-correctly. `.harness/IDEAS.md`, `.harness/.pending-tasks/`, and `.harness/.pending-questions/` are all
+correctly. `.harness/tracking/IDEAS.md`, `.harness/.pending-tasks/`, and `.harness/.pending-questions/` are all
 gitignored — never commit any of them. Everything else was committed + pushed inside Stage 3's single
 consolidation pass, so there's nothing left to commit unless that step reported a failed push (retry it
 here if so).

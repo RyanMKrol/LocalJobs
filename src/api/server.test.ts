@@ -1082,7 +1082,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       g(['config', 'user.email', 'test@example.com']);
       g(['config', 'user.name', 'Test']);
       g(['config', 'commit.gpgsign', 'false']);
-      const harnessDir = join(gitRoot, '.harness');
+      const harnessDir = join(gitRoot, '.harness', 'tracking');
       mkdirSync(harnessDir, { recursive: true });
       writeFileSync(join(harnessDir, 'TASKS.json'), '{"tasks":[]}\n');
       writeFileSync(join(gitRoot, 'README.md'), '# test\n');
@@ -1113,15 +1113,15 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       assert.equal(result.committed, true, 'committed');
       assert.equal(result.pushed, true, `pushed (warning: ${result.warning ?? ''})`);
 
-      // The HEAD commit must touch ONLY .harness/reviews.json.
+      // The HEAD commit must touch ONLY .harness/tracking/reviews.json.
       const changed = execFileSync('git', ['diff', '--name-only', 'HEAD~1', 'HEAD'], { cwd: gitRoot, encoding: 'utf8' })
         .trim()
         .split('\n')
         .filter(Boolean);
-      assert.deepEqual(changed, ['.harness/reviews.json'], 'commit touches ONLY reviews.json');
+      assert.deepEqual(changed, ['.harness/tracking/reviews.json'], 'commit touches ONLY reviews.json');
 
       // The bare remote must have received it.
-      const remoteContent = execFileSync('git', ['show', 'main:.harness/reviews.json'], { cwd: bare, encoding: 'utf8' });
+      const remoteContent = execFileSync('git', ['show', 'main:.harness/tracking/reviews.json'], { cwd: bare, encoding: 'utf8' });
       assert.match(remoteContent, /"T9"/, 'reviews.json reached the bare remote');
       // The lock dir must be released (not left behind).
       assert.equal(existsSync(join(gitRoot, '.git', `${basename(gitRoot)}-loop.lock`)), false, 'lock released');
@@ -1398,7 +1398,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   );
 
   await test('GET /api/backlog: inlines specContent (and omits it when the file is missing)', async () => {
-    await withServer({ backlogPath }, async (base) => {
+    await withServer({ backlogPath, harnessDir: baseDir }, async (base) => {
       const res = await fetch(`${base}/api/backlog`);
       assert.equal(res.status, 200);
       const body = (await res.json()) as { tasks: Array<Record<string, unknown>> };
@@ -1461,7 +1461,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   );
 
   await test('GET /api/backlog: inlines worklogContent when worklog file exists', async () => {
-    await withServer({ backlogPath }, async (base) => {
+    await withServer({ backlogPath, harnessDir: baseDir }, async (base) => {
       const res = await fetch(`${base}/api/backlog`);
       assert.equal(res.status, 200);
       const body = (await res.json()) as { tasks: Array<Record<string, unknown>> };
@@ -1540,7 +1540,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   );
 
   await test('GET /api/backlog: inlines buildFailures when failures.jsonl has matching rows, omits it otherwise', async () => {
-    await withServer({ backlogPath }, async (base) => {
+    await withServer({ backlogPath, harnessDir: baseDir }, async (base) => {
       const res = await fetch(`${base}/api/backlog`);
       assert.equal(res.status, 200);
       const body = (await res.json()) as { tasks: Array<Record<string, unknown>> };
