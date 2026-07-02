@@ -8207,7 +8207,7 @@
     {
       "id": "T310",
       "title": "DAG gate padlock: tinted background fill for all three gate states",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
