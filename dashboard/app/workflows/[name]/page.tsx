@@ -432,14 +432,16 @@ function MovieGapsManager() {
                               </span>
                             )}
                           </span>
-                          <button
-                            className="btn btn-sm"
-                            onClick={() => ignoreCollection(cname, films)}
-                            disabled={busyCollection === cname}
-                            style={{ flexShrink: 0 }}
-                          >
-                            {busyCollection === cname ? 'Ignoring…' : '✕ Ignore all'}
-                          </button>
+                          {films.length > 1 && (
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => ignoreCollection(cname, films)}
+                              disabled={busyCollection === cname}
+                              style={{ flexShrink: 0 }}
+                            >
+                              {busyCollection === cname ? 'Ignoring…' : '✕ Ignore all'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -601,14 +603,16 @@ function MissingSeasonsManager() {
                           </a>
                           {meta.year ? <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>({meta.year})</span> : null}
                         </span>
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => ignoreShow(meta, nums)}
-                          disabled={busyShow === meta.tmdbId}
-                          style={{ flexShrink: 0 }}
-                        >
-                          {busyShow === meta.tmdbId ? 'Ignoring…' : '✕ Ignore all'}
-                        </button>
+                        {nums.length > 1 && (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => ignoreShow(meta, nums)}
+                            disabled={busyShow === meta.tmdbId}
+                            style={{ flexShrink: 0 }}
+                          >
+                            {busyShow === meta.tmdbId ? 'Ignoring…' : '✕ Ignore all'}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
