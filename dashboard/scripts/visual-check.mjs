@@ -26,14 +26,13 @@
 //   npm --prefix dashboard run build   # serve a fresh build
 //   node dashboard/scripts/visual-check.mjs
 // Env: VISUAL_CHECK_PORT (default 4798), VISUAL_SETTLE_MS (default 1500, clamped
-// 1000–5000), VISUAL_THEMES (csv of theme families to also capture, e.g.
-// "pixel-picnic,sunny-8bit"; default = default theme only).
+// 1000–5000).
 
 import { mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { PAGES, FLOWS, waitForServer, startDashboard, routeApi, seedTheme } from './_dashboard-harness.mjs';
+import { PAGES, FLOWS, waitForServer, startDashboard, routeApi } from './_dashboard-harness.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(__dirname, 'visual-out');
@@ -42,21 +41,17 @@ const BASE = `http://localhost:${PORT}`;
 const VIEWPORT = { width: 1440, height: 900 }; // desktop — the appearance/DAG surface
 const SETTLE_MS = Math.min(5000, Math.max(1000, Number(process.env.VISUAL_SETTLE_MS ?? 1500)));
 const SELECTOR_TIMEOUT_MS = 10000;
-// Theme families to capture. The empty string = the DEFAULT theme (no data-theme set).
-const EXTRA_THEMES = (process.env.VISUAL_THEMES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-const THEMES = ['', ...EXTRA_THEMES];
 
 /**
- * Capture one spec ({ name, path, waitFor?, settleMs?, actions? }) under one theme.
+ * Capture one spec ({ name, path, waitFor?, settleMs?, actions? }).
  * For an interaction flow, `actions(page)` runs after the wait + settle and before the
  * screenshot. Returns a result row; throws only on a hard error.
  */
-async function capture(ctx, spec, theme) {
+async function capture(ctx, spec) {
   const page = await ctx.newPage();
   const consoleErrors = [];
   page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
-  const suffix = theme ? `.${theme}` : '';
-  const file = resolve(OUT_DIR, `${spec.name}${suffix}.png`);
+  const file = resolve(OUT_DIR, `${spec.name}.png`);
   try {
     await page.goto(BASE + spec.path, { waitUntil: 'networkidle' });
     // Wait for real, post-mount content (e.g. the DAG's layout useEffect) to render
@@ -72,11 +67,11 @@ async function capture(ctx, spec, theme) {
     }
     const fullPage = !spec.viewport;
     await page.screenshot({ path: file, fullPage, animations: 'disabled' });
-    return { name: spec.name, path: spec.path, theme, file, pass: consoleErrors.length === 0, error: consoleErrors[0] ?? null };
+    return { name: spec.name, path: spec.path, file, pass: consoleErrors.length === 0, error: consoleErrors[0] ?? null };
   } catch (e) {
     // Still try to capture whatever DID render, so the viewer can see the broken state.
     try { await page.screenshot({ path: file, fullPage: !spec.viewport, animations: 'disabled' }); } catch { /* ignore */ }
-    return { name: spec.name, path: spec.path, theme, file, pass: false, error: e instanceof Error ? e.message : String(e) };
+    return { name: spec.name, path: spec.path, file, pass: false, error: e instanceof Error ? e.message : String(e) };
   } finally {
     await page.close();
   }
@@ -96,19 +91,11 @@ async function main() {
     console.log('Dashboard up. Launching Chromium…\n');
     browser = await chromium.launch();
 
-    for (const theme of THEMES) {
-      const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
-      // Freeze animations + hide emoji for a stable capture; seed the theme family.
-      await seedTheme(ctx, { theme: theme || undefined, motion: 'reduced' });
-      await routeApi(ctx);
-      for (const p of PAGES) results.push(await capture(ctx, p, theme));
-      // Interaction flows run once, under the DEFAULT theme only (bounds cost; the
-      // flows capture interaction state, not theme variants).
-      if (theme === '') {
-        for (const f of FLOWS) results.push(await capture(ctx, f, theme));
-      }
-      await ctx.close();
-    }
+    const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+    await routeApi(ctx);
+    for (const p of PAGES) results.push(await capture(ctx, p));
+    for (const f of FLOWS) results.push(await capture(ctx, f));
+    await ctx.close();
   } finally {
     if (browser) await browser.close();
     server.kill('SIGTERM');
@@ -120,8 +107,7 @@ async function main() {
   let failed = 0;
   for (const r of results) {
     const tag = r.pass ? '\x1b[32m✓ PASS\x1b[0m' : '\x1b[31m✗ FAIL\x1b[0m';
-    const label = r.theme ? `${r.name} [${r.theme}]` : r.name;
-    console.log(`${tag}  ${label.padEnd(24)} ${r.path}`);
+    console.log(`${tag}  ${r.name.padEnd(24)} ${r.path}`);
     console.log(`        ${r.file}`);
     if (!r.pass) { failed++; console.log(`          ↳ ${r.error}`); }
   }

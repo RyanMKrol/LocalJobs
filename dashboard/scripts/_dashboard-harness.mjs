@@ -422,22 +422,19 @@ export async function routeApi(ctx) {
   });
 }
 
-/** Pre-seed the dashboard's theme/font/mode/motion localStorage keys BEFORE first
- *  paint, so a screenshot can be taken in a deterministic theme. The pre-paint inline
- *  script in dashboard/app/layout.tsx reads these keys and sets the `data-*` html
- *  attributes. Omitted keys are left unset (the dashboard falls back to its defaults:
- *  default theme, system mode, system font, OS reduced-motion). */
-export async function seedTheme(ctx, { theme, mode, font, motion } = {}) {
+/** Pre-seed the dashboard's mode localStorage key BEFORE first paint, so a
+ *  screenshot can be taken in a deterministic light/dark mode. The pre-paint
+ *  inline script in dashboard/app/layout.tsx reads this key and sets the
+ *  `data-mode` html attribute. Omitted = left unset (the dashboard falls back
+ *  to following the OS `prefers-color-scheme`). */
+export async function seedTheme(ctx, { mode } = {}) {
   await ctx.addInitScript(
-    ([t, m, f, mo]) => {
+    ([m]) => {
       try {
         const L = window.localStorage;
-        if (t) L.setItem('localjobs.theme', t);
         if (m) L.setItem('localjobs.mode', m);
-        if (f) L.setItem('localjobs.font', f);
-        if (mo) L.setItem('localjobs.motion', mo);
       } catch { /* ignore */ }
     },
-    [theme, mode, font, motion],
+    [mode],
   );
 }

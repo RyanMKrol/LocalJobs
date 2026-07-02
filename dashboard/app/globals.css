@@ -584,90 +584,27 @@ input[type="text"]:focus { border-color: var(--accent); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   THEMES + FONTS + ACCENTS (T184 — curated set)
+   THEME + FONT + ACCENTS (T308 — hardcoded to sunny-8bit + Baloo 2)
 
-   Everything below is driven by four html attributes set live by the switcher
-   (ui.tsx) + useTimeMode and the pre-paint script (layout.tsx):
-     data-theme="…"   — the theme FAMILY: unset/"default" (plain), pixel-picnic,
-                        or sunny-8bit (3 families)
-     data-mode="…"    — "light" | "dark", chosen automatically from the viewer's
-                        local time of day (day = light, evening/night = dark);
-                        NOT user-chosen
-     data-font="…"    — unset = system, or one of two loaded faces: baloo / spacemono
-     data-motion="reduced" — dampens animations + minimises emoji
-   The default family's DARK mode (and the fully-unset state) renders identically
-   to the pre-T142 dark dashboard. Logs keep a fixed dark-terminal palette in both
-   modes. (This curated set supersedes the T142/T154 evaluation sets.)
+   The dashboard has exactly one look, with a single user-facing choice:
+     data-mode="…"    — "light" | "dark", toggled by the header's sun/moon icon
+                        (see .theme-controls / .theme-trigger below).
+   Logs keep a fixed dark-terminal palette in both modes.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Font faces (display + body [+ mono]) — T184: curated to TWO loaded faces
-   (Baloo 2 + Space Mono) plus the unset System default.
-   • baloo     — rounded face, self-paired (display == body); a LIGHTER heading
-                 weight (500) so section headers read crisp, not chunky.
-   • spacemono — monospace everywhere (display + body + mono).
-   Logs/code keep the default system --font-mono UNLESS the Space Mono face is
-   picked. Pixel/display faces are no longer shipped. */
-html[data-font="baloo"]     { --font-display: var(--font-baloo);     --font-body: var(--font-baloo);     --heading-weight: 500; }
-html[data-font="spacemono"] { --font-display: var(--font-spacemono); --font-body: var(--font-spacemono); --font-mono: var(--font-spacemono); }
+/* ── Font faces (display + body) — Baloo 2 is the only shipped face (T309:
+   Space Mono removed, no longer selectable). Rounded, self-paired (display ==
+   body); a LIGHTER heading weight (500) so section headers read crisp, not
+   chunky. Folded onto :root below since it's the only font now. */
 
-/* ── Theme palettes ────────────────────────────────────────────────────────
-   T184: THREE families, each with a LIGHT and a DARK palette (6 total). The
-   light/dark MODE is chosen by the viewer's local time of day (data-mode, set by
-   the pre-paint script + useTimeMode), NOT by the switcher — the switcher only
-   picks the family.
+/* ── Theme palette (sunny-8bit — the dashboard's one and only look, T308) ───
+   Logs keep their own fixed dark-terminal palette (in :root, never overridden)
+   so they stay legible in both modes. */
 
-   • default      — the plain dashboard. DARK = the original pre-T142 :root look
-                    (so the untouched dashboard at night is unchanged); LIGHT is a
-                    new GitHub-light-ish counterpart. No joyful accents either way.
-   • pixel-picnic — cream + soft dot grid (light) / deep forest green (dark).
-   • sunny-8bit   — amber arcade + scanlines (light) / dark warm arcade (dark).
-
-   Convention: the family's BASE rule (no [data-mode]) carries its DARK palette so
-   a JS-less viewer still gets a coherent theme; a `[data-mode="light"]` rule
-   overrides to the light palette. The `default` family is the exception — its
-   dark palette IS :root (no rule needed), and only its light override is defined.
-   Logs keep their own fixed dark-terminal palette (in :root, never overridden) so
-   they stay legible in both modes everywhere. */
-
-/* ═══ default family — light override (dark = :root, unchanged) ═════════════
-   T308: unreachable now — `data-theme` is never written, so only the
-   `[data-theme="default"]` branch remains, which nothing ever sets. */
-html[data-theme="default"][data-mode="light"] {
-  --bg: #f6f8fa; --panel: #ffffff; --panel-2: #eef1f4; --border: #d0d7de;
-  --text: #1f2328; --muted: #59636e;
-  --accent: #0969da; --green: #1a7f37; --red: #cf222e; --yellow: #9a6700; --grey: #6e7781; --amber: #bc4c00;
-  --on-accent: #ffffff; --spark: var(--yellow);
-  --bg-texture: none;
-}
-
-/* ═══ Pixel Picnic family — green character, dot grid ═══════════════════════ */
-
-/* DARK (base) — deep forest/olive with warm cream text + green accent */
-html[data-theme="pixel-picnic"] {
-  --bg: #161c12; --panel: #1f271a; --panel-2: #283322; --border: #3a4730;
-  --text: #e8e4d2; --muted: #9aa583;
-  --accent: #7bc043; --green: #7bc043; --red: #e0705a; --yellow: #d6a93f; --grey: #7d8a6a; --amber: #d6953f;
-  --on-accent: #161c12; --spark: #a8d860;
-  --run: var(--human-blue); --on-run: #fff;
-  --bg-texture: radial-gradient(circle, rgba(170,200,120,.06) 1.3px, transparent 1.3px);
-  --bg-texture-size: 16px 16px;
-  --card-radius: 12px;
-}
-/* LIGHT — BASKET-like cream + dot grid + soft green/peach */
-html[data-theme="pixel-picnic"][data-mode="light"] {
-  --bg: #fbf6ea; --panel: #fffdf7; --panel-2: #f3ecd9; --border: #e3d8bf;
-  --text: #3a3326; --muted: #8a7d63;
-  --accent: #5a9e5a; --green: #3f9a4e; --red: #d65a4a; --yellow: #c98a1f; --grey: #a89c82; --amber: #c8821f;
-  --on-accent: #ffffff; --spark: #e8a020;
-  --run: #1a6db5; --on-run: #fff;
-  --bg-texture: radial-gradient(circle, rgba(90,72,40,.10) 1.3px, transparent 1.3px);
-  --bg-texture-size: 16px 16px;
-}
-
-/* ═══ Sunny 8-bit family — amber arcade, scanline texture ═══════════════════
-   T308: the dashboard is hardcoded to this family — the dark palette below is
-   now the base :root palette (no `data-theme` attribute is written/read
-   anymore) and the light palette is a plain `[data-mode="light"]` override. */
+/* ═══ Sunny 8-bit — amber arcade, scanline texture ═══════════════════════════
+   T308: the dashboard is hardcoded to this look — the dark palette below is
+   the base :root palette and the light palette is a plain
+   `[data-mode="light"]` override. */
 
 /* DARK (base) — dark warm/charcoal arcade with amber accent */
 :root {
@@ -694,38 +631,32 @@ html[data-theme="pixel-picnic"][data-mode="light"] {
   --bg-texture-size: auto;
 }
 
-/* ── Joyful accents (T308: always on, since the dashboard is hardcoded to the
-   sunny-8bit family) ──
-   The reduce-motion toggle (html[data-motion="reduced"]) disables the animated
-   bits further down. */
+/* ── Joyful accents (T308: always on, part of the dashboard's one look) ── */
 
-/* Emoji status badges: hidden by default, shown on a joyful theme. */
-.badge-emoji { display: none; margin-right: 4px; font-size: .92em; }
-html .badge-emoji { display: inline; }
-/* Friendly empty-state sparkle: only on a joyful theme. */
-.joy-emoji { display: none; }
-html .joy-emoji { display: inline; }
+/* Emoji status badges + friendly empty-state sparkle: always visible. */
+.badge-emoji { display: inline; margin-right: 4px; font-size: .92em; }
+.joy-emoji { display: inline; }
 
-/* Softer, rounder cards on joyful themes (per-variant via --card-radius, T154). */
-html .panel,
-html .statcard {
+/* Softer, rounder cards. */
+.panel,
+.statcard {
   border-radius: var(--card-radius, 14px);
 }
 
 /* Hover-lift on interactive cards (not table rows — transform on <tr> sub-pixel jitters). */
-html:not([data-motion="reduced"]) .statcard,
-html:not([data-motion="reduced"]) .dag-node {
+.statcard,
+.dag-node {
   transition: transform .15s ease, border-color .15s, box-shadow .15s;
 }
-html:not([data-motion="reduced"]) .statcard:hover,
-html:not([data-motion="reduced"]) .dag-node:hover {
+.statcard:hover,
+.dag-node:hover {
   transform: translateY(-2px);
 }
 /* Table rows get a non-reflowing inset left-accent instead of a transform. */
-html tbody tr {
+tbody tr {
   transition: background .12s, box-shadow .12s;
 }
-html tbody tr:hover {
+tbody tr:hover {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
@@ -743,20 +674,20 @@ html tbody tr:hover {
   45%  { transform: scale(1.3) rotate(6deg); }
   100% { transform: scale(1) rotate(0deg); }
 }
-html:not([data-motion="reduced"]) .badge.success {
+.badge.success {
   animation: joy-glow .8s ease-out 1;
 }
-html:not([data-motion="reduced"]) .badge.success .badge-emoji {
+.badge.success .badge-emoji {
   display: inline-block;
   animation: joy-spark-pop .6s ease-out 1;
 }
 
-/* Animated progress-bar fill: a gentle moving sheen on joyful themes. */
+/* Animated progress-bar fill: a gentle moving sheen. */
 @keyframes joy-progress-sheen {
   0%   { background-position: 0 0; }
   100% { background-position: 28px 0; }
 }
-html:not([data-motion="reduced"]) .progress:not(.done) > span {
+.progress:not(.done) > span {
   background-image: linear-gradient(110deg,
     color-mix(in srgb, var(--accent) 78%, white) 0 25%,
     var(--accent) 25% 50%,
@@ -772,20 +703,9 @@ html:not([data-motion="reduced"]) .progress:not(.done) > span {
   60%  { transform: scale(1.06); opacity: 1; }
   100% { transform: scale(1); }
 }
-html:not([data-motion="reduced"]) .statcard .n {
+.statcard .n {
   animation: joy-pop .35s ease-out 1;
 }
-
-/* Reduce-motion: kill animations + transitions globally and minimise emoji. */
-html[data-motion="reduced"] *,
-html[data-motion="reduced"] *::before,
-html[data-motion="reduced"] *::after {
-  animation-duration: 0s !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0s !important;
-}
-html[data-motion="reduced"] .badge-emoji,
-html[data-motion="reduced"] .joy-emoji { display: none !important; }
 
 /* ── Light/dark toggle (T308) ─────────────────────────────────────────────────
    A single icon button in the header — no popover/modal, just flips data-mode. */

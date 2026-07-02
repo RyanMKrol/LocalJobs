@@ -370,8 +370,7 @@ export function StuckPopover({
 /* ──────────────────────────────────────────────────────────────────────────
    Light/dark mode toggle (T308 — supersedes the T184 theme-family/font
    switcher; the dashboard's theme + font are now hardcoded in globals.css /
-   layout.tsx). `useTheme`/`useFont`/`useMotion` and the FONTS/THEMES arrays
-   from the old switcher are left below (unused) for T309 to remove.
+   layout.tsx).
 
    `useMode` backs a single `data-mode` html attribute with localStorage under
    `localjobs.mode`, so every page reacts live and the choice survives reloads.
@@ -380,58 +379,6 @@ export function StuckPopover({
    `prefers-color-scheme`; once toggled it's an explicit, persisted choice —
    strictly binary, no "System" option to return to.
    ────────────────────────────────────────────────────────────────────────── */
-
-// Three theme FAMILIES (T184, unused since T308 — kept for T309 to remove).
-export type ThemeId = 'default' | 'pixel-picnic' | 'sunny-8bit';
-
-export const THEMES: { id: ThemeId; label: string; emoji: string }[] = [
-  { id: 'default',      label: 'Default',      emoji: '🌓' },
-  { id: 'pixel-picnic', label: 'Pixel Picnic', emoji: '🧺' },
-  { id: 'sunny-8bit',   label: 'Sunny 8-bit',  emoji: '🕹️' },
-];
-
-// Three fonts (T184, unused since T308 — kept for T309 to remove).
-export type FontId = 'system' | 'baloo' | 'spacemono';
-
-export const FONTS: { id: FontId; label: string }[] = [
-  { id: 'system',    label: 'System (default)' },
-  { id: 'baloo',     label: 'Baloo 2' },
-  { id: 'spacemono', label: 'Space Mono' },
-];
-
-const prefersReducedMotion = () => {
-  if (typeof window === 'undefined' || !window.matchMedia) return false;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-};
-
-/** Back a single `data-*` html attribute with localStorage. `fallback` is the
- *  "untouched" value: it removes the attribute + key (so the default look wins).
- *  Unused since T308 (kept for T309 to remove along with useTheme/useFont). */
-function useHtmlPref<T extends string>(key: string, attr: string, fallback: T) {
-  const [val, setVal] = useState<T>(fallback);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(key) as T | null;
-    if (stored) setVal(stored);
-  }, [key]);
-
-  const update = (v: T) => {
-    setVal(v);
-    const root = document.documentElement;
-    if (v === fallback) {
-      window.localStorage.removeItem(key);
-      root.removeAttribute(attr);
-    } else {
-      window.localStorage.setItem(key, v);
-      root.setAttribute(attr, v);
-    }
-  };
-
-  return [val, update] as const;
-}
-
-export function useTheme() { return useHtmlPref<ThemeId>('localjobs.theme', 'data-theme', 'default'); }
-export function useFont() { return useHtmlPref<FontId>('localjobs.font', 'data-font', 'system'); }
 
 // Binary mode (T308 — supersedes the T190 Dark/Light/System tri-state; there is
 // no "System" choice to pick once toggled, only the untouched pre-toggle state
@@ -478,27 +425,6 @@ export function useMode(): [ModeId, () => void] {
   };
 
   return [mode, toggle];
-}
-
-/** Reduce-motion / minimal-emoji toggle. Tri-state storage: explicit 'reduced' /
- *  'full', or absent = follow the OS `prefers-reduced-motion`. The returned
- *  boolean is the EFFECTIVE state; setting it persists an explicit choice. */
-export function useMotion() {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem('localjobs.motion');
-    setReduced(stored === 'reduced' || (stored == null && prefersReducedMotion()));
-  }, []);
-
-  const update = (v: boolean) => {
-    setReduced(v);
-    window.localStorage.setItem('localjobs.motion', v ? 'reduced' : 'full');
-    if (v) document.documentElement.setAttribute('data-motion', 'reduced');
-    else document.documentElement.removeAttribute('data-motion');
-  };
-
-  return [reduced, update] as const;
 }
 
 
