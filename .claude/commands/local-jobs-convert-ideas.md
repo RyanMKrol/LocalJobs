@@ -1,91 +1,165 @@
 ---
-description: Convert EVERY idea in the inbox into backlog tasks — a per-idea two-phase interview, looped
+description: Convert EVERY idea in the inbox into backlog tasks — one independent agent per idea, running in parallel
 argument-hint: [optional — a single idea to start with; omit to sweep the whole inbox]
 ---
 
 Convert ideas from `.harness/IDEAS.md` into well-formed backlog tasks. This is the deliberate Step 2
 of the ideas → tasks flow documented in `.harness/CLAUDE.md` § "Ideas inbox & the two-step flow". It
-is NOT the bare `ralph-loop-add-to-backlog` skill — it adds an excavation phase in front of it, and
-it sweeps the **whole inbox** in one invocation, handling each idea one-by-one.
+leans on the `ralph-loop-add-to-backlog` schema (task object shape, `## Do`/`## Done when` spec
+convention, facets vocabulary) but is NOT that bare skill.
 
-This is a **workflow**: it walks every idea in the inbox, converting them one at a time, until the
-inbox is empty. The batch is the only thing that changed from the old one-per-invocation command —
-each idea STILL gets its own full excavation. Never shape several ideas at once; the per-idea
-excavation is the whole point of this flow.
+**Model: one independent agent per idea, running the whole thing end-to-end, in parallel.** The old
+approach converted ideas one at a time — think, ask, think more, shape, write — fully serially. That
+wastes the owner's time: an idea that only needed one quick answer had to wait behind one that needed
+five. Instead, each idea gets its OWN agent that owns its entire lifecycle: explore → interview (as
+many rounds as IT needs, not a fixed count) → shape → write, under a shared lock for the write step.
+All these agents launch together and run independently. If idea A's agent is satisfied after one
+round of questions, it goes straight to shaping and committing in the background while idea B's agent
+is still on its third round of follow-ups — nobody waits on anybody else except at the shared lock,
+and that's only held for the few seconds it takes to append a task and commit.
 
-Process:
+**Because multiple agents may be asking you things at overlapping times, every question any agent
+asks MUST be prefixed with which idea it's about** (a short quoted snippet or title is enough) — this
+is the one thing that makes concurrent interviews usable instead of confusing. Bake this into every
+agent's instructions below; don't skip it.
 
-0. **Read the inbox / build the worklist.**  Read `.harness/IDEAS.md`'s `## Inbox`. Collect every
-   bullet into a worklist. If `$ARGUMENTS` names a specific idea, start with that one (but still
-   continue through the rest afterwards unless told otherwise). If the inbox is empty, say so and stop.
-   If the owner is clearly mid-build on something else, say so and offer to defer the whole sweep.
+---
 
-   **De-dup pass (run before converting anything).** Scan the full worklist for ideas that are the
-   **same idea or substantially overlap** — use SEMANTIC similarity, not just exact-text match (the
-   same idea often appears in different words). Group any suspected duplicates and **surface each
-   duplicate group to the owner via `AskUserQuestion`** — present the overlapping bullets, explain
-   why you think they're the same, and ask whether to merge them into one or drop one. Do NOT
-   auto-merge silently; the owner decides.
+## Stage 0 — build the worklist, de-dup, spot cross-idea dependencies (main thread, serial)
 
-   This is distinct from the **related-ideas → `dependsOn`** handling in Phase 2: two ideas that are
-   *related but distinct* (one a foundation the other builds on) become a `dependsOn` edge and are
-   NOT merged — the de-dup pass targets genuine **duplicates** (the same idea appearing twice). Only
-   merge/drop when the ideas describe the *same underlying change*; otherwise proceed to the normal
-   per-idea loop below.
+Read `.harness/IDEAS.md`'s `## Inbox`. Collect every bullet into a worklist. If the inbox is empty,
+say so and stop. If the owner is clearly mid-build on something else, say so and offer to defer the
+whole sweep.
 
-1. **Loop — for EACH idea in the worklist, one at a time:**
+**De-dup pass.** Scan the full worklist for ideas that are the same idea or substantially overlap —
+SEMANTIC similarity, not exact-text match. Group suspected duplicates and surface each group to the
+owner via `AskUserQuestion`: present the overlapping bullets, explain why you think they're the same,
+ask whether to merge or drop one. Do NOT auto-merge.
 
-   a. **Phase 1 — idea excavation (the part add-to-backlog lacks).** Treat the idea as barely formed
-      — often one vague sentence. Before any task-shaping, probe the owner with clarifying questions
-      to surface what it ACTUALLY is: the underlying itch/problem, what they're really after, the
-      rough shape, and why it matters. Default to MORE questions here; assume nothing is fleshed out.
-      Use AskUserQuestion. Do not proceed to shaping until THIS idea is genuinely understood.
+**Relation pass.** While you're looking at the whole worklist anyway, flag any pair where one idea
+is clearly a *foundation* the other *builds on* (not a duplicate — genuinely sequential work). Note
+these pairs; they change how you batch Stage 1 below.
 
-   b. **Phase 2 — task shaping.** Hand the now-understood idea to the **`ralph-loop-add-to-backlog`**
-      skill (invoke it, seeding it with the excavated understanding). Let it run its interview (DoD,
-      scope, dependsOn, facets, spec MD) and append the schema-correct task(s) to `TASKS.json`. If
-      two ideas are clearly related (e.g. one is a foundation the other builds on), encode that as a
-      `dependsOn` edge rather than merging them.
-      - **Atomise — size every task to ONE cold builder attempt (sizing gate, non-negotiable).**
-        Before shaping, decompose the idea so each resulting task is completable by a single cold pass
-        in a reasonable time/context budget — and SPLIT anything that isn't. A task is too big when it
-        spans multiple layers (e.g. `db` + `core` + `ui`), carries broad/full-stack `risk` flags, or
-        has a multi-part `## Done when` with several independent acceptance criteria. **Empirical
-        tell:** an attempt that runs 25–30+ minutes or repeatedly fails the cold tier is almost always
-        under-atomised — e.g. T258 (a status-model change spanning `store.ts` + `workflow-executor.ts`
-        + places stages + the dashboard) took ~25–30 min PER attempt and kept failing the DoD. Split
-        such an idea into a **dependency chain** of the smallest self-contained, separately verifiable
-        units — typically **backend logic + its tests FIRST**, then a **dependent UI-surfacing task**,
-        then any cross-cutting follow-up — each with its own tight `scope`, `facets`, and runnable
-        `## Done when`. Prefer several small tasks over one big one: the loop builds, verifies, and
-        commits each independently, so smaller tasks finish faster, fail more cheaply, and escalate
-        more precisely. (Same decomposition discipline as add-to-backlog §2.2 + the sizing pushback in
-        §6 — enforce it here too, on every idea.)
-      - **For a `facets.layer == ui` task, the `## Done when` MUST include the visual-confirmation
-        line** (alongside the existing mobile-check line), e.g.:
-        > `node dashboard/scripts/visual-check.mjs` was run after `npm --prefix dashboard run build`,
-        > the screenshots in `dashboard/scripts/visual-out/` confirm <the thing this task makes
-        > visible> renders, and `dashboard/scripts/_dashboard-harness.mjs` (`PAGES`/fixtures/`FLOWS`)
-        > is updated if the UI surface changed.
-        - **If the thing the task makes visible only appears after an INTERACTION** (an opened
-          modal/popover, an expanded section, a clicked control, a multi-step flow), the `## Done when`
-          MUST ALSO require adding/updating a **`FLOWS`** entry in `_dashboard-harness.mjs` (with
-          `viewport: true` for modal/overlay states) so a screenshot captures that interacted state —
-          a baseline `PAGES` shot can't show what you have to click to reveal. Name the specific flow
-          in the done-when (e.g. "a `FLOWS` entry opens the Consumers modal and its screenshot shows …").
+Whatever remains after de-dup is the worklist that proceeds to Stage 1.
 
-        This mirrors the LIVING ARTIFACT rule in the root + `.harness/CLAUDE.md`: a UI task that adds a
-        page / adds or removes a workflow or gate / removes UI / adds an interactive state must keep the
-        shared harness (`PAGES` + fixtures + `FLOWS`) current.
+---
 
-   c. **Delete on convert.** Once this idea's task(s) land, REMOVE its bullet from `.harness/IDEAS.md`
-      (the resulting TASKS.json task is now the record). Leave the rest of the inbox untouched, then
-      move to the next idea.
+## Stage 1 — parallel per-idea agents (explore → interview loop → shape → locked write)
 
-2. **Between ideas, keep context clean.** Finish one idea completely (excavate → shape → delete)
-   before starting the next. Don't juggle several half-shaped ideas at once — convert sequentially.
+**Batching.** Ideas with no relation to each other launch together, in a single message (multiple
+`Agent` tool calls at once) — that's what makes them genuinely concurrent. For a pair flagged as
+foundation→dependent in Stage 0, launch the foundation idea's agent first, let it finish completely
+(so its real task id exists in `TASKS.json`), THEN launch the dependent idea's agent with that id
+available to put in `dependsOn`. Everything else fans out together. If `$ARGUMENTS` names a specific
+idea, no special ordering is needed for it (it's not "first" in any meaningful sense anymore — there's
+no serial interview queue) — just include it in the appropriate batch. If the worklist is unusually
+large, keep any one batch to roughly 4-6 concurrently-interviewing agents so your questions don't get
+too interleaved to follow; queue the rest into a following batch.
 
-3. Report: a short summary listing each idea converted, the task id(s) it became, and confirm every
-   converted bullet was removed from the inbox. `.harness/IDEAS.md` is gitignored — do not commit it;
-   commit the `TASKS.json` + `tasks/TNNN.md` changes the add-to-backlog skill produced (and push, per
-   repo rules). A single commit covering the whole sweep is fine, or one per idea — your call.
+**Each per-idea agent gets this brief** (fresh agent, full tool access — it needs `AskUserQuestion`,
+`Read`/`Grep`/`Glob`/`Bash`, and `Write`/`Edit`):
+
+> You are converting ONE idea from the owner's backlog inbox into TASKS.json task(s). Work through
+> these phases yourself, end to end — nobody else is doing any part of this for you, and nobody is
+> waiting for you before doing their own idea, so take the time you actually need.
+>
+> **The idea (verbatim):** `<idea bullet text>`
+>
+> **1. Explore.** Read root `CLAUDE.md`, `.harness/HARNESS.md` §8.1 (task schema), `.harness/facets.json`
+> (facet vocabulary), and whatever source/dashboard paths the idea text anchors to. Work out the likely
+> itch/problem, feasibility, relevant files, and a first-pass decomposition.
+>
+> **2. Interview — loop until YOU are genuinely satisfied, not for a fixed number of rounds.** Ask the
+> owner via `AskUserQuestion` (batch up to 4 questions per call) to settle: what they actually want
+> (don't assume anything is fleshed out), the decomposition (one task or several — see the atomise
+> rule below), `scope`, `design`, `verify`, `facets` (`layer`/`workType`/`risk`, from `facets.json`'s
+> controlled vocabulary), `gate` (`null`/`"gate"`/`"needs-human"`, including the chooser/review/
+> hardcode three-task pattern from `.harness/CLAUDE.md` when the idea offers multiple options to pick
+> between), and `dependsOn`. If an answer opens a new question, ask another round — there's no cap,
+> just make sure each round is asking something new, not re-litigating an answered point. **Every
+> question you ask must open by naming this idea** (e.g. "For the idea about <short summary>: …") so
+> the owner can tell your questions apart from another idea's agent asking at the same time.
+>
+> **Atomise (non-negotiable).** A task is too big when it spans multiple layers (`db`+`core`+`ui`),
+> carries broad/full-stack `risk` flags, or has a multi-part `## Done when` with independent
+> acceptance criteria. Split into the smallest self-contained, separately-verifiable units — typically
+> backend logic+tests first, then a dependent UI-surfacing task, then any cross-cutting follow-up.
+>
+> **If your exploration surfaces a relationship to ANOTHER idea currently being converted** (not
+> flagged for you already) that you can't resolve yourself: ask the owner about it, and if the other
+> idea's task doesn't exist yet in `TASKS.json` by the time you're ready to write, don't block waiting
+> for it — write your task without that `dependsOn` link and say so clearly in your final report so the
+> owner can add the edge manually.
+>
+> **3. Once satisfied, shape + write — the ENTIRE critical section as ONE bash script in ONE Bash tool
+> call.** Acquire and release must happen in the same live shell process — see
+> `.harness/repo-lock.sh`'s header comment for why (the stale-lock reclaim is PID-liveness based, so
+> splitting this across multiple Bash calls makes the lock meaningless):
+> ```bash
+> source .harness/repo-lock.sh
+> acquire_lock || exit 1
+> trap release_lock EXIT
+> # --- everything below runs while holding the lock ---
+> # 1. Re-read TASKS.json NOW (another idea's agent may have appended while you were interviewing) —
+> #    compute the next id(s) from the CURRENT highest id, zero-padded to the same width.
+> # 2. Write .harness/tasks/TNNN.md for each new task: `## Do` (1-3 sentences, self-contained — the
+> #    eventual builder is a FRESH agent with none of this conversation's context: no ambiguous
+> #    referents like "the ID"/"the page", cite concrete anchors like path/file.ts:NNN where known)
+> #    and `## Done when` (concrete, runnable where possible; for UI/behavioural tasks require
+> #    verification against the real running thing, not just build/tests-pass).
+> # 3. Build the new task object(s) (schema below) into new-tasks.json, then:
+> #      jq --slurpfile add new-tasks.json '.tasks += $add[0]' .harness/TASKS.json > TASKS.json.tmp \
+> #        && jq empty TASKS.json.tmp && mv TASKS.json.tmp .harness/TASKS.json
+> # 4. Remove ONLY this idea's bullet from .harness/IDEAS.md.
+> # 5. git add ONLY the specific files you touched: .harness/TASKS.json + the new tasks/TNNN.md
+> #    file(s). NEVER `git add -A`/`.`, NEVER stage IDEAS.md (gitignored), data/, .env*, credentials.
+> # 6. git commit (heredoc message, e.g. "backlog: add TNNN <title> (from idea)"), then git push.
+> #    On push rejection: git fetch origin && git rebase origin/main, retry once; if it still fails,
+> #    say so in your report but don't treat it as a failure — the commit is safe locally.
+> release_lock   # trap also covers this, but call it explicitly for a clean early exit too
+> ```
+> Task object schema (per `HARNESS.md` §8.1 — re-read it live, this is a reference copy):
+> ```jsonc
+> {
+>   "id": "TNNN", "title": "<concise title>", "status": "pending", "dependsOn": ["<ids>"],
+>   "gate": null, "tags": ["<type>"], "facets": { "layer": "...", "workType": "...", "risk": [] },
+>   "scope": ["<files/globs>"], "design": null, "verify": [], "expectsTest": false,
+>   "spec": ".harness/tasks/TNNN.md"
+> }
+> ```
+> Ids monotonic from the current max (re-read under the lock, not from memory). `status` always
+> `"pending"`. `needs-human`/gated tasks omit `facets`. Any task with `facets.layer == "ui"` MUST have
+> a `## Done when` that requires: build the dashboard, run `node dashboard/scripts/visual-check.mjs`,
+> look at the screenshots, confirm the specific thing renders — and if the change only appears after
+> an interaction (modal/expand/click), also require adding/updating a `FLOWS` entry in
+> `dashboard/scripts/_dashboard-harness.mjs`.
+>
+> **4. Report back**: your understanding of the idea, the task id(s) you created, any facet mismatches
+> (append to `facet-misfits.jsonl` per its format if truly nothing in `facets.json` fits), any
+> cross-idea `dependsOn` you couldn't resolve, and any push retry.
+
+Launch the current batch's agents together (one message, N `Agent` calls). Because each agent's
+critical section is a single locked script, concurrent writers naturally queue for their turn on the
+lock rather than racing — an agent that finishes its interview early is never blocked by one still
+mid-conversation with you.
+
+---
+
+## Stage 2 — report + final validation (main thread, after each batch returns)
+
+Once a batch's agents have all reported back, do ONE check yourself (not a subagent):
+
+- `jq empty .harness/TASKS.json` — still valid JSON.
+- No duplicate ids, every `dependsOn` id exists, no cycles.
+- Every buildable task has a `facets` object with values from `facets.json`'s vocabulary; needs-human
+  tasks have none.
+- Every task's `spec` path has a matching file on disk.
+- `.harness/IDEAS.md` — confirm every converted idea's bullet is gone and every un-converted one
+  (dropped in de-dup, or deferred) is still present.
+
+Then move to the next batch (if any), and finally report a short summary across the whole sweep: each
+idea → the task id(s) it became, any de-dup merges/drops, any unresolved cross-idea `dependsOn` the
+owner should link manually, and confirmation the inbox is left correctly. `.harness/IDEAS.md` is
+gitignored — never commit it. `TASKS.json` + `tasks/TNNN.md` changes were already committed + pushed
+per-idea inside each agent's locked critical section, so there's nothing left to commit unless an
+agent reported a failed push (retry it here if so).
