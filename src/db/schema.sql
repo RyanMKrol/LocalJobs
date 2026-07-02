@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS run_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_logs_run ON run_logs(run_id, id);
+CREATE INDEX IF NOT EXISTS idx_run_logs_ts ON run_logs(ts, id);
 
 -- Per-item idempotency ledger. A "work item" is one unit of work a job processes
 -- (e.g. one place_id). Jobs record an outcome here so they never reprocess an
@@ -173,6 +174,7 @@ CREATE TABLE IF NOT EXISTS workflow_run_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_workflow_run_logs ON workflow_run_logs(workflow_run_id, id);
+CREATE INDEX IF NOT EXISTS idx_workflow_run_logs_ts ON workflow_run_logs(ts, id);
 
 -- ─────────────────── Services (shared rate limits + quotas) ───────────────────
 -- An external dependency whose limits are enforced ACROSS all jobs — a per-job

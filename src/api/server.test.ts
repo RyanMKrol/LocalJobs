@@ -827,6 +827,49 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   { const i = workflows.findIndex((w) => w.name === 'bulk-api-wf'); if (i >= 0) workflows.splice(i, 1); }
 }
 
+// ── GET /api/logs (T311) ──
+{
+  await test('GET /api/logs: job and workflow filters together return 400', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/logs?job=foo&workflow=bar`);
+      assert.equal(res.status, 400);
+      const body = (await res.json()) as { error: string };
+      assert.match(body.error, /mutually exclusive/);
+    });
+  });
+
+  await test('GET /api/logs: invalid level returns 400', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/logs?level=bogus`);
+      assert.equal(res.status, 400);
+      const body = (await res.json()) as { error: string };
+      assert.match(body.error, /invalid level/);
+    });
+  });
+
+  await test('GET /api/logs: limit is clamped into [1, 500], not rejected', async () => {
+    await withServer({}, async (base) => {
+      const tooBig = await fetch(`${base}/api/logs?limit=99999`);
+      assert.equal(tooBig.status, 200);
+      const bodyBig = (await tooBig.json()) as { logs: unknown[] };
+      assert.ok(bodyBig.logs.length <= 500);
+
+      const tooSmall = await fetch(`${base}/api/logs?limit=0`);
+      assert.equal(tooSmall.status, 200);
+    });
+  });
+
+  await test('GET /api/logs: default call returns a { logs, nextCursor } shape', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/logs`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { logs: unknown[]; nextCursor: string | null };
+      assert.ok(Array.isArray(body.logs));
+      assert.ok(body.nextCursor === null || typeof body.nextCursor === 'string');
+    });
+  });
+}
+
 // ── T136: owner-owned reviews store — overlay + atomic write + migration + commit/push ──
 {
   // A fixture backlog whose tasks no longer carry `reviewed` (it lives in reviews.json).

@@ -24,6 +24,7 @@ import { NOTIFY_JOB as PLEX_SEASONS_JOB, pairKey } from '../jobs/plex/stages/not
 import type { MissingSeasonsFile } from '../jobs/plex/types.js';
 import {
   getLogs,
+  listGlobalLogs,
   getWorkflow,
   getWorkflowJobs,
   getWorkflowLogs,
@@ -1051,6 +1052,37 @@ export function createApiServer(
         if (!run) return json(res, 404, { error: 'run not found' });
         const after = Number(url.searchParams.get('after') ?? 0);
         return json(res, 200, { run, logs: getLogs(parts[2], after) });
+      }
+
+      // GET /api/logs  — global cross-cutting log feed (job + workflow logs merged, newest first)
+      // ?level=info,warn,error  ?job=<name>  ?workflow=<name>  ?q=<substring>  ?windowHours=  ?before=<cursor>  ?limit=
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'logs' && parts.length === 2) {
+        const jobFilter = url.searchParams.get('job') ?? undefined;
+        const wfFilter = url.searchParams.get('workflow') ?? undefined;
+        if (jobFilter && wfFilter) {
+          return json(res, 400, { error: 'job and workflow filters are mutually exclusive' });
+        }
+        const levelParam = url.searchParams.get('level');
+        let levels: ('info' | 'warn' | 'error')[] | undefined;
+        if (levelParam) {
+          const raw = levelParam.split(',').map((s) => s.trim()).filter(Boolean);
+          for (const lvl of raw) {
+            if (lvl !== 'info' && lvl !== 'warn' && lvl !== 'error') {
+              return json(res, 400, { error: `invalid level "${lvl}"` });
+            }
+          }
+          levels = raw as ('info' | 'warn' | 'error')[];
+        }
+        const q = url.searchParams.get('q') ?? undefined;
+        const windowHoursParam = url.searchParams.get('windowHours');
+        const windowHours = windowHoursParam != null ? Number(windowHoursParam) : 24;
+        const before = url.searchParams.get('before') ?? undefined;
+        const limitParam = url.searchParams.get('limit');
+        let limit = limitParam != null ? Number(limitParam) : 200;
+        if (!Number.isFinite(limit)) limit = 200;
+        limit = Math.max(1, Math.min(500, Math.floor(limit)));
+        const result = listGlobalLogs({ levels, job: jobFilter, workflow: wfFilter, q, windowHours, before, limit });
+        return json(res, 200, result);
       }
 
       // GET /api/stuck  (optionally ?job=<name> or ?workflow=<name>) — items that gave up, won't retry

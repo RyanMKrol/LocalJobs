@@ -189,6 +189,175 @@ export function getLogs(runId: string, afterId = 0): { id: number; ts: string; l
     .all(runId, afterId) as { id: number; ts: string; level: LogLevel; message: string }[];
 }
 
+export interface GlobalLogFilter {
+  levels?: LogLevel[];      // omitted/empty = all levels
+  job?: string;              // filter to run_logs from this job only
+  workflow?: string;         // filter to workflow_run_logs from this workflow only (mutually exclusive with `job` — caller/route enforces this, not the store fn)
+  q?: string;                 // free-text substring match against `message`, case-insensitive
+  windowHours?: number;       // only applied when `before` is absent (first page)
+  before?: string;            // opaque cursor from a previous page's LAST returned row; when present, ignore windowHours entirely and return older rows
+  limit?: number;             // default 200, caller (route) is responsible for clamping to a sane max
+}
+
+export interface GlobalLogLine {
+  id: number;
+  ts: string;
+  level: LogLevel;
+  message: string;
+  source: 'job' | 'workflow';
+  jobName: string | null;
+  workflowName: string | null;
+  runId: string | null;
+  workflowRunId: string | null;
+}
+
+interface LogCursor {
+  ts: string;
+  source: 'job' | 'workflow';
+  id: number;
+}
+
+function encodeLogCursor(c: LogCursor): string {
+  return `${c.ts}|${c.source}|${c.id}`;
+}
+
+function decodeLogCursor(raw: string): LogCursor {
+  const parts = raw.split('|');
+  const ts = parts[0];
+  const source = parts[1] === 'workflow' ? 'workflow' : 'job';
+  const id = Number(parts[2]);
+  return { ts, source, id };
+}
+
+/**
+ * Global cross-cutting log feed merging run_logs (per job run) and
+ * workflow_run_logs (per workflow run), newest first. Total sort order is
+ * (ts DESC, source ASC ['job' < 'workflow'], id DESC) — a genuine total order
+ * needed because `ts` is second-granularity and routinely ties across rows.
+ */
+export function listGlobalLogs(filter: GlobalLogFilter): { logs: GlobalLogLine[]; nextCursor: string | null } {
+  const limit = filter.limit ?? 200;
+  const cursor = filter.before ? decodeLogCursor(filter.before) : null;
+  const levels = filter.levels && filter.levels.length > 0 ? filter.levels : null;
+
+  const wantJob = !filter.workflow;
+  const wantWorkflow = !filter.job;
+
+  const jobRows: GlobalLogLine[] = [];
+  if (wantJob) {
+    const conds: string[] = [];
+    const params: unknown[] = [];
+    if (filter.job) {
+      conds.push('r.job_name = ?');
+      params.push(filter.job);
+    }
+    if (levels) {
+      conds.push(`rl.level IN (${levels.map(() => '?').join(',')})`);
+      params.push(...levels);
+    }
+    if (filter.q) {
+      conds.push('LOWER(rl.message) LIKE ?');
+      params.push(`%${filter.q.toLowerCase()}%`);
+    }
+    if (cursor) {
+      // rows strictly after the cursor in (ts DESC, source ASC, id DESC) order
+      conds.push(
+        `(rl.ts < ? OR (rl.ts = ? AND (? < 'job' OR (? = 'job' AND rl.id < ?))))`
+      );
+      params.push(cursor.ts, cursor.ts, cursor.source, cursor.source, cursor.id);
+    } else if (filter.windowHours != null) {
+      conds.push(`rl.ts >= datetime('now', ?)`);
+      params.push(`-${filter.windowHours} hours`);
+    }
+    const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
+    const rows = db.prepare(
+      `SELECT rl.id AS id, rl.ts AS ts, rl.level AS level, rl.message AS message,
+              r.job_name AS jobName, rl.run_id AS runId
+       FROM run_logs rl
+       JOIN runs r ON r.id = rl.run_id
+       ${where}
+       ORDER BY rl.ts DESC, rl.id DESC
+       LIMIT ?`
+    ).all(...params, limit) as { id: number; ts: string; level: LogLevel; message: string; jobName: string; runId: string }[];
+    for (const row of rows) {
+      jobRows.push({
+        id: row.id,
+        ts: row.ts,
+        level: row.level,
+        message: row.message,
+        source: 'job',
+        jobName: row.jobName,
+        workflowName: null,
+        runId: row.runId,
+        workflowRunId: null,
+      });
+    }
+  }
+
+  const workflowRows: GlobalLogLine[] = [];
+  if (wantWorkflow) {
+    const conds: string[] = [];
+    const params: unknown[] = [];
+    if (filter.workflow) {
+      conds.push('wr.workflow_name = ?');
+      params.push(filter.workflow);
+    }
+    if (levels) {
+      conds.push(`wrl.level IN (${levels.map(() => '?').join(',')})`);
+      params.push(...levels);
+    }
+    if (filter.q) {
+      conds.push('LOWER(wrl.message) LIKE ?');
+      params.push(`%${filter.q.toLowerCase()}%`);
+    }
+    if (cursor) {
+      conds.push(
+        `(wrl.ts < ? OR (wrl.ts = ? AND (? < 'workflow' OR (? = 'workflow' AND wrl.id < ?))))`
+      );
+      params.push(cursor.ts, cursor.ts, cursor.source, cursor.source, cursor.id);
+    } else if (filter.windowHours != null) {
+      conds.push(`wrl.ts >= datetime('now', ?)`);
+      params.push(`-${filter.windowHours} hours`);
+    }
+    const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
+    const rows = db.prepare(
+      `SELECT wrl.id AS id, wrl.ts AS ts, wrl.level AS level, wrl.message AS message,
+              wr.workflow_name AS workflowName, wrl.workflow_run_id AS workflowRunId
+       FROM workflow_run_logs wrl
+       JOIN workflow_runs wr ON wr.id = wrl.workflow_run_id
+       ${where}
+       ORDER BY wrl.ts DESC, wrl.id DESC
+       LIMIT ?`
+    ).all(...params, limit) as { id: number; ts: string; level: LogLevel; message: string; workflowName: string; workflowRunId: string }[];
+    for (const row of rows) {
+      workflowRows.push({
+        id: row.id,
+        ts: row.ts,
+        level: row.level,
+        message: row.message,
+        source: 'workflow',
+        jobName: null,
+        workflowName: row.workflowName,
+        runId: null,
+        workflowRunId: row.workflowRunId,
+      });
+    }
+  }
+
+  const merged = [...jobRows, ...workflowRows].sort((a, b) => {
+    if (a.ts !== b.ts) return a.ts < b.ts ? 1 : -1;
+    if (a.source !== b.source) return a.source < b.source ? -1 : 1;
+    return b.id - a.id;
+  });
+
+  const page = merged.slice(0, limit);
+  const nextCursor = page.length === limit
+    ? encodeLogCursor({ ts: page[page.length - 1].ts, source: page[page.length - 1].source, id: page[page.length - 1].id })
+    : null;
+
+  return { logs: page, nextCursor };
+}
+
 export function hasActiveRun(jobName: string): boolean {
   const row = db.prepare(`SELECT COUNT(*) AS n FROM runs WHERE job_name = ? AND status = 'running'`)
     .get(jobName) as { n: number };
