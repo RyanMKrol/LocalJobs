@@ -8617,7 +8617,7 @@
     {
       "id": "T325",
       "title": "Hide redundant per-group \"Ignore all\" button when a group has only one item (Missing Seasons + Franchise Gaps)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
