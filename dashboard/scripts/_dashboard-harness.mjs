@@ -567,6 +567,30 @@ export const FLOWS = [
     },
   },
   {
+    // T344: reintroduces the "System" mode on top of T308's binary toggle — the
+    // header button now CYCLES dark → light → system on each click. A fresh/
+    // default (untouched) load already resolves to 'system' (no localStorage
+    // choice), so this clicks through the full 3-state cycle (up to 3 clicks) to
+    // land back on 'system' regardless of the starting icon, guaranteeing the
+    // 🖥️ icon is visibly present in a screenshot (T344's living-artifact rule).
+    name: 'overview-theme-system',
+    path: '/',
+    actions: async (page) => {
+      for (let i = 0; i < 3; i++) {
+        const isSystem = await page.evaluate(
+          () => document.querySelector('.theme-trigger')?.textContent?.includes('🖥️'),
+        );
+        if (isSystem) break;
+        await page.click('.theme-trigger');
+        await page.waitForTimeout(50);
+      }
+      await page.waitForFunction(
+        () => document.querySelector('.theme-trigger')?.textContent?.includes('🖥️'),
+        { timeout: 5000 },
+      );
+    },
+  },
+  {
     // T333: genuinely EXERCISES the .movie-gaps-scroll mouse-wheel scroll (not just a
     // screenshot) — the movieRecs fixture now has ~15 active rows, enough to overflow the
     // 520px max-height. A real Playwright wheel event is driven over the container, then

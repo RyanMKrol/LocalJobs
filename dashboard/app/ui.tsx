@@ -368,66 +368,71 @@ export function StuckPopover({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Light/dark mode toggle (T308 — supersedes the T184 theme-family/font
-   switcher; the dashboard's theme + font are now hardcoded in globals.css /
-   layout.tsx).
+   Light/dark/system mode control (T344 — reintroduces "System" on top of the
+   T308 binary toggle, per an explicit owner UX-reversal request; the dashboard's
+   theme-family + font stay hardcoded in globals.css / layout.tsx — this only
+   concerns the mode control).
 
    `useMode` backs a single `data-mode` html attribute with localStorage under
    `localjobs.mode`, so every page reacts live and the choice survives reloads.
    A pre-paint script in layout.tsx sets the same attribute BEFORE first paint
-   (no flash). The untouched (nothing stored) state follows the OS
-   `prefers-color-scheme`; once toggled it's an explicit, persisted choice —
-   strictly binary, no "System" option to return to.
+   (no flash). The SAME compact single header button (T308's rationale for a
+   compact, unobtrusive control still holds — no dropdown/popover) now CYCLES
+   through three explicit, persisted states in a fixed order on each click:
+   Dark → Light → System → Dark → … . In System state the rendered appearance
+   follows the OS `prefers-color-scheme` live, exactly like the pre-T308/T190
+   tri-state picker did.
    ────────────────────────────────────────────────────────────────────────── */
 
-// Binary mode (T308 — supersedes the T190 Dark/Light/System tri-state; there is
-// no "System" choice to pick once toggled, only the untouched pre-toggle state
-// follows the OS preference).
-export type ModeId = 'dark' | 'light';
+// Tri-state mode (T344 — reintroduces "System" on top of T308's binary toggle).
+export type ModeId = 'dark' | 'light' | 'system';
 
 /** Pure helper: maps the stored mode choice + OS dark-preference → effective data-mode value.
- *  No stored choice = follow the OS preference. */
+ *  No stored choice, or an explicit 'system' choice, = follow the OS preference. */
 export function resolveMode(stored: ModeId | null, osPrefersDark: boolean): 'light' | 'dark' {
   if (stored === 'dark') return 'dark';
   if (stored === 'light') return 'light';
+  // stored === 'system' or null (untouched) — both follow the OS preference.
   return osPrefersDark ? 'dark' : 'light';
 }
 
-/** Light/dark mode, written to the `data-mode` html attribute. The pre-paint
- *  script sets it first (no flash); this keeps it in sync after hydration and,
- *  until the viewer makes an explicit choice, reacts live to OS-preference
- *  changes. `toggle()` flips the EFFECTIVE mode and persists it as an explicit
- *  choice — there is no way back to following the OS preference afterwards. */
+const MODE_CYCLE: Record<ModeId, ModeId> = { dark: 'light', light: 'system', system: 'dark' };
+
+/** Light/dark/system mode, written to the `data-mode` html attribute (which only
+ *  ever holds the RESOLVED 'light'/'dark' value — never 'system'). The pre-paint
+ *  script sets `data-mode` first (no flash); this keeps it in sync after
+ *  hydration. While `mode === 'system'` a `matchMedia` listener keeps the page
+ *  reacting live to OS-preference changes; it's detached otherwise. `cycle()`
+ *  advances dark → light → system → dark and persists the CHOICE (including the
+ *  literal string 'system', so it isn't confused with "nothing stored"). */
 export function useMode(): [ModeId, () => void] {
   const [mode, setMode] = useState<ModeId>(() => {
-    if (typeof document === 'undefined') return 'dark';
-    return document.documentElement.getAttribute('data-mode') === 'light' ? 'light' : 'dark';
+    if (typeof window === 'undefined') return 'dark';
+    const stored = window.localStorage.getItem('localjobs.mode') as ModeId | null;
+    return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'system';
   });
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('localjobs.mode') as ModeId | null;
+    if (mode !== 'system') {
+      document.documentElement.setAttribute('data-mode', mode);
+      return;
+    }
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
-      const cur = window.localStorage.getItem('localjobs.mode') as ModeId | null;
-      const effective = resolveMode(cur, mq.matches);
-      setMode(effective);
-      document.documentElement.setAttribute('data-mode', effective);
+      document.documentElement.setAttribute('data-mode', mq.matches ? 'dark' : 'light');
     };
     apply();
-    if (!stored) {
-      mq.addEventListener('change', apply);
-      return () => mq.removeEventListener('change', apply);
-    }
-  }, []);
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [mode]);
 
-  const toggle = () => {
-    const next: ModeId = mode === 'dark' ? 'light' : 'dark';
+  const cycle = () => {
+    const next = MODE_CYCLE[mode];
     setMode(next);
     window.localStorage.setItem('localjobs.mode', next);
-    document.documentElement.setAttribute('data-mode', next);
   };
 
-  return [mode, toggle];
+  return [mode, cycle];
 }
 
 
@@ -489,24 +494,30 @@ function fallbackCopy(text: string) {
   document.body.removeChild(ta);
 }
 
+const MODE_ICON: Record<ModeId, string> = { dark: '🌙', light: '☀️', system: '🖥️' };
+const MODE_LABEL: Record<ModeId, string> = {
+  dark: 'Dark mode — click for light mode',
+  light: 'Light mode — click for system mode',
+  system: 'System mode (follows OS) — click for dark mode',
+};
+
 /**
- * Compact, unobtrusive control rendered in the header on EVERY page (T308): a
- * single sun/moon icon button that flips light↔dark mode directly on click —
- * no popover/modal, no theme-family or font choice.
+ * Compact, unobtrusive control rendered in the header on EVERY page (T308,
+ * extended by T344): a single icon button that CYCLES Dark → Light → System →
+ * Dark on click — no popover/modal, no theme-family or font choice.
  */
 export function ThemeControls() {
-  const [mode, toggle] = useMode();
-  const isDark = mode === 'dark';
+  const [mode, cycle] = useMode();
 
   return (
     <div className="theme-controls">
       <button
         className="theme-trigger"
-        onClick={toggle}
-        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        onClick={cycle}
+        aria-label={MODE_LABEL[mode]}
+        title={MODE_LABEL[mode]}
       >
-        <span aria-hidden="true">{isDark ? '🌙' : '☀️'}</span>
+        <span aria-hidden="true">{MODE_ICON[mode]}</span>
       </button>
     </div>
   );
