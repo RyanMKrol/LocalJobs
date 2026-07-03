@@ -114,9 +114,11 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
       {error && <p className="error">Failed to load output: {String(error)}</p>}
 
       {data && items.length === 0 && (
-        <p className="muted" style={{ fontSize: 13 }}>
-          No output yet. Run the workflow — produced items will appear here.
-        </p>
+        <div className="panel">
+          <p className="empty-state-panel">
+            No output yet. Run the workflow — produced items will appear here.
+          </p>
+        </div>
       )}
 
       {items.length > 0 && (
