@@ -8569,7 +8569,7 @@
     {
       "id": "T323",
       "title": "Add Admin nav tab + page with bulk \"delete all workflow output\" action",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T322"
       ],
