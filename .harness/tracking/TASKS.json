@@ -9266,6 +9266,645 @@
         "risk": []
       },
       "expectsTest": false
+    },
+    {
+      "id": "T351",
+      "title": "Fix cramped/clipped action-column buttons on the Integrations (services) page table",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "css",
+        "spacing"
+      ],
+      "scope": [
+        "dashboard/app/services/page.tsx",
+        "dashboard/app/integrations/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T351.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T352",
+      "title": "stock-sector-lookup: translate Trading212 ticker to bare Finnhub symbol + stop recording null lookups as success",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "stock-digest",
+        "bugfix",
+        "finnhub"
+      ],
+      "scope": [
+        "src/jobs/stock-digest/stages/stock-sector-lookup.ts",
+        "src/jobs/stock-digest/stages/stock-sector-lookup.test.ts",
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "scripts/reset-stock-sector-lookup-null-successes.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T352.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T353",
+      "title": "Order getWorkflowJobs() topologically (fix alphabetical IO-panel stage filter bar)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "db",
+        "bugfix",
+        "ordering",
+        "workflow"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T353.md",
+      "facets": {
+        "layer": "db",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T354",
+      "title": "Logs page: fix stale log lines lingering after changing level/scope/search/window filters",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "logs",
+        "bugfix"
+      ],
+      "scope": [
+        "dashboard/app/logs/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T354.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T355",
+      "title": "Logs page: add [LEVEL] bracket label + per-level background tint to log lines",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "logs",
+        "styling"
+      ],
+      "scope": [
+        "dashboard/app/logs/page.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T355.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T356",
+      "title": "Fix WorkflowOutputSection's empty state to use the centered .empty-state-panel pattern (idea #9)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "output-section",
+        "empty-state"
+      ],
+      "scope": [
+        "dashboard/app/components/WorkflowOutputSection.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T356.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T357",
+      "title": "Remove the .movie-gaps-scroll internal scroll cap — display recs/gaps tables in full (idea #10a)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "output-section",
+        "scroll-cap"
+      ],
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T357.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T358",
+      "title": "Rename tv-recommendations' and missing-tv-seasons' section headings to \"Output\" (idea #10b, easy half)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "output-section",
+        "heading-rename"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T358.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T359",
+      "title": "Reorganize movie-recommendations' two Output sections under one Output heading (idea #10b, hard half — owner-decided Option A)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "output-section",
+        "heading-merge"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T359.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T360",
+      "title": "Add remark-gfm so dashboard markdown popovers render GFM tables",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "markdown",
+        "bugfix"
+      ],
+      "scope": [
+        "dashboard/package.json",
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/components/WorkflowOutputSection.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T360.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T361",
+      "title": "Rename dashboard /services route to /integrations (match renamed nav tab)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "routing",
+        "rename"
+      ],
+      "scope": [
+        "dashboard/app/services/**",
+        "dashboard/app/integrations/**",
+        "dashboard/app/layout.tsx",
+        "dashboard/next.config.js",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs",
+        "node dashboard/scripts/mobile-check.mjs"
+      ],
+      "spec": ".harness/tasks/T361.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T362",
+      "title": "stock-digest: persist raw facts JSON per week + soft ticker cross-check on Claude narration",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "stock-digest",
+        "observability",
+        "logging"
+      ],
+      "scope": [
+        "src/jobs/stock-digest/stages/stock-digest-build.ts",
+        "src/jobs/stock-digest/stages/stock-digest-build.test.ts",
+        "src/jobs/stock-digest/config.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T362.md",
+      "facets": {
+        "layer": "job",
+        "workType": "logging",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T363",
+      "title": "Fix page-color flash on navigation: make useMode()'s initial state SSR-safe to stop React hydration-error DOM regeneration",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "theme",
+        "bugfix",
+        "hydration"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build"
+      ],
+      "spec": ".harness/tasks/T363.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T364",
+      "title": "Add vercel-daily-redeploy workflow: daily Vercel Deploy Hook POST safety net for ryankrol.co.uk",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "vercel",
+        "safety-net"
+      ],
+      "scope": [
+        "src/jobs/vercel-daily-redeploy/**",
+        ".env.example",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T364.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T365",
+      "title": "Provision Vercel Deploy Hook for ryankrol.co.uk and set VERCEL_DEPLOY_HOOK_URL",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "workflow",
+        "vercel",
+        "credentials",
+        "provisioning",
+        "needs-human"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T365.md"
+    },
+    {
+      "id": "T366",
+      "title": "Add validation gates to stocks-sync's 3 stages",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "gates",
+        "stocks-sync"
+      ],
+      "scope": [
+        "src/jobs/stocks-sync/contracts.ts",
+        "src/jobs/stocks-sync/contracts.test.ts",
+        "src/jobs/stocks-sync/stages/stocks-snapshot.job.ts",
+        "src/jobs/stocks-sync/stages/stocks-watch.job.ts",
+        "src/jobs/stocks-sync/stages/stocks-notify.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T366.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T367",
+      "title": "Add validation gate to projects-sync's 2 stages",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "gates",
+        "projects-sync"
+      ],
+      "scope": [
+        "src/jobs/projects-sync/contracts.ts",
+        "src/jobs/projects-sync/contracts.test.ts",
+        "src/jobs/projects-sync/stages/github-sync.job.ts",
+        "src/jobs/projects-sync/stages/project-summarize.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T367.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T368",
+      "title": "Add validation gate to workouts-sync's 2 stages",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "gates",
+        "workouts-sync"
+      ],
+      "scope": [
+        "src/jobs/workouts-sync/contracts.ts",
+        "src/jobs/workouts-sync/contracts.test.ts",
+        "src/jobs/workouts-sync/stages/hevy-sync.job.ts",
+        "src/jobs/workouts-sync/stages/workouts-progress.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T368.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T369",
+      "title": "Add validation gate to stock-digest's 2 stages",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "gates",
+        "stock-digest"
+      ],
+      "scope": [
+        "src/jobs/stock-digest/contracts.ts",
+        "src/jobs/stock-digest/contracts.test.ts",
+        "src/jobs/stock-digest/stages/stock-sector-lookup.job.ts",
+        "src/jobs/stock-digest/stages/stock-digest-build.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T369.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T370",
+      "title": "Add mechanical test enforcing every workflow DAG edge has a validation gate",
+      "status": "pending",
+      "dependsOn": [
+        "T366",
+        "T367",
+        "T368",
+        "T369"
+      ],
+      "gate": null,
+      "tags": [
+        "gates",
+        "enforcement",
+        "framework"
+      ],
+      "scope": [
+        "src/core/gate-coverage.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T370.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T371",
+      "title": "Add src/jobs/CLAUDE.md documenting the every-adjacent-pair validation-gate convention",
+      "status": "pending",
+      "dependsOn": [
+        "T370"
+      ],
+      "gate": null,
+      "tags": [
+        "gates",
+        "docs"
+      ],
+      "scope": [
+        "src/jobs/CLAUDE.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T371.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
     }
   ]
 }
