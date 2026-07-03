@@ -268,6 +268,15 @@ const tasks = [
     tags: ['ui'], reviewed: true },
   { id: 'T051', title: 'A finished task the owner marked failed', status: 'failed', gate: null,
     dependsOn: [], tags: ['ui'], reviewed: true, failed: true, failReason: 'padlock never renders on the DAG' },
+  // T052-T054: unreviewed done tasks (T374) — exercise the shift-click range-select checkboxes in
+  // the Done section. T050/T051 above are both reviewed:true, so without these the Done section
+  // renders zero checkboxes at all.
+  { id: 'T052', title: 'Unreviewed finished task one', status: 'done', gate: null, dependsOn: [],
+    tags: ['ui'] },
+  { id: 'T053', title: 'Unreviewed finished task two', status: 'done', gate: null, dependsOn: [],
+    tags: ['ui'] },
+  { id: 'T054', title: 'Unreviewed finished task three', status: 'done', gate: null, dependsOn: [],
+    tags: ['ui'] },
 ];
 
 const rec = (over) => ({
@@ -597,6 +606,24 @@ export const FLOWS = [
       await page.click('#task-T040 .dep-id-link:has-text("T050")');
       await page.waitForSelector('#task-T050', { state: 'visible', timeout: 3000 });
       await page.waitForTimeout(500);
+    },
+  },
+  {
+    // T374: shift-click range-select on the Done section checkboxes — plain-click T052's
+    // checkbox, then Shift-click T054's checkbox, and every row in between (T052, T053, T054)
+    // should render checked, with the bulk "Mark N as reviewed" button showing the range count.
+    name: 'backlog-shift-select',
+    path: '/backlog',
+    settleMs: 800,
+    actions: async (page) => {
+      await page.evaluate(() =>
+        document.querySelectorAll('details:not([open])').forEach((d) => d.setAttribute('open', '')),
+      );
+      await page.waitForSelector('#task-T052 input[type="checkbox"]', { state: 'visible', timeout: 5000 });
+      await page.click('#task-T052 input[type="checkbox"]');
+      await page.waitForTimeout(200);
+      await page.click('#task-T054 input[type="checkbox"]', { modifiers: ['Shift'] });
+      await page.waitForTimeout(300);
     },
   },
   {

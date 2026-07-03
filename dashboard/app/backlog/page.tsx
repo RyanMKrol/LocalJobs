@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, type BacklogTask } from '../lib/api';
@@ -69,7 +69,7 @@ function CollapsibleRow({
   t: BacklogTask;
   selectable?: boolean;
   checked?: boolean;
-  onCheck?: (id: string, val: boolean) => void;
+  onCheck?: (id: string, val: boolean, shiftKey?: boolean) => void;
   onMarkDone?: (id: string) => void;
   onMarkFailed?: (id: string) => void;
   unmetDeps?: string[];
@@ -80,6 +80,7 @@ function CollapsibleRow({
   const [expanded, setExpanded] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
   const [markingFailed, setMarkingFailed] = useState(false);
+  const shiftKeyRef = useRef(false);
   const human = t.gate === 'needs-human' || t.gate === 'gate';
   const isFailedStatus = t.status === 'failed';   // owner-failed terminal status (T279)
   const buildable = t.status !== 'done' && !isFailedStatus && !human;
@@ -115,8 +116,8 @@ function CollapsibleRow({
           <input
             type="checkbox"
             checked={checked ?? false}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => { e.stopPropagation(); onCheck?.(t.id, e.target.checked); }}
+            onClick={(e) => { e.stopPropagation(); shiftKeyRef.current = e.shiftKey; }}
+            onChange={(e) => { e.stopPropagation(); onCheck?.(t.id, e.target.checked, shiftKeyRef.current); }}
             aria-label={`Select ${t.id} for bulk review`}
             style={{ flexShrink: 0, cursor: 'pointer' }}
           />
@@ -258,6 +259,7 @@ export default function Backlog() {
   const { data, error } = usePoll(() => api.backlog(), 5000, [refreshNonce]);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [lastClickedId, setLastClickedId] = useState<string | null>(null);
   const [bulkPending, setBulkPending] = useState(false);
   // Non-fatal warning when the review was saved + committed locally but the push
   // to GitHub didn't go through (offline / no remote). The commit still persists.
@@ -353,12 +355,25 @@ export default function Backlog() {
     }
   };
 
-  const toggleOne = (id: string, val: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (val) next.add(id); else next.delete(id);
-      return next;
-    });
+  const toggleOne = (id: string, val: boolean, shiftKey?: boolean) => {
+    const visibleIds = unreviewedVisible.map((t) => t.id);
+    if (shiftKey && lastClickedId != null && visibleIds.includes(lastClickedId)) {
+      const fromIdx = visibleIds.indexOf(lastClickedId);
+      const toIdx = visibleIds.indexOf(id);
+      const [start, end] = fromIdx <= toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const rangeId of visibleIds.slice(start, end + 1)) next.add(rangeId);
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (val) next.add(id); else next.delete(id);
+        return next;
+      });
+    }
+    setLastClickedId(id);
   };
 
   const markSelectedReviewed = async () => {
@@ -369,6 +384,7 @@ export default function Backlog() {
       const res = await api.markReviewedBulk(ids);
       setPushWarning(res.committed && res.pushed === false ? (res.warning ?? 'saved locally, push pending') : null);
       setSelected(new Set());
+      setLastClickedId(null);
     } catch {
       // ignore — next poll reflects true state
     }
@@ -469,7 +485,7 @@ export default function Backlog() {
                 key={f.id}
                 type="button"
                 className={`caret-style-btn${reviewFilter === f.id ? ' active' : ''}`}
-                onClick={() => { setReviewFilter(f.id); setSelected(new Set()); }}
+                onClick={() => { setReviewFilter(f.id); setSelected(new Set()); setLastClickedId(null); }}
               >
                 {f.label}
               </button>
