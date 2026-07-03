@@ -9961,6 +9961,195 @@
       ],
       "expectsTest": true,
       "spec": ".harness/tasks/T373.md"
+    },
+    {
+      "id": "T374",
+      "title": "Add shift-click range-select to the Backlog page's Done-section checkboxes",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "backlog"
+      ],
+      "scope": [
+        "dashboard/app/backlog/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build"
+      ],
+      "spec": ".harness/tasks/T374.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T375",
+      "title": "CronBadge tooltip: escape ancestor .panel overflow:hidden clipping via a document.body portal",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "tooltip",
+        "bugfix"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T375.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T376",
+      "title": "Vertically center DAG node box content (fix bottom-heavy padding)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "dag",
+        "style"
+      ],
+      "scope": [
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T376.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T377",
+      "title": "Gate padlock: colored rounded background behind the icon (state-encoded, not just stroke color)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "dag",
+        "gates",
+        "style"
+      ],
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T377.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T378",
+      "title": "Harness convention: tasks touching .harness/** must be gate:needs-human",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "harness",
+        "process",
+        "docs",
+        "needs-human"
+      ],
+      "scope": [
+        ".harness/CLAUDE.md",
+        ".harness/docs/HARNESS.md",
+        ".harness/scripts/loop.sh"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T378.md"
+    },
+    {
+      "id": "T379",
+      "title": "One-off review: scan the past week's product logs and author follow-up tasks",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "harness",
+        "process",
+        "review",
+        "needs-human"
+      ],
+      "scope": [
+        "dashboard/app/logs/",
+        ".harness/tracking/",
+        ".harness/tasks/"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T379.md"
+    },
+    {
+      "id": "T380",
+      "title": "Logs page: render [LEVEL] tag before the job/workflow source label",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "logs"
+      ],
+      "scope": [
+        "dashboard/app/logs/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T380.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T381",
+      "title": "Human check-in: review Trading212/OpenFIGI/Finnhub usage across stocks-sync + stock-digest (post-T352/T372/T373)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "review",
+        "needs-human",
+        "stocks"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T381.md"
     }
   ]
 }
