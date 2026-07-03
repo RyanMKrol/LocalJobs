@@ -846,6 +846,12 @@ mkdir -p "$WORKLOG"
 # calibration. needs-human/gated tasks are correctly excluded (they're carved out).
 _missing_facets="$(tj -r '[.tasks[]|select(.status!="done" and (.gate==null) and ((.facets|not) or (.facets.layer|not)))|.id]|join(", ")' 2>/dev/null || true)"
 if [ -n "$_missing_facets" ]; then log "WARN: buildable tasks MISSING facets (no auto-tuning until tagged — see facets.json): $_missing_facets"; fi
+# Pre-flight (T378): warn about BUILDABLE tasks that touch .harness/** — self-modifying
+# build/calibration machinery must never be built unsupervised (see .harness/CLAUDE.md). Non-fatal —
+# does NOT stop the loop or change select_task()'s selection logic, matching the missing-facets idiom
+# above; a task like this should have been authored gate:"needs-human" and never reach here.
+_harness_scope_tasks="$(tj -r '[.tasks[]|select(.status!="done" and (.gate==null) and (((.scope // [])|any(startswith(".harness/"))) or (.facets.layer=="harness")))|.id]|join(", ")' 2>/dev/null || true)"
+if [ -n "$_harness_scope_tasks" ]; then log "WARN: buildable tasks touch .harness/ (scope or facets.layer==harness) — these MUST be gate:needs-human, never buildable: $_harness_scope_tasks"; fi
 for ((i = 1; i <= MAX_ITERS; i++)); do
   git -C "$ROOT" fetch origin --quiet 2>/dev/null || true
   reconcile_overlays   # promote owner overlay verdicts (human-done→done, manual-fail→failed) into TASKS.json status BEFORE selecting

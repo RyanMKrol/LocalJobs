@@ -12,6 +12,46 @@ source of authoring logic**: it assigns the task's **facets** (difficulty auto-t
 chooser task with a review task, runs the **poor-fit / layer-evolution gate**, and writes a
 schema-correct task object + its `tasks/TNNN.md` spec. Prefer it over hand-editing `TASKS.json`.
 
+## A task touching `.harness/**` MUST be `gate: "needs-human"` — never buildable (T378)
+
+Any backlog task whose `scope` array includes a path prefixed `.harness/`, OR whose
+`facets.layer == "harness"`, **MUST** be authored `gate: "needs-human"`. It must never be left
+`gate: null` (buildable) or `gate: "gate"` (reviewed only after the fact — still built
+unsupervised first). This applies regardless of how the task is authored: the
+`ralph-loop-add-to-backlog` skill, a `/local-jobs-convert-ideas` sweep, or a direct hand-edit of
+`TASKS.json`.
+
+**Why this is non-negotiable:** the harness's own build/task-selection/calibration machinery
+(`loop.sh`, `TASKS.json`'s schema, `facets.json`, the outcomes/failures ledgers, this very
+`CLAUDE.md`) is what constrains every OTHER task the autonomous loop builds. A bad *unsupervised*
+edit here is uniquely dangerous compared to an ordinary buildable task going wrong: it can corrupt
+`TASKS.json`, break task selection or escalation, or silently defeat the loop's own safety rails —
+the exact thing the loop is supposed to be constrained by, edited by the very process it constrains,
+with no human in the loop. A human must always look at a diff to `.harness/**` before it's built, not
+just before it's merged.
+
+**This is enforced two ways:**
+- **Documented here** (this section) — the authoritative statement of the rule, since this file
+  auto-loads whenever Claude works inside `.harness/`, reaching every authoring path without needing
+  to touch anything outside this repo.
+- **A non-fatal pre-flight WARN in `loop.sh`** (mirrors the existing `_missing_facets` check) — at
+  startup, before the main iteration loop, it greps `TASKS.json` for any currently-buildable task
+  (`status != "done"`, `gate == null`) whose `scope` touches `.harness/` or whose `facets.layer ==
+  "harness"`, and logs a WARN naming the offending ids. It is deliberately **non-fatal** (matches this
+  repo's established idiom for backlog-hygiene issues — see the missing-facets WARN) — it does NOT
+  stop the loop and does NOT change `select_task()`'s selection logic. If the warning ever proves
+  insufficient in practice (a harness-touching task actually gets auto-built), a stronger mechanical
+  block is a reasonable escalation — see "Known-but-deferred issues" below rather than building it
+  speculatively now.
+
+**Scoping decision — `ralph-loop-add-to-backlog` itself is NOT edited by this rule.** That skill is
+not part of this repo: it lives in the `claude-skills` plugin marketplace (a separate, sibling repo),
+not this checkout. Propagating this convention into the skill's own authoring instructions is
+explicitly out of scope here — it mirrors the existing deferred cross-repo item T188 (which defers
+folding `convert-ideas`'s poor-fit gate into the same plugin). Relying on this file being auto-loaded
+for any Claude session working inside this repo's `.harness/` — including one running that skill — is
+sufficient coverage for now.
+
 ## Ideas inbox & the two-step flow (ideas → tasks)
 
 Tasks are NOT authored directly from a raw thought. A backlog task carries a high planning bar

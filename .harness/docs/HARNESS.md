@@ -184,6 +184,11 @@ agent must not edit it.
 `gate:"gate"` = a human reviews the deliverable before dependents run; `gate:"needs-human"` = a
 one-time human step (the agent prepares around it and records `failed:blocked`).
 
+**A task whose `scope` touches `.harness/`, or whose `facets.layer == "harness"`, MUST be
+`gate:"needs-human"`** — self-modifying build/calibration machinery is uniquely dangerous to build
+unsupervised. See `.harness/CLAUDE.md`'s "A task touching `.harness/**` MUST be `gate:"needs-human"`"
+section for the full rationale; `loop.sh` prints a non-fatal pre-flight WARN if this is ever violated.
+
 **`facets` — difficulty auto-tuning (see `designs/difficulty-autotune.md`).** Each BUILDABLE task
 carries `facets: { layer, workType, risk[] }`, chosen from the controlled vocabulary in
 `.harness/config/facets.json`. The loop's policy reads them to pick the task's STARTING tier from escalation
