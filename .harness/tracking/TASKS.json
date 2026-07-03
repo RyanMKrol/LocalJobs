@@ -9270,7 +9270,7 @@
     {
       "id": "T351",
       "title": "Fix cramped/clipped action-column buttons on the Integrations (services) page table",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
