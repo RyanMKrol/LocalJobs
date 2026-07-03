@@ -9905,6 +9905,62 @@
         "risk": []
       },
       "expectsTest": false
+    },
+    {
+      "id": "T372",
+      "title": "Add an OpenFIGI service for resolving broker ISINs to real, current ticker symbols",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "stocks",
+        "service"
+      ],
+      "facets": {
+        "layer": "service",
+        "workType": "feature",
+        "risk": []
+      },
+      "scope": [
+        "src/services/openfigi.service.ts",
+        "CLAUDE.md",
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T372.md"
+    },
+    {
+      "id": "T373",
+      "title": "Resolve stocks-sync positions' ISIN + real ticker via Trading212 metadata + OpenFIGI",
+      "status": "pending",
+      "dependsOn": [
+        "T372"
+      ],
+      "gate": null,
+      "tags": [
+        "stocks",
+        "bugfix"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "src/jobs/stocks-sync/stages/stocks-snapshot.ts",
+        "src/jobs/stocks-sync/stages/stocks-snapshot.test.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T373.md"
     }
   ]
 }
