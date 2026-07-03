@@ -9625,7 +9625,7 @@
     {
       "id": "T362",
       "title": "stock-digest: persist raw facts JSON per week + soft ticker cross-check on Claude narration",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
