@@ -8207,7 +8207,7 @@
     {
       "id": "T310",
       "title": "DAG gate padlock: tinted background fill for all three gate states",
-      "status": "done",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
@@ -8965,7 +8965,7 @@
     {
       "id": "T339",
       "title": "Fix table header/cell padding on Services + Workflows pages (shared th/td rule)",
-      "status": "done",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
@@ -9062,7 +9062,7 @@
     {
       "id": "T343",
       "title": "Fix header mode icon flicker on full-page navigation (lazy-init useMode from DOM)",
-      "status": "done",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
