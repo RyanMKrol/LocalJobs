@@ -1164,7 +1164,13 @@ doubt, log it.
   jobs should use it via `perfumesConfig.profileDir` / `defaultChromeProfileDir`
   rather than defining a job-local path — one shared, warmed, trusted profile
   means any job benefits from cookies accumulated by others.
-- **Validation gates between workflow stages (typed artifacts).** A job may
+- **Validation gates between workflow stages (typed artifacts).** See
+  `src/jobs/CLAUDE.md` for the short, hard-requirement statement of this rule
+  (every DAG edge needs a gate; a trivial `check(): { ok: true }` is an
+  acceptable minimum) — it's the one that surfaces automatically when working
+  inside `src/jobs/`. This is now **mechanically enforced**:
+  `src/core/gate-coverage.test.ts` walks every workflow the registry loads and
+  fails `npm test` if any DAG edge is missing a matching gate. A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
   (`{ key, description?, shape?, check() }`) in `src/core/types.ts`. For every workflow
   **edge** where the upstream `produces` a key the downstream `consumes`, the
