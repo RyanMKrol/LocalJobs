@@ -92,7 +92,7 @@ function TvRecsManager() {
 
   return (
     <>
-      <h2>TV Recommendations</h2>
+      <h2>Output</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         Shows recommended for you by the Claude-powered recommender branches, verified via TMDB and
         balanced across genres. A rec is ignored once you dismiss it — it won&apos;t appear in future
@@ -551,7 +551,7 @@ function MissingSeasonsManager() {
 
   return (
     <>
-      <h2>Missing seasons</h2>
+      <h2>Output</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         Seasons you don&apos;t own that are completely aired on TMDB, detected by comparing your Plex
         library against TMDB. Ignore a season to suppress it from future reports and notifications.
