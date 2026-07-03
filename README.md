@@ -265,16 +265,16 @@ gitignored). Private workflows live in gitignored subfolders.
   report to `data/out/stock-digest-<ISO-week>.md`. Idempotent per ISO week via
   the work_items ledger. Markdown-only output — no push notification is sent.
   Runs weekly, Monday at 08:00.
-- **vercel-daily-redeploy** — Once a day, POSTs to a Vercel Deploy Hook for the
-  separate `ryankrol.co.uk` repo, re-triggering a build of that branch's latest
-  commit. Safety net: that repo's own autonomous build harness can push enough
-  commits in a day to exceed Vercel's per-commit auto-deploy rate limits, silently
-  dropping some deploys — this ensures the live site is never more than 24h behind
-  the latest pushed commit regardless. Single job, no retries needed (a failure
-  just means tomorrow's run tries again). `VERCEL_DEPLOY_HOOK_URL` is optional —
-  unset soft-skips the job cleanly (a warn log, no failure); the hook itself must
-  be provisioned manually in the Vercel dashboard. Runs daily at 23:00
-  (`'0 23 * * *'`), deliberately late in the day.
+- **vercel-daily-redeploy** — Once a day, runs `vercel --prod --yes` directly in
+  the separate `ryankrol.co.uk` checkout — a real CLI production deploy, not an
+  HTTP call to a Deploy Hook. Safety net: that repo ships via its own harness
+  convention (a single deploy task that runs `vercel --prod`); this is a
+  redundant daily backstop for when that mechanism fails or a session forgets to
+  author a deploy task. No credential to provision — it relies on the Vercel
+  CLI's own persistent login session already on this machine. `RYANKROL_CO_UK_PATH`
+  (the checkout path) is optional — unset or a nonexistent path soft-skips the job
+  cleanly (a warn log, no failure). Runs daily at 23:00 (`'0 23 * * *'`),
+  deliberately late in the day.
 - **plex-space-saver** — Weekly, report-only Plex disk-space breakdown, distinct
   from `missing-tv-seasons` (which audits missing seasons, not disk usage). Scans
   the Plex movie + TV sections via the API (each media Part's `size` in bytes —

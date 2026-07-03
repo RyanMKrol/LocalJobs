@@ -366,23 +366,34 @@ line naming them. This is a soft signal only — it never throws, skips the writ
 `markWorkItem` outcome; it exists purely so a genuine future narration hallucination shows up in the
 run's own logs instead of requiring manual log archaeology.
 and **vercel-daily-redeploy** (`src/jobs/vercel-daily-redeploy/`) — a single-job workflow that once a
-day POSTs to a Vercel Deploy Hook for the separate `ryankrol.co.uk` repo, re-triggering a build of
-that branch's latest commit. WHY: Vercel Deploy Hooks are a documented, unauthenticated,
-branch-bound URL — a plain `POST` with no auth header and no body re-triggers a build
-(https://vercel.com/docs/deploy-hooks) — and this exists as a safety net because that repo's own
-autonomous build harness can push enough commits in a day to exceed Vercel's per-commit auto-deploy
-rate limits, silently dropping some deploys; this guarantees the live site is never more than 24h
-behind the latest pushed commit regardless. `vercel-redeploy.job.ts` reads
-`process.env.VERCEL_DEPLOY_HOOK_URL`: unset soft-skips with a clear WARN log (mirroring
-`stock-digest`'s `FINNHUB_API_KEY` soft-skip), set triggers a `POST` with no body/auth header via the
-platform's native `fetch` and throws on a non-2xx response or a network error (so a dropped redeploy
-shows as a failed run in the dashboard rather than being silently swallowed — the whole point of a
-safety net). `timeoutMs: 30_000` (a Deploy Hook POST just enqueues a build, it doesn't wait for the
-build itself), `maxRetries: 1`. No `work_items` ledger — pure fire-and-forget trigger, no items to
-track, same shape as `claude-warmer`. `category: 'regular-maintenance'`. Runs daily at 23:00
-(`'0 23 * * *'`), deliberately late in the day, after a typical day's push activity on
-`ryankrol.co.uk`. Provisioning the actual `VERCEL_DEPLOY_HOOK_URL` value requires the owner's Vercel
-account access and is tracked as a separate `needs-human` task.
+day runs `vercel --prod --yes` directly in the separate `ryankrol.co.uk` checkout — a real CLI
+production deploy of that repo's current working tree, NOT an HTTP call to a Vercel Deploy Hook (that
+was the original design; see below for why it changed). WHY: `ryankrol.co.uk` deliberately
+DISCONNECTED its Vercel Git integration on 2026-07-03 — that repo's own autonomous harness was
+pushing a commit every few minutes, and even a *cancelled* deploy still counted against Hobby's
+quota (100/day, 100/hour, 60/5min), so cancelling wasn't enough and the Git connection itself had to
+come off (see that repo's own `CLAUDE.md` "Deploying" section). Pushing to `main` no longer
+auto-deploys anything there; that repo now ships via its own harness convention (a single
+always-at-most-one "deploy task" in ITS `.harness/TASKS.json` running `vercel --prod` directly). This
+workflow is a SEPARATE, redundant daily safety net for when that mechanism fails or a session forgets
+to author a deploy task — a Vercel Deploy Hook was the original plan but is no longer viable (Deploy
+Hooks build from the connected Git repo/branch, and with Git integration off there's real doubt one
+would even fire); `vercel --prod` sidesteps that, deploying the current local working tree
+independent of Git integration state. **No credential to provision** — the Vercel CLI already has a
+persistent login session on this machine (confirmed via `vercel whoami`) and
+`~/Development/ryankrol.co.uk/.vercel/project.json` is already linked, so `vercel-redeploy.job.ts`
+relies on that existing global CLI auth rather than a passed token. It reads
+`process.env.RYANKROL_CO_UK_PATH` (the checkout path): unset or a nonexistent path soft-skips with a
+clear WARN log (mirroring `stock-digest`'s `FINNHUB_API_KEY` soft-skip); when valid it spawns
+`vercel --prod --yes` with that path as `cwd`, streams every stdout/stderr line to `ctx.log` (a real
+build can take a couple of minutes), and throws on a non-zero exit code or a spawn error (so a
+dropped/failed deploy shows as a failed run in the dashboard rather than being silently swallowed —
+the whole point of a safety net). Runs its own internal timeout-and-kill (10 min,
+`DEFAULT_TIMEOUT_MS`) separate from the job's outer `timeoutMs` (11 min) so the spawned `vercel`
+subprocess is always killed cleanly before the executor would ever need to hard-kill the job process
+itself. No `work_items` ledger — pure fire-and-forget trigger, no items to track, same shape as
+`claude-warmer`. `category: 'regular-maintenance'`. Runs daily at 23:00 (`'0 23 * * *'`), deliberately
+late in the day, after a typical day's activity on `ryankrol.co.uk`.
 and **plex-space-saver** (`src/jobs/plex-space-saver/`) — a single-stage, report-only audit of where
 Plex library disk space is going, distinct from `missing-tv-seasons` (which audits missing seasons,
 not disk usage). Reuses the shared plex client (`src/jobs/plex/client.ts`'s `resolvePlexHost`/
