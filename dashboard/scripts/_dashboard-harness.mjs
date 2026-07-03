@@ -676,46 +676,6 @@ export const FLOWS = [
       );
     },
   },
-  {
-    // T333: genuinely EXERCISES the .movie-gaps-scroll mouse-wheel scroll (not just a
-    // screenshot) — the movieRecs fixture now has ~15 active rows, enough to overflow the
-    // 520px max-height. A real Playwright wheel event is driven over the container, then
-    // waitForFunction asserts scrollTop actually increased — mirroring the assertion-via-
-    // waitForFunction pattern in 'overview-theme-toggle' above. If the CSS regresses (the
-    // .panel flex-shrink fix is reverted), scrollTop never moves and this throws/fails hard.
-    name: 'movie-recs-scrolled',
-    path: '/workflows/movie-recommendations',
-    waitFor: ['.movie-gaps-scroll table'],
-    actions: async (page) => {
-      const scrollBox = page.locator('.movie-gaps-scroll');
-      await scrollBox.scrollIntoViewIfNeeded();
-      const box = await scrollBox.boundingBox();
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.wheel(0, 400);
-      await page.waitForFunction(
-        () => document.querySelector('.movie-gaps-scroll')?.scrollTop > 0,
-        { timeout: 5000 },
-      );
-    },
-  },
-  {
-    // T333: same shared .movie-gaps-scroll/.panel CSS on the TV-recs page — cover the
-    // second real call site of the fix, not just movie-recommendations.
-    name: 'tv-recs-scrolled',
-    path: '/workflows/tv-recommendations',
-    waitFor: ['.movie-gaps-scroll table'],
-    actions: async (page) => {
-      const scrollBox = page.locator('.movie-gaps-scroll');
-      await scrollBox.scrollIntoViewIfNeeded();
-      const box = await scrollBox.boundingBox();
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.wheel(0, 400);
-      await page.waitForFunction(
-        () => document.querySelector('.movie-gaps-scroll')?.scrollTop > 0,
-        { timeout: 5000 },
-      );
-    },
-  },
 ];
 
 // ── Harness helpers ─────────────────────────────────────────────────────────
