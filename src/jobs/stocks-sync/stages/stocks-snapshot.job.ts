@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../../core/types.js';
+import { stocksPortfolioContract } from '../contracts.js';
 import { runStocksSnapshot, stocksSnapshotInputKeys } from './stocks-snapshot.js';
 
 const job: JobDefinition = {
@@ -9,6 +10,7 @@ const job: JobDefinition = {
   timeoutMs: 60_000,
   maxRetries: 3,
   inputKeys: stocksSnapshotInputKeys,
+  produces: [stocksPortfolioContract()],
   async run(ctx) {
     await runStocksSnapshot(ctx);
   },

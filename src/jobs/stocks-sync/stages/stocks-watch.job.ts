@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../../core/types.js';
+import { stocksFreshBreachesContract, stocksPortfolioContract } from '../contracts.js';
 import { runStocksWatch } from './stocks-watch.js';
 
 const job: JobDefinition = {
@@ -8,6 +9,8 @@ const job: JobDefinition = {
     'freshly breached 30%+, writing this run\'s fresh breaches for stocks-notify to send.',
   timeoutMs: 60_000,
   maxRetries: 3,
+  consumes: [stocksPortfolioContract()],
+  produces: [stocksFreshBreachesContract()],
   async run(ctx) {
     await runStocksWatch(ctx);
   },
