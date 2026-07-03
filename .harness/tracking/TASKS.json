@@ -10046,7 +10046,7 @@
     {
       "id": "T377",
       "title": "Gate padlock: colored rounded background behind the icon (state-encoded, not just stroke color)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
