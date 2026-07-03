@@ -6,23 +6,25 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * DISTINCT from `stocks-sync` (which only snapshots positions +
  * threshold-alerts). NOT limitable: nothing to fan out over.
  *
- * Scheduled for Monday 08:00 — deliberately AFTER `stocks-sync`'s daily
- * '0 7 * * *' run, so a same-day-fresh portfolio snapshot is typically
- * available by the time this runs.
+ * Scheduled for Monday 08:00 — historically AFTER `stocks-sync`'s daily
+ * '0 7 * * *' run, back when this workflow read stocks-sync's snapshot; kept
+ * at the same time since it's still a sensible weekly cadence, though it no
+ * longer depends on that ordering (see below).
  *
- * Cross-workflow read (new pattern in this repo, T337): both stages read
- * `stocks-sync`'s `data/out/portfolio.json` directly via a plain relative
- * import of `stocksSyncConfig`/`NormalizedPosition` — the two workflows are
- * NOT DAG-linked (the framework has no cross-workflow `dependsOn`), so each
- * stage simply reads whatever is currently on disk at run time and soft-skips
- * (WARN + clean return, no crash) if the file is missing or empty.
- *
- * Two-stage DAG (T338): `stock-sector-lookup` resolves each held ticker's
- * industry via the Finnhub company-profile API (idempotent per ticker via the
- * work_items ledger, writes data/out/sectors.json), and `stock-digest-build`
- * depends on it so sector data is available before the report is narrated —
- * the report degrades gracefully (omits the diversification section) if
- * sectors.json is missing or empty.
+ * NO inter-workflow dependency (T382, reverses the T337 cross-workflow-read
+ * pattern): stock-digest fetches its OWN Trading212 snapshot rather than
+ * reading `stocks-sync`'s `data/out/portfolio.json`. Three-stage DAG:
+ * `stock-portfolio-snapshot` (own credentials read + its own ISIN/OpenFIGI
+ * real-ticker resolution, T373, via the shared `src/services/trading212.service.ts`
+ * also used by `stocks-sync`) fans out to BOTH `stock-sector-lookup` (resolves
+ * each held ticker's industry via the Finnhub company-profile API — preferring
+ * the OpenFIGI-resolved real-world ticker over the raw/possibly-stale
+ * Trading212 ticker — idempotent per ticker via the work_items ledger, writes
+ * data/out/sectors.json) AND `stock-digest-build` (a genuine fan-in: it reads
+ * BOTH the portfolio snapshot and, once `stock-sector-lookup` has run, the
+ * sector map). The report degrades gracefully (omits the diversification
+ * section) if sectors.json is missing or empty, and soft-skips (WARN + clean
+ * return, no crash) if the portfolio snapshot is empty.
  *
  * Markdown-only output — no push notification is sent, mirroring
  * `listening-digest`.
@@ -32,13 +34,14 @@ const workflow: WorkflowDefinition = {
   category: 'regular-maintenance',
   description:
     'Weekly markdown digest of stock holdings, performance movers, and a sector/diversification ' +
-    'breakdown, narrated by Claude from the stocks-sync portfolio snapshot + Finnhub industry ' +
-    'lookups, written to data/out/.',
+    'breakdown, narrated by Claude from stock-digest\'s own Trading212 portfolio snapshot + Finnhub ' +
+    'industry lookups, written to data/out/.',
   schedule: '0 8 * * 1',
   maxConcurrency: 1,
   jobs: [
-    { job: 'stock-sector-lookup' },
-    { job: 'stock-digest-build', dependsOn: ['stock-sector-lookup'] },
+    { job: 'stock-portfolio-snapshot' },
+    { job: 'stock-sector-lookup', dependsOn: ['stock-portfolio-snapshot'] },
+    { job: 'stock-digest-build', dependsOn: ['stock-portfolio-snapshot', 'stock-sector-lookup'] },
   ],
 };
 

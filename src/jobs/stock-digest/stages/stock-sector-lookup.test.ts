@@ -18,7 +18,7 @@ import {
   fetchFinnhubProfile,
   type ProfileFetcher,
 } from './stock-sector-lookup.js';
-import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
+import type { NormalizedPosition } from '../../../services/trading212.service.js';
 
 function fakeCtx(): JobContext {
   return {
@@ -237,6 +237,45 @@ describe('runStockSectorLookup', () => {
     await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
 
     assert.equal(isWorkItemDone(JOB, 'BADTICKER', 3), false);
+  });
+
+  it('queries Finnhub with the OpenFIGI-resolved real-world ticker (T373), not the stale/raw Trading212 ticker', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-sector-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(
+      portfolioPath,
+      JSON.stringify([pos({ ticker: 'YNDX_US_EQ', resolvedTicker: 'NBIS' })]),
+    );
+    const outPath = join(dir, 'sectors.json');
+    const calls: string[] = [];
+    const fetchProfile: ProfileFetcher = async (symbol) => {
+      calls.push(symbol);
+      return { finnhubIndustry: 'Technology' };
+    };
+
+    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
+
+    assert.deepEqual(calls, ['NBIS']);
+    // ledger stays keyed by the ORIGINAL Trading212 ticker, matching sectorBreakdown's lookup key
+    assert.equal(isWorkItemDone(JOB, 'YNDX_US_EQ', 1), true);
+    const written = JSON.parse(readFileSync(outPath, 'utf8'));
+    assert.deepEqual(written, { YNDX_US_EQ: 'Technology' });
+  });
+
+  it('falls back to the raw Trading212 ticker when no resolvedTicker is present', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-sector-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'NORESOLVE1' })]));
+    const outPath = join(dir, 'sectors.json');
+    const calls: string[] = [];
+    const fetchProfile: ProfileFetcher = async (symbol) => {
+      calls.push(symbol);
+      return { finnhubIndustry: 'Technology' };
+    };
+
+    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
+
+    assert.deepEqual(calls, ['NORESOLVE1']);
   });
 });
 

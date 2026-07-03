@@ -26,7 +26,7 @@ import {
   type ClaudeRunner,
 } from './stock-digest-build.js';
 import { factsPathFor } from '../config.js';
-import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
+import type { NormalizedPosition } from '../../../services/trading212.service.js';
 
 function fakeCtx(): JobContext {
   return {

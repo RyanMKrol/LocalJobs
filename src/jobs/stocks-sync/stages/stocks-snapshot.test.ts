@@ -6,16 +6,18 @@ import { describe, it, beforeEach } from 'node:test';
 
 import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
+import {
+  normalizePosition,
+  positionKey,
+  type NormalizedPosition,
+  type Trading212Instrument,
+  type Trading212Position,
+} from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
 import {
   runStocksSnapshot,
-  normalizePosition,
   priceDiff,
   buildPortfolioMarkdown,
-  positionKey,
-  type Trading212Position,
-  type Trading212Instrument,
-  type NormalizedPosition,
   type PortfolioWriter,
 } from './stocks-snapshot.js';
 

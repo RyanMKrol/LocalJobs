@@ -3,9 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { runClaude } from '../../../services/claude.js';
-import { stocksSyncConfig } from '../../stocks-sync/config.js';
-import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
-import { stockDigestConfig, reportPathFor, factsPathFor, sectorsJsonPath } from '../config.js';
+import type { NormalizedPosition } from '../../../services/trading212.service.js';
+import { stockDigestConfig, reportPathFor, factsPathFor, sectorsJsonPath, portfolioJsonPath } from '../config.js';
 import { readSectorMap, type SectorMap } from './stock-sector-lookup.js';
 
 const JOB_NAME = 'stock-digest-build';
@@ -227,7 +226,7 @@ export async function runStockDigestBuild(
     claudeRunner?: ClaudeRunner;
   } = {},
 ): Promise<void> {
-  const portfolioPath = opts.portfolioPath ?? stocksSyncConfig.portfolioJsonPath;
+  const portfolioPath = opts.portfolioPath ?? portfolioJsonPath;
   const sectorsPath = opts.sectorsPath ?? sectorsJsonPath;
   const outDir = opts.outDir ?? stockDigestConfig.outDir;
   const now = opts.now ?? new Date();
@@ -240,7 +239,7 @@ export async function runStockDigestBuild(
   const positions = readPortfolio(portfolioPath);
   if (positions.length === 0) {
     ctx.log(
-      `warn: no positions found at ${portfolioPath} — stocks-sync may not have run yet, or has zero holdings; skipping this run's digest`,
+      `warn: no positions found at ${portfolioPath} — stock-portfolio-snapshot may not have run yet, or has zero holdings; skipping this run's digest`,
     );
     ctx.progress(100, 'skipped — no portfolio data');
     return;

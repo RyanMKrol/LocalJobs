@@ -3,9 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import { stocksSyncConfig } from '../../stocks-sync/config.js';
-import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
-import { sectorsJsonPath, stockDigestConfig } from '../config.js';
+import type { NormalizedPosition } from '../../../services/trading212.service.js';
+import { portfolioJsonPath, sectorsJsonPath, stockDigestConfig } from '../config.js';
 
 const JOB_NAME = 'stock-sector-lookup';
 const MAX_ATTEMPTS = 3;
@@ -83,7 +82,7 @@ export async function runStockSectorLookup(
     fetchProfile?: ProfileFetcher;
   } = {},
 ): Promise<void> {
-  const portfolioPath = opts.portfolioPath ?? stocksSyncConfig.portfolioJsonPath;
+  const portfolioPath = opts.portfolioPath ?? portfolioJsonPath;
   const outPath = opts.outPath ?? sectorsJsonPath;
   const apiKey = opts.apiKey ?? process.env.FINNHUB_API_KEY ?? '';
   const fetchProfile = opts.fetchProfile ?? ((ticker, key) => callService('finnhub', () => fetchFinnhubProfile(ticker, key)));
@@ -92,13 +91,18 @@ export async function runStockSectorLookup(
 
   const positions = readPortfolio(portfolioPath);
   if (positions.length === 0) {
-    ctx.log(`warn: no positions found at ${portfolioPath} — stocks-sync may not have run yet; nothing to resolve`);
+    ctx.log(`warn: no positions found at ${portfolioPath} — stock-portfolio-snapshot may not have run yet; nothing to resolve`);
     ctx.progress(100, 'skipped — no portfolio data');
     return;
   }
 
   const tickers = [...new Set(positions.map((p) => p.ticker))].filter((t) => ctx.rootAllowed(t));
   ctx.log(`info: ${tickers.length} distinct ticker(s) currently held`);
+
+  // Prefer each position's OpenFIGI-resolved real-world ticker (T373) when
+  // querying Finnhub — falls back to the raw Trading212 ticker (still passed
+  // through toFinnhubSymbol by fetchFinnhubProfile) when unresolved.
+  const resolvedByTicker = new Map<string, string | undefined>(positions.map((p) => [p.ticker, p.resolvedTicker]));
 
   if (!apiKey) {
     ctx.log('warn: FINNHUB_API_KEY not set — skipping sector lookups; stock-digest will omit the diversification section');
@@ -115,25 +119,31 @@ export async function runStockSectorLookup(
   let failed = 0;
   for (let i = 0; i < todo.length; i++) {
     const ticker = todo[i];
+    const symbol = resolvedByTicker.get(ticker) ?? ticker;
+    const queriedNote = symbol !== ticker ? ` (queried as resolved ticker "${symbol}")` : '';
     try {
-      const profile = await fetchProfile(ticker, apiKey);
+      const profile = await fetchProfile(symbol, apiKey);
       const industry = profile.finnhubIndustry ?? null;
       sectors[ticker] = industry;
       if (industry) {
-        markWorkItem(JOB_NAME, ticker, 'success', { detail: { name: ticker, industry } });
-        ctx.log(`info: [${i + 1}/${todo.length}] ${ticker} -> industry "${industry}"`);
+        markWorkItem(JOB_NAME, ticker, 'success', { detail: { name: ticker, industry, queriedSymbol: symbol } });
+        ctx.log(`info: [${i + 1}/${todo.length}] ${ticker}${queriedNote} -> industry "${industry}"`);
         resolved++;
       } else {
         markWorkItem(JOB_NAME, ticker, 'failed', {
-          detail: { name: ticker, error: 'Finnhub returned no finnhubIndustry field (symbol not recognized, or genuinely unclassified)' },
+          detail: {
+            name: ticker,
+            queriedSymbol: symbol,
+            error: 'Finnhub returned no finnhubIndustry field (symbol not recognized, or genuinely unclassified)',
+          },
         });
-        ctx.log(`warn: [${i + 1}/${todo.length}] ${ticker} -> Finnhub returned no finnhubIndustry field`);
+        ctx.log(`warn: [${i + 1}/${todo.length}] ${ticker}${queriedNote} -> Finnhub returned no finnhubIndustry field`);
         failed++;
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      ctx.log(`warn: [${i + 1}/${todo.length}] ${ticker} lookup failed: ${message}`);
-      markWorkItem(JOB_NAME, ticker, 'failed', { detail: { name: ticker, error: message } });
+      ctx.log(`warn: [${i + 1}/${todo.length}] ${ticker}${queriedNote} lookup failed: ${message}`);
+      markWorkItem(JOB_NAME, ticker, 'failed', { detail: { name: ticker, queriedSymbol: symbol, error: message } });
       failed++;
     }
     ctx.progress(((i + 1) / todo.length) * 100, `resolved ${i + 1}/${todo.length}`);

@@ -2,8 +2,8 @@ import { readFileSync, writeFileSync } from 'fs';
 
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
+import { positionKey, type NormalizedPosition, type Trading212Account } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
-import { positionKey, type NormalizedPosition, type Trading212Account } from './stocks-snapshot.js';
 
 /** The work_items key-space for the position-check + notified-episode ledgers. */
 export const WATCH_JOB = 'stocks-watch';

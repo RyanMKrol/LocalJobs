@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import type { JobContext } from '../../../core/types.js';
 import { hasJobAdvancedAnyItem } from '../../../db/store.js';
-import type { NormalizedPosition } from './stocks-snapshot.js';
+import type { NormalizedPosition } from '../../../services/trading212.service.js';
 import { runStocksWatch } from './stocks-watch.js';
 import { runStocksNotify } from './stocks-notify.js';
 

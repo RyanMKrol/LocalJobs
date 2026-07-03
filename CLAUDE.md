@@ -266,40 +266,65 @@ pure notify-trigger), so the workflow manifest overrides the unified Output sect
 and **stock-digest** (`src/jobs/stock-digest/`) — a weekly, Claude-narrated markdown summary of the
 owner's current stock holdings, DISTINCT from `stocks-sync` (which only snapshots + threshold-alerts;
 `stock-digest` is its own workflow, own folder, own schedule, per explicit owner direction — not a
-stage bolted onto `stocks-sync`). **Two-stage DAG (T338, was single-stage as of T337):**
-`stock-sector-lookup` → `stock-digest-build` (`dependsOn: ['stock-sector-lookup']`). Not limitable
-(nothing to fan out over), scheduled weekly (`'0 8 * * 1'`, Monday 08:00) — deliberately AFTER
-`stocks-sync`'s daily `'0 7 * * *'` run so a same-day-fresh snapshot is typically available.
-**Cross-workflow read (a pattern from T337 — no other workflow reads another workflow's `data/out/`
-output):** both stages import `stocksSyncConfig` (for `portfolioJsonPath`) and the
-`NormalizedPosition` type directly from `../stocks-sync/config.js` /
-`../stocks-sync/stages/stocks-snapshot.js` — a plain relative import within the same repo, no
-absolute path, no duplicated shape. The two workflows are **NOT DAG-linked** (the framework has no
-cross-workflow `dependsOn`); `stock-digest` just reads whatever `portfolio.json` currently exists on
-disk at run time. A missing or empty portfolio file (stocks-sync hasn't run yet, or ran with zero
-positions) is handled with a clear WARN log and a clean skip, not a crash, in both stages.
+stage bolted onto `stocks-sync`). **Three-stage fan-in DAG (T382, was a 2-stage cross-workflow-read
+design as of T338/T337 — see below for why that changed):** `stock-portfolio-snapshot` fans out to
+BOTH `stock-sector-lookup` (`dependsOn: ['stock-portfolio-snapshot']`) AND `stock-digest-build`
+(`dependsOn: ['stock-portfolio-snapshot', 'stock-sector-lookup']` — a genuine fan-in: it reads both
+the portfolio snapshot directly and, once sector-lookup has run, the sector map). Not limitable
+(nothing to fan out over at the digest level), scheduled weekly (`'0 8 * * 1'`, Monday 08:00).
 
-Stage 1, `stock-sector-lookup`, resolves each currently-held ticker's industry via a new **Finnhub**
+**NO inter-workflow dependency (T382 — reverses the T337/T338 cross-workflow-read design):**
+`stock-digest` used to read `stocks-sync`'s `data/out/portfolio.json` directly via a plain relative
+import of `stocksSyncConfig`/`NormalizedPosition`. Per explicit owner direction, this coupling was
+removed: `stock-digest` now fetches its OWN Trading212 snapshot via a new first stage,
+`stock-portfolio-snapshot` (`src/jobs/stock-digest/stages/stock-portfolio-snapshot.ts`), writing its
+own `data/out/portfolio.json` — completely independent of whatever `stocks-sync` has or hasn't done.
+This required promoting the actual Trading212 fetch/normalize/ISIN-resolve logic (previously owned
+outright by `stocks-sync`'s `stocks-snapshot` stage) into the shared, top-level, daemon-wide
+`src/services/trading212.service.ts` — mirroring how `openfigi.service.ts` already mixes its
+`ServiceDefinition` with real fetch functions — so BOTH `stocks-sync` and `stock-digest` import the
+SAME `fetchPortfolio`/`fetchInstrumentsMetadata`/`normalizePosition`/`positionKey`/`resolveTickers`/
+`resolveOpenFigiTickersBatched`/`NormalizedPosition` from that one service module. This is a shared
+top-level SERVICE dependency (the established, intended pattern for cross-job code reuse in this
+repo), not an inter-*workflow* dependency — `stocks-sync`'s `stocks-snapshot` stage and
+`stock-digest`'s `stock-portfolio-snapshot` stage each independently call the shared service with
+their own credentials each run; neither reads the other's output file. `stock-portfolio-snapshot`
+reads the SAME `TRADING212_API_KEY_ID`/`TRADING212_API_SECRET_KEY`/`TRADING212_ISA_API_KEY_ID`/
+`TRADING212_ISA_API_SECRET_KEY` env vars as `stocks-sync` (one Trading212 account, two independent
+consumers) and resolves each position's ISIN + real-world ticker via OpenFIGI exactly like
+`stocks-snapshot` does (T373) — records one `work_items` ledger row per `account:ticker`
+(`stock-portfolio-snapshot` job name) and writes `data/out/portfolio.json` (stock-digest's own,
+distinct file from `stocks-sync`'s). A missing or empty portfolio (Trading212 briefly returns
+nothing, or credentials are unset) is handled with a clear WARN log and a clean skip in both
+downstream stages, not a crash.
+
+Stage 2, `stock-sector-lookup`, resolves each currently-held ticker's industry via a new **Finnhub**
 service (`src/services/finnhub.service.ts`, `GET /stock/profile2?symbol=<TICKER>&token=<KEY>`,
 read-only/GET-only, gated through `callService('finnhub', ...)`) and writes a ticker→industry map to
-`data/out/sectors.json`. **The Trading212 ticker is translated to a bare Finnhub symbol before the
-call (T352):** `toFinnhubSymbol` strips a trailing `_EQ` and, if what remains ends in a 2-letter
-uppercase market/country code, strips that too (`AMD_US_EQ` → `AMD`, `VUSA_EQ` → `VUSA`) — Finnhub
-doesn't recognize Trading212's raw ticker format and silently returns an empty profile rather than
-erroring, which previously meant the Diversification section stayed empty even with a valid API key.
-(Known residual limitation: a class-share ticker like `BRK_B_US_EQ` translates to `BRK_B`, not
-Finnhub's exact expected form — still a strict improvement over the pre-fix fully-broken state.)
-Idempotent per ticker via the `work_items` ledger — a ticker already recorded `success` (a resolved
-industry) is skipped on later runs (industry classification rarely changes, and this conserves the
-free-tier quota); an unresolved lookup (no `finnhubIndustry` returned) is recorded `'failed'` rather
-than a misleading `'success'`, so it retries automatically (capped at `MAX_ATTEMPTS`, after which it
-surfaces on the dashboard's Stuck tile like any other stuck item); a newly-appeared ticker is looked
-up fresh. A one-time `scripts/reset-stock-sector-lookup-null-successes.ts` clears ledger rows the
-pre-T352 bug had already poisoned (recorded `'success'` with a null industry) so they re-resolve on
-the next run. Credentials: `FINNHUB_API_KEY` — unset key soft-skips the whole stage (clear WARN, no
-crash), which just means `stock-digest-build`'s diversification section is omitted that run.
+`data/out/sectors.json`. **The query symbol prefers the OpenFIGI-resolved real-world ticker (T382)
+over the crude `toFinnhubSymbol` string-strip (T352):** for each position, `resolvedTicker` (from
+`stock-portfolio-snapshot`'s ISIN/OpenFIGI resolution, T373) is used as the Finnhub query symbol when
+present; only when a position has no `resolvedTicker` does it fall back to `toFinnhubSymbol`, which
+strips a trailing `_EQ` and, if what remains ends in a 2-letter uppercase market/country code, strips
+that too (`AMD_US_EQ` → `AMD`, `VUSA_EQ` → `VUSA`) — Finnhub doesn't recognize Trading212's raw
+ticker format and silently returns an empty profile rather than erroring. This fixes the same class
+of staleness T373 fixed for `stocks-sync`: a company rename (e.g. a stale Trading212 ticker after a
+2024 rename) no longer sends a dead symbol to Finnhub. (`toFinnhubSymbol`'s known residual
+limitation — a class-share ticker like `BRK_B_US_EQ` strips to `BRK_B`, not Finnhub's exact expected
+form — still applies to the fallback path only.) The `work_items` ledger stays keyed by the
+ORIGINAL Trading212 ticker (matching `sectorBreakdown`'s lookup key in `stock-digest-build`), with
+the actually-queried symbol recorded in `detail.queriedSymbol` for debugging. Idempotent per ticker
+via the `work_items` ledger — a ticker already recorded `success` (a resolved industry) is skipped on
+later runs (industry classification rarely changes, and this conserves the free-tier quota); an
+unresolved lookup (no `finnhubIndustry` returned) is recorded `'failed'` rather than a misleading
+`'success'`, so it retries automatically (capped at `MAX_ATTEMPTS`, after which it surfaces on the
+dashboard's Stuck tile like any other stuck item); a newly-appeared ticker is looked up fresh. A
+one-time `scripts/reset-stock-sector-lookup-null-successes.ts` clears ledger rows the pre-T352 bug
+had already poisoned (recorded `'success'` with a null industry) so they re-resolve on the next run.
+Credentials: `FINNHUB_API_KEY` — unset key soft-skips the whole stage (clear WARN, no crash), which
+just means `stock-digest-build`'s diversification section is omitted that run.
 
-Stage 2, `stock-digest-build`, computes, in code (never left to Claude to infer), each position's
+Stage 3, `stock-digest-build`, computes, in code (never left to Claude to infer), each position's
 gain since average buy price (`(currentPrice - averageBuyPrice) / averageBuyPrice`, the same formula
 `stocks-watch` uses) and its share of total current portfolio value, ranks the top winners/losers,
 groups portfolio value by resolved Finnhub industry (`sectorBreakdown` — % of total value per

@@ -1,15 +1,17 @@
-// Typed-artifact contract for the stock-digest workflow's single stage boundary:
-// stock-sector-lookup ──stock-sectors──▶ stock-digest-build.
+// Typed-artifact contracts for the stock-digest workflow's stage boundaries:
+//   stock-portfolio-snapshot ──stock-digest-portfolio──▶ stock-sector-lookup
+//   stock-portfolio-snapshot ──stock-digest-portfolio──▶ stock-digest-build (fan-in)
+//   stock-sector-lookup      ──stock-sectors───────────▶ stock-digest-build
 //
-// Unlike the places/perfumes contracts, this boundary is DELIBERATELY OPTIONAL:
-// FINNHUB_API_KEY may be unset, in which case stock-sector-lookup soft-skips and
-// data/out/sectors.json may never be written (or may be written as `{}`). Neither
-// case is a violation — only actual corruption (unparseable JSON) or a genuine
-// shape drift (top-level array instead of object, or a non-string/non-null value)
-// fails the gate.
+// Unlike the places/perfumes contracts, the sectors boundary is DELIBERATELY
+// OPTIONAL: FINNHUB_API_KEY may be unset, in which case stock-sector-lookup
+// soft-skips and data/out/sectors.json may never be written (or may be written
+// as `{}`). Neither case is a violation — only actual corruption (unparseable
+// JSON) or a genuine shape drift (top-level array instead of object, or a
+// non-string/non-null value) fails the gate.
 import { existsSync, readFileSync } from 'node:fs';
 import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
-import { sectorsJsonPath } from './config.js';
+import { portfolioJsonPath, sectorsJsonPath } from './config.js';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -22,6 +24,71 @@ function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
     checks,
     sample,
     detail: sample,
+  };
+}
+
+const PORTFOLIO_EXP = {
+  json: 'A readable JSON file',
+  array: 'A plain top-level array',
+  entries: 'Every position has a ticker + a valid account',
+};
+
+/**
+ * stock-portfolio-snapshot → stock-sector-lookup / stock-digest-build boundary:
+ * stock-digest's OWN portfolio.json (independent of stocks-sync's — see the
+ * workflow-level decoupling note). Must parse and be a plain JSON array of
+ * NormalizedPosition records — every entry, if any, has a string `ticker` and
+ * an `account` of `invest`/`isa`. A ZERO-length array is legitimate (every
+ * position sold, or Trading212 credentials briefly returned nothing) and passes.
+ */
+export function stockDigestPortfolioContract(file: string = portfolioJsonPath): ArtifactContract {
+  return {
+    key: 'stock-digest-portfolio',
+    description:
+      'stock-portfolio-snapshot output: portfolio.json — a JSON array of stock-digest\'s own ' +
+      'normalized Trading212 positions, independent of stocks-sync.',
+    shape: {
+      summary: 'The current open equity positions, fetched independently by stock-digest itself.',
+      format: 'JSON file (portfolio.json), a plain array — not wrapped in an object',
+      expectations: [
+        { label: PORTFOLIO_EXP.json, detail: 'The hand-off file exists and parses as JSON.' },
+        { label: PORTFOLIO_EXP.array, detail: 'The top-level JSON value is an array (zero or more positions).' },
+        { label: PORTFOLIO_EXP.entries, detail: 'Each position (if any) has a text ticker and account = "invest" or "isa".' },
+      ],
+    },
+    check(): GateResult {
+      const checks: ExpectationResult[] = [];
+      if (!existsSync(file)) {
+        checks.push({ label: PORTFOLIO_EXP.json, ok: false, actual: `file missing: ${file}` });
+        return fromChecks(checks);
+      }
+      let obj: unknown;
+      try {
+        obj = JSON.parse(readFileSync(file, 'utf8'));
+      } catch (e) {
+        checks.push({ label: PORTFOLIO_EXP.json, ok: false, actual: `not valid JSON — ${errMsg(e)}` });
+        return fromChecks(checks);
+      }
+      checks.push({ label: PORTFOLIO_EXP.json, ok: true, actual: 'valid JSON' });
+      const isArr = Array.isArray(obj);
+      checks.push({ label: PORTFOLIO_EXP.array, ok: isArr, actual: isArr ? 'array' : `${typeof obj}` });
+      if (!isArr) return fromChecks(checks);
+      const arr = obj as Record<string, unknown>[];
+      if (arr.length === 0) {
+        checks.push({ label: PORTFOLIO_EXP.entries, ok: true, actual: 'no positions to check' });
+        return fromChecks(checks, '0 position(s)');
+      }
+      const bad = arr.find(
+        (p) => !p || typeof p.ticker !== 'string' || (p.account !== 'invest' && p.account !== 'isa'),
+      );
+      checks.push({
+        label: PORTFOLIO_EXP.entries,
+        ok: !bad,
+        actual: bad ? `bad entry: ${JSON.stringify(bad)}` : 'all entries well-formed',
+      });
+      const tickers = arr.slice(0, 3).map((p) => JSON.stringify(p.ticker)).join(', ');
+      return fromChecks(checks, `${arr.length} position(s)${tickers ? ` · e.g. ${tickers}` : ''}`);
+    },
   };
 }
 

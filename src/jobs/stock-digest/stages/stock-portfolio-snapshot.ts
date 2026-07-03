@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
-import { markWorkItem, workItemCounts } from '../../../db/store.js';
+import { markWorkItem } from '../../../db/store.js';
 import {
   fetchInstrumentsMetadata,
   fetchPortfolio,
@@ -14,61 +14,31 @@ import {
   type NormalizedPosition,
   type OpenFigiTickerResolver,
   type PortfolioFetcher,
-  type Trading212Instrument,
 } from '../../../services/trading212.service.js';
-import { stocksSyncConfig } from '../config.js';
+import { portfolioJsonPath, stockDigestConfig } from '../config.js';
 
-const JOB_NAME = 'stocks-snapshot';
-
-// ---------------------------------------------------------------------------
-// Markdown report (with price-difference column: absolute + percentage)
-// ---------------------------------------------------------------------------
-
-export function priceDiff(position: NormalizedPosition): { absolute: number; percent: number } {
-  const absolute = position.currentPrice - position.averageBuyPrice;
-  const percent = position.averageBuyPrice === 0 ? 0 : (absolute / position.averageBuyPrice) * 100;
-  return { absolute, percent };
-}
-
-function fmt(n: number): string {
-  return n.toFixed(2);
-}
-
-export function buildPortfolioMarkdown(positions: NormalizedPosition[]): string {
-  const lines: string[] = [];
-  lines.push('# Portfolio snapshot');
-  lines.push('');
-  lines.push('| Account | Ticker | Real ticker | Quantity | Avg buy price | Current price | Diff | Diff % |');
-  lines.push('|---|---|---|---|---|---|---|---|');
-  for (const p of positions) {
-    const { absolute, percent } = priceDiff(p);
-    const sign = absolute >= 0 ? '+' : '';
-    lines.push(
-      `| ${p.account === 'isa' ? 'ISA' : 'Invest'} | ${p.ticker} | ${p.resolvedTicker ?? '—'} | ${fmt(p.quantity)} | ${fmt(p.averageBuyPrice)} | ${fmt(p.currentPrice)} | ` +
-        `${sign}${fmt(absolute)} | ${sign}${fmt(percent)}% |`,
-    );
-  }
-  lines.push('');
-  return lines.join('\n');
-}
+const JOB_NAME = 'stock-portfolio-snapshot';
 
 // ---------------------------------------------------------------------------
-// Output writers (injectable for testing — avoids touching the real data dir)
+// Output writer (injectable for testing — avoids touching the real data dir)
 // ---------------------------------------------------------------------------
 
 export type PortfolioWriter = (positions: NormalizedPosition[]) => void;
 
 export function writePortfolio(positions: NormalizedPosition[]): void {
-  mkdirSync(stocksSyncConfig.outDir, { recursive: true });
-  writeFileSync(stocksSyncConfig.portfolioJsonPath, JSON.stringify(positions, null, 2));
-  writeFileSync(stocksSyncConfig.portfolioMdPath, buildPortfolioMarkdown(positions));
+  mkdirSync(stockDigestConfig.outDir, { recursive: true });
+  writeFileSync(portfolioJsonPath, JSON.stringify(positions, null, 2));
 }
 
 // ---------------------------------------------------------------------------
-// Core sync logic (injectable dependencies for hermeticity in tests)
+// Core stage logic — deliberately independent of stocks-sync: fetches its OWN
+// Trading212 snapshot rather than reading stocks-sync's data/out/portfolio.json,
+// so stock-digest has no inter-workflow dependency. Mirrors stocks-sync's
+// stocks-snapshot stage (same credentials, same ISIN/OpenFIGI real-ticker
+// resolution, T373) via the shared src/services/trading212.service.ts.
 // ---------------------------------------------------------------------------
 
-export async function runStocksSnapshot(
+export async function runStockPortfolioSnapshot(
   ctx: JobContext,
   opts: {
     fetchPortfolio?: PortfolioFetcher;
@@ -97,7 +67,7 @@ export async function runStocksSnapshot(
     ((isins) => resolveOpenFigiTickersBatched(isins, process.env.OPENFIGI_API_KEY));
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
 
-  ctx.log('info: stocks-sync starting — fetching open positions from Trading212 (read-only)');
+  ctx.log('info: stock-portfolio-snapshot starting — fetching stock-digest\'s own snapshot from Trading212 (read-only)');
 
   const rawInvestPositions = await fetchPortfolioFn(apiKeyId, apiSecretKey);
   ctx.log(`info: fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
@@ -126,50 +96,35 @@ export async function runStocksSnapshot(
     }
   }
 
-  const counts = workItemCounts(JOB_NAME);
-  ctx.log(`info: ledger: ${counts['success'] ?? 0} previously recorded`);
+  const allowedPositions = positions.filter((p) => ctx.rootAllowed(positionKey(p.account, p.ticker)));
 
-  writePortfolioFn(positions);
-  ctx.log(
-    `info: wrote ${positions.length} position(s) to data/out/portfolio.json and data/out/portfolio.md`,
-  );
+  writePortfolioFn(allowedPositions);
+  ctx.log(`info: wrote ${allowedPositions.length} position(s) to data/out/portfolio.json`);
 
-  if (positions.length === 0) {
+  if (allowedPositions.length === 0) {
     ctx.log('info: no open positions to record — done');
     ctx.progress(100, 'no positions to record');
     return;
   }
 
   let done = 0;
-  for (const p of positions) {
-    const { absolute, percent } = priceDiff(p);
+  for (const p of allowedPositions) {
     markWorkItem(JOB_NAME, positionKey(p.account, p.ticker), 'success', {
       detail: {
         name: `${p.ticker}${p.account === 'isa' ? ' (ISA)' : ''}`,
         currentPrice: p.currentPrice,
         averageBuyPrice: p.averageBuyPrice,
-        markdown: stocksSyncConfig.portfolioMdPath,
+        resolvedTicker: p.resolvedTicker ?? null,
       },
     });
     done++;
     ctx.log(
-      `info: recorded ${done}/${positions.length} — [${p.account}] ${p.ticker}: qty ${p.quantity}, ` +
-        `avg ${p.averageBuyPrice}, current ${p.currentPrice}, diff ${absolute.toFixed(2)} (${percent.toFixed(2)}%)`,
+      `info: recorded ${done}/${allowedPositions.length} — [${p.account}] ${p.ticker}` +
+        `${p.resolvedTicker ? ` (resolved: ${p.resolvedTicker})` : ''}: qty ${p.quantity}, ` +
+        `avg ${p.averageBuyPrice}, current ${p.currentPrice}`,
     );
-    ctx.progress((done / positions.length) * 100, `${done}/${positions.length} recorded`);
+    ctx.progress((done / allowedPositions.length) * 100, `${done}/${allowedPositions.length} recorded`);
   }
 
-  ctx.log(`info: stocks-sync complete — recorded ${done} out of ${positions.length} position(s)`);
-}
-
-/** Root stage inputKeys(): the current open-position tickers. */
-export async function stocksSnapshotInputKeys(): Promise<string[]> {
-  try {
-    const { readFileSync } = await import('fs');
-    const raw = readFileSync(stocksSyncConfig.portfolioJsonPath, 'utf-8');
-    const positions = JSON.parse(raw) as NormalizedPosition[];
-    return positions.map((p) => positionKey(p.account, p.ticker));
-  } catch {
-    return [];
-  }
+  ctx.log(`info: stock-portfolio-snapshot complete — recorded ${done} out of ${allowedPositions.length} position(s)`);
 }
