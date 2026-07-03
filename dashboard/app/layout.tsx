@@ -48,7 +48,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <nav>
               <a href="/">Overview</a>
               <a href="/workflows">Workflows</a>
-              <a href="/services">Integrations</a>
+              <a href="/integrations">Integrations</a>
               <a href="/backlog">Backlog</a>
               <a href="/logs">Logs</a>
             </nav>

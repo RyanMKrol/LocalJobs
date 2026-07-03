@@ -488,7 +488,7 @@ export const PAGES = [
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },
   { name: 'run',                     path: '/runs/1' },
-  { name: 'services',                path: '/services' },
+  { name: 'services',                path: '/integrations' },
   { name: 'backlog',                 path: '/backlog' },
   { name: 'logs',                    path: '/logs' },
 ];
@@ -603,7 +603,7 @@ export const FLOWS = [
     // The "Consumers of …" modal, opened by clicking a service name on the Services page.
     // viewport: true — the modal backdrop covers only the viewport.
     name: 'service-consumers-modal',
-    path: '/services',
+    path: '/integrations',
     viewport: true,
     actions: async (page) => {
       // Click the first service button to open the consumers modal.
@@ -616,7 +616,7 @@ export const FLOWS = [
     // T351: the edit-mode Save/Cancel row on the Services page — verifies the
     // action column has room and the buttons wrap instead of clipping ("Cal…").
     name: 'services-edit-limits-row',
-    path: '/services',
+    path: '/integrations',
     viewport: true,
     actions: async (page) => {
       await page.click('button:has-text("Edit limits")');

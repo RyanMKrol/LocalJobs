@@ -8,6 +8,14 @@
 const API_UPSTREAM = process.env.LOCALJOBS_API_UPSTREAM ?? 'http://127.0.0.1:4789';
 
 const nextConfig = {
+  async redirects() {
+    // Old dashboard route kept working (bookmarks / muscle memory) after the
+    // /services -> /integrations rename. Temporary (307), not permanent (308):
+    // this is an internal single-user dashboard, not a public site needing
+    // SEO-grade permanence, and a 307 avoids browsers/proxies caching the
+    // old->new mapping aggressively if the route is ever renamed again.
+    return [{ source: '/services', destination: '/integrations', permanent: false }];
+  },
   async rewrites() {
     // `beforeFiles` so `/api/*` is ALWAYS proxied to the loopback API before
     // Next's own routing — never served by the app (which would 404 it).
