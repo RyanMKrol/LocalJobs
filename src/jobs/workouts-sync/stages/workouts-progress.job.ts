@@ -1,5 +1,6 @@
 import type { JobDefinition } from '../../../core/types.js';
 import { runWorkoutsProgress } from './workouts-progress.js';
+import { workoutsHistoryContract } from '../contracts.js';
 
 const job: JobDefinition = {
   name: 'workouts-progress',
@@ -8,6 +9,7 @@ const job: JobDefinition = {
     'local workouts history and write a Claude-narrated markdown report. Idempotent per calendar month.',
   timeoutMs: 300_000,
   maxRetries: 3,
+  consumes: [workoutsHistoryContract()],
   async run(ctx) {
     await runWorkoutsProgress(ctx);
   },
