@@ -6952,7 +6952,7 @@
     {
       "id": "T263",
       "title": "Plex space-saver workflow: biggest-first library size breakdown (per movie / per show)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T282"
       ],
