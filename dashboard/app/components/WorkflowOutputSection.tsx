@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, type WorkflowOutputItem, type WorkflowRunOutput } from '../lib/api';
@@ -21,11 +21,85 @@ function parseFrontmatter(content: string): { fields: [string, string][]; body: 
   return { fields, body };
 }
 
-function MarkdownModal(
-  { title, content, truncated, loading, onClose }: {
+/**
+ * Renders a markdown output artifact's body (T262/T282 'markdown' form — the
+ * default/legacy form; unchanged behaviour from before the format dispatch).
+ */
+function MarkdownOutputBody({ content, truncated }: { content: string; truncated?: boolean }) {
+  const parsed = parseFrontmatter(content);
+  return (
+    <>
+      {truncated && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>
+          ⚠ Output is large — showing the first part only.
+        </p>
+      )}
+      {parsed.fields.length > 0 && (
+        <dl className="md-fm">
+          {parsed.fields.map(([k, v]) => (
+            <div key={k} className="md-fm-row">
+              <dt className="md-fm-key">{k}</dt>
+              <dd className="md-fm-val">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className="md-body">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.body}</ReactMarkdown>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Fallback renderer for a declared form with no dedicated renderer yet — shows
+ * the raw content so a new form (e.g. T263's structured size table) is usable
+ * before its own renderer is added, rather than rendering nothing.
+ */
+function RawOutputBody({ content, truncated }: { content: string; truncated?: boolean }) {
+  return (
+    <>
+      {truncated && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>
+          ⚠ Output is large — showing the first part only.
+        </p>
+      )}
+      <pre
+        style={{
+          fontSize: 13,
+          lineHeight: 1.6,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          background: 'var(--panel-2)',
+          borderRadius: 6,
+          padding: '10px 12px',
+          margin: 0,
+        }}
+      >
+        {content}
+      </pre>
+    </>
+  );
+}
+
+/**
+ * Renderer dispatch keyed by an output item's declared form (`WorkflowRunOutput.format`,
+ * T262). Add a new form's renderer here — the extension point this refactor exists for.
+ * A format with no entry falls back to `RawOutputBody` rather than failing to render.
+ */
+const OUTPUT_RENDERERS: Record<string, (props: { content: string; truncated?: boolean }) => ReactElement> = {
+  markdown: MarkdownOutputBody,
+};
+
+function renderOutputBody(result: WorkflowRunOutput): ReactElement {
+  const Renderer = (result.format && OUTPUT_RENDERERS[result.format]) || RawOutputBody;
+  return <Renderer content={result.content ?? ''} truncated={result.truncated} />;
+}
+
+function OutputModal(
+  { title, result, loading, onClose }: {
     title: string;
-    content?: string;
-    truncated?: boolean;
+    result: WorkflowRunOutput | null;
     loading?: boolean;
     onClose: () => void;
   },
@@ -36,8 +110,6 @@ function MarkdownModal(
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const parsed = content ? parseFrontmatter(content) : null;
-
   return (
     <div className="db-modal-overlay" onClick={onClose}>
       <div className="db-modal md-modal" onClick={(e) => e.stopPropagation()}>
@@ -47,27 +119,9 @@ function MarkdownModal(
         </div>
         <div className="db-modal-body">
           {loading && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
-          {!loading && parsed && (
-            <>
-              {truncated && (
-                <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>
-                  ⚠ Output is large — showing the first part only.
-                </p>
-              )}
-              {parsed.fields.length > 0 && (
-                <dl className="md-fm">
-                  {parsed.fields.map(([k, v]) => (
-                    <div key={k} className="md-fm-row">
-                      <dt className="md-fm-key">{k}</dt>
-                      <dd className="md-fm-val">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-              <div className="md-body">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.body}</ReactMarkdown>
-              </div>
-            </>
+          {!loading && result && result.found && renderOutputBody(result)}
+          {!loading && result && !result.found && (
+            <p className="muted" style={{ margin: 0 }}>No output content found.</p>
           )}
         </div>
       </div>
@@ -88,7 +142,7 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
 
   const items = data?.items ?? [];
 
-  async function openMarkdown(item: WorkflowOutputItem) {
+  async function openOutput(item: WorkflowOutputItem) {
     const k = `${item.jobName}:${item.itemKey}`;
     setLoadingKey(k);
     setModal({ item, result: null });
@@ -148,7 +202,7 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
                           {item.hasMarkdown && (
                             <button
                               className="btn btn-sm"
-                              onClick={() => openMarkdown(item)}
+                              onClick={() => openOutput(item)}
                               disabled={loadingKey === k}
                             >
                               {loadingKey === k ? 'Loading…' : 'View'}
@@ -166,10 +220,9 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
       )}
 
       {modal && (
-        <MarkdownModal
+        <OutputModal
           title={modal.item.name ?? modal.item.itemKey}
-          content={modal.result?.content}
-          truncated={modal.result?.truncated}
+          result={modal.result}
           loading={modal.result === null}
           onClose={() => setModal(null)}
         />

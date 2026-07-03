@@ -447,6 +447,12 @@ export function fixtureFor(pathname, searchParams) {
     }
     return { items: [], terminalJobs: [] };
   }
+  // T282: GET /api/workflows/:name/output?job=&key= — the unified Output section's
+  // (not-run-scoped) artifact fetch, dispatched by the item's declared `format`
+  // (T262). Reuses the same synthetic markdown body as the run-scoped fixture above.
+  if (pathname.endsWith('/output') && pathname.startsWith('/api/workflows/')) {
+    return { found: true, job: 'places-enrich-with-llm', key: 'place:ChIJ' + LONG, format: 'markdown', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
+  }
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
   if (pathname.endsWith('/runs') && pathname.startsWith('/api/jobs/')) return { runs: [run(), run({ id: '2', status: 'failed' })] };
   if (pathname.startsWith('/api/jobs/')) return { job: job() };
@@ -516,6 +522,21 @@ export const PAGES = [
 // ⚠️ LIVING ARTIFACT: when a UI change adds/removes an interactive state worth seeing
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
+  {
+    // T282: the workflow-detail page's unified Output section (WorkflowOutputSection)
+    // now dispatches its popover renderer by the item's declared `format` (T262) —
+    // confirms the 'markdown' form still renders identically via this new dispatch.
+    name: 'workflow-output-section-popover',
+    path: '/workflows/places',
+    viewport: true,
+    waitFor: ['.output-section button.btn.btn-sm'],
+    actions: async (page) => {
+      await page.click('.output-section button.btn.btn-sm');
+      await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForSelector('.md-body', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
+    },
+  },
   {
     // T360: confirms react-markdown + remark-gfm actually renders a GFM pipe
     // table as a real <table>, not raw `| a | b |` text — the bug this fixes.

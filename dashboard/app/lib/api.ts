@@ -218,6 +218,8 @@ export interface WorkflowRunOutput {
   found: boolean;
   job: string;
   key: string;
+  /** The item's declared render form (T262/T282) — 'markdown' when unset. */
+  format?: string;
   file?: string;
   bytes?: number;
   truncated?: boolean;
