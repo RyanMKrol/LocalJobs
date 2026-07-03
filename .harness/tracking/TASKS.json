@@ -7441,7 +7441,8 @@
       },
       "scope": [
         "dashboard/app/workflows/[name]/page.tsx",
-        "dashboard/app/lib/api.ts"
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/components/WorkflowOutputSection.tsx"
       ],
       "design": null,
       "verify": [],
@@ -8550,7 +8551,8 @@
         "danger"
       ],
       "scope": [
-        "src/api/server.ts"
+        "src/api/server.ts",
+        "dashboard/app/lib/api.ts"
       ],
       "design": null,
       "verify": [],
@@ -9037,7 +9039,6 @@
       "title": "Extract a shared table/category-panel component and migrate Services + Workflows onto it",
       "status": "pending",
       "dependsOn": [
-        "T339",
         "T340"
       ],
       "gate": null,
@@ -9047,7 +9048,8 @@
       "scope": [
         "dashboard/app/components/*.tsx",
         "dashboard/app/services/page.tsx",
-        "dashboard/app/workflows/page.tsx"
+        "dashboard/app/workflows/page.tsx",
+        "CLAUDE.md"
       ],
       "design": null,
       "verify": [],
