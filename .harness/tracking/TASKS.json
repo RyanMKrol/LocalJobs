@@ -9523,7 +9523,7 @@
     {
       "id": "T359",
       "title": "Reorganize movie-recommendations' two Output sections under one Output heading (idea #10b, hard half — owner-decided Option A)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
