@@ -10152,6 +10152,191 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T381.md"
+    },
+    {
+      "id": "T383",
+      "title": "Generalize stageIoLists to accept multiple job names per side",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard-io"
+      ],
+      "facets": {
+        "layer": "db",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T383.md"
+    },
+    {
+      "id": "T384",
+      "title": "Add an overall=true mode to GET /workflow-runs/:id/stage-io (firstWave -> lastWave, outputJob-aware)",
+      "status": "pending",
+      "dependsOn": [
+        "T383"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard-io"
+      ],
+      "facets": {
+        "layer": "api",
+        "workType": "endpoint",
+        "risk": []
+      },
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T384.md"
+    },
+    {
+      "id": "T385",
+      "title": "Add an \"Overall\" tab to StageIoPanel, default-selected, showing the workflow's own potency-key inputs/outputs",
+      "status": "pending",
+      "dependsOn": [
+        "T384"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard-io"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/components/StageIoLists.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T385.md"
+    },
+    {
+      "id": "T386",
+      "title": "Make StageIoPanel the framework default; verify against linear + single-stage workflows",
+      "status": "pending",
+      "dependsOn": [
+        "T385"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard-io"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T386.md"
+    },
+    {
+      "id": "T387",
+      "title": "Verify StageIoPanel against parallel fan-out workflows and the outputJob-override case",
+      "status": "pending",
+      "dependsOn": [
+        "T386"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard-io"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "dashboard/app/components/StageIoLists.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T387.md"
+    },
+    {
+      "id": "T388",
+      "title": "Extend StageIoPanel fixture coverage to every remaining workflow and run a full mobile/visual regression sweep",
+      "status": "pending",
+      "dependsOn": [
+        "T387"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard-io"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "dashboard/app/components/StageIoLists.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T388.md"
+    },
+    {
+      "id": "T389",
+      "title": "Retire the old joined IoPanel/workItemIoRows/GET .../io once every workflow runs on StageIoPanel",
+      "status": "pending",
+      "dependsOn": [
+        "T388"
+      ],
+      "gate": "gate",
+      "tags": [
+        "dashboard-io"
+      ],
+      "facets": {
+        "layer": "db",
+        "workType": "refactor",
+        "risk": [
+          "full-stack"
+        ]
+      },
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css",
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T389.md"
     }
   ]
 }
