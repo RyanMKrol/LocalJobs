@@ -31,6 +31,41 @@ assert.deepEqual(getWorkflowJobs('t-pipe'), [{ job_name: 't-a', depends_on: [] }
 syncWorkflow({ name: 't-pipe', jobs: [{ job: 't-a' }, { job: 't-b' }, { job: 't-c', dependsOn: ['t-a'] }] });
 assert.equal(getWorkflowJobs('t-pipe').length, 3);
 
+// getWorkflowJobs (T353): DAG (topological) order, not the PK-index's alphabetical
+// row order — job names are chosen so alphabetical order would scramble the chain.
+for (const n of ['z-first', 'a-second', 'm-third']) syncJob({ name: n, run: async () => {} });
+syncWorkflow({
+  name: 't-dag-order',
+  jobs: [
+    { job: 'z-first' },
+    { job: 'a-second', dependsOn: ['z-first'] },
+    { job: 'm-third', dependsOn: ['a-second'] },
+  ],
+});
+assert.deepEqual(
+  getWorkflowJobs('t-dag-order').map((m) => m.job_name),
+  ['z-first', 'a-second', 'm-third'],
+);
+
+// fan-in shape: two independent branches feeding one join stage — only require
+// that the join comes after both its dependencies; order between the two
+// independent branches is unconstrained.
+for (const n of ['fi-a', 'fi-b', 'fi-join']) syncJob({ name: n, run: async () => {} });
+syncWorkflow({
+  name: 't-dag-fanin',
+  jobs: [
+    { job: 'fi-a' },
+    { job: 'fi-b' },
+    { job: 'fi-join', dependsOn: ['fi-a', 'fi-b'] },
+  ],
+});
+{
+  const order = getWorkflowJobs('t-dag-fanin').map((m) => m.job_name);
+  const joinIdx = order.indexOf('fi-join');
+  assert.ok(joinIdx > order.indexOf('fi-a'));
+  assert.ok(joinIdx > order.indexOf('fi-b'));
+}
+
 // ── editable schedule (T135): user-owned override reconciled across code-sync ──
 {
   syncWorkflow({ name: 't-sched', schedule: '0 2 * * *', jobs: [{ job: 't-a' }] });

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './index.js';
+import { buildDag } from '../core/dag.js';
 import type {
   JobDefinition,
   LogLevel,
@@ -1181,7 +1182,20 @@ export function updateWorkflowNotifyEnabled(name: string, enabled: boolean): Wor
 export function getWorkflowJobs(name: string): { job_name: string; depends_on: string[] }[] {
   const rows = db.prepare('SELECT job_name, depends_on FROM workflow_jobs WHERE workflow_name = ?')
     .all(name) as { job_name: string; depends_on: string }[];
-  return rows.map((r) => ({ job_name: r.job_name, depends_on: JSON.parse(r.depends_on) as string[] }));
+  const members = rows.map((r) => ({ job_name: r.job_name, depends_on: JSON.parse(r.depends_on) as string[] }));
+  // SQLite has no ORDER BY here, so rows arrive in the table's PK-index order
+  // (alphabetical by job_name within a workflow) rather than DAG order — reorder
+  // topologically so every consumer (e.g. the workflow-run IO panel's stage
+  // filter bar) reflects the workflow's actual dependency order. Falls back to
+  // the raw row order if the DAG is malformed (duplicate member / a depends_on
+  // referencing a non-member) so this function itself never throws.
+  try {
+    const dag = buildDag(members.map((m) => ({ job: m.job_name, dependsOn: m.depends_on })));
+    const order = new Map(dag.waves.flat().map((job, i) => [job, i]));
+    return [...members].sort((a, b) => (order.get(a.job_name) ?? 0) - (order.get(b.job_name) ?? 0));
+  } catch {
+    return members;
+  }
 }
 
 /**
