@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { api, type BacklogTask } from '../lib/api';
 import { usePoll } from '../ui';
 import { Pill } from '../components/Pill';
@@ -33,7 +34,7 @@ function TaskSpec({ t, small }: { t: BacklogTask; small?: boolean }) {
   }
   return (
     <div className="task-spec md-body" style={{ fontSize: small ? 13 : 14 }}>
-      <ReactMarkdown>{t.specContent}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{t.specContent}</ReactMarkdown>
     </div>
   );
 }
@@ -227,7 +228,7 @@ function CollapsibleRow({
             <details style={{ marginTop: 10 }}>
               <summary className="muted" style={{ fontSize: 12, cursor: 'pointer', userSelect: 'none' }}>Build log</summary>
               <div className="task-spec md-body" style={{ fontSize: 13, marginTop: 6 }}>
-                <ReactMarkdown>{t.worklogContent}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{t.worklogContent}</ReactMarkdown>
               </div>
             </details>
           )}

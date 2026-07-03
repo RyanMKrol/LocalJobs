@@ -418,7 +418,7 @@ export function fixtureFor(pathname, searchParams) {
     if (job === 'places-enrich') return workflowIoScopedToEnrich;
     return workflowIo;
   }
-  if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.' };
+  if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
   if (pathname.startsWith('/api/workflow-runs/')) return { run: workflowRun(), jobs: [run(), run({ id: '2', job_name: 'places-enrich', status: 'failed' })], logs, gates };
   if (pathname === '/api/workflows/movie-recommendations') {
     return { workflow: workflow({ name: 'movie-recommendations', category: 'recommendations', jobs: movieRecsMembers, gates: [] }) };
@@ -507,6 +507,20 @@ export const PAGES = [
 // ⚠️ LIVING ARTIFACT: when a UI change adds/removes an interactive state worth seeing
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
+  {
+    // T360: confirms react-markdown + remark-gfm actually renders a GFM pipe
+    // table as a real <table>, not raw `| a | b |` text — the bug this fixes.
+    name: 'workflow-run-output-table',
+    path: '/workflow-runs/1',
+    viewport: true,
+    waitFor: ['.out-meta-link'],
+    actions: async (page) => {
+      await page.click('.out-meta-link');
+      await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForSelector('.md-body table', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
+    },
+  },
   {
     // Logs page with the 'error' level pill active — shows the level filter
     // narrowed to just error-level lines (the redundant 'Errors only' chip was

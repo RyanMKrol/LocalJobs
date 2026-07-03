@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { DagFlow } from '../../components/DagFlow';
 import { SortTh, type SortDir } from '../../components/SortTh';
 import { api } from '../../lib/api';
@@ -158,7 +159,7 @@ function MarkdownModal(
                 </dl>
               )}
               <div className="md-body">
-                <ReactMarkdown>{parsed.body}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.body}</ReactMarkdown>
               </div>
             </>
           )}

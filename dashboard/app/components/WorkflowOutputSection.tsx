@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { api, type WorkflowOutputItem, type WorkflowRunOutput } from '../lib/api';
 import { usePoll } from '../ui';
 
@@ -64,7 +65,7 @@ function MarkdownModal(
                 </dl>
               )}
               <div className="md-body">
-                <ReactMarkdown>{parsed.body}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.body}</ReactMarkdown>
               </div>
             </>
           )}
