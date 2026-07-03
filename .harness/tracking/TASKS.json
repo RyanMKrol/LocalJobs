@@ -9993,7 +9993,7 @@
     {
       "id": "T375",
       "title": "CronBadge tooltip: escape ancestor .panel overflow:hidden clipping via a document.body portal",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
