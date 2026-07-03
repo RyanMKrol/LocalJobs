@@ -9589,7 +9589,7 @@
     {
       "id": "T361",
       "title": "Rename dashboard /services route to /integrations (match renamed nav tab)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
