@@ -230,7 +230,7 @@ function MovieRecsManager() {
 
   return (
     <>
-      <h2>Recommendations</h2>
+      <h3 style={{ fontSize: 15, marginTop: 20 }}>Recommendations</h3>
       <p className="muted" style={{ fontSize: 13 }}>
         Films recommended for you by the Claude-powered recommender branches, verified via TMDB and
         balanced across genres. A rec is ignored once you dismiss it — it won&apos;t appear in future
@@ -241,9 +241,11 @@ function MovieRecsManager() {
       {err && <p className="error">{err}</p>}
 
       {data && data.generatedAt == null && (
-        <p className="muted" style={{ fontSize: 13 }}>
-          No recommendations yet. Run the workflow manually — the recommended films will appear here.
-        </p>
+        <div className="panel">
+          <p className="empty-state-panel">
+            No recommendations yet. Run the workflow manually — the recommended films will appear here.
+          </p>
+        </div>
       )}
 
       {data && data.generatedAt != null && (
@@ -374,7 +376,7 @@ function MovieGapsManager() {
 
   return (
     <>
-      <h2>Franchise gaps</h2>
+      <h3 style={{ fontSize: 15, marginTop: 20 }}>Franchise gaps</h3>
       <p className="muted" style={{ fontSize: 13 }}>
         Films you own <em>some but not all</em> of, detected via the TMDB Collections API. Every
         factual gap is shown (no quality filter); the TMDB rating is context only. Ignore a gap to
@@ -385,10 +387,12 @@ function MovieGapsManager() {
       {err && <p className="error">{err}</p>}
 
       {data && data.generatedAt == null && (
-        <p className="muted" style={{ fontSize: 13 }}>
-          No audit has run yet. This workflow runs monthly (or run it manually) — the detected
-          franchise gaps will appear here.
-        </p>
+        <div className="panel">
+          <p className="empty-state-panel">
+            No audit has run yet. This workflow runs monthly (or run it manually) — the detected
+            franchise gaps will appear here.
+          </p>
+        </div>
       )}
 
       {data && data.generatedAt != null && (
@@ -907,8 +911,13 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
         </table>
       </div>
 
-      {name === 'movie-recommendations' && <MovieRecsManager />}
-      {name === 'movie-recommendations' && <MovieGapsManager />}
+      {name === 'movie-recommendations' && (
+        <>
+          <h2>Output</h2>
+          <MovieRecsManager />
+          <MovieGapsManager />
+        </>
+      )}
       {MISSING_SEASONS_WORKFLOWS.has(name) && <MissingSeasonsManager />}
       {name === 'tv-recommendations' && <TvRecsManager />}
       {!WORKFLOWS_WITH_SPECIFIC_MANAGERS.has(name) && <WorkflowOutputSection workflowName={name} />}
