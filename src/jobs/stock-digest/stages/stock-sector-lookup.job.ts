@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../../core/types.js';
+import { stockSectorsContract } from '../contracts.js';
 import { runStockSectorLookup } from './stock-sector-lookup.js';
 
 const job: JobDefinition = {
@@ -8,6 +9,7 @@ const job: JobDefinition = {
     'idempotent per ticker via the work_items ledger, writing data/out/sectors.json.',
   timeoutMs: 120_000,
   maxRetries: 3,
+  produces: [stockSectorsContract()],
   async run(ctx) {
     await runStockSectorLookup(ctx);
   },
