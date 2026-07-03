@@ -8543,7 +8543,7 @@
     {
       "id": "T322",
       "title": "Add POST /api/workflows/reset-output-all bulk output-reset endpoint",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
