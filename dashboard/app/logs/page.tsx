@@ -167,6 +167,7 @@ export default function LogsPage() {
               {sourceLabel && (
                 href ? <a href={href} className="mono">[{sourceLabel}]</a> : <span className="mono">[{sourceLabel}]</span>
               )}
+              {' '}<span className={`log-lvl-tag log-lvl-tag--${l.level}`}>[{l.level.toUpperCase()}]</span>
               {' '}{l.message}
             </div>
           );

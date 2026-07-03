@@ -47,6 +47,7 @@
   --logs-text: #e6edf3;
   --logs-err: #f85149;
   --logs-warn: #d29922;
+  --logs-info: #58a6ff;
   --logs-ts: #6e7681;
 }
 
@@ -141,9 +142,14 @@ tbody tr:hover { background: var(--panel-2); }
   padding: 14px; font-family: var(--font-mono);
   font-size: 12.5px; line-height: 1.7; max-height: 480px; overflow: auto; white-space: pre-wrap;
 }
-.logs .lvl-error { color: var(--logs-err); }
-.logs .lvl-warn { color: var(--logs-warn); }
+.logs .lvl-error, .logs .lvl-warn, .logs .lvl-info {
+  display: block; padding: 1px 8px; margin: 0 -8px; border-radius: 4px;
+}
+.logs .lvl-error { color: var(--logs-err); background: rgba(248,81,73,.1); }
+.logs .lvl-warn { color: var(--logs-warn); background: rgba(210,153,34,.1); }
+.logs .lvl-info { color: var(--logs-info); background: rgba(88,166,255,.08); }
 .logs .ts { color: var(--logs-ts); margin-right: 10px; }
+.log-lvl-tag { font-weight: 600; margin-right: 6px; color: inherit; }
 
 .kv { display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; }
 .kv .k { color: var(--muted); }
