@@ -9880,7 +9880,7 @@
     {
       "id": "T371",
       "title": "Add src/jobs/CLAUDE.md documenting the every-adjacent-pair validation-gate convention",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T370"
       ],
