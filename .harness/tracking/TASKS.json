@@ -9909,7 +9909,7 @@
     {
       "id": "T372",
       "title": "Add an OpenFIGI service for resolving broker ISINs to real, current ticker symbols",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
