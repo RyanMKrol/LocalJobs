@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+// @ts-expect-error react-dom has no bundled/installed type declarations in this project
+import { createPortal } from 'react-dom';
 import { api } from './lib/api';
 import type { BulkScope, LogLine, RunStatus, StuckItem } from './lib/api';
 
@@ -223,11 +225,25 @@ export function cronToEnglish(expr: string): string {
 export function CronBadge({ expr }: { expr: string }) {
   const english = cronToEnglish(expr);
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({
+        top: rect.top + window.scrollY,
+        left: rect.left + rect.width / 2 + window.scrollX,
+      });
+    }
+  }, [open]);
+
   if (english === expr) return <span className="mono">{expr}</span>;
   return (
     <span className="cron-badge">
       <span className="mono">{expr}</span>
       <span
+        ref={triggerRef}
         className="cron-help"
         tabIndex={0}
         role="button"
@@ -241,7 +257,21 @@ export function CronBadge({ expr }: { expr: string }) {
         onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
       >
         ?
-        {open && <span className="cron-tooltip" role="tooltip">{english}</span>}
+        {open && pos && typeof document !== 'undefined' && createPortal(
+          <span
+            className="cron-tooltip"
+            role="tooltip"
+            style={{
+              position: 'absolute',
+              top: pos.top - 6,
+              left: pos.left,
+              transform: 'translate(-50%, -100%)',
+            }}
+          >
+            {english}
+          </span>,
+          document.body,
+        )}
       </span>
     </span>
   );

@@ -61,7 +61,7 @@ const stuckItem = (over) => ({
 });
 
 const workflow = (over) => ({
-  name: 'places', description: 'A worked-example workflow: ' + LONG, schedule: '0 3 * * 1-5',
+  name: 'places', description: 'A worked-example workflow: ' + LONG, schedule: '0 3 * * *',
   category: 'second-brain',
   enabled: 1, effective_notify_enabled: true, created_at: NOW, last_run: workflowRun(), next_run: NOW, jobs: members,
   stuck: 2, runs: [workflowRun(), workflowRun({ id: '2', status: 'partial' })],
@@ -715,6 +715,31 @@ export const FLOWS = [
         () => document.querySelector('.theme-trigger')?.textContent?.includes('🖥️'),
         { timeout: 5000 },
       );
+    },
+  },
+  {
+    // T375: the cron tooltip is now portaled to document.body so it escapes a `.panel`'s
+    // `overflow: hidden` clipping — this captures it open on the workflow DETAIL page's
+    // Schedule row (the originally reported clipped location).
+    name: 'cron-tooltip-workflow-detail',
+    path: '/workflows/places',
+    viewport: true,
+    waitFor: ['.cron-help'],
+    actions: async (page) => {
+      await page.hover('.cron-help');
+      await page.waitForSelector('.cron-tooltip', { state: 'visible', timeout: 5000 });
+    },
+  },
+  {
+    // T375: same fix, verified on the Workflows LIST page's Schedule column (the other
+    // page confirmed clipped before the portal fix).
+    name: 'cron-tooltip-workflows-list',
+    path: '/workflows',
+    viewport: true,
+    waitFor: ['.cron-help'],
+    actions: async (page) => {
+      await page.hover('.cron-help');
+      await page.waitForSelector('.cron-tooltip', { state: 'visible', timeout: 5000 });
     },
   },
 ];
