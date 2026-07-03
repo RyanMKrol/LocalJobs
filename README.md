@@ -161,7 +161,7 @@ see `CLAUDE.md`.
 
 ## Shipped example workflows
 
-Ten worked examples are published under `src/jobs/` (their `data/` stays
+Twelve worked examples are published under `src/jobs/` (their `data/` stays
 gitignored). Private workflows live in gitignored subfolders.
 
 - **places** — Google Saved Places enrichment: parse CSVs → resolve CIDs →
@@ -267,6 +267,13 @@ gitignored). Private workflows live in gitignored subfolders.
   unset soft-skips the job cleanly (a warn log, no failure); the hook itself must
   be provisioned manually in the Vercel dashboard. Runs daily at 23:00
   (`'0 23 * * *'`), deliberately late in the day.
+- **plex-space-saver** — Weekly, report-only Plex disk-space breakdown, distinct
+  from `missing-tv-seasons` (which audits missing seasons, not disk usage). Scans
+  the Plex movie + TV sections via the API (each media Part's `size` in bytes —
+  no filesystem walk) and writes a biggest-first size breakdown: one row per
+  movie, one row per TV show (summing every episode across every season).
+  Never flags or suggests deletions — a report only. Idempotent per ISO week via
+  the work_items ledger. Single stage, runs weekly (Sundays 06:00).
 
 ## Dashboard pages
 

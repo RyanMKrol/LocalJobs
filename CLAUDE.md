@@ -345,6 +345,32 @@ track, same shape as `claude-warmer`. `category: 'regular-maintenance'`. Runs da
 (`'0 23 * * *'`), deliberately late in the day, after a typical day's push activity on
 `ryankrol.co.uk`. Provisioning the actual `VERCEL_DEPLOY_HOOK_URL` value requires the owner's Vercel
 account access and is tracked as a separate `needs-human` task.
+and **plex-space-saver** (`src/jobs/plex-space-saver/`) — a single-stage, report-only audit of where
+Plex library disk space is going, distinct from `missing-tv-seasons` (which audits missing seasons,
+not disk usage). Reuses the shared plex client (`src/jobs/plex/client.ts`'s `resolvePlexHost`/
+`plexGet` — DHCP self-heal, T149) and the existing Plex env (`PLEX_HOST`/`PLEX_API_TOKEN`/optional
+`PLEX_MACHINE_ID`), plus the SAME `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION` env vars the `movies`/
+`missing-tv-seasons` workflows already read (no new env vars). Size is obtained via the API — each
+Plex `Media.Part` carries a `size` in bytes — never a filesystem walk. Granularity: **one row per
+title** — each movie stands alone (its own media parts summed), each TV show is a single row summing
+every episode across every season (grouped by `grandparentRatingKey`, mirroring `missing-tv-seasons`'s
+`highestOwnedSeasonMap` join pattern). `plex-space-saver-scan` (the only stage — one-stage workflow,
+so no DAG edge and no gate is needed per `src/jobs/CLAUDE.md`) fetches the movie section, the TV
+section's shows, and its flat episode list (`type=4`), computes a biggest-first breakdown via
+`buildMovieRows`/`buildShowRows`/`buildBreakdown` in `lib.ts`, and writes it to
+`data/out/size-breakdown.json`. **Report only — never flags or suggests deletions.** RE-SCANS FRESH
+every run (an audit, not a build, like `missing-tv-seasons`); idempotent per ISO calendar week via the
+`work_items` ledger (`weekKey`, mirrors `stock-digest`) — a manual re-run the same week regenerates
+that week's breakdown rather than duplicating it. Runs weekly (Sundays 06:00). **Surfaced via the
+T262 declared-output-form mechanism, not markdown prose** — the ledger row's `detail.format:
+'size-table'` + `detail.path` point the unified Output section's fetch endpoint
+(`resolveOutputForm` in `src/api/server.ts`) at the structured JSON breakdown, served through
+`safeOutputFile`; the dashboard's generic `WorkflowOutputSection` renders any form with no dedicated
+viewer via its raw-content fallback (`RawOutputBody`), so the structured JSON is visible with no
+dashboard changes required. (`detail.markdown` is also set, to the same path, purely so the output
+LIST query — `workflowTerminalItems` in `src/db/store.ts`, which gates the "View" button on
+`detail.markdown` being truthy and wasn't touched by this task — still surfaces the button; the fetch
+endpoint itself dispatches correctly on `detail.format`/`detail.path` regardless.)
 Private workflows are added as gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
@@ -543,7 +569,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
 | `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/docs/LIMITATIONS.md`.) |
-| `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
+| `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
 | `src/jobs/tv-recs/` | TV show recommendations workflow. `tv-recs.workflow.ts` (monthly schedule, maxConcurrency 4); `config.ts` / `types.ts` / `lib.ts` / `recs.ts` (pure recommendation helpers); `stages/tv-snapshot.job.ts` + `tv-snapshot.ts` (Plex TV snapshot → `snapshot.json` + `taste-profile.json`); `stages/tv-rec-*.job.ts` (8 branch jobs); `stages/tv-rec-merge.job.ts` + `tv-rec-merge.ts` (TMDB-verify/dedupe/balance/top-up → `recommendations.json`); `stages/tv-recs-notify.job.ts` + `tv-recs-notify.ts` (monthly digest + report → `data/out/reports/tv-recommendations.md`). Reuses `src/jobs/plex/client.ts` for Plex connectivity. |
 | `src/jobs/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the job-folder root |
@@ -624,7 +650,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/jobs/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, and `vercel-daily-redeploy/` subfolder workflows as
+> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, and `plex-space-saver/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
