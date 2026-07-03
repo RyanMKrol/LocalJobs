@@ -9395,7 +9395,7 @@
     {
       "id": "T355",
       "title": "Logs page: add [LEVEL] bracket label + per-level background tint to log lines",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
