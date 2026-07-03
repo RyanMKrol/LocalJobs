@@ -9492,7 +9492,7 @@
     {
       "id": "T358",
       "title": "Rename tv-recommendations' and missing-tv-seasons' section headings to \"Output\" (idea #10b, easy half)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
