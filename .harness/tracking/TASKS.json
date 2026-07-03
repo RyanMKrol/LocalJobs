@@ -10022,7 +10022,7 @@
     {
       "id": "T376",
       "title": "Vertically center DAG node box content (fix bottom-heavy padding)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
