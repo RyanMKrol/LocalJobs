@@ -9655,7 +9655,7 @@
     {
       "id": "T363",
       "title": "Fix page-color flash on navigation: make useMode()'s initial state SSR-safe to stop React hydration-error DOM regeneration",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
