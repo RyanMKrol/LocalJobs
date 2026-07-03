@@ -309,6 +309,24 @@ aren't in `facts.holdings` and aren't a known non-ticker acronym (`findUnknownTi
 line naming them. This is a soft signal only — it never throws, skips the write, or changes the
 `markWorkItem` outcome; it exists purely so a genuine future narration hallucination shows up in the
 run's own logs instead of requiring manual log archaeology.
+and **vercel-daily-redeploy** (`src/jobs/vercel-daily-redeploy/`) — a single-job workflow that once a
+day POSTs to a Vercel Deploy Hook for the separate `ryankrol.co.uk` repo, re-triggering a build of
+that branch's latest commit. WHY: Vercel Deploy Hooks are a documented, unauthenticated,
+branch-bound URL — a plain `POST` with no auth header and no body re-triggers a build
+(https://vercel.com/docs/deploy-hooks) — and this exists as a safety net because that repo's own
+autonomous build harness can push enough commits in a day to exceed Vercel's per-commit auto-deploy
+rate limits, silently dropping some deploys; this guarantees the live site is never more than 24h
+behind the latest pushed commit regardless. `vercel-redeploy.job.ts` reads
+`process.env.VERCEL_DEPLOY_HOOK_URL`: unset soft-skips with a clear WARN log (mirroring
+`stock-digest`'s `FINNHUB_API_KEY` soft-skip), set triggers a `POST` with no body/auth header via the
+platform's native `fetch` and throws on a non-2xx response or a network error (so a dropped redeploy
+shows as a failed run in the dashboard rather than being silently swallowed — the whole point of a
+safety net). `timeoutMs: 30_000` (a Deploy Hook POST just enqueues a build, it doesn't wait for the
+build itself), `maxRetries: 1`. No `work_items` ledger — pure fire-and-forget trigger, no items to
+track, same shape as `claude-warmer`. `category: 'regular-maintenance'`. Runs daily at 23:00
+(`'0 23 * * *'`), deliberately late in the day, after a typical day's push activity on
+`ryankrol.co.uk`. Provisioning the actual `VERCEL_DEPLOY_HOOK_URL` value requires the owner's Vercel
+account access and is tracked as a separate `needs-human` task.
 Private workflows are added as gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
@@ -507,7 +525,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
 | `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/docs/LIMITATIONS.md`.) |
-| `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
+| `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
 | `src/jobs/tv-recs/` | TV show recommendations workflow. `tv-recs.workflow.ts` (monthly schedule, maxConcurrency 4); `config.ts` / `types.ts` / `lib.ts` / `recs.ts` (pure recommendation helpers); `stages/tv-snapshot.job.ts` + `tv-snapshot.ts` (Plex TV snapshot → `snapshot.json` + `taste-profile.json`); `stages/tv-rec-*.job.ts` (8 branch jobs); `stages/tv-rec-merge.job.ts` + `tv-rec-merge.ts` (TMDB-verify/dedupe/balance/top-up → `recommendations.json`); `stages/tv-recs-notify.job.ts` + `tv-recs-notify.ts` (monthly digest + report → `data/out/reports/tv-recommendations.md`). Reuses `src/jobs/plex/client.ts` for Plex connectivity. |
 | `src/jobs/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the job-folder root |
@@ -588,7 +606,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/jobs/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, and `stock-digest/` subfolder workflows as
+> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, and `vercel-daily-redeploy/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.

@@ -257,6 +257,16 @@ gitignored). Private workflows live in gitignored subfolders.
   `data/out/stock-digest-<ISO-week>.md`. Idempotent per ISO week via the
   work_items ledger. Markdown-only output — no push notification is sent.
   Runs weekly, Monday at 08:00.
+- **vercel-daily-redeploy** — Once a day, POSTs to a Vercel Deploy Hook for the
+  separate `ryankrol.co.uk` repo, re-triggering a build of that branch's latest
+  commit. Safety net: that repo's own autonomous build harness can push enough
+  commits in a day to exceed Vercel's per-commit auto-deploy rate limits, silently
+  dropping some deploys — this ensures the live site is never more than 24h behind
+  the latest pushed commit regardless. Single job, no retries needed (a failure
+  just means tomorrow's run tries again). `VERCEL_DEPLOY_HOOK_URL` is optional —
+  unset soft-skips the job cleanly (a warn log, no failure); the hook itself must
+  be provisioned manually in the Vercel dashboard. Runs daily at 23:00
+  (`'0 23 * * *'`), deliberately late in the day.
 
 ## Dashboard pages
 
