@@ -9965,7 +9965,7 @@
     {
       "id": "T374",
       "title": "Add shift-click range-select to the Backlog page's Done-section checkboxes",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
