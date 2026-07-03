@@ -9729,7 +9729,7 @@
     {
       "id": "T366",
       "title": "Add validation gates to stocks-sync's 3 stages",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
