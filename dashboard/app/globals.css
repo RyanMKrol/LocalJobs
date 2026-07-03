@@ -87,6 +87,13 @@ h2 { font-size: 16px; margin: 28px 0 12px; color: var(--muted); text-transform: 
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .panel + .panel { margin-top: 28px; }
+/* A panel's own h2 (the category-group header on Workflows/Integrations) has no left margin by
+   default, so it sits flush against the panel border while the table below it gets a real inset
+   from th/td's padding -- the heading reads as "hugging the edge" relative to its own table.
+   Match th/td's own horizontal padding (18px) instead of relying on the bare h2 rule's zero margin.
+   Vertical margin is also tightened from the base h2 rule's 28px/12px -- as the first thing inside
+   the panel it doesn't need the same breathing room a page-level h2 does. */
+.panel > h2:first-child { margin: 12px 18px 4px; }
 .grid { display: grid; gap: 14px; }
 .cards { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 
