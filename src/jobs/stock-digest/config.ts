@@ -17,3 +17,8 @@ export function reportPathFor(weekKey: string, outDir: string = stockDigestConfi
 
 /** "data/out/sectors.json" — ticker -> resolved Finnhub industry map. */
 export const sectorsJsonPath = resolve(stockDigestConfig.outDir, 'sectors.json');
+
+/** "data/out/stock-digest-facts-<weekKey>.json" — the raw facts JSON passed to Claude for a given week. */
+export function factsPathFor(weekKey: string, outDir: string = stockDigestConfig.outDir): string {
+  return resolve(outDir, `stock-digest-facts-${weekKey}.json`);
+}

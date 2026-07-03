@@ -299,7 +299,16 @@ Idempotent per ISO week via the `work_items` ledger — a manual re-run the same
 week's file rather than duplicating it. **Markdown-only output — no push notification is sent
 anywhere in this workflow**, mirroring `listening-digest`. Model: `STOCK_DIGEST_CLAUDE_MODEL`
 (defaults to a Sonnet 5 id) at effort `STOCK_DIGEST_CLAUDE_EFFORT` (defaults to `medium`), gated
-through the same `claude-cli` service as every other Claude caller.
+through the same `claude-cli` service as every other Claude caller. **The raw `facts` JSON handed to
+Claude is also persisted per week (T362)**, written to `data/out/stock-digest-facts-<weekKey>.json`
+(via `factsPathFor` in `config.ts`) BEFORE the Claude call, so it's on disk for debugging even if
+that call throws. `runStockDigestBuild` also runs a **soft ticker cross-check**: after narration, it
+scans Claude's markdown text for ticker-shaped tokens (`extractCandidateTickers`) and flags any that
+aren't in `facts.holdings` and aren't a known non-ticker acronym (`findUnknownTickers` /
+`KNOWN_NON_TICKER_TOKENS`, a living stoplist — e.g. `ISA`, `USD`, `ETF`), logging a single `warn:`
+line naming them. This is a soft signal only — it never throws, skips the write, or changes the
+`markWorkItem` outcome; it exists purely so a genuine future narration hallucination shows up in the
+run's own logs instead of requiring manual log archaeology.
 Private workflows are added as gitignored subfolders.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a

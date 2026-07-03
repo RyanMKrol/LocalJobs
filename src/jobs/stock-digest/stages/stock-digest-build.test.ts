@@ -21,8 +21,11 @@ import {
   buildFacts,
   readPortfolio,
   sectorBreakdown,
+  extractCandidateTickers,
+  findUnknownTickers,
   type ClaudeRunner,
 } from './stock-digest-build.js';
+import { factsPathFor } from '../config.js';
 import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
 
 function fakeCtx(): JobContext {
@@ -32,6 +35,19 @@ function fakeCtx(): JobContext {
     selectedRoots: () => null,
     rootAllowed: () => true,
   };
+}
+
+function fakeCtxWithLogSpy(): { ctx: JobContext; logs: string[] } {
+  const logs: string[] = [];
+  const ctx: JobContext = {
+    log(msg: string) {
+      logs.push(msg);
+    },
+    progress() {},
+    selectedRoots: () => null,
+    rootAllowed: () => true,
+  };
+  return { ctx, logs };
 }
 
 function pos(overrides: Partial<NormalizedPosition> = {}): NormalizedPosition {
@@ -310,5 +326,92 @@ describe('runStockDigestBuild', () => {
 
     const mdPath = join(outDir, `stock-digest-${weekKey(now)}.md`);
     assert.equal(readFileSync(mdPath, 'utf8'), 'second');
+  });
+
+  it('writes the raw facts JSON alongside the markdown, matching the computed facts', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-digest-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'AAPL', currentValue: 1000 })]));
+    const outDir = join(dir, 'out');
+    const now = new Date('2026-07-02T12:00:00Z');
+    const claudeRunner: ClaudeRunner = async () => ({ ok: true, text: 'narrated', rateLimited: false });
+
+    await runStockDigestBuild(fakeCtx(), { portfolioPath, outDir, now, claudeRunner });
+
+    const key = weekKey(now);
+    const factsPath = factsPathFor(key, outDir);
+    assert.ok(existsSync(factsPath));
+    const written = JSON.parse(readFileSync(factsPath, 'utf8'));
+    const expected = buildFacts([pos({ ticker: 'AAPL', currentValue: 1000 })], now);
+    assert.deepEqual(written, expected);
+  });
+});
+
+describe('extractCandidateTickers', () => {
+  it('pulls ticker-shaped tokens out of narrated text', () => {
+    const text = 'Your AAPL position gained, while YNDX_US_EQ dropped sharply this week.';
+    assert.deepEqual(extractCandidateTickers(text), ['AAPL', 'YNDX_US_EQ']);
+  });
+
+  it('dedupes repeated tokens', () => {
+    const text = 'AAPL rose. AAPL is now your biggest holding.';
+    assert.deepEqual(extractCandidateTickers(text), ['AAPL']);
+  });
+});
+
+describe('findUnknownTickers', () => {
+  const facts = buildFacts([pos({ ticker: 'AAPL' }), pos({ ticker: 'YNDX_US_EQ' })], new Date('2026-07-02T12:00:00Z'));
+
+  it('returns candidates missing from facts.holdings', () => {
+    assert.deepEqual(findUnknownTickers(['AAPL', 'TSLA'], facts), ['TSLA']);
+  });
+
+  it('excludes known tickers', () => {
+    assert.deepEqual(findUnknownTickers(['AAPL', 'YNDX_US_EQ'], facts), []);
+  });
+
+  it('excludes stoplisted tokens', () => {
+    assert.deepEqual(findUnknownTickers(['ISA', 'USD', 'API'], facts), []);
+  });
+});
+
+describe('runStockDigestBuild — ticker cross-check', () => {
+  it('logs a warn line when narration mentions a ticker not in facts.holdings, without throwing or changing outcome', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-digest-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'AAPL' })]));
+    const outDir = join(dir, 'out');
+    const now = new Date('2026-07-02T12:00:00Z');
+    const claudeRunner: ClaudeRunner = async () => ({
+      ok: true,
+      text: 'Your AAPL position is steady, but TSLA surged this week.',
+      rateLimited: false,
+    });
+    const { ctx, logs } = fakeCtxWithLogSpy();
+
+    await runStockDigestBuild(ctx, { portfolioPath, outDir, now, claudeRunner });
+
+    const warnLine = logs.find((l) => l.includes('possible narration drift'));
+    assert.ok(warnLine, 'expected a warn log about narration drift');
+    assert.match(warnLine!, /TSLA/);
+    assert.equal(isWorkItemDone(JOB, weekKey(now), 1), true);
+  });
+
+  it('logs nothing extra when narration mentions no unknown tickers', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-digest-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'AAPL' })]));
+    const outDir = join(dir, 'out');
+    const now = new Date('2026-07-02T12:00:00Z');
+    const claudeRunner: ClaudeRunner = async () => ({
+      ok: true,
+      text: 'Your AAPL position is steady this week.',
+      rateLimited: false,
+    });
+    const { ctx, logs } = fakeCtxWithLogSpy();
+
+    await runStockDigestBuild(ctx, { portfolioPath, outDir, now, claudeRunner });
+
+    assert.equal(logs.some((l) => l.includes('narration drift')), false);
   });
 });

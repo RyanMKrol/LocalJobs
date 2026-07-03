@@ -5,7 +5,7 @@ import type { JobContext } from '../../../core/types.js';
 import { runClaude } from '../../../services/claude.js';
 import { stocksSyncConfig } from '../../stocks-sync/config.js';
 import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
-import { stockDigestConfig, reportPathFor, sectorsJsonPath } from '../config.js';
+import { stockDigestConfig, reportPathFor, factsPathFor, sectorsJsonPath } from '../config.js';
 import { readSectorMap, type SectorMap } from './stock-sector-lookup.js';
 
 const JOB_NAME = 'stock-digest-build';
@@ -168,6 +168,35 @@ export function buildDigestPrompt(facts: StockDigestFacts): string {
   ].join('\n');
 }
 
+/**
+ * Common uppercase acronyms that legitimately appear in narrated prose but
+ * aren't tickers. A living, adjustable heuristic — add to it as new
+ * false-positives turn up in manual sample runs, not an exhaustive list.
+ */
+export const KNOWN_NON_TICKER_TOKENS = new Set([
+  'ISA',
+  'USD',
+  'GBP',
+  'EUR',
+  'ETF',
+  'N/A',
+  'ID',
+  'URL',
+  'API',
+]);
+
+/** Scans narrated markdown text for ticker-shaped tokens (e.g. YNDX_US_EQ, AAPL). Deduped. */
+export function extractCandidateTickers(text: string): string[] {
+  const matches = text.match(/\b[A-Z][A-Z0-9]{1,9}(?:_[A-Z0-9]{1,9}){0,3}\b/g) ?? [];
+  return [...new Set(matches)];
+}
+
+/** Candidate tokens that are neither a known holding ticker nor a stoplisted acronym. */
+export function findUnknownTickers(candidates: string[], facts: StockDigestFacts): string[] {
+  const knownTickers = new Set(facts.holdings.map((h) => h.ticker));
+  return candidates.filter((c) => !knownTickers.has(c) && !KNOWN_NON_TICKER_TOKENS.has(c));
+}
+
 // ---------------------------------------------------------------------------
 // Portfolio read (mirrors stocks-watch's readPortfolio — tolerant of missing/empty file)
 // ---------------------------------------------------------------------------
@@ -249,6 +278,11 @@ export async function runStockDigestBuild(
     ctx.log('info: sector breakdown empty — no tickers had a resolved industry; section omitted from digest');
   }
 
+  mkdirSync(outDir, { recursive: true });
+  const factsPath = factsPathFor(key, outDir);
+  writeFileSync(factsPath, JSON.stringify(facts, null, 2), 'utf8');
+  ctx.log(`info: wrote raw facts JSON to ${factsPath}`);
+
   const prompt = buildDigestPrompt(facts);
   ctx.log(`info: calling Claude (${claudeModel}, effort ${claudeEffort}) to narrate the digest…`);
   const result = await claudeRunner(prompt, claudeModel, claudeEffort);
@@ -257,7 +291,13 @@ export async function runStockDigestBuild(
   }
   ctx.log('info: Claude narration received');
 
-  mkdirSync(outDir, { recursive: true });
+  const unknownTickers = findUnknownTickers(extractCandidateTickers(result.text), facts);
+  if (unknownTickers.length > 0) {
+    ctx.log(
+      `warn: narrated digest mentions ticker-like token(s) not found in facts.holdings: ${unknownTickers.join(', ')} — possible narration drift, verify manually`,
+    );
+  }
+
   const mdPath = reportPathFor(key, outDir);
   writeFileSync(mdPath, result.text, 'utf8');
   ctx.log(`info: wrote digest markdown to ${mdPath}`);
