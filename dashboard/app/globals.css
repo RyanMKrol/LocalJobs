@@ -232,7 +232,7 @@ tbody tr:hover { background: var(--panel-2); }
 /* Each column holds all nodes at the same topological depth */
 .dag-col { display: flex; flex-direction: column; gap: 10px; }
 /* boxed card nodes with a left accent bar for status — NOT whole-card tinting */
-.dag-node { min-width: 156px; min-height: 58px; padding: 10px 12px 10px 14px; border-radius: 9px; background: var(--panel); border: 1px solid var(--border); border-left-width: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: border-color .15s, box-shadow .15s; box-sizing: border-box; }
+.dag-node { min-width: 156px; min-height: 58px; padding: 10px 12px 10px 14px; border-radius: 9px; background: var(--panel); border: 1px solid var(--border); border-left-width: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: border-color .15s, box-shadow .15s; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
 .dag-node-name { font-weight: 600; font-size: 13px; color: var(--text); }
 .dag-node-status { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
 /* status accent: coloured left bar only */
