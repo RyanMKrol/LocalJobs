@@ -164,10 +164,10 @@ export default function LogsPage() {
           return (
             <div key={`${l.source}:${l.id}`} className={`lvl-${l.level}`}>
               <span className="ts">{fmtTime(l.ts)}</span>
-              {sourceLabel && (
+              <span className={`log-lvl-tag log-lvl-tag--${l.level}`}>[{l.level.toUpperCase()}]</span>
+              {' '}{sourceLabel && (
                 href ? <a href={href} className="mono">[{sourceLabel}]</a> : <span className="mono">[{sourceLabel}]</span>
               )}
-              {' '}<span className={`log-lvl-tag log-lvl-tag--${l.level}`}>[{l.level.toUpperCase()}]</span>
               {' '}{l.message}
             </div>
           );
