@@ -7425,7 +7425,7 @@
     {
       "id": "T282",
       "title": "Decouple Output section — FRONTEND: renderer dispatch by declared form (UI half of T262)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T262"
       ],
