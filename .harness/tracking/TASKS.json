@@ -10115,7 +10115,7 @@
     {
       "id": "T380",
       "title": "Logs page: render [LEVEL] tag before the job/workflow source label",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
