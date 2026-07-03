@@ -9303,7 +9303,7 @@
     {
       "id": "T352",
       "title": "stock-sector-lookup: translate Trading212 ticker to bare Finnhub symbol + stop recording null lookups as success",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
