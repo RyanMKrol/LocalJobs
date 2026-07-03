@@ -9846,7 +9846,7 @@
     {
       "id": "T370",
       "title": "Add mechanical test enforcing every workflow DAG edge has a validation gate",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T366",
         "T367",
