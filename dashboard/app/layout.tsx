@@ -45,12 +45,23 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <header className="site">
           <div className="inner">
             <a href="/" className="brand">⚙︎ Local Jobs</a>
-            <nav>
+            {/*
+              The nav gained a 6th tab (Admin, T323), which no longer fits on one line at
+              mobile widths. header.site .inner already wraps whole flex items (globals.css),
+              but a wrapped nav is itself still a shrink-to-fit flex item whose own anchors
+              never line-wrap — it just overflows. Making nav its own (always-on) flex-wrap
+              container fixes this at every width without touching globals.css (out of this
+              task's scope): on desktop the six links already fit on one row so nothing
+              wraps, and on narrow viewports they wrap onto extra rows within the nav's own
+              box instead of pushing the page wider.
+            */}
+            <nav style={{ width: '100%', boxSizing: 'border-box', display: 'flex', flexWrap: 'wrap', rowGap: 6 }}>
               <a href="/">Overview</a>
               <a href="/workflows">Workflows</a>
               <a href="/integrations">Integrations</a>
               <a href="/backlog">Backlog</a>
               <a href="/logs">Logs</a>
+              <a href="/admin">Admin</a>
             </nav>
             <ThemeControls />
           </div>

@@ -459,6 +459,16 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname.startsWith('/api/runs/')) return { run: run(), logs };
   if (pathname === '/api/services') return { services: [service(), service({ name: 'gemini', paid: 1 }), service({ name: 'fragrantica', category: 'website-scrape', paid: 0, daily_cap: null, monthly_cap: null }), service({ name: 'claude-cli', category: 'cli-tool', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null }), service({ name: 'legacy-service', category: 'uncategorized', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null })] };
   if (pathname.startsWith('/api/services/') && pathname.endsWith('/consumers')) return { consumers: [{ workflow_name: 'places', jobs: [{ job_name: 'places-enrich', last_used: NOW }, { job_name: 'places-enrich-with-llm', last_used: NOW }] }, { workflow_name: 'perfumes', jobs: [{ job_name: 'perfumes-build', last_used: NOW }] }] };
+  if (pathname === '/api/workflows/reset-output-all') return {
+    ok: true,
+    totalWorkflows: 2,
+    resetCount: 1,
+    skippedCount: 1,
+    results: [
+      { name: 'places', status: 'reset', itemsDeleted: 42, runsDeleted: 12, wfRunsDeleted: 3, filesRemoved: 18, outDir: '/abs/data/out' },
+      { name: 'movie-recommendations', status: 'skipped', reason: 'workflow has an active run' },
+    ],
+  };
   if (pathname === '/api/backlog') return { tasks };
   if (pathname === '/api/logs') {
     const allLogs = [
@@ -506,6 +516,7 @@ export const PAGES = [
   { name: 'services',                path: '/integrations' },
   { name: 'backlog',                 path: '/backlog' },
   { name: 'logs',                    path: '/logs' },
+  { name: 'admin',                   path: '/admin' },
 ];
 
 // ── Interaction flows ─────────────────────────────────────────────────────────
@@ -522,6 +533,18 @@ export const PAGES = [
 // ⚠️ LIVING ARTIFACT: when a UI change adds/removes an interactive state worth seeing
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
+  {
+    // T323: the Admin page's fleet-wide delete requires typing an exact confirmation
+    // phrase before the destructive button enables — confirms both the disabled and
+    // the enabled/dangerous states are visually distinct.
+    name: 'admin-confirm-typed',
+    path: '/admin',
+    waitFor: ['#admin-confirm-input'],
+    actions: async (page) => {
+      await page.fill('#admin-confirm-input', 'DELETE ALL OUTPUT');
+      await page.waitForTimeout(200);
+    },
+  },
   {
     // T282: the workflow-detail page's unified Output section (WorkflowOutputSection)
     // now dispatches its popover renderer by the item's declared `format` (T262) —
