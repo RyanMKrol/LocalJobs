@@ -1,5 +1,6 @@
 import type { JobDefinition } from '../../../core/types.js';
 import { runGithubSync, githubSyncInputKeys } from './github-sync.js';
+import { projectsCatalogContract } from '../contracts.js';
 
 const job: JobDefinition = {
   name: 'github-sync',
@@ -9,6 +10,7 @@ const job: JobDefinition = {
   timeoutMs: 120_000,
   maxRetries: 3,
   inputKeys: githubSyncInputKeys,
+  produces: [projectsCatalogContract()],
   async run(ctx) {
     await runGithubSync(ctx);
   },

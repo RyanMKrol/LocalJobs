@@ -1,5 +1,6 @@
 import type { JobDefinition } from '../../../core/types.js';
 import { runProjectSummarize } from './project-summarize.js';
+import { projectsCatalogContract } from '../contracts.js';
 
 const job: JobDefinition = {
   name: 'project-summarize',
@@ -9,6 +10,7 @@ const job: JobDefinition = {
     'last-processed marker (pushedAt) already matches the catalog value.',
   timeoutMs: 600_000,
   maxRetries: 2,
+  consumes: [projectsCatalogContract()],
   async run(ctx) {
     await runProjectSummarize(ctx);
   },
