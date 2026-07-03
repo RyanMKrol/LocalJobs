@@ -138,13 +138,44 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
  * per DAG member, each showing its OWN inputs (its direct predecessor(s)'
  * ledger rows this run) and OWN outputs (its own ledger rows this run) as two
  * independent lists — no attempt to pair them into rows.
+ *
+ * Tabbed (mirrors the generic IoPanel's `.io-job-filter-chip` bar): showing all
+ * three stages' blocks stacked at once was too busy, so a chip bar selects ONE
+ * stage at a time — defaulting to the FIRST stage rather than "All stages" (the
+ * generic panel's default), since "All stages" here is exactly the busy view.
  */
 export function StageIoPanel({ runId, members }: { runId: string; members: WorkflowMember[] }) {
+  const [selectedJob, setSelectedJob] = useState<string | null>(members[0]?.job_name ?? null);
   if (members.length === 0) return null;
+  const visibleMembers = selectedJob === null ? members : members.filter((m) => m.job_name === selectedJob);
+
   return (
     <>
       <h2>Inputs &amp; outputs</h2>
-      {members.map((m) => (
+      {members.length > 1 && (
+        <div className="panel" style={{ marginBottom: 12, overflow: 'hidden' }}>
+          <div className="io-job-filter-bar" style={{ borderBottom: 'none' }}>
+            <button
+              type="button"
+              className={`io-job-filter-chip${selectedJob === null ? ' active' : ''}`}
+              onClick={() => setSelectedJob(null)}
+            >
+              All stages
+            </button>
+            {members.map((m) => (
+              <button
+                key={m.job_name}
+                type="button"
+                className={`io-job-filter-chip${selectedJob === m.job_name ? ' active' : ''}`}
+                onClick={() => setSelectedJob(m.job_name)}
+              >
+                {m.job_name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {visibleMembers.map((m) => (
         <StageIoBlock key={m.job_name} runId={runId} jobName={m.job_name} />
       ))}
     </>

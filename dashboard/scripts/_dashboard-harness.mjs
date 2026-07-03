@@ -753,6 +753,18 @@ export const FLOWS = [
     },
   },
   {
+    // T382 follow-up: StageIoPanel's chip bar defaults to the FIRST stage (not
+    // "All stages") to avoid the busy stacked view — click "All stages" to confirm
+    // that alternate (all 3 blocks stacked) state still renders cleanly.
+    name: 'stage-io-all-stages',
+    path: '/workflow-runs/stock-digest-run',
+    waitFor: ['.io-job-filter-bar'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:text-is("All stages")');
+      await page.waitForTimeout(400);
+    },
+  },
+  {
     // T329: the workflow-run IoPanel table headers are now sortable — click the
     // "State" header to sort the currently-filtered rows and show the ▲/▼ marker.
     name: 'io-panel-sorted-by-state',
