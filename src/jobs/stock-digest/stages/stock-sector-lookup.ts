@@ -47,8 +47,22 @@ export interface FinnhubProfile {
 
 export type ProfileFetcher = (ticker: string, apiKey: string) => Promise<FinnhubProfile>;
 
+/**
+ * Translate a Trading212 ticker (e.g. `AMD_US_EQ`) to a Finnhub-compatible bare
+ * symbol (`AMD`) — Finnhub doesn't recognize Trading212's `_EQ`/market-code suffix
+ * and silently returns an empty profile instead of erroring. Strips a trailing
+ * `_EQ` and, if what remains ends in a 2-letter uppercase market/country code,
+ * strips that too. Deliberately NOT "everything from the first underscore" —
+ * `BRK_B_US_EQ` (Berkshire class B) has an underscore that's part of the symbol
+ * itself, not a market code.
+ */
+export function toFinnhubSymbol(t212Ticker: string): string {
+  return t212Ticker.replace(/_EQ$/, '').replace(/_[A-Z]{2}$/, '');
+}
+
 export async function fetchFinnhubProfile(ticker: string, apiKey: string): Promise<FinnhubProfile> {
-  const url = `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(apiKey)}`;
+  const symbol = toFinnhubSymbol(ticker);
+  const url = `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url, { method: 'GET' });
   if (!res.ok) {
     throw new Error(`Finnhub profile2 request failed for ${ticker}: HTTP ${res.status}`);
@@ -105,11 +119,14 @@ export async function runStockSectorLookup(
       const profile = await fetchProfile(ticker, apiKey);
       const industry = profile.finnhubIndustry ?? null;
       sectors[ticker] = industry;
-      markWorkItem(JOB_NAME, ticker, 'success', { detail: { name: ticker, industry } });
       if (industry) {
+        markWorkItem(JOB_NAME, ticker, 'success', { detail: { name: ticker, industry } });
         ctx.log(`info: [${i + 1}/${todo.length}] ${ticker} -> industry "${industry}"`);
         resolved++;
       } else {
+        markWorkItem(JOB_NAME, ticker, 'failed', {
+          detail: { name: ticker, error: 'Finnhub returned no finnhubIndustry field (symbol not recognized, or genuinely unclassified)' },
+        });
         ctx.log(`warn: [${i + 1}/${todo.length}] ${ticker} -> Finnhub returned no finnhubIndustry field`);
         failed++;
       }

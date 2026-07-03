@@ -264,11 +264,22 @@ positions) is handled with a clear WARN log and a clean skip, not a crash, in bo
 Stage 1, `stock-sector-lookup`, resolves each currently-held ticker's industry via a new **Finnhub**
 service (`src/services/finnhub.service.ts`, `GET /stock/profile2?symbol=<TICKER>&token=<KEY>`,
 read-only/GET-only, gated through `callService('finnhub', ...)`) and writes a ticker→industry map to
-`data/out/sectors.json`. Idempotent per ticker via the `work_items` ledger — a ticker already
-recorded `success` is skipped on later runs (industry classification rarely changes, and this
-conserves the free-tier quota); a newly-appeared ticker is looked up fresh. Credentials:
-`FINNHUB_API_KEY` — unset key soft-skips the whole stage (clear WARN, no crash), which just means
-`stock-digest-build`'s diversification section is omitted that run.
+`data/out/sectors.json`. **The Trading212 ticker is translated to a bare Finnhub symbol before the
+call (T352):** `toFinnhubSymbol` strips a trailing `_EQ` and, if what remains ends in a 2-letter
+uppercase market/country code, strips that too (`AMD_US_EQ` → `AMD`, `VUSA_EQ` → `VUSA`) — Finnhub
+doesn't recognize Trading212's raw ticker format and silently returns an empty profile rather than
+erroring, which previously meant the Diversification section stayed empty even with a valid API key.
+(Known residual limitation: a class-share ticker like `BRK_B_US_EQ` translates to `BRK_B`, not
+Finnhub's exact expected form — still a strict improvement over the pre-fix fully-broken state.)
+Idempotent per ticker via the `work_items` ledger — a ticker already recorded `success` (a resolved
+industry) is skipped on later runs (industry classification rarely changes, and this conserves the
+free-tier quota); an unresolved lookup (no `finnhubIndustry` returned) is recorded `'failed'` rather
+than a misleading `'success'`, so it retries automatically (capped at `MAX_ATTEMPTS`, after which it
+surfaces on the dashboard's Stuck tile like any other stuck item); a newly-appeared ticker is looked
+up fresh. A one-time `scripts/reset-stock-sector-lookup-null-successes.ts` clears ledger rows the
+pre-T352 bug had already poisoned (recorded `'success'` with a null industry) so they re-resolve on
+the next run. Credentials: `FINNHUB_API_KEY` — unset key soft-skips the whole stage (clear WARN, no
+crash), which just means `stock-digest-build`'s diversification section is omitted that run.
 
 Stage 2, `stock-digest-build`, computes, in code (never left to Claude to infer), each position's
 gain since average buy price (`(currentPrice - averageBuyPrice) / averageBuyPrice`, the same formula

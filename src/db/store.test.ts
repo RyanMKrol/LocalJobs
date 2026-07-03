@@ -14,6 +14,7 @@ import {
   bulkUnstickItems, bulkIgnoreItems,
   deleteWorkflowCompletely, deleteJobCompletely, deleteServiceCompletely,
   recordServiceConsumer, listServiceConsumers,
+  deleteNullDetailSuccessItems,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 import { db } from './index.js';
@@ -1131,3 +1132,24 @@ console.log('  ✓ T258 noop detection: skipped items not re-selected, hasJobAdv
   );
 }
 console.log('  ✓ T336 full-delete admin helpers: deleteWorkflowCompletely / deleteJobCompletely / deleteServiceCompletely (cross-table cleanup + idempotency)');
+
+{
+  // ── T352 deleteNullDetailSuccessItems: recover rows a bug wrongly marked success ──
+  markWorkItem('t352-job', 'null-1', 'success', { detail: { name: 'null-1', industry: null } });
+  markWorkItem('t352-job', 'null-2', 'success', { detail: { name: 'null-2', industry: null } });
+  markWorkItem('t352-job', 'real-1', 'success', { detail: { name: 'real-1', industry: 'Technology' } });
+  markWorkItem('t352-job', 'no-detail', 'success');
+  markWorkItem('t352-other-job', 'null-3', 'success', { detail: { name: 'null-3', industry: null } });
+
+  const removed = deleteNullDetailSuccessItems('t352-job', 'industry');
+  assert.deepEqual(removed.sort(), ['null-1', 'null-2'], 'only null-industry rows for the target job are removed');
+  assert.equal(isWorkItemDone('t352-job', 'null-1', 3), false, 'null-1 no longer done — will retry');
+  assert.equal(isWorkItemDone('t352-job', 'null-2', 3), false, 'null-2 no longer done — will retry');
+  assert.equal(isWorkItemDone('t352-job', 'real-1', 1), true, 'real-1 (non-null) untouched');
+  assert.equal(isWorkItemDone('t352-job', 'no-detail', 1), true, 'no-detail row untouched');
+  assert.equal(isWorkItemDone('t352-other-job', 'null-3', 3), true, 'a different job_name is untouched even with the same field/value');
+
+  // Idempotent: a second call on the now-clean state removes nothing.
+  assert.deepEqual(deleteNullDetailSuccessItems('t352-job', 'industry'), [], 'second call is a no-op');
+}
+console.log('  ✓ T352 deleteNullDetailSuccessItems: removes only null-field success rows for the given job, idempotent, leaves other jobs untouched');

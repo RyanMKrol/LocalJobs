@@ -1497,6 +1497,35 @@ export function backfillServiceUsage(service: string, count: number): void {
   tx(count);
 }
 
+/**
+ * One-time recovery helper: delete `success` rows for a job whose `detail` JSON has
+ * `[field] == null` — for clearing rows a bug incorrectly recorded as succeeded (e.g.
+ * stock-sector-lookup recording a null Finnhub result as 'success' before this fix).
+ * Returns the item_keys removed so the caller can report exactly what was reset.
+ */
+export function deleteNullDetailSuccessItems(jobName: string, field: string): string[] {
+  const rows = db.prepare(
+    "SELECT item_key, detail FROM work_items WHERE job_name = ? AND status = 'success'",
+  ).all(jobName) as { item_key: string; detail: string | null }[];
+
+  const toRemove: string[] = [];
+  for (const row of rows) {
+    if (!row.detail) continue;
+    try {
+      const parsed = JSON.parse(row.detail) as Record<string, unknown>;
+      if (parsed[field] === null) toRemove.push(row.item_key);
+    } catch { /* ignore malformed detail */ }
+  }
+
+  if (toRemove.length === 0) return [];
+
+  const del = db.prepare("DELETE FROM work_items WHERE job_name = ? AND item_key = ? AND status = 'success'");
+  const tx = db.transaction((keys: string[]) => { for (const key of keys) del.run(jobName, key); });
+  tx(toRemove);
+
+  return toRemove;
+}
+
 export function serviceCallsToday(service: string): number {
   return (db.prepare(
     "SELECT COUNT(*) AS n FROM service_usage WHERE service = ? AND ts >= datetime('now','start of day')",

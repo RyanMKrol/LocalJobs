@@ -10,7 +10,14 @@ import { join } from 'node:path';
 
 import { isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
-import { runStockSectorLookup, readPortfolio, readSectorMap, type ProfileFetcher } from './stock-sector-lookup.js';
+import {
+  runStockSectorLookup,
+  readPortfolio,
+  readSectorMap,
+  toFinnhubSymbol,
+  fetchFinnhubProfile,
+  type ProfileFetcher,
+} from './stock-sector-lookup.js';
 import type { NormalizedPosition } from '../../stocks-sync/stages/stocks-snapshot.js';
 
 function fakeCtx(): JobContext {
@@ -35,6 +42,45 @@ function pos(overrides: Partial<NormalizedPosition> = {}): NormalizedPosition {
 }
 
 const JOB = 'stock-sector-lookup';
+
+describe('toFinnhubSymbol', () => {
+  it('strips the trailing _EQ and market-code suffix', () => {
+    assert.equal(toFinnhubSymbol('AMD_US_EQ'), 'AMD');
+    assert.equal(toFinnhubSymbol('MU_US_EQ'), 'MU');
+  });
+
+  it('leaves a ticker with no market code (LSE-primary instruments) unchanged besides _EQ', () => {
+    assert.equal(toFinnhubSymbol('VUSA_EQ'), 'VUSA');
+  });
+
+  it('does not mistake a class-share underscore for a market code (known residual limitation)', () => {
+    // BRK_B_US_EQ (Berkshire class B): stripping _EQ then a trailing 2-letter
+    // market code (_US) correctly leaves BRK_B — but this is still not Finnhub's
+    // exact expected form for a class-share ticker (likely BRK.B or BRK-B).
+    // Documented limitation, not a silent bug: every other held ticker is fully
+    // fixed by this transform, and BRK_B is a strict improvement over the
+    // pre-fix 100%-broken state (raw ticker sent verbatim).
+    assert.equal(toFinnhubSymbol('BRK_B_US_EQ'), 'BRK_B');
+  });
+});
+
+describe('fetchFinnhubProfile', () => {
+  it('requests Finnhub with the translated symbol, not the raw Trading212 ticker', async () => {
+    let requestedUrl = '';
+    const originalFetch = global.fetch;
+    global.fetch = (async (url: string) => {
+      requestedUrl = String(url);
+      return { ok: true, json: async () => ({ finnhubIndustry: 'Semiconductors' }) } as Response;
+    }) as typeof fetch;
+    try {
+      await fetchFinnhubProfile('AMD_US_EQ', 'test-key');
+    } finally {
+      global.fetch = originalFetch;
+    }
+    const symbolParam = new URL(requestedUrl).searchParams.get('symbol');
+    assert.equal(symbolParam, 'AMD');
+  });
+});
 
 describe('readSectorMap', () => {
   it('returns an empty object when the file does not exist', () => {
@@ -151,6 +197,32 @@ describe('runStockSectorLookup', () => {
     assert.equal(calls, 2); // only IDEMPOTENT2 looked up the second run
     const written = JSON.parse(readFileSync(outPath, 'utf8'));
     assert.deepEqual(written, { IDEMPOTENT1: 'Technology', IDEMPOTENT2: 'Technology' });
+  });
+
+  it('records an unresolved lookup (no finnhubIndustry) as failed/retryable, not success', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-sector-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'UNRESOLVED1' })]));
+    const outPath = join(dir, 'sectors.json');
+    const fetchProfile: ProfileFetcher = async () => ({});
+
+    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
+
+    assert.equal(isWorkItemDone(JOB, 'UNRESOLVED1', 3), false);
+    const written = JSON.parse(readFileSync(outPath, 'utf8'));
+    assert.deepEqual(written, { UNRESOLVED1: null });
+  });
+
+  it('still records a resolved lookup as success (unchanged path)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-sector-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'RESOLVED1' })]));
+    const outPath = join(dir, 'sectors.json');
+    const fetchProfile: ProfileFetcher = async () => ({ finnhubIndustry: 'Technology' });
+
+    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
+
+    assert.equal(isWorkItemDone(JOB, 'RESOLVED1', 1), true);
   });
 
   it('records a failed lookup without crashing the run and leaves it retryable', async () => {
