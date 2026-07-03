@@ -406,13 +406,32 @@ const MODE_CYCLE: Record<ModeId, ModeId> = { dark: 'light', light: 'system', sys
  *  advances dark → light → system → dark and persists the CHOICE (including the
  *  literal string 'system', so it isn't confused with "nothing stored"). */
 export function useMode(): [ModeId, () => void] {
-  const [mode, setMode] = useState<ModeId>(() => {
-    if (typeof window === 'undefined') return 'dark';
-    const stored = window.localStorage.getItem('localjobs.mode') as ModeId | null;
-    return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'system';
-  });
+  // Hydration-safe initial state (T363): this MUST return the identical value on the
+  // server and on the client's first render, or React treats it as a genuine content
+  // mismatch several levels below <html> (outside what <html>'s suppressHydrationWarning
+  // covers) and discards + regenerates the whole document on the client — which wipes the
+  // pre-paint script's already-correct `data-mode` attribute, flashing the wrong palette.
+  // The real persisted mode is applied below, in the mount effect, client-only.
+  const [mode, setMode] = useState<ModeId>('dark');
 
+  // Reconcile with the real persisted choice on mount (client-only, after hydration).
   useEffect(() => {
+    const stored = window.localStorage.getItem('localjobs.mode') as ModeId | null;
+    const real = stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'system';
+    setMode((current) => (real !== current ? real : current));
+  }, []);
+
+  // The very first run of this effect corresponds to the hardcoded 'dark' placeholder
+  // render above, which the pre-paint script in layout.tsx has ALREADY correctly applied
+  // to `data-mode` before hydration — so it's skipped here to avoid clobbering that
+  // correct value with the wrong placeholder for one frame. Every subsequent run (the
+  // mount-reconcile's setMode, a cycle(), or an OS preference change) applies normally.
+  const skippedFirstApply = useRef(false);
+  useEffect(() => {
+    if (!skippedFirstApply.current) {
+      skippedFirstApply.current = true;
+      return;
+    }
     if (mode !== 'system') {
       document.documentElement.setAttribute('data-mode', mode);
       return;
