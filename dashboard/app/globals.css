@@ -265,7 +265,13 @@ a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent
 /* React Flow node wrapper — the dag-node style already handles the visual */
 .rf-dag-node { margin: 0; }
 /* Gate padlock marker on DAG edges */
-.dag-gate-lock { opacity: 0.55; transition: opacity .15s, transform .15s; }
+.dag-gate-lock {
+  opacity: 0.55;
+  transition: opacity .15s, transform .15s, background-color .15s;
+  background: var(--lock-bg, transparent);
+  border-radius: 7px;
+  padding: 3px 4px;
+}
 .dag-gate-lock:hover { opacity: 1; transform: scale(1.25); }
 .dag-gate-lock--failed { opacity: 1; filter: drop-shadow(0 0 3px color-mix(in srgb,var(--red) 60%,transparent)); }
 .dag-gate-lock--failed:hover { transform: scale(1.35); }

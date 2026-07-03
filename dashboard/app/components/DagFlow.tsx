@@ -95,6 +95,10 @@ function GateEdge({
 
   const lockColor = isFailed ? 'var(--red)' : isPassed ? 'var(--green)' : 'var(--muted)';
   const lockFill = `color-mix(in srgb, ${lockColor} 18%, transparent)`;
+  // Background "badge" behind the padlock — a bit stronger than the icon's own internal
+  // fill (lockFill) so the pending/grey state still reads as a distinct chip against the
+  // dotted graph background, not just a faint tint (confirmed via visual-check, T377).
+  const lockBg = `color-mix(in srgb, ${lockColor} 24%, transparent)`;
   const lockSize = isFailed ? 20 : 16;
 
   // SVG padlock: shackle arc + body rectangle, stroked in the state colour.
@@ -141,7 +145,7 @@ function GateEdge({
                 href={gateHref}
                 title={tooltipText}
                 className={lockClass}
-                style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', ['--lock-bg' as string]: lockBg }}
                 aria-label={tooltipText}
               >
                 {padlockSvg}
@@ -150,7 +154,7 @@ function GateEdge({
               <span
                 title={tooltipText}
                 className={lockClass}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', ['--lock-bg' as string]: lockBg }}
                 aria-label={tooltipText}
               >
                 {padlockSvg}
