@@ -9759,7 +9759,7 @@
     {
       "id": "T367",
       "title": "Add validation gate to projects-sync's 2 stages",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
