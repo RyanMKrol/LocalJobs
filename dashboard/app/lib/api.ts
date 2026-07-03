@@ -602,6 +602,20 @@ export const api = {
     post<{ ok: boolean; jobNames: string[]; itemsDeleted: number; runsDeleted: number; wfRunsDeleted: number; filesRemoved: number; outDir: string | null }>(
       `/api/workflows/${encodeURIComponent(name)}/reset-output`,
     ),
+  // Bulk variant of resetWorkflowOutput (T322): runs the same reset across EVERY
+  // workflow in one call. Workflows with an active run are skipped (not reset)
+  // rather than failing the whole call.
+  resetAllWorkflowsOutput: () =>
+    post<{
+      ok: boolean;
+      totalWorkflows: number;
+      resetCount: number;
+      skippedCount: number;
+      results: Array<
+        | { name: string; status: 'reset'; itemsDeleted: number; runsDeleted: number; wfRunsDeleted: number; filesRemoved: number; outDir: string | null }
+        | { name: string; status: 'skipped'; reason: string }
+      >;
+    }>('/api/workflows/reset-output-all'),
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),

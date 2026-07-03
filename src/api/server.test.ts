@@ -2245,4 +2245,63 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   }
 }
 
+// ── T322: POST /api/workflows/reset-output-all — bulk reset across every workflow ──
+{
+  const { isWorkItemDone: t322IsWorkItemDone } = await import('../db/store.js');
+  syncJob({ name: 't322-j1', run: async () => {} });
+  syncJob({ name: 't322-j2', run: async () => {} });
+  syncWorkflow({ name: 't322-wf', jobs: [{ job: 't322-j1' }] });
+  syncWorkflow({ name: 't322-active-wf', jobs: [{ job: 't322-j2' }] });
+
+  // Target workflow: seed output data to be reset.
+  markWorkItem('t322-j1', 'item-a', 'success');
+  const wfRunId = createWorkflowRun('t322-wf', 'manual');
+  finishWorkflowRun(wfRunId, 'success');
+
+  // "Active run" workflow: seed output data too, but leave its workflow run
+  // unfinished (status stays 'running') so `workflowRunInProgress` reports true.
+  markWorkItem('t322-j2', 'item-b', 'success');
+  createWorkflowRun('t322-active-wf', 'manual');
+
+  await test('POST /api/workflows/reset-output-all: resets idle workflows, skips active ones', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/reset-output-all`, { method: 'POST' });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as {
+        ok: boolean;
+        totalWorkflows: number;
+        resetCount: number;
+        skippedCount: number;
+        results: Array<{ name: string; status: string; reason?: string; itemsDeleted?: number }>;
+      };
+      assert.equal(body.ok, true);
+      assert.ok(body.totalWorkflows >= 2, 'covers at least the two seeded workflows');
+
+      const targetResult = body.results.find((r) => r.name === 't322-wf');
+      assert.ok(targetResult, 't322-wf present in results');
+      assert.equal(targetResult?.status, 'reset');
+      assert.ok((targetResult?.itemsDeleted ?? 0) >= 1, 't322-wf items were deleted');
+
+      const activeResult = body.results.find((r) => r.name === 't322-active-wf');
+      assert.ok(activeResult, 't322-active-wf present in results');
+      assert.equal(activeResult?.status, 'skipped');
+      assert.equal(activeResult?.reason, 'active run in progress');
+
+      // Active workflow's data must be untouched.
+      assert.equal(t322IsWorkItemDone('t322-j2', 'item-b', 3), true, 'active workflow work item untouched');
+
+      assert.ok(body.resetCount >= 1);
+      assert.ok(body.skippedCount >= 1);
+    });
+  });
+
+  // Cleanup registry stubs.
+  for (const n of ['t322-j1', 't322-j2']) {
+    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
+  }
+  for (const n of ['t322-wf', 't322-active-wf']) {
+    const i = workflows.findIndex((x) => x.name === n); if (i >= 0) workflows.splice(i, 1);
+  }
+}
+
 console.log(`\n  ${passed} assertions passed`);

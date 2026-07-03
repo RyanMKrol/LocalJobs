@@ -1679,6 +1679,51 @@ export function createApiServer(
         return json(res, 200, { ok: true, notify_enabled: body.notifyEnabled });
       }
 
+      // POST /api/workflows/reset-output-all
+      // Bulk variant of reset-output (T322): runs the SAME per-workflow reset across
+      // EVERY workflow in one call. A workflow with an active run is SKIPPED (not
+      // reset) rather than failing the whole call — this is deliberately best-effort
+      // across all workflows, not all-or-nothing. Registered BEFORE the :name-based
+      // reset-output route below since this path has no :name segment.
+      // Mutating — behind the same loopback/token guard as all other POST endpoints.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[2] === 'reset-output-all' && parts.length === 3) {
+        const results: Array<
+          | { name: string; status: 'reset'; itemsDeleted: number; runsDeleted: number; wfRunsDeleted: number; filesRemoved: number; outDir: string | null }
+          | { name: string; status: 'skipped'; reason: string }
+        > = [];
+        for (const wf of listWorkflows()) {
+          if (workflowRunInProgress(wf.name)) {
+            results.push({ name: wf.name, status: 'skipped', reason: 'active run in progress' });
+            continue;
+          }
+          const outDir = await findWorkflowDataOut(wf.name);
+          const result = resetWorkflowOutput(wf.name);
+          const filesRemoved = outDir ? deleteDataOutContents(outDir) : 0;
+          results.push({
+            name: wf.name,
+            status: 'reset',
+            itemsDeleted: result.itemsDeleted,
+            runsDeleted: result.runsDeleted,
+            wfRunsDeleted: result.wfRunsDeleted,
+            filesRemoved,
+            outDir: outDir ? relativePath(JOBS_ROOT, outDir) : null,
+          });
+        }
+        const resetCount = results.filter((r) => r.status === 'reset').length;
+        const skipped = results.filter((r) => r.status === 'skipped') as Array<{ name: string; status: 'skipped'; reason: string }>;
+        console.log(
+          `[api] reset-output-all: ${resetCount} reset, ${skipped.length} skipped` +
+            (skipped.length ? ` (${skipped.map((s) => `${s.name}: ${s.reason}`).join('; ')})` : ''),
+        );
+        return json(res, 200, {
+          ok: true,
+          totalWorkflows: results.length,
+          resetCount,
+          skippedCount: skipped.length,
+          results,
+        });
+      }
+
       // POST /api/workflows/:name/reset-output
       // Clear all OUTPUT data for the named workflow: work_items ledger + work_item_runs
       // attribution + member job runs/logs + workflow_runs/logs + data/out/** files.
