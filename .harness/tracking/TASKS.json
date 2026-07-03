@@ -9335,7 +9335,7 @@
     {
       "id": "T353",
       "title": "Order getWorkflowJobs() topologically (fix alphabetical IO-panel stage filter bar)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
