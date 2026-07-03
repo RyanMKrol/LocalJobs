@@ -154,11 +154,11 @@ export default function Services() {
             <h2>{label}</h2>
             <table className="services-table">
               <colgroup>
-                <col style={{ width: '40%' }} />
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '12%' }} />
+                <col style={{ width: '38%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '17%' }} />
               </colgroup>
               <thead>
                 <tr>
@@ -196,9 +196,11 @@ export default function Services() {
                             <input type="text" className="mono limit-input" value={draft.monthly} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, monthly: e.target.value }))} />
                             {draft.monthly !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, monthly: '' }))}>✕</button>}
                           </td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
-                            <button className="btn" onClick={() => save(s.name)} disabled={busy}>{busy ? 'Saving…' : '✓ Save'}</button>{' '}
-                            <button className="btn secondary" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+                          <td>
+                            <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
+                              <button className="btn" onClick={() => save(s.name)} disabled={busy}>{busy ? 'Saving…' : '✓ Save'}</button>
+                              <button className="btn secondary" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+                            </span>
                           </td>
                         </>
                       ) : (

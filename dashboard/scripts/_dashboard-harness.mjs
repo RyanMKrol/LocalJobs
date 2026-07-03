@@ -596,6 +596,18 @@ export const FLOWS = [
     },
   },
   {
+    // T351: the edit-mode Save/Cancel row on the Services page — verifies the
+    // action column has room and the buttons wrap instead of clipping ("Cal…").
+    name: 'services-edit-limits-row',
+    path: '/services',
+    viewport: true,
+    actions: async (page) => {
+      await page.click('button:has-text("Edit limits")');
+      await page.waitForSelector('button:has-text("Save")', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
+    },
+  },
+  {
     // T314: clicking a per-stage job pill on the workflow-run IO panel re-fetches
     // (server-side, via ?job=) that ONE stage's own input→output pairing, relabels
     // the column headers, and resets the state-filter pills back to 'all'.

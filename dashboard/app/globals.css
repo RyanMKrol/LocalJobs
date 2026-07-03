@@ -91,6 +91,10 @@ h2 { font-size: 16px; margin: 28px 0 12px; color: var(--muted); text-transform: 
 
 table { width: 100%; border-collapse: collapse; }
 .services-table { table-layout: fixed; }
+/* Action column (Edit limits / Save+Cancel) — never let a button's label force horizontal
+   overflow past the panel's clipped edge; wrap onto a second line instead if it doesn't fit. */
+.services-table td:last-child { text-align: right; }
+.services-table td:last-child .btn { white-space: normal; text-align: center; }
 th, td { text-align: left; padding: 8px 18px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
 tr:last-child td { border-bottom: none; }
