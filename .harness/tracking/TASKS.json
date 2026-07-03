@@ -9934,7 +9934,7 @@
     {
       "id": "T373",
       "title": "Resolve stocks-sync positions' ISIN + real ticker via Trading212 metadata + OpenFIGI",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T372"
       ],
