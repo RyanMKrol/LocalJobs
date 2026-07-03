@@ -1109,10 +1109,14 @@ doubt, log it.
   there is nothing for the owner to override. Controlled values: `'cli-tool'`
   (`claude-cli`), `'website-scrape'` (`fragrantica`), `'api'` (the remaining
   services — `gemini`, `github`, `google-places`, `hevy`, `lastfm`, `tmdb`,
-  `trading212`, `dynamodb`). A manifest with no `category` set defaults to
+  `trading212`, `dynamodb`, `openfigi`). A manifest with no `category` set defaults to
   `'uncategorized'`. The `category` column is added by `schema.sql` (fresh DBs) +
   an additive `ALTER TABLE` migration in `index.ts` (existing DBs, per the T098
   rule — no index on the new column).
+- **`openfigi` service (`src/services/openfigi.service.ts`)** — free, read-only ISIN -> ticker
+  symbol resolution via Bloomberg's OpenFIGI mapping API
+  (https://www.openfigi.com/api/documentation), for jobs that need to turn a broker's ISIN into a
+  current real-world ticker. `OPENFIGI_API_KEY` is optional (raises the free-tier rate limit).
 - **Services (cross-job shared APIs).** For an external dependency called from
   multiple jobs (e.g. Gemini, Google Places, Fragrantica, Claude CLI), define a
   self-contained `ServiceDefinition` in `src/services/<name>.service.ts` and call
