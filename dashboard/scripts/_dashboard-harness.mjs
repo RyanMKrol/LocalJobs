@@ -445,17 +445,20 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/services') return { services: [service(), service({ name: 'gemini', paid: 1 }), service({ name: 'fragrantica', category: 'website-scrape', paid: 0, daily_cap: null, monthly_cap: null }), service({ name: 'claude-cli', category: 'cli-tool', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null }), service({ name: 'legacy-service', category: 'uncategorized', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null })] };
   if (pathname.startsWith('/api/services/') && pathname.endsWith('/consumers')) return { consumers: [{ workflow_name: 'places', jobs: [{ job_name: 'places-enrich', last_used: NOW }, { job_name: 'places-enrich-with-llm', last_used: NOW }] }, { workflow_name: 'perfumes', jobs: [{ job_name: 'perfumes-build', last_used: NOW }] }] };
   if (pathname === '/api/backlog') return { tasks };
-  if (pathname === '/api/logs') return {
-    logs: [
+  if (pathname === '/api/logs') {
+    const allLogs = [
       { id: 6, ts: NOW, level: 'error', message: 'Places API returned 429 — quota exceeded for the day', source: 'job', jobName: 'places-enrich', workflowName: null, runId: '1', workflowRunId: null },
       { id: 5, ts: NOW, level: 'warn', message: 'Gate check found 2 rows missing an expected field', source: 'workflow', jobName: null, workflowName: 'places', runId: null, workflowRunId: '1' },
       { id: 4, ts: NOW, level: 'info', message: 'Resolved place_id for CID 12345', source: 'job', jobName: 'places-resolve', workflowName: null, runId: '1', workflowRunId: null },
       { id: 3, ts: NOW, level: 'error', message: 'TMDB lookup failed for tmdbId 300 — connection reset', source: 'job', jobName: 'tv-rec-merge', workflowName: null, runId: '2', workflowRunId: null },
       { id: 2, ts: NOW, level: 'info', message: 'Workflow run started (trigger: schedule)', source: 'workflow', jobName: null, workflowName: 'movie-recommendations', runId: null, workflowRunId: '2' },
       { id: 1, ts: NOW, level: 'warn', message: 'Service quota at 80% of monthly cap', source: 'job', jobName: 'places-enrich-with-llm', workflowName: null, runId: '1', workflowRunId: null },
-    ],
-    nextCursor: null,
-  };
+    ];
+    const levelParam = searchParams?.get('level');
+    const wantedLevels = levelParam ? levelParam.split(',').filter(Boolean) : null;
+    const logs = wantedLevels ? allLogs.filter((l) => wantedLevels.includes(l.level)) : allLogs;
+    return { logs, nextCursor: null };
+  }
   return {};
 }
 

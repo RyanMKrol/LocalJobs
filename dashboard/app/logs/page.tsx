@@ -50,9 +50,19 @@ export default function LogsPage() {
   );
 
   // Reset the accumulated list whenever the filters (not pagination) change.
+  // Clear to empty rather than seeding from `data` — `data` here is still the
+  // PREVIOUS filter's result (the new fetch triggered by usePoll above hasn't
+  // resolved yet), so seeding from it would leave stale, non-matching rows
+  // that the merge effect below can never prune (it only adds, never removes).
+  //
+  // Known limitation (not fixed here): if filters change twice within one
+  // network round trip, the first fetch could resolve after this reset and
+  // briefly reintroduce mismatched rows via the merge effect below, since
+  // neither usePoll nor this component tags requests with a generation/sequence
+  // number. Narrower than the guaranteed bug fixed here; left as-is.
   useEffect(() => {
-    setLines(data?.logs ?? []);
-    setNextCursor(data?.nextCursor ?? null);
+    setLines([]);
+    setNextCursor(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [levels.join(','), scopeType, scopeValue, q, windowHours]);
 
