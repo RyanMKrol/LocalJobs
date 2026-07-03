@@ -9684,7 +9684,7 @@
     {
       "id": "T364",
       "title": "Add vercel-daily-redeploy workflow: daily Vercel Deploy Hook POST safety net for ryankrol.co.uk",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
