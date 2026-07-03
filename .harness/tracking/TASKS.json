@@ -9788,7 +9788,7 @@
     {
       "id": "T368",
       "title": "Add validation gate to workouts-sync's 2 stages",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
