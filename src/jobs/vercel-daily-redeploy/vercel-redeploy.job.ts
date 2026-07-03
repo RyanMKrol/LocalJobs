@@ -71,8 +71,13 @@ export async function runVercelRedeploy(
     child.stderr?.on('data', (d: Buffer) => {
       const text = d.toString();
       err += text;
+      // The Vercel CLI writes ALL of its normal human-readable build progress to
+      // stderr by design (stdout is reserved for the final deploy URL) — logging
+      // it as 'warn' would paint a fully successful deploy with dozens of
+      // spurious warnings. Only the exit-code check below decides success/failure;
+      // this is just routine progress, logged at 'info' like stdout.
       for (const line of text.split('\n')) {
-        if (line.trim()) ctx.log(`vercel (stderr): ${line.trim()}`, 'warn');
+        if (line.trim()) ctx.log(`vercel: ${line.trim()}`);
       }
     });
     child.on('error', (e) => {

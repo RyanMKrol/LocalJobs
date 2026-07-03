@@ -134,4 +134,16 @@ describe('runVercelRedeploy', () => {
     assert.ok(ctx.logs.some((l) => l.message.includes('Building...')));
     assert.ok(ctx.logs.some((l) => l.message.includes('Uploading...')));
   });
+
+  it('logs stderr at info level, not warn — the Vercel CLI writes routine build progress there by design', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vercel-redeploy-'));
+    const ctx = fakeCtx();
+    const spawnFn: SpawnFn = () => makeFakeChild({ stderr: 'Running "vercel build"\nBuild Completed in /vercel/output [45s]\n', exitCode: 0 });
+
+    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn });
+
+    const stderrLine = ctx.logs.find((l) => l.message.includes('Build Completed'));
+    assert.ok(stderrLine, 'stderr line should be logged');
+    assert.notEqual(stderrLine!.level, 'warn', 'routine stderr progress must not be logged as warn');
+  });
 });
