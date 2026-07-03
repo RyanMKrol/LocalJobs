@@ -7,7 +7,6 @@ import {
   fetchInstrumentsMetadata,
   fetchPortfolio,
   normalizePosition,
-  positionKey,
   resolveOpenFigiTickersBatched,
   resolveTickers,
   type InstrumentsMetadataFetcher,
@@ -16,6 +15,7 @@ import {
   type PortfolioFetcher,
 } from '../../../services/trading212.service.js';
 import { portfolioJsonPath, stockDigestConfig } from '../config.js';
+import { weekKey, weekLabel } from '../lib.js';
 
 const JOB_NAME = 'stock-portfolio-snapshot';
 
@@ -36,6 +36,14 @@ export function writePortfolio(positions: NormalizedPosition[]): void {
 // so stock-digest has no inter-workflow dependency. Mirrors stocks-sync's
 // stocks-snapshot stage (same credentials, same ISIN/OpenFIGI real-ticker
 // resolution, T373) via the shared src/services/trading212.service.ts.
+//
+// Unlike stocks-sync's per-position ledger, this stage records ONE combined
+// work_items row per run, keyed by the SAME ISO week key stock-digest-build
+// uses — the whole workflow only ever runs its three stages together, and the
+// final report is bucketed weekly, so one shared week-keyed root gives every
+// downstream stage (stock-sector-lookup's per-ticker rows, stock-digest-build's
+// own row) something clean to point their `rootKey` at, instead of three
+// disjoint key spaces that don't join in the Input → Output panel.
 // ---------------------------------------------------------------------------
 
 export async function runStockPortfolioSnapshot(
@@ -45,8 +53,19 @@ export async function runStockPortfolioSnapshot(
     fetchInstrumentsMetadata?: InstrumentsMetadataFetcher;
     resolveOpenFigiTickers?: OpenFigiTickerResolver;
     writePortfolio?: PortfolioWriter;
+    now?: Date;
   } = {},
 ): Promise<void> {
+  const now = opts.now ?? new Date();
+  const key = weekKey(now);
+  const label = weekLabel(now);
+
+  if (!ctx.rootAllowed(key)) {
+    ctx.log(`info: root ${key} not in this limited run's selection — skipping`);
+    ctx.progress(100, 'skipped — not selected');
+    return;
+  }
+
   const apiKeyId = process.env.TRADING212_API_KEY_ID ?? '';
   const apiSecretKey = process.env.TRADING212_API_SECRET_KEY ?? '';
   if (!apiKeyId) throw new Error('TRADING212_API_KEY_ID is not set');
@@ -96,35 +115,39 @@ export async function runStockPortfolioSnapshot(
     }
   }
 
-  const allowedPositions = positions.filter((p) => ctx.rootAllowed(positionKey(p.account, p.ticker)));
+  writePortfolioFn(positions);
+  ctx.log(`info: wrote ${positions.length} position(s) to data/out/portfolio.json`);
 
-  writePortfolioFn(allowedPositions);
-  ctx.log(`info: wrote ${allowedPositions.length} position(s) to data/out/portfolio.json`);
+  for (const p of positions) {
+    ctx.log(
+      `info: [${p.account}] ${p.ticker}` +
+        `${p.resolvedTicker ? ` (resolved: ${p.resolvedTicker})` : ''}: qty ${p.quantity}, ` +
+        `avg ${p.averageBuyPrice}, current ${p.currentPrice}`,
+    );
+  }
 
-  if (allowedPositions.length === 0) {
+  if (positions.length === 0) {
     ctx.log('info: no open positions to record — done');
     ctx.progress(100, 'no positions to record');
     return;
   }
 
-  let done = 0;
-  for (const p of allowedPositions) {
-    markWorkItem(JOB_NAME, positionKey(p.account, p.ticker), 'success', {
-      detail: {
-        name: `${p.ticker}${p.account === 'isa' ? ' (ISA)' : ''}`,
-        currentPrice: p.currentPrice,
-        averageBuyPrice: p.averageBuyPrice,
-        resolvedTicker: p.resolvedTicker ?? null,
-      },
-    });
-    done++;
-    ctx.log(
-      `info: recorded ${done}/${allowedPositions.length} — [${p.account}] ${p.ticker}` +
-        `${p.resolvedTicker ? ` (resolved: ${p.resolvedTicker})` : ''}: qty ${p.quantity}, ` +
-        `avg ${p.averageBuyPrice}, current ${p.currentPrice}`,
-    );
-    ctx.progress((done / allowedPositions.length) * 100, `${done}/${allowedPositions.length} recorded`);
-  }
+  const totalValue = positions.reduce((sum, p) => sum + p.currentValue, 0);
+  const resolvedCount = positions.filter((p) => p.resolvedTicker).length;
 
-  ctx.log(`info: stock-portfolio-snapshot complete — recorded ${done} out of ${allowedPositions.length} position(s)`);
+  markWorkItem(JOB_NAME, key, 'success', {
+    rootKey: key,
+    detail: {
+      name: `Portfolio snapshot — ${label}`,
+      positionCount: positions.length,
+      totalValue,
+      resolvedCount,
+    },
+  });
+
+  ctx.progress(100, `${positions.length} position(s) recorded for ${label}`);
+  ctx.log(
+    `info: stock-portfolio-snapshot complete — recorded 1 combined ledger row (${key}) for ` +
+      `${positions.length} position(s), total value ${totalValue.toFixed(2)}, ${resolvedCount} real-ticker resolved`,
+  );
 }

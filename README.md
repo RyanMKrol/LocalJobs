@@ -247,7 +247,12 @@ gitignored). Private workflows live in gitignored subfolders.
   via OpenFIGI exactly like `stocks-sync` does. The Trading212 fetch/resolve logic
   is shared between the two workflows via `src/services/trading212.service.ts`
   (a top-level service, not a workflow-to-workflow read) so there's no duplicated
-  implementation. `stock-sector-lookup` resolves each currently-held ticker's
+  implementation. Unlike `stocks-sync`'s per-`account:ticker` ledger,
+  `stock-portfolio-snapshot` records ONE combined ledger row per run, keyed by the
+  same ISO week key `stock-digest-build` uses — and that same key is threaded as
+  the shared lineage `rootKey` through `stock-sector-lookup`'s per-ticker rows and
+  `stock-digest-build`'s own row, so the dashboard's workflow-run Input → Output
+  panel shows one coherent chain instead of three disjoint key spaces. `stock-sector-lookup` resolves each currently-held ticker's
   industry via the Finnhub company-profile API (`FINNHUB_API_KEY`), preferring
   the OpenFIGI-resolved real-world ticker over the raw/possibly-stale Trading212
   ticker when querying Finnhub, writing `data/out/sectors.json`; idempotent per

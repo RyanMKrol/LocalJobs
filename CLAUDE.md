@@ -292,11 +292,24 @@ their own credentials each run; neither reads the other's output file. `stock-po
 reads the SAME `TRADING212_API_KEY_ID`/`TRADING212_API_SECRET_KEY`/`TRADING212_ISA_API_KEY_ID`/
 `TRADING212_ISA_API_SECRET_KEY` env vars as `stocks-sync` (one Trading212 account, two independent
 consumers) and resolves each position's ISIN + real-world ticker via OpenFIGI exactly like
-`stocks-snapshot` does (T373) — records one `work_items` ledger row per `account:ticker`
-(`stock-portfolio-snapshot` job name) and writes `data/out/portfolio.json` (stock-digest's own,
-distinct file from `stocks-sync`'s). A missing or empty portfolio (Trading212 briefly returns
-nothing, or credentials are unset) is handled with a clear WARN log and a clean skip in both
-downstream stages, not a crash.
+`stocks-snapshot` does (T373) and writes `data/out/portfolio.json` (stock-digest's own, distinct
+file from `stocks-sync`'s). A missing or empty portfolio (Trading212 briefly returns nothing, or
+credentials are unset) is handled with a clear WARN log and a clean skip in both downstream stages,
+not a crash.
+
+**Ledger shape — ONE combined row per run, not one per position (a deliberate departure from
+`stocks-sync`'s per-`account:ticker` ledger):** `stock-portfolio-snapshot` records a SINGLE
+`work_items` row keyed by the same ISO week key `stock-digest-build` already uses (`weekKey(now)`,
+`src/jobs/stock-digest/lib.ts` — the whole workflow runs its three stages together and the report
+is bucketed weekly, so a shared week-key root is the natural granularity), with
+`detail: { name, positionCount, totalValue, resolvedCount }` summarizing the whole snapshot rather
+than one row per ticker. **This key is also the shared lineage `rootKey` threaded through all three
+stages** (`stock-sector-lookup`'s per-ticker rows and `stock-digest-build`'s own week-keyed row both
+pass `rootKey: weekKey(now)` explicitly on `markWorkItem`) — without this, each key-changing stage's
+`root_key` would default to its own `item_key` (composite `account:ticker` → bare ticker → ISO
+week: three disjoint key shapes), which is exactly what made the workflow-run Input → Output panel
+look confusing (a union of unrelated roots, most showing `—`) before this fix. See the root_key/
+parent_key lineage convention below and the `stock-digest.workflow.ts` file comment.
 
 Stage 2, `stock-sector-lookup`, resolves each currently-held ticker's industry via a new **Finnhub**
 service (`src/services/finnhub.service.ts`, `GET /stock/profile2?symbol=<TICKER>&token=<KEY>`,

@@ -5,6 +5,7 @@ import type { JobContext } from '../../../core/types.js';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
 import { portfolioJsonPath, sectorsJsonPath, stockDigestConfig } from '../config.js';
+import { weekKey } from '../lib.js';
 
 const JOB_NAME = 'stock-sector-lookup';
 const MAX_ATTEMPTS = 3;
@@ -80,12 +81,24 @@ export async function runStockSectorLookup(
     outPath?: string;
     apiKey?: string;
     fetchProfile?: ProfileFetcher;
+    now?: Date;
   } = {},
 ): Promise<void> {
   const portfolioPath = opts.portfolioPath ?? portfolioJsonPath;
   const outPath = opts.outPath ?? sectorsJsonPath;
   const apiKey = opts.apiKey ?? process.env.FINNHUB_API_KEY ?? '';
   const fetchProfile = opts.fetchProfile ?? ((ticker, key) => callService('finnhub', () => fetchFinnhubProfile(ticker, key)));
+  const now = opts.now ?? new Date();
+  // The lineage root: the SAME key stock-portfolio-snapshot's one collapsed row
+  // uses, so every per-ticker row this stage marks joins back to it in the
+  // Input → Output panel instead of becoming its own disjoint root.
+  const rootKey = weekKey(now);
+
+  if (!ctx.rootAllowed(rootKey)) {
+    ctx.log(`info: root ${rootKey} not in this limited run's selection — skipping`);
+    ctx.progress(100, 'skipped — not selected');
+    return;
+  }
 
   ctx.log(`info: stock-sector-lookup starting — reading portfolio from ${portfolioPath}`);
 
@@ -96,7 +109,7 @@ export async function runStockSectorLookup(
     return;
   }
 
-  const tickers = [...new Set(positions.map((p) => p.ticker))].filter((t) => ctx.rootAllowed(t));
+  const tickers = [...new Set(positions.map((p) => p.ticker))];
   ctx.log(`info: ${tickers.length} distinct ticker(s) currently held`);
 
   // Prefer each position's OpenFIGI-resolved real-world ticker (T373) when
@@ -126,11 +139,12 @@ export async function runStockSectorLookup(
       const industry = profile.finnhubIndustry ?? null;
       sectors[ticker] = industry;
       if (industry) {
-        markWorkItem(JOB_NAME, ticker, 'success', { detail: { name: ticker, industry, queriedSymbol: symbol } });
+        markWorkItem(JOB_NAME, ticker, 'success', { rootKey, detail: { name: ticker, industry, queriedSymbol: symbol } });
         ctx.log(`info: [${i + 1}/${todo.length}] ${ticker}${queriedNote} -> industry "${industry}"`);
         resolved++;
       } else {
         markWorkItem(JOB_NAME, ticker, 'failed', {
+          rootKey,
           detail: {
             name: ticker,
             queriedSymbol: symbol,
@@ -143,7 +157,7 @@ export async function runStockSectorLookup(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       ctx.log(`warn: [${i + 1}/${todo.length}] ${ticker}${queriedNote} lookup failed: ${message}`);
-      markWorkItem(JOB_NAME, ticker, 'failed', { detail: { name: ticker, queriedSymbol: symbol, error: message } });
+      markWorkItem(JOB_NAME, ticker, 'failed', { rootKey, detail: { name: ticker, queriedSymbol: symbol, error: message } });
       failed++;
     }
     ctx.progress(((i + 1) / todo.length) * 100, `resolved ${i + 1}/${todo.length}`);

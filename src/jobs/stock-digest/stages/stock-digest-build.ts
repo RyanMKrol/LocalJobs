@@ -5,6 +5,7 @@ import type { JobContext } from '../../../core/types.js';
 import { runClaude } from '../../../services/claude.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
 import { stockDigestConfig, reportPathFor, factsPathFor, sectorsJsonPath, portfolioJsonPath } from '../config.js';
+import { weekKey, weekLabel } from '../lib.js';
 import { readSectorMap, type SectorMap } from './stock-sector-lookup.js';
 
 const JOB_NAME = 'stock-digest-build';
@@ -15,24 +16,6 @@ export const claudeEffort = process.env.STOCK_DIGEST_CLAUDE_EFFORT ?? 'medium';
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
-
-/** "2026-W27" — the ISO-8601 week key, used as the ledger key + output filename suffix. */
-export function weekKey(date: Date): string {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  // ISO week: Thursday of this week determines the week-numbering year.
-  const dayNum = d.getUTCDay() || 7; // Mon=1..Sun=7
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-}
-
-/** "Week 27, 2026" — human-readable heading, derived from the same ISO week key. */
-export function weekLabel(date: Date): string {
-  const key = weekKey(date);
-  const [year, w] = key.split('-W');
-  return `Week ${Number(w)}, ${year}`;
-}
 
 /** Gain since average buy price, as a percentage. Mirrors stocks-watch's gainPct. */
 export function gainPct(position: NormalizedPosition): number {
@@ -302,6 +285,11 @@ export async function runStockDigestBuild(
   ctx.log(`info: wrote digest markdown to ${mdPath}`);
 
   markWorkItem(JOB_NAME, key, 'success', {
+    // Explicit rootKey (== this stage's own item_key here) so the Input → Output
+    // panel's lineage is stated, not just relying on the item_key === root_key
+    // default — matches the same shared week-key root stock-portfolio-snapshot
+    // and stock-sector-lookup root themselves to.
+    rootKey: key,
     detail: { name: `Stock digest — ${label}`, markdown: mdPath },
   });
 

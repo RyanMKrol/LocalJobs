@@ -9,12 +9,10 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runStockDigestBuild,
-  weekKey,
-  weekLabel,
   gainPct,
   portfolioSharePct,
   pickMovers,
@@ -26,6 +24,7 @@ import {
   type ClaudeRunner,
 } from './stock-digest-build.js';
 import { factsPathFor } from '../config.js';
+import { weekKey, weekLabel } from '../lib.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
 
 function fakeCtx(): JobContext {
@@ -344,6 +343,21 @@ describe('runStockDigestBuild', () => {
     const written = JSON.parse(readFileSync(factsPath, 'utf8'));
     const expected = buildFacts([pos({ ticker: 'AAPL', currentValue: 1000 })], now);
     assert.deepEqual(written, expected);
+  });
+
+  it('roots its ledger row at its own week key (shared with stock-portfolio-snapshot/stock-sector-lookup)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-digest-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos()]));
+    const outDir = join(dir, 'out');
+    const now = new Date('2026-07-02T12:00:00Z');
+    const claudeRunner: ClaudeRunner = async () => ({ ok: true, text: 'ok', rateLimited: false });
+
+    await runStockDigestBuild(fakeCtx(), { portfolioPath, outDir, now, claudeRunner });
+
+    const key = weekKey(now);
+    const row = getWorkItem(JOB, key);
+    assert.equal(row!.root_key, key);
   });
 });
 

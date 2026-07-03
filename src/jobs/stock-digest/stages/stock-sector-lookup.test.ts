@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runStockSectorLookup,
@@ -19,6 +19,7 @@ import {
   type ProfileFetcher,
 } from './stock-sector-lookup.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
+import { weekKey } from '../lib.js';
 
 function fakeCtx(): JobContext {
   return {
@@ -276,6 +277,20 @@ describe('runStockSectorLookup', () => {
     await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
 
     assert.deepEqual(calls, ['NORESOLVE1']);
+  });
+
+  it('roots each ticker row at the same ISO week key stock-portfolio-snapshot uses (lineage for the Input → Output panel)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-sector-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'ROOTED1' })]));
+    const outPath = join(dir, 'sectors.json');
+    const now = new Date('2026-07-02T12:00:00Z'); // 2026-W27
+    const fetchProfile: ProfileFetcher = async () => ({ finnhubIndustry: 'Technology' });
+
+    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile, now });
+
+    const row = getWorkItem(JOB, 'ROOTED1');
+    assert.equal(row!.root_key, weekKey(now));
   });
 });
 
