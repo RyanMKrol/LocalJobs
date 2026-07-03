@@ -9458,7 +9458,7 @@
     {
       "id": "T357",
       "title": "Remove the .movie-gaps-scroll internal scroll cap — display recs/gaps tables in full (idea #10a)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
