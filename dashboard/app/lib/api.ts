@@ -211,6 +211,28 @@ export interface WorkflowIo {
   scopedConsumerJobs: string[];
 }
 
+/** One row in a decoupled stage inputs/outputs list (GET /api/workflow-runs/:id/stage-io). */
+export interface StageIoItem {
+  jobName: string;
+  itemKey: string;
+  status: string;
+  detail: Record<string, unknown> | null;
+}
+
+/**
+ * Response from GET /api/workflow-runs/:id/stage-io?job=<job> — an alternative to
+ * WorkflowIo's joined-by-root_key table: two independent, un-paired lists (a stage's
+ * own rows this run as `outputs`, its direct predecessor(s)' rows this run as
+ * `inputs`). Added for stock-digest's workflow-run page, which has a genuine
+ * many-to-one aggregation stage a single joined row can't represent honestly.
+ */
+export interface StageIo {
+  inputs: StageIoItem[];
+  outputs: StageIoItem[];
+  predecessorJobs: string[];
+  job: string;
+}
+
 /** Response from GET /api/workflow-runs/:id/output (T110) — a job's produced
  *  markdown artifact for one work item. `found` is false when the item has no
  *  recorded/accessible markdown (so the UI falls back to showing the key). */
@@ -527,6 +549,8 @@ export const api = {
     ),
   workflowRunIo: (id: string, job?: string) =>
     get<WorkflowIo>(`/api/workflow-runs/${id}/io${job ? `?job=${encodeURIComponent(job)}` : ''}`),
+  workflowRunStageIo: (id: string, job: string) =>
+    get<StageIo>(`/api/workflow-runs/${id}/stage-io?job=${encodeURIComponent(job)}`),
   workflowRunOutput: (id: string, job: string, key: string) =>
     get<WorkflowRunOutput>(
       `/api/workflow-runs/${id}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,

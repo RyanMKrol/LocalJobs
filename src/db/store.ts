@@ -733,6 +733,75 @@ export function workItemIoRows(
   return { rows, scoped: false };
 }
 
+/** A single work-item ledger row, as shown in a decoupled inputs/outputs list. */
+export interface StageIoItem {
+  jobName: string;
+  itemKey: string;
+  status: string;
+  detail: unknown;
+}
+
+export interface StageIoLists {
+  inputs: StageIoItem[];
+  outputs: StageIoItem[];
+}
+
+function toStageIoItem(r: LedgerRow): StageIoItem {
+  return {
+    jobName: r.job_name,
+    itemKey: r.item_key,
+    status: r.status,
+    detail: r.detail != null ? (JSON.parse(r.detail) as unknown) : null,
+  };
+}
+
+/**
+ * Decoupled inputs/outputs for ONE stage of ONE workflow run (a deliberate
+ * alternative to {@link workItemIoRows}'s joined-by-root_key table, added for
+ * `stock-digest` — see its workflow-run page). Rather than pairing each input
+ * to "the first matching output by root_key" (which silently collapses genuine
+ * fan-out/fan-in to one row and looks confusing for a many-to-one aggregation
+ * stage), this returns TWO independent, un-paired lists:
+ *  - `outputs`: every `work_items` row `jobName` itself recorded THIS run
+ *    (via the `work_item_runs` linkage — same run-scoping `workItemIoRows` uses).
+ *  - `inputs`: every `work_items` row any of `predecessorJobNames` recorded
+ *    THIS run.
+ * Neither list tries to line up with the other — a genuine 9-ticker output
+ * list and a genuine 1-item input list are both shown in full, honestly.
+ * `root_key` grouping (root_key/parent_key lineage, T094) still exists on the
+ * underlying rows for OTHER purposes (limiting, idempotency) — this view just
+ * doesn't use it to force a join.
+ */
+export function stageIoLists(
+  jobName: string,
+  predecessorJobNames: string[],
+  workflowRunId: string,
+): StageIoLists {
+  const outputs = db.prepare(`
+    SELECT wi.job_name, wi.item_key, wi.status, wi.detail, wi.root_key
+    FROM work_items wi
+    JOIN work_item_runs wr
+      ON wr.job_name = wi.job_name AND wr.item_key = wi.item_key AND wr.workflow_run_id = ?
+    WHERE wi.job_name = ?
+    ORDER BY wi.item_key
+  `).all(workflowRunId, jobName) as LedgerRow[];
+
+  let inputs: LedgerRow[] = [];
+  if (predecessorJobNames.length > 0) {
+    const ph = predecessorJobNames.map(() => '?').join(',');
+    inputs = db.prepare(`
+      SELECT wi.job_name, wi.item_key, wi.status, wi.detail, wi.root_key
+      FROM work_items wi
+      JOIN work_item_runs wr
+        ON wr.job_name = wi.job_name AND wr.item_key = wi.item_key AND wr.workflow_run_id = ?
+      WHERE wi.job_name IN (${ph})
+      ORDER BY wi.job_name, wi.item_key
+    `).all(workflowRunId, ...predecessorJobNames) as LedgerRow[];
+  }
+
+  return { inputs: inputs.map(toStageIoItem), outputs: outputs.map(toStageIoItem) };
+}
+
 /**
  * Whether ANY workflow run of `workflowName` has ever recorded `work_item_runs`
  * linkage (T139). Used to distinguish, for a run with no linkage of its own, an

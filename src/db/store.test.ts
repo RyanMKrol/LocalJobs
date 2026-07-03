@@ -7,7 +7,7 @@ import {
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop,
   ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoreSurfacedItems, isWorkItemDone,
-  listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, workItemMarkdownPath, workflowHasRunLinkage,
+  listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, stageIoLists, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
   tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, updateJobTimeout, getJob, usageThisMonth,
@@ -990,6 +990,67 @@ console.log('  ✓ T112 status flicker: listRunsForWorkflowRun orders by (starte
   assert.equal(workflowHasRunLinkage('t139-fresh'), false, 'workflow with no runs/linkage → false');
 }
 console.log('  ✓ T139 run-scoped IO: work_item_runs linkage scopes workItemIoRows to the run');
+
+// ── stageIoLists: decoupled inputs/outputs, no root_key collapsing (stock-digest) ──
+// Unlike workItemIoRows, stageIoLists must show EVERY output row a stage recorded
+// this run — even when several of them share the same root_key (a genuine
+// many-to-one aggregation, exactly stock-digest's stock-sector-lookup shape).
+{
+  syncJob({ name: 'sio-a', run: async () => {} });
+  syncJob({ name: 'sio-b', run: async () => {} });
+  syncJob({ name: 'sio-c', run: async () => {} });
+  syncWorkflow({
+    name: 'sio-wf',
+    jobs: [
+      { job: 'sio-a' },
+      { job: 'sio-b', dependsOn: ['sio-a'] },
+      { job: 'sio-c', dependsOn: ['sio-a', 'sio-b'] },
+    ],
+  });
+
+  const runS = createWorkflowRun('sio-wf', 'manual');
+
+  // sio-a: one combined row (mirrors stock-portfolio-snapshot's single week row).
+  markWorkItem('sio-a', 'week-1', 'success', { workflowRunId: runS, detail: { name: 'Snapshot' } });
+
+  // sio-b: THREE rows, all sharing the SAME rootKey (mirrors stock-sector-lookup's
+  // per-ticker rows all rooted at the shared week key) — a genuine fan-out that
+  // workItemIoRows' root-keyed join would collapse to just one.
+  markWorkItem('sio-b', 'AAA', 'success', { rootKey: 'week-1', workflowRunId: runS, detail: { name: 'AAA sector' } });
+  markWorkItem('sio-b', 'BBB', 'success', { rootKey: 'week-1', workflowRunId: runS, detail: { name: 'BBB sector' } });
+  markWorkItem('sio-b', 'CCC', 'failed', { rootKey: 'week-1', workflowRunId: runS, detail: { name: 'CCC sector' } });
+
+  // sio-c: one combined row (mirrors stock-digest-build's single week row).
+  markWorkItem('sio-c', 'week-1', 'success', { rootKey: 'week-1', workflowRunId: runS, detail: { name: 'Report' } });
+
+  // sio-b's view: input = sio-a's one row; output = ALL THREE of its own rows, unpaired.
+  const bLists = stageIoLists('sio-b', ['sio-a'], runS);
+  assert.equal(bLists.inputs.length, 1, 'sio-b input is sio-a\'s single combined row');
+  assert.equal(bLists.inputs[0].itemKey, 'week-1');
+  assert.equal(bLists.outputs.length, 3, 'sio-b output shows ALL 3 of its own rows — no root_key collapsing');
+  assert.deepEqual(bLists.outputs.map((o) => o.itemKey).sort(), ['AAA', 'BBB', 'CCC']);
+  assert.deepEqual(bLists.outputs.map((o) => o.status).sort(), ['failed', 'success', 'success']);
+
+  // sio-c's view (fan-in: two predecessors): input = sio-a's row + all 3 of sio-b's rows.
+  const cLists = stageIoLists('sio-c', ['sio-a', 'sio-b'], runS);
+  assert.equal(cLists.inputs.length, 4, 'sio-c input is the union of BOTH predecessors\' rows this run');
+  assert.equal(cLists.outputs.length, 1, 'sio-c output is its own single combined row');
+  assert.equal(cLists.outputs[0].itemKey, 'week-1');
+
+  // sio-a's view (root stage): no predecessors → empty input list.
+  const aLists = stageIoLists('sio-a', [], runS);
+  assert.equal(aLists.inputs.length, 0, 'a root stage has no inputs');
+  assert.equal(aLists.outputs.length, 1);
+
+  // A different run sees only its own rows (run-scoped, same linkage mechanism as workItemIoRows).
+  const runS2 = createWorkflowRun('sio-wf', 'manual');
+  markWorkItem('sio-a', 'week-2', 'success', { workflowRunId: runS2 });
+  const bListsOtherRun = stageIoLists('sio-b', ['sio-a'], runS2);
+  assert.equal(bListsOtherRun.inputs.length, 1);
+  assert.equal(bListsOtherRun.inputs[0].itemKey, 'week-2');
+  assert.equal(bListsOtherRun.outputs.length, 0, 'sio-b recorded nothing in run S2');
+}
+console.log('  ✓ stageIoLists: decoupled input/output lists show every row a stage recorded, no root_key collapsing');
 
 // T210 — bulk-ignore resurface semantics: only the exact supplied keys are ignored;
 // a NEW key for the same logical "collection" surfaces fresh.

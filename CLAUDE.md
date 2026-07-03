@@ -1455,6 +1455,21 @@ doubt, log it.
     enumeration labels must use `<Pill>`, not bare `<span className="pill ...">`.
   - `DagFlow`, `WorkflowOutputSection` — existing components for the workflow DAG
     graph and unified output panel.
+  - **`<MarkdownModal>`** (`dashboard/app/components/MarkdownModal.tsx`, extracted
+    from `workflow-runs/[id]/page.tsx` in T382) — the full-markdown preview popover
+    (frontmatter parsed to a compact key-value header + `react-markdown` body,
+    XSS-safe). Also exports `parseFrontmatter`. Reused by both the generic `IoPanel`
+    and `StageIoPanel` (below) — do not re-implement the popover per component.
+  - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`, T382) — a
+    workflow-scoped ALTERNATIVE to the generic joined `IoPanel` for workflows with a
+    genuine fan-out/fan-in shape a single "input → output" row can't represent
+    honestly (see `stock-digest.workflow.ts`'s file comment). Renders one block per
+    DAG member with two independent, un-paired lists (its predecessor(s)' ledger
+    rows this run as Inputs, its own ledger rows this run as Outputs), backed by
+    `GET /workflow-runs/:id/stage-io` → `stageIoLists` in `src/db/store.ts`. Gated
+    per-workflow in `workflow-runs/[id]/page.tsx` (`run?.workflow_name ===
+    'stock-digest'` today) — every other workflow keeps the generic `IoPanel`. A
+    future workflow with the same many-to-one shape can opt in the same way.
   When adding a new reusable element, add it to `dashboard/app/components/` (NOT
   inline in a page) and document it here. Do NOT introduce a new styling system —
   wrap the existing `globals.css` class idiom.

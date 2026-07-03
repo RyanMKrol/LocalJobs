@@ -34,11 +34,23 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * `stock-portfolio-snapshot` collapses to ONE combined ledger row per run (keyed by
  * that week, not one row per position), and both `stock-sector-lookup` (per-ticker
  * keys) and `stock-digest-build` (its own week-keyed row) pass that same value as
- * `rootKey` explicitly. Without this, each stage's `markWorkItem` calls defaulted to
- * `root_key = item_key`, so three DIFFERENT key shapes (composite `account:ticker`,
- * bare ticker, ISO week) never joined — the workflow-run Input → Output panel showed
- * a confusing union of disjoint roots instead of one clean row per week. See the root
- * CLAUDE.md "root_key/parent_key lineage" convention.
+ * `rootKey` explicitly. This is genuinely correct for ledger POTENCY/idempotency
+ * (one row per week for the snapshot; the same root threaded through for lineage) —
+ * kept deliberately, not reverted.
+ *
+ * Decoupled dashboard display, NOT a joined table (second follow-up to T382): the
+ * generic workflow-run Input → Output panel pairs "one input" to "one output" by
+ * matching root_key, which — given `stock-sector-lookup`'s genuine per-ticker
+ * fan-out and `stock-digest-build`'s genuine many-to-one aggregation — either
+ * collapsed real data away or showed a confusing union of unmatched rows. This
+ * workflow's run page instead renders `StageIoPanel`
+ * (`dashboard/app/components/StageIoLists.tsx`, backed by `GET
+ * /workflow-runs/:id/stage-io` → `stageIoLists` in `src/db/store.ts`): per stage,
+ * TWO independent, un-paired lists — its direct predecessor(s)' ledger rows this
+ * run as "Inputs", its own ledger rows this run as "Outputs". A genuine 3-ticker
+ * fan-out shows as 3 rows, not 1. Gated to this workflow only
+ * (`run?.workflow_name === 'stock-digest'` in `workflow-runs/[id]/page.tsx`) —
+ * every other workflow keeps the generic joined `IoPanel`.
  */
 const workflow: WorkflowDefinition = {
   name: 'stock-digest',

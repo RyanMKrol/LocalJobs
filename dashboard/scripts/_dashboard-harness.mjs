@@ -232,6 +232,40 @@ const workflowIoStocks = {
   scopedConsumerJobs: [],
 };
 
+// stock-digest — exercises StageIoPanel (decoupled inputs/outputs, T382 follow-up),
+// gated to render instead of the generic IoPanel ONLY for workflow_name === 'stock-digest'.
+// A 3-stage fan-in DAG: stock-portfolio-snapshot -> both stock-sector-lookup AND
+// stock-digest-build. stock-sector-lookup's fixture deliberately has 3 output rows
+// (one failed) so the "no root_key collapsing" behaviour is actually visible.
+const stockDigestMembers = [
+  { job_name: 'stock-portfolio-snapshot', depends_on: [] },
+  { job_name: 'stock-sector-lookup', depends_on: ['stock-portfolio-snapshot'] },
+  { job_name: 'stock-digest-build', depends_on: ['stock-portfolio-snapshot', 'stock-sector-lookup'] },
+];
+const stockDigestWorkflowRun = workflowRun({ id: 'stock-digest-run', workflow_name: 'stock-digest' });
+const stockDigestRunJobs = stockDigestMembers.map((m, i) => run({
+  id: `stock-digest-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'stock-digest-run',
+}));
+const stockDigestSnapshotOutput = {
+  jobName: 'stock-portfolio-snapshot', itemKey: '2026-W27', status: 'success',
+  detail: { name: 'Portfolio snapshot — Week 27, 2026', positionCount: 9, totalValue: 307129.77, resolvedCount: 9 },
+};
+const stockDigestSectorOutputs = [
+  { jobName: 'stock-sector-lookup', itemKey: 'AMD_US_EQ', status: 'success', detail: { name: 'AMD_US_EQ', industry: 'Semiconductors', queriedSymbol: 'AMD' } },
+  { jobName: 'stock-sector-lookup', itemKey: 'AMZN_US_EQ', status: 'success', detail: { name: 'AMZN_US_EQ', industry: 'Retail', queriedSymbol: 'AMZN' } },
+  { jobName: 'stock-sector-lookup', itemKey: 'BRK_B_US_EQ', status: 'failed', detail: { name: 'BRK_B_US_EQ', queriedSymbol: 'BRK/B', error: 'Finnhub returned no finnhubIndustry field' } },
+];
+const stockDigestStageIo = {
+  'stock-portfolio-snapshot': { inputs: [], outputs: [stockDigestSnapshotOutput], predecessorJobs: [], job: 'stock-portfolio-snapshot' },
+  'stock-sector-lookup': { inputs: [stockDigestSnapshotOutput], outputs: stockDigestSectorOutputs, predecessorJobs: ['stock-portfolio-snapshot'], job: 'stock-sector-lookup' },
+  'stock-digest-build': {
+    inputs: [stockDigestSnapshotOutput, ...stockDigestSectorOutputs],
+    outputs: [{ jobName: 'stock-digest-build', itemKey: '2026-W27', status: 'success', detail: { name: 'Stock digest — Week 27, 2026', markdown: '/abs/data/out/stock-digest-2026-W27.md' } }],
+    predecessorJobs: ['stock-portfolio-snapshot', 'stock-sector-lookup'],
+    job: 'stock-digest-build',
+  },
+};
+
 const tasks = [
   // T001 is a standalone ready pending task (no longer anyone's dependency) — a valid "Ready" example
   // with no unmet deps at all (shows the "🤖 buildable" pill, not a "needs:" pill).
@@ -422,6 +456,11 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/workflow-runs/movie-recs-run') return { run: movieRecsWorkflowRun, jobs: movieRecsRunJobs, logs, gates: movieRecsGates };
   if (pathname === '/api/workflow-runs/stocks/io') return workflowIoStocks;
   if (pathname === '/api/workflow-runs/stocks') return { run: stocksWorkflowRun, jobs: stocksRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/stock-digest-run/stage-io') {
+    const job = searchParams?.get('job');
+    return stockDigestStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/stock-digest-run') return { run: stockDigestWorkflowRun, jobs: stockDigestRunJobs, logs, gates: [] };
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) {
     const job = searchParams?.get('job');
     if (job === 'places-enrich') return workflowIoScopedToEnrich;
@@ -434,6 +473,9 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/stocks-sync') {
     return { workflow: workflow({ name: 'stocks-sync', category: 'regular-maintenance', jobs: stocksMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/stock-digest') {
+    return { workflow: workflow({ name: 'stock-digest', category: 'regular-maintenance', jobs: stockDigestMembers, gates: [] }) };
   }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
@@ -509,6 +551,7 @@ export const PAGES = [
   { name: 'workflow-run-movie-recs', path: '/workflow-runs/movie-recs-run',   waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-skipped',    path: '/workflow-runs/skipped',          waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-stocks-io',  path: '/workflow-runs/stocks',           waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-stock-digest', path: '/workflow-runs/stock-digest-run', waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },

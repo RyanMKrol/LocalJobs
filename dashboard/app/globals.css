@@ -189,6 +189,22 @@ tbody tr:hover { background: var(--panel-2); }
 .io-job-filter-chip.active { background: rgba(88,166,255,.12); border-color: var(--accent); color: var(--accent); }
 /* Inline input→output state transition arrow (T226) */
 .io-state-arrow { margin-left: 4px; color: var(--muted); font-size: 0.88em; white-space: nowrap; }
+/* Decoupled per-stage inputs/outputs lists (stock-digest workflow-run page) — a
+   deliberate alternative to the joined io-* table above, for a workflow with a
+   genuine many-to-one aggregation stage a single joined row can't represent. */
+.stage-io-block { padding: 14px; margin-bottom: 12px; }
+.stage-io-block:last-child { margin-bottom: 0; }
+.stage-io-stage-name { margin: 0 0 10px; font-family: var(--font-mono, monospace); font-size: 0.95em; }
+.stage-io-columns { display: flex; gap: 20px; align-items: flex-start; }
+.stage-io-col { flex: 1 1 0; min-width: 0; }
+.stage-io-col-heading { margin: 0 0 6px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.stage-io-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.stage-io-item { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.stage-io-item-meta { min-width: 0; }
+.stage-io-item-key { font-family: var(--font-mono, monospace); font-size: 0.82em; overflow-wrap: anywhere; }
+.stage-io-item-name { color: var(--muted); font-size: 0.85em; margin-top: 1px; }
+.stage-io-item-link { background: none; border: none; padding: 0; color: var(--accent); font-family: var(--font-mono, monospace); font-size: 0.82em; cursor: pointer; text-align: left; }
+.stage-io-item-link:hover { text-decoration: underline; }
 /* Recent workflow runs scroll container (T185) — bounded height ~12 rows, sticky header. */
 .recent-runs-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
 .recent-runs-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
@@ -614,6 +630,9 @@ select:focus { border-color: var(--accent); }
 
   /* Frontmatter grid: stack to single column so long keys don't overflow. */
   .md-fm { grid-template-columns: 1fr; }
+
+  /* Decoupled stage inputs/outputs columns stack instead of sitting side by side. */
+  .stage-io-columns { flex-direction: column; gap: 14px; }
   .md-fm-row:not(:first-child) .md-fm-key { margin-top: 6px; }
 
   /* DAG: reduce height and constrain width on mobile */

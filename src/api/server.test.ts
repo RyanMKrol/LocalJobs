@@ -1685,6 +1685,76 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
 }
 
+// ── GET /api/workflow-runs/:id/stage-io — decoupled inputs/outputs, no
+// root_key collapsing (added for stock-digest's many-to-one aggregation stage).
+{
+  syncJob({ name: 'sio-api-a', run: async () => {} });
+  syncJob({ name: 'sio-api-b', run: async () => {} });
+  syncJob({ name: 'sio-api-c', run: async () => {} });
+  syncWorkflow({
+    name: 'sio-api-wf',
+    jobs: [
+      { job: 'sio-api-a' },
+      { job: 'sio-api-b', dependsOn: ['sio-api-a'] },
+      { job: 'sio-api-c', dependsOn: ['sio-api-a', 'sio-api-b'] },
+    ],
+  });
+
+  const sioRun = createWorkflowRun('sio-api-wf', 'manual');
+  markWorkItem('sio-api-a', 'week-1', 'success', { workflowRunId: sioRun, detail: { name: 'Snapshot' } });
+  markWorkItem('sio-api-b', 'X', 'success', { rootKey: 'week-1', workflowRunId: sioRun });
+  markWorkItem('sio-api-b', 'Y', 'success', { rootKey: 'week-1', workflowRunId: sioRun });
+  markWorkItem('sio-api-b', 'Z', 'failed', { rootKey: 'week-1', workflowRunId: sioRun });
+  markWorkItem('sio-api-c', 'week-1', 'success', { rootKey: 'week-1', workflowRunId: sioRun });
+
+  await test('GET /api/workflow-runs/:id/stage-io — root stage has no inputs', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${sioRun}/stage-io?job=sio-api-a`)).json()) as {
+        inputs: unknown[]; outputs: { itemKey: string }[]; predecessorJobs: string[]; job: string;
+      };
+      assert.equal(body.job, 'sio-api-a');
+      assert.deepEqual(body.predecessorJobs, []);
+      assert.equal(body.inputs.length, 0);
+      assert.deepEqual(body.outputs.map((o) => o.itemKey), ['week-1']);
+    });
+  });
+
+  await test('GET /api/workflow-runs/:id/stage-io — fan-out stage shows ALL its rows, not collapsed', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${sioRun}/stage-io?job=sio-api-b`)).json()) as {
+        inputs: { itemKey: string }[]; outputs: { itemKey: string; status: string }[];
+      };
+      assert.deepEqual(body.inputs.map((i) => i.itemKey), ['week-1']);
+      assert.deepEqual(body.outputs.map((o) => o.itemKey).sort(), ['X', 'Y', 'Z'], 'all 3 rows, no root_key collapsing');
+    });
+  });
+
+  await test('GET /api/workflow-runs/:id/stage-io — fan-in stage inputs union BOTH predecessors', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${sioRun}/stage-io?job=sio-api-c`)).json()) as {
+        inputs: { jobName: string; itemKey: string }[]; outputs: { itemKey: string }[]; predecessorJobs: string[];
+      };
+      assert.deepEqual(body.predecessorJobs.sort(), ['sio-api-a', 'sio-api-b']);
+      assert.equal(body.inputs.length, 4, 'sio-api-a\'s 1 row + sio-api-b\'s 3 rows');
+      assert.deepEqual(body.outputs.map((o) => o.itemKey), ['week-1']);
+    });
+  });
+
+  await test('GET /api/workflow-runs/:id/stage-io — no ?job -> 400', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${sioRun}/stage-io`);
+      assert.equal(res.status, 400);
+    });
+  });
+
+  await test('GET /api/workflow-runs/:id/stage-io — unknown job -> 400', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${sioRun}/stage-io?job=not-a-real-job`);
+      assert.equal(res.status, 400);
+    });
+  });
+}
+
 // ── movie-gaps endpoints (T145): GET overlays ignored/notified; POST ignores ──
 {
   const { moviesConfig } = await import('../jobs/movies/config.js');

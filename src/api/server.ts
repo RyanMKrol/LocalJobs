@@ -46,6 +46,7 @@ import {
   pruneOrphanedWorkItems,
   resetWorkflowOutput,
   workItemIoRows,
+  stageIoLists,
   workflowHasRunLinkage,
   workItemMarkdownPath,
   workflowTerminalItems,
@@ -1899,6 +1900,32 @@ export function createApiServer(
           scopedProducerJobs: jobParam != null ? producerJobs : [],
           scopedConsumerJobs: jobParam != null ? consumerJobs : [],
         });
+      }
+
+      // GET /api/workflow-runs/:id/stage-io?job=<job>
+      // Decoupled inputs/outputs for ONE stage of a run — an alternative to /io's
+      // joined-by-root_key table (added for stock-digest's workflow-run page, which
+      // has a genuine many-to-one aggregation stage that a single joined row can't
+      // represent honestly). Returns the stage's own work_items rows this run as
+      // `outputs` and its direct predecessor(s)' rows this run as `inputs`, with NO
+      // attempt to pair them 1:1 — a real 9-row fan-out stays 9 rows. DB reads only.
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'stage-io' && parts.length === 4) {
+        const run = getWorkflowRun(parts[2]);
+        if (!run) return json(res, 404, { error: 'workflow run not found' });
+        const jobParam = url.searchParams.get('job');
+        if (!jobParam) return json(res, 400, { error: 'job query param is required' });
+        const refs = getWorkflowJobs(run.workflow_name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
+        if (!refs.some((r) => r.job === jobParam)) {
+          return json(res, 400, { error: `unknown job "${jobParam}" for this workflow` });
+        }
+        let predecessors: string[] = [];
+        try {
+          predecessors = buildDag(refs).dependencies.get(jobParam) ?? [];
+        } catch {
+          return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], job: jobParam });
+        }
+        const { inputs, outputs } = stageIoLists(jobParam, predecessors, run.id);
+        return json(res, 200, { inputs, outputs, predecessorJobs: predecessors, job: jobParam });
       }
 
       // GET /api/workflow-runs/:id/output?job=<job>&key=<key>  (T110)
