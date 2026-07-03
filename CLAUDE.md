@@ -221,7 +221,25 @@ merged into the same combined list. Unset ISA credentials mean Invest-only, unch
 pre-T301 behavior. Stage 1 (`stocks-snapshot`), idempotent per **`account:ticker`** composite key
 (`positionKey`) via the `work_items` ledger — NOT ticker alone, since the same ticker can be held
 in both accounts and a bare-ticker key would collide; current price/value come directly from
-Trading212's own portfolio endpoint (no separate market-data API or credential).
+Trading212's own portfolio endpoint (no separate market-data API or credential). **Also resolves
+each position's ISIN + a current, real-world ticker (T373)** — Trading212's own `ticker` field can
+go stale after a company rename (e.g. `YNDX_US_EQ` is actually Nebius Group NV, ISIN
+`NL0009805522`, after its 2024 rename; Trading212 updated the `name` field but never the `ticker`).
+`stocks-snapshot` calls Trading212's `GET /equity/metadata/instruments` endpoint (a SEPARATE, more
+tightly rate-limited endpoint than the portfolio one — 1 request per 50 seconds per Trading212's
+OpenAPI spec) **at most once per stage run** (never once per position), routed through
+`callService('trading212', ...)` like the portfolio fetch, to build a ticker→ISIN lookup map; each
+resolved ISIN is then resolved to a real ticker via the `openfigi` service (T372,
+`fetchOpenFigiTickers`), batched to respect OpenFIGI's per-request job-count limit (10 without
+`OPENFIGI_API_KEY`, 100 with one). `NormalizedPosition` gains two **optional** fields — `isin?` and
+`resolvedTicker?` — populated when both lookups succeed; a miss at EITHER step (the Trading212
+ticker isn't in the instruments-metadata response, or OpenFIGI returns `{ "warning": "No
+identifier found." }` instead of `data`) is a soft skip: `ctx.log('warn: ...')` names the
+unresolved ticker/ISIN and the position is written with both fields `undefined`, never failing the
+whole snapshot. The existing `ticker` field is untouched — it stays the join key back to
+broker/ledger data. `data/out/portfolio.json` includes the two new fields when present;
+`data/out/portfolio.md` shows the resolved real ticker as a "Real ticker" column, falling back to
+`—` when a position has no `resolvedTicker`.
 Stage 2 (`stocks-watch`, `dependsOn: ['stocks-snapshot']`) reads that snapshot and, EVERY run, for
 EVERY position, computes its gain since average buy price and calls `markWorkItem` unconditionally
 — so this check stage always has ledger activity and can never be misclassified as noop by the

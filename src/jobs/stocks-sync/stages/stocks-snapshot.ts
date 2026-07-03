@@ -3,10 +3,15 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { callService } from '../../../core/services.js';
 import { markWorkItem, workItemCounts } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
+import { fetchOpenFigiTickers } from '../../../services/openfigi.service.js';
 import { stocksSyncConfig } from '../config.js';
 
 const JOB_NAME = 'stocks-snapshot';
 const T212_LIVE_BASE = 'https://live.trading212.com/api/v0';
+
+/** Job-count limit per OpenFIGI mapping request — 10 without an API key, 100 with one. */
+const OPENFIGI_BATCH_SIZE_NO_KEY = 10;
+const OPENFIGI_BATCH_SIZE_WITH_KEY = 100;
 
 // ---------------------------------------------------------------------------
 // Types matching Trading212's GET /equity/portfolio response shape (confirmed
@@ -38,11 +43,28 @@ export interface NormalizedPosition {
   currentPrice: number;
   currentValue: number;
   account: Trading212Account;
+  /** ISIN resolved from Trading212's instruments-metadata endpoint (T373). Omitted on a miss. */
+  isin?: string;
+  /** Current, real-world ticker resolved via OpenFIGI from `isin` (T373). Omitted on a miss. */
+  resolvedTicker?: string;
 }
 
 /** Composite ledger/lookup key — tickers can collide across accounts (T301). */
 export function positionKey(account: Trading212Account, ticker: string): string {
   return `${account}:${ticker}`;
+}
+
+// ---------------------------------------------------------------------------
+// Trading212 instruments-metadata (ticker -> ISIN lookup, T373)
+// ---------------------------------------------------------------------------
+
+export interface Trading212Instrument {
+  ticker: string;
+  name: string;
+  isin: string;
+  currencyCode: string;
+  type: string;
+  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +94,32 @@ export async function fetchPortfolio(apiKeyId: string, apiSecretKey: string): Pr
   return (await res.json()) as Trading212Position[];
 }
 
+export type InstrumentsMetadataFetcher = (apiKeyId: string, apiSecretKey: string) => Promise<Trading212Instrument[]>;
+
+/**
+ * GET-only, read-only call to Trading212's instruments-metadata endpoint. This is a
+ * SEPARATE, more tightly rate-limited endpoint than the portfolio one (1 request per
+ * 50 seconds per Trading212's OpenAPI spec) — callers must call this AT MOST ONCE per
+ * stage run, never once per position.
+ *
+ * NEVER issue a POST/PUT/PATCH/DELETE here — see the root CLAUDE.md and
+ * src/services/CLAUDE.md read-only rule.
+ */
+export async function fetchInstrumentsMetadata(
+  apiKeyId: string,
+  apiSecretKey: string,
+): Promise<Trading212Instrument[]> {
+  const basicAuth = Buffer.from(`${apiKeyId}:${apiSecretKey}`).toString('base64');
+  const res = await fetch(`${T212_LIVE_BASE}/equity/metadata/instruments`, {
+    method: 'GET',
+    headers: { Authorization: `Basic ${basicAuth}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Trading212 API error ${res.status}: ${await res.text()}`);
+  }
+  return (await res.json()) as Trading212Instrument[];
+}
+
 // ---------------------------------------------------------------------------
 // Normalize (broker-agnostic — no Trading212-specific field names)
 // ---------------------------------------------------------------------------
@@ -85,6 +133,66 @@ export function normalizePosition(pos: Trading212Position, account: Trading212Ac
     currentValue: pos.quantity * pos.currentPrice,
     account,
   };
+}
+
+// ---------------------------------------------------------------------------
+// ISIN + real-ticker resolution (T373): Trading212 ticker -> ISIN -> real ticker
+// ---------------------------------------------------------------------------
+
+export type OpenFigiTickerResolver = (isins: string[]) => Promise<(string | null)[]>;
+
+/**
+ * Resolves each position's Trading212 ticker to an ISIN (via the instruments-metadata
+ * lookup map) and then to a current, real-world ticker (via OpenFIGI), mutating
+ * nothing — returns a NEW array of positions with `isin`/`resolvedTicker` populated
+ * where resolvable. A miss at either step is soft — the position is left without the
+ * new fields and a warn is logged, never a throw.
+ */
+export async function resolveTickers(
+  ctx: JobContext,
+  positions: NormalizedPosition[],
+  isinByTicker: Map<string, string>,
+  resolveOpenFigiTickers: OpenFigiTickerResolver,
+): Promise<NormalizedPosition[]> {
+  const isins: string[] = [];
+  for (const p of positions) {
+    const isin = isinByTicker.get(p.ticker);
+    if (!isin) {
+      ctx.log(`warn: could not resolve ISIN for Trading212 ticker ${p.ticker} — skipping ticker resolution`);
+      continue;
+    }
+    isins.push(isin);
+  }
+
+  const uniqueIsins = Array.from(new Set(isins));
+  const tickerByIsin = new Map<string, string | null>();
+  if (uniqueIsins.length > 0) {
+    const resolved = await resolveOpenFigiTickers(uniqueIsins);
+    uniqueIsins.forEach((isin, i) => tickerByIsin.set(isin, resolved[i] ?? null));
+  }
+
+  return positions.map((p) => {
+    const isin = isinByTicker.get(p.ticker);
+    if (!isin) return p;
+    const resolvedTicker = tickerByIsin.get(isin) ?? null;
+    if (!resolvedTicker) {
+      ctx.log(`warn: OpenFIGI has no ticker mapping for ISIN ${isin} (Trading212 ticker ${p.ticker})`);
+      return { ...p, isin };
+    }
+    return { ...p, isin, resolvedTicker };
+  });
+}
+
+/** Batches ISINs into OpenFIGI mapping requests respecting its per-request job-count limit. */
+export async function resolveOpenFigiTickersBatched(isins: string[], apiKey?: string): Promise<(string | null)[]> {
+  const batchSize = apiKey ? OPENFIGI_BATCH_SIZE_WITH_KEY : OPENFIGI_BATCH_SIZE_NO_KEY;
+  const results: (string | null)[] = [];
+  for (let i = 0; i < isins.length; i += batchSize) {
+    const batch = isins.slice(i, i + batchSize);
+    const batchResult = await callService('openfigi', () => fetchOpenFigiTickers(batch, apiKey));
+    results.push(...batchResult);
+  }
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,13 +213,13 @@ export function buildPortfolioMarkdown(positions: NormalizedPosition[]): string 
   const lines: string[] = [];
   lines.push('# Portfolio snapshot');
   lines.push('');
-  lines.push('| Account | Ticker | Quantity | Avg buy price | Current price | Diff | Diff % |');
-  lines.push('|---|---|---|---|---|---|---|');
+  lines.push('| Account | Ticker | Real ticker | Quantity | Avg buy price | Current price | Diff | Diff % |');
+  lines.push('|---|---|---|---|---|---|---|---|');
   for (const p of positions) {
     const { absolute, percent } = priceDiff(p);
     const sign = absolute >= 0 ? '+' : '';
     lines.push(
-      `| ${p.account === 'isa' ? 'ISA' : 'Invest'} | ${p.ticker} | ${fmt(p.quantity)} | ${fmt(p.averageBuyPrice)} | ${fmt(p.currentPrice)} | ` +
+      `| ${p.account === 'isa' ? 'ISA' : 'Invest'} | ${p.ticker} | ${p.resolvedTicker ?? '—'} | ${fmt(p.quantity)} | ${fmt(p.averageBuyPrice)} | ${fmt(p.currentPrice)} | ` +
         `${sign}${fmt(absolute)} | ${sign}${fmt(percent)}% |`,
     );
   }
@@ -139,6 +247,8 @@ export async function runStocksSnapshot(
   ctx: JobContext,
   opts: {
     fetchPortfolio?: PortfolioFetcher;
+    fetchInstrumentsMetadata?: InstrumentsMetadataFetcher;
+    resolveOpenFigiTickers?: OpenFigiTickerResolver;
     writePortfolio?: PortfolioWriter;
   } = {},
 ): Promise<void> {
@@ -154,6 +264,12 @@ export async function runStocksSnapshot(
   const fetchPortfolioFn =
     opts.fetchPortfolio ??
     ((keyId, secret) => callService('trading212', () => fetchPortfolio(keyId, secret)));
+  const fetchInstrumentsMetadataFn =
+    opts.fetchInstrumentsMetadata ??
+    ((keyId, secret) => callService('trading212', () => fetchInstrumentsMetadata(keyId, secret)));
+  const resolveOpenFigiTickersFn =
+    opts.resolveOpenFigiTickers ??
+    ((isins) => resolveOpenFigiTickersBatched(isins, process.env.OPENFIGI_API_KEY));
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
 
   ctx.log('info: stocks-sync starting — fetching open positions from Trading212 (read-only)');
@@ -169,6 +285,20 @@ export async function runStocksSnapshot(
     positions = positions.concat(rawIsaPositions.map((p) => normalizePosition(p, 'isa')));
   } else {
     ctx.log('info: no ISA credentials configured (TRADING212_ISA_API_KEY_ID / _SECRET_KEY) — Invest account only');
+  }
+
+  if (positions.length > 0) {
+    ctx.log('info: resolving ISIN + real-world ticker for each position via Trading212 instruments-metadata + OpenFIGI');
+    try {
+      const instruments = await fetchInstrumentsMetadataFn(apiKeyId, apiSecretKey);
+      ctx.log(`info: fetched ${instruments.length} instrument(s) from Trading212 instruments-metadata`);
+      const isinByTicker = new Map(instruments.map((i) => [i.ticker, i.isin]));
+      positions = await resolveTickers(ctx, positions, isinByTicker, resolveOpenFigiTickersFn);
+      const resolvedCount = positions.filter((p) => p.resolvedTicker).length;
+      ctx.log(`info: resolved a real-world ticker for ${resolvedCount}/${positions.length} position(s)`);
+    } catch (err) {
+      ctx.log(`warn: ticker resolution failed — continuing without isin/resolvedTicker: ${(err as Error).message}`);
+    }
   }
 
   const counts = workItemCounts(JOB_NAME);

@@ -14,6 +14,7 @@ import {
   buildPortfolioMarkdown,
   positionKey,
   type Trading212Position,
+  type Trading212Instrument,
   type NormalizedPosition,
   type PortfolioWriter,
 } from './stocks-snapshot.js';
@@ -324,5 +325,92 @@ describe('runStocksSnapshot', () => {
     assert.ok(isWorkItemDone(JOB, positionKey('invest', sharedTicker), 3));
     assert.ok(isWorkItemDone(JOB, positionKey('isa', sharedTicker), 3));
     assert.notEqual(positionKey('invest', sharedTicker), positionKey('isa', sharedTicker));
+  });
+
+  // -------------------------------------------------------------------------
+  // ISIN + real-ticker resolution (T373)
+  // -------------------------------------------------------------------------
+
+  function makeInstrument(overrides: Partial<Trading212Instrument> = {}): Trading212Instrument {
+    return {
+      ticker: 'YNDX_US_EQ',
+      name: 'Nebius Group NV',
+      isin: 'NL0009805522',
+      currencyCode: 'USD',
+      type: 'STOCK',
+      ...overrides,
+    };
+  }
+
+  it('resolves ISIN + real-world ticker end-to-end', async () => {
+    const pos = makePosition({ ticker: 'YNDX_US_EQ' });
+    const { write, calls } = makeWriterSpy();
+    let metadataCalls = 0;
+
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async () => [pos],
+      fetchInstrumentsMetadata: async () => {
+        metadataCalls++;
+        return [makeInstrument()];
+      },
+      resolveOpenFigiTickers: async (isins) => isins.map(() => 'NBIS'),
+      writePortfolio: write,
+    });
+
+    assert.equal(metadataCalls, 1, 'instruments-metadata is fetched at most once per stage run');
+    assert.equal(calls[0][0].isin, 'NL0009805522');
+    assert.equal(calls[0][0].resolvedTicker, 'NBIS');
+  });
+
+  it('leaves isin/resolvedTicker undefined and logs a warn when the ticker is absent from instruments-metadata', async () => {
+    const pos = makePosition({ ticker: 'UNKNOWN_TICKER_EQ' });
+    const { write, calls } = makeWriterSpy();
+    const logs: string[] = [];
+    const ctx: JobContext = {
+      log: (msg) => logs.push(msg),
+      progress() {},
+      selectedRoots: () => null,
+      rootAllowed: () => true,
+    };
+
+    await runStocksSnapshot(ctx, {
+      fetchPortfolio: async () => [pos],
+      fetchInstrumentsMetadata: async () => [makeInstrument({ ticker: 'OTHER_TICKER_EQ' })],
+      resolveOpenFigiTickers: async (isins) => isins.map(() => 'NBIS'),
+      writePortfolio: write,
+    });
+
+    assert.equal(calls[0][0].isin, undefined);
+    assert.equal(calls[0][0].resolvedTicker, undefined);
+    assert.ok(
+      logs.some((l) => l.startsWith('warn:') && l.includes('UNKNOWN_TICKER_EQ')),
+      'should log a warn naming the unresolved ticker',
+    );
+  });
+
+  it('leaves resolvedTicker undefined (but isin populated) on an OpenFIGI resolution miss', async () => {
+    const pos = makePosition({ ticker: 'YNDX_US_EQ' });
+    const { write, calls } = makeWriterSpy();
+    const logs: string[] = [];
+    const ctx: JobContext = {
+      log: (msg) => logs.push(msg),
+      progress() {},
+      selectedRoots: () => null,
+      rootAllowed: () => true,
+    };
+
+    await runStocksSnapshot(ctx, {
+      fetchPortfolio: async () => [pos],
+      fetchInstrumentsMetadata: async () => [makeInstrument()],
+      resolveOpenFigiTickers: async (isins) => isins.map(() => null),
+      writePortfolio: write,
+    });
+
+    assert.equal(calls[0][0].isin, 'NL0009805522');
+    assert.equal(calls[0][0].resolvedTicker, undefined);
+    assert.ok(
+      logs.some((l) => l.startsWith('warn:') && l.includes('NL0009805522')),
+      'should log a warn naming the unresolved ISIN',
+    );
   });
 });
