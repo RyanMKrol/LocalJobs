@@ -9037,7 +9037,7 @@
     {
       "id": "T342",
       "title": "Extract a shared table/category-panel component and migrate Services + Workflows onto it",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [
         "T340"
       ],
