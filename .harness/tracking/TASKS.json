@@ -9426,7 +9426,7 @@
     {
       "id": "T356",
       "title": "Fix WorkflowOutputSection's empty state to use the centered .empty-state-panel pattern (idea #9)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
