@@ -9555,7 +9555,7 @@
     {
       "id": "T360",
       "title": "Add remark-gfm so dashboard markdown popovers render GFM tables",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
