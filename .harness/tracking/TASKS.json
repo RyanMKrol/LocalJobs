@@ -9364,7 +9364,7 @@
     {
       "id": "T354",
       "title": "Logs page: fix stale log lines lingering after changing level/scope/search/window filters",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
