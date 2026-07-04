@@ -10596,7 +10596,7 @@
     {
       "id": "T400",
       "title": "Fix header brand link wrapping to two lines at desktop width (T323 regression)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
