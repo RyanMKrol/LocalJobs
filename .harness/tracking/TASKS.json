@@ -11271,6 +11271,696 @@
       "verify": [],
       "expectsTest": true,
       "spec": ".harness/tasks/T427.md"
+    },
+    {
+      "id": "T428",
+      "title": "dynamodb service: disable dynamoPut/dynamoDelete/dynamoBatchWrite until explicitly re-enabled",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "policy",
+        "safety"
+      ],
+      "scope": [
+        "src/services/dynamodb.service.ts",
+        "src/services/dynamodb.service.test.ts",
+        "src/services/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T428.md",
+      "facets": {
+        "layer": "service",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T429",
+      "title": "Job descriptions: build the paragraph-description mechanism + write perfumes' 4 job descriptions",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "docs",
+        "dashboard",
+        "jobs"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "CLAUDE.md",
+        "dashboard/app/runs/[id]/page.tsx",
+        "dashboard/app/jobs/[name]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "src/workflows/perfumes/stages/find-url.job.ts",
+        "src/workflows/perfumes/stages/fetch.job.ts",
+        "src/workflows/perfumes/stages/parse.job.ts",
+        "src/workflows/perfumes/stages/build.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "spec": ".harness/tasks/T429.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T430",
+      "title": "Job descriptions: places (4 jobs)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "places"
+      ],
+      "scope": [
+        "src/workflows/places/stages/ingest.job.ts",
+        "src/workflows/places/stages/resolve.job.ts",
+        "src/workflows/places/stages/enrich.job.ts",
+        "src/workflows/places/stages/llm-enrich.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T430.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T431",
+      "title": "Job descriptions: missing-tv-seasons (3 jobs)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "missing-tv-seasons"
+      ],
+      "scope": [
+        "src/workflows/missing-tv-seasons/stages/snapshot.job.ts",
+        "src/workflows/missing-tv-seasons/stages/season-check.job.ts",
+        "src/workflows/missing-tv-seasons/stages/notify.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T431.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T432",
+      "title": "Job descriptions: movies / movie-recommendations (11 jobs)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "movies"
+      ],
+      "scope": [
+        "src/workflows/movies/stages/branches.ts",
+        "src/workflows/movies/stages/snapshot.job.ts",
+        "src/workflows/movies/stages/franchise-gaps.job.ts",
+        "src/workflows/movies/stages/merge.job.ts",
+        "src/workflows/movies/stages/notify.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T432.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T433",
+      "title": "Job descriptions: tv-recs / tv-recommendations (11 jobs)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "tv-recs"
+      ],
+      "scope": [
+        "src/workflows/tv-recs/stages/branches.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.job.ts",
+        "src/workflows/tv-recs/stages/tv-rec-merge.job.ts",
+        "src/workflows/tv-recs/stages/tv-recs-notify.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T433.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T434",
+      "title": "Job descriptions: workouts-sync (2 jobs)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "workouts-sync"
+      ],
+      "scope": [
+        "src/workflows/workouts-sync/stages/hevy-sync.job.ts",
+        "src/workflows/workouts-sync/stages/workouts-progress.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T434.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T435",
+      "title": "Job descriptions: listening-digest (1 job)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "listening-digest"
+      ],
+      "scope": [
+        "src/workflows/listening-digest/stages/listening-digest.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T435.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T436",
+      "title": "Job descriptions: projects-sync (2 jobs)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "projects-sync"
+      ],
+      "scope": [
+        "src/workflows/projects-sync/stages/github-sync.job.ts",
+        "src/workflows/projects-sync/stages/project-summarize.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T436.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T437",
+      "title": "Job descriptions: claude-warmer (1 job)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "claude-warmer"
+      ],
+      "scope": [
+        "src/workflows/claude-warmer/claude-warm.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T437.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T438",
+      "title": "Job descriptions: stocks-sync (4 jobs)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "stocks-sync"
+      ],
+      "scope": [
+        "src/workflows/stocks-sync/stages/stocks-fetch.job.ts",
+        "src/workflows/stocks-sync/stages/stocks-snapshot.job.ts",
+        "src/workflows/stocks-sync/stages/stocks-watch.job.ts",
+        "src/workflows/stocks-sync/stages/stocks-notify.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T438.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T439",
+      "title": "Job descriptions: stock-digest (3 jobs)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "stock-digest"
+      ],
+      "scope": [
+        "src/workflows/stock-digest/stages/stock-portfolio-snapshot.job.ts",
+        "src/workflows/stock-digest/stages/stock-sector-lookup.job.ts",
+        "src/workflows/stock-digest/stages/stock-digest-build.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T439.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T440",
+      "title": "Job descriptions: vercel-daily-redeploy (1 job)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "vercel-daily-redeploy"
+      ],
+      "scope": [
+        "src/workflows/vercel-daily-redeploy/vercel-redeploy.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T440.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T441",
+      "title": "Job descriptions: plex-space-saver (1 job)",
+      "status": "pending",
+      "dependsOn": [
+        "T429"
+      ],
+      "gate": null,
+      "tags": [
+        "docs",
+        "plex-space-saver"
+      ],
+      "scope": [
+        "src/workflows/plex-space-saver/stages/scan.job.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T441.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T442",
+      "title": "Build plex-language-fix workflow: read-only scan stage (TMDB original-language + per-file audio/subtitle proposal)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex",
+        "workflow"
+      ],
+      "scope": [
+        "src/workflows/plex-language-fix/**",
+        ".env.example",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "spec": ".harness/tasks/T442.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T443",
+      "title": "Add plex-language-fix apply stage: mutate Plex default audio/subtitle streams, with Butler-backup + undo safety net",
+      "status": "pending",
+      "dependsOn": [
+        "T442"
+      ],
+      "gate": null,
+      "tags": [
+        "plex",
+        "workflow"
+      ],
+      "scope": [
+        "src/workflows/plex-language-fix/**",
+        "src/core/plex-client.ts",
+        "scripts/plex-language-undo.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "spec": ".harness/tasks/T443.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T444",
+      "title": "Add plex-language-fix no-original-language-track flag stage (per-episode notify-once, probable wrong-release signal)",
+      "status": "pending",
+      "dependsOn": [
+        "T442"
+      ],
+      "gate": null,
+      "tags": [
+        "plex",
+        "workflow"
+      ],
+      "scope": [
+        "src/workflows/plex-language-fix/**",
+        "src/api/server.ts",
+        "src/db/store.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T444.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T445",
+      "title": "Human sign-off: verify plex-language-fix's first real live run before leaving it unattended",
+      "status": "pending",
+      "dependsOn": [
+        "T443",
+        "T444"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "plex",
+        "workflow",
+        "review",
+        "needs-human"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [
+        "live-api"
+      ],
+      "spec": ".harness/tasks/T445.md"
+    },
+    {
+      "id": "T446",
+      "title": "New plex-profiles workflow: per-title (movie + TV show) markdown profiles from pure Plex API data, no LLM",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "feature",
+        "plex"
+      ],
+      "scope": [
+        "src/workflows/plex-profiles/**",
+        "CLAUDE.md",
+        "README.md",
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T446.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T447",
+      "title": "Fix framework-wide stale absolute output-artifact paths in work_items.detail (post-rename breakage)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "bugfix",
+        "output-artifacts",
+        "cross-cutting"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "scripts/backfill-fix-stale-output-paths.ts",
+        "CLAUDE.md",
+        "src/workflows/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T447.md",
+      "facets": {
+        "layer": "db",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T448",
+      "title": "Fix Overall stage-io panel showing the identical row as both Input and Output for single-wave workflows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "bugfix",
+        "dashboard",
+        "stage-io"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T448.md",
+      "facets": {
+        "layer": "api",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T449",
+      "title": "Add rateLimitSource field to ServiceDefinition + document all current services",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "services",
+        "integrations",
+        "documentation"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "dashboard/app/lib/api.ts",
+        "src/services/claude-cli.service.ts",
+        "src/services/dynamodb.service.ts",
+        "src/services/finnhub.service.ts",
+        "src/services/fragrantica.service.ts",
+        "src/services/gemini.service.ts",
+        "src/services/github.service.ts",
+        "src/services/google-places.service.ts",
+        "src/services/hevy.service.ts",
+        "src/services/lastfm.service.ts",
+        "src/services/openfigi.service.ts",
+        "src/services/tmdb.service.ts",
+        "src/services/trading212.service.ts",
+        "src/services/trading212-instruments.service.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T449.md",
+      "facets": {
+        "layer": "service",
+        "workType": "feature",
+        "risk": [
+          "touches-schema",
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T450",
+      "title": "Render rate-limit provenance on the Integrations page's service modal",
+      "status": "pending",
+      "dependsOn": [
+        "T449"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "integrations",
+        "documentation"
+      ],
+      "scope": [
+        "dashboard/app/integrations/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "spec": ".harness/tasks/T450.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
     }
   ]
 }
