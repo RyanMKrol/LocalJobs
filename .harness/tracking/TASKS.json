@@ -10426,7 +10426,7 @@
     {
       "id": "T393",
       "title": "Fix ctx.log() error-level omission in project-summarize + hevy-sync catch blocks",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
