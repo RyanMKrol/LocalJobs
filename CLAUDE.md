@@ -54,7 +54,7 @@ This repo is **public**. Two hard rules:
    gitignored and read via `process.env`. If a job needs a credential, document
    the env var name in `.env.example` and read it from the environment.
 2. **Never commit private jobs.** The framework is public; the owner's actual
-   jobs are not. Top-level `src/jobs/*.job.ts` files are gitignored. The `places/`
+   jobs are not. Top-level `src/workflows/*.job.ts` files are gitignored. The `places/`
    and `perfumes/` subfolders are tracked as published examples — any new private
    workflow should live in its own subfolder added to `.gitignore`. Do not
    force-add private files.
@@ -104,346 +104,36 @@ job), commit it and push it — don't let it accumulate.
 
 `local-jobs` is a self-hosted job orchestrator + dashboard that runs on an
 always-on **Mac Mini**. Its purpose is to host **long-running / headless local
-work** that doesn't fit serverless or a web request. The repo ships four
-worked-example workflows: **places** (headless CID→place_id resolution → Google
-Places API enrichment → Gemini LLM summaries, writing enriched JSON + markdown
-profiles to local files), **perfumes** (Fragrantica scrape → headless Chrome
-fetch → parse → Claude CLI profile build), **missing-tv-seasons** (snapshot the Plex TV
-library by GUID → check TMDB for complete missing seasons → weekly digest push;
-the `src/jobs/plex/` folder, formerly the `plex` workflow),
-and **movie-recommendations** (snapshot the Plex movie library by GUID → detect franchise gaps
-via the TMDB Collections API AND fan out 8 Claude recommender branches over a
-stratified library sample → a `rec-merge` stage that TMDB-verifies/dedupes/balances
-the picks, enforces a quality bar (TMDB rating ≥7.0 with ≥50 votes) and targets ≥15
-recs via a bounded re-prompt top-up loop (T162) → ONE monthly digest with separate
-franchise-gaps + recommendations sections, both with owner ignore-to-suppress),
-and **tv-recommendations** (`src/jobs/tv-recs/`) — a standalone TV show recommender (separate from
-`missing-tv-seasons` which only audits missing seasons); complete DAG: `tv-snapshot → (8 branches)
-→ tv-rec-merge → tv-recs-notify` (mirrors the movies fan-out pattern). `tv-snapshot` connects to
-Plex via the shared plex client, reads the TV library section, builds a per-show snapshot keyed by
-TMDB GUID + a taste profile (genres/roles/decades/countries), and writes `snapshot.json` +
-`taste-profile.json` to `src/jobs/tv-recs/data/out/`. 8 recommender branches fan out in parallel
-(3 random serendipity + 5 targeted). `tv-rec-merge` TMDB-verifies/dedupes/balances/tops-up into
-`recommendations.json`. `tv-recs-notify` sends ONE monthly digest of new picks (announce-
-exactly-once via the `tv-recs` ledger), drops owner-ignored shows, writes a markdown report to
-`data/out/reports/tv-recommendations.md`, and appends notified shows to the history file.
-and **workouts-sync** (`src/jobs/workouts-sync/`) — paginate the Hevy workout API
-(`https://api.hevyapp.com/v1/workouts`) and append each newly-synced workout's full data (title,
-exercises, sets) to a local, full-history JSON file (`data/out/workouts-history.json`, no
-DynamoDB — matching the local-markdown/JSON-first direction of `listening-digest`/`projects-sync`/
-`stocks-sync`); idempotent per workout id via the `work_items` ledger (new workouts are appended,
-already-synced ids are skipped, so the history file only ever grows). Runs monthly (1st, 06:00) —
-a same-day-fresh cadence isn't needed now that nothing downstream reads it in real time. No static
-input list — inputs are discovered live from Hevy each run (like the plex audit workflows).
-Rate-limited via `src/services/hevy.service.ts`. Credentials: `HEVY_API_KEY`. Stage 2,
-`workouts-progress` (`dependsOn: ['hevy-sync']`), reads the full history file and computes a
-per-exercise 6-month progress comparison — baseline period = the calendar month exactly 6 months
-before the current period, current period = the most recently completed calendar month — across
-three metrics: best single set (highest `weight_kg`, ties broken by `reps`), total volume
-(`sum(weight_kg * reps)`), and estimated 1-rep-max (Epley: `weight_kg * (1 + reps / 30)`, max across
-the period). Sets with a null `weight_kg`/`reps` (duration/distance-based exercises) are skipped
-from all three metrics; an exercise with no usable sets in either period is excluded entirely. The
-raw comparison is written to `data/out/progress-data.json`, then fed to `runClaude` (the shared
-Claude CLI helper) to narrate it into `data/out/workouts-progress.md`. Idempotent per calendar month
-via the `work_items` ledger (mirrors `listening-digest`) — a manual re-run the same month
-regenerates the report (same static filename) rather than duplicating it.
-and **listening-digest** (`src/jobs/listening-digest/`) — once a month, fetch Last.fm's own
-aggregated `user.getTopAlbums` + `user.getTopTracks` (`period=1month`), filter out albums where a
-single track accounts for ≥70% of the album's plays (a "one song on repeat" false-positive, mirrors
-the same heuristic `ryankrol.co.uk`'s `/listening` page uses), and write a markdown digest to
-`data/out/`. No DynamoDB — the website already reads Last.fm's period-based aggregation directly,
-so there's no need to persist raw scrobbles. Single stage, not limitable (nothing to fan out over).
-Idempotent per calendar month via the `work_items` ledger (keyed `YYYY-MM`); a manual re-run the
-same month regenerates that month's file rather than duplicating it. Service:
-`src/services/lastfm.service.ts`. Credentials: `LAST_FM_API_KEY`, `LAST_FM_USERNAME`.
-and **projects-sync** (`src/jobs/projects-sync/`) — a 2-stage DAG. Stage 1, `github-sync`, fetches
-the owner's GitHub repos via `GET /users/<GITHUB_USERNAME>/repos`, filters out forks/archived/private,
-sorts by `pushed_at` descending, and writes the filtered list to a local `data/out/projects.json`
-catalog (no DynamoDB). Idempotent per GitHub numeric repo id (`repoId`) via the `work_items` ledger —
-re-scans every run so fields (description, topics, etc.) are refreshed. Stage 2, `project-summarize`
-(`dependsOn: ['github-sync']`), shallow-clones each cataloged repo into a gitignored
-`data/repos/<name>/` dir (pulling/reset instead of re-cloning if already present), then calls Claude
-via a **DIFFERENT invocation shape from the shared `runClaude` helper (T320)**: `src/jobs/projects-sync/claude-repo.ts`'s
-`runClaudeWithRepoAccess` spawns the CLI with `cwd` set to the cloned repo dir and
-`--add-dir <repoDir> --allowedTools Read Glob Grep` (real, scoped, READ-ONLY filesystem tool access
-— deliberately no `Bash`/`Write`/`Edit` or any mutating tool), so Claude explores the actual checked-out
-project (package.json, source layout, README, other docs) itself instead of relying on a prompt-embedded
-README slice. It is still gated through the same `claude-cli` service (`callService`, same rate-limit/quota
-meter) as `runClaude` — only the CLI args/cwd differ; `src/services/claude.ts`'s `runClaude` itself is
-UNCHANGED and still used, unmodified, by the perfumes build stage and the movies recommender branches.
-The prompt (`buildSummaryPrompt`) still embeds the catalog metadata GitHub knows (name/description/
-language/topics/pushedAt/url — unreachable from local file exploration alone) and instructs Claude to
-explore the repo itself for everything else, writing a one-project markdown summary to
-`data/out/<repo-name>.md` — the standard `detail.markdown` shape (T110) so it appears automatically in
-the workflow's unified Output section (T205). **The output is an enforced template contract (T319,
-mirroring perfumes' `profile.template.md` pattern):** `buildSummaryPrompt` embeds
-`src/jobs/projects-sync/project.template.md` (override via `PROJECTS_SYNC_TEMPLATE_PATH`, config key
-`projectsSyncConfig.templatePath`) and instructs Claude to follow it exactly — YAML frontmatter
-(`name`/`full_name`/`url`/`language`/`topics`/`status`/`last_pushed`/`themes`/`domain`) plus fixed `##`
-sections (`What It Is`/`Tech Stack`/`Status`/`Structure`/`Themes & Interests`/`Notable Technical
-Approaches`/`Sources`) designed so the whole corpus of summaries is queryable for cross-project questions
-("what kind of work am I interested in", "what have I built in domain X"). **Each section is expected to
-be a couple of substantive paragraphs grounded in real repo exploration (T334), not a one-line
-restatement of the catalog metadata** — both the template's per-section guidance and `buildSummaryPrompt`
-explicitly ask for this depth (while keeping the existing "never invent facts" honesty instruction
-intact; a small/dormant project may honestly say a section has little to add rather than pad it).
-`templateShapeViolations`
-validates the response post-hoc (leading `---` + every required heading); a shape mismatch throws with
-the missing pieces named, routing through the existing `catch` → `markWorkItem(..., 'failed', ...)` path
-— no new failure mechanism. Idempotent per
-repo via a commit-sha-equivalent marker (the catalog's `pushedAt`): a repo whose stored marker
-already matches the catalog's current value is skipped entirely (no clone, no Claude call) — there is
-no separate calendar-based skip. Runs weekly, Sunday at 05:00.
-Service: `src/services/github.service.ts`. Credentials: `GITHUB_USERNAME`, `GITHUB_TOKEN`. Model:
-`PROJECTS_SYNC_CLAUDE_MODEL` (defaults to a Sonnet 5 id) at effort `PROJECTS_SYNC_CLAUDE_EFFORT`
-(defaults to `medium`), shares `LOCALJOBS_CLAUDE_BIN`/`LOCALJOBS_CLAUDE_TIMEOUT_MS` via the
-`claude-cli` service.
-and **claude-warmer** (`src/jobs/claude-warmer/`) — issue one minimal Claude CLI prompt (`"hi"`,
-cheapest model) every 30 minutes via `runClaude` in `src/services/claude.ts`. WHY: Claude accounts
-have a 5-hour rolling usage window; this workflow fires proactively during off-hours so the window
-is already running (or reset) by the time real work needs Claude. No local quota cap — the upstream
-Claude plan enforces its own limit; if that limit is hit the CLI fails out and the job exits
-cleanly (soft-fail). One stage (`claude-warm.job.ts`), `maxRetries: 0`, `timeoutMs: 60_000`.
-and **stocks-sync** (`src/jobs/stocks-sync/`) — pull the owner's current open equity positions
-from Trading212 (https://docs.trading212.com/api) via a **strictly read-only** integration
-(GET-only, HTTP Basic auth with the key id as username and the secret key as password — see
-`src/services/CLAUDE.md`) and write a local snapshot: `data/out/portfolio.json` (structured,
-broker-agnostic `{ ticker, quantity, averageBuyPrice, currentPrice, currentValue, account }` array)
-and `data/out/portfolio.md` (one row per position, including an Account column and the price
-difference since purchase — `currentPrice - averageBuyPrice` — as both an absolute amount and a
-percentage). No DynamoDB, matching the local-markdown-first direction of
-`projects-sync`/`listening-digest`. **Four-stage DAG (fetch → resolve → watch → notify)** — the
-original single combined fetch+resolve stage was split in two so each job does one clearly-scoped
-thing (each new stage's own ledger `detail` genuinely describes what THAT stage produced, per the
-"success detail must describe what it produced" convention above).
+work** that doesn't fit serverless or a web request.
 
-Stage 1 (`stocks-fetch`) fetches raw positions from Trading212 and normalizes/tags them by account —
-nothing else. **Also fetches an OPTIONAL second Stocks & Shares ISA account (T301)** — Trading212 API
-keys are scoped ONE key/secret pair PER ACCOUNT, so Invest and ISA each need their own
-separately-generated credentials — via `TRADING212_ISA_API_KEY_ID` / `TRADING212_ISA_API_SECRET_KEY`;
-when both are set, `fetchPortfolio` is called a second time with those credentials and the resulting
-positions are tagged `account: 'isa'` (vs `'invest'`) and merged into the same combined list. Unset
-ISA credentials mean Invest-only, unchanged from pre-T301 behavior. Current price/value come directly
-from Trading212's own portfolio endpoint (no separate market-data API or credential). The result is
-written, NOT yet ticker-resolved, to `data/out/raw-positions.json` — the hand-off artifact to stage 2,
-validated by the `stocks-raw-positions` gate. `stocks-fetch` records ONE combined `work_items` row per
-calendar day (`YYYY-MM-DD`, a same-day re-run overwrites rather than duplicates) — **written
-unconditionally, even when zero positions are fetched** — summarizing `investCount`/`isaCount`/
-`totalFetched` plus a `path`/`format` reference to `raw-positions.json`.
+### Shipped example workflows — one folder, one `CLAUDE.md`, each
 
-Stage 2 (`stocks-snapshot`, `dependsOn: ['stocks-fetch']`) reads `raw-positions.json` and **resolves
-each position's ISIN + a current, real-world ticker (T373)** — Trading212's own `ticker` field can
-go stale after a company rename (e.g. `YNDX_US_EQ` is actually Nebius Group NV, ISIN
-`NL0009805522`, after its 2024 rename; Trading212 updated the `name` field but never the `ticker`).
-`stocks-snapshot` calls Trading212's `GET /equity/metadata/instruments` endpoint (a SEPARATE, more
-tightly rate-limited endpoint than the portfolio one — 1 request per 50 seconds per Trading212's
-OpenAPI spec) **at most once per stage run** (never once per position), routed through
-`callService('trading212', ...)` like the portfolio fetch, to build a ticker→ISIN lookup map; each
-resolved ISIN is then resolved to a real ticker via the `openfigi` service (T372,
-`fetchOpenFigiTickers`), batched to respect OpenFIGI's per-request job-count limit (10 without
-`OPENFIGI_API_KEY`, 100 with one). `NormalizedPosition` gains two **optional** fields — `isin?` and
-`resolvedTicker?` — populated when both lookups succeed; a miss at EITHER step (the Trading212
-ticker isn't in the instruments-metadata response, or OpenFIGI returns `{ "warning": "No
-identifier found." }` instead of `data`) is a soft skip: `ctx.log('warn: ...')` names the
-unresolved ticker/ISIN and the position is written with both fields `undefined`, never failing the
-whole snapshot. The existing `ticker` field is untouched — it stays the join key back to
-broker/ledger data. `data/out/portfolio.json` includes the two new fields when present;
-`data/out/portfolio.md` shows the resolved real ticker as a "Real ticker" column, falling back to
-`—` when a position has no `resolvedTicker`. `stocks-snapshot` records ONE combined `work_items` row
-per calendar day (same day-key convention as `stocks-fetch` — both are same-key stages, so neither
-needs `rootKey`/`parentKey`), summarizing the whole snapshot (`positionCount`/`totalValue`/
-`resolvedCount`) — mirroring the same one-combined-artifact-per-period idiom
-`stock-digest-build`/`plex-space-saver-scan` already use, rather than one row per position (T403;
-this also means the workflow declares no `inputKeys()` and is NOT limitable — no Run-limit box on
-the dashboard, matching its sibling single-snapshot workflows). Unlike `stocks-fetch`, `stocks-snapshot`
-still skips its own ledger row when there's nothing to resolve (an empty raw-positions file). The
-per-position **`account:ticker`** composite key (`positionKey`) still exists — it's just not either
-new stage's ledger key; it survives as the key `stocks-watch` (stage 3, below) uses on its own
-separate ledger, since the same ticker can be held in both accounts and a bare-ticker key would
-collide there.
+The repo ships 13 worked-example workflows under `src/workflows/`. Each workflow's full
+current-state documentation — DAG stages, file paths, ledger conventions, credentials, schedule,
+and any non-obvious invariant worth protecting — lives in its OWN `CLAUDE.md` inside its folder
+(auto-loaded by Claude Code when working in that directory, same mechanism as this file and
+`src/services/CLAUDE.md`). This root file stays a thin index — do not re-inflate it by pasting
+per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` instead.
 
-Stage 3 (`stocks-watch`, `dependsOn: ['stocks-snapshot']`) reads that snapshot and, EVERY run, for
-EVERY position, computes its gain since average buy price and calls `markWorkItem` unconditionally
-— so this check stage always has ledger activity and can never be misclassified as noop by the
-framework's `hasJobAdvancedAnyItem` heuristic (T300; the pre-T300 combined stage only wrote the
-ledger on a fresh breach or a threshold-drop reset, so a quiet run with nothing breaching called
-`markWorkItem` zero times and was wrongly reported as skipped even though it did real work). Whether
-a position is a **fresh** breach (>=30% AND not already notified) is tracked on a SEPARATE ledger
-key (`<account:ticker>::notified`, distinct from the per-run check key `<account:ticker>`) — a fresh breach sets it,
-staying above 30% leaves it untouched, and dropping back below 30% resets it (marked `skipped`,
-which `isWorkItemDone` treats as not-done) so a later re-crossing is fresh again. This run's fresh
-breaches are written to `data/out/fresh-breaches.json` (empty array if none) for the next stage.
-Stage 4 (`stocks-notify`, `dependsOn: ['stocks-watch']`) reads `fresh-breaches.json` and, if
-non-empty, sends **one** push (via `push()` from `src/core/notifier.ts`, not the generic aggregate
-`notifyWorkflow`) naming every freshly breaching position — reusing `buildDigest`/`formatBreachLine`.
-If empty, it does nothing; unlike `stocks-watch`, `stocks-notify` legitimately shows as noop/skipped
-in that case (there was genuinely nothing to send this run) — only the checking work being
-mislabeled skipped was the bug T300 fixed. Multiple positions freshly breaching in the same
-run are combined into a single push, not one per position. Runs daily (schedule editable from the
-dashboard). Service: `src/services/trading212.service.ts`.
-Credentials: `TRADING212_API_KEY_ID`, `TRADING212_API_SECRET_KEY`. **`outputJob: 'stocks-snapshot'`
-(T348, unaffected by the fetch/resolve split above since the name didn't move)**: the DAG's true
-terminal stage, `stocks-notify`, never records `work_items` rows (it's a pure notify-trigger), so the
-workflow manifest overrides the unified Output section (T205) to read `stocks-snapshot`'s ledger
-instead, showing the current resolved-ticker positions.
-and **stock-digest** (`src/jobs/stock-digest/`) — a weekly, Claude-narrated markdown summary of the
-owner's current stock holdings, DISTINCT from `stocks-sync` (which only snapshots + threshold-alerts;
-`stock-digest` is its own workflow, own folder, own schedule, per explicit owner direction — not a
-stage bolted onto `stocks-sync`). **Three-stage fan-in DAG (T382, was a 2-stage cross-workflow-read
-design as of T338/T337 — see below for why that changed):** `stock-portfolio-snapshot` fans out to
-BOTH `stock-sector-lookup` (`dependsOn: ['stock-portfolio-snapshot']`) AND `stock-digest-build`
-(`dependsOn: ['stock-portfolio-snapshot', 'stock-sector-lookup']` — a genuine fan-in: it reads both
-the portfolio snapshot directly and, once sector-lookup has run, the sector map). Not limitable
-(nothing to fan out over at the digest level), scheduled weekly (`'0 8 * * 1'`, Monday 08:00).
+| Workflow | Folder | What it does |
+|---|---|---|
+| **places** | `src/workflows/places/` | Google Saved Places enrichment: CSVs → resolve CIDs → Google Places API → Gemini LLM summaries → markdown profiles |
+| **perfumes** | `src/workflows/perfumes/` | Fragrantica profile builder: find URL → headless-Chrome fetch → parse → Claude CLI profile write |
+| **missing-tv-seasons** | `src/workflows/missing-tv-seasons/` | Plex TV new-seasons audit: snapshot → check TMDB for complete missing seasons → weekly digest |
+| **movie-recommendations** | `src/workflows/movies/` | Monthly Plex movie audit: franchise gaps (TMDB Collections) + an 8-branch Claude recommender fan-out → one merged digest |
+| **tv-recommendations** | `src/workflows/tv-recs/` | Monthly Plex TV show recommender: snapshot → 8 Claude branches → merge/verify/dedupe → digest |
+| **workouts-sync** | `src/workflows/workouts-sync/` | Monthly Hevy workout ingestion + a 6-month progress report (Claude-narrated) |
+| **listening-digest** | `src/workflows/listening-digest/` | Monthly Last.fm top-albums/top-tracks digest |
+| **projects-sync** | `src/workflows/projects-sync/` | Weekly GitHub repo catalog + a Claude-summarized markdown profile per project |
+| **claude-warmer** | `src/workflows/claude-warmer/` | Proactive Claude usage-window warmer, every 30 minutes |
+| **stocks-sync** | `src/workflows/stocks-sync/` | Daily Trading212 portfolio snapshot + gain-alert (strictly read-only) |
+| **stock-digest** | `src/workflows/stock-digest/` | Weekly Claude-narrated stock holdings/performance/sector digest |
+| **vercel-daily-redeploy** | `src/workflows/vercel-daily-redeploy/` | Daily safety-net production deploy trigger for the owner's separate `ryankrol.co.uk` site |
+| **plex-space-saver** | `src/workflows/plex-space-saver/` | Weekly, report-only audit of where Plex library disk space is going |
 
-**NO inter-workflow dependency (T382 — reverses the T337/T338 cross-workflow-read design):**
-`stock-digest` used to read `stocks-sync`'s `data/out/portfolio.json` directly via a plain relative
-import of `stocksSyncConfig`/`NormalizedPosition`. Per explicit owner direction, this coupling was
-removed: `stock-digest` now fetches its OWN Trading212 snapshot via a new first stage,
-`stock-portfolio-snapshot` (`src/jobs/stock-digest/stages/stock-portfolio-snapshot.ts`), writing its
-own `data/out/portfolio.json` — completely independent of whatever `stocks-sync` has or hasn't done.
-This required promoting the actual Trading212 fetch/normalize/ISIN-resolve logic (previously owned
-outright by `stocks-sync`'s `stocks-snapshot` stage) into the shared, top-level, daemon-wide
-`src/services/trading212.service.ts` — mirroring how `openfigi.service.ts` already mixes its
-`ServiceDefinition` with real fetch functions — so BOTH `stocks-sync` and `stock-digest` import the
-SAME `fetchPortfolio`/`fetchInstrumentsMetadata`/`normalizePosition`/`positionKey`/`resolveTickers`/
-`resolveOpenFigiTickersBatched`/`NormalizedPosition` from that one service module. This is a shared
-top-level SERVICE dependency (the established, intended pattern for cross-job code reuse in this
-repo), not an inter-*workflow* dependency — `stocks-sync`'s `stocks-fetch`/`stocks-snapshot` stages
-and `stock-digest`'s `stock-portfolio-snapshot` stage each independently call the shared service with
-their own credentials each run; neither reads the other's output file. `stock-portfolio-snapshot`
-reads the SAME `TRADING212_API_KEY_ID`/`TRADING212_API_SECRET_KEY`/`TRADING212_ISA_API_KEY_ID`/
-`TRADING212_ISA_API_SECRET_KEY` env vars as `stocks-sync` (one Trading212 account, two independent
-consumers) and resolves each position's ISIN + real-world ticker via OpenFIGI exactly like
-`stocks-snapshot` does (T373) and writes `data/out/portfolio.json` (stock-digest's own, distinct
-file from `stocks-sync`'s). A missing or empty portfolio (Trading212 briefly returns nothing, or
-credentials are unset) is handled with a clear WARN log and a clean skip in both downstream stages,
-not a crash.
-
-**Ledger shape — ONE combined row per run, not one per position (a deliberate departure from
-`stocks-sync`'s per-`account:ticker` ledger):** `stock-portfolio-snapshot` records a SINGLE
-`work_items` row keyed by the same ISO week key `stock-digest-build` already uses (`weekKey(now)`,
-`src/jobs/stock-digest/lib.ts` — the whole workflow runs its three stages together and the report
-is bucketed weekly, so a shared week-key root is the natural granularity), with
-`detail: { name, positionCount, totalValue, resolvedCount }` summarizing the whole snapshot rather
-than one row per ticker. **This key is also the shared lineage `rootKey` threaded through all three
-stages** (`stock-sector-lookup`'s per-ticker rows and `stock-digest-build`'s own week-keyed row both
-pass `rootKey: weekKey(now)` explicitly on `markWorkItem`) — without this, each key-changing stage's
-`root_key` would default to its own `item_key` (composite `account:ticker` → bare ticker → ISO
-week: three disjoint key shapes), which is exactly what made the workflow-run Input → Output panel
-look confusing (a union of unrelated roots, most showing `—`) before this fix. See the root_key/
-parent_key lineage convention below and the `stock-digest.workflow.ts` file comment.
-
-Stage 2, `stock-sector-lookup`, resolves each currently-held ticker's industry via a new **Finnhub**
-service (`src/services/finnhub.service.ts`, `GET /stock/profile2?symbol=<TICKER>&token=<KEY>`,
-read-only/GET-only, gated through `callService('finnhub', ...)`) and writes a ticker→industry map to
-`data/out/sectors.json`. **The query symbol prefers the OpenFIGI-resolved real-world ticker (T382)
-over the crude `toFinnhubSymbol` string-strip (T352):** for each position, `resolvedTicker` (from
-`stock-portfolio-snapshot`'s ISIN/OpenFIGI resolution, T373) is used as the Finnhub query symbol when
-present; only when a position has no `resolvedTicker` does it fall back to `toFinnhubSymbol`, which
-strips a trailing `_EQ` and, if what remains ends in a 2-letter uppercase market/country code, strips
-that too (`AMD_US_EQ` → `AMD`, `VUSA_EQ` → `VUSA`) — Finnhub doesn't recognize Trading212's raw
-ticker format and silently returns an empty profile rather than erroring. This fixes the same class
-of staleness T373 fixed for `stocks-sync`: a company rename (e.g. a stale Trading212 ticker after a
-2024 rename) no longer sends a dead symbol to Finnhub. (`toFinnhubSymbol`'s known residual
-limitation — a class-share ticker like `BRK_B_US_EQ` strips to `BRK_B`, not Finnhub's exact expected
-form — still applies to the fallback path only.) The `work_items` ledger stays keyed by the
-ORIGINAL Trading212 ticker (matching `sectorBreakdown`'s lookup key in `stock-digest-build`), with
-the actually-queried symbol recorded in `detail.queriedSymbol` for debugging. Idempotent per ticker
-via the `work_items` ledger — a ticker already recorded `success` (a resolved industry) is skipped on
-later runs (industry classification rarely changes, and this conserves the free-tier quota); an
-unresolved lookup (no `finnhubIndustry` returned) is recorded `'failed'` rather than a misleading
-`'success'`, so it retries automatically (capped at `MAX_ATTEMPTS`, after which it surfaces on the
-dashboard's Stuck tile like any other stuck item); a newly-appeared ticker is looked up fresh. A
-one-time `scripts/reset-stock-sector-lookup-null-successes.ts` clears ledger rows the pre-T352 bug
-had already poisoned (recorded `'success'` with a null industry) so they re-resolve on the next run.
-Credentials: `FINNHUB_API_KEY` — unset key soft-skips the whole stage (clear WARN, no crash), which
-just means `stock-digest-build`'s diversification section is omitted that run.
-
-Stage 3, `stock-digest-build`, computes, in code (never left to Claude to infer), each position's
-gain since average buy price (`(currentPrice - averageBuyPrice) / averageBuyPrice`, the same formula
-`stocks-watch` uses) and its share of total current portfolio value, ranks the top winners/losers,
-groups portfolio value by resolved Finnhub industry (`sectorBreakdown` — % of total value per
-industry; tickers with no resolved sector are excluded from the breakdown, and the breakdown/whole
-diversification section is simply omitted when `sectors.json` is missing or has no resolved
-entries), and feeds a structured JSON facts object to `runClaude` (`src/services/claude.ts`) asking
-it to narrate a holdings section (ticker, quantity, current value, % of total portfolio), a
-performance section (winners/losers, biggest % movers), and — when sector data exists — a
-diversification section (% of portfolio value per industry, explicitly noted as Finnhub's own
-industry classification rather than a formal GICS sector) as markdown — Claude narrates/formats
-prose, it never invents the numbers. Output is written to `data/out/stock-digest-<weekKey>.md` (ISO
-week key, e.g. `2026-W27`) and recorded via `markWorkItem(ctx, weekKey, 'success', { detail: {
-markdown } })` (T110), so it surfaces in the workflow's unified Output section automatically.
-Idempotent per ISO week via the `work_items` ledger — a manual re-run the same week regenerates that
-week's file rather than duplicating it. **Markdown-only output — no push notification is sent
-anywhere in this workflow**, mirroring `listening-digest`. Model: `STOCK_DIGEST_CLAUDE_MODEL`
-(defaults to a Sonnet 5 id) at effort `STOCK_DIGEST_CLAUDE_EFFORT` (defaults to `medium`), gated
-through the same `claude-cli` service as every other Claude caller. **The raw `facts` JSON handed to
-Claude is also persisted per week (T362)**, written to `data/out/stock-digest-facts-<weekKey>.json`
-(via `factsPathFor` in `config.ts`) BEFORE the Claude call, so it's on disk for debugging even if
-that call throws. `runStockDigestBuild` also runs a **soft ticker cross-check**: after narration, it
-scans Claude's markdown text for ticker-shaped tokens (`extractCandidateTickers`) and flags any that
-aren't in `facts.holdings` and aren't a known non-ticker acronym (`findUnknownTickers` /
-`KNOWN_NON_TICKER_TOKENS`, a living stoplist — e.g. `ISA`, `USD`, `ETF`), logging a single `warn:`
-line naming them. This is a soft signal only — it never throws, skips the write, or changes the
-`markWorkItem` outcome; it exists purely so a genuine future narration hallucination shows up in the
-run's own logs instead of requiring manual log archaeology.
-and **vercel-daily-redeploy** (`src/jobs/vercel-daily-redeploy/`) — a single-job workflow that once a
-day runs `vercel --prod --yes` directly in the separate `ryankrol.co.uk` checkout — a real CLI
-production deploy of that repo's current working tree, NOT an HTTP call to a Vercel Deploy Hook (that
-was the original design; see below for why it changed). WHY: `ryankrol.co.uk` deliberately
-DISCONNECTED its Vercel Git integration on 2026-07-03 — that repo's own autonomous harness was
-pushing a commit every few minutes, and even a *cancelled* deploy still counted against Hobby's
-quota (100/day, 100/hour, 60/5min), so cancelling wasn't enough and the Git connection itself had to
-come off (see that repo's own `CLAUDE.md` "Deploying" section). Pushing to `main` no longer
-auto-deploys anything there; that repo now ships via its own harness convention (a single
-always-at-most-one "deploy task" in ITS `.harness/TASKS.json` running `vercel --prod` directly). This
-workflow is a SEPARATE, redundant daily safety net for when that mechanism fails or a session forgets
-to author a deploy task — a Vercel Deploy Hook was the original plan but is no longer viable (Deploy
-Hooks build from the connected Git repo/branch, and with Git integration off there's real doubt one
-would even fire); `vercel --prod` sidesteps that, deploying the current local working tree
-independent of Git integration state. **No credential to provision** — the Vercel CLI already has a
-persistent login session on this machine (confirmed via `vercel whoami`) and
-`~/Development/ryankrol.co.uk/.vercel/project.json` is already linked, so `vercel-redeploy.job.ts`
-relies on that existing global CLI auth rather than a passed token. It reads
-`process.env.RYANKROL_CO_UK_PATH` (the checkout path): unset or a nonexistent path soft-skips with a
-clear WARN log (mirroring `stock-digest`'s `FINNHUB_API_KEY` soft-skip); when valid it spawns
-`vercel --prod --yes` with that path as `cwd`, streams every stdout/stderr line to `ctx.log` (a real
-build can take a couple of minutes), and throws on a non-zero exit code or a spawn error (so a
-dropped/failed deploy shows as a failed run in the dashboard rather than being silently swallowed —
-the whole point of a safety net). Runs its own internal timeout-and-kill (10 min,
-`DEFAULT_TIMEOUT_MS`) separate from the job's outer `timeoutMs` (11 min) so the spawned `vercel`
-subprocess is always killed cleanly before the executor would ever need to hard-kill the job process
-itself. No `work_items` ledger — pure fire-and-forget trigger, no items to track, same shape as
-`claude-warmer`. `category: 'regular-maintenance'`. Runs daily at 23:00 (`'0 23 * * *'`), deliberately
-late in the day, after a typical day's activity on `ryankrol.co.uk`.
-and **plex-space-saver** (`src/jobs/plex-space-saver/`) — a single-stage, report-only audit of where
-Plex library disk space is going, distinct from `missing-tv-seasons` (which audits missing seasons,
-not disk usage). Reuses the shared plex client (`src/jobs/plex/client.ts`'s `resolvePlexHost`/
-`plexGet` — DHCP self-heal, T149) and the existing Plex env (`PLEX_HOST`/`PLEX_API_TOKEN`/optional
-`PLEX_MACHINE_ID`), plus the SAME `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION` env vars the `movies`/
-`missing-tv-seasons` workflows already read (no new env vars). Size is obtained via the API — each
-Plex `Media.Part` carries a `size` in bytes — never a filesystem walk. Granularity: **one row per
-title** — each movie stands alone (its own media parts summed), each TV show is a single row summing
-every episode across every season (grouped by `grandparentRatingKey`, mirroring `missing-tv-seasons`'s
-`highestOwnedSeasonMap` join pattern). `plex-space-saver-scan` (the only stage — one-stage workflow,
-so no DAG edge and no gate is needed per `src/jobs/CLAUDE.md`) fetches the movie section, the TV
-section's shows, and its flat episode list (`type=4`), computes a biggest-first breakdown via
-`buildMovieRows`/`buildShowRows`/`buildBreakdown` in `lib.ts`, and writes it to
-`data/out/size-breakdown.json`. **Report only — never flags or suggests deletions.** RE-SCANS FRESH
-every run (an audit, not a build, like `missing-tv-seasons`); idempotent per ISO calendar week via the
-`work_items` ledger (`weekKey`, mirrors `stock-digest`) — a manual re-run the same week regenerates
-that week's breakdown rather than duplicating it. Runs weekly (Sundays 06:00). **Surfaced via the
-T262 declared-output-form mechanism, not markdown prose** — the ledger row's `detail.format:
-'size-table'` + `detail.path` point the unified Output section's fetch endpoint
-(`resolveOutputForm` in `src/api/server.ts`) at the structured JSON breakdown, served through
-`safeOutputFile`; the dashboard's generic `WorkflowOutputSection` renders any form with no dedicated
-viewer via its raw-content fallback (`RawOutputBody`), so the structured JSON is visible with no
-dashboard changes required. (`detail.markdown` is also set, to the same path, purely so the output
-LIST query — `workflowTerminalItems` in `src/db/store.ts`, which gates the "View" button on
-`detail.markdown` being truthy and wasn't touched by this task — still surfaces the button; the fetch
-endpoint itself dispatches correctly on `detail.format`/`detail.path` regardless.)
-Private workflows are added as gitignored subfolders.
+Four workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
+`plex-space-saver`) share one Plex/TMDB connectivity client, `src/core/plex-client.ts` — see that
+file, or any of the four workflows' own `CLAUDE.md`, for the DHCP-self-heal mechanism.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
 distributed system. Do not introduce Docker, external databases, message
@@ -633,18 +323,18 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification. `notifyWorkflow` is called once per workflow run at completion (aggregate). `notifyStage` is exported but no longer called by the executor (T189) |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
+| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan) — used by all 4 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `plex-space-saver`), owned by none of them |
 | `src/core/repo-lock.ts` | The shared mkdir-based repo lock (`acquireRepoLock`/`resolveRepoPaths`) the daemon's reviews commit+push uses to be mutually exclusive with the autonomous loop (T136). The lock path MUST stay byte-identical to `loop.sh`'s `acquire_lock` (`<git-common-dir>/<basename(repo-root)>-loop.lock` + `pid` file + stale-pid reclaim) |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
-| `src/jobs/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/jobs/` AND `*.service.ts` under BOTH `src/services/` and `src/jobs/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
+| `src/workflows/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/workflows/` AND `*.service.ts` under BOTH `src/services/` and `src/workflows/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
 | `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/docs/LIMITATIONS.md`.) |
-| `src/jobs/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`). Shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers like perfumes `lib.ts`/`claude.ts` + places `parse.ts`, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder |
-| `src/jobs/tv-recs/` | TV show recommendations workflow. `tv-recs.workflow.ts` (monthly schedule, maxConcurrency 4); `config.ts` / `types.ts` / `lib.ts` / `recs.ts` (pure recommendation helpers); `stages/tv-snapshot.job.ts` + `tv-snapshot.ts` (Plex TV snapshot → `snapshot.json` + `taste-profile.json`); `stages/tv-rec-*.job.ts` (8 branch jobs); `stages/tv-rec-merge.job.ts` + `tv-rec-merge.ts` (TMDB-verify/dedupe/balance/top-up → `recommendations.json`); `stages/tv-recs-notify.job.ts` + `tv-recs-notify.ts` (monthly digest + report → `data/out/reports/tv-recommendations.md`). Reuses `src/jobs/plex/client.ts` for Plex connectivity. |
-| `src/jobs/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
-| `src/jobs/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the job-folder root |
+| `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
+| `src/workflows/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
+| `src/workflows/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the workflow-folder root |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
 | `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`); all responsive CSS lives in `app/globals.css` |
 | `dashboard/scripts/_dashboard-harness.mjs` | Shared hermetic test harness (the SINGLE living artifact): `PAGES` list + synthetic API fixtures + `next start` spawn + `/api/**` interception + theme seeding; imported by both checks below. Update it when the UI surface changes |
@@ -659,7 +349,7 @@ is a one-stage workflow with its own `*.workflow.ts` manifest (no implicit
 wrapping). The workflow owns the `schedule`; a job with no manifest fails loud at
 load.
 
-1. Create `src/jobs/<name>.job.ts`:
+1. Create `src/workflows/<name>.job.ts`:
    ```ts
    import type { JobDefinition } from '../core/types.js';
 
@@ -717,18 +407,18 @@ stay at the root, not in `stages/`.
 **Adding a service** = create `src/services/<name>.service.ts` (top-level,
 daemon-wide), default-exporting a self-contained `ServiceDefinition` that reads its
 own limits from env and imports nothing from any workflow. The registry discovers
-it from `src/services/` automatically (it also still scans `src/jobs/` so a private
+it from `src/services/` automatically (it also still scans `src/workflows/` so a private
 job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
-> `src/jobs/*.job.ts` files are gitignored. The
+> `src/workflows/*.job.ts` files are gitignored. The
 > public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, and `plex-space-saver/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
 >
-> For a **new private multi-file workflow**, create `src/jobs/<name>/` and add the
-> line `src/jobs/<name>/` to `.gitignore`. Jobs are discovered **recursively**,
+> For a **new private multi-file workflow**, create `src/workflows/<name>/` and add the
+> line `src/workflows/<name>/` to `.gitignore`. Jobs are discovered **recursively**,
 > so a `*.job.ts` inside that folder is picked up automatically while its helper
 > modules stay private too.
 
@@ -1009,7 +699,7 @@ doubt, log it.
   job's `data/` files — the ledger just tracks *what's done*. Don't use ad-hoc
   "skip if it's in the JSON file" checks.
   - **Variant — "re-scan + notification-log" idempotency (the `missing-tv-seasons`
-    workflow, T144; folder `src/jobs/plex/`).** Some workflows have NO static input list to skip-against: their inputs
+    workflow; folder `src/workflows/missing-tv-seasons/`).** Some workflows have NO static input list to skip-against: their inputs
     are DISCOVERED live each run (the plex audit re-reads the whole Plex library +
     re-checks TMDB every time). Such a workflow **declares no `inputKeys()`** (so it
     is NOT limitable — scheduled-only, always unlimited) and its scan/check stages
@@ -1022,23 +712,12 @@ doubt, log it.
     rows ONLY for actionable items so the IO panel highlights those, not the 600+
     "up to date" rows. Same-key stages → `root_key = item_key` naturally (no lineage
     args). Use this shape when the work is a periodic audit/alert, not a build.
-  - **Plex client self-heals a changed DHCP IP (T149).** The owner's Plex server
-    gets its IP via DHCP, so a hardcoded `PLEX_HOST` goes stale and used to break
-    the whole workflow at the snapshot stage. `src/jobs/plex/client.ts` resolves the
-    base URL via a cached `resolvePlexHost()` (resolve at most once per daemon run;
-    `plexGet` uses the result, not `plexConfig.host` directly): it first confirms the
-    configured `PLEX_HOST` is a live Plex by GETting `/identity` (and, when
-    `PLEX_MACHINE_ID` is set, that the returned `machineIdentifier` matches — so it
-    never latches onto a different Plex), and otherwise **scans the local IPv4 /24
-    subnet(s)** (from `os.networkInterfaces()`) probing each host on `:32400` at
-    `/identity` (http + https via the existing scoped `rejectUnauthorized:false`
-    agent — never a global TLS disable), bounded by per-probe timeout + concurrency +
-    an overall wall-clock cap so a no-Plex LAN fails fast. On a scan hit it logs
-    "found Plex at <host> — set PLEX_HOST …"; when nothing answers it throws the clear
-    "set PLEX_HOST" error. The network probe is **injectable** (`PlexProbe`) so a
-    hermetic test (`plex.test.ts`) covers configured-wins / scan-fallback /
-    machine-id-match / caching / not-found without a network. `PLEX_MACHINE_ID` is
-    optional but documented in `.env.example` (it makes the scan safe).
+  - **Plex client self-heals a changed DHCP IP.** The owner's Plex server gets its IP
+    via DHCP, so a hardcoded `PLEX_HOST` goes stale — the shared `src/core/plex-client.ts`
+    (`resolvePlexHost`, used by all 4 Plex-touching workflows) confirms the configured
+    host first and otherwise scans the local LAN for a live Plex, self-healing the
+    address. Full mechanism + tests: `src/core/plex-client.ts` /
+    `src/core/plex-client.test.ts`.
   - **Run→work-item attribution (`work_item_runs`, T139).** `work_items` stays the
     CUMULATIVE, idempotent ledger keyed by `(job_name, item_key)` with NO run
     linkage. The separate append-only `work_item_runs` table
@@ -1255,14 +934,14 @@ doubt, log it.
 - **Services are a TOP-LEVEL, daemon-wide concern (`src/services/`).** A service's
   rate-limit/quota is coordinated GLOBALLY by service NAME (via the SQLite
   `service_usage` meter), so a service is NOT owned by any one workflow — it lives
-  in the top-level `src/services/` folder (sibling of `src/core`/`src/jobs`),
+  in the top-level `src/services/` folder (sibling of `src/core`/`src/workflows`),
   default-exporting a `ServiceDefinition` from `src/services/<name>.service.ts`.
   Each service is **self-contained**: it owns its limits, reading them from env
   with sensible defaults, and imports **NOTHING from any workflow's `config.ts`**.
   The `daily = monthly / 30` spend-cap math for paid daily-scheduled services lives
   with the services (`src/services/lib.ts`'s `DAILY_SPEND_DIVISOR` /
   `dailyFromMonthly`), NOT in a workflow config. The registry discovers services
-  from `src/services/` (and still scans `src/jobs/` so a private job MAY colocate a
+  from `src/services/` (and still scans `src/workflows/` so a private job MAY colocate a
   service it owns).
 - **A service's `category` is manifest-owned only — no dashboard edit UI (T305,
   mirrors workflow `category` from T292).** Like workflow `category`, a service's
@@ -1332,10 +1011,10 @@ doubt, log it.
   rather than defining a job-local path — one shared, warmed, trusted profile
   means any job benefits from cookies accumulated by others.
 - **Validation gates between workflow stages (typed artifacts).** See
-  `src/jobs/CLAUDE.md` for the short, hard-requirement statement of this rule
+  `src/workflows/CLAUDE.md` for the short, hard-requirement statement of this rule
   (every DAG edge needs a gate; a trivial `check(): { ok: true }` is an
   acceptable minimum) — it's the one that surfaces automatically when working
-  inside `src/jobs/`. This is now **mechanically enforced**:
+  inside `src/workflows/`. This is now **mechanically enforced**:
   `src/core/gate-coverage.test.ts` walks every workflow the registry loads and
   fails `npm test` if any DAG edge is missing a matching gate. A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
@@ -1354,8 +1033,8 @@ doubt, log it.
   (`deriveGates`) lives in `src/core/dag.ts` (pure, edge-scoped — a consumed key
   with no producing upstream is an external input, not a gate); enforcement lives
   in `src/core/workflow-executor.ts`. Both example workflows declare these: the
-  contracts live in `src/jobs/places/contracts.ts` and
-  `src/jobs/perfumes/contracts.ts` as small **factory functions** (each takes an
+  contracts live in `src/workflows/places/contracts.ts` and
+  `src/workflows/perfumes/contracts.ts` as small **factory functions** (each takes an
   optional path defaulting to the job's real `data/` artifact, so the jobs wire
   `produces:[…()]`/`consumes:[…()]` while unit tests point them at synthetic
   fixtures). The checks are deliberately SHAPE + NON-EMPTY (exists · non-empty ·
@@ -1454,15 +1133,15 @@ doubt, log it.
   `rollUpWorkflowProgress`, not ad-hoc `setWorkflowProgress(settled/total)`, when
   surfacing workflow progress.
 - **Job resources are job-local.** A job's input/output data lives in its own
-  `data/` folder next to the code (e.g. `src/jobs/places/data/{raw,out}`),
+  `data/` folder next to the code (e.g. `src/workflows/places/data/{raw,out}`),
   referenced relative to the job's file — not in a far-off top-level folder.
-  These are gitignored via `src/jobs/**/data/`.
+  These are gitignored via `src/workflows/**/data/`.
 - **The repo is self-contained — no absolute paths to other folders on the
   machine.** A job's config/template/resource files live in-project and are
   resolved relative to the job dir (`resolve(here, '…')`), never hardcoded to an
   external repo. Make them env-overridable where a path might legitimately vary
   (e.g. `PERFUMES_TEMPLATE_PATH` defaults to the in-project
-  `src/jobs/perfumes/profile.template.md`). A bare `/Users/...` in tracked job
+  `src/workflows/perfumes/profile.template.md`). A bare `/Users/...` in tracked job
   code is a bug — it leaks the machine's topology and breaks on any other host.
 - **Run the checks on every change** — `npm test` (the unit suite) AND
   `npx tsc --noEmit` (daemon typecheck), plus `npm run build` in `dashboard/` for UI
@@ -1643,12 +1322,12 @@ doubt, log it.
 - SQLite datetimes are UTC strings without `Z`; the dashboard appends `Z` when
   parsing (see `app/ui.tsx`). Preserve that.
 - **Never let `data/` folders be scanned for code, by anything.** The job registry
-  (`src/jobs/registry.ts`), `tsconfig.json`, and the test runner
+  (`src/workflows/registry.ts`), `tsconfig.json`, and the test runner
   (`scripts/run-tests.ts`) all now explicitly exclude any directory literally named
   `data` from their recursive walks. This was a real incident: `projects-sync`'s
   clone-and-summarize stage (T288) shallow-clones the owner's own GitHub repos into
-  `src/jobs/projects-sync/data/repos/<name>/` — cloning `LocalJobs` (this very repo)
-  produced a full copy of every `*.job.ts`/`*.workflow.ts` file under `src/jobs/`,
+  `src/workflows/projects-sync/data/repos/<name>/` — cloning `LocalJobs` (this very repo)
+  produced a full copy of every `*.job.ts`/`*.workflow.ts` file under `src/workflows/`,
   nested inside a `data/` tree. Job/workflow lookup is by NAME not file path
   (`jobs.find(j => j.name === name)`), and `findFiles(...).sort()` orders by full
   path string — so for any workflow whose folder name sorts alphabetically AFTER
@@ -1664,8 +1343,8 @@ doubt, log it.
   If you ever see a job/workflow behaving as if it's running OLD code that doesn't
   match the current source, or writing output somewhere unexpected, suspect this
   class of bug first — check for any `data/repos/`-style generated tree under
-  `src/jobs/**` that a workflow might have produced, and confirm the registry
-  still excludes `data/` (`src/jobs/registry.test.ts`'s sibling
+  `src/workflows/**` that a workflow might have produced, and confirm the registry
+  still excludes `data/` (`src/workflows/registry.test.ts`'s sibling
   `registry-find-files.test.ts` is the hermetic regression guard for this).
 
 ## Autonomous build harness (Ralph loop)

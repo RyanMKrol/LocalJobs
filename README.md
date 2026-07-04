@@ -113,7 +113,7 @@ Every job must be declared in a `*.workflow.ts` manifest — even a lone job
 (one-stage workflow). A job with no manifest is a config error and the daemon
 **refuses to start**.
 
-1. Create `src/jobs/<name>.job.ts` exporting a `JobDefinition`:
+1. Create `src/workflows/<name>.job.ts` exporting a `JobDefinition`:
    ```ts
    import type { JobDefinition } from '../core/types.js';
 
@@ -149,7 +149,7 @@ Every job must be declared in a `*.workflow.ts` manifest — even a lone job
    ```
 
 > **Your jobs stay private by default.** This repo is public; every
-> `src/jobs/*.job.ts` (and any private subfolder you add) is gitignored, so the
+> `src/workflows/*.job.ts` (and any private subfolder you add) is gitignored, so the
 > jobs you add stay local-only unless you publish them. Every job's `data/`
 > folder is always gitignored. Secrets go in `.env` (gitignored), never in code.
 
@@ -161,8 +161,10 @@ see `CLAUDE.md`.
 
 ## Shipped example workflows
 
-Twelve worked examples are published under `src/jobs/` (their `data/` stays
-gitignored). Private workflows live in gitignored subfolders.
+Thirteen worked examples are published under `src/workflows/` (their `data/` stays
+gitignored). Private workflows live in gitignored subfolders. Each workflow's full
+current-state documentation lives in its own `CLAUDE.md` inside its folder — the
+summaries below are a quick-reference index, not the source of truth.
 
 - **places** — Google Saved Places enrichment: parse CSVs → resolve CIDs →
   Google Places API → Gemini LLM summaries → markdown profiles. Daily at 03:00.
@@ -200,8 +202,9 @@ gitignored). Private workflows live in gitignored subfolders.
   → sorts by pushed_at → writes the filtered list to a local `data/out/projects.json`
   catalog; idempotent per GitHub numeric repo id (`repoId`) via the work_items ledger,
   refreshing fields every run. Stage 2 (`project-summarize`) shallow-clones each cataloged
-  repo, reads its README, and asks Claude (via the shared `claude-cli` service) to write a
-  one-project markdown summary to `data/out/<repo-name>.md` that MUST follow the enforced
+  repo and gives Claude scoped, read-only filesystem access to explore it directly (package.json,
+  source layout, README, other docs — not just its README), asking it (via the shared `claude-cli`
+  service) to write a one-project markdown summary to `data/out/<repo-name>.md` that MUST follow the enforced
   `project.template.md` output contract (YAML frontmatter incl. `themes`/`domain` plus fixed
   `##` sections like `Themes & Interests` and `Notable Technical Approaches`, designed as a
   queryable cross-project "second brain" corpus, override via `PROJECTS_SYNC_TEMPLATE_PATH`) —
@@ -216,20 +219,21 @@ gitignored). Private workflows live in gitignored subfolders.
   Runs every 30 minutes (`*/30 * * * *`).
 - **stocks-sync** — Daily Trading212 portfolio snapshot + gain-alert, strictly **read-only**
   (GET-only, no order placement/cancellation/account mutation — see the "Broker / trading APIs
-  are READ-ONLY" rule). 3-stage DAG. Stage 1 (`stocks-snapshot`) calls Trading212's
-  open-positions endpoint (https://docs.trading212.com/api) and writes a broker-agnostic
-  snapshot to a local `data/out/portfolio.json` (structured) + `data/out/portfolio.md` (one
-  row per position with the price difference since purchase, as both an absolute amount and a
-  percentage) — no DynamoDB. Also fetches an OPTIONAL second Stocks & Shares ISA account
+  are READ-ONLY" rule). 4-stage DAG. Stage 1 (`stocks-fetch`) calls Trading212's
+  open-positions endpoint (https://docs.trading212.com/api) and writes raw, unresolved positions
+  to `data/out/raw-positions.json`. Also fetches an OPTIONAL second Stocks & Shares ISA account
   (Trading212 API keys are scoped one key/secret pair per account) when
   `TRADING212_ISA_API_KEY_ID` + `TRADING212_ISA_API_SECRET_KEY` are both set; each position is
-  tagged with which account it came from (`invest`/`isa`), shown as an Account column in
-  `portfolio.md`, and keyed by a composite `account:ticker` ledger key so the same ticker held in
-  both accounts never collides. Idempotent per `account:ticker` via the work_items ledger. Stage 2
+  tagged with which account it came from (`invest`/`isa`). Stage 2 (`stocks-snapshot`, depends on
+  `stocks-fetch`) resolves each position's ISIN + real-world ticker and writes the final
+  broker-agnostic snapshot to `data/out/portfolio.json` (structured) + `data/out/portfolio.md` (one
+  row per position with the price difference since purchase, as both an absolute amount and a
+  percentage, plus an Account column and a Real ticker column) — no DynamoDB. Idempotent per
+  `account:ticker` via the work_items ledger. Stage 3
   (`stocks-watch`, depends on `stocks-snapshot`) checks EVERY position's gain since average buy
   price EVERY run and records it in the ledger unconditionally, then writes this run's fresh
   30%+ breaches to `data/out/fresh-breaches.json` — the check always reports success when it
-  ran (it can never legitimately show as skipped/noop). Stage 3 (`stocks-notify`, depends on
+  ran (it can never legitimately show as skipped/noop). Stage 4 (`stocks-notify`, depends on
   `stocks-watch`) reads `fresh-breaches.json` and sends **one** push naming every freshly
   breaching position, or does nothing if the file is empty (a real, expected noop, unlike
   stocks-watch). Notified once per breach episode (staying above 30% doesn't re-notify every

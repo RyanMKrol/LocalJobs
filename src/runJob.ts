@@ -6,7 +6,7 @@
  * The parent (executor) is the sole DB writer; this process only emits events.
  */
 import 'dotenv/config'; // load .env so jobs can read secrets (e.g. API keys)
-import { getJobDefinition } from './jobs/registry.js';
+import { getJobDefinition } from './workflows/registry.js';
 import { getWorkflowRunRoots } from './db/store.js';
 import type { JobContext, JobEvent } from './core/types.js';
 

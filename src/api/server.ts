@@ -11,17 +11,17 @@ import type { GateResult } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../core/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import { Cron } from 'croner';
-import { getJobDefinition, getWorkflowDefinition } from '../jobs/registry.js';
-import { moviesConfig } from '../jobs/movies/config.js';
-import { NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey } from '../jobs/movies/stages/notify.js';
-import { RECS_JOB, recKey } from '../jobs/movies/recs.js';
-import type { FranchiseGapsFile, RecommendationsFile } from '../jobs/movies/types.js';
-import { tvRecsConfig } from '../jobs/tv-recs/config.js';
-import { RECS_JOB as TV_RECS_JOB, recKey as tvRecKey } from '../jobs/tv-recs/recs.js';
-import type { RecommendationsFile as TvRecommendationsFile } from '../jobs/tv-recs/types.js';
-import { plexConfig } from '../jobs/plex/config.js';
-import { NOTIFY_JOB as PLEX_SEASONS_JOB, pairKey } from '../jobs/plex/stages/notify.js';
-import type { MissingSeasonsFile } from '../jobs/plex/types.js';
+import { getJobDefinition, getWorkflowDefinition } from '../workflows/registry.js';
+import { moviesConfig } from '../workflows/movies/config.js';
+import { NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey } from '../workflows/movies/stages/notify.js';
+import { RECS_JOB, recKey } from '../workflows/movies/recs.js';
+import type { FranchiseGapsFile, RecommendationsFile } from '../workflows/movies/types.js';
+import { tvRecsConfig } from '../workflows/tv-recs/config.js';
+import { RECS_JOB as TV_RECS_JOB, recKey as tvRecKey } from '../workflows/tv-recs/recs.js';
+import type { RecommendationsFile as TvRecommendationsFile } from '../workflows/tv-recs/types.js';
+import { plexConfig } from '../workflows/missing-tv-seasons/config.js';
+import { NOTIFY_JOB as PLEX_SEASONS_JOB, pairKey } from '../workflows/missing-tv-seasons/stages/notify.js';
+import type { MissingSeasonsFile } from '../workflows/missing-tv-seasons/types.js';
 import {
   getLogs,
   listGlobalLogs,
@@ -701,12 +701,12 @@ function serializeReview<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
-// The jobs tree (src/jobs), resolved relative to this file. Job output artifacts
+// The workflows tree (src/workflows), resolved relative to this file. Job output artifacts
 // (e.g. the markdown profiles the places/perfumes final stages write) live in
 // each job's own `data/out/` folder under here. The output endpoint confines its
 // reads to this tree so a recorded path can never escape it. `realpathSync` so
 // the prefix check survives platform symlinks (e.g. macOS /var → /private/var).
-const JOBS_ROOT = realpathSync(fileURLToPath(new URL('../jobs', import.meta.url)));
+const WORKFLOWS_ROOT = realpathSync(fileURLToPath(new URL('../workflows', import.meta.url)));
 
 /** Whether `child` is the same as, or nested under, `parent` (path-prefix safe). */
 export function isWithin(parent: string, child: string): boolean {
@@ -716,7 +716,7 @@ export function isWithin(parent: string, child: string): boolean {
 }
 
 /**
- * Scan JOBS_ROOT for `*.workflow.ts` / `*.workflow.js` files, import each one
+ * Scan WORKFLOWS_ROOT for `*.workflow.ts` / `*.workflow.js` files, import each one
  * (cached by the module system from registry startup), and return the containing
  * directory when the exported workflow name matches `workflowName`. Returns null
  * if no matching workflow file is found.
@@ -737,13 +737,13 @@ export async function findWorkflowDataOut(workflowName: string): Promise<string 
     } catch { /* skip unreadable dirs */ }
     return out;
   }
-  for (const file of walkForWfFiles(JOBS_ROOT)) {
+  for (const file of walkForWfFiles(WORKFLOWS_ROOT)) {
     try {
       const mod = await import(pathToFileURL(file).href) as { default?: { name?: string } };
       if (mod.default?.name === workflowName) {
         const candidate = joinPath(dirname(file), 'data', 'out');
-        // Validate the candidate is within JOBS_ROOT (it always should be, but be explicit).
-        if (!isWithin(JOBS_ROOT, resolvePath(candidate))) return null;
+        // Validate the candidate is within WORKFLOWS_ROOT (it always should be, but be explicit).
+        if (!isWithin(WORKFLOWS_ROOT, resolvePath(candidate))) return null;
         return existsSync(candidate) ? candidate : null;
       }
     } catch { /* skip import errors */ }
@@ -753,12 +753,12 @@ export async function findWorkflowDataOut(workflowName: string): Promise<string 
 
 /**
  * Delete all children of `outDir` without removing the directory itself.
- * Validates that `outDir` is within JOBS_ROOT and contains `data/out` in its
+ * Validates that `outDir` is within WORKFLOWS_ROOT and contains `data/out` in its
  * path before touching anything. Returns the number of top-level entries removed.
  * Safe to call when the directory doesn't exist (returns 0). Exported for testing.
  */
 export function deleteDataOutContents(outDir: string): number {
-  if (!isWithin(JOBS_ROOT, resolvePath(outDir))) return 0; // safety: must stay within jobs tree
+  if (!isWithin(WORKFLOWS_ROOT, resolvePath(outDir))) return 0; // safety: must stay within workflows tree
   if (!outDir.includes(`${sep}data${sep}out`)) return 0;   // safety: must be a data/out dir
   let removed = 0;
   try {
@@ -775,7 +775,7 @@ export function deleteDataOutContents(outDir: string): number {
  * it isn't a readable markdown artifact inside a job's `data/out/` tree. This is
  * the path-traversal guard for the read-only output endpoint:
  *  - resolved + symlink-followed (realpath) so `..`/symlink escapes are caught,
- *  - must stay under {@link JOBS_ROOT},
+ *  - must stay under {@link WORKFLOWS_ROOT},
  *  - must live inside a job-local `data/out/` directory,
  *  - must be a regular `.md` file that exists.
  * No network/paid calls — a local file stat + realpath only.
@@ -790,7 +790,7 @@ export function safeOutputMarkdown(candidate: string | null): string | null {
   } catch {
     return null;
   }
-  if (!isWithin(JOBS_ROOT, real)) return null; // escaped the jobs tree
+  if (!isWithin(WORKFLOWS_ROOT, real)) return null; // escaped the workflows tree
   if (!real.includes(`${sep}data${sep}out${sep}`)) return null; // not a job output artifact
   try {
     if (!statSync(real).isFile()) return null;
@@ -806,7 +806,7 @@ export function safeOutputMarkdown(candidate: string | null): string | null {
  * {@link safeOutputMarkdown} but without the `.md` extension restriction, so any
  * file format stored under `data/out/` is allowed. All other guards are identical:
  *  - resolved + symlink-followed (realpath) so `..`/symlink escapes are caught,
- *  - must stay under {@link JOBS_ROOT},
+ *  - must stay under {@link WORKFLOWS_ROOT},
  *  - must live inside a job-local `data/out/` directory,
  *  - must be a regular file that exists.
  * No network/paid calls — a local file stat + realpath only.
@@ -823,7 +823,7 @@ export function safeOutputFile(candidate: string | null): string | null {
   } catch {
     return null;
   }
-  if (!isWithin(JOBS_ROOT, real)) return null; // escaped the jobs tree
+  if (!isWithin(WORKFLOWS_ROOT, real)) return null; // escaped the workflows tree
   if (!real.includes(`${sep}data${sep}out${sep}`)) return null; // not a job output artifact
   try {
     if (!statSync(real).isFile()) return null;
@@ -1638,7 +1638,7 @@ export function createApiServer(
           job: jobName,
           key,
           format,
-          file: relativePath(JOBS_ROOT, safe),
+          file: relativePath(WORKFLOWS_ROOT, safe),
           bytes: Buffer.byteLength(content),
           truncated,
           content: truncated ? content.slice(0, MAX) : content,
@@ -1826,7 +1826,7 @@ export function createApiServer(
             runsDeleted: result.runsDeleted,
             wfRunsDeleted: result.wfRunsDeleted,
             filesRemoved,
-            outDir: outDir ? relativePath(JOBS_ROOT, outDir) : null,
+            outDir: outDir ? relativePath(WORKFLOWS_ROOT, outDir) : null,
           });
         }
         const resetCount = results.filter((r) => r.status === 'reset').length;
@@ -1873,7 +1873,7 @@ export function createApiServer(
           runsDeleted: result.runsDeleted,
           wfRunsDeleted: result.wfRunsDeleted,
           filesRemoved,
-          outDir: outDir ? relativePath(JOBS_ROOT, outDir) : null,
+          outDir: outDir ? relativePath(WORKFLOWS_ROOT, outDir) : null,
         });
       }
 
@@ -2098,7 +2098,7 @@ export function createApiServer(
           key,
           format,
           // A jobs-tree-relative path (e.g. perfumes/data/out/markdown/<id>.md) — readable, leaks no machine topology.
-          file: relativePath(JOBS_ROOT, safe),
+          file: relativePath(WORKFLOWS_ROOT, safe),
           bytes: Buffer.byteLength(content),
           truncated,
           content: truncated ? content.slice(0, MAX) : content,

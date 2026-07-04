@@ -4,7 +4,7 @@
 // Pure function, so we test it directly with synthetic job/workflow shapes rather
 // than importing the live (filesystem-discovered) registry.
 import assert from 'node:assert/strict';
-import { orphanJobNames } from '../jobs/registry.js';
+import { orphanJobNames } from '../workflows/registry.js';
 
 let passed = 0;
 function ok(name: string, fn: () => void) {

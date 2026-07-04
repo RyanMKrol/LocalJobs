@@ -1098,8 +1098,8 @@
       "scope": [
         "src/api/server.ts",
         "src/core/types.ts",
-        "src/jobs/places/*.ts",
-        "src/jobs/perfumes/*.ts",
+        "src/workflows/places/*.ts",
+        "src/workflows/perfumes/*.ts",
         "CLAUDE.md"
       ],
       "design": null,
@@ -1142,7 +1142,7 @@
         "needs-human"
       ],
       "scope": [
-        "src/jobs/"
+        "src/workflows/"
       ],
       "design": null,
       "verify": [],
@@ -1633,7 +1633,7 @@
         "needs-human"
       ],
       "scope": [
-        "src/jobs/"
+        "src/workflows/"
       ],
       "design": null,
       "verify": [],
@@ -10470,7 +10470,7 @@
         "src/db/store.ts",
         "src/runJob.ts",
         "src/api/server.ts",
-        "src/jobs/projects-sync/stages/project-summarize.ts"
+        "src/workflows/projects-sync/stages/project-summarize.ts"
       ],
       "design": null,
       "verify": [],
@@ -10769,7 +10769,7 @@
         "io-detail"
       ],
       "scope": [
-        "src/jobs/movies/**"
+        "src/workflows/movies/**"
       ],
       "design": null,
       "verify": [],
@@ -10791,7 +10791,7 @@
         "io-detail"
       ],
       "scope": [
-        "src/jobs/perfumes/**"
+        "src/workflows/perfumes/**"
       ],
       "design": null,
       "verify": [],
@@ -10813,7 +10813,7 @@
         "io-detail"
       ],
       "scope": [
-        "src/jobs/places/**"
+        "src/workflows/places/**"
       ],
       "design": null,
       "verify": [],
@@ -10835,7 +10835,7 @@
         "io-detail"
       ],
       "scope": [
-        "src/jobs/projects-sync/**"
+        "src/workflows/projects-sync/**"
       ],
       "design": null,
       "verify": [],
@@ -10857,7 +10857,7 @@
         "io-detail"
       ],
       "scope": [
-        "src/jobs/stocks-sync/**"
+        "src/workflows/stocks-sync/**"
       ],
       "design": null,
       "verify": [],
@@ -10879,7 +10879,7 @@
         "io-detail"
       ],
       "scope": [
-        "src/jobs/tv-recs/**"
+        "src/workflows/tv-recs/**"
       ],
       "design": null,
       "verify": [],
@@ -10901,7 +10901,7 @@
         "io-detail"
       ],
       "scope": [
-        "src/jobs/workouts-sync/**"
+        "src/workflows/workouts-sync/**"
       ],
       "design": null,
       "verify": [],
@@ -10931,7 +10931,7 @@
         ]
       },
       "scope": [
-        "src/jobs/stocks-sync/**",
+        "src/workflows/stocks-sync/**",
         "src/services/trading212.service.ts",
         "CLAUDE.md"
       ],
@@ -10958,7 +10958,7 @@
         "risk": []
       },
       "scope": [
-        "src/jobs/stocks-sync/**",
+        "src/workflows/stocks-sync/**",
         "CLAUDE.md"
       ],
       "design": null,
@@ -10982,7 +10982,7 @@
         "risk": []
       },
       "scope": [
-        "src/jobs/stock-digest/**",
+        "src/workflows/stock-digest/**",
         "CLAUDE.md"
       ],
       "design": null,
@@ -11007,7 +11007,7 @@
       },
       "scope": [
         "CLAUDE.md",
-        "src/jobs/CLAUDE.md"
+        "src/workflows/CLAUDE.md"
       ],
       "design": null,
       "verify": [],
@@ -11048,8 +11048,8 @@
         "hard-fail"
       ],
       "scope": [
-        "src/jobs/plex/stages/season-check.ts",
-        "src/jobs/plex/stages/notify.ts"
+        "src/workflows/missing-tv-seasons/stages/season-check.ts",
+        "src/workflows/missing-tv-seasons/stages/notify.ts"
       ],
       "design": null,
       "verify": [],
@@ -11071,7 +11071,7 @@
         "hard-fail"
       ],
       "scope": [
-        "src/jobs/movies/**"
+        "src/workflows/movies/**"
       ],
       "design": null,
       "verify": [],
@@ -11093,7 +11093,7 @@
         "hard-fail"
       ],
       "scope": [
-        "src/jobs/perfumes/**"
+        "src/workflows/perfumes/**"
       ],
       "design": null,
       "verify": [],
@@ -11115,7 +11115,7 @@
         "hard-fail"
       ],
       "scope": [
-        "src/jobs/places/**"
+        "src/workflows/places/**"
       ],
       "design": null,
       "verify": [],
@@ -11137,7 +11137,7 @@
         "hard-fail"
       ],
       "scope": [
-        "src/jobs/projects-sync/**"
+        "src/workflows/projects-sync/**"
       ],
       "design": null,
       "verify": [],
@@ -11159,7 +11159,7 @@
         "hard-fail"
       ],
       "scope": [
-        "src/jobs/tv-recs/**"
+        "src/workflows/tv-recs/**"
       ],
       "design": null,
       "verify": [],
@@ -11187,7 +11187,7 @@
         "risk": []
       },
       "scope": [
-        "src/jobs/projects-sync/**"
+        "src/workflows/projects-sync/**"
       ],
       "design": null,
       "verify": [],
@@ -11212,8 +11212,8 @@
       "scope": [
         "src/services/trading212.service.ts",
         "src/services/trading212-instruments.service.ts",
-        "src/jobs/stocks-sync/**",
-        "src/jobs/stock-digest/**",
+        "src/workflows/stocks-sync/**",
+        "src/workflows/stock-digest/**",
         "CLAUDE.md"
       ],
       "design": null,
@@ -11238,7 +11238,7 @@
       },
       "scope": [
         "src/services/vercel.service.ts",
-        "src/jobs/vercel-daily-redeploy/**",
+        "src/workflows/vercel-daily-redeploy/**",
         ".env.example",
         "CLAUDE.md"
       ],

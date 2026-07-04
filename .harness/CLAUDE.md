@@ -224,7 +224,7 @@ touches a file outside it (test files + the task's own worklog are always allowe
 job is **blast-radius containment**, and its *granularity* is how you express the intended rigour:
 
 - **Greenfield / "this whole area is the blast radius" → scope a DIRECTORY glob**, e.g.
-  `src/jobs/tv-recs/**` or `dashboard/app/components/**`. Anything the builder creates *inside that
+  `src/workflows/tv-recs/**` or `dashboard/app/components/**`. Anything the builder creates *inside that
   tree* — including a proactive new util/helper file it decides it needs — is in-scope and NOT
   punished. Use this for new workflows, new component areas, etc.
 - **Surgical / shared / dangerous → pin EXACT files**, e.g. `src/core/executor.ts`,

@@ -182,6 +182,16 @@ This unifies fresh and resumed runs: on a brand-new DB no rows exist, so
 are selected; on a resumed run, fully-done roots are skipped and selection
 advances to the next outstanding ones.
 
+> **Superseded by T163.** The `pending(root)` formula above had a real bug: a root
+> whose entry stage was done but whose LATER stages simply had no ledger row yet
+> (never attempted) was wrongly treated as "fully done" by this formula and
+> excluded from selection — a limited run could silently select 0 roots and no-op.
+> T163 replaced this with a 4-branch check keyed on propagation through the
+> TERMINAL stage, not just the entry stage — see `isRootPending` in
+> `src/db/store.ts` and root `CLAUDE.md`'s "Input lineage + manual run-limits
+> (T094)" section for the current, correct rule. Kept here for historical record;
+> do not treat the formula above as current.
+
 ### 4.2 — (2) Limit semantics + selection
 
 - **Deterministic selection.** With limit `N`, the framework selects the **first
@@ -504,8 +514,8 @@ just N perfumes" end-to-end.
 | `src/core/workflow-executor.ts` | `runWorkflow(def, trigger, { limit })`: find root stage, select, persist, log; thread `workflowRunId` env to the child |
 | `src/core/executor.ts` | set `LOCALJOBS_WORKFLOW_RUN_ID` in the child `env` (already has `workflowRunId` in scope) |
 | `src/api/server.ts` | `POST /api/workflows/:name/run` parses/validates `{ limit }`; `hasRootStage` guard; surface `limitable` on the workflow view |
-| `src/jobs/perfumes/*` | `inputKeys()` on find-url; `rootAllowed(p.id)` filter in all 4 stages |
-| `src/jobs/places/*` | `inputKeys()` on resolver; `rootAllowed` filters; enrich/llm `markWorkItem` lineage |
+| `src/workflows/perfumes/*` | `inputKeys()` on find-url; `rootAllowed(p.id)` filter in all 4 stages |
+| `src/workflows/places/*` | `inputKeys()` on resolver; `rootAllowed` filters; enrich/llm `markWorkItem` lineage |
 | `dashboard/app/lib/api.ts` | `runWorkflow(name, limit?)`; `WorkflowRun.run_limit`; `Workflow.limitable` |
 | `dashboard/app/workflows/[name]/page.tsx` | limit number input beside Run now |
 | `dashboard/app/workflow-runs/[id]/page.tsx` | "limited · N" badge |

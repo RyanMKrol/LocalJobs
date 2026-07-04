@@ -55,7 +55,7 @@ const stuckItem = (over) => ({
   job_name: 'perfumes-fetch', item_key: LONG, attempts: 3,
   detail: { name: 'A Stuck Item With A Fairly Long Display Name', error: LONG_ERR, status: 'failed',
             pageTitle: 'Just a moment...', snippet: 'Checking your browser before accessing the site',
-            debugFile: '/Users/x/Development/local-jobs/src/jobs/perfumes/data/debug/' + LONG + '.html',
+            debugFile: '/Users/x/Development/local-jobs/src/workflows/perfumes/data/debug/' + LONG + '.html',
             finalUrl: LONG_URL, textLength: 1234, httpStatus: 403 },
   updated_at: NOW, ...over,
 });
@@ -416,7 +416,7 @@ const missingSeasons = {
 };
 
 // T332: the real movie-recommendations 9-node fan-out (movie-snapshot → 8 rec-* branches +
-// franchise-gaps → rec-merge → movie-gaps-notify — see src/jobs/movies/movies.workflow.ts).
+// franchise-gaps → rec-merge → movie-gaps-notify — see src/workflows/movies/movies.workflow.ts).
 // Modeled as a RUN-scoped view (statusByJob + gates populated, mirroring a completed run) so
 // visual-check can actually reproduce/confirm the run-view-only rec-auteur/franchise-gaps
 // spacing bug (T332), which never showed up under the generic 3-node `workflowRun`/`gates`

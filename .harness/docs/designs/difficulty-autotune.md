@@ -50,11 +50,11 @@ facets, no difficulty, and never enter calibration.
 `facets.json → .tiers.ladder`: an ordered list of `{model, effort}` tiers, cheapest → priciest. There
 is ONE global ladder (not per-task escalation arrays). The policy picks a **start tier** per task;
 escalation walks **up** the ladder from there (clamped at the top). The authored model/effort is only
-the **cold-start prior**. local-jobs' ladder (7 tiers):
-`sonnet/low · sonnet/medium · sonnet/high · opus/medium · opus/high · opus/xhigh · opus/max`.
+the **cold-start prior**. local-jobs' ladder (4 tiers, current as of the sonnet-5 bump):
+`sonnet-5/low · sonnet-5/medium · sonnet-5/high · opus-4-8/high`.
 
-`MAX_ATTEMPTS` soft failures per tier before escalating (now **2**, because the ladder is fine-grained
-— fewer tries per tier keeps the total attempt budget bounded).
+`MAX_ATTEMPTS` soft failures per tier before escalating (**2** — with the 4-tier ladder this caps a
+doomed task at 4×2=8 attempts before it BLOCKS to a human).
 
 ---
 
@@ -173,9 +173,9 @@ evolution gate) is **fully universal** and lives in the plugin. Only the **value
 | Capture (`outcomes.jsonl` from mark_done/block_task) | ✅ built |
 | Calibration + policy (`policy.jq`, rung machinery on the global ladder) | ✅ built |
 | `MAX_ATTEMPTS` = 2 | ✅ built |
-| Authoring: assign facets + emit poor-fit (add-to-backlog skill) | ⬜ to build |
-| Poor-fit gate + layer re-eval + history migration + human prompt | ⬜ to build |
-| Portability: plugin framework + per-project layer setup | ⬜ to build (plugin) |
+| Authoring: assign facets + emit poor-fit (add-to-backlog skill) | ✅ built (`ralph-loop-add-to-backlog` skill) |
+| Poor-fit gate + layer re-eval + history migration + human prompt | ✅ built (same skill — see `.harness/CLAUDE.md`) |
+| Portability: plugin framework + per-project layer setup | ✅ built — ships as the `claude-skills` plugin marketplace (a separate, sibling repo), not in-tree here |
 | Surface calibration (a dashboard "harness health" view) | ⬜ optional |
 
 **Tunables:** `floor` (0.75) and `minN` (6) in `facets.json`; `MAX_ATTEMPTS` (2) in `loop.sh`; the

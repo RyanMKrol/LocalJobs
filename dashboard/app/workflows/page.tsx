@@ -58,7 +58,7 @@ export default function Workflows() {
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {workflows.length === 0 && (
         <div className="panel">
-          <p className="muted">No workflows yet — drop a <span className="mono">*.workflow.ts</span> in src/jobs.</p>
+          <p className="muted">No workflows yet — drop a <span className="mono">*.workflow.ts</span> in src/workflows.</p>
         </div>
       )}
       {CATEGORY_GROUPS.map(({ key, label }) => ({

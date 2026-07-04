@@ -1,6 +1,6 @@
 import { Cron } from 'croner';
 import { getWorkflow } from '../db/store.js';
-import { getWorkflowDefinition, workflows } from '../jobs/registry.js';
+import { getWorkflowDefinition, workflows } from '../workflows/registry.js';
 import { runWorkflow } from './workflow-executor.js';
 import type { WorkflowDefinition } from './types.js';
 

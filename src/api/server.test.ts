@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
-import { jobs, workflows } from '../jobs/registry.js';
+import { jobs, workflows } from '../workflows/registry.js';
 import { createWorkflowRun, finishWorkflowRun, getJob, getWorkflow, markWorkItem, recordServiceConsumer, syncJob, syncWorkflow } from '../db/store.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
@@ -697,13 +697,13 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 
 {
   // A real .md under a job's data/out tree (the only place reads are allowed).
-  const jobsRoot = fileURLToPath(new URL('../jobs', import.meta.url));
-  const outDir = `${jobsRoot}/perfumes/data/out/markdown`;
+  const workflowsRoot = fileURLToPath(new URL('../workflows', import.meta.url));
+  const outDir = `${workflowsRoot}/perfumes/data/out/markdown`;
   const okFile = `${outDir}/__t110-test__.md`;
-  const wrongDir = `${jobsRoot}/perfumes/data/raw/__t110-test__.md`; // not under data/out
+  const wrongDir = `${workflowsRoot}/perfumes/data/raw/__t110-test__.md`; // not under data/out
   const txtFile = `${outDir}/__t110-test__.txt`; // not markdown
   mkdirSync(outDir, { recursive: true });
-  mkdirSync(`${jobsRoot}/perfumes/data/raw`, { recursive: true });
+  mkdirSync(`${workflowsRoot}/perfumes/data/raw`, { recursive: true });
   writeFileSync(okFile, '# Hi\n');
   writeFileSync(wrongDir, '# Hi\n');
   writeFileSync(txtFile, 'hi\n');
@@ -713,7 +713,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
   await test('safeOutputMarkdown: rejects null / traversal / outside / non-md / missing', () => {
     assert.equal(safeOutputMarkdown(null), null, 'null');
-    assert.equal(safeOutputMarkdown('/etc/passwd'), null, 'outside the jobs tree');
+    assert.equal(safeOutputMarkdown('/etc/passwd'), null, 'outside the workflows tree');
     assert.equal(safeOutputMarkdown(`${outDir}/../../../../../../etc/passwd`), null, 'traversal escapes');
     assert.equal(safeOutputMarkdown(wrongDir), null, 'not under data/out');
     assert.equal(safeOutputMarkdown(txtFile), null, 'not a .md file');
@@ -762,12 +762,12 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 
 // ── T262: declared output form — safeOutputFile + non-markdown endpoint dispatch ──
 {
-  const jobsRoot = fileURLToPath(new URL('../jobs', import.meta.url));
-  const outDir = `${jobsRoot}/perfumes/data/out/reports`;
+  const workflowsRoot = fileURLToPath(new URL('../workflows', import.meta.url));
+  const outDir = `${workflowsRoot}/perfumes/data/out/reports`;
   const jsonFile = `${outDir}/__t262-test__.json`;
-  const outsideFile = `${jobsRoot}/perfumes/data/raw/__t262-outside__.json`; // not under data/out
+  const outsideFile = `${workflowsRoot}/perfumes/data/raw/__t262-outside__.json`; // not under data/out
   mkdirSync(outDir, { recursive: true });
-  mkdirSync(`${jobsRoot}/perfumes/data/raw`, { recursive: true });
+  mkdirSync(`${workflowsRoot}/perfumes/data/raw`, { recursive: true });
   writeFileSync(jsonFile, '{"ok":true}\n');
   writeFileSync(outsideFile, '{"bad":true}\n');
 
@@ -776,7 +776,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
   await test('safeOutputFile: rejects null / traversal / outside / missing', () => {
     assert.equal(safeOutputFile(null), null, 'null');
-    assert.equal(safeOutputFile('/etc/passwd'), null, 'outside the jobs tree');
+    assert.equal(safeOutputFile('/etc/passwd'), null, 'outside the workflows tree');
     assert.equal(safeOutputFile(`${outDir}/../../../../../../etc/passwd`), null, 'traversal escapes');
     assert.equal(safeOutputFile(outsideFile), null, 'not under data/out');
     assert.equal(safeOutputFile(`${outDir}/__no_such_file__.json`), null, 'missing file');
@@ -786,8 +786,8 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   syncJob({ name: 't262-out', run: async () => {} });
   syncWorkflow({ name: 't262-wf', jobs: [{ job: 't262-out' }] });
   // Markdown item (existing convention — detail.markdown, no detail.format)
-  const mdFile = `${jobsRoot}/perfumes/data/out/markdown/__t262-md__.md`;
-  mkdirSync(`${jobsRoot}/perfumes/data/out/markdown`, { recursive: true });
+  const mdFile = `${workflowsRoot}/perfumes/data/out/markdown/__t262-md__.md`;
+  mkdirSync(`${workflowsRoot}/perfumes/data/out/markdown`, { recursive: true });
   writeFileSync(mdFile, '# T262\n');
   markWorkItem('t262-out', 'md-item', 'success', { detail: { name: 'MdItem', markdown: mdFile } });
   // Non-markdown item (detail.format + detail.path)
@@ -1924,8 +1924,8 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 
 // ── movie-gaps endpoints (T145): GET overlays ignored/notified; POST ignores ──
 {
-  const { moviesConfig } = await import('../jobs/movies/config.js');
-  const { NOTIFY_JOB, gapKey } = await import('../jobs/movies/stages/notify.js');
+  const { moviesConfig } = await import('../workflows/movies/config.js');
+  const { NOTIFY_JOB, gapKey } = await import('../workflows/movies/stages/notify.js');
   const { markWorkItem: mark, ignoredItemKeys: ignoredKeys } = await import('../db/store.js');
 
   // Distinct synthetic tmdbIds; back up + restore the real gaps file so a dev box's
@@ -2052,8 +2052,8 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 
 // ── movie-recs endpoints (T209): GET overlays ignored/notified; POST ignores ──
 {
-  const { moviesConfig } = await import('../jobs/movies/config.js');
-  const { RECS_JOB, recKey } = await import('../jobs/movies/recs.js');
+  const { moviesConfig } = await import('../workflows/movies/config.js');
+  const { RECS_JOB, recKey } = await import('../workflows/movies/recs.js');
   const { markWorkItem: mark, ignoredItemKeys: ignoredKeys } = await import('../db/store.js');
 
   const NOTIFIED_REC = 9990001;
@@ -2131,8 +2131,8 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 
 // ── tv-recs endpoints (T219): GET overlays ignored/notified; POST ignores ──
 {
-  const { tvRecsConfig } = await import('../jobs/tv-recs/config.js');
-  const { RECS_JOB: TV_RECS_JOB, recKey: tvRecKey } = await import('../jobs/tv-recs/recs.js');
+  const { tvRecsConfig } = await import('../workflows/tv-recs/config.js');
+  const { RECS_JOB: TV_RECS_JOB, recKey: tvRecKey } = await import('../workflows/tv-recs/recs.js');
   const { markWorkItem: mark, ignoredItemKeys: ignoredKeys } = await import('../db/store.js');
 
   const NOTIFIED_REC = 9970001;
@@ -2210,8 +2210,8 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 
 // ── missing-seasons endpoints (T179): GET overlays ignored/notified; POST ignores ──
 {
-  const { plexConfig } = await import('../jobs/plex/config.js');
-  const { NOTIFY_JOB: PLEX_JOB, pairKey } = await import('../jobs/plex/stages/notify.js');
+  const { plexConfig } = await import('../workflows/missing-tv-seasons/config.js');
+  const { NOTIFY_JOB: PLEX_JOB, pairKey } = await import('../workflows/missing-tv-seasons/stages/notify.js');
   const { markWorkItem: mark, ignoredItemKeys: ignoredKeys } = await import('../db/store.js');
 
   const NOTIFIED_ID = 9980001;
@@ -2286,10 +2286,10 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
 
 // ── notify stage excludes ignored pairs from writeReport (T179) ──
 {
-  const { buildDigest, runNotify, NOTIFY_JOB: PLEX_JOB, pairKey } = await import('../jobs/plex/stages/notify.js');
+  const { buildDigest, runNotify, NOTIFY_JOB: PLEX_JOB, pairKey } = await import('../workflows/missing-tv-seasons/stages/notify.js');
   const { ignoreSurfacedItem, isWorkItemDone } = await import('../db/store.js');
   const { existsSync: exists, readFileSync: readFS, mkdirSync: mkdirFS } = await import('node:fs');
-  const { plexConfig } = await import('../jobs/plex/config.js');
+  const { plexConfig } = await import('../workflows/missing-tv-seasons/config.js');
   const tmp = mkdtempSync(join(tmpdir(), 'notify-test-'));
 
   await test('buildDigest count and title', () => {
@@ -2418,12 +2418,12 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   });
 
   // deleteDataOutContents path-safety guards.
-  await test('deleteDataOutContents: rejects paths outside JOBS_ROOT or without /data/out/', () => {
-    // A path outside JOBS_ROOT (e.g. tmpdir) must be rejected.
-    assert.equal(deleteDataOutContents(tmpdir()), 0, 'tmpdir() is outside JOBS_ROOT — rejected');
-    // A path within JOBS_ROOT but without /data/out/ in it must also be rejected.
-    const JOBS_ROOT_REAL = realpathSync(fileURLToPath(new URL('../jobs', import.meta.url)));
-    assert.equal(deleteDataOutContents(join(JOBS_ROOT_REAL, 'places')), 0, 'no /data/out/ — rejected');
+  await test('deleteDataOutContents: rejects paths outside WORKFLOWS_ROOT or without /data/out/', () => {
+    // A path outside WORKFLOWS_ROOT (e.g. tmpdir) must be rejected.
+    assert.equal(deleteDataOutContents(tmpdir()), 0, 'tmpdir() is outside WORKFLOWS_ROOT — rejected');
+    // A path within WORKFLOWS_ROOT but without /data/out/ in it must also be rejected.
+    const WORKFLOWS_ROOT_REAL = realpathSync(fileURLToPath(new URL('../workflows', import.meta.url)));
+    assert.equal(deleteDataOutContents(join(WORKFLOWS_ROOT_REAL, 'places')), 0, 'no /data/out/ — rejected');
   });
 
   // API endpoint: 404 for unknown workflow.

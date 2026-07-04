@@ -13,13 +13,13 @@ service-account*.json
 
 # --- Private jobs: the framework is public, your jobs are not ---
 # Only the demo example is tracked; every real job stays local-only.
-src/jobs/*.job.ts
-src/jobs/*.job.js
-!src/jobs/demo.job.ts
-# Job subfolders are private business logic. The places + perfumes pipeline code
-# is now published (only their data/ stays ignored, below).
+src/workflows/*.job.ts
+src/workflows/*.job.js
+!src/workflows/demo.job.ts
+# Workflow subfolders are private business logic. The places + perfumes pipeline
+# code is now published (only their data/ stays ignored, below).
 # Per-job resources/datasets live in the job's own data/ folder — never published.
-src/jobs/**/data/
+src/workflows/**/data/
 
 # --- Dependencies / build output ---
 node_modules/
@@ -73,3 +73,8 @@ TODO.md
 # .harness/tracking/reviews.json itself IS committed (owner-owned; the daemon commits+pushes it).
 .harness/tracking/TASKS.json.tmp
 .harness/tracking/reviews.json.tmp*
+
+# --- Private scratch: plex-language-fix (personal library maintenance script, not a public example).
+# Deliberately kept at the repo ROOT, not under src/workflows/, while another session is actively
+# restructuring that directory — avoids collision with unrelated concurrent work. ---
+/plex-language-fix/

@@ -9,7 +9,7 @@
 // for the duration of the test, then restore it. The enabled fake is pre-seeded
 // with a 'running' workflow run so its fire short-circuits to "already running"
 // (observable via the scheduler's own console.log) — nothing is spawned.
-import { workflows } from '../jobs/registry.js';
+import { workflows } from '../workflows/registry.js';
 import { createWorkflowRun, listWorkflowRunsForWorkflow, setWorkflowEnabled, syncWorkflow } from '../db/store.js';
 import { nextWorkflowRun, rescheduleWorkflow, startScheduler, stopScheduler } from './scheduler.js';
 import type { WorkflowDefinition } from './types.js';

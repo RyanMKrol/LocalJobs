@@ -13,12 +13,12 @@ import {
   fragranticaDataContract,
   fragranticaPagesContract,
   fragranticaUrlsContract,
-} from '../jobs/perfumes/contracts.js';
+} from '../workflows/perfumes/contracts.js';
 import {
   enrichedPlacesContract,
   normalizedPlacesContract,
   resolvedPlacesContract,
-} from '../jobs/places/contracts.js';
+} from '../workflows/places/contracts.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {

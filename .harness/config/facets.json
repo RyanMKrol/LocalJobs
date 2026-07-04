@@ -19,7 +19,7 @@
           "difficultyHint": "med"
         },
         "job": {
-          "desc": "example-workflow stage logic (src/jobs/**)",
+          "desc": "example-workflow stage logic (src/workflows/**)",
           "difficultyHint": "med"
         },
         "service": {

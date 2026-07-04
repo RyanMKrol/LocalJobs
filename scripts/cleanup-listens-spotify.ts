@@ -8,7 +8,7 @@
 // exists anywhere under src/ for any of these four identifiers — the rows are
 // dead weight, shadow-listed on the dashboard's Workflows/Services pages.
 //
-// This does NOT touch `src/jobs/listening-digest/**` or the `lastfm` service —
+// This does NOT touch `src/workflows/listening-digest/**` or the `lastfm` service —
 // that is unrelated, current code.
 //
 // IDEMPOTENT — safe to re-run. A second run reports zero rows deleted for

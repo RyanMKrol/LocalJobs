@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { buildDag, deriveGates } from './dag.js';
 import type { Dag } from './dag.js';
-import { jobs, workflows } from '../jobs/registry.js';
+import { jobs, workflows } from '../workflows/registry.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -65,7 +65,7 @@ test('every workflow in the registry has a validation gate on every DAG edge', (
     for (const { producer, consumer } of missing) {
       assert.fail(
         `workflow '${workflow.name}': edge ${producer} -> ${consumer} has NO matching produces/consumes ` +
-          `key — add a validation gate (see src/jobs/CLAUDE.md)`,
+          `key — add a validation gate (see src/workflows/CLAUDE.md)`,
       );
     }
   }

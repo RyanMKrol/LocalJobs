@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../config.js';
-import { jobs } from '../jobs/registry.js';
+import { jobs } from '../workflows/registry.js';
 import {
   createWorkflowRun, createRun, finishRun, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots,
   lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,

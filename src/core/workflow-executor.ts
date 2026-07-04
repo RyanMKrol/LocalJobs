@@ -1,4 +1,4 @@
-import { getJobDefinition } from '../jobs/registry.js';
+import { getJobDefinition } from '../workflows/registry.js';
 import {
   addWorkflowLog,
   createWorkflowRun,

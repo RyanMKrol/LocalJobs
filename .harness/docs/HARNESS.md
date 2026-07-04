@@ -14,7 +14,7 @@ it spans many token-refresh windows.
 ### Why in-place (not the worktree variant)
 The stock Ralph harness isolates each task in a throwaway worktree off `origin/main`. We
 deliberately **don't** here:
-- The real jobs (`src/jobs/places`, `src/jobs/perfumes`) and all their `data/` live **untracked**
+- The real jobs (`src/workflows/places`, `src/workflows/perfumes`) and all their `data/` live **untracked**
   in this checkout. A clean worktree off `origin/main` literally can't see them, so it couldn't
   build or verify against them.
 - The safety model is **git itself**: every task is one commit on `main`; a bad one is a one-line

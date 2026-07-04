@@ -70,7 +70,7 @@ git rev-list --count origin/main..HEAD   # unpushed
   prior work each attempt), so this is throwaway. Discard it surgically — **never** a blanket clean:
   ```bash
   git restore <tracked files the attempt modified>
-  git clean -fd <the specific untracked task dir, e.g. src/jobs/<wf>/>
+  git clean -fd <the specific untracked task dir, e.g. src/workflows/<wf>/>
   ```
   Confirm `git status --porcelain` is then empty (the loop's startup guard refuses a dirty tree).
 - **Unpushed commits**: inspect each (`git log origin/main..HEAD`). Often a stray worklog
@@ -121,7 +121,7 @@ outcome row and no `mark-done` commit.
 ```bash
 npx tsc --noEmit
 npm test          # confirm the task's OWN test actually runs — the run-tests harness walks src/ for *.test.ts;
-                  # check its file appears (e.g. "── src/jobs/<wf>/<x>.test.ts ──") and "✓ all tests passed"
+                  # check its file appears (e.g. "── src/workflows/<wf>/<x>.test.ts ──") and "✓ all tests passed"
 # if the task touched dashboard/:
 npm --prefix dashboard run build && node dashboard/scripts/mobile-check.mjs
 ```

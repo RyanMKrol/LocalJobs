@@ -80,7 +80,7 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   *Impact:* the repo publicly documents Cloudflare-clearance / scraping technique against
   Fragrantica, whose site ToS disallows automated access. Data (incl. the browser profile) stays
   private.
-  *Revisit:* if Fragrantica objects or ToS posture changes, re-privatise `src/jobs/perfumes`.
+  *Revisit:* if Fragrantica objects or ToS posture changes, re-privatise `src/workflows/perfumes`.
 
 - **Stage validation gates run in the daemon, un-sandboxed and un-timed.**
   *Why:* a gate must decide whether to even spawn the consumer, so its
@@ -104,7 +104,7 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
 
 - **Perfume accord percentages depend on cached page HTML.** `perfumes-parse`
   fills each accord's `pct` from the Fragrantica page's coloured-bar `width: NN%`
-  (`parseAccordPercents` in `src/jobs/perfumes/parse.ts`) — but `perfumes-fetch`
+  (`parseAccordPercents` in `src/workflows/perfumes/parse.ts`) — but `perfumes-fetch`
   currently persists only the page *text* (`<id>.txt`) on success; the page HTML is
   saved only for pages it diagnoses as failed (`pages-failed/<id>.html`).
   *Impact:* `pct` populates only when an `<id>.html` is present next to the page; on
@@ -120,7 +120,7 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
   `perfumes-build` computes a continuous sample-size confidence weight
   `votes/(votes+k)` (k = corpus-median votes) and feeds the blend + an explicit
   "state this in the profile" directive into the build prompt
-  (`confidenceClause` in `src/jobs/perfumes/build.ts`). The math, calibration,
+  (`confidenceClause` in `src/workflows/perfumes/build.ts`). The math, calibration,
   and clause wording are unit-tested against low- and high-sample fixtures, but
   the *actual* blend in the written markdown depends on the LLM honouring the
   directive — there's no post-build validator that re-reads the profile and
@@ -236,7 +236,7 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
 
 - **Real-job stage-gate contracts check SHAPE + NON-EMPTY of a representative
   artifact, not every item.** T027 declared `produces`/`consumes` contracts on the
-  perfumes + places pipeline stages (`src/jobs/{perfumes,places}/contracts.ts`), so
+  perfumes + places pipeline stages (`src/workflows/{perfumes,places}/contracts.ts`), so
   each pipeline now derives **3 gates** that fire at every boundary (previously the
   mechanism existed but zero real jobs declared contracts, so no gate ever fired).
   *Why:* the goal is catching real external-format drift (a reshaped Fragrantica
@@ -355,18 +355,17 @@ Each entry: **what** it is · **why** we chose it · **impact** · **when to rev
 
 ## Workflow run-limits (T094)
 
-- **"Pending" for re-selection = entry-not-done OR any descendant outstanding.**
-  *Why:* a limited re-run should resume a partially-finished root's downstream work, so
-  `selectPendingRoots` keeps a root in the candidate pool if its entry-stage item isn't done OR any
-  ledger row for that root (across the workflow's members) is still outstanding (not success/ignored
-  and not failed-past-budget).
-  *Impact:* a root whose entry is done but whose only outstanding descendants are **stuck** (failed
-  past `maxAttempts`) is treated as done and won't be re-selected by a *limited* run — unstick it, or
-  run unlimited, to retry it. Conversely a root with any retryable descendant is re-selected and
-  counts against the N, so a limited re-run may "spend" some of N on finishing in-flight roots before
-  reaching brand-new ones.
-  *Revisit:* if "limit = N brand-new roots only" is ever wanted, add a selection mode that counts only
-  never-started roots.
+- **RESOLVED by T163 — "pending" for re-selection is propagation through the TERMINAL stage, not
+  just entry-not-done.** The original rule described here (entry-not-done OR any descendant
+  outstanding) had a real bug: a root whose entry stage was done but whose LATER stages simply had
+  no ledger row yet (never attempted) was wrongly treated as "fully done" and skipped by a limited
+  run — silently selecting 0 roots and no-op'ing. T163 fixed this with a 4-branch check
+  (`isRootPending` in `src/db/store.ts`): (1) any retryable not-done row anywhere → pending; (2) a
+  done row at a terminal-wave job → fully done; (3) a gave-up marker (ignored/skipped/retry-exhausted)
+  with no retryable work → treat as done (avoids livelock); (4) otherwise (unattempted downstream
+  work) → pending. See root `CLAUDE.md`'s "Input lineage + manual run-limits (T094)" section for the
+  full current writeup. The "stuck descendant" caveat below still holds under the T163 rule (branch 3
+  applies): unstick a failed-past-budget item, or run unlimited, to retry it.
 
 - **A limited run selects roots from the root stage's CURRENT `inputKeys()` — which for `places`
   reads `places.json` (the ingest output), not the raw CSVs.**
