@@ -18,6 +18,7 @@ import {
   runStocksSnapshot,
   priceDiff,
   buildPortfolioMarkdown,
+  dayKey,
   type PortfolioWriter,
 } from './stocks-snapshot.js';
 
@@ -148,6 +149,20 @@ describe('buildPortfolioMarkdown', () => {
 });
 
 // ---------------------------------------------------------------------------
+// dayKey
+// ---------------------------------------------------------------------------
+
+describe('dayKey', () => {
+  it('formats a UTC date as YYYY-MM-DD', () => {
+    assert.equal(dayKey(new Date('2026-07-04T23:59:59.000Z')), '2026-07-04');
+  });
+
+  it('uses the UTC calendar day, not the local one', () => {
+    assert.equal(dayKey(new Date('2026-01-01T00:00:00.000Z')), '2026-01-01');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // runStocksSnapshot
 // ---------------------------------------------------------------------------
 
@@ -193,49 +208,58 @@ describe('runStocksSnapshot', () => {
     }
   });
 
-  it('writes portfolio.json + portfolio.md and marks each ticker done', async () => {
+  it('writes portfolio.json + portfolio.md and records one combined ledger row', async () => {
     const pos = makePosition({ ticker: `TEST_${Date.now()}_EQ` });
     const { write, calls } = makeWriterSpy();
+    const now = new Date('2026-07-04T12:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
       fetchPortfolio: async () => [pos],
       writePortfolio: write,
+      now,
     });
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].length, 1);
     assert.equal(calls[0][0].ticker, pos.ticker);
-    assert.ok(isWorkItemDone(JOB, positionKey('invest', pos.ticker), 3), 'ticker should be marked done');
+    assert.ok(isWorkItemDone(JOB, dayKey(now), 1), 'the day-keyed row should be marked done');
   });
 
-  it('records currentPrice/averageBuyPrice/markdown in the ledger detail', async () => {
+  it('records positionCount/totalValue/resolvedCount/markdown in the collapsed ledger detail', async () => {
     const pos = makePosition({ ticker: `DETAIL_${Date.now()}_EQ`, averagePrice: 100, currentPrice: 130 });
     const { write } = makeWriterSpy();
+    const now = new Date('2026-07-05T08:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
       fetchPortfolio: async () => [pos],
       writePortfolio: write,
+      now,
     });
 
-    const row = getWorkItem(JOB, positionKey('invest', pos.ticker));
+    const row = getWorkItem(JOB, dayKey(now));
     assert.ok(row, 'ledger row should exist');
     const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.currentPrice, 130);
-    assert.equal(detail.averageBuyPrice, 100);
+    assert.equal(detail.positionCount, 1);
+    assert.equal(detail.totalValue, 1300);
+    assert.equal(detail.resolvedCount, 0);
     assert.equal(detail.markdown, stocksSyncConfig.portfolioMdPath);
+    assert.equal(detail.name, `Portfolio snapshot — ${dayKey(now)}`);
   });
 
-  it('handles empty position list gracefully', async () => {
+  it('handles empty position list gracefully (no ledger row)', async () => {
     const { write, calls } = makeWriterSpy();
+    const now = new Date('2026-07-06T00:00:00.000Z');
     await runStocksSnapshot(fakeCtx(), {
       fetchPortfolio: async () => [],
       writePortfolio: write,
+      now,
     });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].length, 0);
+    assert.ok(!isWorkItemDone(JOB, dayKey(now), 1), 'no ledger row for an empty portfolio');
   });
 
-  it('records multiple positions and reports progress', async () => {
+  it('records multiple positions in one row and reports progress', async () => {
     const positions = [
       makePosition({ ticker: `MULTI1_${Date.now()}_EQ` }),
       makePosition({ ticker: `MULTI2_${Date.now()}_EQ` }),
@@ -249,19 +273,69 @@ describe('runStocksSnapshot', () => {
       selectedRoots: () => null,
       rootAllowed: () => true,
     };
+    const now = new Date('2026-07-07T00:00:00.000Z');
 
     const { write, calls } = makeWriterSpy();
     await runStocksSnapshot(ctx, {
       fetchPortfolio: async () => positions,
       writePortfolio: write,
+      now,
     });
 
     assert.equal(calls[0].length, 2);
-    for (const pos of positions) {
-      assert.ok(isWorkItemDone(JOB, positionKey('invest', pos.ticker), 3), `ticker ${pos.ticker} should be marked done`);
-    }
+    const row = getWorkItem(JOB, dayKey(now));
+    assert.ok(row, 'combined ledger row should exist');
+    const detail = JSON.parse(row!.detail!);
+    assert.equal(detail.positionCount, 2);
     assert.ok(progressCalls.length >= 2, 'progress called at least once per position');
     assert.equal(progressCalls[progressCalls.length - 1], 100, 'final progress is 100');
+  });
+
+  it('a same-day re-run overwrites the row rather than duplicating it', async () => {
+    const now = new Date('2026-07-08T09:00:00.000Z');
+    const posA = makePosition({ ticker: `SAMEDAY_A_${Date.now()}_EQ` });
+    const posB = makePosition({ ticker: `SAMEDAY_B_${Date.now()}_EQ` });
+    const { write: write1 } = makeWriterSpy();
+    const { write: write2 } = makeWriterSpy();
+
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async () => [posA],
+      writePortfolio: write1,
+      now,
+    });
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async () => [posA, posB],
+      writePortfolio: write2,
+      now: new Date('2026-07-08T20:00:00.000Z'),
+    });
+
+    const row = getWorkItem(JOB, dayKey(now));
+    assert.ok(row, 'ledger row should exist');
+    const detail = JSON.parse(row!.detail!);
+    assert.equal(detail.positionCount, 2, 'the second run overwrote the row with the latest detail');
+  });
+
+  it('runs on different days produce two distinct rows', async () => {
+    const nowDay1 = new Date('2026-07-09T09:00:00.000Z');
+    const nowDay2 = new Date('2026-07-10T09:00:00.000Z');
+    const pos = makePosition({ ticker: `MULTIDAY_${Date.now()}_EQ` });
+    const { write: write1 } = makeWriterSpy();
+    const { write: write2 } = makeWriterSpy();
+
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async () => [pos],
+      writePortfolio: write1,
+      now: nowDay1,
+    });
+    await runStocksSnapshot(fakeCtx(), {
+      fetchPortfolio: async () => [pos],
+      writePortfolio: write2,
+      now: nowDay2,
+    });
+
+    assert.ok(isWorkItemDone(JOB, dayKey(nowDay1), 1));
+    assert.ok(isWorkItemDone(JOB, dayKey(nowDay2), 1));
+    assert.notEqual(dayKey(nowDay1), dayKey(nowDay2));
   });
 
   it('fetches only Invest positions when ISA credentials are unset (unchanged behavior)', async () => {
@@ -307,26 +381,30 @@ describe('runStocksSnapshot', () => {
     assert.equal(byAccount['isa'], isaPos.ticker);
   });
 
-  it('same ticker in both accounts produces two distinct, non-colliding ledger entries', async () => {
+  it('same ticker in both accounts is still counted twice in the combined snapshot', async () => {
     process.env.TRADING212_ISA_API_KEY_ID = 'isa-key-id';
     process.env.TRADING212_ISA_API_SECRET_KEY = 'isa-secret-key';
 
     const sharedTicker = `SHARED_${Date.now()}_EQ`;
     const investPos = makePosition({ ticker: sharedTicker, averagePrice: 100, currentPrice: 110 });
     const isaPos = makePosition({ ticker: sharedTicker, averagePrice: 50, currentPrice: 60 });
-    const { write } = makeWriterSpy();
+    const { write, calls } = makeWriterSpy();
+    const now = new Date('2026-07-11T09:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
       fetchPortfolio: async (keyId) => (keyId === 'isa-key-id' ? [isaPos] : [investPos]),
       writePortfolio: write,
+      now,
     });
 
     delete process.env.TRADING212_ISA_API_KEY_ID;
     delete process.env.TRADING212_ISA_API_SECRET_KEY;
 
-    assert.ok(isWorkItemDone(JOB, positionKey('invest', sharedTicker), 3));
-    assert.ok(isWorkItemDone(JOB, positionKey('isa', sharedTicker), 3));
+    assert.equal(calls[0].length, 2);
     assert.notEqual(positionKey('invest', sharedTicker), positionKey('isa', sharedTicker));
+    const row = getWorkItem(JOB, dayKey(now));
+    const detail = JSON.parse(row!.detail!);
+    assert.equal(detail.positionCount, 2);
   });
 
   // -------------------------------------------------------------------------
@@ -344,10 +422,11 @@ describe('runStocksSnapshot', () => {
     };
   }
 
-  it('resolves ISIN + real-world ticker end-to-end', async () => {
+  it('resolves ISIN + real-world ticker end-to-end and records resolvedCount', async () => {
     const pos = makePosition({ ticker: 'YNDX_US_EQ' });
     const { write, calls } = makeWriterSpy();
     let metadataCalls = 0;
+    const now = new Date('2026-07-12T09:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
       fetchPortfolio: async () => [pos],
@@ -357,11 +436,15 @@ describe('runStocksSnapshot', () => {
       },
       resolveOpenFigiTickers: async (isins) => isins.map(() => 'NBIS'),
       writePortfolio: write,
+      now,
     });
 
     assert.equal(metadataCalls, 1, 'instruments-metadata is fetched at most once per stage run');
     assert.equal(calls[0][0].isin, 'NL0009805522');
     assert.equal(calls[0][0].resolvedTicker, 'NBIS');
+    const row = getWorkItem(JOB, dayKey(now));
+    const detail = JSON.parse(row!.detail!);
+    assert.equal(detail.resolvedCount, 1);
   });
 
   it('leaves isin/resolvedTicker undefined and logs a warn when the ticker is absent from instruments-metadata', async () => {

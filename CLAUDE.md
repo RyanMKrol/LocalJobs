@@ -218,10 +218,17 @@ need their own separately-generated credentials — via `TRADING212_ISA_API_KEY_
 `TRADING212_ISA_API_SECRET_KEY`; when both are set, `fetchPortfolio` is called a second time with
 those credentials and the resulting positions are tagged `account: 'isa'` (vs `'invest'`) and
 merged into the same combined list. Unset ISA credentials mean Invest-only, unchanged from
-pre-T301 behavior. Stage 1 (`stocks-snapshot`), idempotent per **`account:ticker`** composite key
-(`positionKey`) via the `work_items` ledger — NOT ticker alone, since the same ticker can be held
-in both accounts and a bare-ticker key would collide; current price/value come directly from
-Trading212's own portfolio endpoint (no separate market-data API or credential). **Also resolves
+pre-T301 behavior. Stage 1 (`stocks-snapshot`) records ONE combined `work_items` row per calendar day
+(`YYYY-MM-DD`, a same-day re-run overwrites rather than duplicates), summarizing the whole snapshot
+(`positionCount`/`totalValue`/`resolvedCount`) — mirroring the same one-combined-artifact-per-period
+idiom `stock-digest-build`/`plex-space-saver-scan` already use, rather than one row per position
+(T403; this also means the workflow declares no `inputKeys()` any more and is NOT limitable — no
+Run-limit box on the dashboard, matching its sibling single-snapshot workflows). The
+per-position **`account:ticker`** composite key (`positionKey`) still exists — it's just no longer
+`stocks-snapshot`'s ledger key; it survives as the key `stocks-watch` (stage 2, below) uses on its
+own separate ledger, since the same ticker can be held in both accounts and a bare-ticker key would
+collide there. Current price/value come directly from Trading212's own portfolio endpoint (no
+separate market-data API or credential). **Also resolves
 each position's ISIN + a current, real-world ticker (T373)** — Trading212's own `ticker` field can
 go stale after a company rename (e.g. `YNDX_US_EQ` is actually Nebius Group NV, ISIN
 `NL0009805522`, after its 2024 rename; Trading212 updated the `name` field but never the `ticker`).

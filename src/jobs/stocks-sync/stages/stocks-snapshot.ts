@@ -7,7 +7,6 @@ import {
   fetchInstrumentsMetadata,
   fetchPortfolio,
   normalizePosition,
-  positionKey,
   resolveOpenFigiTickersBatched,
   resolveTickers,
   type InstrumentsMetadataFetcher,
@@ -19,6 +18,11 @@ import {
 import { stocksSyncConfig } from '../config.js';
 
 const JOB_NAME = 'stocks-snapshot';
+
+/** "2026-07-04" — the UTC calendar-day key, used as the single collapsed ledger key. */
+export function dayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
 // ---------------------------------------------------------------------------
 // Markdown report (with price-difference column: absolute + percentage)
@@ -75,6 +79,7 @@ export async function runStocksSnapshot(
     fetchInstrumentsMetadata?: InstrumentsMetadataFetcher;
     resolveOpenFigiTickers?: OpenFigiTickerResolver;
     writePortfolio?: PortfolioWriter;
+    now?: Date;
   } = {},
 ): Promise<void> {
   const apiKeyId = process.env.TRADING212_API_KEY_ID ?? '';
@@ -96,6 +101,7 @@ export async function runStocksSnapshot(
     opts.resolveOpenFigiTickers ??
     ((isins) => resolveOpenFigiTickersBatched(isins, process.env.OPENFIGI_API_KEY));
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
+  const now = opts.now ?? new Date();
 
   ctx.log('info: stocks-sync starting — fetching open positions from Trading212 (read-only)');
 
@@ -143,33 +149,31 @@ export async function runStocksSnapshot(
   let done = 0;
   for (const p of positions) {
     const { absolute, percent } = priceDiff(p);
-    markWorkItem(JOB_NAME, positionKey(p.account, p.ticker), 'success', {
-      detail: {
-        name: `${p.ticker}${p.account === 'isa' ? ' (ISA)' : ''}`,
-        currentPrice: p.currentPrice,
-        averageBuyPrice: p.averageBuyPrice,
-        markdown: stocksSyncConfig.portfolioMdPath,
-      },
-    });
     done++;
     ctx.log(
-      `info: recorded ${done}/${positions.length} — [${p.account}] ${p.ticker}: qty ${p.quantity}, ` +
+      `info: [${done}/${positions.length}] [${p.account}] ${p.ticker}: qty ${p.quantity}, ` +
         `avg ${p.averageBuyPrice}, current ${p.currentPrice}, diff ${absolute.toFixed(2)} (${percent.toFixed(2)}%)`,
     );
-    ctx.progress((done / positions.length) * 100, `${done}/${positions.length} recorded`);
+    ctx.progress((done / positions.length) * 100, `${done}/${positions.length} processed`);
   }
 
-  ctx.log(`info: stocks-sync complete — recorded ${done} out of ${positions.length} position(s)`);
-}
+  const totalValue = positions.reduce((sum, p) => sum + p.currentValue, 0);
+  const resolvedCount = positions.filter((p) => p.resolvedTicker).length;
+  const key = dayKey(now);
 
-/** Root stage inputKeys(): the current open-position tickers. */
-export async function stocksSnapshotInputKeys(): Promise<string[]> {
-  try {
-    const { readFileSync } = await import('fs');
-    const raw = readFileSync(stocksSyncConfig.portfolioJsonPath, 'utf-8');
-    const positions = JSON.parse(raw) as NormalizedPosition[];
-    return positions.map((p) => positionKey(p.account, p.ticker));
-  } catch {
-    return [];
-  }
+  markWorkItem(JOB_NAME, key, 'success', {
+    detail: {
+      name: `Portfolio snapshot — ${key}`,
+      positionCount: positions.length,
+      totalValue,
+      resolvedCount,
+      markdown: stocksSyncConfig.portfolioMdPath,
+    },
+  });
+
+  ctx.log(
+    `info: stocks-sync complete — recorded 1 combined ledger row (${key}) for ${positions.length} ` +
+      `position(s), total value ${totalValue.toFixed(2)}, ${resolvedCount} real-ticker resolved`,
+  );
+  ctx.progress(100, `${positions.length} position(s) recorded for ${key}`);
 }
