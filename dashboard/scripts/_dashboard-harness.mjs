@@ -672,6 +672,18 @@ export function fixtureFor(pathname, searchParams) {
       { name: 'movie-recommendations', status: 'skipped', reason: 'workflow has an active run' },
     ],
   };
+  if (pathname === '/api/workflows/run-all') return {
+    ok: true,
+    totalWorkflows: 3,
+    startedCount: 2,
+    skippedCount: 1,
+    limit: 3,
+    results: [
+      { name: 'places', status: 'started', limited: true, limit: 3 },
+      { name: 'claude-warmer', status: 'started', limited: false, limit: null },
+      { name: 'movie-recommendations', status: 'skipped', reason: 'workflow has an active run' },
+    ],
+  };
   if (pathname === '/api/backlog') return { tasks };
   if (pathname === '/api/logs') {
     const allLogs = [
@@ -746,6 +758,19 @@ export const FLOWS = [
     waitFor: ['#admin-confirm-input'],
     actions: async (page) => {
       await page.fill('#admin-confirm-input', 'DELETE ALL OUTPUT');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    // T397: the Admin page's fleet-wide "Run all workflows" action reveals an inline
+    // confirm panel (Confirm/Cancel) before dispatching — confirms it's visibly
+    // distinct from the collapsed button state.
+    name: 'admin-run-all-confirm',
+    path: '/admin',
+    viewport: true,
+    waitFor: ['button'],
+    actions: async (page) => {
+      await page.getByRole('button', { name: 'Run all workflows' }).click();
       await page.waitForTimeout(200);
     },
   },
