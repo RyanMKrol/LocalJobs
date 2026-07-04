@@ -11,7 +11,9 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
+import { ignoreSurfacedItem } from '../../../db/store.js';
 import { moviesConfig } from '../config.js';
+import { RECS_JOB, recKey } from '../recs.js';
 import { runMerge } from './merge.js';
 import type { MergeOpts, SearchMovieFn } from './merge.js';
 import type { BranchOutputFile, MovieSnapshotFile, RawSuggestion, RecommendationsFile, TmdbSearchResult } from '../types.js';
@@ -161,6 +163,28 @@ async function run(suggestions: RawSuggestion[], opts: Partial<MergeOpts>): Prom
   const lenient = await run([mid], { target: 5, genreCap: 99, minRating: 6.0 });
   assert.equal(lenient.recommendations.length, 1, 'lowering the bar to 6.0 lets the 6.5 film through');
   console.log('  ✓ quality threshold + target are config/opts-driven, not hardcoded');
+}
+
+// ── 7. T404: an owner-ignored rec (never appended to history) still shows up in
+// the exclude list passed to the top-up function ──
+{
+  const ignoredTmdbId = 9_900_001;
+  // A fresh ignore with a recoverable title/year, WITHOUT ever appending it to
+  // any history file — the exact gap this task closes.
+  ignoreSurfacedItem(RECS_JOB, recKey(ignoredTmdbId), { title: 'Pre-Notify Ignored Film', year: 2022 });
+
+  const initial = [film('Solo Init', { genre: ACTION })];
+  let capturedExclude: string[] = [];
+  const topUp = async (exclude: string[]): Promise<RawSuggestion[]> => {
+    capturedExclude = exclude;
+    return [];
+  };
+  await run(initial, { target: 5, genreCap: 99, topUpRounds: 1, topUp });
+  assert.ok(
+    capturedExclude.includes('Pre-Notify Ignored Film (2022)'),
+    'a pre-notify owner-ignored title appears in the top-up exclude list even though it was never historied',
+  );
+  console.log('  ✓ T404: pre-notify ignored recommendation is excluded from top-up re-prompts');
 }
 
 console.log('  ✓ movies merge quality + top-up tests passed');

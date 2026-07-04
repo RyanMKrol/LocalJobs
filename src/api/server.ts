@@ -1277,7 +1277,15 @@ export function createApiServer(
         if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
           return json(res, 400, { error: 'tmdbId must be a positive integer' });
         }
-        const ignored = ignoreSurfacedItem(RECS_JOB, recKey(tmdbId));
+        let detail: { title: string; year: number | null } | undefined;
+        try {
+          const file = JSON.parse(readFileSync(moviesConfig.recsOut, 'utf8')) as RecommendationsFile;
+          const rec = (file.recommendations ?? []).find((r) => r.tmdbId === tmdbId);
+          if (rec) detail = { title: rec.title, year: rec.year };
+        } catch {
+          // recommendations.json not readable — ignore with no recoverable title.
+        }
+        const ignored = ignoreSurfacedItem(RECS_JOB, recKey(tmdbId), detail);
         return json(res, 200, { ok: true, ignored });
       }
 
@@ -1329,7 +1337,15 @@ export function createApiServer(
         if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
           return json(res, 400, { error: 'tmdbId must be a positive integer' });
         }
-        const ignored = ignoreSurfacedItem(TV_RECS_JOB, tvRecKey(tmdbId));
+        let detail: { title: string; year: number | null } | undefined;
+        try {
+          const file = JSON.parse(readFileSync(tvRecsConfig.recsOut, 'utf8')) as TvRecommendationsFile;
+          const rec = (file.recommendations ?? []).find((r) => r.tmdbId === tmdbId);
+          if (rec) detail = { title: rec.title, year: rec.year };
+        } catch {
+          // recommendations.json not readable — ignore with no recoverable title.
+        }
+        const ignored = ignoreSurfacedItem(TV_RECS_JOB, tvRecKey(tmdbId), detail);
         return json(res, 200, { ok: true, ignored });
       }
 

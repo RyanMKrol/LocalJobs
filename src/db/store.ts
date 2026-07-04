@@ -936,15 +936,23 @@ export function ignoreWorkItem(jobName: string, itemKey: string): number {
  * path calls this; it's invoked solely from a dashboard control. Unlike
  * {@link ignoreWorkItem} it does NOT require a `failed` row (a surfaced gap is
  * typically `success` after its one notification, or absent if never notified).
+ * An optional `detail` (e.g. `{ title, year }`) is stored on a FRESH row so a
+ * pre-notify ignore (one that never made it into a history file) still carries a
+ * recoverable title for later exclude-list building (T404). When omitted, any
+ * existing non-null `detail` on the row is PRESERVED, not clobbered to `NULL` —
+ * an already-`success` row (e.g. the T145/T209 ignore-an-already-recommended-item
+ * path) keeps its `name`/`markdown` detail when ignored.
  * Returns the number of rows affected (always ≥1). */
-export function ignoreSurfacedItem(jobName: string, itemKey: string): number {
+export function ignoreSurfacedItem(jobName: string, itemKey: string, detail?: unknown): number {
+  const detailJson = detail === undefined ? null : JSON.stringify(detail);
   return db.prepare(`
-    INSERT INTO work_items (job_name, item_key, status, attempts, root_key)
-    VALUES (?, ?, 'ignored', 0, ?)
+    INSERT INTO work_items (job_name, item_key, status, attempts, root_key, detail)
+    VALUES (?, ?, 'ignored', 0, ?, ?)
     ON CONFLICT(job_name, item_key) DO UPDATE SET
       status = 'ignored',
-      updated_at = datetime('now')
-  `).run(jobName, itemKey, itemKey).changes;
+      updated_at = datetime('now'),
+      detail = COALESCE(excluded.detail, work_items.detail)
+  `).run(jobName, itemKey, itemKey, detailJson).changes;
 }
 
 /**
@@ -991,6 +999,17 @@ export function ignoredItemKeys(jobName: string): Set<string> {
     "SELECT item_key FROM work_items WHERE job_name = ? AND status = 'ignored'",
   ).all(jobName) as { item_key: string }[];
   return new Set(rows.map((r) => r.item_key));
+}
+
+/** A single job's `ignored` ledger rows with their parsed `detail`, scoped to one
+ *  job name — used to recover a title/year for excluding an ignored suggestion
+ *  from future recommender prompts (T404), distinct from {@link ignoredItemKeys}
+ *  which only returns the bare keys. */
+export function ignoredWorkItemDetails(jobName: string): { itemKey: string; detail: unknown }[] {
+  const rows = db.prepare(
+    "SELECT item_key, detail FROM work_items WHERE job_name = ? AND status = 'ignored'",
+  ).all(jobName) as { item_key: string; detail: string | null }[];
+  return rows.map((r) => ({ itemKey: r.item_key, detail: r.detail ? JSON.parse(r.detail) : null }));
 }
 
 /**

@@ -155,7 +155,7 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   }
   for (const r of newRecs) {
     markWorkItem(RECS_JOB, recKey(r.tmdbId), 'success', {
-      detail: { name: `${r.title} (${r.lens})`, markdown: reportPath },
+      detail: { name: `${r.title} (${r.lens})`, markdown: reportPath, title: r.title, year: r.year },
     });
   }
   if (newRecs.length) appendHistory(historyFile, newRecs, now);

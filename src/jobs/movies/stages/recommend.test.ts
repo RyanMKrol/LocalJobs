@@ -20,8 +20,10 @@ import {
   ownedPreYear,
 } from './branches.js';
 import type { BranchContext } from './branches.js';
-import { allHistoryTitles, parseSuggestions, runBranch } from './recommend.js';
+import { allHistoryTitles, ignoredSuggestionTitles, parseSuggestions, runBranch } from './recommend.js';
 import type { BranchOutputFile, MovieSnapshotFile, RecsHistoryFile, TasteProfileFile } from '../types.js';
+import { ignoreSurfacedItem, markWorkItem } from '../../../db/store.js';
+import { RECS_JOB, recKey } from '../recs.js';
 
 function fakeCtx(): JobContext {
   return { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
@@ -367,6 +369,22 @@ const readBranch = (id: string): BranchOutputFile =>
   }
   assert.ok(!errored, 'all branches build without throwing');
   console.log('  ✓ all 8 branches accept alreadySuggested + exclude context without error');
+}
+
+// ── T404: ignoredSuggestionTitles — usable detail → included; unusable → skipped ──
+{
+  ignoreSurfacedItem(RECS_JOB, recKey(910111), { title: 'Ignored With Title', year: 2019 });
+  ignoreSurfacedItem(RECS_JOB, recKey(910112), { title: 'Ignored No Year' });
+  // A legacy row with no usable title (only the old "Title (lens)" `name` format) — must be skipped, not crash.
+  markWorkItem(RECS_JOB, recKey(910113), 'ignored', { detail: { name: 'Legacy Name (lens)' } });
+  // A row with no detail at all.
+  markWorkItem(RECS_JOB, recKey(910114), 'ignored');
+
+  const titles = ignoredSuggestionTitles(RECS_JOB);
+  assert.ok(titles.includes('Ignored With Title (2019)'), 'usable title+year formatted and included');
+  assert.ok(titles.includes('Ignored No Year'), 'usable title with no year included, no trailing " ()"');
+  assert.equal(titles.filter((t) => t.includes('Legacy Name')).length, 0, 'legacy name-only detail skipped, not crashed');
+  console.log('  ✓ ignoredSuggestionTitles includes usable titles, skips legacy/no-detail rows');
 }
 
 console.log('  ✓ movies branch-runner tests passed');

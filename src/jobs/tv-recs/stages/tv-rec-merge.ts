@@ -15,7 +15,7 @@ import {
 } from '../recs.js';
 import { runClaude } from '../../../services/claude.js';
 import { BRANCHES } from './branches.js';
-import { allHistoryTitles, collectBranchSuggestions, recentTitles } from './recommend.js';
+import { allHistoryTitles, collectBranchSuggestions, ignoredSuggestionTitles, recentTitles } from './recommend.js';
 import type { RunClaudeFn } from './recommend.js';
 import { isWorkItemDone } from '../../../db/store.js';
 import type {
@@ -218,7 +218,11 @@ function buildDefaultTopUp(
     const taste = JSON.parse(readFileSync(tasteFile, 'utf8')) as TvTasteProfileFile;
     const shows = snapshot.shows ?? [];
     const recent = recentTitles(historyFile, tvRecsConfig.recsRecentWindow);
-    const alreadySuggested = allHistoryTitles(historyFile, tvRecsConfig.recsHistoryContext);
+    // T404: also exclude currently owner-ignored recommendations, not just historied ones.
+    const alreadySuggested = [...new Set([
+      ...allHistoryTitles(historyFile, tvRecsConfig.recsHistoryContext),
+      ...ignoredSuggestionTitles(),
+    ])];
     const limit = concurrency;
     ctx.log(`  Re-prompting ${BRANCHES.length} branch(es) (round ${round}, concurrency ${limit}), excluding ${exclude.length} already-collected/owned/considered title(s); ${alreadySuggested.length} already-suggested history title(s) in context…`);
     const pooled: RawSuggestion[] = [];
@@ -285,6 +289,11 @@ export async function runTvRecMerge(ctx: JobContext, opts: MergeOpts = {}): Prom
   const seen = new Set<string>();
   const considered: string[] = [];
   for (const s of unique) { seen.add(rawKey(s)); considered.push(displayTitle(s)); }
+  // T404: also exclude currently owner-ignored recommendations from the top-up prompt,
+  // even if they were never appended to the history file (a pre-notify ignore).
+  for (const title of ignoredSuggestionTitles()) {
+    if (!considered.includes(title)) considered.push(title);
+  }
 
   ctx.progress(20, `verifying ${unique.length}`);
   await verifyInto(unique, byTmdb, owned, search, ctx, params, counters);

@@ -188,3 +188,24 @@ async function run(suggestions: RawSuggestion[], opts: Partial<MergeOpts> = {}):
   assert.ok(calls <= 1, `stopped early when no new suggestions (calls=${calls})`);
   console.log('  ✓ top-up stops early when no new suggestions arrive');
 }
+
+// ── 7. T404: an owner-ignored rec (never appended to history) still shows up in
+// the exclude list passed to the top-up function ──
+{
+  const preNotifyIgnoredId = 9_900_101;
+  ignoreSurfacedItem(RECS_JOB, recKey(preNotifyIgnoredId), { title: 'Pre-Notify Ignored Show', year: 2021 });
+
+  const DRAMA = 18;
+  const initial = [show('Solo Show', { genre: DRAMA })];
+  let capturedExclude: string[] = [];
+  const topUpFn = async (exclude: string[]): Promise<RawSuggestion[]> => {
+    capturedExclude = exclude;
+    return [];
+  };
+  await run(initial, { target: 5, genreCap: 99, topUpRounds: 1, topUp: topUpFn });
+  assert.ok(
+    capturedExclude.includes('Pre-Notify Ignored Show (2021)'),
+    'a pre-notify owner-ignored title appears in the top-up exclude list even though it was never historied',
+  );
+  console.log('  ✓ T404: pre-notify ignored recommendation is excluded from top-up re-prompts');
+}

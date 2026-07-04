@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { extractJsonObject, runClaude } from '../../../services/claude.js';
 import type { ClaudeResult } from '../../../services/claude.js';
+import { ignoredWorkItemDetails } from '../../../db/store.js';
 import { tvBranchSuggestionsContract, tvSnapshotContract } from '../contracts.js';
 import { tvRecsConfig } from '../config.js';
 import { ensureDirs } from '../lib.js';
+import { RECS_JOB } from '../recs.js';
 import { branchById } from './branches.js';
 import type {
   BranchOutputFile,
@@ -72,6 +74,20 @@ export function allHistoryTitles(historyFile: string, cap: number): string[] {
   }
 }
 
+/**
+ * Titles of currently owner-IGNORED recommendations (T404) — formatted identically
+ * to {@link allHistoryTitles}'s `"Title (Year)"` / bare `"Title"` output, so it can
+ * be concatenated straight into the same exclude list. An ignore recorded before
+ * this fix (or without a recoverable title) has no `detail.title` and is skipped
+ * rather than crashing.
+ */
+export function ignoredSuggestionTitles(jobName: string = RECS_JOB): string[] {
+  return ignoredWorkItemDetails(jobName)
+    .map((row) => row.detail as { title?: unknown; year?: unknown } | null)
+    .filter((d): d is { title?: unknown; year?: unknown } => !!d && typeof d.title === 'string' && d.title.trim() !== '')
+    .map((d) => `${d.title as string}${typeof d.year === 'number' ? ` (${d.year})` : ''}`);
+}
+
 function writeBranchFile(recsDir: string, file: BranchOutputFile): string {
   const path = join(recsDir, `${file.branchId}.json`);
   writeFileSync(path, JSON.stringify(file, null, 2));
@@ -109,8 +125,12 @@ export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchO
   const taste = JSON.parse(readFileSync(tasteFile, 'utf8')) as TvTasteProfileFile;
   const shows = snapshot.shows ?? [];
   const recent = recentTitles(historyFile, tvRecsConfig.recsRecentWindow);
-  const alreadySuggested = allHistoryTitles(historyFile, tvRecsConfig.recsHistoryContext);
-  ctx.log(`Loaded ${shows.length} owned shows; ${alreadySuggested.length} already-suggested title(s) to avoid (full history, capped at ${tvRecsConfig.recsHistoryContext}).`);
+  // T404: also exclude currently owner-ignored recommendations, not just historied ones.
+  const alreadySuggested = [...new Set([
+    ...allHistoryTitles(historyFile, tvRecsConfig.recsHistoryContext),
+    ...ignoredSuggestionTitles(),
+  ])];
+  ctx.log(`Loaded ${shows.length} owned shows; ${alreadySuggested.length} already-suggested title(s) to avoid (full history + ignored, capped at ${tvRecsConfig.recsHistoryContext}).`);
 
   const base: BranchOutputFile = { branchId: spec.id, lens: spec.lens, generatedAt: now.toISOString(), suggestions: [] };
 

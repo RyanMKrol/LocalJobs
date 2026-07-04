@@ -6,7 +6,7 @@ import {
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop,
-  ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoreSurfacedItem, ignoreSurfacedItems, unignoreSurfacedItem, isWorkItemDone,
+  ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoredWorkItemDetails, ignoreSurfacedItem, ignoreSurfacedItems, unignoreSurfacedItem, isWorkItemDone,
   listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, stageIoLists, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
@@ -1123,6 +1123,30 @@ console.log('  ✓ T210 ignoreSurfacedItems: bulk-dismiss ignores only supplied 
   assert.equal(unignoreSurfacedItem(JOB, 'gap:absent'), 0, 'no-op on an absent key');
 }
 console.log('  ✓ T391 unignoreSurfacedItem: deletes ignored row, no-op otherwise');
+
+// T404 — ignoreSurfacedItem accepts an optional `detail` and never clobbers an
+// existing non-null detail when the arg is omitted; ignoredWorkItemDetails reads
+// them back scoped to one job name.
+{
+  const JOB = 't404-recs';
+  syncJob({ name: JOB, run: async () => {} });
+
+  // Fresh ignore with detail → detail stored.
+  ignoreSurfacedItem(JOB, 'rec:1', { title: 'Fresh Ignore', year: 2020 });
+  const details1 = ignoredWorkItemDetails(JOB);
+  const row1 = details1.find((d) => d.itemKey === 'rec:1');
+  assert.deepEqual(row1?.detail, { title: 'Fresh Ignore', year: 2020 }, 'fresh ignore stores the passed detail');
+
+  // Ignoring an already-`success` row with existing detail, calling with no detail
+  // arg → prior detail preserved unchanged.
+  markWorkItem(JOB, 'rec:2', 'success', { detail: { name: 'Existing Rec (lens)', markdown: '/tmp/x.md' } });
+  ignoreSurfacedItem(JOB, 'rec:2'); // no detail arg
+  const details2 = ignoredWorkItemDetails(JOB);
+  const row2 = details2.find((d) => d.itemKey === 'rec:2');
+  assert.deepEqual(row2?.detail, { name: 'Existing Rec (lens)', markdown: '/tmp/x.md' }, 'omitted detail arg preserves the prior non-null detail');
+
+  console.log('  ✓ T404 ignoreSurfacedItem: optional detail stored on fresh ignore, preserved when omitted');
+}
 
 // T258 — noop detection helpers: root-with-skipped not re-selected,
 // hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop.
