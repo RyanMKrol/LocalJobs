@@ -10499,6 +10499,243 @@
       "design": null,
       "verify": [],
       "spec": ".harness/tasks/T395.md"
+    },
+    {
+      "id": "T396",
+      "title": "Add bulk POST /api/workflows/run-all endpoint (fleet-wide run-everything)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "api",
+        "admin"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "dashboard/app/lib/api.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T396.md",
+      "facets": {
+        "layer": "api",
+        "workType": "endpoint",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T397",
+      "title": "Add \"Run all workflows\" action to the Admin page",
+      "status": "pending",
+      "dependsOn": [
+        "T396"
+      ],
+      "gate": null,
+      "tags": [
+        "ui",
+        "admin"
+      ],
+      "scope": [
+        "dashboard/app/admin/**",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T397.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T398",
+      "title": "Fix .panel margin leaking into .grid.cards so no Overview workflow card renders taller than its row-mates",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "bug",
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T398.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T399",
+      "title": "Owner check-in: confirm nothing in local-jobs currently writes to DynamoDB",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "review",
+        "dynamodb",
+        "needs-human"
+      ],
+      "scope": [
+        "src/services/dynamodb.service.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T399.md"
+    },
+    {
+      "id": "T400",
+      "title": "Fix header brand link wrapping to two lines at desktop width (T323 regression)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "bug",
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/layout.tsx",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T400.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "expectsTest": false
+    },
+    {
+      "id": "T401",
+      "title": "Swap perfumes workflow input source from local perfumes.json to live DynamoDB PerfumeRatings table",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "perfumes",
+        "dynamodb",
+        "migration"
+      ],
+      "scope": [
+        "src/jobs/perfumes/**",
+        "src/services/dynamodb.service.ts",
+        ".env.example"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "Manual read-only Scan against the real live PerfumeRatings table (free-tier, no monthly-cap risk) to confirm inputKeys()/find-url reflects the table's current live items with correct field mapping and fragranticaUrl seeding"
+      ],
+      "spec": ".harness/tasks/T401.md",
+      "facets": {
+        "layer": "job",
+        "workType": "migration",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T402",
+      "title": "Plex host-discovery scan: exclude virtual/VPN interfaces and prioritize the configured host's own subnet",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "bug",
+        "plex"
+      ],
+      "scope": [
+        "src/jobs/plex/client.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T402.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T403",
+      "title": "Collapse stocks-sync's stocks-snapshot ledger to one row per calendar day, not per position",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor"
+      ],
+      "scope": [
+        "src/jobs/stocks-sync/**",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "spec": ".harness/tasks/T403.md",
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      },
+      "expectsTest": true
+    },
+    {
+      "id": "T404",
+      "title": "Rec top-up: also exclude owner-ignored recommendations from re-prompted branches, not just history",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "bug",
+        "movies",
+        "tv-recs",
+        "recommendations"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "src/jobs/movies/stages/notify.ts",
+        "src/jobs/movies/stages/recommend.ts",
+        "src/jobs/movies/stages/merge.ts",
+        "src/jobs/tv-recs/stages/tv-recs-notify.ts",
+        "src/jobs/tv-recs/stages/recommend.ts",
+        "src/jobs/tv-recs/stages/tv-rec-merge.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "spec": ".harness/tasks/T404.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "expectsTest": true
     }
   ]
 }
