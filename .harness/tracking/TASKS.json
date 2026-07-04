@@ -10965,6 +10965,30 @@
       "verify": [],
       "expectsTest": true,
       "spec": ".harness/tasks/T414.md"
+    },
+    {
+      "id": "T415",
+      "title": "stock-digest: split stock-portfolio-snapshot into fetch + resolve stages",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "stock-digest",
+        "refactor"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "src/jobs/stock-digest/**",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T415.md"
     }
   ]
 }
