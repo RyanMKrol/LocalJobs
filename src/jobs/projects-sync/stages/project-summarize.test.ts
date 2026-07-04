@@ -167,7 +167,10 @@ describe('project-summarize', () => {
     ].join('\n');
 
     const writtenFiles: Array<[string, string]> = [];
-    await runProjectSummarize(fakeCtx(), {
+    const logs: Array<[string, string | undefined]> = [];
+    const ctx = fakeCtx();
+    ctx.log = (message, level) => { logs.push([message, level]); };
+    await runProjectSummarize(ctx, {
       readCatalog: () => [entry],
       cloneOrPull: async () => {},
       summarizeWithRepoAccess: async () => ({ ok: true, text: nonConformant }),
@@ -178,6 +181,10 @@ describe('project-summarize', () => {
     const row = getWorkItem('project-summarize', entry.repoId);
     assert.ok(row);
     assert.equal(row!.status, 'failed');
+
+    const errorLog = logs.find(([message]) => message.startsWith('error: failed to summarize'));
+    assert.ok(errorLog, 'expected an error log line for the failed summary');
+    assert.equal(errorLog![1], 'error');
   });
 
   it('calls summarizeWithRepoAccess with the cloned repo dir as the target directory', async () => {

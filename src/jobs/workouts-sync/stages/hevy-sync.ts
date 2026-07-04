@@ -161,7 +161,7 @@ export async function runHevySync(
       ctx.log(`info: recorded ${done}/${todo.length} — ${workout.id} "${workout.title}"`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      ctx.log(`error: failed to record workout ${workout.id}: ${msg}`);
+      ctx.log(`error: failed to record workout ${workout.id}: ${msg}`, 'error');
       markWorkItem(JOB_NAME, workout.id, 'failed');
       failed++;
     }

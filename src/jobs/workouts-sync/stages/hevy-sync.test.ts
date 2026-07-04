@@ -198,6 +198,31 @@ describe('runHevySync — local history accumulation', () => {
     }
   });
 
+  it('logs a per-workout failure at "error" level when recording it throws', async () => {
+    // A workout with a null id forces markWorkItem's SQLite insert to violate its
+    // NOT NULL constraint, exercising the per-workout catch block. The catch
+    // block's own recovery markWorkItem call (marking it 'failed') hits the same
+    // constraint and re-throws — that's expected here; what we're verifying is
+    // that the error is logged at 'error' level before that happens.
+    const badWorkout = makeWorkout(uid());
+    (badWorkout as unknown as { id: string | null }).id = null;
+
+    const logs: Array<[string, string | undefined]> = [];
+    const ctx = fakeCtx();
+    ctx.log = (message, level) => { logs.push([message, level]); };
+
+    await assert.rejects(() =>
+      runHevySync(ctx, {
+        fetchPage: singlePageFetcher([badWorkout]),
+        historyPath,
+      }),
+    );
+
+    const errorLog = logs.find(([message]) => message.startsWith('error: failed to record workout'));
+    assert.ok(errorLog, 'expected an error log line for the failed workout');
+    assert.equal(errorLog![1], 'error');
+  });
+
   it('reading a missing/empty history file returns an empty array', () => {
     assert.deepEqual(readWorkoutsHistory(join(scratchDir, 'nope.json')), []);
   });

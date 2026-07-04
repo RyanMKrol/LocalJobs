@@ -244,7 +244,7 @@ export async function runProjectSummarize(
       });
       processed++;
     } catch (e) {
-      ctx.log(`error: failed to summarize ${entry.fullName}: ${String(e)}`);
+      ctx.log(`error: failed to summarize ${entry.fullName}: ${String(e)}`, 'error');
       markWorkItem(JOB_NAME, entry.repoId, 'failed', { rootKey: entry.repoId, detail: { name: entry.fullName } });
     }
 
