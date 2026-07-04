@@ -10,7 +10,7 @@ export const FIND_JOB = 'perfumes-find-url';
 /** Stage 1: ask Claude (web) to find each perfume's Fragrantica URL. */
 export async function runFindUrl(ctx: JobContext): Promise<StageResult> {
   ensureDirs();
-  const perfumes = loadPerfumes();
+  const perfumes = await loadPerfumes();
   const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
   const todo = perfumes.filter((p) => ctx.rootAllowed(p.id) && !isWorkItemDone(FIND_JOB, p.id, perfumesConfig.maxAttempts));
   ctx.log(`[find-url] ${perfumes.length} perfumes · ${todo.length} still need a Fragrantica URL`);
@@ -23,6 +23,19 @@ export async function runFindUrl(ctx: JobContext): Promise<StageResult> {
 
   for (const [i, p] of todo.entries()) {
     if (ok + failed >= cap) break;
+
+    // Seed from PerfumeRatings' own fragranticaUrl when present (T401) — skip
+    // the Claude web search entirely for an item the owner has already linked.
+    if (p.fragranticaUrl && /^https:\/\/www\.fragrantica\.com\/perfume\//i.test(p.fragranticaUrl)) {
+      urls[p.id] = p.fragranticaUrl;
+      writeJsonFile(perfumesConfig.urlsFile, urls);
+      markWorkItem(FIND_JOB, p.id, 'success', { detail: { name: label(p), url: p.fragranticaUrl, seeded: true } });
+      ok++;
+      ctx.log(`[find-url] ✓ (seeded from PerfumeRatings) ${label(p)} → ${p.fragranticaUrl}`);
+      reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
+      continue;
+    }
+
     ctx.log(`[find-url] ${i + 1}/${total} → ${label(p)}`);
     const attempts = (getWorkItem(FIND_JOB, p.id)?.attempts ?? 0) + 1;
     const res = perfumesConfig.dryRun

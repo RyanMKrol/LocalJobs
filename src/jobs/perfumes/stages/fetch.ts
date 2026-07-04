@@ -24,7 +24,7 @@ interface FetchOutcome {
  *  page it saves the raw HTML + diagnostics so we can see exactly what happened. */
 export async function runFetch(ctx: JobContext): Promise<StageResult> {
   ensureDirs();
-  const perfumes = loadPerfumes();
+  const perfumes = await loadPerfumes();
   const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
   const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && urls[p.id] && !isWorkItemDone(FETCH_JOB, p.id, perfumesConfig.maxAttempts));
   const todo = pendingOf();

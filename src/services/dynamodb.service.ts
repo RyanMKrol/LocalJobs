@@ -4,6 +4,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   DeleteCommand,
   BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
@@ -96,6 +97,33 @@ export async function dynamoQuery(
     }),
   );
   return (result.Items ?? []) as Record<string, unknown>[];
+}
+
+/** Scan an entire table (paginated internally past Scan's ~1MB-per-call limit). */
+export async function dynamoScan(
+  table: string,
+  params?: {
+    filterExpression?: string;
+    expressionAttributeNames?: Record<string, string>;
+    expressionAttributeValues?: Record<string, unknown>;
+  },
+): Promise<Record<string, unknown>[]> {
+  const items: Record<string, unknown>[] = [];
+  let exclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const result = await getClient().send(
+      new ScanCommand({
+        TableName: table,
+        FilterExpression: params?.filterExpression,
+        ExpressionAttributeNames: params?.expressionAttributeNames,
+        ExpressionAttributeValues: params?.expressionAttributeValues,
+        ExclusiveStartKey: exclusiveStartKey,
+      }),
+    );
+    items.push(...((result.Items ?? []) as Record<string, unknown>[]));
+    exclusiveStartKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (exclusiveStartKey);
+  return items;
 }
 
 export async function dynamoDelete(

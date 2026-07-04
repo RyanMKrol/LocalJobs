@@ -7,7 +7,9 @@ const dataDir = resolve(here, 'data');
 
 export const perfumesConfig = {
   dataDir,
-  inputFile: resolve(dataDir, 'raw', 'perfumes.json'),
+  /** Live source of truth for the perfume backlog (T401) — a DynamoDB table the
+   *  owner populates by rating perfumes on their own website. */
+  perfumeRatingsTable: process.env.PERFUMES_RATINGS_TABLE ?? 'PerfumeRatings',
   outDir: resolve(dataDir, 'out'),
   urlsFile: resolve(dataDir, 'out', 'fragrantica-urls.json'),
   pagesDir: resolve(dataDir, 'out', 'pages'),

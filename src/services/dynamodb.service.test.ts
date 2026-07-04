@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it, before, after } from 'node:test';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
-import service, { _resetClient, dynamoBatchWrite } from './dynamodb.service.js';
+import service, { _resetClient, dynamoBatchWrite, dynamoScan } from './dynamodb.service.js';
 
 // ---------------------------------------------------------------------------
 // Minimal stub that records calls and returns preset responses.
@@ -87,6 +87,23 @@ describe('dynamodb service — unit (mocked AWS client)', () => {
     const { dynamoDelete } = await import('./dynamodb.service.js');
     _resetClient(makeMockClient([{}]));
     await assert.doesNotReject(() => dynamoDelete('T', { pk: 'a' }));
+  });
+
+  it('dynamoScan returns Items array (single page)', async () => {
+    _resetClient(makeMockClient([{ Items: [{ id: 'a' }, { id: 'b' }] }]));
+    const rows = await dynamoScan('T');
+    assert.deepEqual(rows, [{ id: 'a' }, { id: 'b' }]);
+  });
+
+  it('dynamoScan paginates via LastEvaluatedKey and concatenates both pages', async () => {
+    const mock = makeMockClient([
+      { Items: [{ id: 'a' }], LastEvaluatedKey: { id: 'a' } },
+      { Items: [{ id: 'b' }] },
+    ]);
+    _resetClient(mock);
+    const rows = await dynamoScan('T');
+    assert.deepEqual(rows, [{ id: 'a' }, { id: 'b' }]);
+    assert.equal((mock as unknown as { _calls: string[] })._calls.length, 2);
   });
 
   it('dynamoQuery returns Items array', async () => {

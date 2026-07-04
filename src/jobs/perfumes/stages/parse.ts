@@ -12,7 +12,7 @@ export const PARSE_JOB = 'perfumes-parse';
 /** Stage 3: Claude reads the captured page text and extracts structured JSON. */
 export async function runParse(ctx: JobContext): Promise<StageResult> {
   ensureDirs();
-  const perfumes = loadPerfumes();
+  const perfumes = await loadPerfumes();
   const pagePath = (id: string) => join(perfumesConfig.pagesDir, `${id}.txt`);
   const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && existsSync(pagePath(p.id)) && !isWorkItemDone(PARSE_JOB, p.id, perfumesConfig.maxAttempts));
   const todo = pendingOf();

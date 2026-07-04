@@ -2,13 +2,36 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from 'node:path';
 import { getWorkItem } from '../../db/store.js';
 import type { JobContext } from '../../core/types.js';
+import { callService } from '../../core/services.js';
+import { dynamoScan } from '../../services/dynamodb.service.js';
 import { perfumesConfig } from './config.js';
 import type { PerfumeInput } from './types.js';
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function loadPerfumes(): PerfumeInput[] {
-  return JSON.parse(readFileSync(perfumesConfig.inputFile, 'utf8')) as PerfumeInput[];
+/** The live source of truth (T401): the owner's PerfumeRatings DynamoDB table,
+ *  populated by rating perfumes on their own website. Retired the old
+ *  hand-maintained `data/raw/perfumes.json` file entirely — the table's own
+ *  `id` is used as-is as the new canonical perfume id (a deliberate
+ *  idempotency-key change; see T401's spec for why no migration is needed). */
+export async function loadPerfumes(): Promise<PerfumeInput[]> {
+  const items = await callService('dynamodb', () => dynamoScan(perfumesConfig.perfumeRatingsTable));
+  const perfumes: PerfumeInput[] = [];
+  for (const item of items) {
+    const { id, title, designer, type, fragranticaUrl } = item as Record<string, unknown>;
+    if (typeof id !== 'string' || typeof title !== 'string' || typeof designer !== 'string' || typeof type !== 'string') {
+      console.warn(`[perfumes] warn: skipping malformed PerfumeRatings item: ${JSON.stringify(item)}`);
+      continue;
+    }
+    perfumes.push({
+      id,
+      name: title,
+      brand: designer,
+      concentration: type,
+      ...(typeof fragranticaUrl === 'string' && fragranticaUrl ? { fragranticaUrl } : {}),
+    });
+  }
+  return perfumes;
 }
 
 export function readJsonFile<T>(path: string, fallback: T): T {

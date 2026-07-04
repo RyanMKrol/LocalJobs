@@ -14,7 +14,7 @@ export const BUILD_JOB = 'perfumes-build';
  *  profile that follows perfume-markdown's _TEMPLATE.md. */
 export async function runBuild(ctx: JobContext): Promise<StageResult> {
   ensureDirs();
-  const perfumes = loadPerfumes();
+  const perfumes = await loadPerfumes();
   const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
   const fragPath = (id: string) => join(perfumesConfig.fragranticaDir, `${id}.json`);
   const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && existsSync(fragPath(p.id)) && !isWorkItemDone(BUILD_JOB, p.id, perfumesConfig.maxAttempts));
