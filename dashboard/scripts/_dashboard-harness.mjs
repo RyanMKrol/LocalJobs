@@ -455,6 +455,95 @@ const movieRecsRunJobs = movieRecsMembers.map((m, i) => run({
   id: `movie-recs-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'movie-recs-run',
 }));
 
+// T387: StageIoPanel fixtures for the movie-recommendations PARALLEL FAN-OUT shape — one
+// stage (movie-snapshot) with 8 sibling rec-* branches in the same wave, each producing its
+// OWN distinct output. Proves each branch's stage tab shows only ITS OWN inputs/outputs, not
+// every sibling branch's rows bleeding together (the failure mode this task guards against).
+const movieSnapshotOutput = {
+  jobName: 'movie-snapshot', itemKey: 'snapshot-2026-06', status: 'success',
+  detail: { name: 'Library snapshot — June 2026', movieCount: 812 },
+};
+const movieRecBranchOutput = {
+  'rec-random-1': { jobName: 'rec-random-1', itemKey: '100', status: 'success', detail: { name: 'Inception', lens: 'random' } },
+  'rec-random-2': { jobName: 'rec-random-2', itemKey: '101', status: 'success', detail: { name: 'Arrival', lens: 'random' } },
+  'rec-random-3': { jobName: 'rec-random-3', itemKey: '103', status: 'success', detail: { name: 'Mad Max: Fury Road', lens: 'random' } },
+  'rec-auteur': { jobName: 'rec-auteur', itemKey: '104', status: 'success', detail: { name: 'The Grand Budapest Hotel', lens: 'auteur' } },
+  'rec-canon': { jobName: 'rec-canon', itemKey: '105', status: 'success', detail: { name: 'Spirited Away', lens: 'canon' } },
+  'rec-thin-genre': { jobName: 'rec-thin-genre', itemKey: '108', status: 'success', detail: { name: 'Whiplash', lens: 'thin-genre' } },
+  'rec-older-era': { jobName: 'rec-older-era', itemKey: '107', status: 'success', detail: { name: 'The Third Man', lens: 'older-era' } },
+  'rec-world-cinema': { jobName: 'rec-world-cinema', itemKey: '106', status: 'success', detail: { name: 'City of God', lens: 'world-cinema' } },
+};
+const franchiseGapsOutput = {
+  jobName: 'franchise-gaps', itemKey: '600', status: 'success', detail: { name: 'The Bourne Supremacy' },
+};
+const recMergeOutput = {
+  jobName: 'rec-merge', itemKey: 'movie-recs-merged-2026-06', status: 'success',
+  detail: { name: 'Merged recommendations — June 2026', count: 15 },
+};
+const movieGapsNotifyOutput = {
+  jobName: 'movie-gaps-notify', itemKey: '2026-06', status: 'success',
+  detail: { name: 'Movie recs + gaps digest — June 2026' },
+};
+const movieRecsStageIo = {
+  'movie-snapshot': { inputs: [], outputs: [movieSnapshotOutput], predecessorJobs: [], job: 'movie-snapshot' },
+  'franchise-gaps': { inputs: [movieSnapshotOutput], outputs: [franchiseGapsOutput], predecessorJobs: ['movie-snapshot'], job: 'franchise-gaps' },
+  ...Object.fromEntries(
+    Object.keys(movieRecBranchOutput).map((branch) => [
+      branch,
+      { inputs: [movieSnapshotOutput], outputs: [movieRecBranchOutput[branch]], predecessorJobs: ['movie-snapshot'], job: branch },
+    ]),
+  ),
+  'rec-merge': {
+    inputs: Object.values(movieRecBranchOutput),
+    outputs: [recMergeOutput],
+    predecessorJobs: Object.keys(movieRecBranchOutput),
+    job: 'rec-merge',
+  },
+  'movie-gaps-notify': {
+    inputs: [franchiseGapsOutput, recMergeOutput],
+    outputs: [movieGapsNotifyOutput],
+    predecessorJobs: ['franchise-gaps', 'rec-merge'],
+    job: 'movie-gaps-notify',
+  },
+};
+const movieRecsStageIoOverall = {
+  inputs: [movieSnapshotOutput],
+  outputs: [movieGapsNotifyOutput],
+  predecessorJobs: ['movie-snapshot'],
+  outputJobs: ['movie-gaps-notify'],
+  job: '__overall__',
+};
+
+// T387: `stocks-sync` StageIoPanel fixtures — proves the dashboard renders the `outputJob`
+// manifest-override (T348/T384) end to end: the DAG's true terminal stage `stocks-notify`
+// never records `work_items` rows (pure notify-trigger), so the "Overall" tab must show
+// `stocks-snapshot`'s ledger rows as Outputs, NOT an empty result from `stocks-notify`.
+const stocksSnapshotOutputs = [
+  { jobName: 'stocks-snapshot', itemKey: 'invest:AAPL', status: 'success', detail: { name: 'AAPL', currentPrice: 198.32, averageBuyPrice: 150.0 } },
+  { jobName: 'stocks-snapshot', itemKey: 'isa:VUSA', status: 'success', detail: { name: 'VUSA', currentPrice: 82.1, averageBuyPrice: 90.5 } },
+];
+const stocksWatchOutputs = [
+  { jobName: 'stocks-watch', itemKey: 'invest:AAPL', status: 'success', detail: { name: 'AAPL', gainPct: 32.2 } },
+  { jobName: 'stocks-watch', itemKey: 'isa:VUSA', status: 'success', detail: { name: 'VUSA', gainPct: -9.3 } },
+];
+const stocksNotifyOutputs = [
+  { jobName: 'stocks-notify', itemKey: 'invest:AAPL', status: 'success', detail: { name: 'AAPL — fresh breach notified' } },
+];
+const stocksStageIo = {
+  'stocks-snapshot': { inputs: [], outputs: stocksSnapshotOutputs, predecessorJobs: [], job: 'stocks-snapshot' },
+  'stocks-watch': { inputs: stocksSnapshotOutputs, outputs: stocksWatchOutputs, predecessorJobs: ['stocks-snapshot'], job: 'stocks-watch' },
+  'stocks-notify': { inputs: stocksWatchOutputs, outputs: stocksNotifyOutputs, predecessorJobs: ['stocks-watch'], job: 'stocks-notify' },
+};
+// `outputJob: 'stocks-snapshot'` (T348) — the Overall tab's outputs come from
+// stocks-snapshot, NOT the true terminal stocks-notify.
+const stocksStageIoOverall = {
+  inputs: stocksSnapshotOutputs,
+  outputs: stocksSnapshotOutputs,
+  predecessorJobs: ['stocks-snapshot'],
+  outputJobs: ['stocks-snapshot'],
+  job: '__overall__',
+};
+
 // T333: bumped to ~15 active rows too (same shared .movie-gaps-scroll/.panel CSS as movieRecs).
 const tvRecs = {
   generatedAt: NOW, pooled: 16,
@@ -500,8 +589,18 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/workflow-runs/skipped/io') return workflowIoSkipped;
   if (pathname === '/api/workflow-runs/skipped') return { run: workflowRunSkipped, jobs: membersSkipped, logs, gates: [] };
   if (pathname === '/api/workflow-runs/movie-recs-run/io') return workflowIoSkipped;
+  if (pathname === '/api/workflow-runs/movie-recs-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return movieRecsStageIoOverall;
+    const job = searchParams?.get('job');
+    return movieRecsStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
   if (pathname === '/api/workflow-runs/movie-recs-run') return { run: movieRecsWorkflowRun, jobs: movieRecsRunJobs, logs, gates: movieRecsGates };
   if (pathname === '/api/workflow-runs/stocks/io') return workflowIoStocks;
+  if (pathname === '/api/workflow-runs/stocks/stage-io') {
+    if (searchParams?.get('overall') === 'true') return stocksStageIoOverall;
+    const job = searchParams?.get('job');
+    return stocksStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
   if (pathname === '/api/workflow-runs/stocks') return { run: stocksWorkflowRun, jobs: stocksRunJobs, logs, gates: [] };
   if (pathname === '/api/workflow-runs/stock-digest-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return stockDigestStageIoOverall;
@@ -849,6 +948,40 @@ export const FLOWS = [
     // or duplicated.
     name: 'stage-io-single-stage-overall',
     path: '/workflow-runs/claude-warmer-run',
+    waitFor: ['.io-job-filter-bar'],
+  },
+  {
+    // T387: movie-recommendations is a PARALLEL FAN-OUT — 8 rec-* branches all depend on
+    // the SAME movie-snapshot predecessor. Clicking one branch's chip (rec-auteur) must
+    // show ONLY its own input (the shared snapshot) and its own single output — not any
+    // sibling branch's rows.
+    name: 'stage-io-fan-out-branch-auteur',
+    path: '/workflow-runs/movie-recs-run',
+    waitFor: ['.io-job-filter-bar'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:text-is("rec-auteur")');
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    // T387: same fan-out, a DIFFERENT sibling branch (rec-canon) — the screenshot should
+    // visibly differ from rec-auteur's (a different single output row), proving branches
+    // don't bleed into each other.
+    name: 'stage-io-fan-out-branch-canon',
+    path: '/workflow-runs/movie-recs-run',
+    waitFor: ['.io-job-filter-bar'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:text-is("rec-canon")');
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    // T387: stocks-sync's `outputJob` override (T348/T384) — confirms the "Overall" tab
+    // (StageIoPanel's default) shows stocks-snapshot's ledger rows as Outputs, not an
+    // empty result from the true terminal stocks-notify. This is also the PAGES baseline
+    // for /workflow-runs/stocks, captured again explicitly here for clarity.
+    name: 'stage-io-outputjob-override-overall',
+    path: '/workflow-runs/stocks',
     waitFor: ['.io-job-filter-bar'],
   },
   {
