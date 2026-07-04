@@ -10257,7 +10257,7 @@
     {
       "id": "T387",
       "title": "Verify StageIoPanel against parallel fan-out workflows and the outputJob-override case",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T386"
       ],
