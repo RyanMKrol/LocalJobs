@@ -11246,6 +11246,31 @@
       "verify": [],
       "expectsTest": true,
       "spec": ".harness/tasks/T426.md"
+    },
+    {
+      "id": "T427",
+      "title": "Dashboard: convert internal navigation to next/link Link for real client-side SPA transitions",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui",
+        "bugfix",
+        "navigation"
+      ],
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      },
+      "scope": [
+        "dashboard/app/**",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T427.md"
     }
   ]
 }
