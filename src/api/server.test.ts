@@ -1753,6 +1753,29 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       assert.equal(res.status, 400);
     });
   });
+
+  // T383: stageIoLists() gained a multi-job outputJobNames signature — pin that the
+  // single-job endpoint call site (still passing `[jobParam]`) returns the EXACT same
+  // shape/values as before that change.
+  await test('GET /api/workflow-runs/:id/stage-io — single-job shape unchanged after T383 signature change', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${sioRun}/stage-io?job=sio-api-b`)).json()) as {
+        inputs: { jobName: string; itemKey: string; status: string }[];
+        outputs: { jobName: string; itemKey: string; status: string }[];
+        predecessorJobs: string[];
+        job: string;
+      };
+      assert.equal(body.job, 'sio-api-b');
+      assert.deepEqual(body.predecessorJobs, ['sio-api-a']);
+      assert.equal(body.inputs.length, 1);
+      assert.equal(body.inputs[0].jobName, 'sio-api-a');
+      assert.equal(body.inputs[0].itemKey, 'week-1');
+      assert.equal(body.outputs.length, 3);
+      assert.deepEqual(body.outputs.map((o) => o.jobName), ['sio-api-b', 'sio-api-b', 'sio-api-b']);
+      assert.deepEqual(body.outputs.map((o) => o.itemKey).sort(), ['X', 'Y', 'Z']);
+      assert.deepEqual(body.outputs.map((o) => o.status).sort(), ['failed', 'success', 'success']);
+    });
+  });
 }
 
 // ── movie-gaps endpoints (T145): GET overlays ignored/notified; POST ignores ──

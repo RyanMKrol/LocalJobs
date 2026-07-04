@@ -1924,7 +1924,7 @@ export function createApiServer(
         } catch {
           return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], job: jobParam });
         }
-        const { inputs, outputs } = stageIoLists(jobParam, predecessors, run.id);
+        const { inputs, outputs } = stageIoLists([jobParam], predecessors, run.id);
         return json(res, 200, { inputs, outputs, predecessorJobs: predecessors, job: jobParam });
       }
 

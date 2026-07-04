@@ -1024,7 +1024,7 @@ console.log('  ✓ T139 run-scoped IO: work_item_runs linkage scopes workItemIoR
   markWorkItem('sio-c', 'week-1', 'success', { rootKey: 'week-1', workflowRunId: runS, detail: { name: 'Report' } });
 
   // sio-b's view: input = sio-a's one row; output = ALL THREE of its own rows, unpaired.
-  const bLists = stageIoLists('sio-b', ['sio-a'], runS);
+  const bLists = stageIoLists(['sio-b'], ['sio-a'], runS);
   assert.equal(bLists.inputs.length, 1, 'sio-b input is sio-a\'s single combined row');
   assert.equal(bLists.inputs[0].itemKey, 'week-1');
   assert.equal(bLists.outputs.length, 3, 'sio-b output shows ALL 3 of its own rows — no root_key collapsing');
@@ -1032,23 +1032,35 @@ console.log('  ✓ T139 run-scoped IO: work_item_runs linkage scopes workItemIoR
   assert.deepEqual(bLists.outputs.map((o) => o.status).sort(), ['failed', 'success', 'success']);
 
   // sio-c's view (fan-in: two predecessors): input = sio-a's row + all 3 of sio-b's rows.
-  const cLists = stageIoLists('sio-c', ['sio-a', 'sio-b'], runS);
+  const cLists = stageIoLists(['sio-c'], ['sio-a', 'sio-b'], runS);
   assert.equal(cLists.inputs.length, 4, 'sio-c input is the union of BOTH predecessors\' rows this run');
   assert.equal(cLists.outputs.length, 1, 'sio-c output is its own single combined row');
   assert.equal(cLists.outputs[0].itemKey, 'week-1');
 
   // sio-a's view (root stage): no predecessors → empty input list.
-  const aLists = stageIoLists('sio-a', [], runS);
+  const aLists = stageIoLists(['sio-a'], [], runS);
   assert.equal(aLists.inputs.length, 0, 'a root stage has no inputs');
   assert.equal(aLists.outputs.length, 1);
 
   // A different run sees only its own rows (run-scoped, same linkage mechanism as workItemIoRows).
   const runS2 = createWorkflowRun('sio-wf', 'manual');
   markWorkItem('sio-a', 'week-2', 'success', { workflowRunId: runS2 });
-  const bListsOtherRun = stageIoLists('sio-b', ['sio-a'], runS2);
+  const bListsOtherRun = stageIoLists(['sio-b'], ['sio-a'], runS2);
   assert.equal(bListsOtherRun.inputs.length, 1);
   assert.equal(bListsOtherRun.inputs[0].itemKey, 'week-2');
   assert.equal(bListsOtherRun.outputs.length, 0, 'sio-b recorded nothing in run S2');
+
+  // T383: multiple job names on the OUTPUT side — a parallel DAG wave's union, not a pairing.
+  // sio-b and sio-c both wrote rows this run; requesting both as outputJobNames must return
+  // the union of both, not just the first.
+  const multiOutputLists = stageIoLists(['sio-b', 'sio-c'], ['sio-a'], runS);
+  assert.equal(multiOutputLists.outputs.length, 4, 'outputs is the union of sio-b (3 rows) and sio-c (1 row)');
+  assert.deepEqual(
+    multiOutputLists.outputs.map((o) => o.jobName).sort(),
+    ['sio-b', 'sio-b', 'sio-b', 'sio-c'],
+    'union includes rows from BOTH jobs, not just one',
+  );
+  assert.deepEqual(multiOutputLists.outputs.map((o) => o.itemKey).sort(), ['AAA', 'BBB', 'CCC', 'week-1']);
 }
 console.log('  ✓ stageIoLists: decoupled input/output lists show every row a stage recorded, no root_key collapsing');
 

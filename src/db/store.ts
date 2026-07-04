@@ -756,48 +756,44 @@ function toStageIoItem(r: LedgerRow): StageIoItem {
 }
 
 /**
- * Decoupled inputs/outputs for ONE stage of ONE workflow run (a deliberate
+ * Decoupled inputs/outputs for a set of stages of ONE workflow run (a deliberate
  * alternative to {@link workItemIoRows}'s joined-by-root_key table, added for
  * `stock-digest` — see its workflow-run page). Rather than pairing each input
  * to "the first matching output by root_key" (which silently collapses genuine
  * fan-out/fan-in to one row and looks confusing for a many-to-one aggregation
  * stage), this returns TWO independent, un-paired lists:
- *  - `outputs`: every `work_items` row `jobName` itself recorded THIS run
+ *  - `outputs`: every `work_items` row any of `outputJobNames` recorded THIS run
  *    (via the `work_item_runs` linkage — same run-scoping `workItemIoRows` uses).
- *  - `inputs`: every `work_items` row any of `predecessorJobNames` recorded
- *    THIS run.
+ *  - `inputs`: every `work_items` row any of `inputJobNames` recorded THIS run.
  * Neither list tries to line up with the other — a genuine 9-ticker output
  * list and a genuine 1-item input list are both shown in full, honestly.
  * `root_key` grouping (root_key/parent_key lineage, T094) still exists on the
  * underlying rows for OTHER purposes (limiting, idempotency) — this view just
- * doesn't use it to force a join.
+ * doesn't use it to force a join. Both parameters accept multiple job names so a
+ * whole parallel DAG wave (or a workflow's root/terminal wave) can be represented
+ * on either side, not just a single stage (T383) — the single-job case (each array
+ * with exactly one entry) behaves identically to before.
  */
 export function stageIoLists(
-  jobName: string,
-  predecessorJobNames: string[],
+  outputJobNames: string[],
+  inputJobNames: string[],
   workflowRunId: string,
 ): StageIoLists {
-  const outputs = db.prepare(`
-    SELECT wi.job_name, wi.item_key, wi.status, wi.detail, wi.root_key
-    FROM work_items wi
-    JOIN work_item_runs wr
-      ON wr.job_name = wi.job_name AND wr.item_key = wi.item_key AND wr.workflow_run_id = ?
-    WHERE wi.job_name = ?
-    ORDER BY wi.item_key
-  `).all(workflowRunId, jobName) as LedgerRow[];
-
-  let inputs: LedgerRow[] = [];
-  if (predecessorJobNames.length > 0) {
-    const ph = predecessorJobNames.map(() => '?').join(',');
-    inputs = db.prepare(`
+  const queryJobRows = (jobNames: string[]): LedgerRow[] => {
+    if (jobNames.length === 0) return [];
+    const ph = jobNames.map(() => '?').join(',');
+    return db.prepare(`
       SELECT wi.job_name, wi.item_key, wi.status, wi.detail, wi.root_key
       FROM work_items wi
       JOIN work_item_runs wr
         ON wr.job_name = wi.job_name AND wr.item_key = wi.item_key AND wr.workflow_run_id = ?
       WHERE wi.job_name IN (${ph})
       ORDER BY wi.job_name, wi.item_key
-    `).all(workflowRunId, ...predecessorJobNames) as LedgerRow[];
-  }
+    `).all(workflowRunId, ...jobNames) as LedgerRow[];
+  };
+
+  const outputs = queryJobRows(outputJobNames);
+  const inputs = queryJobRows(inputJobNames);
 
   return { inputs: inputs.map(toStageIoItem), outputs: outputs.map(toStageIoItem) };
 }
