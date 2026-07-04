@@ -31,7 +31,7 @@ export const plexConfig = {
   machineId: process.env.PLEX_MACHINE_ID ?? '',
   /** The TV library section to audit. Default 5 (the owner's "TV shows"). */
   tvSection: process.env.PLEX_TV_SECTION ?? '5',
-  requestTimeoutMs: Number(process.env.PLEX_REQUEST_TIMEOUT_MS ?? 30_000),
+  requestTimeoutMs: Number(process.env.PLEX_REQUEST_TIMEOUT_MS ?? 300_000),
 
   // ── TMDB connectivity ──
   /** Bearer token. Accept the legacy TVDB_API_TOKEN name as a fallback. */
