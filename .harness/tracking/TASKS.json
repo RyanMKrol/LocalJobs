@@ -10680,7 +10680,7 @@
     {
       "id": "T403",
       "title": "Collapse stocks-sync's stocks-snapshot ledger to one row per calendar day, not per position",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
