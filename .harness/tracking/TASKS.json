@@ -10206,7 +10206,7 @@
     {
       "id": "T385",
       "title": "Add an \"Overall\" tab to StageIoPanel, default-selected, showing the workflow's own potency-key inputs/outputs",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T384"
       ],
