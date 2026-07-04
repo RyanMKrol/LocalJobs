@@ -2,6 +2,7 @@
 
 import { Fragment, use, useState, useCallback } from 'react';
 import { DagFlow } from '../../components/DagFlow';
+import { IgnoredSection } from '../../components/IgnoredSection';
 import { RunButton } from '../../components/RunButton';
 import { SortTh, type SortDir } from '../../components/SortTh';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
@@ -161,11 +162,7 @@ function TvRecsManager() {
         )}
 
         {ignored.length > 0 && (
-          <div className="panel">
-            <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Dismissed by you — never recommended or notified again.
-            </p>
+          <IgnoredSection count={ignored.length} subtitle="Dismissed by you — never recommended or notified again.">
             <table>
               <thead>
                 <tr><th>Show</th><th>Year</th><th>Genre</th></tr>
@@ -184,7 +181,7 @@ function TvRecsManager() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </IgnoredSection>
         )}
       </div>
     </>
@@ -299,11 +296,7 @@ function MovieRecsManager() {
         )}
 
         {ignored.length > 0 && (
-          <div className="panel">
-            <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Dismissed by you — never recommended or notified again.
-            </p>
+          <IgnoredSection count={ignored.length} subtitle="Dismissed by you — never recommended or notified again.">
             <table>
               <thead>
                 <tr><th>Film</th><th>Year</th><th>Genre</th></tr>
@@ -322,7 +315,7 @@ function MovieRecsManager() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </IgnoredSection>
         )}
       </div>
     </>
@@ -465,11 +458,10 @@ function MovieGapsManager() {
       )}
 
       {ignored.length > 0 && (
-        <div className="panel">
-          <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
-          <p className="muted" style={{ fontSize: 13 }}>
-            Suppressed by you — never reported or notified, even though you don&apos;t own them.
-          </p>
+        <IgnoredSection
+          count={ignored.length}
+          subtitle="Suppressed by you — never reported or notified, even though you don't own them."
+        >
           <table>
             <thead>
               <tr><th>Film</th><th>Collection</th><th>Year</th></tr>
@@ -488,7 +480,7 @@ function MovieGapsManager() {
               ))}
             </tbody>
           </table>
-        </div>
+        </IgnoredSection>
       )}
     </>
   );
@@ -639,11 +631,7 @@ function MissingSeasonsManager() {
       )}
 
       {ignored.length > 0 && (
-        <div className="panel">
-          <h3 style={{ fontSize: 15, marginTop: 0 }}>Ignored ({ignored.length})</h3>
-          <p className="muted" style={{ fontSize: 13 }}>
-            Suppressed by you — never reported or notified again.
-          </p>
+        <IgnoredSection count={ignored.length} subtitle="Suppressed by you — never reported or notified again.">
           <table>
             <thead>
               <tr><th>Show</th><th>Season</th></tr>
@@ -661,7 +649,7 @@ function MissingSeasonsManager() {
               ))}
             </tbody>
           </table>
-        </div>
+        </IgnoredSection>
       )}
     </>
   );

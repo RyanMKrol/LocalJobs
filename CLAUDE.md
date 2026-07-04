@@ -1481,6 +1481,13 @@ doubt, log it.
     per-workflow in `workflow-runs/[id]/page.tsx` (`run?.workflow_name ===
     'stock-digest'` today) — every other workflow keeps the generic `IoPanel`. A
     future workflow with the same many-to-one shape can opt in the same way.
+  - **`<IgnoredSection>`** (`dashboard/app/components/IgnoredSection.tsx`, T390) —
+    the "Ignored (N)" panel used by `TvRecsManager`/`MovieRecsManager`/
+    `MovieGapsManager`/`MissingSeasonsManager` on `workflows/[name]/page.tsx`. Owns
+    only the panel chrome (padding + heading/subtitle spacing via `.ignored-section`/
+    `.ignored-section-heading`/`.ignored-section-subtitle` in `globals.css`) — props
+    are `count`, `subtitle`, and `children` (each manager's own table, since the
+    columns differ per manager).
   When adding a new reusable element, add it to `dashboard/app/components/` (NOT
   inline in a page) and document it here. Do NOT introduce a new styling system —
   wrap the existing `globals.css` class idiom.
