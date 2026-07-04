@@ -110,7 +110,9 @@ async function doResolvePlexHost(deps: ResolveDeps): Promise<string> {
   }
 
   // 2. Scan the local subnet(s) for a Plex on :32400 (gated on machineId when set).
-  const candidates = await (deps.candidateHosts ? deps.candidateHosts() : enumerateSubnetHosts());
+  const candidates = await (deps.candidateHosts
+    ? deps.candidateHosts()
+    : enumerateSubnetHosts({ preferredHost: configuredHost, log }));
   log(
     `Scanning ${candidates.length} candidate address(es) on :32400 for a Plex server${machineId ? ` (machineIdentifier ${machineId})` : ''}…`,
   );
@@ -162,24 +164,86 @@ async function scanForPlexHost(
 }
 
 /**
- * Enumerate candidate Plex base URLs across each local IPv4 /24 the machine is on.
- * For every host in the subnet we emit both an https and an http URL on :32400
- * (Plex serves both; https is self-signed → the scoped insecure agent). The local
- * subnets are derived from `os.networkInterfaces()`.
+ * Interface names that can never host the real Plex server — virtual/VPN/tunnel
+ * adapters (Tailscale, WireGuard, generic VPN/PPP/IPsec, macOS AirDrop peer-to-peer,
+ * Docker/VMware bridges, ZeroTier). Excluding these keeps the scan budget (a fixed
+ * 20s wall-clock cap, T149) from being wasted probing addresses that structurally
+ * can't answer — on a machine with a VPN interface up, roughly half the scan's 508
+ * candidates-per-subnet were previously spent there instead of the real LAN.
  */
-export function enumerateSubnetHosts(): string[] {
+const VIRTUAL_INTERFACE_PATTERN = /^(utun|tailscale|wg|ppp|ipsec|awdl|llw|bridge|docker|vmnet|zt)/i;
+
+/** Derive the `a.b.c` /24 prefix from an IPv4 dotted-quad address, or null if malformed. */
+function ipv4Prefix(address: string): string | null {
+  const octets = address.split('.');
+  return octets.length === 4 ? `${octets[0]}.${octets[1]}.${octets[2]}` : null;
+}
+
+/** Derive the /24 prefix of a configured Plex host URL's hostname, or null if unavailable. */
+function preferredPrefixFromHost(host: string | undefined): string | null {
+  if (!host) return null;
+  try {
+    return ipv4Prefix(new URL(host).hostname);
+  } catch {
+    return null;
+  }
+}
+
+interface EnumerateOptions {
+  /** The currently-configured (possibly stale) Plex host URL, if any. */
+  preferredHost?: string;
+  /** Injectable in place of `os.networkInterfaces()` — for tests. */
+  interfaces?: NodeJS.Dict<os.NetworkInterfaceInfo[]>;
+  log?: (msg: string, level?: 'info' | 'warn' | 'error') => void;
+}
+
+/**
+ * Enumerate candidate Plex base URLs across each local IPv4 /24 the machine is on,
+ * excluding known-virtual/VPN interfaces (see `VIRTUAL_INTERFACE_PATTERN`) and, when
+ * a `preferredHost` is given, ordering that subnet's hosts FIRST — a DHCP lease
+ * change alters the last octet, not the whole subnet, so the previously-known-good
+ * subnet is very likely still the right one even when the specific host no longer
+ * answers. For every host in a subnet we emit both an https and an http URL on
+ * :32400 (Plex serves both; https is self-signed → the scoped insecure agent).
+ */
+export function enumerateSubnetHosts(options: EnumerateOptions = {}): string[] {
+  const log = options.log ?? (() => {});
+  const ifaces = options.interfaces ?? os.networkInterfaces();
   const prefixes = new Set<string>();
-  for (const ifaces of Object.values(os.networkInterfaces())) {
-    for (const ni of ifaces ?? []) {
+  const included: string[] = [];
+  const excluded: string[] = [];
+
+  for (const [name, niList] of Object.entries(ifaces)) {
+    for (const ni of niList ?? []) {
       // Node <18 reports family as the string 'IPv4'; newer as the number 4.
       const isV4 = ni.family === 'IPv4' || (ni.family as unknown) === 4;
       if (!isV4 || ni.internal) continue;
-      const octets = ni.address.split('.');
-      if (octets.length === 4) prefixes.add(`${octets[0]}.${octets[1]}.${octets[2]}`);
+      if (VIRTUAL_INTERFACE_PATTERN.test(name)) {
+        excluded.push(`${name} (${ni.address})`);
+        continue;
+      }
+      const prefix = ipv4Prefix(ni.address);
+      if (prefix) {
+        prefixes.add(prefix);
+        included.push(`${name} (${ni.address})`);
+      }
     }
   }
+
+  log(
+    `Subnet scan candidate interfaces — included: ${included.length ? included.join(', ') : 'none'}; excluded (virtual/VPN): ${
+      excluded.length ? excluded.join(', ') : 'none'
+    }.`,
+  );
+
+  const preferredPrefix = preferredPrefixFromHost(options.preferredHost);
+  const orderedPrefixes = [...prefixes];
+  if (preferredPrefix && prefixes.has(preferredPrefix)) {
+    orderedPrefixes.sort((a, b) => (a === preferredPrefix ? -1 : b === preferredPrefix ? 1 : 0));
+  }
+
   const hosts: string[] = [];
-  for (const prefix of prefixes) {
+  for (const prefix of orderedPrefixes) {
     for (let last = 1; last <= 254; last++) {
       hosts.push(`https://${prefix}.${last}:32400`);
       hosts.push(`http://${prefix}.${last}:32400`);

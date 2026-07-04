@@ -4,7 +4,7 @@
 // whose last episode airs in the future is excluded; a fully-aired one included),
 // and that ENDED shows are NOT skipped.
 import assert from 'node:assert/strict';
-import { resetPlexHostCacheForTests, resolvePlexHost, type PlexProbe } from './client.js';
+import { enumerateSubnetHosts, resetPlexHostCacheForTests, resolvePlexHost, type PlexProbe } from './client.js';
 import { buildShowSnapshots, extractTmdbId, highestOwnedSeasonMap } from './plex.js';
 import {
   candidateSeasons,
@@ -251,5 +251,51 @@ await (async () => {
   resetPlexHostCacheForTests();
   console.log('  ✓ resolvePlexHost throws the clear error when no Plex is found');
 })();
+
+// ── enumerateSubnetHosts: excludes virtual/VPN interfaces, prioritizes the
+//    configured host's subnet (T402) ──
+{
+  const fixture = {
+    en0: [{ address: '192.168.1.50', family: 'IPv4', internal: false }],
+    utun3: [{ address: '100.64.0.5', family: 'IPv4', internal: false }],
+    tailscale0: [{ address: '100.100.0.9', family: 'IPv4', internal: false }],
+    lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+  } as unknown as NodeJS.Dict<import('node:os').NetworkInterfaceInfo[]>;
+
+  const hosts = enumerateSubnetHosts({ interfaces: fixture });
+  assert.ok(hosts.some((h) => h.includes('192.168.1.')), 'real LAN interface subnet is scanned');
+  assert.ok(!hosts.some((h) => h.includes('100.64.0.')), 'utun (Tailscale) subnet is excluded');
+  assert.ok(!hosts.some((h) => h.includes('100.100.0.')), 'tailscale0 subnet is excluded');
+  console.log('  ✓ enumerateSubnetHosts excludes known-virtual/VPN interfaces by name');
+}
+
+{
+  const fixture = {
+    en0: [{ address: '192.168.1.50', family: 'IPv4', internal: false }],
+    en1: [{ address: '10.0.0.5', family: 'IPv4', internal: false }],
+  } as unknown as NodeJS.Dict<import('node:os').NetworkInterfaceInfo[]>;
+
+  const hosts = enumerateSubnetHosts({ interfaces: fixture, preferredHost: 'https://10.0.0.99:32400' });
+  const firstPreferredIdx = hosts.findIndex((h) => h.includes('10.0.0.'));
+  const firstOtherIdx = hosts.findIndex((h) => h.includes('192.168.1.'));
+  assert.ok(firstPreferredIdx !== -1 && firstOtherIdx !== -1, 'both subnets produced candidates');
+  assert.ok(firstPreferredIdx < firstOtherIdx, "configured host's subnet is ordered first");
+  console.log("  ✓ enumerateSubnetHosts prioritizes the configured host's own subnet first");
+}
+
+{
+  // No configured host / prefix not among candidates → no prioritization, no crash.
+  const fixture = {
+    en0: [{ address: '192.168.1.50', family: 'IPv4', internal: false }],
+    en1: [{ address: '10.0.0.5', family: 'IPv4', internal: false }],
+  } as unknown as NodeJS.Dict<import('node:os').NetworkInterfaceInfo[]>;
+
+  const withoutPreferred = enumerateSubnetHosts({ interfaces: fixture });
+  assert.equal(withoutPreferred.length, 254 * 2 * 2, 'both subnets fully enumerated with no preference applied');
+
+  const withUnmatchedPreferred = enumerateSubnetHosts({ interfaces: fixture, preferredHost: 'https://172.16.0.1:32400' });
+  assert.equal(withUnmatchedPreferred.length, 254 * 2 * 2, 'unmatched preferred prefix does not crash or drop candidates');
+  console.log('  ✓ enumerateSubnetHosts behaves unchanged with no matching preferred subnet');
+}
 
 console.log('  ✓ plex pure-logic tests passed');
