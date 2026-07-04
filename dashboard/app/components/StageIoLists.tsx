@@ -6,6 +6,8 @@ import { api } from '../lib/api';
 import type { StageIoItem, WorkflowMember } from '../lib/api';
 import { usePoll } from '../ui';
 
+const OVERALL_TAB = '__overall__';
+
 type ModalState =
   | { loading: true; title: string }
   | { loading: false; title: string; content: string; truncated: boolean };
@@ -129,6 +131,57 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
   );
 }
 
+/** The workflow-wide "Overall" tab — polls `GET /workflow-runs/:id/stage-io?overall=true`
+ *  (T384) to show the run's root-wave inputs and effective terminal-wave outputs,
+ *  independent of any single stage's own inputs/outputs. */
+function StageIoOverallBlock({ runId }: { runId: string }) {
+  const [modal, setModal] = useState<ModalState | null>(null);
+  const { data } = usePoll(() => api.workflowRunStageIoOverall(runId), 5000, [runId]);
+
+  const openModal = useCallback(
+    (title: string, contentPromise: Promise<{ content: string; truncated: boolean }>) => {
+      setModal({ loading: true, title });
+      contentPromise
+        .then(({ content, truncated }) => setModal({ loading: false, title, content, truncated }))
+        .catch(() => setModal(null));
+    },
+    [],
+  );
+
+  if (!data) return null;
+
+  return (
+    <div className="panel stage-io-block">
+      <h3 className="stage-io-stage-name">Overall</h3>
+      <div className="stage-io-columns">
+        <StageIoColumn
+          title="Inputs"
+          items={data.inputs}
+          runId={runId}
+          emptyText="No inputs recorded this run."
+          onOpen={openModal}
+        />
+        <StageIoColumn
+          title="Outputs"
+          items={data.outputs}
+          runId={runId}
+          emptyText="Nothing recorded this run."
+          onOpen={openModal}
+        />
+      </div>
+      {modal && (
+        <MarkdownModal
+          title={modal.title}
+          loading={modal.loading}
+          content={!modal.loading ? modal.content : undefined}
+          truncated={!modal.loading ? modal.truncated : undefined}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 /**
  * Decoupled per-stage inputs/outputs panel — an alternative to the generic
  * joined `IoPanel` for `stock-digest`, whose `stock-digest-build` stage is a
@@ -145,16 +198,25 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
  * generic panel's default), since "All stages" here is exactly the busy view.
  */
 export function StageIoPanel({ runId, members }: { runId: string; members: WorkflowMember[] }) {
-  const [selectedJob, setSelectedJob] = useState<string | null>(members[0]?.job_name ?? null);
+  const [selectedJob, setSelectedJob] = useState<string | null>(OVERALL_TAB);
   if (members.length === 0) return null;
-  const visibleMembers = selectedJob === null ? members : members.filter((m) => m.job_name === selectedJob);
+  const visibleMembers = selectedJob === null || selectedJob === OVERALL_TAB
+    ? members
+    : members.filter((m) => m.job_name === selectedJob);
 
   return (
     <>
       <h2>Inputs &amp; outputs</h2>
-      {members.length > 1 && (
-        <div className="panel" style={{ marginBottom: 12, overflow: 'hidden' }}>
-          <div className="io-job-filter-bar" style={{ borderBottom: 'none' }}>
+      <div className="panel" style={{ marginBottom: 12, overflow: 'hidden' }}>
+        <div className="io-job-filter-bar" style={{ borderBottom: 'none' }}>
+          <button
+            type="button"
+            className={`io-job-filter-chip${selectedJob === OVERALL_TAB ? ' active' : ''}`}
+            onClick={() => setSelectedJob(OVERALL_TAB)}
+          >
+            Overall
+          </button>
+          {members.length > 1 && (
             <button
               type="button"
               className={`io-job-filter-chip${selectedJob === null ? ' active' : ''}`}
@@ -162,22 +224,24 @@ export function StageIoPanel({ runId, members }: { runId: string; members: Workf
             >
               All stages
             </button>
-            {members.map((m) => (
-              <button
-                key={m.job_name}
-                type="button"
-                className={`io-job-filter-chip${selectedJob === m.job_name ? ' active' : ''}`}
-                onClick={() => setSelectedJob(m.job_name)}
-              >
-                {m.job_name}
-              </button>
-            ))}
-          </div>
+          )}
+          {members.map((m) => (
+            <button
+              key={m.job_name}
+              type="button"
+              className={`io-job-filter-chip${selectedJob === m.job_name ? ' active' : ''}`}
+              onClick={() => setSelectedJob(m.job_name)}
+            >
+              {m.job_name}
+            </button>
+          ))}
         </div>
+      </div>
+      {selectedJob === OVERALL_TAB ? (
+        <StageIoOverallBlock runId={runId} />
+      ) : (
+        visibleMembers.map((m) => <StageIoBlock key={m.job_name} runId={runId} jobName={m.job_name} />)
       )}
-      {visibleMembers.map((m) => (
-        <StageIoBlock key={m.job_name} runId={runId} jobName={m.job_name} />
-      ))}
     </>
   );
 }

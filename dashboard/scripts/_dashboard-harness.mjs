@@ -265,6 +265,16 @@ const stockDigestStageIo = {
     job: 'stock-digest-build',
   },
 };
+// T385: the `overall=true` mode (T384) — root-wave inputs (stock-portfolio-snapshot's
+// own output, since it has no predecessor) and effective terminal-wave outputs
+// (stock-digest-build's report), independent of any single stage tab.
+const stockDigestStageIoOverall = {
+  inputs: [stockDigestSnapshotOutput],
+  outputs: [{ jobName: 'stock-digest-build', itemKey: '2026-W27', status: 'success', detail: { name: 'Stock digest — Week 27, 2026', markdown: '/abs/data/out/stock-digest-2026-W27.md' } }],
+  predecessorJobs: ['stock-portfolio-snapshot'],
+  outputJobs: ['stock-digest-build'],
+  job: '__overall__',
+};
 
 const tasks = [
   // T001 is a standalone ready pending task (no longer anyone's dependency) — a valid "Ready" example
@@ -457,6 +467,7 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/workflow-runs/stocks/io') return workflowIoStocks;
   if (pathname === '/api/workflow-runs/stocks') return { run: stocksWorkflowRun, jobs: stocksRunJobs, logs, gates: [] };
   if (pathname === '/api/workflow-runs/stock-digest-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return stockDigestStageIoOverall;
     const job = searchParams?.get('job');
     return stockDigestStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
@@ -761,6 +772,18 @@ export const FLOWS = [
     waitFor: ['.io-job-filter-bar'],
     actions: async (page) => {
       await page.click('.io-job-filter-chip:text-is("All stages")');
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    // T385: StageIoPanel now defaults to the "Overall" tab (workflow-wide root-wave
+    // inputs / terminal-wave outputs) — click a per-stage chip to confirm the
+    // original single-stage view still renders correctly alongside the new default.
+    name: 'stage-io-per-stage-tab',
+    path: '/workflow-runs/stock-digest-run',
+    waitFor: ['.io-job-filter-bar'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:text-is("stock-portfolio-snapshot")');
       await page.waitForTimeout(400);
     },
   },

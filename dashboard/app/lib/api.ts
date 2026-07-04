@@ -233,6 +233,20 @@ export interface StageIo {
   job: string;
 }
 
+/**
+ * Response from GET /api/workflow-runs/:id/stage-io?overall=true (T384) — the
+ * workflow-wide analog of `StageIo`: `inputs` are the root-wave job(s)' ledger
+ * rows this run, `outputs` are the effective terminal-wave (or `outputJob`
+ * override) job(s)' ledger rows this run.
+ */
+export interface StageIoOverall {
+  inputs: StageIoItem[];
+  outputs: StageIoItem[];
+  predecessorJobs: string[];
+  outputJobs: string[];
+  job: string;
+}
+
 /** Response from GET /api/workflow-runs/:id/output (T110) — a job's produced
  *  markdown artifact for one work item. `found` is false when the item has no
  *  recorded/accessible markdown (so the UI falls back to showing the key). */
@@ -551,6 +565,8 @@ export const api = {
     get<WorkflowIo>(`/api/workflow-runs/${id}/io${job ? `?job=${encodeURIComponent(job)}` : ''}`),
   workflowRunStageIo: (id: string, job: string) =>
     get<StageIo>(`/api/workflow-runs/${id}/stage-io?job=${encodeURIComponent(job)}`),
+  workflowRunStageIoOverall: (id: string) =>
+    get<StageIoOverall>(`/api/workflow-runs/${id}/stage-io?overall=true`),
   workflowRunOutput: (id: string, job: string, key: string) =>
     get<WorkflowRunOutput>(
       `/api/workflow-runs/${id}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,
