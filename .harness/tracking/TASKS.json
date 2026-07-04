@@ -10620,7 +10620,7 @@
     {
       "id": "T401",
       "title": "Swap perfumes workflow input source from local perfumes.json to live DynamoDB PerfumeRatings table",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
