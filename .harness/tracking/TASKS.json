@@ -4876,7 +4876,7 @@
     {
       "id": "T188",
       "title": "Final parity audit: .harness/ vs the claude-skills Ralph Harness plugin (source of truth)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -7995,7 +7995,7 @@
     {
       "id": "T302",
       "title": "Human review: stocks-sync workflow end-to-end",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T300",
         "T301"
@@ -8751,7 +8751,7 @@
     {
       "id": "T331",
       "title": "Human audit: repo markdown docs for staleness, verbosity, inconsistency",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -10140,7 +10140,7 @@
     {
       "id": "T381",
       "title": "Human check-in: review Trading212/OpenFIGI/Finnhub usage across stocks-sync + stock-digest (post-T352/T372/T373)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -10452,7 +10452,7 @@
     {
       "id": "T394",
       "title": "Owner walkthrough: soft-fail vs hard-fail semantics for job/run status",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -10479,7 +10479,7 @@
     {
       "id": "T395",
       "title": "Owner walkthrough: how manual run-limits (T094) work",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -10578,7 +10578,7 @@
     {
       "id": "T399",
       "title": "Owner check-in: confirm nothing in local-jobs currently writes to DynamoDB",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
