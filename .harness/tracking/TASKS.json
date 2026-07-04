@@ -10313,7 +10313,7 @@
       "dependsOn": [
         "T388"
       ],
-      "gate": "gate",
+      "gate": null,
       "tags": [
         "dashboard-io"
       ],
@@ -10736,6 +10736,28 @@
         ]
       },
       "expectsTest": true
+    },
+    {
+      "id": "T405",
+      "title": "Human review: confirm IoPanel/workItemIoRows retirement (T389) is correct and complete",
+      "status": "pending",
+      "dependsOn": [
+        "T389"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "dashboard-io",
+        "review"
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "src/db/store.ts",
+        "src/api/server.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T405.md"
     }
   ]
 }

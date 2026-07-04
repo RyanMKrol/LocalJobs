@@ -26,7 +26,6 @@ all_tasks()    { tj -r '.tasks[].id'; }
 task_done()    { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="done"' >/dev/null; }
 task_title()   { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.title'; }
 deps_for()     { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.dependsOn[]?' | tr '\n' ' '; }
-is_gate()      { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.gate=="gate"' >/dev/null; }
 needs_human()  { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.gate=="needs-human"' >/dev/null; }
 # Mirrors loop.sh's task_blocked(): status=blocked (set by block_task()) OR the legacy worklog
 # marker for tasks blocked before status=blocked existed (never backfilled).
@@ -40,10 +39,7 @@ for t in $(all_tasks); do
   task_done "$t" && continue
   done_all=0
   title="$(task_title "$t")"
-  if is_gate "$t"; then
-    board+=("  🚦 gate         $t  $title")
-    needs+=("$t — 🚦 gate: review the deliverable before dependents proceed ($title)")
-  elif needs_human "$t" || task_blocked "$t"; then
+  if needs_human "$t" || task_blocked "$t"; then
     board+=("  🔒 needs you     $t  $title")
     needs+=("$t — 🔒 needs-human: $title")
   else

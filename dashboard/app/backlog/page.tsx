@@ -81,7 +81,7 @@ function CollapsibleRow({
   const [markingDone, setMarkingDone] = useState(false);
   const [markingFailed, setMarkingFailed] = useState(false);
   const shiftKeyRef = useRef(false);
-  const human = t.gate === 'needs-human' || t.gate === 'gate';
+  const human = t.gate === 'needs-human';
   const isFailedStatus = t.status === 'failed';   // owner-failed terminal status (T279)
   const buildable = t.status !== 'done' && !isFailedStatus && !human;
   // "done" here means TERMINAL (done OR failed OR human-done) — gates the reviewed/done/failed pills.
@@ -312,7 +312,7 @@ export default function Backlog() {
   const buildable = tasks.filter((t) => t.status !== 'done' && t.status !== 'failed' && t.gate == null);
 
   // Walk a task's FULL transitive dependency chain and collect the ids of any not-yet-resolved
-  // human-gated task (`gate === 'needs-human' | 'gate'`) reachable anywhere in it — not just direct
+  // human-gated task (`gate === 'needs-human'`) reachable anywhere in it — not just direct
   // deps. Memoized (tasks form a DAG; a `seen` guard also protects against an accidental cycle).
   // A task is only genuinely blocked-on-a-human if a gated task sits somewhere upstream; being
   // blocked solely by an ordinary buildable (gate==null) task is NOT a human blocker — the harness
@@ -465,7 +465,7 @@ export default function Backlog() {
               <CollapsibleRow
                 key={t.id}
                 t={t}
-                onMarkDone={t.gate === 'needs-human' ? refresh : undefined}
+                onMarkDone={refresh}
                 forceExpanded={openTaskId === t.id}
                 highlighted={highlightId === t.id}
                 onOpenTask={openTask}

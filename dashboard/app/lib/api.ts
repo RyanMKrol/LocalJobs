@@ -332,7 +332,7 @@ export interface BacklogTask {
   id: string;
   title: string;
   status: string;
-  gate: null | 'gate' | 'needs-human';
+  gate: null | 'needs-human';
   dependsOn: string[];
   tags?: string[];
   scope?: string[];

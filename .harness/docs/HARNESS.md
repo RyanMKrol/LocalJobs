@@ -172,7 +172,7 @@ agent must not edit it.
     {
       "id": "T001", "title": "…", "status": "pending",   // pending | done  (SHELL-owned)
       // NOTE: NO `reviewed` field — since T136 it lives in owner-owned .harness/tracking/reviews.json
-      "dependsOn": [], "gate": null,                      // gate: null | "gate" | "needs-human"
+      "dependsOn": [], "gate": null,                      // gate: null | "needs-human"
       "facets": { "layer": "ui", "workType": "style", "risk": [] },  // difficulty auto-tuning (OMIT for needs-human); values from .harness/config/facets.json
       "scope": ["src/…"], "verify": [], "expectsTest": false,  // expectsTest: true → audit's structural gate requires a test in the diff (§5)
       "spec": ".harness/tasks/T001.md"                    // do/doneWhen live in this MD (T131); NO per-task model/effort/escalation
@@ -181,8 +181,16 @@ agent must not edit it.
 }
 ```
 
-`gate:"gate"` = a human reviews the deliverable before dependents run; `gate:"needs-human"` = a
-one-time human step (the agent prepares around it and records `failed:blocked`).
+`gate:"needs-human"` = a one-time human step (the agent prepares around it and records
+`failed:blocked`); `gate:null` = normally buildable. There is deliberately **no third "review the
+deliverable before dependents proceed" gate value** — a former `gate:"gate"` existed for this but was
+removed (2026-07): `loop.sh`'s task-selection treats any non-null `gate` identically (never selects
+it), so a `gate:"gate"` task could never actually be built OR marked done — it was a dead end, not
+just a redundant concept. The correct pattern for "a human should sign off on this deliverable before
+dependents proceed" is to author a **separate `gate:"needs-human"` review task** that `dependsOn` the
+built task, and point any real successors at the review task instead of the original — this reuses
+the existing dependency graph rather than inventing a new status. (This is the same shape as the
+chooser/review task pattern below — see "pair every options/chooser task with a review task".)
 
 **A task whose `scope` touches `.harness/`, or whose `facets.layer == "harness"`, MUST be
 `gate:"needs-human"`** — self-modifying build/calibration machinery is uniquely dangerous to build

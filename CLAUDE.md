@@ -1685,13 +1685,24 @@ this in addition to everything above:
   inlines it as `specContent` (`readTaskSpec`, confined to `.harness/tasks/*.md`) and the Backlog
   page renders it as markdown. **Authoring a NEW task = a JSON object with a `spec` field PLUS its
   matching `.harness/tasks/TNNN.md` (no `do`/`doneWhen` in JSON), created in the same edit.**
-- **Backlog authoring: pair every "options/chooser" task with a review task (T129).** Whenever
-  a backlog task builds MULTIPLE OPTIONS for the owner to choose between (toggleable styles, strategy
-  variants, etc.), a PAIRED `needs-human` review task **must** also be authored that: (a)
+- **Backlog authoring: pair every "options/chooser" task with a review task (T129) — the GENERAL
+  pattern for "a human must sign off on this deliverable before dependents proceed" (2026-07).**
+  Whenever a backlog task builds MULTIPLE OPTIONS for the owner to choose between (toggleable styles,
+  strategy variants, etc.), a PAIRED `needs-human` review task **must** also be authored that: (a)
   `dependsOn` the chooser task, (b) records the owner reviewing the options and committing to a
   choice, and (c) unblocks a follow-up that hardcodes the winner and removes the toggle + unused
   paths. Example chains: T099/T113/T116 (choosers) → T126/T127/T128 (review tasks). Never author
-  a chooser task alone; always add the paired review task in the same backlog edit.
+  a chooser task alone; always add the paired review task in the same backlog edit. **This is also
+  the correct pattern for ANY task whose deliverable needs a human sign-off before dependents run**
+  — e.g. a risky deletion of shared framework code. There used to be a THIRD `gate` value,
+  `"gate"`, meant to express "the loop builds this unsupervised, then a human reviews it before
+  dependents proceed" directly on the task itself — it was **removed** (T389/T405 migration) once
+  it turned out `loop.sh`'s task-selection treats any non-null `gate` identically (never selects
+  it), so a `gate:"gate"` task could never be built OR marked done — a dead end, not just a
+  redundant concept. `gate` is now strictly binary: `null` (buildable) or `"needs-human"` (a human
+  must do the work). Express "review this after it's built" the same way as a chooser: author a
+  separate `gate:"needs-human"` task depending on the built task, and point real successors at the
+  review task instead of the original.
 - **Backlog authoring → invoke the `ralph-loop-add-to-backlog` skill (see `.harness/CLAUDE.md`).**
   Adding tasks goes through that skill (it assigns facets, pairs chooser/review tasks, runs the
   poor-fit/layer gate). Floor even on a direct `TASKS.json` edit: every BUILDABLE task carries

@@ -193,9 +193,11 @@ call finding out), does NOT need `Edit`, and never touches `.harness/tracking/TA
 > or spend a `ToolSearch` call confirming that. Work out from your exploration + judgment: what the
 > owner actually wants (don't assume anything is fleshed out), the decomposition (one task or several —
 > see the atomise rule below), `scope`, `design`, `verify`, `facets` (`layer`/`workType`/`risk`, from
-> `facets.json`'s controlled vocabulary), `gate` (`null`/`"gate"`/`"needs-human"`, including the
-> chooser/review/hardcode three-task pattern from `.harness/CLAUDE.md` when the idea offers multiple
-> options to pick between), and `dependsOn`.
+> `facets.json`'s controlled vocabulary), `gate` (`null`/`"needs-human"` — there is no third "review
+> after building" gate value; if a deliverable needs human sign-off before dependents proceed, author
+> a separate `gate:"needs-human"` task depending on it, per the chooser/review/hardcode pattern in
+> `.harness/CLAUDE.md`, used both for multi-option choosers AND any other needed sign-off), and
+> `dependsOn`.
 >
 > For anything you can decide with reasonable confidence — a low-risk styling choice, reusing a
 > convention already established elsewhere in the file, an unambiguous reading of the idea text — just

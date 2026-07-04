@@ -16,8 +16,7 @@ schema-correct task object + its `tasks/TNNN.md` spec. Prefer it over hand-editi
 
 Any backlog task whose `scope` array includes a path prefixed `.harness/`, OR whose
 `facets.layer == "harness"`, **MUST** be authored `gate: "needs-human"`. It must never be left
-`gate: null` (buildable) or `gate: "gate"` (reviewed only after the fact — still built
-unsupervised first). This applies regardless of how the task is authored: the
+`gate: null` (buildable). This applies regardless of how the task is authored: the
 `ralph-loop-add-to-backlog` skill, a `/local-jobs-convert-ideas` sweep, or a direct hand-edit of
 `TASKS.json`.
 
