@@ -10703,7 +10703,7 @@
     {
       "id": "T404",
       "title": "Rec top-up: also exclude owner-ignored recommendations from re-prompted branches, not just history",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
