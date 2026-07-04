@@ -1,5 +1,5 @@
 {
-  "_doc": "LOCAL-ONLY backlog for the in-place Ralph loop (gitignored; the shell owns task status — the agent must NOT edit this file). Schema: docs/HARNESS.md §8. All tasks are verifiable with NO live paid-API calls.",
+  "_doc": "LOCAL-ONLY backlog for the in-place Ralph loop (gitignored; the shell owns task status \u2014 the agent must NOT edit this file). Schema: docs/HARNESS.md \u00a78. All tasks are verifiable with NO live paid-API calls.",
   "version": 1,
   "tasks": [
     {
@@ -204,7 +204,7 @@
     },
     {
       "id": "T007",
-      "title": "Docs audit — README + CLAUDE.md vs current repo",
+      "title": "Docs audit \u2014 README + CLAUDE.md vs current repo",
       "status": "done",
       "dependsOn": [
         "T004"
@@ -722,7 +722,7 @@
     },
     {
       "id": "T026",
-      "title": "Docs audit — end-state sweep of README + CLAUDE.md",
+      "title": "Docs audit \u2014 end-state sweep of README + CLAUDE.md",
       "status": "done",
       "dependsOn": [
         "T001",
@@ -880,7 +880,7 @@
     },
     {
       "id": "T031",
-      "title": "Trim the README — it's a wall of text",
+      "title": "Trim the README \u2014 it's a wall of text",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -1023,7 +1023,7 @@
     },
     {
       "id": "T037",
-      "title": "Drop standalone jobs — everything is a pipeline",
+      "title": "Drop standalone jobs \u2014 everything is a pipeline",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -1054,7 +1054,7 @@
     },
     {
       "id": "T038",
-      "title": "Rename 'pipeline' → 'workflow' everywhere",
+      "title": "Rename 'pipeline' \u2192 'workflow' everywhere",
       "status": "done",
       "dependsOn": [
         "T037"
@@ -1220,7 +1220,7 @@
     },
     {
       "id": "T045",
-      "title": "Dashboard styling — make it more joyful",
+      "title": "Dashboard styling \u2014 make it more joyful",
       "status": "done",
       "dependsOn": [
         "T184"
@@ -1453,7 +1453,7 @@
     },
     {
       "id": "T055",
-      "title": "Backlog view: show each task’s escalation path",
+      "title": "Backlog view: show each task\u2019s escalation path",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -1623,7 +1623,7 @@
     },
     {
       "id": "T062",
-      "title": "Daily self-inspection workflow: review run logs → propose/fix framework issues",
+      "title": "Daily self-inspection workflow: review run logs \u2192 propose/fix framework issues",
       "status": "pending",
       "dependsOn": [],
       "gate": "needs-human",
@@ -1715,7 +1715,7 @@
         "dashboard/app/lib/api.ts",
         "src/core/*.test.ts"
       ],
-      "design": "Clarification (interview 2026-06-22): Design for a BLACK BOX — a user must understand the data from the dashboard alone, with no knowledge of system internals. Show the contract's expected shape AND a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation, worded for a non-expert reader.",
+      "design": "Clarification (interview 2026-06-22): Design for a BLACK BOX \u2014 a user must understand the data from the dashboard alone, with no knowledge of system internals. Show the contract's expected shape AND a small sample/summary of the ACTUAL artifact that flowed, with pass/fail per expectation, worded for a non-expert reader.",
       "verify": [],
       "spec": ".harness/tasks/T065.md",
       "facets": {
@@ -1741,7 +1741,7 @@
         "dashboard/app/globals.css",
         "dashboard/app/workflow-runs/[id]/page.tsx"
       ],
-      "design": "Clarification (interview 2026-06-22): Switch to a TOP-DOWN (vertical) DAG layout below the mobile breakpoint — don't just re-centre the left-to-right layout. Validate at ~402px AND desktop via viewport screenshots recorded in the worklog.",
+      "design": "Clarification (interview 2026-06-22): Switch to a TOP-DOWN (vertical) DAG layout below the mobile breakpoint \u2014 don't just re-centre the left-to-right layout. Validate at ~402px AND desktop via viewport screenshots recorded in the worklog.",
       "verify": [
         "run-app"
       ],
@@ -1800,7 +1800,7 @@
     },
     {
       "id": "T069",
-      "title": "Make the DAG prettier — outlined/boxed job nodes",
+      "title": "Make the DAG prettier \u2014 outlined/boxed job nodes",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -1812,7 +1812,7 @@
         "dashboard/app/components/Dag.tsx",
         "dashboard/app/globals.css"
       ],
-      "design": "Clarification (interview 2026-06-22): Style = subtle bordered cards: 1px border, rounded corners, padding, and a COLOURED STATUS ACCENT (a left accent bar or dot) — NOT whole-card status tinting. Keep it understated and scannable.",
+      "design": "Clarification (interview 2026-06-22): Style = subtle bordered cards: 1px border, rounded corners, padding, and a COLOURED STATUS ACCENT (a left accent bar or dot) \u2014 NOT whole-card status tinting. Keep it understated and scannable.",
       "verify": [],
       "spec": ".harness/tasks/T069.md",
       "facets": {
@@ -1844,7 +1844,7 @@
         "CLAUDE.md",
         "README.md"
       ],
-      "design": "Clarification (interview 2026-06-22): Remove ALL job-level properties — schedule, enabled toggle, next-run, the instructions panel, AND the per-job Run-now button. The job page becomes a read-only member view (status, run history, logs). You run a workflow, never a job.",
+      "design": "Clarification (interview 2026-06-22): Remove ALL job-level properties \u2014 schedule, enabled toggle, next-run, the instructions panel, AND the per-job Run-now button. The job page becomes a read-only member view (status, run history, logs). You run a workflow, never a job.",
       "verify": [],
       "spec": ".harness/tasks/T070.md",
       "facets": {
@@ -1884,7 +1884,7 @@
     },
     {
       "id": "T072",
-      "title": "Fragrantica accord percentages still null — evaluate + fix end-to-end",
+      "title": "Fragrantica accord percentages still null \u2014 evaluate + fix end-to-end",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -1901,7 +1901,7 @@
         "src/jobs/perfumes/parse.test.ts",
         "src/jobs/perfumes/fetch.ts"
       ],
-      "design": "Clarification (interview 2026-06-22): ROOT CAUSE — fetch.ts persists only innerText (pages/<id>.txt); the accord bar widths live in raw HTML that is saved ONLY for failed pages (pages-failed/<id>.html). T009's parser reads pages/<id>.html, which never exists on the success path, so pct always falls back to null. FIX: extend fetch.ts to ALSO persist the raw HTML alongside the .txt so widths survive going forward (keep the .txt for the Claude parse step). The committed unit test stays hermetic on a synthetic HTML fixture (do NOT commit real Fragrantica HTML). END-TO-END proof is for the agent's own confidence: ONE local live fetch of a single perfume (paced via the fragrantica service) is allowed to confirm fetch.ts persists HTML and parse fills real pcts — be frugal; the monthly cap is the only hard ceiling. The existing 42 outputs stay null until re-fetched in production.",
+      "design": "Clarification (interview 2026-06-22): ROOT CAUSE \u2014 fetch.ts persists only innerText (pages/<id>.txt); the accord bar widths live in raw HTML that is saved ONLY for failed pages (pages-failed/<id>.html). T009's parser reads pages/<id>.html, which never exists on the success path, so pct always falls back to null. FIX: extend fetch.ts to ALSO persist the raw HTML alongside the .txt so widths survive going forward (keep the .txt for the Claude parse step). The committed unit test stays hermetic on a synthetic HTML fixture (do NOT commit real Fragrantica HTML). END-TO-END proof is for the agent's own confidence: ONE local live fetch of a single perfume (paced via the fragrantica service) is allowed to confirm fetch.ts persists HTML and parse fills real pcts \u2014 be frugal; the monthly cap is the only hard ceiling. The existing 42 outputs stay null until re-fetched in production.",
       "verify": [
         "run-app"
       ],
@@ -1925,7 +1925,7 @@
       "scope": [
         "dashboard/app/backlog/page.tsx"
       ],
-      "design": "Clarification (interview 2026-06-22): This was implemented in commit 2e65bbb then reverted in e37e40c; re-apply EXACTLY as that commit did and make it stick — the list shows 'pending' (no '▶ in progress'), drop the next-task list highlight/border, and keep the DAG view's accurately-labelled 'next' node highlight as-is.",
+      "design": "Clarification (interview 2026-06-22): This was implemented in commit 2e65bbb then reverted in e37e40c; re-apply EXACTLY as that commit did and make it stick \u2014 the list shows 'pending' (no '\u25b6 in progress'), drop the next-task list highlight/border, and keep the DAG view's accurately-labelled 'next' node highlight as-is.",
       "verify": [],
       "spec": ".harness/tasks/T073.md",
       "facets": {
@@ -2124,7 +2124,7 @@
     },
     {
       "id": "T082",
-      "title": "Workflow-run gates panel: keep 'detail →' on one line",
+      "title": "Workflow-run gates panel: keep 'detail \u2192' on one line",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -2473,7 +2473,7 @@
     },
     {
       "id": "T095",
-      "title": "Workflow run: show input → output mapping (first stab)",
+      "title": "Workflow run: show input \u2192 output mapping (first stab)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -2504,7 +2504,7 @@
     },
     {
       "id": "T096",
-      "title": "Gate detail: neutral 'Produced → / → Consumed' labels instead of Output/Input",
+      "title": "Gate detail: neutral 'Produced \u2192 / \u2192 Consumed' labels instead of Output/Input",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -2859,7 +2859,7 @@
     },
     {
       "id": "T110",
-      "title": "Workflow-run IO: expressive output — markdown preview + full popover",
+      "title": "Workflow-run IO: expressive output \u2014 markdown preview + full popover",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -3035,7 +3035,7 @@
     },
     {
       "id": "T117",
-      "title": "Workflow-run header: show 'X of N stages · % · time' (drop the stage name)",
+      "title": "Workflow-run header: show 'X of N stages \u00b7 % \u00b7 time' (drop the stage name)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -3622,7 +3622,7 @@
     },
     {
       "id": "T139",
-      "title": "Run-scope the workflow-run Input→Output panel (work_item_runs linkage); fix the \"first cut\" caveat styling",
+      "title": "Run-scope the workflow-run Input\u2192Output panel (work_item_runs linkage); fix the \"first cut\" caveat styling",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -3861,7 +3861,7 @@
     },
     {
       "id": "T148",
-      "title": "Workflow-run Input→Output panel: hard-cap height + make the table scrollable (sticky header)",
+      "title": "Workflow-run Input\u2192Output panel: hard-cap height + make the table scrollable (sticky header)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4049,7 +4049,7 @@
     },
     {
       "id": "T157",
-      "title": "Input→Output panel: render filenames from row data, lazy-load markdown previews (no mount jank)",
+      "title": "Input\u2192Output panel: render filenames from row data, lazy-load markdown previews (no mount jank)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4073,7 +4073,7 @@
     },
     {
       "id": "T158",
-      "title": "Markdown preview: stop hiding null/empty frontmatter fields — show them, mark null + bold",
+      "title": "Markdown preview: stop hiding null/empty frontmatter fields \u2014 show them, mark null + bold",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4168,7 +4168,7 @@
     },
     {
       "id": "T162",
-      "title": "Movies recommendations: enforce quality (TMDB rating ≥7) + target at least 15 recommendations",
+      "title": "Movies recommendations: enforce quality (TMDB rating \u22657) + target at least 15 recommendations",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4248,7 +4248,7 @@
     },
     {
       "id": "T165",
-      "title": "Table row hover jitters — remove the translateY hover-lift on rows (keep a non-reflowing highlight)",
+      "title": "Table row hover jitters \u2014 remove the translateY hover-lift on rows (keep a non-reflowing highlight)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4358,7 +4358,7 @@
     },
     {
       "id": "T170",
-      "title": "Movies workflow page: fix the Recommendations & gaps section styling — contain + scroll, themed Ignore buttons, tidy empty state",
+      "title": "Movies workflow page: fix the Recommendations & gaps section styling \u2014 contain + scroll, themed Ignore buttons, tidy empty state",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4406,7 +4406,7 @@
     },
     {
       "id": "T172",
-      "title": "Input→Output mapping panel: fix inconsistent corner radii + footnote hugging the edges",
+      "title": "Input\u2192Output mapping panel: fix inconsistent corner radii + footnote hugging the edges",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4430,7 +4430,7 @@
     },
     {
       "id": "T173",
-      "title": "Backlog: Done list bottom margin is thicker than the row spacing — make it consistent",
+      "title": "Backlog: Done list bottom margin is thicker than the row spacing \u2014 make it consistent",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4477,7 +4477,7 @@
     },
     {
       "id": "T175",
-      "title": "Workflow DAG graph: draw non-adjacent/skip-wave edges as visible connectors (franchise-gaps → notify bypasses rec-merge)",
+      "title": "Workflow DAG graph: draw non-adjacent/skip-wave edges as visible connectors (franchise-gaps \u2192 notify bypasses rec-merge)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -4550,7 +4550,7 @@
     },
     {
       "id": "T178",
-      "title": "Progress bar: hide the message hint (e.g. \"verifying 61\") — show only the percentage",
+      "title": "Progress bar: hide the message hint (e.g. \"verifying 61\") \u2014 show only the percentage",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -5031,7 +5031,7 @@
     },
     {
       "id": "T194",
-      "title": "Input→Output mapping: remove last-row hover gap before the footer note",
+      "title": "Input\u2192Output mapping: remove last-row hover gap before the footer note",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -5055,7 +5055,7 @@
     },
     {
       "id": "T195",
-      "title": "Input→Output mapping: style the empty-state placeholder text",
+      "title": "Input\u2192Output mapping: style the empty-state placeholder text",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -5963,7 +5963,7 @@
     },
     {
       "id": "T226",
-      "title": "Input→Output mapping: filter rows by item state (success / failed / skipped)",
+      "title": "Input\u2192Output mapping: filter rows by item state (success / failed / skipped)",
       "status": "done",
       "dependsOn": [
         "T225"
@@ -6325,7 +6325,7 @@
     },
     {
       "id": "T239",
-      "title": "Vertically centre the Input→Output \"fan-out\" footnote caption",
+      "title": "Vertically centre the Input\u2192Output \"fan-out\" footnote caption",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -6820,7 +6820,7 @@
     },
     {
       "id": "T258",
-      "title": "Plumb skipped/no-op outcome — BACKEND: status model + root re-selection (follow-up to T225)",
+      "title": "Plumb skipped/no-op outcome \u2014 BACKEND: status model + root re-selection (follow-up to T225)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -6903,7 +6903,7 @@
     },
     {
       "id": "T261",
-      "title": "Loop pre-flight: reconcile human-done.json → TASKS.json status for needs-human tasks (unblock dependents)",
+      "title": "Loop pre-flight: reconcile human-done.json \u2192 TASKS.json status for needs-human tasks (unblock dependents)",
       "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
@@ -6925,7 +6925,7 @@
     },
     {
       "id": "T262",
-      "title": "Decouple Output section — BACKEND: declared output form + API serves it (renderer dispatch is T282)",
+      "title": "Decouple Output section \u2014 BACKEND: declared output form + API serves it (renderer dispatch is T282)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -7352,7 +7352,7 @@
     },
     {
       "id": "T279",
-      "title": "Reconcile manual-fail overlay → TASKS.json status=failed (authoritative terminal state)",
+      "title": "Reconcile manual-fail overlay \u2192 TASKS.json status=failed (authoritative terminal state)",
       "status": "done",
       "dependsOn": [
         "T261"
@@ -7424,7 +7424,7 @@
     },
     {
       "id": "T282",
-      "title": "Decouple Output section — FRONTEND: renderer dispatch by declared form (UI half of T262)",
+      "title": "Decouple Output section \u2014 FRONTEND: renderer dispatch by declared form (UI half of T262)",
       "status": "done",
       "dependsOn": [
         "T262"
@@ -7476,7 +7476,7 @@
     },
     {
       "id": "T284",
-      "title": "Add /pre-loop-checkin — read-only sanity pass before starting a loop run",
+      "title": "Add /pre-loop-checkin \u2014 read-only sanity pass before starting a loop run",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -7500,7 +7500,7 @@
     },
     {
       "id": "T285",
-      "title": "Per-workflow notifyEnabled toggle — turn off push notifications for a noisy workflow",
+      "title": "Per-workflow notifyEnabled toggle \u2014 turn off push notifications for a noisy workflow",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -7654,7 +7654,7 @@
     },
     {
       "id": "T290",
-      "title": "stocks-sync: add stocks-watch stage — notify once when a position gains ≥30% since last buy",
+      "title": "stocks-sync: add stocks-watch stage \u2014 notify once when a position gains \u226530% since last buy",
       "status": "done",
       "dependsOn": [
         "T289"
@@ -8321,7 +8321,7 @@
     },
     {
       "id": "T314",
-      "title": "Add per-stage filter pills to the Input → Output mapping panel",
+      "title": "Add per-stage filter pills to the Input \u2192 Output mapping panel",
       "status": "done",
       "dependsOn": [
         "T313"
@@ -8527,7 +8527,7 @@
     },
     {
       "id": "T321",
-      "title": "Owner review: workouts-sync output — 2026-06 data gap and schedule/window check",
+      "title": "Owner review: workouts-sync output \u2014 2026-06 data gap and schedule/window check",
       "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
@@ -9459,7 +9459,7 @@
     },
     {
       "id": "T357",
-      "title": "Remove the .movie-gaps-scroll internal scroll cap — display recs/gaps tables in full (idea #10a)",
+      "title": "Remove the .movie-gaps-scroll internal scroll cap \u2014 display recs/gaps tables in full (idea #10a)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -9524,7 +9524,7 @@
     },
     {
       "id": "T359",
-      "title": "Reorganize movie-recommendations' two Output sections under one Output heading (idea #10b, hard half — owner-decided Option A)",
+      "title": "Reorganize movie-recommendations' two Output sections under one Output heading (idea #10b, hard half \u2014 owner-decided Option A)",
       "status": "done",
       "dependsOn": [],
       "gate": null,
@@ -10758,6 +10758,160 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T405.md"
+    },
+    {
+      "id": "T406",
+      "title": "movie-recommendations: enrich notify-stage ledger detail with gap/rec findings",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "io-detail"
+      ],
+      "scope": [
+        "src/jobs/movies/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T406.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T407",
+      "title": "perfumes fetch/parse: point success detail at the real artifact + extracted values",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "io-detail"
+      ],
+      "scope": [
+        "src/jobs/perfumes/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T407.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T408",
+      "title": "places: fix identity-only success detail on places-ingest and places-enrich",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "io-detail"
+      ],
+      "scope": [
+        "src/jobs/places/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T408.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T409",
+      "title": "projects-sync github-sync: record catalog fields in success detail",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "io-detail"
+      ],
+      "scope": [
+        "src/jobs/projects-sync/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T409.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T410",
+      "title": "stocks-watch: add detail to the notified-episode ledger rows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "io-detail"
+      ],
+      "scope": [
+        "src/jobs/stocks-sync/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T410.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T411",
+      "title": "tv-recs-notify: enrich success detail with reason/genre/rating, not just name+report link",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "io-detail"
+      ],
+      "scope": [
+        "src/jobs/tv-recs/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T411.md",
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T412",
+      "title": "workouts-sync hevy-sync: record what each synced workout actually was in the ledger detail",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "io-detail"
+      ],
+      "scope": [
+        "src/jobs/workouts-sync/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T412.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
     }
   ]
 }
