@@ -2889,7 +2889,7 @@
     {
       "id": "T111",
       "title": "Clean slate: clear the ledger + all workflow output artifacts for a fresh production start",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -8528,7 +8528,7 @@
     {
       "id": "T321",
       "title": "Owner review: workouts-sync output — 2026-06 data gap and schedule/window check",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -9713,7 +9713,7 @@
     {
       "id": "T365",
       "title": "Provision Vercel Deploy Hook for ryankrol.co.uk and set VERCEL_DEPLOY_HOOK_URL",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -10075,7 +10075,7 @@
     {
       "id": "T378",
       "title": "Harness convention: tasks touching .harness/** must be gate:needs-human",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
