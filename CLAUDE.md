@@ -745,6 +745,33 @@ job MAY colocate a service it owns).
   `data/out/` tree (`safeOutputMarkdown` in `server.ts` — resolve + realpath +
   prefix + `/data/out/` checks; no traversal, files only, no paid/remote calls),
   so keep output artifacts under `data/out/`.
+- **Every stage's success `detail` must describe what THAT STAGE produced — not just restate
+  the item's identity (2026-07, generalizes T110).** `work_items` is fundamentally an
+  idempotency/retry ledger, but its `detail` blob is also the ONLY evidence the dashboard's
+  Inputs & Outputs panel (`StageIoPanel`, T382+) can show for what happened at a stage — the
+  panel has no way to see a `ctx.log` line or a file on disk, only what's recorded in `detail`.
+  A `detail` of just `{ name }` (or `{ name, attempts }`) reads as if the stage did nothing, even
+  when it performed real work (a browser scrape, an LLM extraction, a resolved value) — found
+  live on `perfumes-fetch`/`perfumes-parse`, whose successful `detail` never referenced the raw
+  page or parsed-JSON files they actually wrote to `data/out/`. Concretely, on every stage's
+  SUCCESS `markWorkItem` call:
+  - **Stage writes a file** → reference it. Reuse `detail.markdown` for a markdown artifact
+    (T110, unchanged) or, for any OTHER file type, `detail.path` + `detail.format` — the SAME
+    pair the T262 output-form convention already defines for a workflow's terminal/output stage,
+    generalized here to EVERY stage, not just the terminal one. Both are already served by the
+    read-only `GET /api/workflow-runs/:id/output?job=&key=` endpoint via `resolveOutputForm`
+    (`safeOutputFile` accepts any extension under `data/out/`), and the dashboard's
+    `StageIoPanel` recognizes either field to show a "click to preview" link
+    (`dashboard/app/components/StageIoLists.tsx`).
+  - **Stage discovers/computes a value, writes no file** → put the value itself in `detail`
+    (a resolved URL, an industry classification, a count, a rating) — `perfumes-find-url`'s
+    `{ name, url }` and `stock-sector-lookup`'s `{ name, industry }` are the worked examples.
+  - **Stage is a genuine, deliberate pass-through** with nothing of its own to show (rare) —
+    minimal `detail` is fine, but this should be a conscious exception a stage author chooses,
+    not the unexamined default every stage falls back to.
+  This is convention, not mechanically enforced (unlike the gate-coverage test) — there is no
+  structural way to distinguish "identity-only because there's genuinely nothing to show" from
+  "identity-only because the author never considered it" without reading the stage's own code.
 - **Unified Output section on the workflow detail page (T205).** Every workflow's detail
   page shows a consolidated **Output** section backed by `GET /api/workflows/:name/output-items`
   → `workflowTerminalItems(lastWave)` in `src/db/store.ts`. The convention is:

@@ -18,12 +18,19 @@ function itemLabel(key: string, detail: StageIoItem['detail']): string {
   return key;
 }
 
-function markdownPath(detail: StageIoItem['detail']): string | null {
-  return detail && typeof detail.markdown === 'string' ? (detail.markdown as string) : null;
+/** The path to an artifact this item's stage produced, if any — `detail.markdown` for a
+ *  markdown artifact (T110) or `detail.path` for any other declared output form (T262,
+ *  generalized to every stage, not just a workflow's terminal one). Either is served by
+ *  the same `GET /workflow-runs/:id/output` endpoint, so both get the same preview link. */
+function artifactPath(detail: StageIoItem['detail']): string | null {
+  if (detail && typeof detail.markdown === 'string' && detail.markdown) return detail.markdown as string;
+  if (detail && typeof detail.path === 'string' && detail.path) return detail.path as string;
+  return null;
 }
 
 /** One row in a decoupled inputs/outputs list — a key + optional name/detail summary,
- *  with a click-to-preview affordance when the item recorded a markdown artifact. */
+ *  with a click-to-preview affordance when the item recorded a produced artifact
+ *  (markdown or otherwise). */
 function StageIoItemRow(
   { runId, item, onOpen }: {
     runId: string;
@@ -32,7 +39,7 @@ function StageIoItemRow(
   },
 ) {
   const label = itemLabel(item.itemKey, item.detail);
-  const mdPath = markdownPath(item.detail);
+  const artifact = artifactPath(item.detail);
 
   const open = () => {
     const contentPromise = api.workflowRunOutput(runId, item.jobName, item.itemKey)
@@ -44,9 +51,9 @@ function StageIoItemRow(
     <li className="stage-io-item">
       <div className="stage-io-item-meta">
         <div className="stage-io-item-key">{item.itemKey}</div>
-        {label !== item.itemKey && !mdPath && <div className="stage-io-item-name">{label}</div>}
-        {mdPath && (
-          <button type="button" className="stage-io-item-link" onClick={open} title={mdPath}>
+        {label !== item.itemKey && !artifact && <div className="stage-io-item-name">{label}</div>}
+        {artifact && (
+          <button type="button" className="stage-io-item-link" onClick={open} title={artifact}>
             {label} — click to preview
           </button>
         )}

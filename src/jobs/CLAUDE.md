@@ -33,3 +33,15 @@ the rule surfaces automatically to any future session or agent adding a job or
 workflow in this directory — not just one that happened to read the root doc
 first. See the root doc for the full mechanism (shape/checks/sample, gate
 detail pages, `gateFailurePrefix`, etc.) — this file only states the rule.
+
+## ✅ A stage's success `detail` must describe what it produced (2026-07)
+
+On every `markWorkItem(..., 'success', ...)` call, `detail` must say what THAT
+stage actually did — not just restate the item's name/identity. A file-writing
+stage references the file (`detail.markdown`, or `detail.path` + `detail.format`
+for any non-markdown output); a value-discovering stage records the value
+itself; only a genuine, deliberate pass-through gets minimal `detail`. This is
+NOT mechanically enforced (unlike the gate rule above) — there's no structural
+way to tell "nothing to show" from "author didn't think about it." Full
+rationale + worked examples in the root `CLAUDE.md`'s "Job conventions"
+section — this file only states the rule so it surfaces when working here.
