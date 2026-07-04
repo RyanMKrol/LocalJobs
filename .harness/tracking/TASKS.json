@@ -10341,7 +10341,7 @@
     {
       "id": "T390",
       "title": "Extract shared IgnoredSection component + fix its padding on all 4 workflow-detail managers",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
