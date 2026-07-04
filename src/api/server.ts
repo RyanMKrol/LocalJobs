@@ -1912,9 +1912,29 @@ export function createApiServer(
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'stage-io' && parts.length === 4) {
         const run = getWorkflowRun(parts[2]);
         if (!run) return json(res, 404, { error: 'workflow run not found' });
+        const refs = getWorkflowJobs(run.workflow_name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
+        // `overall=true` takes precedence over `job` when both are present (T384).
+        if (url.searchParams.get('overall') === 'true') {
+          if (refs.length === 0) {
+            return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], outputJobs: [], job: '__overall__' });
+          }
+          let rootWave: string[] = [];
+          let lastWave: string[] = [];
+          try {
+            const dag = buildDag(refs);
+            rootWave = dag.waves[0] ?? [];
+            lastWave = dag.waves[dag.waves.length - 1] ?? [];
+          } catch {
+            return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], outputJobs: [], job: '__overall__' });
+          }
+          const def = getWorkflowDefinition(run.workflow_name);
+          const outputJobs =
+            def?.outputJob && refs.some((r) => r.job === def.outputJob) ? [def.outputJob] : lastWave;
+          const { inputs, outputs } = stageIoLists(outputJobs, rootWave, run.id);
+          return json(res, 200, { inputs, outputs, predecessorJobs: rootWave, outputJobs, job: '__overall__' });
+        }
         const jobParam = url.searchParams.get('job');
         if (!jobParam) return json(res, 400, { error: 'job query param is required' });
-        const refs = getWorkflowJobs(run.workflow_name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
         if (!refs.some((r) => r.job === jobParam)) {
           return json(res, 400, { error: `unknown job "${jobParam}" for this workflow` });
         }

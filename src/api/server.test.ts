@@ -1776,6 +1776,74 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       assert.deepEqual(body.outputs.map((o) => o.status).sort(), ['failed', 'success', 'success']);
     });
   });
+
+  // T384: overall=true — the workflow's OWN root/idempotency keys as inputs,
+  // its EFFECTIVE terminal stage(s) as outputs.
+  await test('GET /api/workflow-runs/:id/stage-io?overall=true — inputs match the DAG root wave for a fan-in workflow', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${sioRun}/stage-io?overall=true`)).json()) as {
+        inputs: { jobName: string; itemKey: string }[];
+        outputs: { jobName: string; itemKey: string }[];
+        predecessorJobs: string[];
+        outputJobs: string[];
+        job: string;
+      };
+      assert.equal(body.job, '__overall__');
+      assert.deepEqual(body.predecessorJobs, ['sio-api-a']);
+      assert.deepEqual(body.outputJobs, ['sio-api-c']);
+      assert.equal(body.inputs.length, 1, 'root wave (sio-api-a) has one ledger row this run');
+      assert.equal(body.inputs[0].jobName, 'sio-api-a');
+      assert.equal(body.inputs[0].itemKey, 'week-1');
+      assert.equal(body.outputs.length, 1, 'terminal wave (sio-api-c) has one ledger row this run');
+      assert.equal(body.outputs[0].jobName, 'sio-api-c');
+      assert.equal(body.outputs[0].itemKey, 'week-1');
+    });
+  });
+}
+
+// ── T384: overall=true honors a workflow's outputJob override (mirrors T348's
+// stocks-sync-style pattern: the true DAG terminal stage records nothing, an
+// earlier outputJob-named stage carries the real ledger rows). ──
+{
+  syncJob({ name: 't384-first', run: async () => {} });
+  syncJob({ name: 't384-last', run: async () => {} });
+  jobs.push({ name: 't384-first', run: async () => {} }, { name: 't384-last', run: async () => {} });
+  const t384OverrideWf = {
+    name: 't384-override-wf',
+    jobs: [{ job: 't384-first' }, { job: 't384-last', dependsOn: ['t384-first'] }],
+    outputJob: 't384-first',
+  };
+  syncWorkflow(t384OverrideWf);
+  workflows.push(t384OverrideWf);
+
+  const t384Run = createWorkflowRun('t384-override-wf', 'manual');
+  markWorkItem('t384-first', 'pos-1', 'success', { workflowRunId: t384Run });
+  // t384-last (the raw DAG last wave / true terminal) never records anything —
+  // mirrors stocks-notify.
+
+  await test('GET /api/workflow-runs/:id/stage-io?overall=true — outputs reflect the outputJob override, not the empty raw last wave', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${t384Run}/stage-io?overall=true`)).json()) as {
+        inputs: unknown[];
+        outputs: { jobName: string; itemKey: string }[];
+        predecessorJobs: string[];
+        outputJobs: string[];
+        job: string;
+      };
+      assert.equal(body.job, '__overall__');
+      assert.deepEqual(body.outputJobs, ['t384-first'], 'outputJob override, not the raw terminal wave [t384-last]');
+      assert.deepEqual(body.predecessorJobs, ['t384-first'], 'root wave is t384-first (the DAG\'s only source job)');
+      assert.equal(body.outputs.length, 1);
+      assert.equal(body.outputs[0].jobName, 't384-first');
+      assert.equal(body.outputs[0].itemKey, 'pos-1');
+    });
+  });
+
+  // Cleanup registry stubs.
+  for (const n of ['t384-first', 't384-last']) {
+    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
+  }
+  { const i = workflows.findIndex((x) => x.name === 't384-override-wf'); if (i >= 0) workflows.splice(i, 1); }
 }
 
 // ── movie-gaps endpoints (T145): GET overlays ignored/notified; POST ignores ──
