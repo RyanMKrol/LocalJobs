@@ -66,6 +66,7 @@ import {
   ignoreWorkItem,
   ignoreSurfacedItem,
   ignoreSurfacedItems,
+  unignoreSurfacedItem,
   ignoredItemKeys,
   isWorkItemDone,
   ignoredItems,
@@ -1212,6 +1213,18 @@ export function createApiServer(
         return json(res, 200, { ok: true, ignored });
       }
 
+      // POST /api/movie-gaps/:tmdbId/unignore — reverse a manual ignore: deletes the
+      // ignored ledger row (mirrors unstickWorkItem's delete-and-refresh pattern), so
+      // the gap is treated as brand-new and can resurface/re-notify on a future run.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'movie-gaps' && parts[3] === 'unignore') {
+        const tmdbId = Number(parts[2]);
+        if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+          return json(res, 400, { error: 'tmdbId must be a positive integer' });
+        }
+        const unignored = unignoreSurfacedItem(MOVIE_GAPS_JOB, gapKey(tmdbId));
+        return json(res, 200, { ok: true, unignored });
+      }
+
       // POST /api/movie-gaps/ignore-bulk { tmdbIds: number[] } — bulk-ignore a set
       // of franchise gap items (e.g. all items in a collection). Only the exact
       // tmdbIds supplied are ignored; no collection-level flag is persisted so a new
@@ -1268,6 +1281,18 @@ export function createApiServer(
         return json(res, 200, { ok: true, ignored });
       }
 
+      // POST /api/movie-recs/:tmdbId/unignore — reverse a manual ignore: deletes the
+      // ignored ledger row so the recommendation is treated as brand-new and can
+      // resurface/re-notify on a future run.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'movie-recs' && parts[3] === 'unignore') {
+        const tmdbId = Number(parts[2]);
+        if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+          return json(res, 400, { error: 'tmdbId must be a positive integer' });
+        }
+        const unignored = unignoreSurfacedItem(RECS_JOB, recKey(tmdbId));
+        return json(res, 200, { ok: true, unignored });
+      }
+
       // GET /api/tv-recs — the current TV recommendations (read from the tv-recs
       // workflow's recommendations.json), each overlaid with its ledger status:
       // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
@@ -1308,6 +1333,18 @@ export function createApiServer(
         return json(res, 200, { ok: true, ignored });
       }
 
+      // POST /api/tv-recs/:tmdbId/unignore — reverse a manual ignore: deletes the
+      // ignored ledger row so the recommendation is treated as brand-new and can
+      // resurface/re-notify on a future run.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'tv-recs' && parts[3] === 'unignore') {
+        const tmdbId = Number(parts[2]);
+        if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+          return json(res, 400, { error: 'tmdbId must be a positive integer' });
+        }
+        const unignored = unignoreSurfacedItem(TV_RECS_JOB, tvRecKey(tmdbId));
+        return json(res, 200, { ok: true, unignored });
+      }
+
       // GET /api/missing-seasons — the currently-detected complete-missing TV seasons
       // (read from missing-seasons.json), each overlaid with its notified/ignored state
       // from the plex-seasons-notify ledger. Read-only, file + DB only.
@@ -1346,6 +1383,19 @@ export function createApiServer(
         }
         const ignored = ignoreSurfacedItem(PLEX_SEASONS_JOB, pairKey(tmdbId, season));
         return json(res, 200, { ok: true, ignored });
+      }
+
+      // POST /api/missing-seasons/:tmdbId/:season/unignore — reverse a manual ignore:
+      // deletes the ignored ledger row so the season gap is treated as brand-new and
+      // can resurface/re-notify on a future run.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'missing-seasons' && parts[4] === 'unignore') {
+        const tmdbId = Number(parts[2]);
+        const season = Number(parts[3]);
+        if (!Number.isInteger(tmdbId) || tmdbId <= 0 || !Number.isInteger(season) || season <= 0) {
+          return json(res, 400, { error: 'tmdbId and season must be positive integers' });
+        }
+        const unignored = unignoreSurfacedItem(PLEX_SEASONS_JOB, pairKey(tmdbId, season));
+        return json(res, 200, { ok: true, unignored });
       }
 
       // POST /api/missing-seasons/ignore-bulk { items: { tmdbId, season }[] } —

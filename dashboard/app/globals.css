@@ -231,6 +231,10 @@ tbody tr:hover { background: var(--panel-2); }
 /* Action column in grouped tables — compact, just wide enough for the button. */
 .movie-gaps-scroll table th:last-child,
 .movie-gaps-scroll table td:last-child { width: 1%; white-space: nowrap; }
+/* Un-ignore action column (T391) — the Ignored tables on MovieGapsManager/MissingSeasonsManager
+   aren't nested inside .movie-gaps-scroll, so give .ignored-section its own equivalent rule. */
+.ignored-section table th:last-child,
+.ignored-section table td:last-child { width: 1%; white-space: nowrap; }
 /* Full-width row-group header (show/collection name) inside a flattened single-table listing. */
 .table-group-header td { background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); font-weight: 600; padding: 8px 14px; border-top: 1px solid var(--border); border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .mono { font-family: var(--font-mono); }

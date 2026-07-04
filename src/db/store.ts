@@ -969,6 +969,20 @@ export function ignoreSurfacedItems(jobName: string, itemKeys: string[]): number
   return run(itemKeys);
 }
 
+/**
+ * "Un-ignore" a surfaced item: delete its `ignored` ledger row so it's treated as
+ * brand-new on the next run — the OPPOSITE of {@link ignoreSurfacedItem}, mirroring
+ * {@link unstickWorkItem}'s delete-and-refresh pattern rather than resetting to some
+ * other status. Because the audit-style workflows' ledger means "have I already
+ * notified this?" (T144), deleting the row means the item CAN be re-notified/reappear
+ * in a future digest — this is the deliberate, documented behavior of un-ignoring.
+ * MANUAL ONLY. Returns the number of rows removed (0 if it wasn't ignored).
+ */
+export function unignoreSurfacedItem(jobName: string, itemKey: string): number {
+  return db.prepare("DELETE FROM work_items WHERE job_name = ? AND item_key = ? AND status = 'ignored'")
+    .run(jobName, itemKey).changes;
+}
+
 /** The set of `item_key`s a job has manually `ignored` — used to exclude ignored
  *  gaps from a fresh audit's report (the audit recomputes every run, so it must
  *  re-filter against this each time). */

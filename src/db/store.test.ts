@@ -6,7 +6,7 @@ import {
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop,
-  ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoreSurfacedItems, isWorkItemDone,
+  ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoreSurfacedItem, ignoreSurfacedItems, unignoreSurfacedItem, isWorkItemDone,
   listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, stageIoLists, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
@@ -1098,6 +1098,31 @@ console.log('  ✓ stageIoLists: decoupled input/output lists show every row a s
   assert.equal(ignoreSurfacedItems(JOB, []), 0, 'empty key array returns 0');
 }
 console.log('  ✓ T210 ignoreSurfacedItems: bulk-dismiss ignores only supplied keys, new keys surface fresh');
+
+// T391 — unignoreSurfacedItem: deletes an ignored ledger row (treated as brand-new
+// afterwards); no-op on a non-ignored or absent key.
+{
+  const JOB = 't391-notify';
+  syncJob({ name: JOB, run: async () => {} });
+
+  markWorkItem(JOB, 'gap:1', 'success');
+  ignoreSurfacedItem(JOB, 'gap:1');
+  assert.ok(isWorkItemDone(JOB, 'gap:1', 1), 'gap:1 is done (ignored) before unignore');
+
+  const removed = unignoreSurfacedItem(JOB, 'gap:1');
+  assert.equal(removed, 1, 'unignoreSurfacedItem removes the ignored row');
+  assert.ok(!isWorkItemDone(JOB, 'gap:1', 1), 'gap:1 is treated as brand-new after unignore');
+  assert.ok(!ignoredItemKeys(JOB).has('gap:1'), 'gap:1 no longer appears in ignoredItemKeys');
+
+  // No-op on a non-ignored row (e.g. a plain success row).
+  markWorkItem(JOB, 'gap:2', 'success');
+  assert.equal(unignoreSurfacedItem(JOB, 'gap:2'), 0, 'no-op on a non-ignored row');
+  assert.ok(isWorkItemDone(JOB, 'gap:2', 1), 'gap:2 is untouched (still success/done)');
+
+  // No-op on an absent key.
+  assert.equal(unignoreSurfacedItem(JOB, 'gap:absent'), 0, 'no-op on an absent key');
+}
+console.log('  ✓ T391 unignoreSurfacedItem: deletes ignored row, no-op otherwise');
 
 // T258 — noop detection helpers: root-with-skipped not re-selected,
 // hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop.

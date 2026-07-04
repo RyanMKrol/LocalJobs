@@ -514,6 +514,8 @@ export const api = {
     post<{ ok: boolean; ignored: number }>(`/api/missing-seasons/${tmdbId}/${season}/ignore`),
   missingSeasonsIgnoreBulk: (items: { tmdbId: number; season: number }[]) =>
     post<{ ok: boolean; ignored: number }>('/api/missing-seasons/ignore-bulk', { items }),
+  unignoreMissingSeason: (tmdbId: number, season: number) =>
+    post<{ ok: boolean; unignored: number }>(`/api/missing-seasons/${tmdbId}/${season}/unignore`),
 
   // Movies franchise-gap audit: list current gaps + manually ignore one (T145).
   movieGaps: () => get<MovieGaps>('/api/movie-gaps'),
@@ -521,16 +523,22 @@ export const api = {
     post<{ ok: boolean; ignored: number }>(`/api/movie-gaps/${tmdbId}/ignore`),
   ignoreMovieGapBulk: (tmdbIds: number[]) =>
     post<{ ok: boolean; ignored: number }>('/api/movie-gaps/ignore-bulk', { tmdbIds }),
+  unignoreMovieGap: (tmdbId: number) =>
+    post<{ ok: boolean; unignored: number }>(`/api/movie-gaps/${tmdbId}/unignore`),
 
   // Movies recommendations: list current recs + manually ignore one (T209).
   movieRecs: () => get<MovieRecs>('/api/movie-recs'),
   ignoreMovieRec: (tmdbId: number) =>
     post<{ ok: boolean; ignored: number }>(`/api/movie-recs/${tmdbId}/ignore`),
+  unignoreMovieRec: (tmdbId: number) =>
+    post<{ ok: boolean; unignored: number }>(`/api/movie-recs/${tmdbId}/unignore`),
 
   // TV recommendations: list current recs + manually ignore one (T219).
   tvRecs: () => get<TvRecs>('/api/tv-recs'),
   ignoreTvRec: (tmdbId: number) =>
     post<{ ok: boolean; ignored: number }>(`/api/tv-recs/${tmdbId}/ignore`),
+  unignoreTvRec: (tmdbId: number) =>
+    post<{ ok: boolean; unignored: number }>(`/api/tv-recs/${tmdbId}/unignore`),
 
   // Global cross-cutting log feed (T311/T312): merges every job + workflow run's
   // logs, newest first. `level` is a comma-joined subset of info/warn/error (omit

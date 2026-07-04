@@ -1908,6 +1908,33 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       });
     });
 
+    await test('POST /api/movie-gaps/:id/unignore reverses a manual ignore (T391)', async () => {
+      await withServer({}, async (base) => {
+        const ignoreRes = await fetch(`${base}/api/movie-gaps/${TO_IGNORE}/ignore`, { method: 'POST' });
+        assert.equal(ignoreRes.status, 200);
+        assert.ok(ignoredKeys(NOTIFY_JOB).has(gapKey(TO_IGNORE)), 'ledger row is ignored');
+
+        const res = await fetch(`${base}/api/movie-gaps/${TO_IGNORE}/unignore`, { method: 'POST' });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; unignored: number };
+        assert.equal(body.ok, true);
+        assert.ok(body.unignored >= 1);
+        assert.ok(!ignoredKeys(NOTIFY_JOB).has(gapKey(TO_IGNORE)), 'ledger row is no longer ignored');
+
+        const data = (await (await fetch(`${base}/api/movie-gaps`)).json()) as {
+          gaps: { tmdbId: number; ignored: boolean }[];
+        };
+        assert.equal(data.gaps.find((g) => g.tmdbId === TO_IGNORE)?.ignored, false, 'GET reflects the unignore');
+      });
+    });
+
+    await test('POST /api/movie-gaps/:id/unignore rejects a non-numeric id (400)', async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/movie-gaps/not-a-number/unignore`, { method: 'POST' });
+        assert.equal(res.status, 400);
+      });
+    });
+
     await test('GET /api/movie-gaps returns collectionExamples from the gaps file', async () => {
       const examplesPath = gapsPath;
       writeFileSync(examplesPath, JSON.stringify({

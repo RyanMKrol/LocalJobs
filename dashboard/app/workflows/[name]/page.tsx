@@ -91,6 +91,19 @@ function TvRecsManager() {
     }
   }
 
+  async function unignore(r: TvRec) {
+    if (!confirm(`Un-ignore "${r.title}"? It will be treated as brand-new and may be recommended/notified again.`)) return;
+    setBusy(r.tmdbId);
+    setErr(null);
+    try {
+      await api.unignoreTvRec(r.tmdbId);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <>
       <h2>Output</h2>
@@ -165,7 +178,7 @@ function TvRecsManager() {
           <IgnoredSection count={ignored.length} subtitle="Dismissed by you — never recommended or notified again.">
             <table>
               <thead>
-                <tr><th>Show</th><th>Year</th><th>Genre</th></tr>
+                <tr><th>Show</th><th>Year</th><th>Genre</th><th></th></tr>
               </thead>
               <tbody>
                 {[...ignored].sort((a, b) => a.title.localeCompare(b.title)).map((r) => (
@@ -177,6 +190,11 @@ function TvRecsManager() {
                     </td>
                     <td>{r.year ?? '—'}</td>
                     <td>{r.genre}</td>
+                    <td>
+                      <button className="btn btn-sm" onClick={() => unignore(r)} disabled={busy === r.tmdbId}>
+                        {busy === r.tmdbId ? 'Un-ignoring…' : '↺ Un-ignore'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -218,6 +236,19 @@ function MovieRecsManager() {
     setErr(null);
     try {
       await api.ignoreMovieRec(r.tmdbId);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function unignore(r: MovieRec) {
+    if (!confirm(`Un-ignore "${r.title}"? It will be treated as brand-new and may be recommended/notified again.`)) return;
+    setBusy(r.tmdbId);
+    setErr(null);
+    try {
+      await api.unignoreMovieRec(r.tmdbId);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -299,7 +330,7 @@ function MovieRecsManager() {
           <IgnoredSection count={ignored.length} subtitle="Dismissed by you — never recommended or notified again.">
             <table>
               <thead>
-                <tr><th>Film</th><th>Year</th><th>Genre</th></tr>
+                <tr><th>Film</th><th>Year</th><th>Genre</th><th></th></tr>
               </thead>
               <tbody>
                 {[...ignored].sort((a, b) => a.title.localeCompare(b.title)).map((r) => (
@@ -311,6 +342,11 @@ function MovieRecsManager() {
                     </td>
                     <td>{r.year ?? '—'}</td>
                     <td>{r.genre}</td>
+                    <td>
+                      <button className="btn btn-sm" onClick={() => unignore(r)} disabled={busy === r.tmdbId}>
+                        {busy === r.tmdbId ? 'Un-ignoring…' : '↺ Un-ignore'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -346,6 +382,19 @@ function MovieGapsManager() {
     setErr(null);
     try {
       await api.ignoreMovieGap(g.tmdbId);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function unignore(g: MovieGap) {
+    if (!confirm(`Un-ignore “${g.title}”? It will be treated as brand-new and may be reported/notified again.`)) return;
+    setBusy(g.tmdbId);
+    setErr(null);
+    try {
+      await api.unignoreMovieGap(g.tmdbId);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -464,7 +513,7 @@ function MovieGapsManager() {
         >
           <table>
             <thead>
-              <tr><th>Film</th><th>Collection</th><th>Year</th></tr>
+              <tr><th>Film</th><th>Collection</th><th>Year</th><th></th></tr>
             </thead>
             <tbody>
               {ignored.map((g) => (
@@ -476,6 +525,11 @@ function MovieGapsManager() {
                   </td>
                   <td>{g.collectionName}</td>
                   <td>{g.year ?? '—'}</td>
+                  <td>
+                    <button className="btn btn-sm" onClick={() => unignore(g)} disabled={busy === g.tmdbId}>
+                      {busy === g.tmdbId ? 'Un-ignoring…' : '↺ Un-ignore'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -524,6 +578,21 @@ function MissingSeasonsManager() {
     setErr(null);
     try {
       await api.missingSeasonsIgnore(s.tmdbId, s.season);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function unignore(s: MissingSeason) {
+    const label = `"${s.title}" S${s.season}`;
+    if (!confirm(`Un-ignore ${label}? It will be treated as brand-new and may be reported/notified again.`)) return;
+    const key = `${s.tmdbId}:${s.season}`;
+    setBusy(key);
+    setErr(null);
+    try {
+      await api.unignoreMissingSeason(s.tmdbId, s.season);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -634,19 +703,27 @@ function MissingSeasonsManager() {
         <IgnoredSection count={ignored.length} subtitle="Suppressed by you — never reported or notified again.">
           <table>
             <thead>
-              <tr><th>Show</th><th>Season</th></tr>
+              <tr><th>Show</th><th>Season</th><th></th></tr>
             </thead>
             <tbody>
-              {[...ignored].sort((a, b) => a.title.localeCompare(b.title) || a.season - b.season).map((s) => (
-                <tr key={`${s.tmdbId}:${s.season}`} className="muted">
+              {[...ignored].sort((a, b) => a.title.localeCompare(b.title) || a.season - b.season).map((s) => {
+                const key = `${s.tmdbId}:${s.season}`;
+                return (
+                <tr key={key} className="muted">
                   <td>
                     <a href={`https://www.themoviedb.org/tv/${s.tmdbId}`} target="_blank" rel="noreferrer">
                       {s.title}
                     </a>
                   </td>
                   <td>Season {s.season}</td>
+                  <td>
+                    <button className="btn btn-sm" onClick={() => unignore(s)} disabled={busy === key}>
+                      {busy === key ? 'Un-ignoring…' : '↺ Un-ignore'}
+                    </button>
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </IgnoredSection>

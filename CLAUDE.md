@@ -1123,6 +1123,26 @@ doubt, log it.
     A `movie-recs` ledger row keyed by
     the recommended film's tmdb id also serves as the **never-re-recommend** dedup log
     (`success` = already recommended), distinct from the `movie-gaps-notify` ledger.
+  - **Reversing an ignore — `unignoreSurfacedItem` (T391).** All four ignore lists
+    (movie franchise gaps, movie recs, TV recs, missing TV seasons) previously had no
+    way back once dismissed. `unignoreSurfacedItem(jobName, itemKey)` in `store.ts` is
+    the OPPOSITE of `ignoreSurfacedItem`: it **DELETES** the `ignored` ledger row
+    (mirroring `unstickWorkItem`'s delete-and-refresh pattern) rather than resetting it
+    to some other status — a deliberate design choice, since "un-ignore" means "forget
+    my decision", not "keep it marked notified but merely make it visible again".
+    **Consequence, not a bug:** because these workflows use the "have I already
+    notified this?" ledger pattern (T144), deleting the row means an un-ignored item is
+    genuinely treated as brand-new and CAN be re-notified/reappear in a future digest —
+    exactly like an un-stuck item is retried fresh. Per-item only, no bulk variant
+    (there's no analogous "un-ignore a whole group" action requested). Four endpoints
+    mirror their `ignore` counterparts exactly (same validation/guard pattern):
+    `POST /api/movie-gaps/:tmdbId/unignore`, `POST /api/movie-recs/:tmdbId/unignore`,
+    `POST /api/tv-recs/:tmdbId/unignore`, `POST /api/missing-seasons/:tmdbId/:season/unignore`
+    — each returning `{ ok: true, unignored: <rows affected> }`. Each of the 4
+    managers' `IgnoredSection` table (`dashboard/app/workflows/[name]/page.tsx`) has a
+    per-row **"↺ Un-ignore"** button (confirm-gated, reusing the manager's existing
+    `busy`/`err` state keyed the same way the active-list Ignore button already is) —
+    on success the item reappears in the active list on the next 5s poll.
   - **Bulk collection/show dismiss (T210).** Each grouped output section on the
     workflow detail page (`dashboard/app/workflows/[name]/page.tsx`) — movie franchise
     gaps grouped by collection (`MovieGapsManager` / `groupByCollection`) and missing TV
