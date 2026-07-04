@@ -10553,7 +10553,7 @@
     {
       "id": "T398",
       "title": "Fix .panel margin leaking into .grid.cards so no Overview workflow card renders taller than its row-mates",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
