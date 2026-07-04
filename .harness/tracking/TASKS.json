@@ -10181,7 +10181,7 @@
     {
       "id": "T384",
       "title": "Add an overall=true mode to GET /workflow-runs/:id/stage-io (firstWave -> lastWave, outputJob-aware)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T383"
       ],
