@@ -10232,7 +10232,7 @@
     {
       "id": "T386",
       "title": "Make StageIoPanel the framework default; verify against linear + single-stage workflows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T385"
       ],
