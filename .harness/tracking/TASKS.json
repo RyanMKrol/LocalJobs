@@ -10527,7 +10527,7 @@
     {
       "id": "T397",
       "title": "Add \"Run all workflows\" action to the Admin page",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T396"
       ],
