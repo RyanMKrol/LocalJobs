@@ -10282,7 +10282,7 @@
     {
       "id": "T388",
       "title": "Extend StageIoPanel fixture coverage to every remaining workflow and run a full mobile/visual regression sweep",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [
         "T387"
       ],
