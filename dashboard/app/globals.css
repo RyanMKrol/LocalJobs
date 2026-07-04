@@ -76,7 +76,7 @@ header.site .inner {
   max-width: 1100px; margin: 0 auto; padding: 14px 20px;
   display: flex; align-items: center; gap: 20px;
 }
-header.site .brand { font-weight: var(--heading-weight, 700); font-size: 16px; color: var(--text); font-family: var(--font-display); overflow-wrap: anywhere; }
+header.site .brand { font-weight: var(--heading-weight, 700); font-size: 16px; color: var(--text); font-family: var(--font-display); overflow-wrap: anywhere; flex-shrink: 0; white-space: nowrap; }
 header.site nav a { color: var(--muted); margin-right: 16px; }
 header.site nav a:hover { color: var(--text); }
 
