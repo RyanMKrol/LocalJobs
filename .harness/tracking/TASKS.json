@@ -10652,7 +10652,7 @@
     {
       "id": "T402",
       "title": "Plex host-discovery scan: exclude virtual/VPN interfaces and prioritize the configured host's own subnet",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
