@@ -9,7 +9,8 @@
 //
 // Keys are shared across the producing job's `produces` and the consuming
 // job's `consumes` so the workflow executor derives a gate at each edge:
-//   stocks-snapshot ──stocks-portfolio──▶ stocks-watch ──stocks-fresh-breaches──▶ stocks-notify
+//   stocks-fetch ──stocks-raw-positions──▶ stocks-snapshot ──stocks-portfolio──▶
+//   stocks-watch ──stocks-fresh-breaches──▶ stocks-notify
 import { existsSync, readFileSync } from 'node:fs';
 import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
 import { stocksSyncConfig } from './config.js';
@@ -39,6 +40,69 @@ function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
     checks,
     sample,
     detail: sample,
+  };
+}
+
+const RAW_POSITIONS_EXP = {
+  json: 'A readable JSON file',
+  array: 'A plain top-level array',
+  entries: 'Every position has a ticker + a valid account',
+};
+
+/**
+ * stocks-fetch → stocks-snapshot boundary: raw-positions.json. Must parse and
+ * be a plain JSON array of (pre-resolution) NormalizedPosition records —
+ * every entry, if any, has a string `ticker` and an `account` of
+ * `invest`/`isa`. Identical required-field shape to `stocksPortfolioContract`
+ * (a NormalizedPosition has the same required fields before AND after
+ * ISIN/ticker resolution — `isin`/`resolvedTicker` are optional either way) —
+ * this is deliberately a SEPARATE factory/key, not shared with
+ * `stocksPortfolioContract`, since it validates a DIFFERENT file at a
+ * DIFFERENT stage boundary. A ZERO-length array is legitimate (no open
+ * positions) and passes.
+ */
+export function stocksRawPositionsContract(
+  file: string = stocksSyncConfig.rawPositionsJsonPath,
+): ArtifactContract {
+  return {
+    key: 'stocks-raw-positions',
+    description: 'stocks-fetch output: raw-positions.json — a JSON array of fetched, pre-resolution positions.',
+    shape: {
+      summary: 'The just-fetched, not-yet-ticker-resolved open equity positions from Trading212 (may legitimately be empty).',
+      format: 'JSON file (raw-positions.json), a plain array — not wrapped in an object',
+      expectations: [
+        { label: RAW_POSITIONS_EXP.json, detail: 'The hand-off file exists and parses as JSON.' },
+        { label: RAW_POSITIONS_EXP.array, detail: 'The top-level JSON value is an array (zero or more positions).' },
+        { label: RAW_POSITIONS_EXP.entries, detail: 'Each position (if any) has a text ticker and account = "invest" or "isa".' },
+      ],
+    },
+    check(): GateResult {
+      const checks: ExpectationResult[] = [];
+      const { obj, violation } = readJson(file);
+      if (violation) {
+        checks.push({ label: RAW_POSITIONS_EXP.json, ok: false, actual: violation });
+        return fromChecks(checks);
+      }
+      checks.push({ label: RAW_POSITIONS_EXP.json, ok: true, actual: 'valid JSON' });
+      const isArr = Array.isArray(obj);
+      checks.push({ label: RAW_POSITIONS_EXP.array, ok: isArr, actual: isArr ? 'array' : `${typeof obj}` });
+      if (!isArr) return fromChecks(checks);
+      const arr = obj as Record<string, unknown>[];
+      if (arr.length === 0) {
+        checks.push({ label: RAW_POSITIONS_EXP.entries, ok: true, actual: 'no positions to check' });
+        return fromChecks(checks, '0 position(s)');
+      }
+      const bad = arr.find(
+        (p) => !p || typeof p.ticker !== 'string' || (p.account !== 'invest' && p.account !== 'isa'),
+      );
+      checks.push({
+        label: RAW_POSITIONS_EXP.entries,
+        ok: !bad,
+        actual: bad ? `bad entry: ${JSON.stringify(bad)}` : 'all entries well-formed',
+      });
+      const tickers = arr.slice(0, 3).map((p) => JSON.stringify(p.ticker)).join(', ');
+      return fromChecks(checks, `${arr.length} position(s)${tickers ? ` · e.g. ${tickers}` : ''}`);
+    },
   };
 }
 

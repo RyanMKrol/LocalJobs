@@ -1,17 +1,14 @@
 // stocks-snapshot tests — hermetic: no live Trading212 API calls, no filesystem
-// writes to the real job data dir. Uses a stub fetcher + stub writer + the scratch
-// DB (npm test sets LOCALJOBS_DB).
+// writes to the real job data dir. Uses a stub raw-positions reader + stub writer +
+// the scratch DB (npm test sets LOCALJOBS_DB).
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 
 import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
-  normalizePosition,
-  positionKey,
   type NormalizedPosition,
   type Trading212Instrument,
-  type Trading212Position,
 } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
 import {
@@ -20,6 +17,7 @@ import {
   buildPortfolioMarkdown,
   dayKey,
   type PortfolioWriter,
+  type RawPositionsReader,
 } from './stocks-snapshot.js';
 
 function fakeCtx(): JobContext {
@@ -31,21 +29,20 @@ function fakeCtx(): JobContext {
   };
 }
 
-function makePosition(overrides: Partial<Trading212Position> = {}): Trading212Position {
+function makeNormalized(overrides: Partial<NormalizedPosition> = {}): NormalizedPosition {
   return {
     ticker: 'AAPL_US_EQ',
+    account: 'invest',
     quantity: 10,
-    averagePrice: 100,
+    averageBuyPrice: 100,
     currentPrice: 130,
-    ppl: 300,
-    fxPpl: 0,
-    initialFillDate: '2026-01-01T00:00:00.000+00:00',
-    frontend: 'IOS',
-    maxBuy: 1000,
-    maxSell: null,
-    pieQuantity: 0,
+    currentValue: 1300,
     ...overrides,
   };
+}
+
+function stubRaw(positions: NormalizedPosition[]): RawPositionsReader {
+  return () => positions;
 }
 
 function makeWriterSpy() {
@@ -55,29 +52,6 @@ function makeWriterSpy() {
   };
   return { write, calls };
 }
-
-// ---------------------------------------------------------------------------
-// normalizePosition
-// ---------------------------------------------------------------------------
-
-describe('normalizePosition', () => {
-  it('maps Trading212 fields to the broker-agnostic shape', () => {
-    const pos = makePosition({ ticker: 'MSFT_US_EQ', quantity: 5, averagePrice: 200, currentPrice: 250 });
-    const normalized = normalizePosition(pos);
-    assert.equal(normalized.ticker, 'MSFT_US_EQ');
-    assert.equal(normalized.quantity, 5);
-    assert.equal(normalized.averageBuyPrice, 200);
-    assert.equal(normalized.currentPrice, 250);
-    assert.equal(normalized.currentValue, 1250);
-    assert.equal(normalized.account, 'invest');
-  });
-
-  it('tags a position with the given account', () => {
-    const pos = makePosition({ ticker: 'VUSA_EQ' });
-    const normalized = normalizePosition(pos, 'isa');
-    assert.equal(normalized.account, 'isa');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // priceDiff
@@ -174,6 +148,8 @@ describe('runStocksSnapshot', () => {
     process.env.TRADING212_API_SECRET_KEY = 'test-secret-key';
   });
 
+  // stocks-snapshot independently validates these two env vars too, since it
+  // needs the Invest credentials for its own instruments-metadata call.
   it('throws if TRADING212_API_KEY_ID is missing', async () => {
     const saved = process.env.TRADING212_API_KEY_ID;
     delete process.env.TRADING212_API_KEY_ID;
@@ -181,7 +157,7 @@ describe('runStocksSnapshot', () => {
       await assert.rejects(
         () =>
           runStocksSnapshot(fakeCtx(), {
-            fetchPortfolio: async () => [],
+            readRawPositions: stubRaw([]),
             writePortfolio: () => {},
           }),
         /TRADING212_API_KEY_ID/,
@@ -198,7 +174,7 @@ describe('runStocksSnapshot', () => {
       await assert.rejects(
         () =>
           runStocksSnapshot(fakeCtx(), {
-            fetchPortfolio: async () => [],
+            readRawPositions: stubRaw([]),
             writePortfolio: () => {},
           }),
         /TRADING212_API_SECRET_KEY/,
@@ -209,12 +185,12 @@ describe('runStocksSnapshot', () => {
   });
 
   it('writes portfolio.json + portfolio.md and records one combined ledger row', async () => {
-    const pos = makePosition({ ticker: `TEST_${Date.now()}_EQ` });
+    const pos = makeNormalized({ ticker: `TEST_${Date.now()}_EQ` });
     const { write, calls } = makeWriterSpy();
     const now = new Date('2026-07-04T12:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => [pos],
+      readRawPositions: stubRaw([pos]),
       writePortfolio: write,
       now,
     });
@@ -226,12 +202,12 @@ describe('runStocksSnapshot', () => {
   });
 
   it('records positionCount/totalValue/resolvedCount/markdown in the collapsed ledger detail', async () => {
-    const pos = makePosition({ ticker: `DETAIL_${Date.now()}_EQ`, averagePrice: 100, currentPrice: 130 });
+    const pos = makeNormalized({ ticker: `DETAIL_${Date.now()}_EQ`, averageBuyPrice: 100, currentPrice: 130, currentValue: 1300 });
     const { write } = makeWriterSpy();
     const now = new Date('2026-07-05T08:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => [pos],
+      readRawPositions: stubRaw([pos]),
       writePortfolio: write,
       now,
     });
@@ -250,19 +226,19 @@ describe('runStocksSnapshot', () => {
     const { write, calls } = makeWriterSpy();
     const now = new Date('2026-07-06T00:00:00.000Z');
     await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => [],
+      readRawPositions: stubRaw([]),
       writePortfolio: write,
       now,
     });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].length, 0);
-    assert.ok(!isWorkItemDone(JOB, dayKey(now), 1), 'no ledger row for an empty portfolio');
+    assert.ok(!isWorkItemDone(JOB, dayKey(now), 1), 'no ledger row when there is nothing to resolve');
   });
 
   it('records multiple positions in one row and reports progress', async () => {
     const positions = [
-      makePosition({ ticker: `MULTI1_${Date.now()}_EQ` }),
-      makePosition({ ticker: `MULTI2_${Date.now()}_EQ` }),
+      makeNormalized({ ticker: `MULTI1_${Date.now()}_EQ` }),
+      makeNormalized({ ticker: `MULTI2_${Date.now()}_EQ` }),
     ];
     const progressCalls: number[] = [];
     const ctx: JobContext = {
@@ -277,7 +253,7 @@ describe('runStocksSnapshot', () => {
 
     const { write, calls } = makeWriterSpy();
     await runStocksSnapshot(ctx, {
-      fetchPortfolio: async () => positions,
+      readRawPositions: stubRaw(positions),
       writePortfolio: write,
       now,
     });
@@ -293,18 +269,18 @@ describe('runStocksSnapshot', () => {
 
   it('a same-day re-run overwrites the row rather than duplicating it', async () => {
     const now = new Date('2026-07-08T09:00:00.000Z');
-    const posA = makePosition({ ticker: `SAMEDAY_A_${Date.now()}_EQ` });
-    const posB = makePosition({ ticker: `SAMEDAY_B_${Date.now()}_EQ` });
+    const posA = makeNormalized({ ticker: `SAMEDAY_A_${Date.now()}_EQ` });
+    const posB = makeNormalized({ ticker: `SAMEDAY_B_${Date.now()}_EQ` });
     const { write: write1 } = makeWriterSpy();
     const { write: write2 } = makeWriterSpy();
 
     await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => [posA],
+      readRawPositions: stubRaw([posA]),
       writePortfolio: write1,
       now,
     });
     await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => [posA, posB],
+      readRawPositions: stubRaw([posA, posB]),
       writePortfolio: write2,
       now: new Date('2026-07-08T20:00:00.000Z'),
     });
@@ -318,17 +294,17 @@ describe('runStocksSnapshot', () => {
   it('runs on different days produce two distinct rows', async () => {
     const nowDay1 = new Date('2026-07-09T09:00:00.000Z');
     const nowDay2 = new Date('2026-07-10T09:00:00.000Z');
-    const pos = makePosition({ ticker: `MULTIDAY_${Date.now()}_EQ` });
+    const pos = makeNormalized({ ticker: `MULTIDAY_${Date.now()}_EQ` });
     const { write: write1 } = makeWriterSpy();
     const { write: write2 } = makeWriterSpy();
 
     await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => [pos],
+      readRawPositions: stubRaw([pos]),
       writePortfolio: write1,
       now: nowDay1,
     });
     await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => [pos],
+      readRawPositions: stubRaw([pos]),
       writePortfolio: write2,
       now: nowDay2,
     });
@@ -336,75 +312,6 @@ describe('runStocksSnapshot', () => {
     assert.ok(isWorkItemDone(JOB, dayKey(nowDay1), 1));
     assert.ok(isWorkItemDone(JOB, dayKey(nowDay2), 1));
     assert.notEqual(dayKey(nowDay1), dayKey(nowDay2));
-  });
-
-  it('fetches only Invest positions when ISA credentials are unset (unchanged behavior)', async () => {
-    delete process.env.TRADING212_ISA_API_KEY_ID;
-    delete process.env.TRADING212_ISA_API_SECRET_KEY;
-
-    let fetchCalls = 0;
-    const investPos = makePosition({ ticker: `NOISA_${Date.now()}_EQ` });
-    const { write, calls } = makeWriterSpy();
-
-    await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => {
-        fetchCalls++;
-        return [investPos];
-      },
-      writePortfolio: write,
-    });
-
-    assert.equal(fetchCalls, 1, 'no second fetch is made when ISA credentials are unset');
-    assert.equal(calls[0].length, 1);
-    assert.equal(calls[0][0].account, 'invest');
-  });
-
-  it('fetches both Invest and ISA positions when ISA credentials are set, tagged by account', async () => {
-    process.env.TRADING212_ISA_API_KEY_ID = 'isa-key-id';
-    process.env.TRADING212_ISA_API_SECRET_KEY = 'isa-secret-key';
-
-    const investPos = makePosition({ ticker: `BOTH_INVEST_${Date.now()}_EQ` });
-    const isaPos = makePosition({ ticker: `BOTH_ISA_${Date.now()}_EQ` });
-    const { write, calls } = makeWriterSpy();
-
-    await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async (keyId) => (keyId === 'isa-key-id' ? [isaPos] : [investPos]),
-      writePortfolio: write,
-    });
-
-    delete process.env.TRADING212_ISA_API_KEY_ID;
-    delete process.env.TRADING212_ISA_API_SECRET_KEY;
-
-    assert.equal(calls[0].length, 2);
-    const byAccount = Object.fromEntries(calls[0].map((p) => [p.account, p.ticker]));
-    assert.equal(byAccount['invest'], investPos.ticker);
-    assert.equal(byAccount['isa'], isaPos.ticker);
-  });
-
-  it('same ticker in both accounts is still counted twice in the combined snapshot', async () => {
-    process.env.TRADING212_ISA_API_KEY_ID = 'isa-key-id';
-    process.env.TRADING212_ISA_API_SECRET_KEY = 'isa-secret-key';
-
-    const sharedTicker = `SHARED_${Date.now()}_EQ`;
-    const investPos = makePosition({ ticker: sharedTicker, averagePrice: 100, currentPrice: 110 });
-    const isaPos = makePosition({ ticker: sharedTicker, averagePrice: 50, currentPrice: 60 });
-    const { write, calls } = makeWriterSpy();
-    const now = new Date('2026-07-11T09:00:00.000Z');
-
-    await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async (keyId) => (keyId === 'isa-key-id' ? [isaPos] : [investPos]),
-      writePortfolio: write,
-      now,
-    });
-
-    delete process.env.TRADING212_ISA_API_KEY_ID;
-    delete process.env.TRADING212_ISA_API_SECRET_KEY;
-
-    assert.equal(calls[0].length, 2);
-    assert.notEqual(positionKey('invest', sharedTicker), positionKey('isa', sharedTicker));
-    const row = getWorkItem(JOB, dayKey(now));
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.positionCount, 2);
   });
 
   // -------------------------------------------------------------------------
@@ -423,13 +330,13 @@ describe('runStocksSnapshot', () => {
   }
 
   it('resolves ISIN + real-world ticker end-to-end and records resolvedCount', async () => {
-    const pos = makePosition({ ticker: 'YNDX_US_EQ' });
+    const pos = makeNormalized({ ticker: 'YNDX_US_EQ' });
     const { write, calls } = makeWriterSpy();
     let metadataCalls = 0;
     const now = new Date('2026-07-12T09:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
-      fetchPortfolio: async () => [pos],
+      readRawPositions: stubRaw([pos]),
       fetchInstrumentsMetadata: async () => {
         metadataCalls++;
         return [makeInstrument()];
@@ -448,7 +355,7 @@ describe('runStocksSnapshot', () => {
   });
 
   it('leaves isin/resolvedTicker undefined and logs a warn when the ticker is absent from instruments-metadata', async () => {
-    const pos = makePosition({ ticker: 'UNKNOWN_TICKER_EQ' });
+    const pos = makeNormalized({ ticker: 'UNKNOWN_TICKER_EQ' });
     const { write, calls } = makeWriterSpy();
     const logs: string[] = [];
     const ctx: JobContext = {
@@ -459,7 +366,7 @@ describe('runStocksSnapshot', () => {
     };
 
     await runStocksSnapshot(ctx, {
-      fetchPortfolio: async () => [pos],
+      readRawPositions: stubRaw([pos]),
       fetchInstrumentsMetadata: async () => [makeInstrument({ ticker: 'OTHER_TICKER_EQ' })],
       resolveOpenFigiTickers: async (isins) => isins.map(() => 'NBIS'),
       writePortfolio: write,
@@ -474,7 +381,7 @@ describe('runStocksSnapshot', () => {
   });
 
   it('leaves resolvedTicker undefined (but isin populated) on an OpenFIGI resolution miss', async () => {
-    const pos = makePosition({ ticker: 'YNDX_US_EQ' });
+    const pos = makeNormalized({ ticker: 'YNDX_US_EQ' });
     const { write, calls } = makeWriterSpy();
     const logs: string[] = [];
     const ctx: JobContext = {
@@ -485,7 +392,7 @@ describe('runStocksSnapshot', () => {
     };
 
     await runStocksSnapshot(ctx, {
-      fetchPortfolio: async () => [pos],
+      readRawPositions: stubRaw([pos]),
       fetchInstrumentsMetadata: async () => [makeInstrument()],
       resolveOpenFigiTickers: async (isins) => isins.map(() => null),
       writePortfolio: write,

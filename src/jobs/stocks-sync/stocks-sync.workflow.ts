@@ -5,20 +5,30 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * a strictly read-only integration and write a local snapshot — no DynamoDB,
  * matching this repo's local-markdown-first direction.
  *
- * Stage 1, `stocks-snapshot`, calls Trading212's read-only portfolio endpoint,
- * normalizes each position into a broker-agnostic shape, and writes
- * data/out/portfolio.json (structured) + data/out/portfolio.md (human-readable,
- * with a price-difference column). Idempotent per ticker via the work_items
- * ledger.
+ * Stage 1, `stocks-fetch`, calls Trading212's read-only portfolio endpoint for the Invest
+ * account (and the ISA account too, if TRADING212_ISA_API_KEY_ID/_SECRET_KEY are set),
+ * normalizes each position into a broker-agnostic shape tagged by account, and writes
+ * data/out/raw-positions.json — NOT yet ticker-resolved. Records one combined `work_items`
+ * row per calendar day (investCount/isaCount/totalFetched), written unconditionally even
+ * when zero positions are fetched.
  *
- * Stage 2, `stocks-watch` (depends on stocks-snapshot), reads that snapshot and, for EVERY
+ * Stage 2, `stocks-snapshot` (depends on stocks-fetch), reads raw-positions.json and resolves
+ * each position's ISIN + a current, real-world ticker (Trading212's
+ * `GET /equity/metadata/instruments`, at most once per run, + OpenFIGI) — a soft, never-throwing
+ * best-effort step (a miss just logs a warn and leaves isin/resolvedTicker undefined for that
+ * position). Writes the FINAL data/out/portfolio.json (structured) + data/out/portfolio.md
+ * (human-readable, with a "Real ticker" column). Records ONE combined `work_items` row per
+ * calendar day (same day-key convention as stocks-fetch — a same-day re-run overwrites rather
+ * than duplicates), summarizing positionCount/totalValue/resolvedCount.
+ *
+ * Stage 3, `stocks-watch` (depends on stocks-snapshot), reads that snapshot and, for EVERY
  * position on EVERY run, computes + records its gain since average buy price — this
  * unconditional per-position ledger write (T300) means the check stage always has ledger
  * activity and is never misclassified as a noop by the framework's noop-detection, even when
  * nothing breaches. It tracks "already notified for the current breach episode" on a separate
  * ledger key and writes this run's fresh breaches to data/out/fresh-breaches.json.
  *
- * Stage 3, `stocks-notify` (depends on stocks-watch), reads fresh-breaches.json and sends ONE
+ * Stage 4, `stocks-notify` (depends on stocks-watch), reads fresh-breaches.json and sends ONE
  * push naming every position that freshly breached 30%+ above its average buy price this run —
  * a "re-scan + notification-log" idempotent stage (mirrors missing-tv-seasons): a fresh breach
  * notifies once, staying above 30% notifies nothing further, and dropping back below 30% resets
@@ -28,11 +38,12 @@ import type { WorkflowDefinition } from '../../core/types.js';
  *
  * Runs daily (schedule editable from the dashboard).
  *
- * `outputJob: 'stocks-snapshot'` (T348): the DAG's terminal stage, `stocks-notify`, is a pure
- * notify-trigger that structurally never records work_items rows, so the unified Output section
- * (T205, which by default reads the terminal wave) would always show empty. `stocks-snapshot` is
- * the stage with real per-item output (the ticker positions), so the Output section is overridden
- * to read from it instead.
+ * `outputJob: 'stocks-snapshot'` (T348, unaffected by the fetch/resolve split below since the
+ * name didn't move): the DAG's terminal stage, `stocks-notify`, is a pure notify-trigger that
+ * structurally never records work_items rows, so the unified Output section (T205, which by
+ * default reads the terminal wave) would always show empty. `stocks-snapshot` is the stage with
+ * real per-item output (the resolved-ticker positions — the genuinely user-facing "snapshot"),
+ * so the Output section is overridden to read from it instead.
  */
 const workflow: WorkflowDefinition = {
   name: 'stocks-sync',
@@ -45,7 +56,8 @@ const workflow: WorkflowDefinition = {
   maxConcurrency: 1,
   outputJob: 'stocks-snapshot',
   jobs: [
-    { job: 'stocks-snapshot' },
+    { job: 'stocks-fetch' },
+    { job: 'stocks-snapshot', dependsOn: ['stocks-fetch'] },
     { job: 'stocks-watch', dependsOn: ['stocks-snapshot'] },
     { job: 'stocks-notify', dependsOn: ['stocks-watch'] },
   ],

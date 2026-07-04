@@ -212,23 +212,26 @@ broker-agnostic `{ ticker, quantity, averageBuyPrice, currentPrice, currentValue
 and `data/out/portfolio.md` (one row per position, including an Account column and the price
 difference since purchase — `currentPrice - averageBuyPrice` — as both an absolute amount and a
 percentage). No DynamoDB, matching the local-markdown-first direction of
-`projects-sync`/`listening-digest`. **Also fetches an OPTIONAL second Stocks & Shares ISA account
-(T301)** — Trading212 API keys are scoped ONE key/secret pair PER ACCOUNT, so Invest and ISA each
-need their own separately-generated credentials — via `TRADING212_ISA_API_KEY_ID` /
-`TRADING212_ISA_API_SECRET_KEY`; when both are set, `fetchPortfolio` is called a second time with
-those credentials and the resulting positions are tagged `account: 'isa'` (vs `'invest'`) and
-merged into the same combined list. Unset ISA credentials mean Invest-only, unchanged from
-pre-T301 behavior. Stage 1 (`stocks-snapshot`) records ONE combined `work_items` row per calendar day
-(`YYYY-MM-DD`, a same-day re-run overwrites rather than duplicates), summarizing the whole snapshot
-(`positionCount`/`totalValue`/`resolvedCount`) — mirroring the same one-combined-artifact-per-period
-idiom `stock-digest-build`/`plex-space-saver-scan` already use, rather than one row per position
-(T403; this also means the workflow declares no `inputKeys()` any more and is NOT limitable — no
-Run-limit box on the dashboard, matching its sibling single-snapshot workflows). The
-per-position **`account:ticker`** composite key (`positionKey`) still exists — it's just no longer
-`stocks-snapshot`'s ledger key; it survives as the key `stocks-watch` (stage 2, below) uses on its
-own separate ledger, since the same ticker can be held in both accounts and a bare-ticker key would
-collide there. Current price/value come directly from Trading212's own portfolio endpoint (no
-separate market-data API or credential). **Also resolves
+`projects-sync`/`listening-digest`. **Four-stage DAG (fetch → resolve → watch → notify)** — the
+original single combined fetch+resolve stage was split in two so each job does one clearly-scoped
+thing (each new stage's own ledger `detail` genuinely describes what THAT stage produced, per the
+"success detail must describe what it produced" convention above).
+
+Stage 1 (`stocks-fetch`) fetches raw positions from Trading212 and normalizes/tags them by account —
+nothing else. **Also fetches an OPTIONAL second Stocks & Shares ISA account (T301)** — Trading212 API
+keys are scoped ONE key/secret pair PER ACCOUNT, so Invest and ISA each need their own
+separately-generated credentials — via `TRADING212_ISA_API_KEY_ID` / `TRADING212_ISA_API_SECRET_KEY`;
+when both are set, `fetchPortfolio` is called a second time with those credentials and the resulting
+positions are tagged `account: 'isa'` (vs `'invest'`) and merged into the same combined list. Unset
+ISA credentials mean Invest-only, unchanged from pre-T301 behavior. Current price/value come directly
+from Trading212's own portfolio endpoint (no separate market-data API or credential). The result is
+written, NOT yet ticker-resolved, to `data/out/raw-positions.json` — the hand-off artifact to stage 2,
+validated by the `stocks-raw-positions` gate. `stocks-fetch` records ONE combined `work_items` row per
+calendar day (`YYYY-MM-DD`, a same-day re-run overwrites rather than duplicates) — **written
+unconditionally, even when zero positions are fetched** — summarizing `investCount`/`isaCount`/
+`totalFetched` plus a `path`/`format` reference to `raw-positions.json`.
+
+Stage 2 (`stocks-snapshot`, `dependsOn: ['stocks-fetch']`) reads `raw-positions.json` and **resolves
 each position's ISIN + a current, real-world ticker (T373)** — Trading212's own `ticker` field can
 go stale after a company rename (e.g. `YNDX_US_EQ` is actually Nebius Group NV, ISIN
 `NL0009805522`, after its 2024 rename; Trading212 updated the `name` field but never the `ticker`).
@@ -246,8 +249,20 @@ unresolved ticker/ISIN and the position is written with both fields `undefined`,
 whole snapshot. The existing `ticker` field is untouched — it stays the join key back to
 broker/ledger data. `data/out/portfolio.json` includes the two new fields when present;
 `data/out/portfolio.md` shows the resolved real ticker as a "Real ticker" column, falling back to
-`—` when a position has no `resolvedTicker`.
-Stage 2 (`stocks-watch`, `dependsOn: ['stocks-snapshot']`) reads that snapshot and, EVERY run, for
+`—` when a position has no `resolvedTicker`. `stocks-snapshot` records ONE combined `work_items` row
+per calendar day (same day-key convention as `stocks-fetch` — both are same-key stages, so neither
+needs `rootKey`/`parentKey`), summarizing the whole snapshot (`positionCount`/`totalValue`/
+`resolvedCount`) — mirroring the same one-combined-artifact-per-period idiom
+`stock-digest-build`/`plex-space-saver-scan` already use, rather than one row per position (T403;
+this also means the workflow declares no `inputKeys()` and is NOT limitable — no Run-limit box on
+the dashboard, matching its sibling single-snapshot workflows). Unlike `stocks-fetch`, `stocks-snapshot`
+still skips its own ledger row when there's nothing to resolve (an empty raw-positions file). The
+per-position **`account:ticker`** composite key (`positionKey`) still exists — it's just not either
+new stage's ledger key; it survives as the key `stocks-watch` (stage 3, below) uses on its own
+separate ledger, since the same ticker can be held in both accounts and a bare-ticker key would
+collide there.
+
+Stage 3 (`stocks-watch`, `dependsOn: ['stocks-snapshot']`) reads that snapshot and, EVERY run, for
 EVERY position, computes its gain since average buy price and calls `markWorkItem` unconditionally
 — so this check stage always has ledger activity and can never be misclassified as noop by the
 framework's `hasJobAdvancedAnyItem` heuristic (T300; the pre-T300 combined stage only wrote the
@@ -258,18 +273,19 @@ key (`<account:ticker>::notified`, distinct from the per-run check key `<account
 staying above 30% leaves it untouched, and dropping back below 30% resets it (marked `skipped`,
 which `isWorkItemDone` treats as not-done) so a later re-crossing is fresh again. This run's fresh
 breaches are written to `data/out/fresh-breaches.json` (empty array if none) for the next stage.
-Stage 3 (`stocks-notify`, `dependsOn: ['stocks-watch']`) reads `fresh-breaches.json` and, if
+Stage 4 (`stocks-notify`, `dependsOn: ['stocks-watch']`) reads `fresh-breaches.json` and, if
 non-empty, sends **one** push (via `push()` from `src/core/notifier.ts`, not the generic aggregate
 `notifyWorkflow`) naming every freshly breaching position — reusing `buildDigest`/`formatBreachLine`.
 If empty, it does nothing; unlike `stocks-watch`, `stocks-notify` legitimately shows as noop/skipped
 in that case (there was genuinely nothing to send this run) — only the checking work being
-mislabeled skipped was the bug this split fixes. Multiple positions freshly breaching in the same
+mislabeled skipped was the bug T300 fixed. Multiple positions freshly breaching in the same
 run are combined into a single push, not one per position. Runs daily (schedule editable from the
 dashboard). Service: `src/services/trading212.service.ts`.
 Credentials: `TRADING212_API_KEY_ID`, `TRADING212_API_SECRET_KEY`. **`outputJob: 'stocks-snapshot'`
-(T348)**: the DAG's true terminal stage, `stocks-notify`, never records `work_items` rows (it's a
-pure notify-trigger), so the workflow manifest overrides the unified Output section (T205) to read
-`stocks-snapshot`'s ledger instead, showing the current ticker positions.
+(T348, unaffected by the fetch/resolve split above since the name didn't move)**: the DAG's true
+terminal stage, `stocks-notify`, never records `work_items` rows (it's a pure notify-trigger), so the
+workflow manifest overrides the unified Output section (T205) to read `stocks-snapshot`'s ledger
+instead, showing the current resolved-ticker positions.
 and **stock-digest** (`src/jobs/stock-digest/`) — a weekly, Claude-narrated markdown summary of the
 owner's current stock holdings, DISTINCT from `stocks-sync` (which only snapshots + threshold-alerts;
 `stock-digest` is its own workflow, own folder, own schedule, per explicit owner direction — not a
@@ -293,8 +309,8 @@ outright by `stocks-sync`'s `stocks-snapshot` stage) into the shared, top-level,
 SAME `fetchPortfolio`/`fetchInstrumentsMetadata`/`normalizePosition`/`positionKey`/`resolveTickers`/
 `resolveOpenFigiTickersBatched`/`NormalizedPosition` from that one service module. This is a shared
 top-level SERVICE dependency (the established, intended pattern for cross-job code reuse in this
-repo), not an inter-*workflow* dependency — `stocks-sync`'s `stocks-snapshot` stage and
-`stock-digest`'s `stock-portfolio-snapshot` stage each independently call the shared service with
+repo), not an inter-*workflow* dependency — `stocks-sync`'s `stocks-fetch`/`stocks-snapshot` stages
+and `stock-digest`'s `stock-portfolio-snapshot` stage each independently call the shared service with
 their own credentials each run; neither reads the other's output file. `stock-portfolio-snapshot`
 reads the SAME `TRADING212_API_KEY_ID`/`TRADING212_API_SECRET_KEY`/`TRADING212_ISA_API_KEY_ID`/
 `TRADING212_ISA_API_SECRET_KEY` env vars as `stocks-sync` (one Trading212 account, two independent

@@ -1,19 +1,15 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { markWorkItem, workItemCounts } from '../../../db/store.js';
 import {
   fetchInstrumentsMetadata,
-  fetchPortfolio,
-  normalizePosition,
   resolveOpenFigiTickersBatched,
   resolveTickers,
   type InstrumentsMetadataFetcher,
   type NormalizedPosition,
   type OpenFigiTickerResolver,
-  type PortfolioFetcher,
-  type Trading212Instrument,
 } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
 
@@ -69,13 +65,24 @@ export function writePortfolio(positions: NormalizedPosition[]): void {
 }
 
 // ---------------------------------------------------------------------------
+// Raw-positions reader (the hand-off from stocks-fetch)
+// ---------------------------------------------------------------------------
+
+export type RawPositionsReader = () => NormalizedPosition[];
+
+export function readRawPositions(): NormalizedPosition[] {
+  if (!existsSync(stocksSyncConfig.rawPositionsJsonPath)) return [];
+  return JSON.parse(readFileSync(stocksSyncConfig.rawPositionsJsonPath, 'utf8')) as NormalizedPosition[];
+}
+
+// ---------------------------------------------------------------------------
 // Core sync logic (injectable dependencies for hermeticity in tests)
 // ---------------------------------------------------------------------------
 
 export async function runStocksSnapshot(
   ctx: JobContext,
   opts: {
-    fetchPortfolio?: PortfolioFetcher;
+    readRawPositions?: RawPositionsReader;
     fetchInstrumentsMetadata?: InstrumentsMetadataFetcher;
     resolveOpenFigiTickers?: OpenFigiTickerResolver;
     writePortfolio?: PortfolioWriter;
@@ -87,13 +94,7 @@ export async function runStocksSnapshot(
   if (!apiKeyId) throw new Error('TRADING212_API_KEY_ID is not set');
   if (!apiSecretKey) throw new Error('TRADING212_API_SECRET_KEY is not set');
 
-  const isaApiKeyId = process.env.TRADING212_ISA_API_KEY_ID ?? '';
-  const isaApiSecretKey = process.env.TRADING212_ISA_API_SECRET_KEY ?? '';
-  const hasIsaCreds = Boolean(isaApiKeyId && isaApiSecretKey);
-
-  const fetchPortfolioFn =
-    opts.fetchPortfolio ??
-    ((keyId, secret) => callService('trading212', () => fetchPortfolio(keyId, secret)));
+  const readRawPositionsFn = opts.readRawPositions ?? readRawPositions;
   const fetchInstrumentsMetadataFn =
     opts.fetchInstrumentsMetadata ??
     ((keyId, secret) => callService('trading212', () => fetchInstrumentsMetadata(keyId, secret)));
@@ -103,20 +104,10 @@ export async function runStocksSnapshot(
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
   const now = opts.now ?? new Date();
 
-  ctx.log('info: stocks-sync starting — fetching open positions from Trading212 (read-only)');
+  ctx.log('info: stocks-snapshot starting — resolving ISIN + real-world ticker for fetched positions');
 
-  const rawInvestPositions = await fetchPortfolioFn(apiKeyId, apiSecretKey);
-  ctx.log(`info: fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
-
-  let positions = rawInvestPositions.map((p) => normalizePosition(p, 'invest'));
-
-  if (hasIsaCreds) {
-    const rawIsaPositions = await fetchPortfolioFn(isaApiKeyId, isaApiSecretKey);
-    ctx.log(`info: fetched ${rawIsaPositions.length} open position(s) from Trading212 ISA account`);
-    positions = positions.concat(rawIsaPositions.map((p) => normalizePosition(p, 'isa')));
-  } else {
-    ctx.log('info: no ISA credentials configured (TRADING212_ISA_API_KEY_ID / _SECRET_KEY) — Invest account only');
-  }
+  let positions = readRawPositionsFn();
+  ctx.log(`info: read ${positions.length} raw position(s) from stocks-fetch`);
 
   if (positions.length > 0) {
     ctx.log('info: resolving ISIN + real-world ticker for each position via Trading212 instruments-metadata + OpenFIGI');
@@ -172,7 +163,7 @@ export async function runStocksSnapshot(
   });
 
   ctx.log(
-    `info: stocks-sync complete — recorded 1 combined ledger row (${key}) for ${positions.length} ` +
+    `info: stocks-snapshot complete — recorded 1 combined ledger row (${key}) for ${positions.length} ` +
       `position(s), total value ${totalValue.toFixed(2)}, ${resolvedCount} real-ticker resolved`,
   );
   ctx.progress(100, `${positions.length} position(s) recorded for ${key}`);
