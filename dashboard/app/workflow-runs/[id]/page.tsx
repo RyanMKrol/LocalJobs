@@ -415,11 +415,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {workflow && (
-        run?.workflow_name === 'stock-digest'
-          ? <StageIoPanel runId={id} members={workflow.jobs} />
-          : <IoPanel runId={id} members={workflow.jobs} />
-      )}
+      {workflow && <StageIoPanel runId={id} members={workflow.jobs} />}
 
       <h2>Member runs</h2>
       <div className="panel">

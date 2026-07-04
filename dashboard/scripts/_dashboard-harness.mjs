@@ -232,8 +232,9 @@ const workflowIoStocks = {
   scopedConsumerJobs: [],
 };
 
-// stock-digest — exercises StageIoPanel (decoupled inputs/outputs, T382 follow-up),
-// gated to render instead of the generic IoPanel ONLY for workflow_name === 'stock-digest'.
+// stock-digest — exercises StageIoPanel (decoupled inputs/outputs, T382 follow-up).
+// StageIoPanel is now (T386) the default for EVERY workflow's run-detail page, so this
+// fixture set proves the genuine fan-in shape it was originally built for.
 // A 3-stage fan-in DAG: stock-portfolio-snapshot -> both stock-sector-lookup AND
 // stock-digest-build. stock-sector-lookup's fixture deliberately has 3 output rows
 // (one failed) so the "no root_key collapsing" behaviour is actually visible.
@@ -274,6 +275,42 @@ const stockDigestStageIoOverall = {
   predecessorJobs: ['stock-portfolio-snapshot'],
   outputJobs: ['stock-digest-build'],
   job: '__overall__',
+};
+
+// T386: `places` — a STRICTLY-LINEAR 3-stage chain (places-resolve -> places-enrich ->
+// places-enrich-with-llm, no fan-out/fan-in at all), proving StageIoPanel against the
+// simplest multi-stage shape now that it's the default for every workflow. Reuses the
+// existing `/workflow-runs/1` run (workflow_name: 'places', `members` above).
+const placesResolveOutput = { jobName: 'places-resolve', itemKey: 'cid:' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name' } };
+const placesEnrichOutput = { jobName: 'places-enrich', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name — enriched fields only' } };
+const placesLlmOutput = { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', markdown: '/abs/data/out/' + LONG + '.md' } };
+const placesStageIo = {
+  'places-resolve': { inputs: [], outputs: [placesResolveOutput], predecessorJobs: [], job: 'places-resolve' },
+  'places-enrich': { inputs: [placesResolveOutput], outputs: [placesEnrichOutput], predecessorJobs: ['places-resolve'], job: 'places-enrich' },
+  'places-enrich-with-llm': { inputs: [placesEnrichOutput], outputs: [placesLlmOutput], predecessorJobs: ['places-enrich'], job: 'places-enrich-with-llm' },
+};
+const placesStageIoOverall = {
+  inputs: [placesResolveOutput],
+  outputs: [placesLlmOutput],
+  predecessorJobs: ['places-resolve'],
+  outputJobs: ['places-enrich-with-llm'],
+  job: '__overall__',
+};
+
+// T386: a SINGLE-STAGE workflow (self-pairing — root wave AND terminal wave are the
+// SAME single job) — proves StageIoPanel doesn't crash/render nonsense when a stage is
+// simultaneously its own predecessor-less root and its own terminal output.
+const singleStageMembers = [{ job_name: 'claude-warm', depends_on: [] }];
+const singleStageWorkflowRun = workflowRun({ id: 'claude-warmer-run', workflow_name: 'claude-warmer', progress: 100 });
+const singleStageRunJobs = singleStageMembers.map((m, i) => run({
+  id: `claude-warmer-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'claude-warmer-run',
+}));
+const singleStageOutput = { jobName: 'claude-warm', itemKey: NOW, status: 'success', detail: { name: 'Warm ping sent' } };
+const singleStageStageIo = {
+  'claude-warm': { inputs: [], outputs: [singleStageOutput], predecessorJobs: [], job: 'claude-warm' },
+};
+const singleStageStageIoOverall = {
+  inputs: [], outputs: [singleStageOutput], predecessorJobs: [], outputJobs: ['claude-warm'], job: '__overall__',
 };
 
 const tasks = [
@@ -472,6 +509,17 @@ export function fixtureFor(pathname, searchParams) {
     return stockDigestStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/stock-digest-run') return { run: stockDigestWorkflowRun, jobs: stockDigestRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/1/stage-io') {
+    if (searchParams?.get('overall') === 'true') return placesStageIoOverall;
+    const job = searchParams?.get('job');
+    return placesStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/claude-warmer-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return singleStageStageIoOverall;
+    const job = searchParams?.get('job');
+    return singleStageStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/claude-warmer-run') return { run: singleStageWorkflowRun, jobs: singleStageRunJobs, logs, gates: [] };
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) {
     const job = searchParams?.get('job');
     if (job === 'places-enrich') return workflowIoScopedToEnrich;
@@ -487,6 +535,9 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/stock-digest') {
     return { workflow: workflow({ name: 'stock-digest', category: 'regular-maintenance', jobs: stockDigestMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/claude-warmer') {
+    return { workflow: workflow({ name: 'claude-warmer', category: 'regular-maintenance', jobs: singleStageMembers, gates: [] }) };
   }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
@@ -617,12 +668,15 @@ export const FLOWS = [
   {
     // T360: confirms react-markdown + remark-gfm actually renders a GFM pipe
     // table as a real <table>, not raw `| a | b |` text — the bug this fixes.
+    // T386 follow-up: the markdown-preview affordance now lives on StageIoPanel's
+    // `.stage-io-item-link` (its default "Overall" tab already shows the terminal
+    // stage's markdown output), not the old IoPanel's `.out-meta-link`.
     name: 'workflow-run-output-table',
     path: '/workflow-runs/1',
     viewport: true,
-    waitFor: ['.out-meta-link'],
+    waitFor: ['.stage-io-item-link'],
     actions: async (page) => {
-      await page.click('.out-meta-link');
+      await page.click('.stage-io-item-link');
       await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
       await page.waitForSelector('.md-body table', { state: 'visible', timeout: 5000 });
       await page.waitForTimeout(300);
@@ -750,9 +804,9 @@ export const FLOWS = [
     },
   },
   {
-    // T314: clicking a per-stage job pill on the workflow-run IO panel re-fetches
-    // (server-side, via ?job=) that ONE stage's own input→output pairing, relabels
-    // the column headers, and resets the state-filter pills back to 'all'.
+    // T386 follow-up to T314: `places` (a strictly-linear multi-stage workflow) now
+    // renders StageIoPanel instead of the old joined IoPanel — clicking a per-stage
+    // chip re-scopes the view to that ONE stage's own decoupled inputs/outputs.
     name: 'io-panel-job-scoped',
     path: '/workflow-runs/1',
     waitFor: ['.io-job-filter-bar'],
@@ -788,16 +842,14 @@ export const FLOWS = [
     },
   },
   {
-    // T329: the workflow-run IoPanel table headers are now sortable — click the
-    // "State" header to sort the currently-filtered rows and show the ▲/▼ marker.
-    name: 'io-panel-sorted-by-state',
-    path: '/workflow-runs/1',
-    waitFor: ['table th.sort-th'],
-    actions: async (page) => {
-      await page.click('table th.sort-th:has-text("State")');
-      await page.waitForSelector('table th.sort-th-active', { state: 'visible', timeout: 5000 });
-      await page.waitForTimeout(200);
-    },
+    // T386: `places` and `claude-warmer` (linear multi-stage and single-stage shapes)
+    // now render StageIoPanel; its default "Overall" tab shows the workflow-wide
+    // root-wave inputs / terminal-wave outputs — confirm the single-stage case (where
+    // the root wave AND terminal wave are the SAME job) renders sensibly, not blank
+    // or duplicated.
+    name: 'stage-io-single-stage-overall',
+    path: '/workflow-runs/claude-warmer-run',
+    waitFor: ['.io-job-filter-bar'],
   },
   {
     // T308: the theme/font/mode picker popover was replaced by a single sun/moon
