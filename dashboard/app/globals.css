@@ -96,6 +96,11 @@ h2 { font-size: 16px; margin: 28px 0 12px; color: var(--muted); text-transform: 
 .panel > h2:first-child { margin: 12px 18px 4px; }
 .grid { display: grid; gap: 14px; }
 .cards { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+/* .grid layouts already space items via `gap` -- the .panel + .panel sibling margin above is for
+   stacked panel lists in block flow (e.g. the category-grouped Workflows/Integrations pages) and
+   must not leak into a grid, where it combines with grid's default stretch alignment to make
+   whichever card is literally first in the DOM list render taller than every other card in its row. */
+.grid.cards > .panel + .panel { margin-top: 0; }
 
 table { width: 100%; border-collapse: collapse; }
 .services-table { table-layout: fixed; }

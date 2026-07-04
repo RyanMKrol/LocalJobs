@@ -572,6 +572,10 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
   if (pathname === '/api/ignored') return { ignored: [stuckItem({ item_key: LONG + '-ign' })] };
   if (pathname === '/api/workflows') return { workflows: [
+    // T398: claude-warmer FIRST on purpose -- reproduces the real dashboard's card-height bug,
+    // where the very first .panel card in the Overview grid had no `.panel + .panel` sibling
+    // margin, so grid's stretch alignment compressed every other (non-first) card instead.
+    workflow({ name: 'claude-warmer', category: 'regular-maintenance', schedule: '*/30 * * * *', jobs: singleStageMembers, stuck: 0 }),
     workflow(),
     workflow({ name: 'perfumes', enabled: 0, effective_notify_enabled: false }),
     workflow({ name: 'movie-recommendations', category: 'recommendations', stuck: 0 }),
