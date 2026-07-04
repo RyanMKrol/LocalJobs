@@ -10156,7 +10156,7 @@
     {
       "id": "T383",
       "title": "Generalize stageIoLists to accept multiple job names per side",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
