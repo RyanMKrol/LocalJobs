@@ -1658,6 +1658,59 @@ export function createApiServer(
         return json(res, 202, { ok: true, message: 'workflow run started', limit: limit ?? null });
       }
 
+      // POST /api/workflows/run-all   (optional body { limit }, default 3)
+      // Fleet-wide "run everything" sweep: fires a manual run of EVERY workflow
+      // (including disabled ones — enabled only gates the scheduler, and manual runs
+      // already bypass it). A workflow already running is SKIPPED, not treated as an
+      // error for the whole call — best-effort across all workflows, mirroring
+      // reset-output-all. A workflow with no stage declaring input keys is run
+      // UNLIMITED (per T094, `limit` is a no-op for it) rather than rejected. Each
+      // workflow's run is fire-and-forget (same as the single-workflow /run endpoint
+      // above) — this endpoint does not wait for any run to finish. Registered before
+      // the :name-based /run route is irrelevant here since this path has no :name
+      // segment and matches by parts[2] === 'run-all'.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[2] === 'run-all' && parts.length === 3) {
+        const body = await readBody(req);
+        let limit = 3;
+        if (body.limit !== undefined && body.limit !== null && body.limit !== '') {
+          limit = Number(body.limit);
+          if (!Number.isInteger(limit) || limit < 1) {
+            return json(res, 400, { error: 'limit must be a positive integer' });
+          }
+        }
+        const results: Array<
+          | { name: string; status: 'started'; limited: boolean; limit: number | null }
+          | { name: string; status: 'skipped'; reason: string }
+        > = [];
+        for (const wf of listWorkflows()) {
+          const def = getWorkflowDefinition(wf.name);
+          if (!def) continue;
+          if (workflowRunInProgress(wf.name)) {
+            results.push({ name: wf.name, status: 'skipped', reason: 'already running' });
+            continue;
+          }
+          const limited = def.jobs.some((j) => getJobDefinition(j.job)?.inputKeys);
+          runWorkflow(def, 'manual', limited ? { limit } : {}).catch((e) =>
+            console.error('[api] run-all: workflow run error', wf.name, e),
+          );
+          results.push({ name: wf.name, status: 'started', limited, limit: limited ? limit : null });
+        }
+        const startedCount = results.filter((r) => r.status === 'started').length;
+        const skipped = results.filter((r) => r.status === 'skipped') as Array<{ name: string; status: 'skipped'; reason: string }>;
+        console.log(
+          `[api] run-all: ${startedCount} started (limit ${limit}), ${skipped.length} skipped` +
+            (skipped.length ? ` (already running: ${skipped.map((s) => s.name).join(', ')})` : ''),
+        );
+        return json(res, 202, {
+          ok: true,
+          totalWorkflows: results.length,
+          startedCount,
+          skippedCount: skipped.length,
+          limit,
+          results,
+        });
+      }
+
       // POST /api/workflows/:name/toggle  { enabled }
       if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'toggle') {
         const body = await readBody(req);

@@ -506,6 +506,82 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   const j = workflows.indexOf(guardWf); if (j >= 0) workflows.splice(j, 1);
 }
 
+// ── fleet-wide run-all (T396): POST /api/workflows/run-all fires a manual run of
+// every workflow, skipping ones already running (best-effort, not all-or-nothing),
+// defaulting limitable workflows to `limit` (3) and running non-limitable ones
+// unlimited. Self-contained fixtures: one limitable workflow, one plain one, and
+// one seeded as already-running (cleaned up afterwards). ──
+{
+  const raLimRoot: JobDefinition = { name: 'ra-lim-root', inputKeys: () => ['a', 'b'], run: async () => {} };
+  const raPlain: JobDefinition = { name: 'ra-plain', run: async () => {} };
+  const raBusyJob: JobDefinition = { name: 'ra-busy-job', run: async () => {} };
+  for (const d of [raLimRoot, raPlain, raBusyJob]) { syncJob(d); jobs.push(d); }
+  const raLimWf: WorkflowDefinition = { name: 'ra-lim-wf', jobs: [{ job: 'ra-lim-root' }] };
+  const raPlainWf: WorkflowDefinition = { name: 'ra-plain-wf', jobs: [{ job: 'ra-plain' }] };
+  const raBusyWf: WorkflowDefinition = { name: 'ra-busy-wf', jobs: [{ job: 'ra-busy-job' }] };
+  for (const w of [raLimWf, raPlainWf, raBusyWf]) { syncWorkflow(w); workflows.push(w); }
+
+  await test('run-all: skips already-running workflows, resolves limit for limitable ones, runs non-limitable ones unlimited', async () => {
+    const wrid = createWorkflowRun('ra-busy-wf', 'manual'); // status 'running'
+    try {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/workflows/run-all`, { method: 'POST' });
+        assert.equal(res.status, 202);
+        const body = (await res.json()) as {
+          ok: boolean;
+          totalWorkflows: number;
+          startedCount: number;
+          skippedCount: number;
+          limit: number;
+          results: Array<
+            | { name: string; status: 'started'; limited: boolean; limit: number | null }
+            | { name: string; status: 'skipped'; reason: string }
+          >;
+        };
+        assert.equal(body.ok, true);
+        assert.equal(body.limit, 3, 'defaults to limit 3 when omitted');
+        assert.ok(body.results.length >= 3, 'at least the 3 seeded fixture workflows are present');
+
+        const busy = body.results.find((r) => r.name === 'ra-busy-wf');
+        assert.ok(busy, 'busy workflow present in results');
+        assert.equal(busy!.status, 'skipped');
+        assert.equal((busy as { reason?: string }).reason, 'already running');
+
+        const lim = body.results.find((r) => r.name === 'ra-lim-wf');
+        assert.ok(lim, 'limitable workflow present in results');
+        assert.equal(lim!.status, 'started');
+        assert.equal((lim as { limited?: boolean }).limited, true);
+        assert.equal((lim as { limit?: number | null }).limit, 3);
+
+        const plain = body.results.find((r) => r.name === 'ra-plain-wf');
+        assert.ok(plain, 'non-limitable workflow present in results');
+        assert.equal(plain!.status, 'started');
+        assert.equal((plain as { limited?: boolean }).limited, false);
+        assert.equal((plain as { limit?: number | null }).limit, null);
+
+        assert.equal(body.startedCount, body.results.filter((r) => r.status === 'started').length);
+        assert.equal(body.skippedCount, body.results.filter((r) => r.status === 'skipped').length);
+        assert.equal(body.totalWorkflows, body.results.length);
+      });
+    } finally {
+      finishWorkflowRun(wrid, 'cancelled'); // release the active run for other tests
+    }
+  });
+
+  await test('run-all: rejects a non-positive/non-integer limit with 400', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/run-all`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: -1 }),
+      });
+      assert.equal(res.status, 400);
+      assert.match(((await res.json()) as { error?: string }).error ?? '', /limit must be a positive integer/);
+    });
+  });
+
+  for (const d of [raLimRoot, raPlain, raBusyJob]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
+  for (const w of [raLimWf, raPlainWf, raBusyWf]) { const i = workflows.indexOf(w); if (i >= 0) workflows.splice(i, 1); }
+}
+
 // ── definition-level gate detail (T102): the run-AGNOSTIC
 // GET /api/workflows/:name/gates/:producer/:key returns the structural gate
 // (key, enriched description, producer→consumer) plus each side's declared

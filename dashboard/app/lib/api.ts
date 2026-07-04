@@ -664,6 +664,22 @@ export const api = {
         | { name: string; status: 'skipped'; reason: string }
       >;
     }>('/api/workflows/reset-output-all'),
+  // Fleet-wide "run everything" sweep (T396): fires a manual run of every
+  // workflow (including disabled ones), defaulting non-limited runs to `limit`
+  // originating inputs for workflows that support limiting (default 3). Fire-
+  // and-forget per workflow — the response is dispatched, not settled.
+  runAllWorkflows: (limit?: number) =>
+    post<{
+      ok: boolean;
+      totalWorkflows: number;
+      startedCount: number;
+      skippedCount: number;
+      limit: number;
+      results: Array<
+        | { name: string; status: 'started'; limited: boolean; limit: number | null }
+        | { name: string; status: 'skipped'; reason: string }
+      >;
+    }>('/api/workflows/run-all', limit !== undefined ? { limit } : undefined),
   services: () => get<{ services: Service[] }>('/api/services'),
   updateServiceLimits: (name: string, limits: ServiceLimits) =>
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
