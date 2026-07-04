@@ -10503,7 +10503,7 @@
     {
       "id": "T396",
       "title": "Add bulk POST /api/workflows/run-all endpoint (fleet-wide run-everything)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
