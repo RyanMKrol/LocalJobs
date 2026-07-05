@@ -13,13 +13,19 @@ import type { WorkflowDefinition } from '../../core/types.js';
  *
  * NO inter-workflow dependency (T382, reverses the T337 cross-workflow-read
  * pattern): stock-digest fetches its OWN Trading212 snapshot rather than
- * reading `stocks-sync`'s `data/out/portfolio.json`. Three-stage DAG:
- * `stock-portfolio-snapshot` (own credentials read + its own ISIN/OpenFIGI
- * real-ticker resolution, T373, via the shared `src/services/trading212.service.ts`
- * also used by `stocks-sync`) fans out to BOTH `stock-sector-lookup` (resolves
- * each held ticker's industry via the Finnhub company-profile API — preferring
- * the OpenFIGI-resolved real-world ticker over the raw/possibly-stale
- * Trading212 ticker — idempotent per ticker via the work_items ledger, writes
+ * reading `stocks-sync`'s `data/out/portfolio.json`. Four-stage DAG (T415 split
+ * the old combined fetch+resolve stage in two, mirroring `stocks-sync`):
+ * `stock-portfolio-fetch` (own credentials read, fetches Invest + optional ISA
+ * positions, writes `data/out/raw-portfolio.json`, no resolution) feeds
+ * `stock-portfolio-snapshot` (reads raw-portfolio.json, resolves each position's
+ * ISIN + real-world ticker via OpenFIGI, T373, via the shared
+ * `src/services/trading212.service.ts` also used by `stocks-sync` — genuinely
+ * load-bearing here, unlike `stocks-sync`'s now-cosmetic-only resolution, since
+ * `stock-sector-lookup` actually queries Finnhub with the resolved ticker),
+ * which fans out to BOTH `stock-sector-lookup` (resolves each held ticker's
+ * industry via the Finnhub company-profile API — preferring the
+ * OpenFIGI-resolved real-world ticker over the raw/possibly-stale Trading212
+ * ticker — idempotent per ticker via the work_items ledger, writes
  * data/out/sectors.json) AND `stock-digest-build` (a genuine fan-in: it reads
  * BOTH the portfolio snapshot and, once `stock-sector-lookup` has run, the
  * sector map). The report degrades gracefully (omits the diversification
@@ -29,14 +35,15 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * Markdown-only output — no push notification is sent, mirroring
  * `listening-digest`.
  *
- * Shared lineage root (follow-up to T382): all three stages' `markWorkItem` calls
- * use the SAME `weekKey(now)` (`src/workflows/stock-digest/lib.ts`) as their `rootKey` —
- * `stock-portfolio-snapshot` collapses to ONE combined ledger row per run (keyed by
- * that week, not one row per position), and both `stock-sector-lookup` (per-ticker
- * keys) and `stock-digest-build` (its own week-keyed row) pass that same value as
- * `rootKey` explicitly. This is genuinely correct for ledger POTENCY/idempotency
- * (one row per week for the snapshot; the same root threaded through for lineage) —
- * kept deliberately, not reverted.
+ * Shared lineage root (follow-up to T382): every stage's `markWorkItem` call
+ * uses the SAME `weekKey(now)` (`src/workflows/stock-digest/lib.ts`) as its `rootKey` —
+ * `stock-portfolio-fetch` and `stock-portfolio-snapshot` each collapse to ONE
+ * combined ledger row per run (keyed by that week, not one row per position),
+ * and both `stock-sector-lookup` (per-ticker keys) and `stock-digest-build` (its
+ * own week-keyed row) pass that same value as `rootKey` explicitly. This is
+ * genuinely correct for ledger POTENCY/idempotency (one row per week per
+ * snapshot stage; the same root threaded through for lineage) — kept
+ * deliberately, not reverted.
  *
  * Decoupled dashboard display, NOT a joined table (second follow-up to T382): the
  * generic workflow-run Input → Output panel pairs "one input" to "one output" by
@@ -62,7 +69,8 @@ const workflow: WorkflowDefinition = {
   schedule: '0 8 * * 1',
   maxConcurrency: 1,
   jobs: [
-    { job: 'stock-portfolio-snapshot' },
+    { job: 'stock-portfolio-fetch' },
+    { job: 'stock-portfolio-snapshot', dependsOn: ['stock-portfolio-fetch'] },
     { job: 'stock-sector-lookup', dependsOn: ['stock-portfolio-snapshot'] },
     { job: 'stock-digest-build', dependsOn: ['stock-portfolio-snapshot', 'stock-sector-lookup'] },
   ],

@@ -20,10 +20,18 @@ export const sectorsJsonPath = resolve(stockDigestConfig.outDir, 'sectors.json')
 
 /**
  * "data/out/portfolio.json" — stock-digest's OWN Trading212 snapshot, fetched
- * independently by `stock-portfolio-snapshot` (NOT a read of stocks-sync's
- * data/out/portfolio.json — the two workflows are deliberately decoupled).
+ * independently by `stock-portfolio-fetch` + resolved by `stock-portfolio-snapshot`
+ * (NOT a read of stocks-sync's data/out/portfolio.json — the two workflows are
+ * deliberately decoupled).
  */
 export const portfolioJsonPath = resolve(stockDigestConfig.outDir, 'portfolio.json');
+
+/**
+ * "data/out/raw-portfolio.json" — the pre-resolution positions written by
+ * `stock-portfolio-fetch`, before `stock-portfolio-snapshot` resolves each
+ * position's ISIN + real-world ticker via OpenFIGI.
+ */
+export const rawPortfolioJsonPath = resolve(stockDigestConfig.outDir, 'raw-portfolio.json');
 
 /** "data/out/stock-digest-facts-<weekKey>.json" — the raw facts JSON passed to Claude for a given week. */
 export function factsPathFor(weekKey: string, outDir: string = stockDigestConfig.outDir): string {

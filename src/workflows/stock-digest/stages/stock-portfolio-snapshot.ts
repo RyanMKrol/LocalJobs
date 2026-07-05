@@ -1,23 +1,31 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { markWorkItem } from '../../../db/store.js';
 import {
   fetchInstrumentsMetadata,
-  fetchPortfolio,
-  normalizePosition,
   resolveOpenFigiTickersBatched,
   resolveTickers,
   type InstrumentsMetadataFetcher,
   type NormalizedPosition,
   type OpenFigiTickerResolver,
-  type PortfolioFetcher,
 } from '../../../services/trading212.service.js';
-import { portfolioJsonPath, stockDigestConfig } from '../config.js';
+import { portfolioJsonPath, rawPortfolioJsonPath, stockDigestConfig } from '../config.js';
 import { weekKey, weekLabel } from '../lib.js';
 
 const JOB_NAME = 'stock-portfolio-snapshot';
+
+// ---------------------------------------------------------------------------
+// Raw-portfolio reader (the hand-off from stock-portfolio-fetch)
+// ---------------------------------------------------------------------------
+
+export type RawPortfolioReader = () => NormalizedPosition[];
+
+export function readRawPortfolio(): NormalizedPosition[] {
+  if (!existsSync(rawPortfolioJsonPath)) return [];
+  return JSON.parse(readFileSync(rawPortfolioJsonPath, 'utf8')) as NormalizedPosition[];
+}
 
 // ---------------------------------------------------------------------------
 // Output writer (injectable for testing — avoids touching the real data dir)
@@ -31,25 +39,26 @@ export function writePortfolio(positions: NormalizedPosition[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Core stage logic — deliberately independent of stocks-sync: fetches its OWN
-// Trading212 snapshot rather than reading stocks-sync's data/out/portfolio.json,
-// so stock-digest has no inter-workflow dependency. Mirrors stocks-sync's
-// stocks-snapshot stage (same credentials, same ISIN/OpenFIGI real-ticker
-// resolution, T373) via the shared src/services/trading212.service.ts.
+// Core stage logic — resolves each position's ISIN + real-world ticker via
+// OpenFIGI (T373), reading its input from stock-portfolio-fetch's
+// raw-portfolio.json rather than fetching Trading212 positions directly.
+// Deliberately independent of stocks-sync (own credentials read, own ISIN/
+// OpenFIGI real-ticker resolution) via the shared
+// src/services/trading212.service.ts.
 //
 // Unlike stocks-sync's per-position ledger, this stage records ONE combined
 // work_items row per run, keyed by the SAME ISO week key stock-digest-build
-// uses — the whole workflow only ever runs its three stages together, and the
+// uses — the whole workflow only ever runs its stages together, and the
 // final report is bucketed weekly, so one shared week-keyed root gives every
 // downstream stage (stock-sector-lookup's per-ticker rows, stock-digest-build's
-// own row) something clean to point their `rootKey` at, instead of three
-// disjoint key spaces that don't join in the Input → Output panel.
+// own row) something clean to point their `rootKey` at, instead of disjoint
+// key spaces that don't join in the Input → Output panel.
 // ---------------------------------------------------------------------------
 
 export async function runStockPortfolioSnapshot(
   ctx: JobContext,
   opts: {
-    fetchPortfolio?: PortfolioFetcher;
+    readRawPortfolio?: RawPortfolioReader;
     fetchInstrumentsMetadata?: InstrumentsMetadataFetcher;
     resolveOpenFigiTickers?: OpenFigiTickerResolver;
     writePortfolio?: PortfolioWriter;
@@ -71,13 +80,7 @@ export async function runStockPortfolioSnapshot(
   if (!apiKeyId) throw new Error('TRADING212_API_KEY_ID is not set');
   if (!apiSecretKey) throw new Error('TRADING212_API_SECRET_KEY is not set');
 
-  const isaApiKeyId = process.env.TRADING212_ISA_API_KEY_ID ?? '';
-  const isaApiSecretKey = process.env.TRADING212_ISA_API_SECRET_KEY ?? '';
-  const hasIsaCreds = Boolean(isaApiKeyId && isaApiSecretKey);
-
-  const fetchPortfolioFn =
-    opts.fetchPortfolio ??
-    ((keyId, secret) => callService('trading212', () => fetchPortfolio(keyId, secret)));
+  const readRawPortfolioFn = opts.readRawPortfolio ?? readRawPortfolio;
   const fetchInstrumentsMetadataFn =
     opts.fetchInstrumentsMetadata ??
     ((keyId, secret) => callService('trading212', () => fetchInstrumentsMetadata(keyId, secret)));
@@ -86,20 +89,10 @@ export async function runStockPortfolioSnapshot(
     ((isins) => resolveOpenFigiTickersBatched(isins, process.env.OPENFIGI_API_KEY));
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
 
-  ctx.log('info: stock-portfolio-snapshot starting — fetching stock-digest\'s own snapshot from Trading212 (read-only)');
+  ctx.log('info: stock-portfolio-snapshot starting — resolving tickers from stock-portfolio-fetch\'s raw-portfolio.json');
 
-  const rawInvestPositions = await fetchPortfolioFn(apiKeyId, apiSecretKey);
-  ctx.log(`info: fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
-
-  let positions = rawInvestPositions.map((p) => normalizePosition(p, 'invest'));
-
-  if (hasIsaCreds) {
-    const rawIsaPositions = await fetchPortfolioFn(isaApiKeyId, isaApiSecretKey);
-    ctx.log(`info: fetched ${rawIsaPositions.length} open position(s) from Trading212 ISA account`);
-    positions = positions.concat(rawIsaPositions.map((p) => normalizePosition(p, 'isa')));
-  } else {
-    ctx.log('info: no ISA credentials configured (TRADING212_ISA_API_KEY_ID / _SECRET_KEY) — Invest account only');
-  }
+  let positions = readRawPortfolioFn();
+  ctx.log(`info: read ${positions.length} raw position(s) from stock-portfolio-fetch`);
 
   if (positions.length > 0) {
     ctx.log('info: resolving ISIN + real-world ticker for each position via Trading212 instruments-metadata + OpenFIGI');

@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ArtifactContract, GateResult } from '../../core/types.js';
 import { buildDag, deriveGates } from '../../core/dag.js';
-import { stockDigestPortfolioContract, stockSectorsContract } from './contracts.js';
+import { stockDigestPortfolioContract, stockRawPortfolioContract, stockSectorsContract } from './contracts.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -78,6 +78,45 @@ test('stock-sectors: non-string/non-null value fails', () => {
   assert.equal(r.ok, false);
 });
 
+// ────────────────────────── stock-raw-portfolio ──────────────────────────
+
+test('stock-raw-portfolio: missing file fails (not optional — this stage always writes it)', () => {
+  const c = stockRawPortfolioContract(f('nope-raw-portfolio.json'));
+  const r = run(c);
+  assert.equal(r.ok, false);
+});
+
+test('stock-raw-portfolio: empty array is ok (every position sold)', () => {
+  const p = writeJson('raw-portfolio-empty.json', []);
+  const r = run(stockRawPortfolioContract(p));
+  assert.equal(r.ok, true);
+});
+
+test('stock-raw-portfolio: well-formed non-empty array is ok', () => {
+  const p = writeJson('raw-portfolio-good.json', [{ ticker: 'AAPL_US_EQ', account: 'invest' }]);
+  const r = run(stockRawPortfolioContract(p));
+  assert.equal(r.ok, true);
+});
+
+test('stock-raw-portfolio: invalid JSON fails', () => {
+  const p = f('raw-portfolio-bad.json');
+  writeFileSync(p, '{not json');
+  const r = run(stockRawPortfolioContract(p));
+  assert.equal(r.ok, false);
+});
+
+test('stock-raw-portfolio: top-level object (not array) fails', () => {
+  const p = writeJson('raw-portfolio-obj.json', { ticker: 'AAPL_US_EQ' });
+  const r = run(stockRawPortfolioContract(p));
+  assert.equal(r.ok, false);
+});
+
+test('stock-raw-portfolio: entry missing ticker/account fails', () => {
+  const p = writeJson('raw-portfolio-badentry.json', [{ ticker: 'AAPL_US_EQ' }]);
+  const r = run(stockRawPortfolioContract(p));
+  assert.equal(r.ok, false);
+});
+
 // ────────────────────── stock-digest-portfolio ──────────────────────
 
 test('stock-digest-portfolio: missing file fails (not optional — this stage always writes it)', () => {
@@ -119,27 +158,31 @@ test('stock-digest-portfolio: entry missing ticker/account fails', () => {
 
 // ─────────────────────────── DAG gates ───────────────────────────
 
-test('stock-digest: gate derives at every edge of the 3-stage fan-in DAG (count == 3)', () => {
+test('stock-digest: gate derives at every edge of the 4-stage fan-in DAG (count == 4)', () => {
   const dag = buildDag([
-    { job: 'stock-portfolio-snapshot' },
+    { job: 'stock-portfolio-fetch' },
+    { job: 'stock-portfolio-snapshot', dependsOn: ['stock-portfolio-fetch'] },
     { job: 'stock-sector-lookup', dependsOn: ['stock-portfolio-snapshot'] },
     { job: 'stock-digest-build', dependsOn: ['stock-portfolio-snapshot', 'stock-sector-lookup'] },
   ]);
   const produces = new Map<string, string[]>([
+    ['stock-portfolio-fetch', ['stock-raw-portfolio']],
     ['stock-portfolio-snapshot', ['stock-digest-portfolio']],
     ['stock-sector-lookup', ['stock-sectors']],
     ['stock-digest-build', []],
   ]);
   const consumes = new Map<string, string[]>([
-    ['stock-portfolio-snapshot', []],
+    ['stock-portfolio-fetch', []],
+    ['stock-portfolio-snapshot', ['stock-raw-portfolio']],
     ['stock-sector-lookup', ['stock-digest-portfolio']],
     ['stock-digest-build', ['stock-digest-portfolio', 'stock-sectors']],
   ]);
   const gates = deriveGates(dag, produces, consumes);
-  assert.equal(gates.length, 3);
+  assert.equal(gates.length, 4);
   assert.deepEqual(
     gates.map((g) => `${g.producer}->${g.consumer}:${g.key}`).sort(),
     [
+      'stock-portfolio-fetch->stock-portfolio-snapshot:stock-raw-portfolio',
       'stock-portfolio-snapshot->stock-digest-build:stock-digest-portfolio',
       'stock-portfolio-snapshot->stock-sector-lookup:stock-digest-portfolio',
       'stock-sector-lookup->stock-digest-build:stock-sectors',
