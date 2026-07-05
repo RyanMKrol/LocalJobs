@@ -10828,7 +10828,7 @@
     {
       "id": "T409",
       "title": "projects-sync github-sync: record catalog fields in success detail",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
