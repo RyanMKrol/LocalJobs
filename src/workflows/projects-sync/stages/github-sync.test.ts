@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 
-import { isWorkItemDone } from '../../../db/store.js';
+import { isWorkItemDone, getWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runGithubSync,
@@ -198,6 +198,14 @@ describe('runGithubSync', () => {
     assert.equal(calls[0].length, 1);
     assert.equal(calls[0][0].repoId, String(repo.id));
     assert.ok(isWorkItemDone(JOB, String(repo.id), 3), 'repo should be marked done');
+
+    const row = getWorkItem(JOB, String(repo.id));
+    assert.ok(row, 'work item row should exist');
+    const detail = JSON.parse(row!.detail ?? '{}');
+    assert.equal(detail.description, repo.description);
+    assert.equal(detail.language, repo.language);
+    assert.equal(detail.url, repo.html_url);
+    assert.deepEqual(detail.topics, repo.topics);
   });
 
   it('re-records a repo already in the ledger (refresh pattern)', async () => {

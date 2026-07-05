@@ -172,7 +172,16 @@ export async function runGithubSync(
 
   let done = 0;
   for (const entry of entries) {
-    markWorkItem(JOB_NAME, entry.repoId, 'success');
+    markWorkItem(JOB_NAME, entry.repoId, 'success', {
+      detail: {
+        name: entry.fullName,
+        description: entry.description,
+        language: entry.language,
+        topics: entry.topics,
+        url: entry.url,
+        pushedAt: entry.pushedAt,
+      },
+    });
     done++;
     ctx.log(`info: recorded ${done}/${entries.length} — ${entry.fullName}`);
     ctx.progress((done / entries.length) * 100, `${done}/${entries.length} recorded`);
