@@ -204,6 +204,7 @@ export async function runProjectSummarize(
   const todo = entries.filter((e) => ctx.rootAllowed(e.repoId));
   let processed = 0;
   let skipped = 0;
+  let failed = 0;
 
   for (let i = 0; i < todo.length; i++) {
     const entry = todo[i];
@@ -246,10 +247,17 @@ export async function runProjectSummarize(
     } catch (e) {
       ctx.log(`error: failed to summarize ${entry.fullName}: ${String(e)}`, 'error');
       markWorkItem(JOB_NAME, entry.repoId, 'failed', { rootKey: entry.repoId, detail: { name: entry.fullName } });
+      failed++;
     }
 
     ctx.progress(((i + 1) / todo.length) * 100, `${i + 1}/${todo.length} processed`);
   }
 
-  ctx.log(`info: project-summarize complete — ${processed} summarized, ${skipped} skipped (unchanged)`);
+  ctx.log(`info: project-summarize complete — ${processed} summarized, ${skipped} skipped (unchanged), ${failed} failed`);
+
+  if (failed > 0) {
+    throw new Error(
+      `project-summarize: ${failed} of ${todo.length} repo(s) failed to summarize this run — see logs above for per-repo errors`,
+    );
+  }
 }

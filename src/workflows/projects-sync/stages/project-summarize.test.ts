@@ -170,12 +170,12 @@ describe('project-summarize', () => {
     const logs: Array<[string, string | undefined]> = [];
     const ctx = fakeCtx();
     ctx.log = (message, level) => { logs.push([message, level]); };
-    await runProjectSummarize(ctx, {
+    await assert.rejects(() => runProjectSummarize(ctx, {
       readCatalog: () => [entry],
       cloneOrPull: async () => {},
       summarizeWithRepoAccess: async () => ({ ok: true, text: nonConformant }),
       writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
-    });
+    }));
 
     assert.equal(writtenFiles.length, 0);
     const row = getWorkItem('project-summarize', entry.repoId);
@@ -185,6 +185,59 @@ describe('project-summarize', () => {
     const errorLog = logs.find(([message]) => message.startsWith('error: failed to summarize'));
     assert.ok(errorLog, 'expected an error log line for the failed summary');
     assert.equal(errorLog![1], 'error');
+  });
+
+  it('throws when a repo fails to summarize this run (T422) — run itself must fail, not just the item', async () => {
+    const entry = makeEntry();
+
+    await assert.rejects(
+      () => runProjectSummarize(fakeCtx(), {
+        readCatalog: () => [entry],
+        cloneOrPull: async () => {},
+        summarizeWithRepoAccess: async () => {
+          throw new Error(`failed to summarize ${entry.fullName}: boom`);
+        },
+        writeMarkdown: () => {},
+      }),
+      /1 of 1 repo\(s\) failed to summarize this run/,
+    );
+
+    const row = getWorkItem('project-summarize', entry.repoId);
+    assert.ok(row);
+    assert.equal(row!.status, 'failed');
+  });
+
+  it('fails the whole run when one of two repos fails, while still recording the successful one (T422)', async () => {
+    const okEntry = makeEntry({ name: 'good-repo', fullName: 'user/good-repo' });
+    const badEntry = makeEntry({ name: 'bad-repo', fullName: 'user/bad-repo' });
+
+    const writtenFiles: Array<[string, string]> = [];
+    await assert.rejects(
+      () => runProjectSummarize(fakeCtx(), {
+        readCatalog: () => [okEntry, badEntry],
+        cloneOrPull: async () => {},
+        summarizeWithRepoAccess: async (_prompt, _model, repoDir) => {
+          if (repoDir.includes('bad-repo')) {
+            throw new Error(`failed to summarize ${badEntry.fullName}: boom`);
+          }
+          return { ok: true, text: conformantSummary(okEntry) };
+        },
+        writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
+      }),
+      /1 of 2 repo\(s\) failed to summarize this run/,
+    );
+
+    assert.equal(writtenFiles.length, 1);
+
+    const okRow = getWorkItem('project-summarize', okEntry.repoId);
+    assert.ok(okRow);
+    assert.equal(okRow!.status, 'success');
+    const okDetail = JSON.parse(okRow!.detail!);
+    assert.match(okDetail.markdown, /good-repo\.md$/);
+
+    const badRow = getWorkItem('project-summarize', badEntry.repoId);
+    assert.ok(badRow);
+    assert.equal(badRow!.status, 'failed');
   });
 
   it('calls summarizeWithRepoAccess with the cloned repo dir as the target directory', async () => {
