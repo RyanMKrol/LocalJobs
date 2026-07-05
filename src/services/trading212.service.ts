@@ -73,6 +73,8 @@ export interface NormalizedPosition {
   isin?: string;
   /** Current, real-world ticker resolved via OpenFIGI from `isin` (T373). Omitted on a miss. */
   resolvedTicker?: string;
+  /** Company name resolved from Trading212's instruments-metadata endpoint (T413). Omitted on a miss. */
+  name?: string;
 }
 
 /** Composite ledger/lookup key — tickers can collide across accounts (T301). */

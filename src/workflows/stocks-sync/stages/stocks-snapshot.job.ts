@@ -1,5 +1,5 @@
 import type { JobDefinition } from '../../../core/types.js';
-import { stocksPortfolioContract, stocksRawPositionsContract } from '../contracts.js';
+import { stocksNamedPositionsContract, stocksPortfolioContract } from '../contracts.js';
 import { runStocksSnapshot } from './stocks-snapshot.js';
 
 const job: JobDefinition = {
@@ -10,7 +10,7 @@ const job: JobDefinition = {
     'calendar day.',
   timeoutMs: 60_000,
   maxRetries: 3,
-  consumes: [stocksRawPositionsContract()],
+  consumes: [stocksNamedPositionsContract()],
   produces: [stocksPortfolioContract()],
   async run(ctx) {
     await runStocksSnapshot(ctx);

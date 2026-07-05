@@ -12,23 +12,32 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * row per calendar day (investCount/isaCount/totalFetched), written unconditionally even
  * when zero positions are fetched.
  *
- * Stage 2, `stocks-snapshot` (depends on stocks-fetch), reads raw-positions.json and resolves
- * each position's ISIN + a current, real-world ticker (Trading212's
+ * Stage 2, `stocks-resolve-names` (depends on stocks-fetch), reads raw-positions.json and
+ * resolves each position's company name via Trading212's own instruments-metadata endpoint (at
+ * most once per run) — Trading212-metadata-only, no OpenFIGI at all. A miss is a soft skip
+ * (logged, `name` left undefined). Writes data/out/named-positions.json for stocks-snapshot to
+ * read. Records ONE combined `work_items` row per calendar day, skipped entirely when there's
+ * nothing to resolve.
+ *
+ * Stage 3, `stocks-snapshot` (depends on stocks-resolve-names), reads named-positions.json and
+ * ALSO resolves each position's ISIN + a current, real-world ticker (Trading212's
  * `GET /equity/metadata/instruments`, at most once per run, + OpenFIGI) — a soft, never-throwing
  * best-effort step (a miss just logs a warn and leaves isin/resolvedTicker undefined for that
- * position). Writes the FINAL data/out/portfolio.json (structured) + data/out/portfolio.md
+ * position). This is a deliberate, temporary duplication of the metadata call `stocks-resolve-names`
+ * already makes — removing it (so `stocks-snapshot` no longer needs OpenFIGI at all) is a follow-up
+ * task (T414). Writes the FINAL data/out/portfolio.json (structured) + data/out/portfolio.md
  * (human-readable, with a "Real ticker" column). Records ONE combined `work_items` row per
  * calendar day (same day-key convention as stocks-fetch — a same-day re-run overwrites rather
  * than duplicates), summarizing positionCount/totalValue/resolvedCount.
  *
- * Stage 3, `stocks-watch` (depends on stocks-snapshot), reads that snapshot and, for EVERY
+ * Stage 4, `stocks-watch` (depends on stocks-snapshot), reads that snapshot and, for EVERY
  * position on EVERY run, computes + records its gain since average buy price — this
  * unconditional per-position ledger write (T300) means the check stage always has ledger
  * activity and is never misclassified as a noop by the framework's noop-detection, even when
  * nothing breaches. It tracks "already notified for the current breach episode" on a separate
  * ledger key and writes this run's fresh breaches to data/out/fresh-breaches.json.
  *
- * Stage 4, `stocks-notify` (depends on stocks-watch), reads fresh-breaches.json and sends ONE
+ * Stage 5, `stocks-notify` (depends on stocks-watch), reads fresh-breaches.json and sends ONE
  * push naming every position that freshly breached 30%+ above its average buy price this run —
  * a "re-scan + notification-log" idempotent stage (mirrors missing-tv-seasons): a fresh breach
  * notifies once, staying above 30% notifies nothing further, and dropping back below 30% resets
@@ -57,7 +66,8 @@ const workflow: WorkflowDefinition = {
   outputJob: 'stocks-snapshot',
   jobs: [
     { job: 'stocks-fetch' },
-    { job: 'stocks-snapshot', dependsOn: ['stocks-fetch'] },
+    { job: 'stocks-resolve-names', dependsOn: ['stocks-fetch'] },
+    { job: 'stocks-snapshot', dependsOn: ['stocks-resolve-names'] },
     { job: 'stocks-watch', dependsOn: ['stocks-snapshot'] },
     { job: 'stocks-notify', dependsOn: ['stocks-watch'] },
   ],

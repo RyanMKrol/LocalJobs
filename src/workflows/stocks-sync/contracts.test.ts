@@ -9,7 +9,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ArtifactContract, GateResult } from '../../core/types.js';
 import { buildDag, deriveGates } from '../../core/dag.js';
-import { stocksFreshBreachesContract, stocksPortfolioContract, stocksRawPositionsContract } from './contracts.js';
+import {
+  stocksFreshBreachesContract,
+  stocksNamedPositionsContract,
+  stocksPortfolioContract,
+  stocksRawPositionsContract,
+} from './contracts.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -89,6 +94,68 @@ test('stocks-raw-positions: a malformed entry (bad account) fails', () => {
   ]);
   const r = run(stocksRawPositionsContract(p));
   assert.equal(r.ok, false);
+});
+
+// ─────────────────────────── stocks-named-positions ───────────────────────────
+
+test('stocks-named-positions: a well-formed non-empty array passes', () => {
+  const p = writeJson('named-positions-ok.json', [
+    { ticker: 'AAPL', quantity: 5, averageBuyPrice: 100, currentPrice: 150, currentValue: 750, account: 'invest', name: 'Apple Inc.' },
+    { ticker: 'VUSA_EQ', quantity: 2, averageBuyPrice: 80, currentPrice: 90, currentValue: 180, account: 'isa' },
+  ]);
+  const r = run(stocksNamedPositionsContract(p));
+  assert.equal(r.ok, true, r.violations?.join('; '));
+  assert.ok(r.sample?.includes('2 position'));
+});
+
+test('stocks-named-positions: an EMPTY array is a legitimate state, not a violation', () => {
+  const p = writeJson('named-positions-empty.json', []);
+  const r = run(stocksNamedPositionsContract(p));
+  assert.equal(r.ok, true, r.violations?.join('; '));
+  assert.ok(r.sample?.includes('0 position'));
+});
+
+test('stocks-named-positions: a missing file fails', () => {
+  const r = run(stocksNamedPositionsContract(f('named-positions-does-not-exist.json')));
+  assert.equal(r.ok, false);
+});
+
+test('stocks-named-positions: invalid JSON fails', () => {
+  const p = f('named-positions-bad.json');
+  writeFileSync(p, '{ not json');
+  const r = run(stocksNamedPositionsContract(p));
+  assert.equal(r.ok, false);
+});
+
+test('stocks-named-positions: a non-array top-level value fails', () => {
+  const p = writeJson('named-positions-object.json', { positions: [] });
+  const r = run(stocksNamedPositionsContract(p));
+  assert.equal(r.ok, false);
+  assert.ok(r.violations?.some((v) => /array/i.test(v)));
+});
+
+test('stocks-named-positions: a malformed entry (missing ticker) fails', () => {
+  const p = writeJson('named-positions-malformed.json', [
+    { quantity: 5, averageBuyPrice: 100, currentPrice: 150, currentValue: 750, account: 'invest' },
+  ]);
+  const r = run(stocksNamedPositionsContract(p));
+  assert.equal(r.ok, false);
+});
+
+test('stocks-named-positions: a malformed entry (bad account) fails', () => {
+  const p = writeJson('named-positions-badaccount.json', [
+    { ticker: 'AAPL', quantity: 5, averageBuyPrice: 100, currentPrice: 150, currentValue: 750, account: 'other' },
+  ]);
+  const r = run(stocksNamedPositionsContract(p));
+  assert.equal(r.ok, false);
+});
+
+test('stocks-named-positions: a missing name is a soft skip, not a violation', () => {
+  const p = writeJson('named-positions-noname.json', [
+    { ticker: 'AAPL', quantity: 5, averageBuyPrice: 100, currentPrice: 150, currentValue: 750, account: 'invest' },
+  ]);
+  const r = run(stocksNamedPositionsContract(p));
+  assert.equal(r.ok, true, r.violations?.join('; '));
 });
 
 // ─────────────────────────── stocks-portfolio ───────────────────────────
@@ -192,8 +259,13 @@ test('stocks-fresh-breaches: a malformed entry (non-numeric gain) fails', () => 
 
 // ─────────────────────────── shape declarations ───────────────────────────
 
-test('all three contracts declare a shape with a summary + non-empty expectations', () => {
-  for (const c of [stocksRawPositionsContract(), stocksPortfolioContract(), stocksFreshBreachesContract()]) {
+test('all four contracts declare a shape with a summary + non-empty expectations', () => {
+  for (const c of [
+    stocksRawPositionsContract(),
+    stocksNamedPositionsContract(),
+    stocksPortfolioContract(),
+    stocksFreshBreachesContract(),
+  ]) {
     assert.ok(c.shape, `${c.key} has no shape`);
     assert.ok(c.shape!.summary.length > 0, `${c.key} shape has no summary`);
     assert.ok(c.shape!.expectations.length > 0, `${c.key} shape has no expectations`);
@@ -202,34 +274,46 @@ test('all three contracts declare a shape with a summary + non-empty expectation
 
 test('contract keys are stable', () => {
   assert.equal(stocksRawPositionsContract().key, 'stocks-raw-positions');
+  assert.equal(stocksNamedPositionsContract().key, 'stocks-named-positions');
   assert.equal(stocksPortfolioContract().key, 'stocks-portfolio');
   assert.equal(stocksFreshBreachesContract().key, 'stocks-fresh-breaches');
 });
 
 // ─────────────────────── DAG gate derivation (regression guard) ───────────────────────
 
-test('the stocks-sync DAG derives exactly 3 gates matching its stage boundaries', () => {
+test('the stocks-sync DAG derives exactly 4 gates matching its stage boundaries', () => {
   const dag = buildDag([
     { job: 'stocks-fetch' },
-    { job: 'stocks-snapshot', dependsOn: ['stocks-fetch'] },
+    { job: 'stocks-resolve-names', dependsOn: ['stocks-fetch'] },
+    { job: 'stocks-snapshot', dependsOn: ['stocks-resolve-names'] },
     { job: 'stocks-watch', dependsOn: ['stocks-snapshot'] },
     { job: 'stocks-notify', dependsOn: ['stocks-watch'] },
   ]);
   const produces = new Map<string, string[]>([
     ['stocks-fetch', [stocksRawPositionsContract().key]],
+    ['stocks-resolve-names', [stocksNamedPositionsContract().key]],
     ['stocks-snapshot', [stocksPortfolioContract().key]],
     ['stocks-watch', [stocksFreshBreachesContract().key]],
   ]);
   const consumes = new Map<string, string[]>([
-    ['stocks-snapshot', [stocksRawPositionsContract().key]],
+    ['stocks-resolve-names', [stocksRawPositionsContract().key]],
+    ['stocks-snapshot', [stocksNamedPositionsContract().key]],
     ['stocks-watch', [stocksPortfolioContract().key]],
     ['stocks-notify', [stocksFreshBreachesContract().key]],
   ]);
   const gates = deriveGates(dag, produces, consumes);
-  assert.equal(gates.length, 3, JSON.stringify(gates));
+  assert.equal(gates.length, 4, JSON.stringify(gates));
   assert.ok(
-    gates.some((g) => g.producer === 'stocks-fetch' && g.consumer === 'stocks-snapshot' && g.key === 'stocks-raw-positions'),
-    'missing stocks-fetch → stocks-snapshot gate',
+    gates.some(
+      (g) => g.producer === 'stocks-fetch' && g.consumer === 'stocks-resolve-names' && g.key === 'stocks-raw-positions',
+    ),
+    'missing stocks-fetch → stocks-resolve-names gate',
+  );
+  assert.ok(
+    gates.some(
+      (g) => g.producer === 'stocks-resolve-names' && g.consumer === 'stocks-snapshot' && g.key === 'stocks-named-positions',
+    ),
+    'missing stocks-resolve-names → stocks-snapshot gate',
   );
   assert.ok(
     gates.some((g) => g.producer === 'stocks-snapshot' && g.consumer === 'stocks-watch' && g.key === 'stocks-portfolio'),

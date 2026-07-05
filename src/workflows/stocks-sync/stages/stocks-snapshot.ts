@@ -71,8 +71,8 @@ export function writePortfolio(positions: NormalizedPosition[]): void {
 export type RawPositionsReader = () => NormalizedPosition[];
 
 export function readRawPositions(): NormalizedPosition[] {
-  if (!existsSync(stocksSyncConfig.rawPositionsJsonPath)) return [];
-  return JSON.parse(readFileSync(stocksSyncConfig.rawPositionsJsonPath, 'utf8')) as NormalizedPosition[];
+  if (!existsSync(stocksSyncConfig.namedPositionsJsonPath)) return [];
+  return JSON.parse(readFileSync(stocksSyncConfig.namedPositionsJsonPath, 'utf8')) as NormalizedPosition[];
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ export async function runStocksSnapshot(
   ctx.log('info: stocks-snapshot starting — resolving ISIN + real-world ticker for fetched positions');
 
   let positions = readRawPositionsFn();
-  ctx.log(`info: read ${positions.length} raw position(s) from stocks-fetch`);
+  ctx.log(`info: read ${positions.length} named position(s) from stocks-resolve-names`);
 
   if (positions.length > 0) {
     ctx.log('info: resolving ISIN + real-world ticker for each position via Trading212 instruments-metadata + OpenFIGI');

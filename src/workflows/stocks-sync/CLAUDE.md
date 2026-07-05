@@ -5,8 +5,9 @@ Pulls the owner's current open equity positions from Trading212
 — see `src/services/CLAUDE.md`) and writes a local snapshot: `data/out/portfolio.json` (structured,
 broker-agnostic `{ ticker, quantity, averageBuyPrice, currentPrice, currentValue, account }` array)
 and `data/out/portfolio.md` (one row per position, with an Account column and the price difference
-since purchase as both an absolute amount and a percentage). No DynamoDB. Four-stage DAG:
-`stocks-fetch → stocks-snapshot → stocks-watch → stocks-notify`, each doing one clearly-scoped thing.
+since purchase as both an absolute amount and a percentage). No DynamoDB. Five-stage DAG:
+`stocks-fetch → stocks-resolve-names → stocks-snapshot → stocks-watch → stocks-notify`, each doing
+one clearly-scoped thing.
 
 ## Stage 1 — `stocks-fetch`
 
@@ -18,19 +19,34 @@ ticker-resolved (the `stocks-raw-positions` gate validates the hand-off). Record
 `work_items` row per calendar day, **written unconditionally even at zero positions** — so this
 stage's ledger activity is always real, never mislabeled noop.
 
-## Stage 2 — `stocks-snapshot`
+## Stage 2 — `stocks-resolve-names` (T413)
 
-Resolves each position's ISIN + a current, real-world ticker — Trading212's own `ticker` field can go
-stale after a company rename. Calls Trading212's instruments-metadata endpoint (a separate, more
-tightly rate-limited endpoint — 1 req/50s — called **at most once per run**, never per position) to
-build a ticker→ISIN map, then resolves each ISIN to a real ticker via the `openfigi` service (batched
-to respect its per-request limit: 10 without an API key, 100 with one). `NormalizedPosition` gains
-optional `isin`/`resolvedTicker` fields; a miss at either step is a soft skip (logged, fields left
-`undefined`) — never fails the whole snapshot. `portfolio.md` shows the resolved ticker as a "Real
-ticker" column (`—` when absent). Records one combined ledger row per day (skipped entirely when
-there's nothing to resolve). Declares no `inputKeys()` — not limitable, no Run-limit box.
+Resolves each fetched position's company **name** from Trading212's own instruments-metadata
+endpoint (`GET /equity/metadata/instruments`, called **at most once per run**, never per position) —
+Trading212-metadata-only, **no OpenFIGI, no ISIN**. `NormalizedPosition` gains an optional `name`
+field; a miss is a soft skip (logged, `name` left `undefined`) — never fails the stage. Writes
+`data/out/named-positions.json` for `stocks-snapshot` to read (the `stocks-named-positions` gate
+validates the hand-off). Records one combined ledger row per day, skipped entirely when there's
+nothing to resolve.
 
-## Stage 3 — `stocks-watch`
+## Stage 3 — `stocks-snapshot`
+
+Reads `named-positions.json` and additionally resolves each position's ISIN + a current, real-world
+ticker — Trading212's own `ticker` field can go stale after a company rename. Calls Trading212's
+instruments-metadata endpoint AGAIN (a separate, more tightly rate-limited endpoint — 1 req/50s —
+called **at most once per run**, never per position) to build a ticker→ISIN map, then resolves each
+ISIN to a real ticker via the `openfigi` service (batched to respect its per-request limit: 10
+without an API key, 100 with one). `NormalizedPosition` gains optional `isin`/`resolvedTicker`
+fields; a miss at either step is a soft skip (logged, fields left `undefined`) — never fails the
+whole snapshot. `portfolio.md` shows the resolved ticker as a "Real ticker" column (`—` when absent).
+Records one combined ledger row per day (skipped entirely when there's nothing to resolve). Declares
+no `inputKeys()` — not limitable, no Run-limit box. **Known, deliberate interim duplication:** this
+stage's own instruments-metadata + OpenFIGI call duplicates the metadata fetch `stocks-resolve-names`
+already made one stage earlier — a follow-up task (T414) removes this stage's ISIN/OpenFIGI
+resolution entirely, since nothing in `stocks-sync` computationally uses `resolvedTicker` today (it's
+purely a display column) and `name` already serves the readability purpose.
+
+## Stage 4 — `stocks-watch`
 
 Reads the snapshot and, every run, computes every position's gain since average buy price and writes
 to the ledger **unconditionally** — so a quiet run with nothing breaching still shows real ledger
@@ -40,7 +56,7 @@ check key) — set on a fresh breach, left untouched while staying above 30%, an
 back below (so a later re-crossing is fresh again). Fresh breaches this run go to
 `data/out/fresh-breaches.json`.
 
-## Stage 4 — `stocks-notify`
+## Stage 5 — `stocks-notify`
 
 Reads `fresh-breaches.json` and, if non-empty, sends **one** push naming every freshly breaching
 position (multiple breaches combine into a single push). Empty is a genuine noop — the only stage in

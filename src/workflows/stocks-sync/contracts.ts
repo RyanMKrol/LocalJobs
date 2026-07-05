@@ -9,8 +9,8 @@
 //
 // Keys are shared across the producing job's `produces` and the consuming
 // job's `consumes` so the workflow executor derives a gate at each edge:
-//   stocks-fetch ──stocks-raw-positions──▶ stocks-snapshot ──stocks-portfolio──▶
-//   stocks-watch ──stocks-fresh-breaches──▶ stocks-notify
+//   stocks-fetch ──stocks-raw-positions──▶ stocks-resolve-names ──stocks-named-positions──▶
+//   stocks-snapshot ──stocks-portfolio──▶ stocks-watch ──stocks-fresh-breaches──▶ stocks-notify
 import { existsSync, readFileSync } from 'node:fs';
 import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
 import { stocksSyncConfig } from './config.js';
@@ -97,6 +97,65 @@ export function stocksRawPositionsContract(
       );
       checks.push({
         label: RAW_POSITIONS_EXP.entries,
+        ok: !bad,
+        actual: bad ? `bad entry: ${JSON.stringify(bad)}` : 'all entries well-formed',
+      });
+      const tickers = arr.slice(0, 3).map((p) => JSON.stringify(p.ticker)).join(', ');
+      return fromChecks(checks, `${arr.length} position(s)${tickers ? ` · e.g. ${tickers}` : ''}`);
+    },
+  };
+}
+
+const NAMED_POSITIONS_EXP = {
+  json: 'A readable JSON file',
+  array: 'A plain top-level array',
+  entries: 'Every position has a ticker + a valid account',
+};
+
+/**
+ * stocks-resolve-names → stocks-snapshot boundary: named-positions.json. Must
+ * parse and be a plain JSON array of NormalizedPosition records — every entry,
+ * if any, has a string `ticker` and an `account` of `invest`/`isa`. A resolved
+ * `name` is best-effort (a resolution miss is a soft per-position skip, not a
+ * gate violation) so `name` is NOT required here. A ZERO-length array is
+ * legitimate (no open positions) and passes.
+ */
+export function stocksNamedPositionsContract(
+  file: string = stocksSyncConfig.namedPositionsJsonPath,
+): ArtifactContract {
+  return {
+    key: 'stocks-named-positions',
+    description: 'stocks-resolve-names output: named-positions.json — a JSON array of positions with a resolved company name where available.',
+    shape: {
+      summary: 'The fetched positions with a Trading212-metadata company name attached where resolvable (may legitimately be empty).',
+      format: 'JSON file (named-positions.json), a plain array — not wrapped in an object',
+      expectations: [
+        { label: NAMED_POSITIONS_EXP.json, detail: 'The hand-off file exists and parses as JSON.' },
+        { label: NAMED_POSITIONS_EXP.array, detail: 'The top-level JSON value is an array (zero or more positions).' },
+        { label: NAMED_POSITIONS_EXP.entries, detail: 'Each position (if any) has a text ticker and account = "invest" or "isa".' },
+      ],
+    },
+    check(): GateResult {
+      const checks: ExpectationResult[] = [];
+      const { obj, violation } = readJson(file);
+      if (violation) {
+        checks.push({ label: NAMED_POSITIONS_EXP.json, ok: false, actual: violation });
+        return fromChecks(checks);
+      }
+      checks.push({ label: NAMED_POSITIONS_EXP.json, ok: true, actual: 'valid JSON' });
+      const isArr = Array.isArray(obj);
+      checks.push({ label: NAMED_POSITIONS_EXP.array, ok: isArr, actual: isArr ? 'array' : `${typeof obj}` });
+      if (!isArr) return fromChecks(checks);
+      const arr = obj as Record<string, unknown>[];
+      if (arr.length === 0) {
+        checks.push({ label: NAMED_POSITIONS_EXP.entries, ok: true, actual: 'no positions to check' });
+        return fromChecks(checks, '0 position(s)');
+      }
+      const bad = arr.find(
+        (p) => !p || typeof p.ticker !== 'string' || (p.account !== 'invest' && p.account !== 'isa'),
+      );
+      checks.push({
+        label: NAMED_POSITIONS_EXP.entries,
         ok: !bad,
         actual: bad ? `bad entry: ${JSON.stringify(bad)}` : 'all entries well-formed',
       });
