@@ -150,12 +150,29 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
 
   for (const g of newGaps) {
     markWorkItem(NOTIFY_JOB, gapKey(g.tmdbId), 'success', {
-      detail: { name: `${g.collectionName}: ${g.title}`, markdown: reportPath },
+      detail: {
+        name: `${g.collectionName}: ${g.title}`,
+        markdown: reportPath,
+        title: g.title,
+        year: g.year,
+        collectionId: g.collectionId,
+        collectionName: g.collectionName,
+        tmdbRating: g.tmdbRating,
+      },
     });
   }
   for (const r of newRecs) {
     markWorkItem(RECS_JOB, recKey(r.tmdbId), 'success', {
-      detail: { name: `${r.title} (${r.lens})`, markdown: reportPath, title: r.title, year: r.year },
+      detail: {
+        name: `${r.title} (${r.lens})`,
+        markdown: reportPath,
+        title: r.title,
+        year: r.year,
+        lens: r.lens,
+        genre: r.genre,
+        reason: r.reason,
+        tmdbRating: r.tmdbRating,
+      },
     });
   }
   if (newRecs.length) appendHistory(historyFile, newRecs, now);

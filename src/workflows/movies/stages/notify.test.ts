@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ignoreSurfacedItem, isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem, ignoreSurfacedItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { NOTIFY_JOB, buildDigest, gapKey, runNotify } from './notify.js';
 import { RECS_JOB, recKey } from '../recs.js';
@@ -79,6 +79,16 @@ const backlog: FranchiseGap[] = [
   assert.match(sent[0].body, /Toy Story 5/);
   assert.ok(isWorkItemDone(NOTIFY_JOB, gapKey(SAW_X), 1));
   assert.ok(isWorkItemDone(NOTIFY_JOB, gapKey(TOY5), 1));
+  // The ledger's `detail` is enriched with the actual finding, not just identity.
+  const sawRow = getWorkItem(NOTIFY_JOB, gapKey(SAW_X));
+  const sawDetail = JSON.parse(sawRow?.detail ?? '{}');
+  assert.equal(sawDetail.title, 'Saw X');
+  assert.equal(sawDetail.year, 2023);
+  assert.equal(sawDetail.collectionId, 656);
+  assert.equal(sawDetail.collectionName, 'Saw Collection');
+  assert.equal(sawDetail.tmdbRating, 7.3);
+  assert.equal(sawDetail.markdown, reportPath);
+  console.log('  ✓ gap ledger detail carries the actual finding (title/year/collection/rating)');
   // Report lists both, grouped by collection, with TMDB links + ratings + owned example.
   const md = readFileSync(reportPath, 'utf8');
   assert.match(md, /## Saw Collection/);
@@ -186,6 +196,17 @@ function writeRecs(recs: Recommendation[]) {
   assert.match(sent[0].title, /2 film recommendations/);
   assert.match(sent[0].body, /Stalker/);
   assert.ok(isWorkItemDone(RECS_JOB, recKey(REC_A), 1), 'rec marked in the recs ledger');
+  // The rec ledger's `detail` is enriched with the actual finding, including the reason.
+  const stalkerRow = getWorkItem(RECS_JOB, recKey(REC_A));
+  const stalkerDetail = JSON.parse(stalkerRow?.detail ?? '{}');
+  assert.equal(stalkerDetail.title, 'Stalker');
+  assert.equal(stalkerDetail.year, 1979);
+  assert.equal(stalkerDetail.lens, 'world-cinema');
+  assert.equal(stalkerDetail.genre, 'Science Fiction');
+  assert.equal(stalkerDetail.reason, 'pick Stalker');
+  assert.equal(stalkerDetail.tmdbRating, 8.1);
+  assert.equal(stalkerDetail.markdown, rReportPath);
+  console.log('  ✓ rec ledger detail carries the actual finding (lens/genre/reason/rating)');
   const md = readFileSync(rReportPath, 'utf8');
   assert.match(md, /## Recommendations/);
   assert.match(md, /\[Stalker\]\(https:\/\/www\.themoviedb\.org\/movie\/7770001\)/, 'rec has a TMDB link');
