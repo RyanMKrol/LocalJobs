@@ -10784,7 +10784,7 @@
     {
       "id": "T407",
       "title": "perfumes fetch/parse: point success detail at the real artifact + extracted values",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
