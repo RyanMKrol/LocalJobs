@@ -114,4 +114,26 @@ const backlog: MissingSeasonsFile = {
   console.log('  ✓ a newly-completed season notifies once, not the already-known ones');
 }
 
+// Run 4 — the digest push fails: run() must throw, and none of the newly-detected
+// pairs should be marked notified (so they're retried next run).
+{
+  const FAILPUSH = 9977001;
+  const failBacklog: MissingSeasonsFile = {
+    generatedAt: NOW.toISOString(),
+    shows: [
+      { title: 'PushFail Show', year: 2021, tmdbId: FAILPUSH, ratingKey: 'p', highestOwnedSeason: 1, tmdbStatus: 'Ended', highestAiredSeason: 2, completeMissingSeasons: [2] },
+    ],
+    unverifiable: [],
+  };
+  const push = (async () => ({ ok: false, error: 'ntfy 500' })) as unknown as typeof import('../../../core/notifier.js').push;
+  writeMissing(failBacklog);
+  await assert.rejects(
+    () => runNotify(fakeCtx(), { push, now: NOW, missingFile }),
+    /Digest push failed/,
+    'a failed push rejects the run',
+  );
+  assert.equal(isWorkItemDone(NOTIFY_JOB, pairKey(FAILPUSH, 2), 1), false, 'undelivered season is NOT marked notified');
+  console.log('  ✓ a failed digest push throws and leaves the pair un-notified for retry');
+}
+
 console.log('  ✓ plex notify dedup/digest tests passed');

@@ -45,6 +45,7 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
   const unverifiable: UnverifiableShow[] = [];
   let checked = 0;
   let tmdbCalls = 0;
+  let failed = 0;
 
   for (let i = 0; i < shows.length; i++) {
     const show = shows[i];
@@ -83,6 +84,7 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
       const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
       // One bad show must not fail the whole audit — log + skip it.
       ctx.log(`  ✗ "${show.title}" (tmdb=${show.tmdbId}) — ${msg}`, 'warn');
+      failed++;
     }
   }
 
@@ -100,4 +102,8 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
   ctx.log(`Unverifiable (no tmdb:// GUID): ${unverifiable.length}`);
   ctx.log(`Wrote ${plexConfig.missingOut}`);
   ctx.log('═════════════════════════════════════════════════════');
+
+  if (failed > 0) {
+    throw new Error(`${failed}/${shows.length - unverifiable.length} show(s) failed their TMDB check this run — see logs above`);
+  }
 }

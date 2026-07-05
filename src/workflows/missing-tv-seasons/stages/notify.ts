@@ -97,7 +97,11 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   const digest = buildDigest(newShows);
   ctx.log(`Digest: ${digest.title} — ${digest.body}`);
   const res = await pushFn(digest.title, digest.body, { job: 'plex', tags: 'tv', priority: 'default' });
-  ctx.log(res.ok ? `digest push sent — ${digest.title}` : `digest push FAILED (${res.error})`, res.ok ? 'info' : 'error');
+  if (!res.ok) {
+    ctx.log(`digest push FAILED (${res.error}) — NOT marking ${totalNew} season(s) notified, so they're retried next run.`, 'error');
+    throw new Error(`Digest push failed — ${res.error}`);
+  }
+  ctx.log(`digest push sent — ${digest.title}`);
 
   for (const s of newShows) {
     for (const season of s.seasons) {
