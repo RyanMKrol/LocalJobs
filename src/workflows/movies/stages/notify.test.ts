@@ -5,7 +5,7 @@
 // detected gap aggregates into a new single digest; an owner-IGNORED gap is excluded
 // from BOTH the report AND notifications.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getWorkItem, ignoreSurfacedItem, isWorkItemDone } from '../../../db/store.js';
@@ -236,6 +236,46 @@ function writeRecs(recs: Recommendation[]) {
   const md = readFileSync(rReportPath, 'utf8');
   assert.doesNotMatch(md, /Solaris/, 'an ignored recommendation is excluded from the report');
   console.log('  ✓ recs: ignore-to-suppress excludes a recommendation from report + notifications');
+}
+
+// Run F1 — a FAILED digest push must not poison the ledger: `runNotify` throws,
+// no ledger rows are written for the new gap/rec, and history is not appended,
+// so the next run retries fresh.
+{
+  const FAIL_GAP = 9990099;
+  const FAIL_REC = 7770099;
+  const failGapsFile = join(dir, 'fail-gaps.json');
+  const failRecsFile = join(dir, 'fail-recs.json');
+  const failHistoryFile = join(dir, 'fail-history.json');
+  const failReportDir = mkdtempSync(join(tmpdir(), 'movies-notify-fail-'));
+  writeFileSync(failGapsFile, JSON.stringify({
+    generatedAt: NOW.toISOString(),
+    collectionsChecked: 1,
+    gaps: [{ collectionId: 99, collectionName: 'Fail Collection', tmdbId: FAIL_GAP, title: 'Fail Film', year: 2022, tmdbRating: 6 }],
+  } as FranchiseGapsFile));
+  writeFileSync(failRecsFile, JSON.stringify({
+    generatedAt: NOW.toISOString(),
+    pooled: 1,
+    recommendations: [{ tmdbId: FAIL_REC, title: 'Fail Rec', year: 2001, reason: 'x', lens: 'serendipity', genre: 'Drama', tmdbRating: 7 }],
+  } as RecommendationsFile));
+
+  const failingPush = (async () => ({ ok: false, error: 'network down' })) as unknown as typeof import('../../../core/notifier.js').push;
+
+  await assert.rejects(
+    () => runNotify(fakeCtx(), {
+      push: failingPush,
+      now: NOW,
+      gapsFile: failGapsFile,
+      recsFile: failRecsFile,
+      historyFile: failHistoryFile,
+      reportDir: failReportDir,
+    }),
+    'runNotify throws when the digest push fails',
+  );
+  assert.ok(!isWorkItemDone(NOTIFY_JOB, gapKey(FAIL_GAP), 1), 'gap NOT marked notified after a failed push');
+  assert.ok(!isWorkItemDone(RECS_JOB, recKey(FAIL_REC), 1), 'rec NOT marked notified after a failed push');
+  assert.ok(!existsSync(failHistoryFile), 'history file not written after a failed push');
+  console.log('  ✓ a failed digest push throws and leaves the ledger/history untouched (retry next run)');
 }
 
 console.log('  ✓ movies notify dedup/digest/ignore tests passed');

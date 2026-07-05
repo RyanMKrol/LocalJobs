@@ -148,6 +148,13 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   const res = await pushFn(digest.title, digest.body, { job: 'movies', tags: 'movie_camera', priority: 'default' });
   ctx.log(res.ok ? `digest push sent — ${digest.title}` : `digest push FAILED (${res.error})`, res.ok ? 'info' : 'error');
 
+  if (!res.ok) {
+    throw new Error(
+      `digest push failed (${res.error}) — ${newGaps.length} gap(s) + ${newRecs.length} rec(s) ` +
+      'were NOT marked notified so the next run retries the digest.',
+    );
+  }
+
   for (const g of newGaps) {
     markWorkItem(NOTIFY_JOB, gapKey(g.tmdbId), 'success', {
       detail: {
