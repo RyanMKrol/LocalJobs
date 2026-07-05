@@ -425,6 +425,28 @@ job MAY colocate a service it owns).
 ### Job conventions
 - Jobs must be **idempotent / safe to re-run** (they retry and can be run
   manually). Use guards / "skip if already done".
+- **An item-loop job must fail its own run if it failed ANY item this run (2026-07, T416).**
+  The per-item `try/catch` / `markWorkItem(..., 'failed', ...)` / `continue` pattern inside a
+  processing loop is UNCHANGED and still correct — one bad item must not stop the loop from
+  attempting every other item this run. BUT at the END of that loop, if this run's own tally
+  shows `failed > 0` (a genuine `'failed'` outcome — NOT a `'skipped'` soft-stop like a
+  quota/rate-limit pause, which is an intentional defer-to-later-run, not a failure), the job's
+  `run()` function MUST `throw` a summarizing `Error` (e.g.
+  `` throw new Error(`${failed}/${processed} item(s) failed this run — see logs above`) ``)
+  instead of returning normally. This needs NO new framework mechanism — it reuses machinery that
+  already exists: the thrown error correctly marks the RUN `'failed'` (`src/runJob.ts` →
+  `src/core/executor.ts`), which correctly blocks every downstream DAG dependent (`executeDag`'s
+  ready-stage loop already treats any status other than exactly `'success'` as blocking), and
+  correctly triggers the job's own retry budget (`runAttempts`/`maxRetries`, unchanged) — a retry
+  (or the next scheduled run) naturally skips already-`isWorkItemDone` items and resumes at the
+  first not-yet-done one, since that idempotency filtering is already how every compliant
+  item-loop job works (the rule above). Most jobs already compute an `{ ok, failed, ... }` tally
+  for their own logging/return value — for those, the fix is usually just a couple of added lines
+  at the very end: `if (failed > 0) throw new Error(...)`. Applies ONLY to genuine item-PROCESSING
+  loops where a per-item failure is currently silently swallowed — not to a stage with no
+  per-item "did work" concept (e.g. a pure notify-trigger that either sends a push or doesn't).
+  This is a documentation-only convention (no job has been retrofitted yet — that's separate
+  per-workflow follow-up work).
 - Use `ctx.log` and `ctx.progress` generously — that's the entire visibility
   story. No `console.log` (it still gets captured, but prefer `ctx`).
 - **Item-loop jobs report progress per item, not just at the end.** Any job that

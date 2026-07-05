@@ -45,3 +45,13 @@ NOT mechanically enforced (unlike the gate rule above) — there's no structural
 way to tell "nothing to show" from "author didn't think about it." Full
 rationale + worked examples in the root `CLAUDE.md`'s "Job conventions"
 section — this file only states the rule so it surfaces when working here.
+
+## ✅ An item-loop job must fail its own run if it failed any item this run (2026-07)
+
+A processing loop's per-item `try/catch` / `markWorkItem(..., 'failed', ...)` / `continue`
+pattern is correct and unchanged — but at the end of the loop, if this run's own tally shows
+`failed > 0` (not a `'skipped'` soft-stop like a quota pause), the job's `run()` MUST `throw`
+a summarizing `Error` instead of returning normally, so the RUN itself is recorded `'failed'`
+and blocks downstream DAG dependents. No new framework mechanism needed — see the root
+`CLAUDE.md`'s "Job conventions" section for the full reasoning; this file only states the rule
+so it surfaces when working here.
