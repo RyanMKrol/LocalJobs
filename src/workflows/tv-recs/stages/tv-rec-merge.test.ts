@@ -209,3 +209,30 @@ async function run(suggestions: RawSuggestion[], opts: Partial<MergeOpts> = {}):
   );
   console.log('  ✓ T404: pre-notify ignored recommendation is excluded from top-up re-prompts');
 }
+
+// ── 8. T423: a genuine per-item TMDB search failure fails the whole run ──
+{
+  const DRAMA = 18;
+  const ok = show('Fine Show', { genre: DRAMA });
+  const broken: RawSuggestion = { title: 'Broken Search Show', year: 2015, reason: 'r', lens: 'serendipity' };
+  const flakySearch: SearchTvFn = async (title, year) => {
+    if (title === 'Broken Search Show') throw new Error('ECONNRESET');
+    return searchTv(title, year);
+  };
+  await assert.rejects(
+    () => run([ok, broken], { searchTv: flakySearch }),
+    /TMDB search failed for 1 suggestion/,
+    'a genuine search failure causes runTvRecMerge to reject',
+  );
+  console.log('  ✓ T423: a genuine TMDB search failure fails the run');
+}
+
+// ── 9. T423: only soft drops (no throwing searches) still resolves normally ──
+{
+  const DRAMA = 18;
+  const ok = show('Another Fine Show', { genre: DRAMA });
+  const sug = (title: string): RawSuggestion => ({ title, year: 2010, reason: `because ${title}`, lens: 'serendipity' });
+  const out = await run([ok, sug('Yet Another Made Up Show')]);
+  assert.ok(out.recommendations.some((r) => r.title === 'Another Fine Show'), 'run with only soft drops resolves normally');
+  console.log('  ✓ T423: a run with only soft drops (no search failures) still resolves normally');
+}

@@ -102,6 +102,7 @@ interface VerifyCounters {
   dropAlready: number;
   dropLowQuality: number;
   quotaHit: boolean;
+  searchFailed: number;
 }
 
 interface MergeParams {
@@ -165,6 +166,7 @@ async function verifyInto(
         counters.quotaHit = true;
         return;
       }
+      counters.searchFailed++;
       ctx.log(`  ✗ "${s.title}" — search failed: ${err instanceof Error ? err.message.split('\n')[0] : err}`, 'warn');
       continue;
     }
@@ -285,6 +287,7 @@ export async function runTvRecMerge(ctx: JobContext, opts: MergeOpts = {}): Prom
   const byTmdb = new Map<number, Recommendation>();
   const counters: VerifyCounters = {
     searches: 0, dropHallucinated: 0, dropOwned: 0, dropAlready: 0, dropLowQuality: 0, quotaHit: false,
+    searchFailed: 0,
   };
   const seen = new Set<string>();
   const considered: string[] = [];
@@ -367,4 +370,8 @@ export async function runTvRecMerge(ctx: JobContext, opts: MergeOpts = {}): Prom
   for (const r of balanced) ctx.log(`  • [${r.genre}] ${r.title}${r.year ? ` (${r.year})` : ''} — ${r.reason} (${r.lens})`);
   ctx.log(`Wrote ${recsOut}`);
   ctx.log('════════════════════════════════════════════════════');
+
+  if (counters.searchFailed > 0) {
+    throw new Error(`TMDB search failed for ${counters.searchFailed} suggestion(s) this run — see warn logs above for titles.`);
+  }
 }
