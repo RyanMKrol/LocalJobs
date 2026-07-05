@@ -11017,7 +11017,7 @@
     {
       "id": "T417",
       "title": "Dashboard: show every attempt per stage on the workflow-run page, not just the latest",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
