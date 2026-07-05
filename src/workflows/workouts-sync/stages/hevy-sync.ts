@@ -156,13 +156,23 @@ export async function runHevySync(
     ctx.log(`info: recording workout ${workout.id} "${workout.title}" (${workout.exercises.length} exercises)`);
     try {
       newlyAppended.push(workout);
-      markWorkItem(JOB_NAME, workout.id, 'success');
+      const setCount = workout.exercises.reduce((sum, e) => sum + e.sets.length, 0);
+      markWorkItem(JOB_NAME, workout.id, 'success', {
+        detail: {
+          name: workout.title,
+          startTime: workout.start_time,
+          exerciseCount: workout.exercises.length,
+          setCount,
+        },
+      });
       done++;
       ctx.log(`info: recorded ${done}/${todo.length} — ${workout.id} "${workout.title}"`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       ctx.log(`error: failed to record workout ${workout.id}: ${msg}`, 'error');
-      markWorkItem(JOB_NAME, workout.id, 'failed');
+      markWorkItem(JOB_NAME, workout.id, 'failed', {
+        detail: { name: workout.title, error: msg },
+      });
       failed++;
     }
     ctx.progress((done + failed) / todo.length * 100, `${done}/${todo.length} recorded`);

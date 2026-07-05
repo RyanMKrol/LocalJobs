@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 
-import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runHevySync,
@@ -123,6 +123,13 @@ describe('runHevySync — local history accumulation', () => {
     assert.equal(history.length, 1);
     assert.equal(history[0].id, id);
     assert.equal(history[0].exercises.length, 2);
+
+    const row = getWorkItem(JOB, id);
+    assert.ok(row, 'expected a ledger row for the synced workout');
+    const detail = row!.detail != null ? JSON.parse(row!.detail as unknown as string) : null;
+    assert.equal(detail.name, `Workout ${id}`);
+    assert.equal(detail.exerciseCount, 2);
+    assert.equal(detail.setCount, 2);
   });
 
   it('running twice with the SAME data only appends each workout once (idempotent)', async () => {
