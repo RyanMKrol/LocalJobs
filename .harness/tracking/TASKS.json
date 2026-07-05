@@ -11152,7 +11152,7 @@
     {
       "id": "T423",
       "title": "tv-rec-merge: hard-fail the run on genuine TMDB search errors",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
