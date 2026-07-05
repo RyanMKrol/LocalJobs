@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { JobContext } from '../../../core/types.js';
-import { hasJobAdvancedAnyItem } from '../../../db/store.js';
-import type { NormalizedPosition } from '../../../services/trading212.service.js';
+import { getWorkItem, hasJobAdvancedAnyItem } from '../../../db/store.js';
+import { positionKey, type NormalizedPosition } from '../../../services/trading212.service.js';
 import { runStocksWatch, WATCH_JOB } from './stocks-watch.js';
 
 function fakeCtx(): JobContext {
@@ -73,7 +73,13 @@ function pos(
   const breaches = readFreshBreaches();
   assert.equal(breaches.length, 1);
   assert.equal(breaches[0].ticker, MSFT);
-  console.log('  ✓ fresh breach is written to fresh-breaches.json');
+
+  const notifiedRow = getWorkItem(WATCH_JOB, `${positionKey('invest', MSFT)}::notified`);
+  assert.ok(notifiedRow?.detail, 'the ::notified ledger row must record a detail blob describing the breach');
+  const detail = JSON.parse(notifiedRow!.detail!);
+  assert.equal(typeof detail.gainPct, 'number');
+  assert.equal(detail.ticker, MSFT);
+  console.log('  ✓ fresh breach is written to fresh-breaches.json, with detail recorded on the ::notified row');
 }
 
 // (c) staying above threshold (already notified) does not re-appear in fresh-breaches.json.

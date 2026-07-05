@@ -108,11 +108,27 @@ export async function runStocksWatch(
           averageBuyPrice: position.averageBuyPrice,
           currentPrice: position.currentPrice,
         });
-        markWorkItem(WATCH_JOB, notifiedKey, 'success');
+        markWorkItem(WATCH_JOB, notifiedKey, 'success', {
+          detail: {
+            name: `${label} — notified breach`,
+            ticker: position.ticker,
+            account: position.account,
+            gainPct: gain,
+            averageBuyPrice: position.averageBuyPrice,
+            currentPrice: position.currentPrice,
+          },
+        });
       }
     } else if (alreadyNotified) {
       ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — dropped back below threshold, resetting ledger`);
-      markWorkItem(WATCH_JOB, notifiedKey, 'skipped');
+      markWorkItem(WATCH_JOB, notifiedKey, 'skipped', {
+        detail: {
+          name: `${label} — reset (dropped below threshold)`,
+          ticker: position.ticker,
+          account: position.account,
+          gainPct: gain,
+        },
+      });
     } else {
       ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — below threshold`);
     }
