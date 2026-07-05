@@ -1,16 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
-import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { markWorkItem, workItemCounts } from '../../../db/store.js';
-import {
-  fetchInstrumentsMetadata,
-  resolveOpenFigiTickersBatched,
-  resolveTickers,
-  type InstrumentsMetadataFetcher,
-  type NormalizedPosition,
-  type OpenFigiTickerResolver,
-} from '../../../services/trading212.service.js';
+import type { NormalizedPosition } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
 
 const JOB_NAME = 'stocks-snapshot';
@@ -38,13 +30,13 @@ export function buildPortfolioMarkdown(positions: NormalizedPosition[]): string 
   const lines: string[] = [];
   lines.push('# Portfolio snapshot');
   lines.push('');
-  lines.push('| Account | Ticker | Real ticker | Quantity | Avg buy price | Current price | Diff | Diff % |');
+  lines.push('| Account | Ticker | Company name | Quantity | Avg buy price | Current price | Diff | Diff % |');
   lines.push('|---|---|---|---|---|---|---|---|');
   for (const p of positions) {
     const { absolute, percent } = priceDiff(p);
     const sign = absolute >= 0 ? '+' : '';
     lines.push(
-      `| ${p.account === 'isa' ? 'ISA' : 'Invest'} | ${p.ticker} | ${p.resolvedTicker ?? '—'} | ${fmt(p.quantity)} | ${fmt(p.averageBuyPrice)} | ${fmt(p.currentPrice)} | ` +
+      `| ${p.account === 'isa' ? 'ISA' : 'Invest'} | ${p.ticker} | ${p.name ?? '—'} | ${fmt(p.quantity)} | ${fmt(p.averageBuyPrice)} | ${fmt(p.currentPrice)} | ` +
         `${sign}${fmt(absolute)} | ${sign}${fmt(percent)}% |`,
     );
   }
@@ -65,12 +57,12 @@ export function writePortfolio(positions: NormalizedPosition[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Raw-positions reader (the hand-off from stocks-fetch)
+// Named-positions reader (the hand-off from stocks-resolve-names)
 // ---------------------------------------------------------------------------
 
-export type RawPositionsReader = () => NormalizedPosition[];
+export type NamedPositionsReader = () => NormalizedPosition[];
 
-export function readRawPositions(): NormalizedPosition[] {
+export function readNamedPositions(): NormalizedPosition[] {
   if (!existsSync(stocksSyncConfig.namedPositionsJsonPath)) return [];
   return JSON.parse(readFileSync(stocksSyncConfig.namedPositionsJsonPath, 'utf8')) as NormalizedPosition[];
 }
@@ -82,46 +74,19 @@ export function readRawPositions(): NormalizedPosition[] {
 export async function runStocksSnapshot(
   ctx: JobContext,
   opts: {
-    readRawPositions?: RawPositionsReader;
-    fetchInstrumentsMetadata?: InstrumentsMetadataFetcher;
-    resolveOpenFigiTickers?: OpenFigiTickerResolver;
+    readNamedPositions?: NamedPositionsReader;
     writePortfolio?: PortfolioWriter;
     now?: Date;
   } = {},
 ): Promise<void> {
-  const apiKeyId = process.env.TRADING212_API_KEY_ID ?? '';
-  const apiSecretKey = process.env.TRADING212_API_SECRET_KEY ?? '';
-  if (!apiKeyId) throw new Error('TRADING212_API_KEY_ID is not set');
-  if (!apiSecretKey) throw new Error('TRADING212_API_SECRET_KEY is not set');
-
-  const readRawPositionsFn = opts.readRawPositions ?? readRawPositions;
-  const fetchInstrumentsMetadataFn =
-    opts.fetchInstrumentsMetadata ??
-    ((keyId, secret) => callService('trading212', () => fetchInstrumentsMetadata(keyId, secret)));
-  const resolveOpenFigiTickersFn =
-    opts.resolveOpenFigiTickers ??
-    ((isins) => resolveOpenFigiTickersBatched(isins, process.env.OPENFIGI_API_KEY));
+  const readNamedPositionsFn = opts.readNamedPositions ?? readNamedPositions;
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
   const now = opts.now ?? new Date();
 
-  ctx.log('info: stocks-snapshot starting — resolving ISIN + real-world ticker for fetched positions');
+  ctx.log('info: stocks-snapshot starting — building the portfolio report from stocks-resolve-names output');
 
-  let positions = readRawPositionsFn();
+  const positions = readNamedPositionsFn();
   ctx.log(`info: read ${positions.length} named position(s) from stocks-resolve-names`);
-
-  if (positions.length > 0) {
-    ctx.log('info: resolving ISIN + real-world ticker for each position via Trading212 instruments-metadata + OpenFIGI');
-    try {
-      const instruments = await fetchInstrumentsMetadataFn(apiKeyId, apiSecretKey);
-      ctx.log(`info: fetched ${instruments.length} instrument(s) from Trading212 instruments-metadata`);
-      const isinByTicker = new Map(instruments.map((i) => [i.ticker, i.isin]));
-      positions = await resolveTickers(ctx, positions, isinByTicker, resolveOpenFigiTickersFn);
-      const resolvedCount = positions.filter((p) => p.resolvedTicker).length;
-      ctx.log(`info: resolved a real-world ticker for ${resolvedCount}/${positions.length} position(s)`);
-    } catch (err) {
-      ctx.log(`warn: ticker resolution failed — continuing without isin/resolvedTicker: ${(err as Error).message}`);
-    }
-  }
 
   const counts = workItemCounts(JOB_NAME);
   ctx.log(`info: ledger: ${counts['success'] ?? 0} previously recorded`);
@@ -149,7 +114,6 @@ export async function runStocksSnapshot(
   }
 
   const totalValue = positions.reduce((sum, p) => sum + p.currentValue, 0);
-  const resolvedCount = positions.filter((p) => p.resolvedTicker).length;
   const key = dayKey(now);
 
   markWorkItem(JOB_NAME, key, 'success', {
@@ -157,14 +121,13 @@ export async function runStocksSnapshot(
       name: `Portfolio snapshot — ${key}`,
       positionCount: positions.length,
       totalValue,
-      resolvedCount,
       markdown: stocksSyncConfig.portfolioMdPath,
     },
   });
 
   ctx.log(
     `info: stocks-snapshot complete — recorded 1 combined ledger row (${key}) for ${positions.length} ` +
-      `position(s), total value ${totalValue.toFixed(2)}, ${resolvedCount} real-ticker resolved`,
+      `position(s), total value ${totalValue.toFixed(2)}`,
   );
   ctx.progress(100, `${positions.length} position(s) recorded for ${key}`);
 }

@@ -31,20 +31,13 @@ nothing to resolve.
 
 ## Stage 3 — `stocks-snapshot`
 
-Reads `named-positions.json` and additionally resolves each position's ISIN + a current, real-world
-ticker — Trading212's own `ticker` field can go stale after a company rename. Calls Trading212's
-instruments-metadata endpoint AGAIN (a separate, more tightly rate-limited endpoint — 1 req/50s —
-called **at most once per run**, never per position) to build a ticker→ISIN map, then resolves each
-ISIN to a real ticker via the `openfigi` service (batched to respect its per-request limit: 10
-without an API key, 100 with one). `NormalizedPosition` gains optional `isin`/`resolvedTicker`
-fields; a miss at either step is a soft skip (logged, fields left `undefined`) — never fails the
-whole snapshot. `portfolio.md` shows the resolved ticker as a "Real ticker" column (`—` when absent).
-Records one combined ledger row per day (skipped entirely when there's nothing to resolve). Declares
-no `inputKeys()` — not limitable, no Run-limit box. **Known, deliberate interim duplication:** this
-stage's own instruments-metadata + OpenFIGI call duplicates the metadata fetch `stocks-resolve-names`
-already made one stage earlier — a follow-up task (T414) removes this stage's ISIN/OpenFIGI
-resolution entirely, since nothing in `stocks-sync` computationally uses `resolvedTicker` today (it's
-purely a display column) and `name` already serves the readability purpose.
+A pure report builder — no Trading212/OpenFIGI calls of its own, no credential check. Reads
+`named-positions.json` (written by `stocks-resolve-names`) and writes `data/out/portfolio.json` +
+`data/out/portfolio.md`. `portfolio.md` shows a **"Company name"** column (`p.name ?? '—'`) instead of
+a resolved ticker — the resolution work now lives entirely in `stocks-resolve-names` (T414 removed
+this stage's now-redundant ISIN/OpenFIGI resolution, which used to duplicate the instruments-metadata
+call `stocks-resolve-names` already makes). Records one combined ledger row per day (skipped
+entirely when there's nothing to record). Declares no `inputKeys()` — not limitable, no Run-limit box.
 
 ## Stage 4 — `stocks-watch`
 

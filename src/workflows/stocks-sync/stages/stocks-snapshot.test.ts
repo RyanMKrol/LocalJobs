@@ -2,14 +2,11 @@
 // writes to the real job data dir. Uses a stub raw-positions reader + stub writer +
 // the scratch DB (npm test sets LOCALJOBS_DB).
 import assert from 'node:assert/strict';
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it } from 'node:test';
 
 import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
-import {
-  type NormalizedPosition,
-  type Trading212Instrument,
-} from '../../../services/trading212.service.js';
+import { type NormalizedPosition } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
 import {
   runStocksSnapshot,
@@ -17,7 +14,7 @@ import {
   buildPortfolioMarkdown,
   dayKey,
   type PortfolioWriter,
-  type RawPositionsReader,
+  type NamedPositionsReader,
 } from './stocks-snapshot.js';
 
 function fakeCtx(): JobContext {
@@ -41,7 +38,7 @@ function makeNormalized(overrides: Partial<NormalizedPosition> = {}): Normalized
   };
 }
 
-function stubRaw(positions: NormalizedPosition[]): RawPositionsReader {
+function stubRaw(positions: NormalizedPosition[]): NamedPositionsReader {
   return () => positions;
 }
 
@@ -107,6 +104,32 @@ describe('buildPortfolioMarkdown', () => {
     assert.match(md, /Invest/);
   });
 
+  it('shows a Company name column, populated when name is present and — when absent', () => {
+    const md = buildPortfolioMarkdown([
+      {
+        ticker: 'AAPL_US_EQ',
+        account: 'invest',
+        quantity: 10,
+        averageBuyPrice: 100,
+        currentPrice: 130,
+        currentValue: 1300,
+        name: 'Apple Inc',
+      },
+      {
+        ticker: 'UNKNOWN_EQ',
+        account: 'invest',
+        quantity: 1,
+        averageBuyPrice: 1,
+        currentPrice: 1,
+        currentValue: 1,
+      },
+    ]);
+    assert.match(md, /Company name/);
+    assert.match(md, /Apple Inc/);
+    assert.doesNotMatch(md, /Real ticker/);
+    assert.match(md, /\| UNKNOWN_EQ \| — \|/);
+  });
+
   it('visibly distinguishes the ISA account', () => {
     const md = buildPortfolioMarkdown([
       {
@@ -143,54 +166,13 @@ describe('dayKey', () => {
 const JOB = 'stocks-snapshot';
 
 describe('runStocksSnapshot', () => {
-  beforeEach(() => {
-    process.env.TRADING212_API_KEY_ID = 'test-key-id';
-    process.env.TRADING212_API_SECRET_KEY = 'test-secret-key';
-  });
-
-  // stocks-snapshot independently validates these two env vars too, since it
-  // needs the Invest credentials for its own instruments-metadata call.
-  it('throws if TRADING212_API_KEY_ID is missing', async () => {
-    const saved = process.env.TRADING212_API_KEY_ID;
-    delete process.env.TRADING212_API_KEY_ID;
-    try {
-      await assert.rejects(
-        () =>
-          runStocksSnapshot(fakeCtx(), {
-            readRawPositions: stubRaw([]),
-            writePortfolio: () => {},
-          }),
-        /TRADING212_API_KEY_ID/,
-      );
-    } finally {
-      if (saved !== undefined) process.env.TRADING212_API_KEY_ID = saved;
-    }
-  });
-
-  it('throws if TRADING212_API_SECRET_KEY is missing', async () => {
-    const saved = process.env.TRADING212_API_SECRET_KEY;
-    delete process.env.TRADING212_API_SECRET_KEY;
-    try {
-      await assert.rejects(
-        () =>
-          runStocksSnapshot(fakeCtx(), {
-            readRawPositions: stubRaw([]),
-            writePortfolio: () => {},
-          }),
-        /TRADING212_API_SECRET_KEY/,
-      );
-    } finally {
-      if (saved !== undefined) process.env.TRADING212_API_SECRET_KEY = saved;
-    }
-  });
-
   it('writes portfolio.json + portfolio.md and records one combined ledger row', async () => {
     const pos = makeNormalized({ ticker: `TEST_${Date.now()}_EQ` });
     const { write, calls } = makeWriterSpy();
     const now = new Date('2026-07-04T12:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
-      readRawPositions: stubRaw([pos]),
+      readNamedPositions: stubRaw([pos]),
       writePortfolio: write,
       now,
     });
@@ -201,13 +183,13 @@ describe('runStocksSnapshot', () => {
     assert.ok(isWorkItemDone(JOB, dayKey(now), 1), 'the day-keyed row should be marked done');
   });
 
-  it('records positionCount/totalValue/resolvedCount/markdown in the collapsed ledger detail', async () => {
+  it('records positionCount/totalValue/markdown in the collapsed ledger detail', async () => {
     const pos = makeNormalized({ ticker: `DETAIL_${Date.now()}_EQ`, averageBuyPrice: 100, currentPrice: 130, currentValue: 1300 });
     const { write } = makeWriterSpy();
     const now = new Date('2026-07-05T08:00:00.000Z');
 
     await runStocksSnapshot(fakeCtx(), {
-      readRawPositions: stubRaw([pos]),
+      readNamedPositions: stubRaw([pos]),
       writePortfolio: write,
       now,
     });
@@ -217,7 +199,7 @@ describe('runStocksSnapshot', () => {
     const detail = JSON.parse(row!.detail!);
     assert.equal(detail.positionCount, 1);
     assert.equal(detail.totalValue, 1300);
-    assert.equal(detail.resolvedCount, 0);
+    assert.equal(detail.resolvedCount, undefined);
     assert.equal(detail.markdown, stocksSyncConfig.portfolioMdPath);
     assert.equal(detail.name, `Portfolio snapshot — ${dayKey(now)}`);
   });
@@ -226,7 +208,7 @@ describe('runStocksSnapshot', () => {
     const { write, calls } = makeWriterSpy();
     const now = new Date('2026-07-06T00:00:00.000Z');
     await runStocksSnapshot(fakeCtx(), {
-      readRawPositions: stubRaw([]),
+      readNamedPositions: stubRaw([]),
       writePortfolio: write,
       now,
     });
@@ -253,7 +235,7 @@ describe('runStocksSnapshot', () => {
 
     const { write, calls } = makeWriterSpy();
     await runStocksSnapshot(ctx, {
-      readRawPositions: stubRaw(positions),
+      readNamedPositions: stubRaw(positions),
       writePortfolio: write,
       now,
     });
@@ -275,12 +257,12 @@ describe('runStocksSnapshot', () => {
     const { write: write2 } = makeWriterSpy();
 
     await runStocksSnapshot(fakeCtx(), {
-      readRawPositions: stubRaw([posA]),
+      readNamedPositions: stubRaw([posA]),
       writePortfolio: write1,
       now,
     });
     await runStocksSnapshot(fakeCtx(), {
-      readRawPositions: stubRaw([posA, posB]),
+      readNamedPositions: stubRaw([posA, posB]),
       writePortfolio: write2,
       now: new Date('2026-07-08T20:00:00.000Z'),
     });
@@ -299,12 +281,12 @@ describe('runStocksSnapshot', () => {
     const { write: write2 } = makeWriterSpy();
 
     await runStocksSnapshot(fakeCtx(), {
-      readRawPositions: stubRaw([pos]),
+      readNamedPositions: stubRaw([pos]),
       writePortfolio: write1,
       now: nowDay1,
     });
     await runStocksSnapshot(fakeCtx(), {
-      readRawPositions: stubRaw([pos]),
+      readNamedPositions: stubRaw([pos]),
       writePortfolio: write2,
       now: nowDay2,
     });
@@ -312,97 +294,5 @@ describe('runStocksSnapshot', () => {
     assert.ok(isWorkItemDone(JOB, dayKey(nowDay1), 1));
     assert.ok(isWorkItemDone(JOB, dayKey(nowDay2), 1));
     assert.notEqual(dayKey(nowDay1), dayKey(nowDay2));
-  });
-
-  // -------------------------------------------------------------------------
-  // ISIN + real-ticker resolution (T373)
-  // -------------------------------------------------------------------------
-
-  function makeInstrument(overrides: Partial<Trading212Instrument> = {}): Trading212Instrument {
-    return {
-      ticker: 'YNDX_US_EQ',
-      name: 'Nebius Group NV',
-      isin: 'NL0009805522',
-      currencyCode: 'USD',
-      type: 'STOCK',
-      ...overrides,
-    };
-  }
-
-  it('resolves ISIN + real-world ticker end-to-end and records resolvedCount', async () => {
-    const pos = makeNormalized({ ticker: 'YNDX_US_EQ' });
-    const { write, calls } = makeWriterSpy();
-    let metadataCalls = 0;
-    const now = new Date('2026-07-12T09:00:00.000Z');
-
-    await runStocksSnapshot(fakeCtx(), {
-      readRawPositions: stubRaw([pos]),
-      fetchInstrumentsMetadata: async () => {
-        metadataCalls++;
-        return [makeInstrument()];
-      },
-      resolveOpenFigiTickers: async (isins) => isins.map(() => 'NBIS'),
-      writePortfolio: write,
-      now,
-    });
-
-    assert.equal(metadataCalls, 1, 'instruments-metadata is fetched at most once per stage run');
-    assert.equal(calls[0][0].isin, 'NL0009805522');
-    assert.equal(calls[0][0].resolvedTicker, 'NBIS');
-    const row = getWorkItem(JOB, dayKey(now));
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.resolvedCount, 1);
-  });
-
-  it('leaves isin/resolvedTicker undefined and logs a warn when the ticker is absent from instruments-metadata', async () => {
-    const pos = makeNormalized({ ticker: 'UNKNOWN_TICKER_EQ' });
-    const { write, calls } = makeWriterSpy();
-    const logs: string[] = [];
-    const ctx: JobContext = {
-      log: (msg) => logs.push(msg),
-      progress() {},
-      selectedRoots: () => null,
-      rootAllowed: () => true,
-    };
-
-    await runStocksSnapshot(ctx, {
-      readRawPositions: stubRaw([pos]),
-      fetchInstrumentsMetadata: async () => [makeInstrument({ ticker: 'OTHER_TICKER_EQ' })],
-      resolveOpenFigiTickers: async (isins) => isins.map(() => 'NBIS'),
-      writePortfolio: write,
-    });
-
-    assert.equal(calls[0][0].isin, undefined);
-    assert.equal(calls[0][0].resolvedTicker, undefined);
-    assert.ok(
-      logs.some((l) => l.startsWith('warn:') && l.includes('UNKNOWN_TICKER_EQ')),
-      'should log a warn naming the unresolved ticker',
-    );
-  });
-
-  it('leaves resolvedTicker undefined (but isin populated) on an OpenFIGI resolution miss', async () => {
-    const pos = makeNormalized({ ticker: 'YNDX_US_EQ' });
-    const { write, calls } = makeWriterSpy();
-    const logs: string[] = [];
-    const ctx: JobContext = {
-      log: (msg) => logs.push(msg),
-      progress() {},
-      selectedRoots: () => null,
-      rootAllowed: () => true,
-    };
-
-    await runStocksSnapshot(ctx, {
-      readRawPositions: stubRaw([pos]),
-      fetchInstrumentsMetadata: async () => [makeInstrument()],
-      resolveOpenFigiTickers: async (isins) => isins.map(() => null),
-      writePortfolio: write,
-    });
-
-    assert.equal(calls[0][0].isin, 'NL0009805522');
-    assert.equal(calls[0][0].resolvedTicker, undefined);
-    assert.ok(
-      logs.some((l) => l.startsWith('warn:') && l.includes('NL0009805522')),
-      'should log a warn naming the unresolved ISIN',
-    );
   });
 });
