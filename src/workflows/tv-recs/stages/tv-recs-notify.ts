@@ -95,7 +95,17 @@ export async function runTvRecsNotify(ctx: JobContext, opts: NotifyOpts = {}): P
   // Mark each notified rec in the ledger so it's never re-notified.
   for (const r of newRecs) {
     markWorkItem(RECS_JOB, recKey(r.tmdbId), 'success', {
-      detail: { name: `${r.title} (${r.lens})`, markdown: reportPath, title: r.title, year: r.year },
+      detail: {
+        name: `${r.title}${r.year ? ` (${r.year})` : ''}`,
+        markdown: reportPath,
+        title: r.title,
+        year: r.year,
+        lens: r.lens,
+        genre: r.genre,
+        reason: r.reason,
+        tmdbRating: r.tmdbRating,
+        tmdbUrl: tmdbLink(r.tmdbId),
+      },
     });
   }
 

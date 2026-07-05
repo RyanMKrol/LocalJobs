@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ignoreSurfacedItem, isWorkItemDone } from '../../../db/store.js';
+import { db } from '../../../db/index.js';
 import type { JobContext } from '../../../core/types.js';
 import { RECS_JOB, recKey } from '../recs.js';
 import { buildDigest, runTvRecsNotify } from './tv-recs-notify.js';
@@ -74,6 +75,14 @@ const backlog: Recommendation[] = [
   assert.match(sent[0].body, /Shogun/);
   assert.ok(isWorkItemDone(RECS_JOB, recKey(REC_A), 1), 'Severance marked in ledger');
   assert.ok(isWorkItemDone(RECS_JOB, recKey(REC_B), 1), 'Shogun marked in ledger');
+  const row = db.prepare('SELECT detail FROM work_items WHERE job_name = ? AND item_key = ?')
+    .get(RECS_JOB, recKey(REC_A)) as { detail: string | null };
+  const detail = JSON.parse(row.detail ?? '{}');
+  assert.equal(detail.reason, 'watch Severance', 'detail.reason recorded');
+  assert.equal(detail.genre, 'Sci-Fi & Fantasy', 'detail.genre recorded');
+  assert.equal(detail.tmdbRating, 8.0, 'detail.tmdbRating recorded');
+  assert.equal(detail.lens, 'world-cinema', 'detail.lens recorded');
+  assert.equal(detail.tmdbUrl, 'https://www.themoviedb.org/tv/8880001', 'detail.tmdbUrl recorded');
   const md = readFileSync(reportPath, 'utf8');
   assert.match(md, /## Recommendations/);
   assert.match(md, /\[Severance\]\(https:\/\/www\.themoviedb\.org\/tv\/8880001\)/);
