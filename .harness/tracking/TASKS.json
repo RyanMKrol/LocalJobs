@@ -10762,7 +10762,7 @@
     {
       "id": "T406",
       "title": "movie-recommendations: enrich notify-stage ledger detail with gap/rec findings",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
