@@ -10993,7 +10993,7 @@
     {
       "id": "T416",
       "title": "Formalize convention: item-loop jobs must fail their own run if any item failed this run",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
