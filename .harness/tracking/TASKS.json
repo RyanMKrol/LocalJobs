@@ -10916,7 +10916,7 @@
     {
       "id": "T413",
       "title": "stocks-sync: add stocks-resolve-names stage (Trading212 metadata-only company name lookup)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
