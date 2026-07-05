@@ -10850,7 +10850,7 @@
     {
       "id": "T410",
       "title": "stocks-watch: add detail to the notified-episode ledger rows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
