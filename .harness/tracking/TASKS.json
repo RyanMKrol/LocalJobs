@@ -11108,7 +11108,7 @@
     {
       "id": "T421",
       "title": "places: throw at run end when any item genuinely fails (resolve/enrich/llm-enrich)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
