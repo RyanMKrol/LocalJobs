@@ -11130,7 +11130,7 @@
     {
       "id": "T422",
       "title": "project-summarize: throw on any per-repo failure so the run fails (resolves T394 incident)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
