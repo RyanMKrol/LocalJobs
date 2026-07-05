@@ -11041,7 +11041,7 @@
     {
       "id": "T418",
       "title": "missing-tv-seasons: hard-fail season-check on genuine per-show TMDB errors; don't mark undelivered notify pushes as sent",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
