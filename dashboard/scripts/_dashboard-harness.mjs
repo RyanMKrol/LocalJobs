@@ -629,7 +629,22 @@ export function fixtureFor(pathname, searchParams) {
     return workflowIo;
   }
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
-  if (pathname.startsWith('/api/workflow-runs/')) return { run: workflowRun(), jobs: [run(), run({ id: '2', job_name: 'places-enrich', status: 'failed' })], logs, gates };
+  if (pathname.startsWith('/api/workflow-runs/')) {
+    return {
+      run: workflowRun(),
+      // places-resolve has TWO runs (an earlier failed attempt, then the latest
+      // success) so the "N earlier attempt(s)" expandable row (T417) has real
+      // data to show; places-enrich stays single-run (the common case).
+      jobs: [
+        run({ id: '3', job_name: 'places-resolve', status: 'failed', error: 'Timed out resolving CID', finished_at: NOW }),
+        run({ id: '4', job_name: 'places-resolve', status: 'success' }),
+        run(),
+        run({ id: '2', job_name: 'places-enrich', status: 'failed' }),
+      ],
+      logs,
+      gates,
+    };
+  }
   if (pathname === '/api/workflows/movie-recommendations') {
     return { workflow: workflow({ name: 'movie-recommendations', category: 'recommendations', jobs: movieRecsMembers, gates: [] }) };
   }
@@ -808,6 +823,18 @@ export const FLOWS = [
       await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
       await page.waitForSelector('.md-body table', { state: 'visible', timeout: 5000 });
       await page.waitForTimeout(300);
+    },
+  },
+  {
+    // T417: expand a stage's "N earlier attempt(s)" toggle in the Member runs
+    // table — confirms the earlier (failed) attempt row renders with its own
+    // status badge/timestamp/duration/logs-link once expanded.
+    name: 'workflow-run-earlier-attempts-expanded',
+    path: '/workflow-runs/1',
+    waitFor: ['.rf-dag-node'],
+    actions: async (page) => {
+      await page.click('button:has-text("earlier attempt")');
+      await page.waitForTimeout(200);
     },
   },
   {

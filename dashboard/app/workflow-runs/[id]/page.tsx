@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useState } from 'react';
+import React, { use, useCallback, useState } from 'react';
 import { DagFlow } from '../../components/DagFlow';
 import { MarkdownModal } from '../../components/MarkdownModal';
 import { StageIoPanel } from '../../components/StageIoLists';
@@ -20,6 +20,22 @@ function latestByStage(members: Run[]): Run[] {
   // Map preserves first-insertion order, so stage order is maintained.
   for (const r of members) latest.set(r.job_name, r);
   return [...latest.values()];
+}
+
+/** Every run for a stage EXCEPT the latest one, oldest-first (matches `members`'
+ *  own ordering). Empty for a stage that only ran once. */
+function earlierAttemptsByStage(members: Run[]): Map<string, Run[]> {
+  const byJob = new Map<string, Run[]>();
+  for (const r of members) {
+    const list = byJob.get(r.job_name);
+    if (list) list.push(r);
+    else byJob.set(r.job_name, [r]);
+  }
+  const earlier = new Map<string, Run[]>();
+  for (const [jobName, runs] of byJob) {
+    if (runs.length > 1) earlier.set(jobName, runs.slice(0, -1));
+  }
+  return earlier;
 }
 
 
@@ -359,6 +375,15 @@ function IoPanel({ runId, members }: { runId: string; members: WorkflowMember[] 
 export default function WorkflowRunDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [busy, setBusy] = useState(false);
+  const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
+  const toggleExpanded = (jobName: string) => {
+    setExpandedStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobName)) next.delete(jobName);
+      else next.add(jobName);
+      return next;
+    });
+  };
   const { data } = usePoll(() => api.workflowRun(id), 2000, [id]);
   const run = data?.run;
   const members = data?.jobs ?? [];
@@ -385,6 +410,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   for (const r of members) { statusByJob[r.job_name] = r.status; runIdByJob[r.job_name] = r.id; }
 
   const latestRuns = latestByStage(members);
+  const earlierAttempts = earlierAttemptsByStage(members);
 
   const totalStages = workflow?.jobs.length ?? latestRuns.length;
   const completedStages = latestRuns.filter(r => r.status !== 'queued' && r.status !== 'running').length;
@@ -423,15 +449,51 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
           <thead><tr><th>Stage</th><th>Status</th><th>When</th><th>Duration</th><th></th></tr></thead>
           <tbody>
             {members.length === 0 && <tr><td colSpan={5} className="muted">No member runs yet.</td></tr>}
-            {latestRuns.map((r) => (
-              <tr key={r.id}>
-                <td><strong>{r.job_name}</strong></td>
-                <td><StatusBadge status={r.status} /></td>
-                <td className="muted">{fmtRelative(r.started_at)}</td>
-                <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                <td><a href={`/runs/${r.id}`}>logs →</a></td>
-              </tr>
-            ))}
+            {latestRuns.map((r) => {
+              const earlier = earlierAttempts.get(r.job_name) ?? [];
+              const expanded = expandedStages.has(r.job_name);
+              return (
+                <React.Fragment key={r.id}>
+                  <tr>
+                    <td><strong>{r.job_name}</strong></td>
+                    <td><StatusBadge status={r.status} /></td>
+                    <td className="muted">{fmtRelative(r.started_at)}</td>
+                    <td className="mono">{fmtDuration(r.duration_ms)}</td>
+                    <td><a href={`/runs/${r.id}`}>logs →</a></td>
+                  </tr>
+                  {earlier.length > 0 && (
+                    <tr>
+                      <td colSpan={5}>
+                        <button
+                          type="button"
+                          className="btn-link"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            color: 'inherit',
+                            fontSize: '0.85em',
+                          }}
+                          onClick={() => toggleExpanded(r.job_name)}
+                        >
+                          {expanded ? '▾' : '▸'} {earlier.length} earlier attempt{earlier.length === 1 ? '' : 's'}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {expanded && earlier.map((e) => (
+                    <tr key={e.id}>
+                      <td className="muted" style={{ paddingLeft: 24 }}>{r.job_name}</td>
+                      <td><StatusBadge status={e.status} /></td>
+                      <td className="muted">{fmtRelative(e.started_at)}</td>
+                      <td className="mono">{fmtDuration(e.duration_ms)}</td>
+                      <td><a href={`/runs/${e.id}`}>logs →</a></td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
