@@ -10943,7 +10943,7 @@
     {
       "id": "T414",
       "title": "stocks-sync: remove duplicate ISIN/OpenFIGI resolution from stocks-snapshot, show company name",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T413"
       ],
