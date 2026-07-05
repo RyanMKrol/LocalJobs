@@ -59,7 +59,16 @@ export async function runFetch(ctx: JobContext): Promise<StageResult> {
         // every accord pct falls back to null (the success path used to save only
         // .txt, so pages/<id>.html never existed — T072).
         writeFileSync(join(perfumesConfig.pagesDir, `${p.id}.html`), o.html);
-        markWorkItem(FETCH_JOB, p.id, 'success', { attempts, detail: { name: label(p) } });
+        markWorkItem(FETCH_JOB, p.id, 'success', {
+          attempts,
+          detail: {
+            name: label(p),
+            format: 'text',
+            path: join(perfumesConfig.pagesDir, `${p.id}.txt`),
+            textLength: o.text.length,
+            htmlBytes: o.html.length,
+          },
+        });
         ok++;
         ctx.log(`[fetch] ✓ ${label(p)} (${o.text.length} chars, ${o.html.length} html bytes)`);
       } else {

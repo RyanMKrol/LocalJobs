@@ -41,7 +41,24 @@ export async function runParse(ctx: JobContext): Promise<StageResult> {
       applyAccordPercents(data, p.id, ctx);
       applyNormalizedNotes(data, label(p), ctx);
       writeFileSync(join(perfumesConfig.fragranticaDir, `${p.id}.json`), JSON.stringify(data, null, 2));
-      markWorkItem(PARSE_JOB, p.id, 'success', { attempts, detail: { name: label(p) } });
+      const accordsCount = Array.isArray((data as { accords?: unknown }).accords)
+        ? (data as { accords: unknown[] }).accords.length
+        : 0;
+      const notesTiers = (data as { notes?: { top?: unknown[]; heart?: unknown[]; base?: unknown[] } }).notes;
+      const notesCount = notesTiers
+        ? (notesTiers.top?.length ?? 0) + (notesTiers.heart?.length ?? 0) + (notesTiers.base?.length ?? 0)
+        : 0;
+      markWorkItem(PARSE_JOB, p.id, 'success', {
+        attempts,
+        detail: {
+          name: label(p),
+          format: 'json',
+          path: join(perfumesConfig.fragranticaDir, `${p.id}.json`),
+          accordsCount,
+          notesCount,
+          rating: (data as { rating?: number | null }).rating ?? null,
+        },
+      });
       ok++;
       ctx.log(`[parse] ✓ ${label(p)}`);
     } catch (e) {
