@@ -153,9 +153,12 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       enriched[place.cid] = { cid: place.cid, placeId, status: 'success', enrichedAt: new Date().toISOString(), attempts, data: res.data };
       const d = res.data;
       const dn = (d.displayName as { text?: string } | undefined)?.text ?? place.name;
-      markWorkItem(JOB_NAME, placeId, 'success', { attempts, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver', detail: { cid: place.cid, name: dn } });
-      okCount++;
       const ptype = (d.primaryTypeDisplayName as { text?: string } | undefined)?.text ?? '—';
+      markWorkItem(JOB_NAME, placeId, 'success', {
+        attempts, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver',
+        detail: { name: dn, rating: d.rating ?? null, type: ptype, address: d.formattedAddress ?? null },
+      });
+      okCount++;
       ctx.log(`[${i + 1}] ENRICHED "${dn}"`);
       ctx.log(`      place_id: ${placeId}`);
       ctx.log(`      rating:   ${d.rating ?? '—'} (${d.userRatingCount ?? 0} reviews)`);

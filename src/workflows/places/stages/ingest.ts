@@ -35,7 +35,8 @@ export function recordIngestLedger(
   rootAllowed: (cid: string) => boolean = () => true,
 ): void {
   for (const p of places) {
-    if (p.cid && rootAllowed(p.cid)) markWorkItem(INGEST_JOB, p.cid, 'success', { detail: { name: p.name } });
+    if (p.cid && rootAllowed(p.cid))
+      markWorkItem(INGEST_JOB, p.cid, 'success', { detail: { name: p.name, url: p.cidUrl, lists: p.lists } });
   }
 }
 

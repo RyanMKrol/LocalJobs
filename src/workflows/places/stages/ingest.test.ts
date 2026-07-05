@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { recordIngestLedger } from './ingest.js';
-import { isWorkItemDone, workItemCounts } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone, workItemCounts } from '../../../db/store.js';
 import type { NormalizedPlace } from '../types.js';
 
 // Convention: the FIRST workflow stage owns the per-item ledger list. places-ingest
@@ -38,6 +38,19 @@ await test('places-ingest honours the run limit — records only rootAllowed CID
   assert.equal(isWorkItemDone(INGEST_JOB(), 'cid-keep', 4), true, 'selected root recorded');
   assert.equal(isWorkItemDone(INGEST_JOB(), 'cid-skip-1', 4), false, 'non-selected root NOT recorded');
   assert.equal(isWorkItemDone(INGEST_JOB(), 'cid-skip-2', 4), false, 'non-selected root NOT recorded');
+});
+
+await test('places-ingest records the derived cidUrl + list membership in detail (not just the name)', () => {
+  recordIngestLedger([
+    { cid: 'cid-detail', cidHex: null, featureId: null, name: 'Detail Cafe', url: '', cidUrl: 'https://maps.google.com/?cid=cid-detail', lists: ['Saved', 'Food'] } as unknown as NormalizedPlace,
+  ]);
+
+  const row = getWorkItem(INGEST_JOB(), 'cid-detail');
+  assert.ok(row, 'work item recorded');
+  const detail = JSON.parse(row!.detail!) as { name: string; url: string | null; lists: string[] };
+  assert.equal(detail.name, 'Detail Cafe');
+  assert.equal(detail.url, 'https://maps.google.com/?cid=cid-detail');
+  assert.deepEqual(detail.lists, ['Saved', 'Food']);
 });
 
 // The job name is private to ingest.ts; mirror it here for the assertions.
