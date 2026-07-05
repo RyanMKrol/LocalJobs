@@ -10894,7 +10894,7 @@
     {
       "id": "T412",
       "title": "workouts-sync hevy-sync: record what each synced workout actually was in the ledger detail",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
