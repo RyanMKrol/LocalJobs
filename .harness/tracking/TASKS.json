@@ -11086,7 +11086,7 @@
     {
       "id": "T420",
       "title": "perfumes: throw when a stage run has any failed item, don't silently report success",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
