@@ -11064,7 +11064,7 @@
     {
       "id": "T419",
       "title": "movies-notify: fail run when digest push fails instead of marking items notified anyway",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
