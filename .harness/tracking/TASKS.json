@@ -10806,7 +10806,7 @@
     {
       "id": "T408",
       "title": "places: fix identity-only success detail on places-ingest and places-enrich",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
