@@ -10872,7 +10872,7 @@
     {
       "id": "T411",
       "title": "tv-recs-notify: enrich success detail with reason/genre/rating, not just name+report link",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
