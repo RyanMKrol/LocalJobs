@@ -2,6 +2,15 @@ import type { JobDefinition } from '../../../core/types.js';
 import { fragranticaUrlsContract } from '../contracts.js';
 import { runFindUrl } from './find-url.js';
 import { loadPerfumes } from '../lib.js';
+import type { StageResult } from '../types.js';
+
+/** A rate-limited pause with no genuine per-item failures is a soft defer, not a
+ *  failure — only a real `failed > 0` tally marks the run failed (T420). */
+export function assertNoFailures(result: StageResult): void {
+  if (result.failed > 0) {
+    throw new Error(`${result.failed}/${result.ok + result.failed} perfume(s) failed to find a Fragrantica URL this run — see logs above`);
+  }
+}
 
 const job: JobDefinition = {
   name: 'perfumes-find-url',
@@ -16,7 +25,10 @@ const job: JobDefinition = {
   async inputKeys() {
     try { return (await loadPerfumes()).map((p) => p.id); } catch { return []; }
   },
-  async run(ctx) { await runFindUrl(ctx); },
+  async run(ctx) {
+    const result = await runFindUrl(ctx);
+    assertNoFailures(result);
+  },
 };
 
 export default job;
