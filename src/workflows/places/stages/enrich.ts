@@ -200,6 +200,10 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
   ctx.log(`Overall enriched:     ${(finalLedger.success ?? 0)}/${resolvedOk.length}`);
   ctx.log(`Wrote ${placesConfig.enrichedOut}`);
   ctx.log('═══════════════════════════════════════════════');
+
+  if (failCount > 0) {
+    throw new Error(`${failCount}/${okCount + failCount} place(s) failed to enrich this run — see logs above`);
+  }
 }
 
 /** Call Places API (New) Place Details, or fabricate one in dry-run mode. */

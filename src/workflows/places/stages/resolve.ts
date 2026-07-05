@@ -151,6 +151,11 @@ export async function runResolve(ctx: JobContext): Promise<ResolvedFile> {
   ctx.log(`  • still to do (retry next run): ${remaining}`);
   ctx.log(`Wrote ${placesConfig.resolvedOut}`);
   ctx.log('═════════════════════════════════════════════════');
+
+  const failedThisRun = counts.mismatch + counts.no_place_id + counts.error;
+  if (failedThisRun > 0) {
+    throw new Error(`${failedThisRun}/${todo.length} place(s) failed to resolve this run — see logs above`);
+  }
   return file;
 }
 

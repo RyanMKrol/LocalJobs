@@ -167,6 +167,10 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
   ctx.log(`Overall done: ${(finalLedger.success ?? 0)}/${candidates.length}`);
   ctx.log(`Wrote ${placesConfig.llmOut} + markdown in ${placesConfig.markdownDir}`);
   ctx.log('═══════════════════════════════════════════════════');
+
+  if (fail > 0) {
+    throw new Error(`${fail}/${ok + fail} place(s) failed to LLM-enrich this run — see logs above`);
+  }
 }
 
 /** Build the grounded research prompt and call Gemini; parse its JSON verdict. */
