@@ -10969,7 +10969,7 @@
     {
       "id": "T415",
       "title": "stock-digest: split stock-portfolio-snapshot into fetch + resolve stages",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
