@@ -11,9 +11,9 @@ Idempotent per GitHub numeric repo id (`repoId`) via the `work_items` ledger —
 every run so catalog fields (description, topics, etc.) stay fresh, rather than skipping already-seen
 repos.
 
-⚠️ Known gap (see `.harness/tasks/T424.md`, pending): the GitHub API call is only rate/quota-gated ONCE
-for the whole paginated fetch, not once per page — harmless at the owner's current repo count (under
-100, so it never actually paginates), but wrong if that changes.
+The GitHub API call is rate/quota-gated through the `github` service via `callService('github', ...)`
+ONCE PER PAGE fetched (T424) — a multi-page catalog reserves one slot per request, not one for the
+whole paginated fetch.
 
 ## Stage 2 — `project-summarize`
 
@@ -27,8 +27,9 @@ prompt-embedded README slice. Still routed through the same `claude-cli` service
 `runClaude` — only the CLI args/cwd differ; the shared `src/services/claude.ts`'s `runClaude` itself is
 unmodified and still used by `perfumes`/`movies`/`tv-recs`.
 
-⚠️ Known gap (see `.harness/tasks/T424.md`, pending): the `git clone`/`git fetch` operations themselves
-are NOT service-gated at all today — no rate/quota check on the git-over-HTTPS calls to GitHub.
+The `git clone`/`git fetch`/`git reset` operations are also routed through `callService('github',
+...)` (T424) — the same shared `github` service/budget as the REST API pagination above, rather than
+a second, untracked one.
 
 The prompt (`buildSummaryPrompt`) embeds the catalog metadata GitHub knows (name/description/language/
 topics/pushedAt/url — unreachable from local exploration alone) and instructs Claude to explore the

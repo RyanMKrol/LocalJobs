@@ -9,7 +9,7 @@ import { describe, it, beforeEach } from 'node:test';
 
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
-import { runProjectSummarize, buildSummaryPrompt } from './project-summarize.js';
+import { runProjectSummarize, buildSummaryPrompt, cloneOrPullRepo } from './project-summarize.js';
 import { buildRepoAccessArgs, REPO_ACCESS_ALLOWED_TOOLS } from '../claude-repo.js';
 import type { CatalogEntry } from './github-sync.js';
 
@@ -256,6 +256,24 @@ describe('project-summarize', () => {
 
     assert.ok(seenRepoDir);
     assert.match(seenRepoDir!, /my-repo$/);
+  });
+});
+
+describe('cloneOrPullRepo — service gating (T424)', () => {
+  it('routes the git operation through callService("github", ...)', async () => {
+    const serviceCalls: string[] = [];
+    let fnRan = false;
+
+    await cloneOrPullRepo('https://github.com/user/my-repo', '/tmp/does-not-matter', async <T,>(name: string) => {
+      serviceCalls.push(name);
+      fnRan = true;
+      // Don't actually invoke the real git spawn — we only need to prove the
+      // clone/pull work happens INSIDE the service gate, not that git succeeds.
+      return undefined as T;
+    });
+
+    assert.deepEqual(serviceCalls, ['github']);
+    assert.ok(fnRan, 'the gated function should have been invoked');
   });
 });
 

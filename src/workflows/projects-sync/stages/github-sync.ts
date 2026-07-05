@@ -51,7 +51,16 @@ export interface CatalogEntry {
 
 export type ReposFetcher = (username: string, token: string) => Promise<GitHubRepo[]>;
 
-export async function fetchAllRepos(username: string, token: string): Promise<GitHubRepo[]> {
+/** Injectable so tests can spy on how many times a service-gated call is made,
+ *  without depending on the real cross-process SQLite meter. Defaults to the
+ *  real `callService`. */
+export type ServiceCaller = <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+
+export async function fetchAllRepos(
+  username: string,
+  token: string,
+  callServiceFn: ServiceCaller = callService,
+): Promise<GitHubRepo[]> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -66,11 +75,16 @@ export async function fetchAllRepos(username: string, token: string): Promise<Gi
 
   while (true) {
     const url = `${GITHUB_API}/users/${username}/repos?per_page=${perPage}&page=${page}&sort=pushed&direction=desc`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) {
-      throw new Error(`GitHub API error ${res.status}: ${await res.text()}`);
-    }
-    const repos = (await res.json()) as GitHubRepo[];
+    // Gate EACH page fetch through the shared `github` service — a multi-page
+    // catalog must reserve one rate/quota slot per request, not one for the
+    // whole paginated fetch.
+    const repos = await callServiceFn('github', async () => {
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        throw new Error(`GitHub API error ${res.status}: ${await res.text()}`);
+      }
+      return (await res.json()) as GitHubRepo[];
+    });
     all.push(...repos);
     if (repos.length < perPage) break;
     page++;
@@ -139,7 +153,7 @@ export async function runGithubSync(
 
   const token = process.env.GITHUB_TOKEN ?? '';
 
-  const fetchRepos = opts.fetchRepos ?? ((u, t) => callService('github', () => fetchAllRepos(u, t)));
+  const fetchRepos = opts.fetchRepos ?? fetchAllRepos;
   const writeCatalogFn = opts.writeCatalog ?? writeCatalog;
 
   ctx.log(`info: projects-sync starting — user: ${username}`);

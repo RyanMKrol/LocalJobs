@@ -14,6 +14,7 @@ import {
   filterAndSortRepos,
   repoToCatalogEntry,
   repoIdsFromCatalog,
+  fetchAllRepos,
   type GitHubRepo,
   type CatalogEntry,
   type CatalogWriter,
@@ -153,6 +154,48 @@ describe('repoIdsFromCatalog', () => {
       { repoId: '2', name: 'b', fullName: 'u/b', description: '', url: '', language: '', topics: [], pushedAt: '', defaultBranch: 'main' },
     ];
     assert.deepEqual(repoIdsFromCatalog(entries), ['1', '2']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchAllRepos — one callService('github', ...) reservation PER PAGE, not one
+// for the whole paginated fetch (T424).
+// ---------------------------------------------------------------------------
+
+describe('fetchAllRepos', () => {
+  it('calls callServiceFn once per page fetched, not once for the whole fetch', async () => {
+    const perPage = 100;
+    const pages = [
+      Array.from({ length: perPage }, () => makeRepo({ id: uid() })),
+      Array.from({ length: perPage }, () => makeRepo({ id: uid() })),
+      Array.from({ length: 7 }, () => makeRepo({ id: uid() })), // short final page
+    ];
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      const match = /[?&]page=(\d+)/.exec(String(url));
+      const page = match ? Number(match[1]) : 1;
+      const body = pages[page - 1] ?? [];
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => '',
+      } as unknown as Response;
+    }) as typeof fetch;
+
+    const serviceCalls: string[] = [];
+    try {
+      const result = await fetchAllRepos('testuser', 'token', async (name, fn) => {
+        serviceCalls.push(name);
+        return fn();
+      });
+
+      assert.equal(serviceCalls.length, 3, 'one callService invocation per page fetched');
+      assert.ok(serviceCalls.every((n) => n === 'github'));
+      assert.equal(result.length, perPage + perPage + 7);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

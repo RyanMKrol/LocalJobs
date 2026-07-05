@@ -44,6 +44,7 @@ const FALLBACK_TEMPLATE = [
 ].join('\n');
 
 import { runClaudeWithRepoAccess } from '../claude-repo.js';
+import { callService } from '../../../core/services.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { projectsSyncConfig } from '../config.js';
@@ -74,14 +75,28 @@ export function runGit(args: string[], cwd?: string): Promise<void> {
   });
 }
 
-export async function cloneOrPullRepo(repoUrl: string, dest: string): Promise<void> {
-  if (existsSync(resolve(dest, '.git'))) {
-    await runGit(['fetch', '--depth', '1', 'origin'], dest);
-    await runGit(['reset', '--hard', 'origin/HEAD'], dest);
-  } else {
-    mkdirSync(dest, { recursive: true });
-    await runGit(['clone', '--depth', '1', repoUrl, dest]);
-  }
+/** Injectable so tests can spy on the service gate without depending on the
+ *  registry having actually registered the `github` service. Defaults to the
+ *  real `callService`. */
+export type ServiceCaller = <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+
+export async function cloneOrPullRepo(
+  repoUrl: string,
+  dest: string,
+  callServiceFn: ServiceCaller = callService,
+): Promise<void> {
+  // Gate the git-over-HTTPS calls against GitHub through the SAME `github` service
+  // used by github-sync's REST API calls — one shared "how hard are we hitting
+  // GitHub" budget rather than a second, untracked one.
+  await callServiceFn('github', async () => {
+    if (existsSync(resolve(dest, '.git'))) {
+      await runGit(['fetch', '--depth', '1', 'origin'], dest);
+      await runGit(['reset', '--hard', 'origin/HEAD'], dest);
+    } else {
+      mkdirSync(dest, { recursive: true });
+      await runGit(['clone', '--depth', '1', repoUrl, dest]);
+    }
+  });
 }
 
 export type ClaudeSummarizer = (prompt: string, model: string, repoDir: string, effort?: string) => Promise<{ ok: boolean; text: string; error?: string }>;
