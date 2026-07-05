@@ -11174,7 +11174,7 @@
     {
       "id": "T424",
       "title": "projects-sync: gate GitHub pagination per-page and route git clone/fetch through the github service",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
