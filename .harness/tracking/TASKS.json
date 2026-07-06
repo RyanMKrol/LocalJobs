@@ -11860,7 +11860,7 @@
     {
       "id": "T448",
       "title": "Fix Overall stage-io panel showing the identical row as both Input and Output for single-wave workflows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
