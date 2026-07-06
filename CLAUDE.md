@@ -130,7 +130,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **stock-digest** | `src/workflows/stock-digest/` | Weekly Claude-narrated stock holdings/performance/sector digest |
 | **vercel-daily-redeploy** | `src/workflows/vercel-daily-redeploy/` | Daily safety-net production deploy trigger for the owner's separate `ryankrol.co.uk` site |
 | **plex-space-saver** | `src/workflows/plex-space-saver/` | Weekly, report-only audit of where Plex library disk space is going |
-| **plex-language-fix** | `src/workflows/plex-language-fix/` | Weekly: resolves each title's true original language via TMDB, proposes per-title audio/subtitle defaults, and now APPLIES them via Plex's own API — fully unattended, with a Plex Butler backup + a per-file undo log (`scripts/plex-language-undo.ts`) as the safety net instead of manual sign-off |
+| **plex-language-fix** | `src/workflows/plex-language-fix/` | Weekly: resolves each title's true original language via TMDB, proposes per-title audio/subtitle defaults, and APPLIES them via Plex's own API — fully unattended, with a Plex Butler backup + a per-file undo log (`scripts/plex-language-undo.ts`) as the safety net instead of manual sign-off — plus a parallel `plex-language-no-track-flag` stage that flags files with NO track at all in the original language (a probable wrong-release signal), notify-once per file/episode with ignore-to-suppress |
 
 Five workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
 `plex-space-saver`, `plex-language-fix`) share one Plex/TMDB connectivity client,

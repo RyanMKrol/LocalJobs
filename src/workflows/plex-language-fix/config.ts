@@ -18,6 +18,7 @@ const dataDir = resolve(here, 'data');
 export const plexLanguageFixConfig = {
   dataDir,
   outDir: resolve(dataDir, 'out'),
+  reportDir: resolve(dataDir, 'out', 'reports'),
   scanOut: resolve(dataDir, 'out', 'language-scan.json'),
   /** Prefix for per-run applied-changes logs (`<prefix>-<ISO-timestamp>.json`), read by scripts/plex-language-undo.ts. */
   appliedLogPrefix: resolve(dataDir, 'out', 'applied-log'),

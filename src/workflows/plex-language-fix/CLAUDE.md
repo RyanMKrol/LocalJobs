@@ -7,16 +7,53 @@ per-language server setting. This workflow builds a per-title, original-language
 resolve each show/movie's TRUE original language via TMDB, then work out which audio/subtitle track
 SHOULD be selected by default per file versus what's currently selected.
 
-**Two members: scan (read-only) → apply (mutating).** `plex-language-scan` is strictly READ-ONLY: it
-never issues a mutating request to Plex, only writes its proposed changeset to
-`data/out/language-scan.json`. `plex-language-apply` (`dependsOn: ['plex-language-scan']`, gated on the
-`plex-language-scan` contract — see `contracts.ts`) reads that changeset and APPLIES every `status:
-'change'` entry via Plex's own official `PUT /library/parts/<id>?audioStreamID=&subtitleStreamID=&
-allParts=1` endpoint — the same call Plex's own clients make when a user manually picks a track
-(`plexPutStreams` in `src/core/plex-client.ts`, shared there rather than kept workflow-local since it's a
-Plex-generic mutating primitive, like `plexGet` is a Plex-generic read). Flagging titles with genuinely
-no track in the target language (`plex-language-no-track-flag`) is a separate, already-planned follow-up
-task that will join as another member `dependsOn: ['plex-language-scan']`.
+**Three members: scan (read-only) → apply (mutating) + no-track-flag (read-only, parallel with
+apply).** `plex-language-scan` is strictly READ-ONLY: it never issues a mutating request to Plex, only
+writes its proposed changeset to `data/out/language-scan.json`. `plex-language-apply` (`dependsOn:
+['plex-language-scan']`, gated on the `plex-language-scan` contract — see `contracts.ts`) reads that
+changeset and APPLIES every `status: 'change'` entry via Plex's own official `PUT
+/library/parts/<id>?audioStreamID=&subtitleStreamID=&allParts=1` endpoint — the same call Plex's own
+clients make when a user manually picks a track (`plexPutStreams` in `src/core/plex-client.ts`, shared
+there rather than kept workflow-local since it's a Plex-generic mutating primitive, like `plexGet` is a
+Plex-generic read). `plex-language-no-track-flag` (`dependsOn: ['plex-language-scan']` too — it runs in
+PARALLEL with `plex-language-apply`, since neither depends on the other, both only on the scan) is the
+third, read-only member described below.
+
+**`plex-language-no-track-flag` — flags files with NO track at all in the true original language
+(a probable wrong-release signal).** A file the scan already marked `status: 'no-match'` (zero audio
+candidates found in any of the title's candidate languages) is a DIFFERENT problem from
+`plex-language-apply`'s job: there's no existing track to switch the default to, so the file itself is
+probably the wrong rip/release entirely (e.g. an English-dub-only Western release of a Japanese show)
+and should be re-acquired, not re-configured. This stage reads the SAME `data/out/language-scan.json`
+the scan stage already wrote — it never re-scans the library itself, so it never doubles the TMDB
+service's rate/quota spend.
+
+Tracking is **per FILE/EPISODE, not per show** — a `FileEntry` already IS one row per file (`partId` +
+optional `seasonEpisode`), so the stage groups nothing coarser. This matters concretely: a real
+exploration against the owner's library found Hunter x Hunter has 90 files WITH a Japanese track and 148
+WITHOUT one across its own run — a per-show flag would hide that inconsistency, where per-episode
+surfaces it correctly.
+
+It models `missing-tv-seasons`'s `plex-seasons-notify` "have I already flagged this?" ledger pattern
+exactly (`stages/no-track-flag.ts`, template: `src/workflows/missing-tv-seasons/stages/notify.ts`): a
+`work_items` ledger under job name `plex-language-no-track-flag`, keyed by
+`` `${itemRatingKey}::part${partId}` ``, records whether a file has ALREADY been announced — not whether
+work is done — so a file with the expected track never gets a row at all. Any not-yet-flagged file is
+newly-detected; the stage bundles ALL of them into a single push notification (grouped by show/movie in
+the digest body, with an episode count for a show with many flagged episodes, e.g. "Pokémon (1,226
+episodes)" — a movie just lists its title) rather than one push per file, then marks each flagged so it's
+never announced again. On a brand-new install with an empty ledger, the first run announces the entire
+current backlog in one digest. It also writes a markdown report to `data/out/reports/no-track.md`
+(recorded as the ledger rows' `detail.markdown`, T110), grouped by show/movie with a 🆕 marker on newly
+flagged files.
+
+The owner can permanently silence a title they know is dub-only BY DESIGN (and don't intend to
+re-acquire) via the same ignore-to-suppress mechanism `missing-tv-seasons` exposes for franchise/season
+gaps — `ignoreSurfacedItem`/`unignoreSurfacedItem` in `src/db/store.ts`, wired through
+`POST /api/plex-no-track/:itemKey/ignore` and `/unignore` in `src/api/server.ts` (the item key is the
+SAME `${itemRatingKey}::part${partId}` ledger key, URL-encoded). No dedicated dashboard management
+section has been built yet for this endpoint pair — a follow-up task can add one with no further backend
+work needed, mirroring the missing-tv-seasons `IgnoredSection` pattern.
 
 **Fully unattended — no per-run manual sign-off, by explicit owner decision.** The owner does not want
 to review every run by hand; this runs on the workflow's weekly schedule with no approval gate. Every

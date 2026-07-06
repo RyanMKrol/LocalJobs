@@ -22,6 +22,7 @@ import type { RecommendationsFile as TvRecommendationsFile } from '../workflows/
 import { plexConfig } from '../workflows/missing-tv-seasons/config.js';
 import { NOTIFY_JOB as PLEX_SEASONS_JOB, pairKey } from '../workflows/missing-tv-seasons/stages/notify.js';
 import type { MissingSeasonsFile } from '../workflows/missing-tv-seasons/types.js';
+import { NO_TRACK_JOB as PLEX_NO_TRACK_JOB } from '../workflows/plex-language-fix/stages/no-track-flag.js';
 import {
   getLogs,
   listGlobalLogs,
@@ -1439,6 +1440,27 @@ export function createApiServer(
         const keys = (items as { tmdbId: number; season: number }[]).map((it) => pairKey(it.tmdbId, it.season));
         const ignored = ignoreSurfacedItems(PLEX_SEASONS_JOB, keys);
         return json(res, 200, { ok: true, ignored });
+      }
+
+      // POST /api/plex-no-track/:itemKey/ignore — suppress a flagged no-original-
+      // language-track file from future reports + notifications. `itemKey` is the
+      // URL-encoded `<itemRatingKey>::part<partId>` ledger key. Guarded by the global
+      // loopback/token mutation check.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'plex-no-track' && parts[3] === 'ignore') {
+        const itemKey = decodeURIComponent(parts[2] ?? '');
+        if (!itemKey) return json(res, 400, { error: 'itemKey is required' });
+        const ignored = ignoreSurfacedItem(PLEX_NO_TRACK_JOB, itemKey);
+        return json(res, 200, { ok: true, ignored });
+      }
+
+      // POST /api/plex-no-track/:itemKey/unignore — reverse a manual ignore: deletes
+      // the ignored ledger row so the file is treated as brand-new and can
+      // resurface/re-notify on a future run.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'plex-no-track' && parts[3] === 'unignore') {
+        const itemKey = decodeURIComponent(parts[2] ?? '');
+        if (!itemKey) return json(res, 400, { error: 'itemKey is required' });
+        const unignored = unignoreSurfacedItem(PLEX_NO_TRACK_JOB, itemKey);
+        return json(res, 200, { ok: true, unignored });
       }
 
       // GET /api/jobs  (each flagged with its workflow, if it's a member)
