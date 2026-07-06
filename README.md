@@ -286,6 +286,17 @@ summaries below are a quick-reference index, not the source of truth.
   movie, one row per TV show (summing every episode across every season).
   Never flags or suggests deletions — a report only. Idempotent per ISO week via
   the work_items ledger. Single stage, runs weekly (Sundays 06:00).
+- **plex-profiles** — Weekly, writes one markdown profile per Plex title (movie
+  AND TV show) to `data/out/movies/` / `data/out/shows/`, sourced purely from
+  the Plex API — no LLM. Each profile covers a summary, cast/crew, per-source
+  ratings, technical detail (resolution/codec/file size, or total library size
+  summed across every episode for a show), and source metadata, in a fixed
+  YAML-frontmatter + `##`-heading template. Idempotent per title via the
+  work_items ledger's stored `updatedAt` marker (mirrors `projects-sync`'s
+  `pushedAt` idiom) — a title unchanged since its last build is skipped, so a
+  re-run only rebuilds what actually changed. Single stage, runs weekly
+  (Saturdays 05:00). Phase 2 (an optional Claude-narrated commentary layer on
+  top) is a deliberately deferred, separate future task.
 
 ## Dashboard pages
 
