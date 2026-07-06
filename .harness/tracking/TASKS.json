@@ -11224,7 +11224,7 @@
     {
       "id": "T426",
       "title": "vercel-daily-redeploy: create a vercel service and gate the CLI deploy trigger through it",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
