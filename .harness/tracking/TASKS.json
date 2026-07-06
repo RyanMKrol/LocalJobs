@@ -11693,7 +11693,7 @@
     {
       "id": "T442",
       "title": "Build plex-language-fix workflow: read-only scan stage (TMDB original-language + per-file audio/subtitle proposal)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
