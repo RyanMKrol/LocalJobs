@@ -11491,7 +11491,7 @@
     {
       "id": "T435",
       "title": "Job descriptions: listening-digest (1 job)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T429"
       ],
