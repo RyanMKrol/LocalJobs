@@ -70,7 +70,7 @@ export async function runStocksResolveNames(
 
   const fetchInstrumentsMetadataFn =
     opts.fetchInstrumentsMetadata ??
-    ((keyId, secret) => callService('trading212', () => fetchInstrumentsMetadata(keyId, secret)));
+    ((keyId, secret) => callService('trading212-instruments', () => fetchInstrumentsMetadata(keyId, secret)));
 
   const instruments = await fetchInstrumentsMetadataFn(apiKeyId, apiSecretKey);
   ctx.log(`info: fetched ${instruments.length} instrument(s) from Trading212 instruments-metadata`);

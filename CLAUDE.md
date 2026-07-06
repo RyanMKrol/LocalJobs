@@ -973,7 +973,7 @@ doubt, log it.
   there is nothing for the owner to override. Controlled values: `'cli-tool'`
   (`claude-cli`), `'website-scrape'` (`fragrantica`), `'api'` (the remaining
   services — `gemini`, `github`, `google-places`, `hevy`, `lastfm`, `tmdb`,
-  `trading212`, `dynamodb`, `openfigi`). A manifest with no `category` set defaults to
+  `trading212`, `trading212-instruments`, `dynamodb`, `openfigi`). A manifest with no `category` set defaults to
   `'uncategorized'`. The `category` column is added by `schema.sql` (fresh DBs) +
   an additive `ALTER TABLE` migration in `index.ts` (existing DBs, per the T098
   rule — no index on the new column).

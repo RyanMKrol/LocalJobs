@@ -23,7 +23,11 @@ stage's ledger activity is always real, never mislabeled noop.
 
 Resolves each fetched position's company **name** from Trading212's own instruments-metadata
 endpoint (`GET /equity/metadata/instruments`, called **at most once per run**, never per position) —
-Trading212-metadata-only, **no OpenFIGI, no ISIN**. `NormalizedPosition` gains an optional `name`
+Trading212-metadata-only, **no OpenFIGI, no ISIN**. The call is routed through the dedicated
+`trading212-instruments` service (`src/services/trading212-instruments.service.ts`, T425), which
+mechanically enforces the endpoint's documented 1-request-per-50-seconds spacing via
+`minIntervalMs` — separate from the `trading212` service's `ratePerMinute` budget, which governs
+only the portfolio-fetch endpoint. `NormalizedPosition` gains an optional `name`
 field; a miss is a soft skip (logged, `name` left `undefined`) — never fails the stage. Writes
 `data/out/named-positions.json` for `stocks-snapshot` to read (the `stocks-named-positions` gate
 validates the hand-off). Records one combined ledger row per day, skipped entirely when there's
@@ -57,7 +61,9 @@ this DAG where that's correct, since stage 3 always does real work per run.
 
 ## Schedule, service, credentials
 
-Runs daily (schedule editable from the dashboard). Service: `src/services/trading212.service.ts`.
+Runs daily (schedule editable from the dashboard). Services:
+`src/services/trading212.service.ts` (portfolio fetch) and
+`src/services/trading212-instruments.service.ts` (instruments-metadata lookup, T425).
 Credentials: `TRADING212_API_KEY_ID`, `TRADING212_API_SECRET_KEY` (+ optional
 `TRADING212_ISA_API_KEY_ID`/`_SECRET_KEY`). **`outputJob: 'stocks-snapshot'`**: the DAG's true terminal
 stage, `stocks-notify`, is a pure notify-trigger with no ledger rows of its own, so the workflow

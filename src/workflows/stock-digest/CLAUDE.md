@@ -33,7 +33,10 @@ is still a real, worth-recording observation).
 **Stage 2 (`stock-portfolio-snapshot`, T415 split from the old combined fetch+resolve stage —
 mirrors `stocks-sync`'s `stocks-fetch`/`stocks-snapshot` split)** reads stage 1's
 `raw-portfolio.json` and resolves each position's ISIN + real-world ticker via OpenFIGI (same
-resolution logic `stocks-sync` uses, from the shared `src/services/trading212.service.ts`) —
+resolution logic `stocks-sync` uses, from the shared `src/services/trading212.service.ts`). The
+instruments-metadata lookup itself is routed through the dedicated `trading212-instruments` service
+(`src/services/trading212-instruments.service.ts`, T425), which mechanically enforces the endpoint's
+documented 1-request-per-50-seconds spacing via `minIntervalMs` —
 **genuinely load-bearing here** (unlike `stocks-sync`, where the equivalent resolution became purely
 cosmetic): `stock-sector-lookup` actually prefers the resolved ticker as its Finnhub query symbol.
 Writes `data/out/portfolio.json`. A missing/empty portfolio (Trading212 returns nothing, or
