@@ -11462,7 +11462,7 @@
     {
       "id": "T434",
       "title": "Job descriptions: workouts-sync (2 jobs)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T429"
       ],
