@@ -11720,7 +11720,7 @@
     {
       "id": "T443",
       "title": "Add plex-language-fix apply stage: mutate Plex default audio/subtitle streams, with Butler-backup + undo safety net",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T442"
       ],
