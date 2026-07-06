@@ -1920,10 +1920,43 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       };
       assert.equal(body.job, '__overall__');
       assert.deepEqual(body.outputJobs, ['t384-first'], 'outputJob override, not the raw terminal wave [t384-last]');
-      assert.deepEqual(body.predecessorJobs, ['t384-first'], 'root wave is t384-first (the DAG\'s only source job)');
+      // T448: the root wave IS the outputJob override here, so there is no genuine
+      // distinct predecessor to show — inputs must be filtered out, not duplicated.
+      assert.deepEqual(body.predecessorJobs, [], 'root wave equals outputJobs -> no distinct predecessor');
+      assert.equal(body.inputs.length, 0, 'no duplicated input row when input job == output job');
       assert.equal(body.outputs.length, 1);
       assert.equal(body.outputs[0].jobName, 't384-first');
       assert.equal(body.outputs[0].itemKey, 'pos-1');
+    });
+  });
+
+  // T448: a genuinely single-wave workflow (every job independent, no dependsOn
+  // edges — e.g. plex-space-saver/claude-warmer/listening-digest in production)
+  // must show an EMPTY inputs list on the Overall tab, not a duplicate of outputs.
+  syncJob({ name: 't448-solo', run: async () => {} });
+  syncWorkflow({ name: 't448-solo-wf', jobs: [{ job: 't448-solo' }] });
+  const t448SoloRun = createWorkflowRun('t448-solo-wf', 'manual');
+  markWorkItem('t448-solo', 'week-1', 'success', {
+    workflowRunId: t448SoloRun,
+    detail: { name: 'Size breakdown', markdown: '/tmp/does-not-matter.md' },
+  });
+
+  await test('GET /api/workflow-runs/:id/stage-io?overall=true — single-wave workflow shows EMPTY inputs, not a duplicate of outputs (T448)', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (await fetch(`${base}/api/workflow-runs/${t448SoloRun}/stage-io?overall=true`)).json()) as {
+        inputs: unknown[];
+        outputs: { jobName: string; itemKey: string }[];
+        predecessorJobs: string[];
+        outputJobs: string[];
+        job: string;
+      };
+      assert.equal(body.job, '__overall__');
+      assert.deepEqual(body.outputJobs, ['t448-solo']);
+      assert.deepEqual(body.predecessorJobs, [], 'single-wave workflow -> no distinct input job');
+      assert.equal(body.inputs.length, 0, 'inputs must be empty, not a duplicate of the output row');
+      assert.equal(body.outputs.length, 1);
+      assert.equal(body.outputs[0].jobName, 't448-solo');
+      assert.equal(body.outputs[0].itemKey, 'week-1');
     });
   });
 

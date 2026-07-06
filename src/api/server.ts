@@ -2075,8 +2075,9 @@ export function createApiServer(
           const def = getWorkflowDefinition(run.workflow_name);
           const outputJobs =
             def?.outputJob && refs.some((r) => r.job === def.outputJob) ? [def.outputJob] : lastWave;
-          const { inputs, outputs } = stageIoLists(outputJobs, rootWave, run.id);
-          return json(res, 200, { inputs, outputs, predecessorJobs: rootWave, outputJobs, job: '__overall__' });
+          const inputJobs = rootWave.filter((j) => !outputJobs.includes(j));
+          const { inputs, outputs } = stageIoLists(outputJobs, inputJobs, run.id);
+          return json(res, 200, { inputs, outputs, predecessorJobs: inputJobs, outputJobs, job: '__overall__' });
         }
         const jobParam = url.searchParams.get('job');
         if (!jobParam) return json(res, 400, { error: 'job query param is required' });
