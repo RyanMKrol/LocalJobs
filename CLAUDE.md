@@ -355,7 +355,11 @@ load.
 
    const job: JobDefinition = {
      name: 'unique-name',           // stable; it's the DB primary key
-     description: 'what it does',
+     description: 'A paragraph (a few sentences) explaining what this stage ' +
+       'actually does step by step, what it reads/writes, and any notable ' +
+       'behavior (rate limiting, retries, idempotency, gating) — NOT a short ' +
+       'label. Plain prose only, no markdown, since it renders inside a plain ' +
+       '<p> on both /jobs/[name] and /runs/[id].',
      timeoutMs: 600_000,            // 0 = no timeout
      maxRetries: 3,
      async run(ctx) {
@@ -372,7 +376,9 @@ load.
    `run`/`produces`/`consumes`. You run a WORKFLOW, never a job; a job runs when its
    prerequisites are met inside its workflow, and `/jobs/[name]` is a read-only
    member view (status · run history · logs). Put any setup/run docs in the README,
-   not on the job.
+   not on the job. **Write `description` as a real paragraph, not a one-liner** — it
+   renders on TWO dashboard surfaces: the job's own page (`/jobs/[name]`) and every
+   individual run of that job (`/runs/[id]`), so a terse label under-serves both.
 2. Declare it in a `*.workflow.ts` manifest — a one-stage workflow for a lone job;
    the workflow carries the cron `schedule` (or `null` for manual-only):
    ```ts

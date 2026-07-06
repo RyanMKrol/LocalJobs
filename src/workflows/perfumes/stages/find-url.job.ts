@@ -14,7 +14,16 @@ export function assertNoFailures(result: StageResult): void {
 
 const job: JobDefinition = {
   name: 'perfumes-find-url',
-  description: 'Stage 1: find each perfume\'s Fragrantica URL via Claude Code (web search).',
+  description:
+    'Stage 1 of the perfumes workflow. Root stage: reads the full perfume backlog from the ' +
+    '(read-only) DynamoDB scan of the PerfumeRatings table via inputKeys(), so a manual run can ' +
+    'be limited to the first N perfumes. For every perfume that has no already-known ' +
+    'fragranticaUrl, it asks Claude Code (with web search enabled) to find that perfume\'s ' +
+    'Fragrantica page and writes the resolved URLs to data/out/fragrantica-urls.json, gated by ' +
+    'the fragrantica-urls artifact contract. Perfumes that already carry a fragranticaUrl from ' +
+    'the DynamoDB row skip the Claude call entirely. Each Claude call is routed through the ' +
+    'shared claude-cli service (rate/quota limited), and a per-item failure this run causes the ' +
+    'whole run to fail so it retries on the next cycle rather than silently dropping the item.',
   timeoutMs: 0,
   maxRetries: 3,
   produces: [fragranticaUrlsContract()],

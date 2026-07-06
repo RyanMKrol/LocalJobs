@@ -13,7 +13,17 @@ export function assertNoFailures(result: StageResult): void {
 
 const job: JobDefinition = {
   name: 'perfumes-build',
-  description: 'Stage 4: Claude Code combines Fragrantica data + research into a template-compliant profile.',
+  description:
+    'Stage 4 (final) of the perfumes workflow. For each perfume with parsed Fragrantica data from ' +
+    'stage 3, asks Claude Code to research the perfume further on the web and write a complete ' +
+    'markdown profile that follows the enforced profile.template.md contract (YAML frontmatter ' +
+    'covering name, brand, notes pyramid, accords, wear profile, community rating and ' +
+    'provenance, plus fixed narrative sections). It blends Fragrantica\'s community vote signal ' +
+    'against the LLM\'s own research using a continuous confidence weight based on the perfume\'s ' +
+    'vote count relative to the scraped corpus\'s median, passing that weight into the prompt as ' +
+    'an explicit instruction to state the confidence level in the written profile (there is no ' +
+    'separate validator that checks the prose actually honors it). The finished profile is ' +
+    'written to data/out/markdown/<id>.md.',
   timeoutMs: 0,
   maxRetries: 3,
   consumes: [fragranticaDataContract()],

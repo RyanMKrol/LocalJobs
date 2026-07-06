@@ -22,6 +22,13 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
   );
   const wfRun = wfRunData?.run;
 
+  // Static field (a job's description rarely changes) — a slow poll is enough.
+  const { data: jobData } = usePoll(
+    () => run?.job_name ? api.job(run.job_name) : Promise.resolve(null),
+    30000,
+    [run?.job_name],
+  );
+
   const counts = {
     info: logs.filter((l) => l.level === 'info').length,
     warn: logs.filter((l) => l.level === 'warn').length,
@@ -49,6 +56,10 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
             <div className="spacer" />
             <span className="muted mono">{run.id}</span>
           </div>
+
+          {jobData?.job?.description && (
+            <p className="sub" style={{ margin: '4px 0 16px' }}>{jobData.job.description}</p>
+          )}
 
           <div style={{ margin: '16px 0' }}>
             <ProgressBar pct={run.status === 'success' ? 100 : run.progress} done={run.status !== 'running'} />

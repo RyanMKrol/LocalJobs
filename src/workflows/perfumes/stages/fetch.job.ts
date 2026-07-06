@@ -13,7 +13,17 @@ export function assertNoFailures(result: StageResult): void {
 
 const job: JobDefinition = {
   name: 'perfumes-fetch',
-  description: 'Stage 2: headless browser captures each Fragrantica page\'s full text (scrolled).',
+  description:
+    'Stage 2 of the perfumes workflow. For each perfume with a resolved Fragrantica URL from ' +
+    'stage 1, launches a real (non-bundled) Chrome via the shared launchPersistentBrowser helper ' +
+    'against the framework\'s shared persistent profile, so Cloudflare clearance cookies carry ' +
+    'over across items and across runs. It waits out any Cloudflare challenge, scrolls the page ' +
+    'to trigger lazy-loaded content, and saves the result: a successful capture saves the page\'s ' +
+    'plain text to data/out/pages/<id>.txt, while a page diagnosed as blocked or too short is ' +
+    'saved as raw HTML to data/out/pages-failed/<id>.html for debugging. Requests are paced ' +
+    'through the fragrantica service (roughly a 12 second minimum interval plus jitter), since ' +
+    'the site\'s blocking is reputation/rate based rather than per-request fingerprinting, not ' +
+    'a hard call-count quota. Gated by the fragrantica-pages artifact contract.',
   timeoutMs: 0,
   maxRetries: 3,
   consumes: [fragranticaUrlsContract()],
