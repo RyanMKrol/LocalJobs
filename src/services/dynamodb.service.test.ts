@@ -49,16 +49,16 @@ describe('dynamodb service — unit (mocked AWS client)', () => {
     assert.ok(service.monthlyCap! <= 200_000);
   });
 
-  it('dynamoBatchWrite rejects batches over 25 items (DynamoDB hard limit)', async () => {
+  it('dynamoBatchWrite rejects (disabled) for a batch over 25 items', async () => {
     _resetClient(makeMockClient([]));
     const items = Array.from({ length: 26 }, (_, i) => ({ pk: String(i) }));
-    await assert.rejects(() => dynamoBatchWrite('MyTable', items), /max 25 items/);
+    await assert.rejects(() => dynamoBatchWrite('MyTable', items), /disabled/);
   });
 
-  it('dynamoBatchWrite is a no-op for empty array (no send called)', async () => {
+  it('dynamoBatchWrite rejects (disabled) even for an empty array', async () => {
     const mock = makeMockClient([]);
     _resetClient(mock);
-    await dynamoBatchWrite('MyTable', []);
+    await assert.rejects(() => dynamoBatchWrite('MyTable', []), /disabled/);
     // no send should have been called
     assert.equal((mock as unknown as { _calls: string[] })._calls.length, 0);
   });
@@ -77,16 +77,16 @@ describe('dynamodb service — unit (mocked AWS client)', () => {
     assert.equal(item, undefined);
   });
 
-  it('dynamoPut calls send without throwing', async () => {
+  it('dynamoPut is disabled — rejects with a clear error', async () => {
     const { dynamoPut } = await import('./dynamodb.service.js');
     _resetClient(makeMockClient([{}]));
-    await assert.doesNotReject(() => dynamoPut('T', { pk: 'a', val: 1 }));
+    await assert.rejects(() => dynamoPut('T', { pk: 'a', val: 1 }), /disabled/);
   });
 
-  it('dynamoDelete calls send without throwing', async () => {
+  it('dynamoDelete is disabled — rejects with a clear error', async () => {
     const { dynamoDelete } = await import('./dynamodb.service.js');
     _resetClient(makeMockClient([{}]));
-    await assert.doesNotReject(() => dynamoDelete('T', { pk: 'a' }));
+    await assert.rejects(() => dynamoDelete('T', { pk: 'a' }), /disabled/);
   });
 
   it('dynamoScan returns Items array (single page)', async () => {

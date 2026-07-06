@@ -73,7 +73,11 @@ export async function dynamoPut(
   table: string,
   item: Record<string, unknown>,
 ): Promise<void> {
-  await getClient().send(new PutCommand({ TableName: table, Item: item }));
+  throw new Error(
+    'dynamoPut is disabled — DynamoDB write functions are policy-gated off in this repo ' +
+      '(see CLAUDE.md / src/services/CLAUDE.md). Explicit owner sign-off is required before ' +
+      're-enabling this function.',
+  );
 }
 
 export async function dynamoQuery(
@@ -130,7 +134,11 @@ export async function dynamoDelete(
   table: string,
   key: Record<string, unknown>,
 ): Promise<void> {
-  await getClient().send(new DeleteCommand({ TableName: table, Key: key }));
+  throw new Error(
+    'dynamoDelete is disabled — DynamoDB write functions are policy-gated off in this repo ' +
+      '(see CLAUDE.md / src/services/CLAUDE.md). Explicit owner sign-off is required before ' +
+      're-enabling this function.',
+  );
 }
 
 /** Batch-write up to 25 items (DynamoDB hard limit per batch). */
@@ -138,7 +146,11 @@ export async function dynamoBatchWrite(
   table: string,
   items: Record<string, unknown>[],
 ): Promise<void> {
-  if (items.length === 0) return;
+  throw new Error(
+    'dynamoBatchWrite is disabled — DynamoDB write functions are policy-gated off in this repo ' +
+      '(see CLAUDE.md / src/services/CLAUDE.md). Explicit owner sign-off is required before ' +
+      're-enabling this function.',
+  );
   if (items.length > 25) throw new Error('dynamoBatchWrite: max 25 items per batch');
   await getClient().send(
     new BatchWriteCommand({
