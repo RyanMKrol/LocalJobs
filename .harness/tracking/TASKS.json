@@ -11519,7 +11519,7 @@
     {
       "id": "T436",
       "title": "Job descriptions: projects-sync (2 jobs)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T429"
       ],
