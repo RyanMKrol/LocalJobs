@@ -719,6 +719,12 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
     assert.equal(safeOutputMarkdown(txtFile), null, 'not a .md file');
     assert.equal(safeOutputMarkdown(`${outDir}/__does_not_exist__.md`), null, 'missing file');
   });
+  await test('safeOutputMarkdown: accepts a workflows-root-relative candidate (T447 storage format)', () => {
+    assert.ok(
+      safeOutputMarkdown('perfumes/data/out/markdown/__t110-test__.md'),
+      'a relative path resolved against WORKFLOWS_ROOT is allowed, same as the equivalent absolute path',
+    );
+  });
 
   // End-to-end: a run + a work item carrying detail.markdown → endpoint serves it.
   syncJob({ name: 't110-in', run: async () => {} });
@@ -780,6 +786,12 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
     assert.equal(safeOutputFile(`${outDir}/../../../../../../etc/passwd`), null, 'traversal escapes');
     assert.equal(safeOutputFile(outsideFile), null, 'not under data/out');
     assert.equal(safeOutputFile(`${outDir}/__no_such_file__.json`), null, 'missing file');
+  });
+  await test('safeOutputFile: accepts a workflows-root-relative candidate (T447 storage format)', () => {
+    assert.ok(
+      safeOutputFile('perfumes/data/out/reports/__t262-test__.json'),
+      'a relative path resolved against WORKFLOWS_ROOT is allowed, same as the equivalent absolute path',
+    );
   });
 
   // Workflow output endpoint: markdown form (backward compat) vs declared non-markdown form

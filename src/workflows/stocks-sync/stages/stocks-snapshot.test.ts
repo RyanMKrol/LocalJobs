@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone, toStoredPath } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { type NormalizedPosition } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
@@ -200,7 +200,7 @@ describe('runStocksSnapshot', () => {
     assert.equal(detail.positionCount, 1);
     assert.equal(detail.totalValue, 1300);
     assert.equal(detail.resolvedCount, undefined);
-    assert.equal(detail.markdown, stocksSyncConfig.portfolioMdPath);
+    assert.equal(detail.markdown, toStoredPath(stocksSyncConfig.portfolioMdPath), 'stored relative to WORKFLOWS_ROOT (T447)');
     assert.equal(detail.name, `Portfolio snapshot — ${dayKey(now)}`);
   });
 

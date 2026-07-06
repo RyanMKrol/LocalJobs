@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it, beforeEach } from 'node:test';
 
-import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone, toStoredPath } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import type { NormalizedPosition, Trading212Instrument } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
@@ -119,7 +119,7 @@ describe('runStocksResolveNames', () => {
     assert.equal(detail.totalPositions, 1);
     assert.equal(detail.name, `Names resolved — ${dayKey(now)}`);
     assert.equal(detail.format, 'json');
-    assert.equal(detail.path, stocksSyncConfig.namedPositionsJsonPath);
+    assert.equal(detail.path, toStoredPath(stocksSyncConfig.namedPositionsJsonPath), 'stored relative to WORKFLOWS_ROOT (T447)');
   });
 
   it('leaves name undefined and logs a warn when the ticker is absent from instruments-metadata', async () => {

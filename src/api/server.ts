@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { dirname, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path';
+import { dirname, isAbsolute, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { config } from '../config.js';
@@ -783,7 +783,10 @@ export function deleteDataOutContents(outDir: string): number {
  */
 export function safeOutputMarkdown(candidate: string | null): string | null {
   if (!candidate) return null;
-  const abs = resolvePath(candidate);
+  // T447: a relative candidate (the current storage convention) is joined against
+  // the freshly-computed WORKFLOWS_ROOT, not process.cwd() — an absolute (legacy,
+  // pre-fix) candidate resolves exactly as before.
+  const abs = isAbsolute(candidate) ? resolvePath(candidate) : resolvePath(WORKFLOWS_ROOT, candidate);
   if (!abs.toLowerCase().endsWith('.md')) return null;
   let real: string;
   try {
@@ -817,7 +820,8 @@ export function safeOutputMarkdown(candidate: string | null): string | null {
  */
 export function safeOutputFile(candidate: string | null): string | null {
   if (!candidate) return null;
-  const abs = resolvePath(candidate);
+  // T447: see safeOutputMarkdown — relative candidates resolve against WORKFLOWS_ROOT.
+  const abs = isAbsolute(candidate) ? resolvePath(candidate) : resolvePath(WORKFLOWS_ROOT, candidate);
   let real: string;
   try {
     real = realpathSync(abs); // follows symlinks; throws if the file is missing

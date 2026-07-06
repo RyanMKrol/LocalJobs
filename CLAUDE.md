@@ -482,6 +482,18 @@ job MAY colocate a service it owns).
   `data/out/` tree (`safeOutputMarkdown` in `server.ts` — resolve + realpath +
   prefix + `/data/out/` checks; no traversal, files only, no paid/remote calls),
   so keep output artifacts under `data/out/`.
+  **`detail.markdown`/`detail.path` are stored relative to the workflows root, not as a
+  frozen absolute path (T447).** `markWorkItem` (`src/db/store.ts`) normalizes both keys
+  via `toStoredPath` before persisting — a job author still just passes its natural
+  absolute path (`resolve(dataDir, 'out', ...)`); the store makes it relative
+  (`<workflow>/data/out/...`) transparently, so no job call site needs to change. This
+  fixes a real incident: the 2026-07 `src/jobs` → `src/workflows` rename (T331) froze
+  every already-recorded row's absolute path, permanently orphaning the "View" preview
+  for ~500 rows across 13 jobs until a one-time repair (`scripts/backfill-fix-stale-output-paths.ts`)
+  fixed them. A future workflow-folder rename can't strand new rows the same way.
+  `safeOutputMarkdown`/`safeOutputFile` in `server.ts` resolve a relative candidate
+  against the freshly-computed `WORKFLOWS_ROOT`; an absolute candidate (legacy rows,
+  or rows outside the workflows tree) still resolves exactly as before.
 - **Every stage's success `detail` must describe what THAT STAGE produced — not just restate
   the item's identity (2026-07, generalizes T110).** `work_items` is fundamentally an
   idempotency/retry ledger, but its `detail` blob is also the ONLY evidence the dashboard's

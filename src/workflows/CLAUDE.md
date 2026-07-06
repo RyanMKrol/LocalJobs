@@ -46,6 +46,17 @@ way to tell "nothing to show" from "author didn't think about it." Full
 rationale + worked examples in the root `CLAUDE.md`'s "Job conventions"
 section — this file only states the rule so it surfaces when working here.
 
+## ✅ Never store a raw absolute path in `detail.markdown`/`detail.path` (T447)
+
+`markWorkItem` normalizes both keys to a path relative to the workflows root before
+persisting (`toStoredPath` in `src/db/store.ts`) — pass your job's natural absolute
+path as always, the store makes it relative transparently. This exists because the
+2026-07 `src/jobs` → `src/workflows` rename froze every already-recorded absolute path,
+breaking the "View" output preview across 13 jobs until a one-time repair script fixed
+it. Never hand-construct or compare against a raw absolute `data/out/` path in new code
+— a future folder rename must not be able to strand ledger rows again. Full rationale
+in the root `CLAUDE.md`'s "Job resources are job-local" convention.
+
 ## ✅ An item-loop job must fail its own run if it failed any item this run (2026-07)
 
 A processing loop's per-item `try/catch` / `markWorkItem(..., 'failed', ...)` / `continue`

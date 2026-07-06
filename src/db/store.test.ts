@@ -1,6 +1,7 @@
 // Store tests for the workflow + service helpers. Runs against the scratch DB set
 // by `npm test` (LOCALJOBS_DB). Self-asserting: throws on failure.
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import {
   browseTable, listDbTables, listCannedQueries, runCannedQuery,
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
@@ -517,6 +518,25 @@ console.log('  ✓ markWorkItem lineage resolution (explicit / inherit / default
   assert.equal(workItemMarkdownPath('md-job', 'missing'), null, 'missing item → null');
 }
 console.log('  ✓ workItemMarkdownPath (recorded path / null)');
+
+// markWorkItem normalizes detail.markdown/detail.path to workflows-root-relative
+// paths (T447) — an absolute path under the workflows root is stored relative;
+// a path outside the root is left untouched.
+{
+  const underRoot = fileURLToPath(new URL('../workflows/plex-space-saver/data/out/size-breakdown.json', import.meta.url));
+  syncJob({ name: 'path-norm-job', run: async () => {} });
+  markWorkItem('path-norm-job', 'under-root', 'success', { detail: { name: 'A', markdown: underRoot } });
+  markWorkItem('path-norm-job', 'outside-root', 'success', { detail: { name: 'B', path: '/tmp/definitely-outside/x.json' } });
+  assert.equal(
+    workItemMarkdownPath('path-norm-job', 'under-root'),
+    'plex-space-saver/data/out/size-breakdown.json',
+    'absolute path under WORKFLOWS_ROOT stored relative',
+  );
+  const outsideRow = getWorkItem('path-norm-job', 'outside-root');
+  const outsideDetail = JSON.parse(outsideRow?.detail ?? '{}') as { path?: string };
+  assert.equal(outsideDetail.path, '/tmp/definitely-outside/x.json', 'path outside the workflows root left unchanged');
+}
+console.log('  ✓ markWorkItem normalizes detail.markdown/detail.path to workflows-root-relative paths');
 
 {
   // selectPendingRoots: fresh DB → first N candidates in input order.
