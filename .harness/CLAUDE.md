@@ -5,149 +5,43 @@ tasks in `TASKS.json`. It keeps the harness's own authoring rules *with* the har
 with it and surface at the authoring moment. (Repo-wide conventions are in the root `CLAUDE.md`; the
 loop's design is in `docs/HARNESS.md` + `docs/designs/`.)
 
+## ⚠️ STOP before editing any `.harness/` file in place — customize via `custom/` instead
+
+**This is the #1 way to wreck the harness's upgradeability — treat an in-place edit as a red flag.** The
+plugin owns almost everything under `.harness/`: `scripts/*` (including `loop.sh`), `.harness/CLAUDE.md`
+(this file), `README.md`, and everything under `docs/`. `/implementation-harness-upgrade` keeps these
+**byte-identical to the plugin** and refreshes them in place. The moment you hand-edit one of them, that file
+stops matching the reference, and **every future upgrade of it degrades into slow, error-prone manual
+reconciliation** — the exact "forked install that can never cleanly upgrade" trap the `custom/` overlay
+exists to prevent.
+
+**So: do NOT edit a plugin-owned `.harness/` file in place. If you (or the owner) are about to — STOP and
+flag it loudly:** say plainly that hand-editing this file forfeits clean upgrades and forces painful manual
+reconciliation from here on, and route the change into `.harness/custom/` instead. Everything you'd
+realistically want to customize has a supported `custom/` home the upgrade **never** touches:
+
+| You want to… | Do it in `custom/` (NOT by editing a plugin-owned file) |
+|---|---|
+| add project conventions / authoring rules | `custom/CLAUDE.md` (auto-loaded — this file imports it) |
+| run something on a loop event (deploy on drain, notify on block, …) | `custom/hooks/on-<event>.sh` |
+| block more secret paths from being pushed | `custom/sensitive-paths.txt` (append-only) |
+| add richer visual-verification guidance | `custom/visual-verify-{build,audit}.md` |
+| inject a standing rule into every build/audit (e.g. no live paid-API calls) | `custom/{build,audit}-preamble.md` |
+| add project notes to a shipped doc | the matching `custom/docs/…` overlay |
+
+Not sure which, or want a guided setup? Run **`/implementation-harness-customize`** — it walks these one at a
+time and drafts them with you. Full mechanics: `docs/HARNESS.md` §8.3.
+
+**The only genuine exception** is deeper `loop.sh`/script *logic* that no hook or `custom/` file can express
+(and `harness.env` scalar knobs, which are meant to be edited). Even then, don't hand-edit the script in
+place — **flag it to be upstreamed into the plugin**, because a hand-edited script can't be cleanly upgraded.
+
 ## Adding a backlog task → invoke the add-to-backlog skill
 
-To add a task to the backlog, invoke the **`ralph-loop-add-to-backlog`** skill. It is the **single
+To add a task to the backlog, invoke the **`implementation-harness-add-to-backlog`** skill. It is the **single
 source of authoring logic**: it assigns the task's **facets** (difficulty auto-tuning), pairs every
 chooser task with a review task, runs the **poor-fit / layer-evolution gate**, and writes a
 schema-correct task object + its `tasks/TNNN.md` spec. Prefer it over hand-editing `TASKS.json`.
-
-## A task touching `.harness/**` MUST be `gate: "needs-human"` — never buildable (T378)
-
-Any backlog task whose `scope` array includes a path prefixed `.harness/`, OR whose
-`facets.layer == "harness"`, **MUST** be authored `gate: "needs-human"`. It must never be left
-`gate: null` (buildable). This applies regardless of how the task is authored: the
-`ralph-loop-add-to-backlog` skill, a `/local-jobs-convert-ideas` sweep, or a direct hand-edit of
-`TASKS.json`.
-
-**Why this is non-negotiable:** the harness's own build/task-selection/calibration machinery
-(`loop.sh`, `TASKS.json`'s schema, `facets.json`, the outcomes/failures ledgers, this very
-`CLAUDE.md`) is what constrains every OTHER task the autonomous loop builds. A bad *unsupervised*
-edit here is uniquely dangerous compared to an ordinary buildable task going wrong: it can corrupt
-`TASKS.json`, break task selection or escalation, or silently defeat the loop's own safety rails —
-the exact thing the loop is supposed to be constrained by, edited by the very process it constrains,
-with no human in the loop. A human must always look at a diff to `.harness/**` before it's built, not
-just before it's merged.
-
-**This is enforced two ways:**
-- **Documented here** (this section) — the authoritative statement of the rule, since this file
-  auto-loads whenever Claude works inside `.harness/`, reaching every authoring path without needing
-  to touch anything outside this repo.
-- **A non-fatal pre-flight WARN in `loop.sh`** (mirrors the existing `_missing_facets` check) — at
-  startup, before the main iteration loop, it greps `TASKS.json` for any currently-buildable task
-  (`status != "done"`, `gate == null`) whose `scope` touches `.harness/` or whose `facets.layer ==
-  "harness"`, and logs a WARN naming the offending ids. It is deliberately **non-fatal** (matches this
-  repo's established idiom for backlog-hygiene issues — see the missing-facets WARN) — it does NOT
-  stop the loop and does NOT change `select_task()`'s selection logic. If the warning ever proves
-  insufficient in practice (a harness-touching task actually gets auto-built), a stronger mechanical
-  block is a reasonable escalation — see "Known-but-deferred issues" below rather than building it
-  speculatively now.
-
-**Scoping decision — `ralph-loop-add-to-backlog` itself is NOT edited by this rule.** That skill is
-not part of this repo: it lives in the `claude-skills` plugin marketplace (a separate, sibling repo),
-not this checkout. Propagating this convention into the skill's own authoring instructions is
-explicitly out of scope here — it mirrors the existing deferred cross-repo item T188 (which defers
-folding `convert-ideas`'s poor-fit gate into the same plugin). Relying on this file being auto-loaded
-for any Claude session working inside this repo's `.harness/` — including one running that skill — is
-sufficient coverage for now.
-
-## Ideas inbox & the two-step flow (ideas → tasks)
-
-Tasks are NOT authored directly from a raw thought. A backlog task carries a high planning bar
-(spec MD with `## Overview`/`## Do`/`## Done when`, `scope`, `dependsOn`, `facets`, `verify`), so a half-formed
-idea dumped straight in — especially several at once — produces rushed, low-quality specs. We split
-capture from planning into **two deliberate steps**, with **ideas as a first-class harness concept**.
-
-### Step 1 — capture: the ideas inbox (`.harness/tracking/IDEAS.md`)
-
-A **gitignored**, zero-ceremony scratchpad: a single `## Inbox` list, one bullet per idea, as detailed
-as needed (the full idea + any helpful context), no schema and no planning. It is the low-friction
-place to dump a thought so it isn't lost and isn't interrupting in-flight work — capture is
-**non-interactive** (it enriches from what's already known, never by asking) precisely so it doesn't
-derail whatever Claude is mid-task on. Capture two ways:
-- **`/idea <the idea, in as much detail as you like>`** — appends a bullet to the Inbox.
-- Or just **hand-edit** `.harness/tracking/IDEAS.md`, or tell Claude "add an idea: …".
-
-It is **gitignored on purpose** (like `data/` folders): raw, unfleshed ideas — which may reference
-private jobs — stay local and never hit the public repo. The *mechanism* travels with the harness via
-this committed doc; each project grows its own private inbox. This is distinct from the committed
-`TASKS.json` backlog — the inbox is transient working state, the backlog is the durable record.
-
-### Step 2 — convert: parallel per-idea agents + a single consolidation pass (`/local-jobs-convert-ideas`)
-
-Conversion is its OWN process — it **leans on `ralph-loop-add-to-backlog` but is NOT the bare skill**.
-`/local-jobs-convert-ideas` sweeps the **whole inbox in one invocation**, and converts ideas **in
-parallel, not one at a time**: every idea (or tightly-related cluster of ideas — see below) gets its
-own agent that owns explore → interview → shape end-to-end, and every independent unit launches
-together in one wave — there is no serial queue and no artificial batch-size cap. What used to make
-this unsafe to parallelize (every agent racing the shared repo lock to allocate a task id and commit
-directly) is now avoided by construction: each per-idea agent writes ONLY to its own uniquely-named
-scratch file under `.harness/.pending-tasks/` (no shared resource touched at all during
-interview/shaping), and a **single consolidation pass**, run once after every agent reports back,
-allocates every task id, resolves cross-idea `dependsOn` links, writes `TASKS.json` + spec files,
-commits, pushes, and cleans up `IDEAS.md` — all in one locked step instead of one per idea. Full
-mechanics (the pending-file schema, the consolidation script, the recovery check for an interrupted
-prior sweep) live in the skill itself, `.claude/commands/local-jobs-convert-ideas.md` — this section is
-just the model summary.
-- **Explore + interview per unit.** Each agent treats its idea(s) as vague and probes the owner first:
-  underlying itch/problem, rough shape, why it matters — *before* any task-shaping (this is what the
-  standard add-to-backlog interview lacks; it expects an already-formed feature). Default to MORE
-  questions; assume nothing is fleshed out. Every question names which specific idea it's about, since
-  several agents may be asking things at overlapping times.
-- **Agents don't have `AskUserQuestion` — it's main-thread-only.** A per-unit agent can't block on a
-  live prompt itself, so a genuine open question is relayed THROUGH the coordinator, not asked
-  directly: the agent writes it durably to `.harness/.pending-questions/<slug>.json` (so it survives
-  even if the coordinating session ends before relaying it — don't rely on conversation memory alone
-  for anything that must survive an interruption), the coordinator batches every open question across
-  every unit into `AskUserQuestion` calls to the owner, then resumes each blocked unit via `SendMessage`
-  with its answers. An agent that can make a confident, low-risk judgment call instead of blocking
-  should just do that (documented in its `report`) rather than manufacturing a question.
-- **De-dup pass (before launching any agents).** Scan the full inbox for ideas that are the same or
-  substantially overlap (semantic similarity, not exact-text match) and surface suspected duplicate
-  groups to the owner to merge or drop — do NOT auto-merge.
-- **Grouping by shared answer-space, not just `dependsOn`.** Two ideas go to the SAME agent when
-  answering one idea's interview question would plausibly change what you'd ask (or how you'd shape)
-  the other — not only when one is a strict foundation the other builds on. A genuine foundation→
-  dependent pair with no shared answer-space still gets two separate agents, launched in the same
-  wave, cross-referencing each other by a temporary id that the consolidation pass resolves once both
-  are known.
-- **Shape → write to a scratch file, not `TASKS.json` directly.** Once an agent is satisfied, it writes
-  its decided task(s) (title, scope, facets, spec content, everything except a real id) to its own
-  `.harness/.pending-tasks/<slug>.json` and stops. No lock, no git, no `IDEAS.md` edit at this stage.
-- **Consolidate once, at the end.** After every launched agent reports back, `.harness/scripts/consolidate-ideas.sh`
-  (a permanent, tested script — see `.harness/scripts/consolidate-ideas.mjs` for the id-allocation/spec-write/
-  merge logic) reads all pending files, allocates ids, resolves temp-id `dependsOn` references, writes
-  `tasks/TNNN.md` specs, updates `TASKS.json`, commits + pushes, removes every converted idea's bullet
-  from `.harness/tracking/IDEAS.md` (by FUZZY text match — normalized/reflowed comparison, re-read fresh under
-  the lock, since a pending file's recorded bullet text won't byte-match the hand-wrapped markdown),
-  and deletes the consumed pending files. This is the ONLY step that ever touches the repo lock in a
-  sweep.
-- **Recovery check, before anything else.** A sweep starts by checking for leftover
-  `.harness/.pending-tasks/*.json` files (fully-shaped units never consolidated — consolidate those
-  first) AND leftover `.harness/.pending-questions/*.json` files (units blocked on an owner answer that
-  never arrived — relay their recorded questions, then launch a fresh agent per unit to finish, seeded
-  with what's on disk) from a prior interrupted run, before touching the current inbox; and for
-  `IDEAS.md` bullets that plausibly already became a task in a recent commit (confirm with the owner
-  rather than re-interviewing from scratch).
-- **Delete on convert.** As each idea's task lands (or resolves to "no action needed"), its bullet is
-  removed from `.harness/tracking/IDEAS.md` — during the consolidation pass, never earlier. The resulting
-  `TASKS.json` task (+ its spec MD) is the record; the inbox stays a clean, transient surface. (No
-  "converted" archive — the inbox is gitignored, so there'd be no history of it anyway.)
-
-**Worked example.** Inbox bullet: *"The services page could show each service's daily usage vs its
-cap."* → its agent's interview surfaces: is this a sparkline or a number? daily-only or also monthly?
-does it need a new endpoint or is the data already on `GET /api/services/:name`? what's the itch —
-spotting a service about to hit its quota? → once understood, it runs the add-to-backlog shape (DoD,
-scope, dependsOn, facets, spec MD) and writes a `ui`/`component` task (+ any `api` task if a new field
-is needed) to its own pending file. The bullet is deleted from `IDEAS.md` once consolidation lands the
-real task(s).
-
-> Distribution: the `/idea` + `/local-jobs-convert-ideas` commands are project-local (`.claude/commands/`) for now;
-> `/idea` is deliberately kept UN-prefixed (unlike its `local-jobs-`-prefixed siblings, T286) so the same
-> invocation works across every repo via a keyboard macro — mirror this bare filename in other repos'
-> `.claude/commands/` rather than prefixing it there too. Folding this flow into the distributable
-> `claude-skills` plugin so other projects inherit it is
-> tracked by the harness-parity task **T188**.
 
 ## The floor (holds even on a direct edit)
 
@@ -158,204 +52,108 @@ from `config/facets.json`'s controlled vocabulary (use the task's `scope` paths 
 gets no auto-tuning and the loop **pre-flight WARNs** about it. Background:
 `docs/designs/difficulty-autotune.md`.
 
-### UI tasks must get VISUAL confirmation (`facets.layer == ui`)
-
-Structural checks can't see whether a UI element actually RENDERS — T223 shipped a gate padlock that
-was present in the DOM but invisible, and passed tsc + tests + the dashboard build + mobile-check. So
-for any `layer:ui` task the floor is: **build the dashboard, run `node
-dashboard/scripts/visual-check.mjs`, and LOOK at the screenshots** it writes to the gitignored
-`dashboard/scripts/visual-out/` — confirm with your own eyes that the change actually paints, and
-record what you saw in `.harness/worklog/<TASK>.md`. The loop enforces this mechanically: it injects
-the look-at-the-screenshots step into BOTH the builder prompt and the sampled auditor (the auditor
-must FAIL if a screenshot contradicts a `## Done when` claim), and it auto-exempts the
-`visual-check.mjs` / `_dashboard-harness.mjs` / `mobile-check.mjs` scripts from the scope gate.
-
-**LIVING ARTIFACT.** The page list, fixtures, AND interaction flows live once in
-`dashboard/scripts/_dashboard-harness.mjs`. `PAGES` captures one baseline screenshot per route;
-**`FLOWS`** captures states that only appear after an INTERACTION — an opened modal/popover, an
-expanded section, a clicked control — each a `{ name, path, actions(page) }` (with `viewport: true`
-for modal/overlay states so the backdrop frames the whole shot). A UI task **MUST update that file in
-the same commit** whenever it changes the rendered surface:
-- adds/removes a **page** → update `PAGES` (+ fixtures);
-- adds/removes a **workflow or gate**, or removes UI → update fixtures;
-- **adds or changes an INTERACTIVE state worth confirming (a modal, popover, expand/collapse, menu,
-  multi-step click flow) → ADD or update a `FLOWS` entry** so a screenshot actually captures that
-  state. If the only way to SEE your change is to click/open something, a baseline `PAGES` shot won't
-  show it — a `FLOWS` entry is REQUIRED, not optional.
-So the check stays accurate and doesn't start failing on intentionally-removed things — same standard
-as keeping docs current; a stale or missing `PAGES`/`FLOWS`/fixture is a bug, and it is part of Done.
-When AUTHORING a `layer:ui` task, its `## Done when` MUST include the visual-check line (see the root
-`CLAUDE.md` rule) AND, when the task adds/changes an interactive state, MUST call out adding the
-matching `FLOWS` entry; the `convert-ideas` / `ralph-loop-add-to-backlog` flow injects this for UI tasks.
-
-## Marking a task FAILED (owner correction of a false success)
-
-When the owner judges a `done` task to have actually failed, that is recorded in the owner-owned
-`.harness/tracking/manual-fail.json` overlay — **never** by hand-editing it, and never by the loop.
-Use the dashboard's "Mark failed" button (the sole interface — a portable, no-dashboard
-`mark-failed.sh` script + `/local-jobs-mark-task-failed` command used to exist alongside it; both
-were removed as redundant once every project running this harness had a dashboard). The loop READS
-this overlay to correct calibration — a false
-success is re-counted as a failure for difficulty tuning and dropped from its cell's audited-success
-count, so that `(layer × workType)` cell is built with a stronger model and audited more often. At
-pre-flight the loop ALSO reconciles it → `TASKS.json` `status=failed` (T279, `reconcile_overlays`) — a
-terminal status the loop skips; it does NOT re-open/rebuild the task (the re-do is a separate
-follow-up). The loop still never WRITES the overlay file. Full design: `docs/designs/manual-fail-signal.md`.
-
-## Marking a task BLOCKED (the loop's own give-up signal — distinct from FAILED)
-
-When the loop itself can't complete a task (the agent reports `failed:blocked` mid-attempt, or
-`MAX_ATTEMPTS` is exhausted at the top model tier), `block_task()` in `loop.sh` writes the usual
-`failed:blocked <id> — <reason>` worklog marker AND sets `TASKS.json` `status="blocked"` directly
-via `set_task_status` — no overlay involved, since (unlike the owner-driven FAILED case above) the
-loop already unconditionally owns `status` writes. `blocked` is terminal for selection
-(`task_blocked()` checks `status=="blocked"`, falling back to the legacy worklog-marker grep for
-tasks blocked before this existed). Calibration-wise, a blocked row was ALREADY treated exactly like
-a manual-fail row in both `policy.jq`'s tier-selection branch and `audit_gate()`'s confirmed-audited
-count (a blocked outcome was never counted as a success to begin with) — so this status is purely a
-visibility upgrade, not a new calibration mechanism.
-
 ## `scope` is the rigour dial — pick its granularity deliberately
 
-A task's `scope` is a **hard boundary**: the loop's `structural_checks` fails any attempt whose diff
-touches a file outside it (test files + the task's own worklog are always allowed). It is NOT a
-"these files must change" checklist — "did it actually do the work" is the **audit + CI's** job
-(`expectsTest: true` is the one cheap positive signal, forcing a test into the diff). `scope`'s only
-job is **blast-radius containment**, and its *granularity* is how you express the intended rigour:
+A task's `scope` array is a **binding contract**: the loop's structural gate fails the build if the
+diff touches any file outside it (exact-path match, or a directory prefix — a trailing `/**`, `/*`,
+or `/` is normalized to that directory). Always-allowed regardless of scope: the task's own
+`worklog/<id>.md`, **test files**, lockfiles (`package-lock.json`/`yarn.lock`/`pnpm-lock.yaml`), and
+anything in `SCOPE_EXEMPT_GLOBS`. Choose granularity to match the risk:
 
-- **Greenfield / "this whole area is the blast radius" → scope a DIRECTORY glob**, e.g.
-  `src/workflows/tv-recs/**` or `dashboard/app/components/**`. Anything the builder creates *inside that
-  tree* — including a proactive new util/helper file it decides it needs — is in-scope and NOT
-  punished. Use this for new workflows, new component areas, etc.
-- **Surgical / shared / dangerous → pin EXACT files**, e.g. `src/core/executor.ts`,
-  `src/db/store.ts`. A new sibling in a shared/core dir then trips scope-creep on purpose, so a
-  stronger model (escalation) or a human looks at a high-blast-radius change.
+- **Greenfield / self-contained work** → a directory glob (`src/feature/**`). Gives the builder room
+  to create the files it needs without tripping the gate.
+- **Surgical / shared / dangerous edits** → the **exact files** (`src/auth/session.ts`). The tighter
+  the scope, the smaller the blast radius a cheap builder can cause.
 
-The matcher understands an entry as an **exact path** OR a **directory prefix** — a trailing `/**`,
-`/*`, or `/` is stripped to the bare directory, so a file anywhere beneath it counts. (Next.js
-bracket dirs like `dashboard/app/workflows/[name]/page.tsx` are matched literally — the brackets are
-NOT glob character-classes here.) Rule of thumb: if the task legitimately can't predict every file
-(it may refactor or add helpers), scope the **directory**; if it must stay surgical, list the files.
+**Author scope from the files the spec actually tells the builder to edit.** The most common way a
+task fails `failed:blocked` is a spec that says "edit `X`" where `X` isn't in `scope` — the builder
+touches it, the structural gate rejects the diff, and the attempt is wasted. Run
+`scripts/check-task-scope.sh [TNNN]` after authoring (an advisory linter) — it flags files a spec
+mentions that no scope entry covers, before the loop ever tries to build the task.
 
-**Always-allowed regardless of scope:** the task's own worklog, **test files** (`*.test.*`/`*.spec.*`/
-`tests/…`), and **lockfiles** (`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`). You therefore do
-NOT need to list a lockfile in `scope` — when a task changes dependencies, scoping just `package.json`
-is enough; the `npm install`-rewritten `package-lock.json` is auto-allowed (a real dep change still
-requires editing `package.json`, which IS scope-checked, so the lockfile can't smuggle anything in).
-This auto-exemption was added after a task scoped to `package.json` failed scope-creep on its sibling
-`package-lock.json` (T220).
+## Completing a 🔒 needs-human task — do it interactively, never route it back through the loop
 
-## Bumping the base model (preserve calibration — migrate the ledger in lockstep)
+A `needs-human` task's completion mechanism **is** the interactive session: do the human step, then
+mark it done with `scripts/mark-done.sh TNNN` (which writes the owner overlay the loop reconciles).
+**Do NOT** run `loop.sh TNNN` at an already-built gate/needs-human task to "finish" it — the loop
+builds every task COLD from its spec and, on an `expectsTest:true` task with nothing left to do, will
+escalate up the ladder forever; under `LOOP_AUTORESET=1` it can also stash unrelated local work. The
+loop is for buildable tasks; gates are for you.
 
-When a new model ships and you switch the harness to it, the difficulty calibration in
-`ledgers/outcomes.jsonl`/`ledgers/failures.jsonl` must be **migrated in lockstep**, or it is silently
-lost. `scripts/policy.jq` maps each historic row's `(model, effort)` to a ladder **index** via `tidx`,
-and **drops any row whose tuple isn't on the current ladder** (`select($s >= 0 and $f >= 0)`). So if
-you change the ladder in `config/facets.json` but leave the ledger referencing the old id, every
-historic row becomes `tidx = -1` → dropped → every `(layer × workType)` cell cold-starts from the
-floor again.
+## Capturing & converting ideas
 
-Procedure (done for `claude-sonnet-4-6 → claude-sonnet-5`, 2026-07-01):
-1. **Pin the FULL id.** From `claude-sonnet-4-6` on, model IDs are a **dateless pinned snapshot** (not
-   an evergreen alias) — so `claude-sonnet-5` is the correct thing to pin (no `-YYYYMMDD`). Confirm the
-   exact id from Anthropic's models doc; do not guess.
-2. **Config:** update the `MODEL` default in `config/harness.env` + `scripts/loop.sh`, and the sonnet
-   tiers in the `config/facets.json` `.tiers.ladder`. Leave the Opus ceiling + `policy.auditorModel`
-   unless bumping those too.
-3. **Migrate the ledger 1:1:** `sed 's/<oldid>/<newid>/g'` over `ledgers/outcomes.jsonl` +
-   `ledgers/failures.jsonl` (and the gitignored `worklog/.failures.buf` so a pending flush stays
-   consistent). Because the new model takes the SAME ladder positions, this preserves every cell's
-   learned difficulty exactly. Leave worklog narrative (`*.md`) alone — it's historical record, not
-   policy-consumed.
-4. **Verify calibration is unchanged:** run `scripts/policy.jq` per cell against (old ledger + old ladder) vs
-   (new ledger + new ladder); every cell's chosen start-tier must be identical. (It's a slightly
-   *pessimistic* prior if the new model is stronger — safe; the ladder still escalates.)
+Rough ideas go in `tracking/IDEAS.md` (a committed inbox) via the capture-idea skill — zero
+ceremony, no interview. The convert-ideas skill later turns a batch of them into real backlog tasks
+(one agent per idea → a single locked `scripts/consolidate-ideas.sh` pass that allocates ids, writes
+specs, and removes the converted bullets). Both are documented here so the flow surfaces at the
+authoring surface, not just in the README.
 
-## Known-but-deferred issues (review if they recur)
+## Operating the loop — the three operational skills
 
-A running log of harness pathologies we've **seen at least once** and **consciously chose not to fix
-yet** — usually because they're rare or only triggered by manual intervention. If you (Claude) hit
-one again while working in or evaluating the harness, **flag it to the owner** with a pointer here
-rather than silently working around it; a second occurrence is the signal to actually fix it. Add a
-dated bullet when you defer something new.
+Beyond authoring, three skills help RUN the loop safely:
 
-- **2026-06-26 — A manual loop interrupt (Ctrl+C) can orphan a task whose work already merged.**
-  *Symptom:* a task's code is on `main` and CI-green, but its `status` is still `pending` (the
-  interrupt landed between the push and `mark_done`). The loop then re-selects it, the cold rebuild
-  finds the feature already present so it produces only a worklog-only `[skip ci]` commit, and
-  `wait_ci_green` never sees a CI run for that SHA → it times out (~`CI_TIMEOUT`s) and treats "no run
-  appeared" the SAME as "CI failed" → revert + retry, **forever** (a `…build summary` → `Revert …`
-  cycle, climbing the ladder until it falsely BLOCKS a task that's actually done). Two root causes:
-  (a) an interrupt can leave a merged task in `pending`; (b) `wait_ci_green` returning *indeterminate*
-  (no run / `[skip ci]`) is conflated with *red*. *Manual recovery (what we did):* stop the loop,
-  confirm the work is on `main` + green, mark the task `done`, drop the bogus `ci-red` rows from the
-  failure buffer, and add a clean `outcomes.jsonl` success row. *Why deferred:* only triggered by a
-  manual Ctrl+C mid-task; not worth the complexity yet. *If it recurs:* consider (1) `wait_ci_green`
-  treating indeterminate ≠ red, and (2) the loop detecting "this task's work is already on `main` →
-  just `mark_done`" instead of rebuilding.
-- **2026-06-26 — ROOT CAUSE FOUND + FIXED: `mark_done`/`block_task` silently failed to commit
-  `status=done` whenever `failures.jsonl` didn't exist.** The interrupt above was a *red herring* — the
-  real reason tasks orphaned was a regression in the T-`failures.jsonl` change (commit `2226eb1`):
-  `mark_done` did `git add "$BACKLOG" "$WORKLOG" "$OUTCOMES" "$FAILURES"`, but `.harness/failures.jsonl`
-  almost never exists (failures are rare). `git add` fails **atomically** on a missing pathspec —
-  staging **nothing** — so `git commit … || true` hit "no changes added to commit" and silently no-op'd.
-  The `status=done` therefore lived ONLY as an uncommitted working-tree edit, which the next task's
-  `cold_reset` wiped → **every** completed task since `2226eb1` orphaned (T214–T218), not just on
-  interrupts (a clean run would orphan them too; the interrupt just made it visible — and the loop log's
-  opening `no changes added to commit` line was the smoking gun). *Fix:* stage the always-present files
-  first, then add `$FAILURES` only `if [ -f "$FAILURES" ]` (both `mark_done` and `block_task`). Verified
-  in a scratch repo: the `mark done` commit now persists with `failures.jsonl` absent. **Do not recombine
-  those `git add`s.** The interrupt-window race + `wait_ci_green`-indeterminate items above remain the
-  only genuinely-deferred parts.
-- **2026-06-29 — FIXED: usage-limit handling, CI-indeterminate≠red, supervise over-park, and dirty-tree
-  block.** A session-limit hit on T254/T258 exposed a cluster of interacting bugs, all now fixed in
-  `loop.sh`/`supervise.sh`/`harness.env`:
-  - **`run_claude` missed an exit-0 usage limit.** It only classified a rate-limit when the CLI exited
-    non-zero (`rc != 0 && RL_RE`), but the CLI often prints "You've hit your session limit · resets …"
-    and STILL exits 0 — so the smart reset-aware backoff (`rl_reset_wait`, T265) was never reached and
-    the loop fell through and EXITED. *Fix:* a tight `RL_HARD_RE` now classifies the unambiguous limit
-    wording as rate-limited **regardless of exit code** (returns 10 → backoff); the broad `RL_RE` still
-    only applies when the command also failed, so ordinary success output can't be misread.
-    NB: the `rl_reset_wait` PARSER itself was never broken — it correctly parses
-    `resets 7:30pm (Europe/London)` under real bash (the apparent "no match" was a zsh-vs-bash
-    `BASH_REMATCH` artifact when testing interactively; loop.sh runs under `#!/usr/bin/env bash`).
-  - **`wait_ci_green` conflated CANCELLED with RED** (the long-deferred item #1 above). It now reads the
-    run's ACTUAL `conclusion` after watching: only `failure`/`timed_out`/`startup_failure`/`action_required`
-    → red (return 1); `cancelled`/`skipped`/`stale`/no-run → **indeterminate (return 2)**. The caller
-    branches on 0/1/2 and on indeterminate does **NOT revert** the pushed commit (it used to revert good
-    work whenever a newer push concurrency-cancelled the run). Rough edge: an indeterminate result leaves
-    the commit on `main` and soft-retries; a cold re-attempt may then hit an empty diff (the already-on-
-    `main` pathology, deferred item above) — acceptable vs. reverting verified work.
-  - **`supervise.sh` parked the FULL 5h15m window even on an early exit.** It now captures the loop's exit
-    code and on a non-zero exit does a short `SUPERVISE_ERROR_BACKOFF` (default 300s) relaunch instead of
-    the full interval — the loop now OWNS its usage-limit waits internally, so a non-zero exit is a crash,
-    not quota exhaustion. (This was the real cause of "next cycle at 21:47" — supervise's fixed cadence,
-    not the loop's backoff.)
-  - **Dirty-tree startup refusal permanently blocked unattended runs.** A killed attempt leaves orphaned
-    partial work; the startup guard then refused every future cycle (`exit 3`). New opt-in
-    `LOOP_AUTORESET` (default **1** in `harness.env` for this dedicated checkout) auto-STASHES the dirty
-    tree with a timestamped, recoverable label (`git stash list`) then hard-resets to `origin/$MAIN_BRANCH`
-    so the loop can always start. Set `0` to restore the protective refuse-on-dirty behaviour.
-  - **`structural_checks` discarded `LOCAL_DOD` output** (`>/dev/null 2>&1`), so a `tsc`/`test` failure was
-    undiagnosable after `cold_reset` wiped the tree. It now tees to the gitignored `$WORKLOG/.local-dod.log`
-    and logs the last 30 lines on failure. (The earlier `wait_ci_green` output is similarly worth capturing
-    if it recurs.)
-- **2026-06-30 — FIXED the REAL reason the loop exited on a usage limit: a `set -e` escape in the
-  run_claude call sites (the 2026-06-29 "detect on rc=0" fix above was necessary but NOT sufficient).**
-  `run_claude` internally does `set +e` (to read the claude pipe's `PIPESTATUS` without dying) then
-  `set -e` to restore it — but `set -e` is a GLOBAL shell option, so by the time `run_claude` hits
-  `return 10` it has re-enabled `set -e`, which **defeats the caller's leading `set +e`**. The call
-  sites were `set +e; run_claude …; rc=$?; set -e` — and with `set -e` flipped back ON inside
-  run_claude, the non-zero `return 10` triggers errexit and **kills `loop.sh` (exit 10) at the call,
-  before `rc=$?` runs** — so the reset-aware backoff handler was never reached. supervise then saw a
-  non-zero exit and did blind `SUPERVISE_ERROR_BACKOFF` (300s) relaunches that re-hit the limit
-  immediately — the "5-minute retries forever" symptom. *Fix:* both call sites (builder ~`run_claude
-  "$tmodel"` and auditor ~`run_claude "$am"`) now use **`rc=0; set +e; run_claude … || rc=$?; set -e`**
-  — the `|| rc=$?` (an AND-OR list) is never exited-on by `set -e` regardless of run_claude's internal
-  flipping, so rc=10 is captured and the handler runs. Verified with a minimal `set -euo pipefail`
-  repro + an integration sim of the loop's structure (handler runs, script does NOT exit on rc=10).
-  Now: a KNOWN reset ("resets 3:10pm (TZ)") → the loop sleeps until that time + `RL_BUFFER` (raised to
-  **300s = 5 min**) and resumes itself, NOT supervise; an UNKNOWN/unparseable reset → exponential
-  backoff capped at the new **`RL_EXP_MAX` (1h)** (decoupled from `RL_BACKOFF_MAX`=5h, which still caps
-  a parsed wait since a real reset can be hours out). **Lesson:** a helper that toggles global `set -e`
-  must be called with `|| rc=$?`, never `; rc=$?` — the latter is a latent errexit landmine.
+- **`/implementation-harness-pre-loop-checkin`** — read-only GO/NO-GO vetting before an unattended run
+  (needs-human blockers, dirty tree / running loop / lock, per-task facets/spec/scope quality). Changes nothing.
+- **`/implementation-harness-loop-recover`** — after a manual Ctrl-C interrupt, diagnose AND fix the
+  state it left (orphaned tasks, stale lock, dirty tree / leftover worktree, ledger noise), then leave
+  the loop restartable. This is the ONLY safe way to hand-correct loop state — do the recovery through
+  it, not ad-hoc, and only ever while the loop is stopped.
+- **`/implementation-harness-review-failed`** — sweep `failed`/`blocked` tasks and author
+  better-specified follow-ups (never a blind retry; never reopens the terminal task).
+
+## A task touching `.harness/**` MUST be `gate: "needs-human"` — never buildable
+
+Any backlog task whose `scope` array includes a path prefixed `.harness/`, OR whose
+`facets.layer == "harness"`, **MUST** be authored `gate: "needs-human"` — never `gate: null`
+(buildable). (`gate` is only ever `null` or `"needs-human"`.) This applies regardless of how the task
+is authored — the add-to-backlog skill, the ideas-conversion pipeline, or a direct hand-edit of `TASKS.json`.
+
+**Why:** the harness's own build/task-selection/calibration machinery is what constrains every
+OTHER task the loop builds. A bad *unsupervised* edit here is uniquely dangerous compared to an
+ordinary buildable task going wrong — it can corrupt `TASKS.json`, break task selection or
+escalation, or silently defeat the loop's own safety rails, edited by the very process it
+constrains, with no human in the loop. A human must look at a diff to `.harness/**` before it's
+built, not just before it's merged.
+
+Enforced two ways: documented here (loads whenever Claude works inside `.harness/`), and a
+non-fatal pre-flight WARN in the loop (mirrors the missing-facets WARN) that names any currently
+buildable task touching `.harness/` without the required gate — it does not stop the loop or
+change selection, it's a backlog-hygiene signal.
+
+## Marking a task done / failed / reviewed → use the mark-*.sh scripts
+
+Never hand-edit `TASKS.json`'s `status` field directly — the loop is its sole writer.
+`scripts/mark-done.sh TNNN` marks a `needs-human` task done; `scripts/mark-failed.sh TNNN "<reason>"`
+overturns a `done` task the loop/audit got wrong; `scripts/mark-reviewed.sh TNNN` sets the cosmetic
+reviewed flag. Each writes one `tracking/*.json` overlay file, which `reconcile_overlays()` promotes
+into `TASKS.json` status on the loop's next iteration. Background: `docs/designs/manual-fail-signal.md`.
+
+## Known-but-deferred issues (log real incidents here, dated)
+
+A running, dated log of real problems hit while operating THIS harness — not aspirational design
+notes, actual incidents with a root cause and a fix. This is institutional memory: the next person
+(human or agent) debugging a strange loop failure should check here before re-deriving the cause
+from scratch.
+
+**Two-strikes rule.** The first time you hit a surprising harness behavior, don't silently work
+around it — **flag it to the owner** and log it here. A *second* occurrence is the signal that it's a
+real mechanism bug worth actually fixing (a one-off may be environmental; a repeat is a pattern).
+
+Add an entry whenever you diagnose a genuine harness-mechanism bug (not a one-off
+project bug), in this shape:
+
+```
+### YYYY-MM-DD — <one-line symptom>
+**Root cause:** <what was actually wrong, and why it wasn't obvious>
+**Fix:** <what changed, with a file/function pointer>
+**Verification:** <how you confirmed the fix actually works>
+```
+
+Keep entries even after the fix ships — they're the record of *why* the current behavior exists,
+which saves the next debugging session from re-discovering the same failure mode. (No entries yet
+in a freshly-scaffolded project — this section is the template for adding them.)
+
+---
+
+<!-- Project-specific harness instructions live in the customization overlay below (upgrades never touch it). -->
+@custom/CLAUDE.md

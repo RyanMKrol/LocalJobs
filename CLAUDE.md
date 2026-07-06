@@ -93,9 +93,9 @@ An uncommitted session's work (a backlog sweep, a new workflow, a doc rewrite) c
 silently disappear from view this way: not lost forever (`git stash list` recovers it),
 but the loop will build against **stale state** — an old `TASKS.json`, missing doc
 updates — until a human notices the stash and reconciles it. This has already happened
-once: a full `/local-jobs-convert-ideas` sweep (13 new backlog tasks + supporting doc
+once: a full `/implementation-harness-convert-ideas` sweep (13 new backlog tasks + supporting doc
 changes) sat uncommitted across an entire session before anyone caught it via
-`/local-jobs-pre-loop-checkin` — one skipped commit away from the loop silently stashing
+`/implementation-harness-pre-loop-checkin` — one skipped commit away from the loop silently stashing
 away a whole idea-conversion sweep. Treat "uncommitted" as "not durable" here: the moment
 a unit of work is coherent (a finished idea conversion, a completed doc update, a working
 job), commit it and push it — don't let it accumulate.
@@ -1408,7 +1408,7 @@ this in addition to everything above:
 - **Task `do`/`doneWhen` live in a per-task Markdown spec (T131).** A task's *what to build* and
   *bar for done* are NOT flat strings in `.harness/tracking/TASKS.json` — they live in `.harness/tasks/TNNN.md`
   with two sections, `## Do` and `## Done when`, referenced by the JSON task's `spec` field (a
-  repo-relative path). **A task authored via `/local-jobs-convert-ideas` also gets a leading `##
+  repo-relative path). **A task authored via `/implementation-harness-convert-ideas` also gets a leading `##
   Overview`** — one or two sentences of plain, human-readable language capturing the point of the
   task at a glance, before the denser `## Do`/`## Done when` detail. This is a later addition to the
   convention: existing specs written before it don't have one and are NOT backfilled — it only applies

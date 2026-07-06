@@ -1,287 +1,624 @@
-# HARNESS.md — the autonomous build harness (in-place Ralph loop)
+# HARNESS.md — the Ralph Loop autonomous build harness
 
-Authoritative design of the autonomous builder for `local-jobs`. `CLAUDE.md` is the
-coding-conventions rulebook; this file is how the loop *works*.
+> **Customizing this file?** Don't edit it in place — it's plugin-owned and refreshed on upgrade. Put
+> project-specific notes in `custom/docs/HARNESS.md` (the overlay — upgrades never touch it). See
+> `.harness/custom/CLAUDE.md`.
 
-## 1. What it is
+> **In one line:** a single, **sequential** loop that builds a `TASKS.json` backlog
+> **one fully-verified task at a time**, on a **pinned model**, with all memory in
+> the repo — optimised to **waste as few tokens as possible when a run is
+> interrupted**, and to never mark a task done until it is *empirically* done
+> (builds, tests, CI green, behaviour observed).
 
-A single **sequential** shell loop (`.harness/scripts/loop.sh`) that builds the `.harness/tracking/TASKS.json`
-backlog **one fully-verified task at a time**, working **directly on `main` in this checkout** —
-no git worktree, no per-task branches. The whole harness lives under the hidden `.harness/` folder
-to stay separate from project source. `.harness/scripts/supervise.sh` re-launches the loop on a cadence so
-it spans many token-refresh windows.
+This document is the source of truth for **how the project is built**, the same way
+`README.md` is the source of truth for **what is currently implemented** and (if you
+keep one) `PLAN.md`/design docs are the source of truth for **what you're building**.
+If you want to change how autonomous runs work, **change this file first, then make
+the scripts match it.** A harness change that isn't reflected here is a bug in the harness.
 
-### Why in-place (not the worktree variant)
-The stock Ralph harness isolates each task in a throwaway worktree off `origin/main`. We
-deliberately **don't** here:
-- The real jobs (`src/workflows/places`, `src/workflows/perfumes`) and all their `data/` live **untracked**
-  in this checkout. A clean worktree off `origin/main` literally can't see them, so it couldn't
-  build or verify against them.
-- The safety model is **git itself**: every task is one commit on `main`; a bad one is a one-line
-  `git revert`. Simpler, and it keeps the loop able to use the real local data as test fixtures.
+---
 
-## 2. One iteration
+## 1. What the harness is
 
-```
-SELECT (shell)  → next not-done task in LOCAL TASKS.json whose dependsOn are all done and which
-                  is not a 🚦 gate / 🔒 needs-human / blocked task. None eligible → stop.
-WORK   (claude) → one `claude -p` at the policy-chosen tier builds the task COLD in this checkout
-                  on main, runs the Definition of Done (§5), and COMMITS (does NOT push).
-GATE   (shell)  → pre-push guard (§4) → structural checks + sampled blocking audit (§5) → push main
-                  → watch GitHub CI (§3) → green: mark `done`; red: revert + cold retry (escalate).
-```
+A **Ralph loop**: a shell loop that repeatedly invokes a **fresh-context, headless**
+Claude (`claude -p`) that completes **exactly one** `TASKS.json` task per invocation and
+records all durable state in the repository. The conversation is disposable; the repo is
+the memory. Because nothing important lives in a context window, every invocation is cheap
+to (re)start and interruption is survivable.
 
-## 3. The CI gate
+**Layers:**
 
-`REQUIRE_CI=1` (default): after the agent commits and the loop pushes `main`, the loop watches the
-GitHub Actions workflow named `CI` for that commit. **Green → task marked done. Red → the loop
-stops and alerts**; you revert (`git revert HEAD && git push`) and decide. The agent's *local* DoD
-(which mirrors CI) is the primary gate, so red CI should be rare (environment drift). Set
-`REQUIRE_CI=0` to merge on local DoD only (no GitHub round-trip).
+| Layer | Role |
+|---|---|
+| `supervise.sh` | Foreground **heartbeat**. Re-runs the loop on a cadence aligned to the token-refresh window. Leave it in a terminal for days; Ctrl-C between cycles. |
+| `loop.sh` | The **single global Ralph loop**. Pick next eligible task → run one `claude -p` → verify → integrate → repeat until done / blocked / capped. |
+| `claude -p` worker | A fresh agent that does **one** task end-to-end against the hardened Definition of Done (§6). |
+| `postflight.sh` | Zero-token, read-only **status board** of where the backlog stands. |
 
-## 4. The pre-push guard (load-bearing safety)
+**It is *not*** your product designer (that's `PLAN.md` / design docs), your
+coding-conventions rulebook (`CLAUDE.md` — every task still obeys it), or a controller for
+anything irreversible (those live behind the 🔒 needs-human gate in §9; the harness never crosses
+them on its own).
 
-Because the loop pushes to a **public** repo autonomously and this checkout contains private data,
-the loop refuses to push if the pending commits (`origin/main..HEAD`) touch any sensitive path:
-`data/`, `.env*`, `chrome-profile/`, `*.pem`/`*.key`/`*.p12`, `service-account*`, or
-`credentials.json`. A trip **halts the run** for a human. The agent is instructed to stage files
-explicitly (never `git add -A`). (`.harness/tracking/TASKS.json` + `.harness/worklog/` are committed on
-purpose, so they are not blocked.)
+---
 
-## 5. Definition of Done (must mirror CI exactly)
+## 2. Design principles (the "why" behind every rule below)
 
-Run locally before committing; identical to `.github/workflows/ci.yml`:
+1. **Durable state in the repo, not the conversation.** Statuses in `TASKS.json`, per-task
+   memory in `worklog/`, the work itself in git. A fresh agent reconstructs everything it
+   needs from disk.
+2. **One task per iteration, fresh context.** No batching. Bounded scope per invocation
+   keeps each unit inside a single model context window and keeps the re-orientation tax
+   payable.
+3. **Sequential, single-flight (§7).** At most **one** task is ever in motion, so an
+   interruption can damage **at most one** task — the core lever for minimising wasted tokens.
+4. **Every attempt is COLD — measure capability, not recovery.** Each (re)attempt builds the task
+   from the spec alone (no worklog, no prior-attempt context, no audit feedback), so the outcome
+   measures whether that model can do the task *in one cold pass* — the signal the difficulty
+   calibration + audit gate depend on. The worklog is observability-only, never read by the builder. A
+   task that can't be done cold in one pass is mis-sized → split it. (See `designs/audit-verification.md`.)
+5. **Definition of Done is *empirical* (§6).** "Done" means it compiled, tests passed,
+   **remote CI went green**, and — where the task asks for it — we **watched it actually
+   run**. Not "the model believes it's done."
+6. **Determinism where it's cheap; the model only where judgement is needed.** Sync,
+   CI-watch, merge, and cleanup are plain shell (reliable, zero tokens). The model
+   implements, fixes, reconciles, and *judges* behaviour.
+7. **The human stays in the loop without babysitting it.** Runs are unattended
+   (`--dangerously-skip-permissions`, §3), but the heartbeat cadence, the status board, and
+   the review **gate** (🔒 needs-human) keeps a person in control of everything that matters.
+
+---
+
+## 3. The model — pinned, not inherited
+
+Every headless invocation **explicitly pins** the model and effort. A bare `claude -p`
+silently inherits whatever the CLI default is — an uncontrolled variable in the one place
+you most want control. Each task is sized to be achievable by a single context window of
+**its chosen** model, so the harness must *guarantee* that model, not hope for it.
+
+The pin is **per task**, but the loop's difficulty **policy** chooses it — not a hand-authored
+field. It resolves to the policy's chosen tier for the task's facets (§8.1; the global
+`.tiers.ladder` + escalation history), falling back to the cold-start floor — `harness.env`
+`MODEL`/`EFFORT`. The loop reads that rung and passes it through:
 
 ```sh
-npx tsc --noEmit                      # typecheck
-npm test                              # unit suite (scratch DB; discovers *.test.ts)
-npm --prefix dashboard run build      # only for dashboard/ changes
-node dashboard/scripts/visual-check.mjs   # UI-SURFACE changes only (after the build) — then LOOK at the PNGs
+claude -p "<task prompt>" \
+  --model "<the task's model>" \   # pin the FULL id (the alias `opus` drifts to "latest")
+  --effort "<the task's effort>" \ # low|medium|high|xhigh|max
+  --dangerously-skip-permissions
 ```
 
-Plus: add unit tests for new behaviour; update docs in lockstep (§ CLAUDE.md); record empirical
-observations the task's `verify` field asks for in `.harness/worklog/<TASK>.md`.
+- **`--model`** — always the FULL id (the bare alias resolves to "latest" and will drift).
+  The cold-start floor is `claude-sonnet-5` (`MODEL=` in `harness.env`) — the cheapest tier;
+  the policy climbs the global ladder from there as a facet cell's history warrants.
+- **`--effort`** (`low|medium|high|xhigh|max`). Cold-start floor **`low`** (`EFFORT=` in
+  `harness.env`); the policy raises it via the ladder, whose top rungs reach `xhigh`/`max` only
+  for facet cells whose history proves they need it.
+- **`--dangerously-skip-permissions`** — deliberate. A headless loop has no human at the
+  keyboard to answer permission prompts; the safety comes from the review gates and the
+  bounded, reviewable per-task branches, not from per-action prompts.
 
-**UI tasks (`facets.layer == ui`) must get VISUAL confirmation.** Structural checks can't see whether
-a UI element actually paints (T223 shipped an invisible padlock that passed everything). The loop
-forces a visual look for UI tasks: it injects "build → run `visual-check.mjs` → READ the screenshots
-in `dashboard/scripts/visual-out/`" into BOTH the builder prompt and the sampled auditor. The page
-list (`PAGES`), fixtures, AND interaction flows (`FLOWS`) are a SINGLE living artifact
-(`dashboard/scripts/_dashboard-harness.mjs`) that any UI-surface change must keep current (auto-exempt
-from the scope gate): `PAGES` = one baseline shot per route; **`FLOWS` = states that only appear after
-an interaction (opened modal/popover, expanded section, clicked control)**. A task that adds/changes
-an interactive state MUST add a matching `FLOWS` entry so the screenshot actually captures it — a
-baseline shot can't show what you have to click to reveal. `visual-check.mjs` is vision-only
-(screenshots for judgment, no appearance assertions) and local/loop-only — NOT in CI (no browser).
-Full rule: root `CLAUDE.md` + `.harness/CLAUDE.md`.
+Rationale: spend the cheap model where the work is mechanical and the strong model where
+judgement is needed — but the **policy learns** that split from escalation history per facet cell
+rather than a human guessing it per task. Bias is toward cheap (start at the floor); the global
+ladder is the safety net that climbs only the cells that actually fail there. (Zero-stakes
+helpers — the status board, cleanup — use **no** model at all.)
 
-**Verify correctness — paid calls are allowed, frugally.** The one hard rule is **never exceed a
-service's monthly cap** (enforced mechanically: the `service_usage` quota makes `callService` throw
-`QuotaExceededError` at the ceiling). Within that, be frugal: try cached data under each job's
-`data/` folder, synthetic fixtures, and the scratch DB **first**; make a live paid call (Google
-Places / Gemini) or a live scrape only when correctness genuinely cannot be confirmed otherwise, and
-then with the smallest sample (1–2 items). **Never skip verification to avoid spend** — an unverified
-task is not done. (Only a task that would have to *exceed* the monthly cap to verify records
-`failed:blocked`.)
+### Escalation — climb to a stronger model on repeated failure
 
-**The loop adds two gates beyond CI** (see `designs/audit-verification.md`). Before a built task is
-pushed, the loop runs cheap **structural checks** (the diff is non-empty; every changed file is within
-the task's declared `scope` — a hard blast-radius boundary, matched as an exact path or a directory
-prefix so a `dir/**` entry admits anything beneath it; if the task sets
-`expectsTest: true`, a test file changed; the `LOCAL_DOD` commands — `tsc`/`test` — pass), then — for
-a *sampled* fraction of tasks — a **blocking audit**: a fresh, independent Claude (at
-`max(opus-4.8/medium, the builder's tier)`) reads the spec's `## Done when` + the diff and must answer
-`PASS`. A structural or audit failure is a failed attempt → cold retry → escalate, exactly like a red
-CI; the work is never pushed. Audit sampling per `(layer × work-type)` cell starts at 100% and decays
-to a 10% floor as the cell accumulates audit-confirmed successes — so a plausible-but-wrong build at a
-cheap tier is caught, the task escalates, and the ledger learns the cell's true difficulty.
+The loop climbs ONE global tier ladder (`facets.json → .tiers.ladder`) when a rung keeps failing.
+The mechanism reuses the soft-failure cap (§7): after **`MAX_ATTEMPTS`** `failed:soft` attempts on
+the current rung, the loop advances to the next ladder rung (logging
+`escalating TNNN → rung N: <model>/<effort>`) and resets the per-rung counter. Only once the **top**
+rung has also exhausted its attempts is the task treated as `failed:blocked` and surfaced for a
+human. The policy sets the START rung per task (from its facets); escalation walks UP the ladder from
+there — so a backlog *tries cheap first* and automatically climbs to a stronger model only for the
+tasks that actually need it.
 
-**Every attempt is COLD.** The loop `cold_reset`s to a clean `origin/main` before each (re)attempt, so
-the builder never sees a prior attempt's worklog or partial work — each outcome measures whether that
-tier can do the task in one cold pass. The worklog is written for humans but never read by the
-builder. A task that can't be done cold in one pass is mis-sized → split it.
+> **Keep the ladder short on purpose.** A doomed task BLOCKS to a human after at most
+> `ladder_length × MAX_ATTEMPTS` attempts. The template ships a deliberately short **4-tier** ladder —
+> `sonnet/low → medium → high`, then `opus/high` — so that's at most `4 × 2 = 8` cold attempts before a
+> stuck task asks for help: if `opus/high` can't do it in two cold passes, a human glance is far cheaper
+> than burning `opus/xhigh`/`max`. If you extend it (adding e.g. `opus/xhigh`/`max`), remember every extra
+> rung is extra spend a *stuck* task grinds through before it ever asks for help — match the top rung to
+> the hardest task you'd want built unsupervised, not to the strongest model available.
 
-## 6. Model selection (auto-tuned — no per-task models)
+**Difficulty is auto-tuned (see `.harness/docs/designs/difficulty-autotune.md`).** Rather than per-task
+`escalation` ladders, the loop rides ONE global tier ladder (`facets.json → .tiers.ladder`) and a
+policy (`.harness/scripts/policy.jq`) picks each task's START tier from its `(layer × work-type)` facet cell's
+escalation history (the cheapest tier clearing `floor` with ≥ `minN` samples; else the `harness.env`
+`MODEL`/`EFFORT` floor as the cold-start prior). Every built task's outcome is captured to `outcomes.jsonl` —
+the sole, forward-only calibration input. Facets are the ONLY per-task difficulty signal: a per-task
+`model`/`effort` field is ignored by the loop, never an override; `needs-human` tasks are carved out entirely. Tasks
+are classified with **facets** (not a guessed
+difficulty) by the add-to-backlog skill, and the `layer` vocabulary self-evolves via a poor-fit gate.
 
-Tasks do **not** carry per-task `model`/`effort`/`escalation` — difficulty is **auto-tuned** (see
-`designs/difficulty-autotune.md`). The loop rides ONE global tier ladder (`config/facets.json →
-.tiers.ladder`, cheapest→priciest) and a policy (`scripts/policy.jq`) picks each task's START tier from its
-`(layer × work-type)` facet cell's escalation history (the cheapest tier clearing floor 0.75 with ≥6
-samples; else the cold-start floor). After `MAX_ATTEMPTS` soft failures on a tier the loop climbs the
-ladder; past the top tier it stops for a human. The ladder is deliberately SHORT (4 tiers:
-`sonnet/low → sonnet/medium → sonnet/high → opus/high`), so a doomed task BLOCKS to a human after at
-most `4×MAX_ATTEMPTS` attempts rather than burning the most expensive opus-effort tiers — if
-`opus/high` can't do it twice, a human glance is cheaper than throwing `opus/max` at it. Every built
-task's outcome is captured to `.harness/ledgers/outcomes.jsonl` (the sole calibration input; forward-only).
-The **cold-start floor** is the cheapest tier (`sonnet/low`, set in `config/harness.env`) — used until a cell
-has enough samples.
+> The current rung is tracked **in-memory per `loop.sh` run** (like the attempt counter): a
+> fresh run after an interruption restarts the task at rung 0. Deriving the rung durably from
+> the worklog's soft-failure count is a possible future hardening, not a guarantee today.
 
-**Two distinct ledgers.** `ledgers/outcomes.jsonl` is one TERMINAL row per built task (where it ended up:
-final tier, total soft-fails, blocked?) and feeds calibration. `ledgers/failures.jsonl` is one row per FAILED
-ATTEMPT (`{id, ts, kind, rung, attempt, model, effort, detail}`) with the cause — `scope-creep`,
-`audit-fail`, `ci-red`, `test-missing`, … — so you can see the FULL escalation history (what failed
-at each rung, and whether the causes were all the same), not just the summary. It's diagnostics only
-(never read by calibration), buffered per-task in a gitignored scratch file (survives the cold reset
-between attempts) and flushed into the committed ledger when the task terminates. Aggregate it with
-`jq` to answer "which failure kind drives most escalations across tasks?".
+### Planning vs building — where `max` effort lives
 
-**Owner correction — manual-fail (see `designs/manual-fail-signal.md`).** The calibration ledger's
-weakness is a **false success**: a task marked `done` (green CI + passed/skipped audit) that the owner
-later judges not actually done. Left alone it teaches the tuner the cheap tier works AND suppresses the
-cell's audit rate — the same bug class keeps slipping through. The owner overturns it via the
-committed `.harness/tracking/manual-fail.json` overlay (`POST /api/backlog/:id/failed`, or the Backlog
-"Mark failed" button — the sole interface; a portable, no-dashboard `mark-failed.sh` script +
-`/local-jobs-mark-task-failed` command used to exist alongside it, removed as redundant once every
-project running this harness had a dashboard). The loop READS this overlay (never writes it):
-`scripts/policy.jq`/`pick_base` re-count a
-manually-failed task as a failure for tier selection, and `audit_gate` excludes it from the cell's
-confirmed-audited count — so that `(layer × workType)` cell is then built with a **stronger model** and
-**audited more often**. It does not change task status or re-open the task.
-`needs-human` tasks are carved out entirely (no facets, no calibration).
+The loop **only ever builds**, at the policy-chosen effort; it never runs a planning pass. The
+`Design:` field (§8.1) is an **optional** pointer to a fuller design/plan doc: if one exists
+the build pass **reads it** before coding; if not, the agent works from the task's spec
+(`## Do` / `## Done when`) on its own judgement — a doc is **never required**. When you *do* want a task explored
+up front, **you author that doc** — interactively, with Claude at `--effort max` — into
+`.harness/docs/designs/TNNN-*.md`, and the high-effort build pass implements from it. So `max` effort
+exists in the project but lives **out of band** (optional, human-driven), never in the loop.
 
-**The loop's own give-up signal — `status="blocked"` (distinct from owner manual-fail above).** When
-`block_task()` gives up on a task (an agent-reported `failed:blocked` mid-attempt, or `MAX_ATTEMPTS`
-exhausted at the top tier), it writes the `failed:blocked <id> — <reason>` worklog marker AND sets
-`TASKS.json` `status="blocked"` directly (`set_task_status`, no overlay — the loop already
-unconditionally owns `status`). `task_blocked()` (in `select_task()` and `postflight.sh`) checks
-`status=="blocked"` first, falling back to the legacy worklog-marker grep for tasks blocked before
-this status existed. A blocked outcome row (`blocked:true` in `outcomes.jsonl`) was ALREADY treated
-identically to a manual-fail row by both `policy.jq`'s tier-selection branch and `audit_gate`'s
-confirmed-audited count — so `status="blocked"` is a visibility upgrade (dashboard-queryable the same
-way `failed` is), not a new calibration path.
+Because the loop builds blind from the spec on the policy-chosen (often weaker) model, **clarification is
+front-loaded into the authoring stage**, not the build. When ideas become tasks
+(`/implementation-harness-convert-ideas`) or a failed task is reviewed
+(`/implementation-harness-review-failed`), that is where a human confirms the **definition of done** and
+any open decision — while a strong model and a person are both in the room — so the unattended build pass
+inherits an unambiguous contract it can hit in one cold pass. Those planning skills deliberately bias
+*toward* asking; the loop, having no human to ask, deliberately does not.
 
-## 7. Usage-limit backoff (pause + cold re-attempt)
+### Bumping the base model (migration runbook)
 
-When `claude` hits the Claude Code usage/rate limit, the loop detects it in the CLI output, **sleeps
-and re-attempts the SAME task COLD** (cold_reset first) — this is *not* a soft failure (no attempt
-counted, no escalation); it just keeps every measured pass a clean cold one.
-Backoff is exponential from `RL_BACKOFF_MIN` (5 min) capped at `RL_BACKOFF_MAX` (~5 h, the refresh
-window). `supervise.sh`'s ~5 h 15 m cadence is the outer backstop.
+When a new model generation supersedes the one `config/facets.json`'s `.tiers.ladder` is pinned to,
+migrate the ladder and BOTH ledgers together, in this order, so calibration survives the move
+instead of silently cold-starting:
 
-## 8. TASKS.json schema (committed; shell-owned status)
+1. **Update the ladder.** Edit `config/facets.json → .tiers.ladder`, replacing each old model id
+   with its successor at the equivalent effort rung (same rung COUNT and ORDER — don't add or
+   remove rungs in the same pass, or the ledger migration in the next step can't map old indices to
+   new ones cleanly).
+2. **Migrate `ledgers/outcomes.jsonl`.** Every row's `startModel`/`finalModel` must be rewritten to
+   the new ids at the SAME rung position — a plain `sed` substitution per old→new model-id pair
+   across the whole file works, since the ladder positions didn't move. Do the same for
+   `ledgers/failures.jsonl`'s `model` field (diagnostics only, but keep it consistent).
+3. **Verify calibration survived.** Run `policy.jq` in tier-selection mode for a few real
+   `(layer, work-type)` cells you know have history, before and after the migration, and confirm
+   the chosen index is unchanged (same cheapest-tier-clearing-floor result) — a mismatch means a
+   rung got mapped to the wrong new-model index in step 2.
+4. **Update the cold-start floor** if the cheapest rung itself changed — in **both** places it is
+   pinned: `config/harness.env` (`MODEL`/`EFFORT`) *and* the built-in fallback in the loop scripts
+   (`MODEL="${MODEL:-…}"` near the top of `scripts/loop.sh` and `scripts/loop.in-place.sh`), so a run
+   that doesn't source `harness.env` still floors to the new model. (The transient
+   `worklog/.failures.buf` flush buffer needs no migration — it's gitignored and drained every
+   terminal event.)
+5. **Commit the ladder + both ledgers together**, so `git log` shows the migration as one atomic
+   change rather than a period where the ladder and ledger disagree.
 
-`.harness/tracking/TASKS.json` is the backlog and the source of truth for done/not-done + dependency order.
-It is **committed** to the repo, but the **shell owns task status**: the loop sets a task's
-`status` to `done` (and commits that one-line change with `[skip ci]`) only after CI is green — the
-agent must not edit it.
+Skipping step 2 doesn't break anything catastrophically — a ledger row with an old model id simply
+stops matching any ladder tier (`tidx()` returns `-1` and the row is dropped from calibration), so
+the practical effect is silent, partial data loss: every cell's calibration quietly resets to its
+cold-start prior instead of carrying forward what the harness had already learned.
+
+---
+
+## 4. Operating model — one iteration, end to end
+
+```
+supervise.sh (heartbeat)
+  └─ loop.sh   ──  one loop only (a lock makes a 2nd invocation exit immediately)
+       Decisions read from origin/main; every build runs in the loop's OWN sibling
+       worktree (../<repo>-loop) — never the primary checkout anything else may be using.
+       repeat until done / blocked / capped:
+         1. SELECT (shell):  from origin/main, next eligible = first not-done task whose
+                             Depends-on are all done; skip 🔒 needs-human / blocked.
+                             none → stop cleanly.
+         2. PREP   (shell):  tear down any prior state + create a FRESH worktree on branch `tNNN`
+                             off origin/main — every attempt is COLD (no resume of partial work).
+         3. WORK  (claude):  one `claude -p` (policy-chosen model/effort) IN that worktree: build
+                             the task FRESH from its spec in scope, pass the Definition of Done
+                             (§6), update docs in lockstep, commit, push the branch. No merge.
+         4. GATE  (shell):   watch the branch's CI (`gh run watch`); on green run the structural
+                             checks + the sampled blocking audit. all pass → fast-forward main via
+                             push (never checks main out), tear down. any fail → tear down → COLD retry.
+         5. RECORD (shell):  refresh the status board; loop.
+```
+
+**Division of labour** — the spine is principle §2.6, "determinism where it's cheap, the
+model only where judgement is needed":
+
+- **Shell owns:** sync, eligibility selection, the **CI-watch + merge** gate, cleanup,
+  caps/backoff, the status board. No tokens, fully reliable.
+- **The model owns:** implementing the task, running the local DoD checks, **judging
+  behaviour against real input** where the task asks, fixing a red CI run, reconciling, and
+  writing the worklog.
+
+**Token exhaustion is handled by construction:** when credits run out, `claude -p` simply
+can't run; the loop backs off and the next heartbeat cycle resumes the *single* in-flight
+task. There is never more than one task to recover.
+
+---
+
+## 5. Definition of Done — the merge gate
+
+A task is **done** only when **all** of the following hold. The loop will **not** merge to
+`main` until every check is green.
+
+1. **Static + unit.** Your project's **format check, linter, and unit tests** all pass on a
+   clean tree. *(Define the exact commands once here and mirror them verbatim in
+   `.github/workflows/ci.yml` — CI is the authoritative gate, so anything not run in CI is
+   not enforced.)* Example shapes:
+   - Node: `npm run lint && npm test && npm run build`
+   - Rust: `cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test`
+   - Python: `ruff format --check . && ruff check . && pytest`
+   - Go: `gofmt -l . && go vet ./... && go test ./...`
+2. **Integration / end-to-end tests.** The task's relevant integration tests are run when
+   their preconditions are met. Tests that need credentials, funds, or external resources the
+   agent doesn't have are **recorded as `failed:blocked` (needs-human), never silently
+   skipped as "passed".**
+3. **Empirical behaviour** *(any task whose `Verify:` field names a check — §8.1)*. Run the
+   thing the task specifies (e.g. start the app against real input for a **bounded window**)
+   and **observe** it behaves: it starts, does its job, no panics/errors, output reads sanely.
+   Record the observation in `worklog/TNNN.md`. The bar is the behaviour the task names — not
+   a higher one a quiet environment can't demonstrate.
+4. **Remote CI is green.** Push the branch; the loop **watches the branch's GitHub Actions
+   run** (`gh run watch`, the workflow named by `CI_WORKFLOW`) and merges **only on success**.
+   A red run is a `failed:soft` → the model inspects `gh run view --log-failed`, fixes, repeats.
+5. **Structural + audit gate** *(see `designs/audit-verification.md`)*. Before marking done the loop
+   also enforces **structural checks** (the diff touches the task's `scope`; if `expectsTest: true`, a
+   test file changed) and — when the task is **sampled** (per-cell audit decay) — a **blocking audit**
+   by a fresh stronger agent (`max(opus-medium, builder tier)`) verifying the diff against the spec's
+   `## Done when`, which must return PASS. A structural/audit FAIL is a `failed:soft` → cold retry /
+   escalate. Each outcome is logged to `outcomes.jsonl` tagged `audited`/`ci-only`.
+6. **Docs in lockstep.** In the **same commit**: the task's `TASKS.json` `status` set to `"done"`, the
+   `README.md` status row updated, and any new trade-off added to `.harness/docs/LIMITATIONS.md`
+   (`CLAUDE.md` golden rules 3 & 5).
+
+Only when 1–6 hold does the task integrate. Anything short of that is a `failed:*` with a
+worklog entry, never a `done`.
+
+---
+
+## 6. Sequential, single-flight — the deliberate non-parallelism
+
+**Decision: one global loop over the whole dependency-ordered backlog, building one task at
+a time.** No parallel tracks or waves. Each task is built in the loop's own *isolation*
+worktree, and the loop is guarded by a lock (see **Isolation & concurrency** below). Only one
+task branch exists at any moment.
+
+**Why not parallel** (the evidence, so it isn't re-argued):
+
+- **The token budget is shared, not multiplied.** Parallel agents draw on the *same* credit
+  pool; concurrency doesn't grant more work per window — it just spreads the same budget
+  across more **simultaneously-interruptible** units.
+- **Interruption cost scales with concurrency.** When a window runs dry, every in-flight
+  parallel agent dies mid-task → N partial branches, N dirty worktrees, maybe a mid-merge →
+  **N resume taxes** next window. Single-flight pays **one**.
+- **Merge reconciliation scales with concurrency.** Many tracks merging into `main`
+  continuously forces every track to repeatedly re-absorb `main` and re-validate. In
+  practice, parallel tracks accumulate dozens of "merge main / absorb main / resume note"
+  commits — friction, not features. Sequential moves `main` only when *the loop* does, so
+  cross-task reconciliation ≈ 0.
+
+Parallel only wins with *idle* budget **and** genuinely independent work **and** a low
+conflict rate. When the binding constraint is tokens-per-window, sequential is strictly less
+wasteful. **Revisit** if that flips — a large batch of independent, low-conflict tasks with
+spare budget — at which point bounded parallelism could be reintroduced behind this same DoD.
+
+**Branch-per-task is kept even though only one runs at a time** — the branch is the unit
+GitHub CI runs on (so the §5 CI gate has something to gate), it keeps `main` clean
+(`CLAUDE.md` golden rule 1), and it gives clean rollback.
+
+### Isolation & concurrency (why a worktree stays)
+
+Sequential execution removes the *parallelism* reason for worktrees, but **not the
+*isolation* reason** — the machine is shared. Other agents, a running app, or manual edits
+may occupy the **primary checkout** at any moment, so the loop must never work there.
+Therefore:
+
+- **The loop reads its decisions from `origin/main`** (`git show origin/main:TASKS.json`), not
+  from any working tree — so whatever is checked out anywhere is irrelevant to it.
+- **Every task is built in the loop's own dedicated sibling worktree** (`../<repo>-loop`),
+  torn down and re-created FRESH off `origin/main` on every attempt — cold, never reused (§2.4).
+- **Integration fast-forwards `main` via push** (`git push origin tNNN:main`); the loop never
+  checks `main` out, so it cannot collide with the primary checkout. Single-flight keeps this
+  a clean fast-forward; if `main` moved under it the push is rejected and the task soft-fails
+  so the next pass absorbs the change.
+- **A concurrency lock** in the shared `.git` (`<repo>-loop.lock`, PID-stamped with stale
+  reclamation) ensures only one `loop.sh` runs at once — a second invocation exits immediately
+  rather than racing.
+- **When the loop finishes** (backlog drained / idle) it optionally leaves the **primary checkout on
+  the latest `main`**, so your local copy reflects everything that just landed instead of sitting
+  stale on an old commit or branch (`sync_primary_checkout`). This is the *only* time it touches the
+  primary checkout, and it's safe + best-effort: it **skips a dirty tree** (never stashes or clobbers
+  uncommitted work), **fast-forwards only** (never rewrites unpushed local commits), and is non-fatal.
+  Set `SYNC_PRIMARY_ON_DONE=0` to keep the strict never-touch-the-primary-checkout behavior.
+
+### In-place variant (when the build needs untracked local state)
+
+The worktree model above rests on one assumption: **everything the loop needs to build and
+verify is committed to `origin/main`.** It reads `TASKS.json` from `origin/main` and builds in a
+fresh worktree off `origin/main`, so it only ever sees *tracked* files. When the build or its
+verification depends on **untracked or gitignored local state** — private code in a public repo,
+local datasets/fixtures, secrets-driven tests — a clean worktree literally can't see it, and the
+worktree model can't work. For those projects the harness ships an **in-place variant**
+(`scripts/loop.in-place.sh`, installed as `.harness/scripts/loop.sh`), selected at scaffold time.
+
+It differs from the worktree loop as follows:
+
+- **Works directly on `main` in the primary checkout** — no sibling worktree, no per-task `tNNN`
+  branches. So it *can* see the untracked local state the build needs.
+- **Reads `TASKS.json` from the local working file**, not `origin/main`.
+- **Every attempt starts fresh (cold)** — the in-place loop discards any leftover working-tree
+  changes before building, so no attempt ever resumes partial work (§2.4).
+
+Both variants agree that **the shell owns task status** — the worker commits the task but does
+**not** edit `TASKS.json`; only after the structural checks + audit gate pass does the loop itself
+set `status:"done"` (a `[skip ci]` commit) and push. In-place does this directly on `main`,
+sweeping `worklog/` into the same commit so a stray note can't dirty the tree; worktree does it via
+a detached-worktree commit (`record_outcome`, mirroring how it already records the outcome ledger).
+
+**Safety model.** Without worktree isolation, two things stand in for it: (1) every task is one
+commit on `main`, so a bad one is a one-line `git revert`; and (2) a **load-bearing pre-push
+guard** — before pushing, the loop refuses if any pending commit touches a sensitive/gitignored
+path (`data/`, real `.env*`, `chrome-profile/`, `*.pem`/`*.key`/`*.p12`, `service-account*`,
+`credentials.json`). The tracked `.env.example` template is explicitly allowed. The guard is
+self-testable (`.harness/scripts/loop.sh --guard-selftest`) and a trip makes the loop **discard that commit,
+block the task, and move on** (the sensitive path is never pushed; a human reviews the block). The
+worker is therefore instructed to stage files **explicitly** (never `git add -A`).
+
+**Trade-off.** The in-place loop works *on* the shared checkout, so it isn't safe to run while
+other work happens there (unlike the worktree loop). Choose it only when the local-state
+requirement forces it; prefer the worktree variant otherwise.
+
+**`LOOP_AUTORESET` (opt-in, in-place only, default off).** The loop refuses to start on a dirty
+tree by default (§9 incident). Set `LOOP_AUTORESET=1` ONLY for a checkout dedicated solely to the
+loop — then a dirty tree at startup is almost always orphaned partial work from an interrupted
+prior run, and the loop stashes it (recoverable via `git stash`) and self-heals instead of
+refusing. The worktree variant never needs this — its worktrees are always freshly torn down.
+
+**`PUSH_COOLDOWN_SECONDS` (optional, both variants, default 0/off).** Enforces a minimum
+wall-clock gap between successful integration pushes to `main`, for projects whose deploy webhook
+has its own rate limit that a rapid string of task-completion pushes can trip even though each
+individual push is fine (`throttled_push()`, persisted in a gitignored-equivalent file under
+`.git/`). Only the final integration push is throttled, not internal status/ledger bookkeeping
+commits.
+
+The in-place variant also adds **rate-limit handling** (on a Claude usage limit it sleeps and
+re-attempts the same task COLD, not a soft failure) and honours the optional `INTEGRATE_HOOK` (a
+deploy/restart command run after each task integrates, so the running product matches `main`).
+
+---
+
+## 7. Failure handling & caps
+
+- **Result vocabulary:** `done` · `failed:soft` (transient/partial — retry) ·
+  `failed:blocked` (needs-human / unmet prerequisite — do **not** retry) · `waiting` (a dep
+  isn't merged yet) · `idle` (no eligible task left). The worker writes exactly one of these
+  to `worklog/.result` as its final action; the loop acts on it.
+- **Caps & escalation:** `MAX_ATTEMPTS` per **rung** (default 2) of `failed:soft` → the loop
+  **escalates** up the global tier ladder (the policy sets the start rung from the task's facets; §3)
+  and resets the counter; only after the **top** rung is exhausted is the task `failed:blocked`. A
+  global `MAX_ITERS` and the heartbeat cadence bound total spend.
+- **One bad task never halts the loop.** A `failed:blocked` task — whether the agent reported it,
+  the ladder was exhausted, or a pre-push guard tripped — is **recorded in its worklog and skipped**,
+  and the loop moves on to the next eligible task (a human reviews blocked tasks later). A **red CI**
+  is handled the same way: the loop **reverts the pushed commit** (restoring `main`) and soft-retries,
+  blocking-and-moving-on only once the ladder is exhausted. The only hard stops are an empty/all-gated
+  backlog (exit 0), `MAX_ITERS` (exit 4), or a prolonged usage limit (exit 5 → `supervise.sh`
+  relaunches). So leaving the loop unattended for hours can't lose progress to a single failure.
+- **Usage / session limits are not failures.** When `claude` reports a usage/session limit, the loop
+  first **parses the reset time out of Claude's own message** — a clock time with zone (`resets 2:30pm
+  (Europe/London)`), a relative duration (`in 42 minutes`), or an ISO timestamp — and **sleeps until
+  then + `RL_BUFFER`** (capped at `RL_BACKOFF_MAX`), then RE-ATTEMPTS the same task COLD. If nothing
+  parses, the build path **backs off exponentially** (`RL_BACKOFF_MIN` doubling to `RL_EXP_MAX`)
+  rather than hammering a fixed poll; the audit path polls every `RL_POLL`. Every sleep prints a
+  boxed banner with the wall-clock resume time, so an unattended overnight run is diagnosable from
+  the log alone. Either way it picks back up shortly after the quota resets rather than idling for
+  hours. Only after `RL_MAX_WAIT` (~6h) still-limited does it exit (code
+  5); `supervise.sh` then relaunches after a short `RETRY_INTERVAL` instead of waiting out the full window.
+- **Stops cleanly for review** at every 🔒 needs-human task — the loop surfaces it
+  on the status board and halts/moves on rather than spinning.
+
+---
+
+## 8. State & artifacts — where memory lives
+
+| Artifact | Role |
+|---|---|
+| `TASKS.json` | Backlog + **statuses** + **facets** (source of truth for done/pending, dependency order, and each task's difficulty-calibration key). Per-task `do`/`done-when` live in `tasks/TNNN.md` (the `spec` field); difficulty is auto-tuned, not authored. |
+| `tasks/TNNN.md` | One per task — the task's spec (`## Do` / `## Done when`), referenced by its `spec` field and appended to the build prompt. |
+| `worklog/TNNN.md` | Append-only **human/observability log**: every attempt, what passed/failed. **Never read by the builder** — every attempt is cold (§2.4). |
+| `worklog/.result` | The loop's **last-iteration verdict** (one line). Git-ignored scratch. |
+| git history + the single task branch | The work itself. At most one `tNNN` branch at a time, built in the isolation worktree. |
+| `worklog/STATUS.md` | Zero-token **status board** written by `postflight.sh`. Git-ignored. |
+| `ledgers/outcomes.jsonl` | One terminal row per built task — the **sole** input to difficulty calibration (§3). Append-only. |
+| `ledgers/failures.jsonl` | One row per **failed attempt** (not per task) — diagnostics only, never read by calibration. Append-only. |
+| `tracking/human-done.json`, `tracking/manual-fail.json`, `tracking/reviews.json` | Owner overlays — see §8.2. |
+
+### 8.1 — Task schema (the shape of a `TASKS.json` entry)
+
+`TASKS.json` is a single JSON document: a `version` and an ordered `tasks` array. **Order in the array is the
+dependency walk order** — and it is *load-bearing*: selection picks the **first** not-done,
+non-gated, deps-satisfied task in **array order** (§4/§9). It is **not** id-sorted and **not** a
+full topological sort — `dependsOn` only *blocks* a task until its deps are done, it does **not**
+reorder the array. So **array position itself decides what runs first** among otherwise-eligible
+tasks. Practical consequence: place **destructive / rename / migration / cleanup** tasks at the
+**END** of `.tasks` (so everything that still references the old name/shape builds first), and
+**append new tasks at the end** unless an earlier slot is deliberately intended. A `_doc` string at
+the top carries the human note (JSON has no comments). One task object:
 
 ```jsonc
 {
-  "version": 1,
-  "tasks": [
-    {
-      "id": "T001", "title": "…", "status": "pending",   // pending | done  (SHELL-owned)
-      // NOTE: NO `reviewed` field — since T136 it lives in owner-owned .harness/tracking/reviews.json
-      "dependsOn": [], "gate": null,                      // gate: null | "needs-human"
-      "facets": { "layer": "ui", "workType": "style", "risk": [] },  // difficulty auto-tuning (OMIT for needs-human); values from .harness/config/facets.json
-      "scope": ["src/…"], "verify": [], "expectsTest": false,  // expectsTest: true → audit's structural gate requires a test in the diff (§5)
-      "spec": ".harness/tasks/T001.md"                    // do/doneWhen live in this MD (T131); NO per-task model/effort/escalation
-    }
-  ]
+  "id": "T014",
+  "title": "Replay harness (offline feed through the core module)",
+  "status": "pending",                 // "pending" | "done" | "blocked" | "failed" — the ONLY status source
+  "dependsOn": ["T009", "T013"],
+  "gate": null,                         // null | "needs-human"
+  "scope": ["src/replay.*", "tests/fixtures/replay_*"],
+  "design": ".harness/docs/designs/T014-replay.md",   // optional; null = build from the spec alone
+  "verify": ["run-app"],               // optional empirical checks
+  "expectsTest": true,                 // optional; true → the loop requires a test file in the diff (structural gate)
+  "visualVerify": true,                // optional; true → force VISUAL_VERIFY_HOOK on any platform; false → suppress; omit → workType heuristic
+  "spec": ".harness/tasks/T014.md",    // REQUIRED — the task's do/done-when (## Do / ## Done when), in its own MD file
+  "facets": { "layer": "backend", "workType": "feature", "risk": [] },  // calibration key; OMIT for gated/needs-human tasks
+  "tags": ["validation"]               // optional, freeform
 }
 ```
 
-`gate:"needs-human"` = a one-time human step (the agent prepares around it and records
-`failed:blocked`); `gate:null` = normally buildable. There is deliberately **no third "review the
-deliverable before dependents proceed" gate value** — a former `gate:"gate"` existed for this but was
-removed (2026-07): `loop.sh`'s task-selection treats any non-null `gate` identically (never selects
-it), so a `gate:"gate"` task could never actually be built OR marked done — it was a dead end, not
-just a redundant concept. The correct pattern for "a human should sign off on this deliverable before
-dependents proceed" is to author a **separate `gate:"needs-human"` review task** that `dependsOn` the
-built task, and point any real successors at the review task instead of the original — this reuses
-the existing dependency graph rather than inventing a new status. (This is the same shape as the
-chooser/review task pattern below — see "pair every options/chooser task with a review task".)
+| Field | Meaning |
+|---|---|
+| `id` | Task identifier, zero-padded, ≥ three digits (`T001`…`T999`). The branch is `tNNN`. |
+| `title` | One-line human summary (shown on the status board). |
+| `status` | `"pending"`, `"done"`, `"blocked"`, or `"failed"` — the **only** status source. Per-attempt retry state lives in `worklog/` + `.result`, not here. The LOOP (not the builder) sets `"done"`, in a follow-up commit, once the build clears the structural checks + the audit gate (§6). `"blocked"` is set by `block_task()` when a task exhausts the top ladder rung — a first-class value (not just a worklog marker), so `task_blocked()`/the dashboard see it directly; `task_blocked()` also falls back to a worklog `failed:blocked` grep for tasks blocked before this existed. `"failed"` is set only via the owner's `manual-fail.json` overlay overturning a false "done" (§8.2) — both are terminal; neither is ever auto-reopened by the loop. |
+| `dependsOn` | Array of task ids that must be **done + merged** before this task is eligible. |
+| `gate` | `null` (buildable) or `"needs-human"` (🔒 a one-time human step; recorded `failed:blocked`, never auto-done). The loop skips `needs-human` during selection (§9). To require a human to **review a deliverable before dependents proceed**, don't gate the work itself — author a separate `needs-human` review task that `dependsOn` it and point the dependents at the review task. |
+| `scope` | Files this task should touch — now a **structural gate**: the loop requires the task's diff to touch these (and flags creep). Keep it accurate. |
+| `expectsTest` | Optional boolean. `true` → the loop requires a **test file** to change in the diff (a structural check); say what the test must assert in `## Done when`. Set it for tasks whose correctness should be pinned by a test. |
+| `visualVerify` | Optional boolean. `true` → inject the `VISUAL_VERIFY_HOOK` "actually LOOK at the output" instruction into the builder + auditor prompt **regardless of facets/platform** (a native screen, a mobile simulator, a generated image). `false` → suppress it even for an auto-covered task. **Omit** to use the facets heuristic: auto-fires when `facets.workType` ∈ `VISUAL_VERIFY_WORKTYPES` (default `component style`) on any layer, OR `facets.layer` ∈ `VISUAL_VERIFY_LAYERS` (default `frontend`) unless the work-type is in `VISUAL_VERIFY_SKIP_WORKTYPES` (default `docs config logging`). Maybe-visual work (`bugfix`/`feature`/`migration` off-frontend) is set by the authoring skills, not auto. No-op if `VISUAL_VERIFY_HOOK` is unset. See `docs/designs/visual-verification.md`. |
+| `design` | **Optional** path to a fuller design doc, or `null`. A path = the build pass **reads that doc** first; `null` = the agent builds from the `spec` on its own judgement. Never required. |
+| `verify` | Optional array naming extra **empirical** checks (e.g. `"run-app"`, `"live-api"`) that drive the §6 Definition of Done. Empty = unit/integration + CI suffice. |
+| `spec` | **Required** repo-relative path to the task's per-task Markdown spec (`.harness/tasks/TNNN.md`) — a leading **`## Overview`** (one or two plain-language sentences: the "what & why, at a glance", read first), then `## Do` (the work, kept short) and `## Done when` (the **task-specific** acceptance bar; the **universal** bar in §6 is not repeated). The loop appends its full text to the build prompt. `do`/`doneWhen` do **not** live in the JSON. (`## Overview` is a later convention — specs authored before it are left as-is, no backfill.) |
+| `facets` | The difficulty-calibration key for buildable tasks: `{ "layer", "workType", "risk": [...] }`, values drawn from `facets.json`. The policy picks the starting tier and escalates from it — this REPLACES per-task `model`/`effort`/`escalation` (a task carries none). **Omitted only for gated / needs-human tasks** (never calibrated). |
+| `tags` | Optional freeform DESCRIPTIVE labels (feature area) — not the calibration key (that's `facets`). |
 
-**A task whose `scope` touches `.harness/`, or whose `facets.layer == "harness"`, MUST be
-`gate:"needs-human"`** — self-modifying build/calibration machinery is uniquely dangerous to build
-unsupervised. See `.harness/CLAUDE.md`'s "A task touching `.harness/**` MUST be `gate:"needs-human"`"
-section for the full rationale; `loop.sh` prints a non-fatal pre-flight WARN if this is ever violated.
+The cold-start `model`/`effort` floor lives in `harness.env` (the cheapest tier), NOT in `TASKS.json`;
+a task carries no per-task model/effort/escalation — `facets` + the outcomes ledger drive difficulty.
+When design docs exist they live in **`.harness/docs/designs/TNNN-slug.md`**
+and are written with Claude at `--effort max` (§3); the loop only ever *consumes* one — it
+never requires or writes one.
 
-**`facets` — difficulty auto-tuning (see `designs/difficulty-autotune.md`).** Each BUILDABLE task
-carries `facets: { layer, workType, risk[] }`, chosen from the controlled vocabulary in
-`.harness/config/facets.json`. The loop's policy reads them to pick the task's STARTING tier from escalation
-history (the outcomes ledger); until a `(layer × work-type)` cell has ≥ `minN` samples it cold-starts
-at the cheapest floor (`sonnet/low`). `needs-human` tasks are CARVED OUT — they get **no** `facets`
-and never enter calibration. Facets are normally assigned by the add-to-backlog skill; a buildable
-task that's missing them **degrades gracefully** (the policy falls back to the cold-start floor) but
-won't benefit from / contribute to calibration until tagged — so prefer authoring through the skill,
-or add `facets` by hand.
+### 8.2 — Owner overlays (`tracking/*.json`)
 
-**`expectsTest` (optional, default false) — the verification contract.** Set `true` on a task whose
-correctness should be pinned by a test; the loop's structural gate (§5) then requires a test file to
-change in the diff. Make `## Done when` concrete + runnable where possible so the blocking audit (and
-you) can verify it objectively. Each ledger row records `verification: "audited" | "ci-only"` so the
-calibration can weight audit-confirmed successes (see `designs/audit-verification.md`).
+Three small `{id: {...}}` JSON maps let a human correct or advance the backlog **without ever
+hand-editing `TASKS.json`**: `human-done.json` (marks a `needs-human` task done),
+`manual-fail.json` (overturns a `done` task as a false success — a caught bug the audit/CI missed),
+and `reviews.json` (a purely cosmetic "I've checked this" flag the loop never reads). All three are
+**committed**, **owner-written only** (via `scripts/mark-done.sh` / `mark-failed.sh` /
+`mark-reviewed.sh`, or a dashboard shelling out to the same scripts), and **read-only from the
+loop's perspective**. `reconcile_overlays()` promotes `human-done`/`manual-fail` into authoritative
+`TASKS.json` status at the top of every iteration, so an overlay written by a separate process on
+this same checkout takes effect on the loop's very next pass. A `manual-fail` entry also
+retroactively corrects difficulty calibration **by subtracting at read time**, never by mutating the
+append-only ledger — see `docs/designs/manual-fail-signal.md` for the full mechanism and rationale.
 
-**`do`/`doneWhen` live in a per-task Markdown spec (T131).** Each task's *what to build* and *the
-bar for done* are NOT flat strings in TASKS.json — they live in a per-task Markdown file at
-`.harness/tasks/TNNN.md` with `## Do` and `## Done when` sections, referenced by the
-task's `spec` field (a repo-relative path). A task authored via `/local-jobs-convert-ideas` also
-gets a leading `## Overview` — one or two plain-language sentences giving the gist of the task at a
-glance, before the denser Do/Done-when detail; this is a later addition, so pre-existing specs
-without one are left as-is (no backfill). This is more expressive than a JSON string and renders
-cleanly on the dashboard. TASKS.json keeps **every other field** (the orchestration fields above —
-`status`, `dependsOn`, `gate`, `facets`, `scope`, `tags`, `verify`, `design` — but NOT `reviewed`,
-which lives in `.harness/tracking/reviews.json`, see below). The loop's per-task prompt reads all orchestration fields from JSON and
-**appends the spec MD's full text** (`task_spec_rel` + `cat` in `loop.sh prompt()`);
-`GET /api/backlog` inlines the file as `specContent` (`readTaskSpec`, confined to
-`.harness/tasks/*.md`) and the Backlog page renders it as markdown.
+### 8.3 — Extending via `custom/` (lifecycle hooks + guard denylist)
 
-**Owner-owned overlay flags — `reviewed` (T136) and `done` (T208).** These are the
-human/dashboard-owned pieces of backlog state. Both live **entirely outside TASKS.json**, in their
-own committed files, and **the loop NEVER writes either file** (it only ever writes TASKS.json
-`status` + the worklog). The loop's `jq` status write and the daemon's overlay writes can never
-conflict — different files, always clean merges.
+`.harness/custom/` is the harness's single customization surface — the prose overlays (the pointer in each
+doc) plus two **convention-based, opt-in** extension points the loop auto-discovers. Both are
+back-compatible: absent → byte-identical stock behavior. Each ships a `.example` stub; **copy it to the real
+filename to activate** (a shipped stub can never change behavior, and upgrades add-if-missing the `.example`
+without touching your real file).
 
-- **`.harness/tracking/reviews.json`** — `id → { "reviewed": bool, "at": <ISO-8601> }`. Set via
-  `POST /api/backlog/:id/reviewed { reviewed }` or bulk `POST /api/backlog/reviewed-bulk`. Atomically
-  writes the file (read-modify-write, temp-file + rename, field-scoped) then commits+pushes under the
-  repo lock. `GET /api/backlog` overlays `reviewed = reviews[id]?.reviewed ?? false`.
-- **`.harness/tracking/human-done.json`** (T208) — `id → { "done": true, "at": <ISO-8601> }`. Set via
-  `POST /api/backlog/:id/done` (needs-human tasks ONLY — 400 otherwise). Same atomic write+commit+push
-  pattern. `GET /api/backlog` overlays `done=true` and derives `reviewed=true` (done implies reviewed).
-  TASKS.json `status` is NEVER modified. The Backlog page shows a **"Mark done"** button on
-  needs-human tasks that aren't already done.
+**Lifecycle hooks — `custom/hooks/on-<event>.sh`.** If present, the loop runs the matching script at that
+event as a **child process** (never sourced — it cannot touch loop state), **non-fatal** (a nonzero exit is
+logged and ignored), with `HARNESS_ROOT`, `HARNESS_DIR`, `HARNESS_MAIN_BRANCH` exported:
 
-Both endpoints use the **SAME mkdir lock loop.sh uses** (`src/core/repo-lock.ts`, the
-`<git-common-dir>/<basename(repo-root)>-loop.lock` dir with stale-pid-reclaim) — daemon git ops are
-mutually exclusive with the loop. The push is **best-effort** (non-fatal warning on failure; the local
-commit is the durability guarantee). The agent must NOT hand-edit either overlay file — they are owner
-UI actions. **loop.sh and the daemon must agree on the lock path byte-for-byte** (see `repo-lock.ts`'s
-header + loop.sh's `acquire_lock`).
+| Hook file | Fires when | Args (`$1 …`) |
+|---|---|---|
+| `on-drained.sh` | the loop finishes with nothing left to build | `drained` (backlog empty) or `idle` (agent had nothing to do) |
+| `on-exhausted.sh` | the loop stops WITHOUT draining | `max-iters` or `rate-limit` |
+| `on-blocked.sh` | a task is blocked (needs-human / unmet prereq / guard-tripped) | task-id, reason |
+| `on-integrated.sh` | a task successfully integrates into main | task-id, verification (`audited`/`ci-only`) |
 
-### Backlog authoring: a new task = JSON object + spec MD (T131)
+A hook can fire **once per loop cycle** (e.g. `on-drained` on every supervise re-run while the backlog
+stays empty), so it MUST be **cheap and idempotent** — gate real work on "did anything actually change?".
+Hooks never fire on a prerequisite/config error exit. `on-integrated` fires *alongside* the `INTEGRATE_HOOK`
+env command (harness.env): use `INTEGRATE_HOOK` for a plain restart/redeploy; use the file hook when you
+want the task id / verification as arguments.
 
-Authoring a NEW backlog task is now **two coupled files**: (1) a JSON object in `TASKS.json` with a
-`spec` field (`.harness/tasks/TNNN.md`) and the orchestration fields — but **no** `do`/`doneWhen`;
-(2) the matching `.harness/tasks/TNNN.md` with `## Do` and `## Done when` sections. A task whose
-`spec` file is missing renders with no body and feeds the loop a warning, so always create both in
-the same backlog edit.
+**Guard denylist — `custom/sensitive-paths.txt`.** Extra pre-push secret-guard patterns, one ERE fragment
+per line (blank/`#` lines ignored), **OR-appended** to the built-in guard. **Append-only** — it can only
+*tighten* the guard, never loosen it. If the combined regex won't compile, the file is ignored with a WARN
+and the base guard stays fully active (a bad custom pattern can never wedge the loop or disable the guard).
+Probe a path with `scripts/loop.sh --guard-selftest <path>` (prints `BLOCK`/`ALLOW`).
 
-### Backlog authoring: pair chooser tasks with review tasks (T129)
+**Visual-verification prompt snippets — `custom/visual-verify-build.md` / `custom/visual-verify-audit.md`.**
+When the visual-verification block fires for a task (the `VISUAL_VERIFY_HOOK` is set AND the task opts in —
+`visualVerify: true` or the facets heuristic), the loop **appends** the matching file's contents to the
+generic block: `visual-verify-build.md` in the builder prompt, `visual-verify-audit.md` in the auditor
+prompt. It's how a project injects its own richer discipline — exact capture commands, a living-fixtures
+file to keep current, named flows to screenshot — without forking `loop.sh`. It only *appends* (the generic
+baseline stays), only fires when the block already fires (not an independent trigger), and absent → no
+output → identical to stock. Populate one or both.
 
-Whenever you add a task that builds **multiple options for the owner to pick between** (toggleable
-styles, strategy variants, etc.), you MUST also add a paired `"gate":"needs-human"` review task
-that: (1) `dependsOn` the chooser, (2) has the owner record their choice, and (3) gates a
-follow-up that hardcodes the winner and removes the toggle/unused variants. Authoring the chooser
-without the review task is a backlog error. (See CLAUDE.md "Autonomous build harness" for wording +
-examples: T099/T113/T116 choosers → T126/T127/T128 review tasks.)
+**Build/audit prompt preambles — `custom/build-preamble.md` / `custom/audit-preamble.md`.** Standing,
+always-applies project rules injected into **every** builder / auditor prompt (respectively) — e.g. "never
+make live paid-API calls during verification; use cached fixtures + the scratch DB." Unlike the visual-verify
+snippet (gated on the task opting into visual verification), a preamble is **unconditional**: present → it's
+appended to every prompt of that kind; absent → no output → byte-identical. Append-only (augments the generic
+instructions, never replaces them). Populate one or both.
 
-## 9. Result protocol
+Customize behavior or the guard by adding a `custom/` file — **never by editing `loop.sh`** (an inline edit
+forfeits clean upgrades; see `custom/CLAUDE.md`).
 
-The agent's final action writes one line to `.harness/worklog/.result`: `done <T>` /
-`failed:soft <T> …` / `failed:blocked <T> …` / `waiting <T> …` / `idle`. The loop acts on it (§2).
+---
 
-## 10. Running it
+## 9. Gates — the boundaries the loop will not cross
 
-```sh
-DRY_RUN=1 .harness/scripts/loop.sh     # print the task it would build next
-.harness/scripts/loop.sh               # build one task (or as many as fit the window)
-.harness/scripts/supervise.sh          # leave running: re-launches the loop each ~5h15m window
-.harness/scripts/postflight.sh         # zero-token status board (also written to .harness/worklog/STATUS.md)
-```
+Some work must not happen autonomously. Two values of a task's `gate` field in `TASKS.json`
+stop the loop:
 
-Requirements: `jq`, `gh` (authenticated), Node 22. One loop at a time (a lock in `.git` enforces it).
+- **🔒 needs-human** (`gate: "needs-human"`) — the task needs a one-time human step the agent can't or shouldn't do
+  (credentials, provisioning, anything spending real money or touching production). The agent
+  prepares everything *around* it, then records `failed:blocked` and hands off.
 
-## 11. Limitations
-See [`LIMITATIONS.md`](./LIMITATIONS.md) §Harness.
+`gate` has exactly two values — `null` (buildable) and `"needs-human"`. There is deliberately **no
+separate "review this before dependents proceed" gate**: a value the loop would never build and could
+never mark done is a dead end. Express that need instead with a **paired review task** — keep the work
+buildable, add a `needs-human` review task that `dependsOn` it (its `## Do` = "review X; if good, mark
+done"), and make the downstream tasks `dependsOn` the *review* task. The human marking the review done
+is exactly the "approve before dependents proceed" gate, and it fits the one mechanism the loop has.
+
+The loop **skips** `needs-human` during selection and surfaces it on the status board under
+"Needs you". It never marks it done on its own.
+
+---
+
+## 10. Invariants (must always hold)
+
+1. Never commit directly to `main`; always a `tNNN` branch off **latest** `origin/main`.
+2. One task per iteration. Never batch.
+3. The model/effort is **always pinned explicitly** (`--model`, `--effort`) — never inherited; the
+   policy picks the start tier from the task's facets, and on repeated soft-failure the loop
+   escalates up the global ladder before stopping for a human.
+4. Never mark `done` with any §5 gate red (including a red or unobserved CI run).
+5. Touch only the task's scope; update docs in the **same** commit.
+6. **Every attempt is cold** — never read prior worklogs or resume partial work (§2.4).
+7. Never cross a 🔒 needs-human boundary autonomously.
+8. At most **one** task branch exists at a time (single-flight).
+9. The loop works **only** in its own isolation worktree and reads decisions from
+   `origin/main`; it never touches the primary checkout, and only one `loop.sh` runs at a
+   time (lock-guarded).
+
+---
+
+## 11. Adopting this harness in a project
+
+1. **Copy** the self-contained **`.harness/`** folder (`loop.sh`, `supervise.sh`, `postflight.sh`,
+   `harness.env`, `HARNESS.md`, `LIMITATIONS.md`, `facets.json`, `policy.jq`, `TASKS.json`,
+   `CLAUDE.md`, `designs/`, `worklog/`) into your repo root, plus the repo-root `.github/workflows/ci.yml`,
+   `CLAUDE.md`, and `.gitignore` (or start your repo from this one). Note the **two `CLAUDE.md`
+   files**: the repo-root one (full project conventions, loaded for all work) and `.harness/CLAUDE.md`
+   (the authoring mandate, loaded when working inside `.harness/`).
+2. **Wire the Definition of Done.** Put your real format/lint/test/build commands into
+   `.github/workflows/ci.yml` **and** describe them in §5 above. They must match.
+3. **Set the knobs.** Edit `.harness/config/harness.env` (`MODEL`, `EFFORT`, caps, `CI_WORKFLOW`).
+4. **Write the backlog.** Replace the example tasks in `TASKS.json` with your own atomic,
+   dependency-ordered tasks (schema in §8.1). Mark gated work 🔒 needs-human.
+5. **Push `main` to GitHub** so the CI gate has somewhere to run. The loop integrates by
+   pushing to `origin/main`, so a remote is required when `REQUIRE_CI=1`.
+6. **Run it:** `chmod +x .harness/scripts/*.sh && .harness/scripts/supervise.sh` (or a single pass with
+   `.harness/scripts/loop.sh`; preview the next pick with `DRY_RUN=1 .harness/scripts/loop.sh`).
+
+---
+
+## 12. Trade-offs & limitations (kept honest — mirror into `.harness/docs/LIMITATIONS.md`)
+
+- **Hardened DoD makes each task longer.** Integration + empirical + CI-watch add wall-clock
+  and tokens per task, raising the chance a single window can't finish one. Mitigation: keep
+  tasks **atomic**; if a task can't fit a window, split it.
+- **CI-green-before-merge adds minutes per task.** Acceptable precisely *because* we're
+  sequential and not racing; it buys an always-green `main`.
+- **We give up wall-clock parallelism.** Fine while the binding constraint is
+  tokens-per-window; revisit if that flips (see §6).
+- **Empirical checks depend on live conditions.** A quiet environment may not exercise every
+  path; the check verifies clean operation, not exhaustive coverage.
+- **`--dangerously-skip-permissions` means no per-action guardrail.** Accepted for headless
+  runs; the gates + reviewable branches are the backstop.
+- **Auto-tuned model routing & escalation trade attempts for cost.** The policy picks each task's
+  start tier from its facets + the outcomes ledger; if it starts too weak, the task burns up to
+  `MAX_ATTEMPTS` soft-failures (and their CI runs) per rung before escalating — escalation is a safety
+  net, not a substitute for atomic sizing. The current rung is tracked in-memory per `loop.sh` run
+  (§3), so a fresh run after an interruption restarts the task at the policy's chosen start tier.
+
+---
+
+*Change this file first, then make the scripts match it.*
