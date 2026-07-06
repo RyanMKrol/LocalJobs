@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { api, type Service, type ServiceConsumerGroup } from '../lib/api';
 import { usePoll } from '../ui';
 import { Pill } from '../components/Pill';
@@ -53,9 +54,9 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
           <div key={group.workflow_name ?? '__none__'} style={{ marginBottom: 12 }}>
             {group.workflow_name ? (
               <div style={{ marginBottom: 4 }}>
-                <a href={`/workflows/${group.workflow_name}`} style={{ fontWeight: 600 }}>
+                <Link href={`/workflows/${group.workflow_name}`} style={{ fontWeight: 600 }}>
                   {group.workflow_name}
-                </a>
+                </Link>
               </div>
             ) : (
               <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>No workflow</div>
@@ -63,7 +64,7 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
             <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'none' }}>
               {group.jobs.map((j) => (
                 <li key={j.job_name} style={{ marginBottom: 2, fontSize: 13 }}>
-                  <a href={`/jobs/${j.job_name}`}>{j.job_name}</a>
+                  <Link href={`/jobs/${j.job_name}`}>{j.job_name}</Link>
                   <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>last used {new Date(j.last_used + 'Z').toLocaleString()}</span>
                 </li>
               ))}

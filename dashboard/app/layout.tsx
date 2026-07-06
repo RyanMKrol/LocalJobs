@@ -1,6 +1,7 @@
 import './globals.css';
 import type { ReactNode } from 'react';
 import { Baloo_2 } from 'next/font/google';
+import Link from 'next/link';
 import { ThemeControls } from './ui';
 
 export const metadata = {
@@ -44,7 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <header className="site">
           <div className="inner">
-            <a href="/" className="brand">⚙︎ Local Jobs</a>
+            <Link href="/" className="brand">⚙︎ Local Jobs</Link>
             {/*
               The nav gained a 6th tab (Admin, T323), which no longer fits on one line at
               mobile widths. Making nav its own (always-on) flex-wrap container lets its
@@ -58,12 +59,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               to wrap within.
             */}
             <nav style={{ width: '100%', boxSizing: 'border-box', display: 'flex', flexWrap: 'wrap', rowGap: 6 }}>
-              <a href="/">Overview</a>
-              <a href="/workflows">Workflows</a>
-              <a href="/integrations">Integrations</a>
-              <a href="/backlog">Backlog</a>
-              <a href="/logs">Logs</a>
-              <a href="/admin">Admin</a>
+              <Link href="/">Overview</Link>
+              <Link href="/workflows">Workflows</Link>
+              <Link href="/integrations">Integrations</Link>
+              <Link href="/backlog">Backlog</Link>
+              <Link href="/logs">Logs</Link>
+              <Link href="/admin">Admin</Link>
             </nav>
             <ThemeControls />
           </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, use, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { DagFlow } from '../../components/DagFlow';
 import { IgnoredSection } from '../../components/IgnoredSection';
 import { RunButton } from '../../components/RunButton';
@@ -844,7 +845,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
 
   return (
     <>
-      <p className="muted"><a href="/workflows">← Workflows</a></p>
+      <p className="muted"><Link href="/workflows">← Workflows</Link></p>
       <div className="row" style={{ gap: 20 }}>
         <h1 style={{ margin: 0 }}>{name}</h1>
         <div className="spacer" />
@@ -969,7 +970,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
                 <td className="muted">{r.trigger}</td>
                 <td className="muted">{fmtRelative(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                <td><a href={`/workflow-runs/${r.id}`}>details →</a></td>
+                <td><Link href={`/workflow-runs/${r.id}`}>details →</Link></td>
               </tr>
             ))}
           </tbody>

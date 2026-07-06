@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 // @ts-expect-error react-dom has no bundled/installed type declarations in this project
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import { api } from './lib/api';
 import type { BulkScope, LogLine, RunStatus, StuckItem } from './lib/api';
 
@@ -133,15 +134,15 @@ export function WorkflowRunBackLink({
   if (workflowRunId && workflowName) {
     return (
       <p className="muted">
-        <a href={`/workflow-runs/${workflowRunId}`}>
+        <Link href={`/workflow-runs/${workflowRunId}`}>
           ← {workflowRunId}
-        </a>
+        </Link>
       </p>
     );
   }
   return (
     <p className="muted">
-      <a href={fallback.href}>← {fallback.label}</a>
+      <Link href={fallback.href}>← {fallback.label}</Link>
     </p>
   );
 }
@@ -369,7 +370,7 @@ export function StuckPopover({
                         <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {s.detail?.name ?? <span className="mono">{s.item_key}</span>}
                         </td>
-                        <td><a href={`/jobs/${s.job_name}`}>{s.job_name}</a></td>
+                        <td><Link href={`/jobs/${s.job_name}`}>{s.job_name}</Link></td>
                         <td>{s.attempts}</td>
                         <td className="muted" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {s.detail?.error ?? s.detail?.status ?? '—'}

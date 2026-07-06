@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { api } from './lib/api';
 import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
 import { RunButton } from './components/RunButton';
@@ -155,7 +156,7 @@ export default function Overview() {
                 {visibleIgnored.map((s) => (
                   <tr key={`${s.job_name}:${s.item_key}`}>
                     <td>{s.detail?.name ?? <span className="mono">{s.item_key}</span>}</td>
-                    <td><a href={`/jobs/${s.job_name}`}>{s.job_name}</a></td>
+                    <td><Link href={`/jobs/${s.job_name}`}>{s.job_name}</Link></td>
                     <td>{s.attempts}</td>
                     <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}{s.detail?.pageTitle ? ` · title="${s.detail.pageTitle}"` : ''}</td>
                     <td className="muted">{fmtRelative(s.updated_at)}</td>
@@ -177,12 +178,12 @@ export default function Overview() {
         )}
         {visibleWorkflows.map((p) => (
           <div key={p.name} className="panel" style={{ padding: 16 }}>
-            <a href={`/workflows/${p.name}`}><strong>{p.name}</strong></a>
+            <Link href={`/workflows/${p.name}`}><strong>{p.name}</strong></Link>
             {p.last_run && (
               <div style={{ marginTop: 4 }}>
-                <a href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}>
+                <Link href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}>
                   <span className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</span>
-                </a>
+                </Link>
               </div>
             )}
             <div className="muted" style={{ fontSize: 12, margin: '6px 0' }}>
@@ -217,7 +218,7 @@ export default function Overview() {
             {visibleStuck.map((s) => (
               <tr key={`${s.job_name}:${s.item_key}`}>
                 <td>{s.detail?.name ?? <span className="mono">{s.item_key}</span>}</td>
-                <td><a href={`/jobs/${s.job_name}`}>{s.job_name}</a></td>
+                <td><Link href={`/jobs/${s.job_name}`}>{s.job_name}</Link></td>
                 <td>{s.attempts}</td>
                 <td className="muted">{s.detail?.error ?? s.detail?.status ?? '—'}{s.detail?.pageTitle ? ` · title="${s.detail.pageTitle}"` : ''}</td>
                 <td className="muted">{fmtRelative(s.updated_at)}</td>
@@ -250,12 +251,12 @@ export default function Overview() {
               )}
               {visibleWorkflowRuns.map((r) => (
                 <tr key={r.id}>
-                  <td><a href={`/workflows/${r.workflow_name}`}>{r.workflow_name}</a></td>
+                  <td><Link href={`/workflows/${r.workflow_name}`}>{r.workflow_name}</Link></td>
                   <td><span className={`badge ${r.status}`}>{statusLabel(r.status)}</span></td>
                   <td className="muted">{r.trigger}</td>
                   <td className="muted">{fmtRelative(r.started_at)}</td>
                   <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                  <td><a href={`/workflow-runs/${r.id}`}>details →</a></td>
+                  <td><Link href={`/workflow-runs/${r.id}`}>details →</Link></td>
                 </tr>
               ))}
             </tbody>

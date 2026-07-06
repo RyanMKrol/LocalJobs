@@ -1,6 +1,7 @@
 'use client';
 
 import { use } from 'react';
+import Link from 'next/link';
 import { api } from '../../../../../lib/api';
 import type { ArtifactShape, ExpectationResult, GateResult } from '../../../../../lib/api';
 import { StatusBadge, WorkflowRunBackLink, usePoll } from '../../../../../ui';
@@ -104,7 +105,7 @@ function SideCard({
         <strong>{jobName}</strong>
       </div>
       <ShapeBody shape={side?.shape ?? null} result={side?.result ?? null} />
-      {runId && <p className="gate-card-foot"><a href={`/runs/${runId}`}>view {logLabel} logs →</a></p>}
+      {runId && <p className="gate-card-foot"><Link href={`/runs/${runId}`}>view {logLabel} logs →</Link></p>}
     </div>
   );
 }
@@ -175,7 +176,7 @@ export default function GateDetail({
                   {gate.description ?? 'Validates the artifact above is well-formed before the next stage runs.'}
                 </p>
                 {gate.state === 'failed' && consumerRunId && (
-                  <p className="gate-card-foot"><a href={`/runs/${consumerRunId}`}>view violation logs →</a></p>
+                  <p className="gate-card-foot"><Link href={`/runs/${consumerRunId}`}>view violation logs →</Link></p>
                 )}
               </div>
             );
@@ -201,9 +202,9 @@ export default function GateDetail({
                     </p>
                     <ShapeBody shape={side?.shape ?? null} result={side?.result ?? null} />
                     <p className="gate-card-foot">
-                      {producerRunId && <a href={`/runs/${producerRunId}`}>producer logs →</a>}
+                      {producerRunId && <Link href={`/runs/${producerRunId}`}>producer logs →</Link>}
                       {producerRunId && consumerRunId && gate.state !== 'failed' && <span className="muted"> · </span>}
-                      {consumerRunId && gate.state !== 'failed' && <a href={`/runs/${consumerRunId}`}>consumer logs →</a>}
+                      {consumerRunId && gate.state !== 'failed' && <Link href={`/runs/${consumerRunId}`}>consumer logs →</Link>}
                     </p>
                   </div>
                 </div>

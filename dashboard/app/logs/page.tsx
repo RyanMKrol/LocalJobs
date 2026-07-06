@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '../lib/api';
 import type { GlobalLogLine } from '../lib/api';
 import { fmtTime, usePoll } from '../ui';
@@ -166,7 +167,7 @@ export default function LogsPage() {
               <span className="ts">{fmtTime(l.ts)}</span>
               <span className={`log-lvl-tag log-lvl-tag--${l.level}`}>[{l.level.toUpperCase()}]</span>
               {' '}{sourceLabel && (
-                href ? <a href={href} className="mono">[{sourceLabel}]</a> : <span className="mono">[{sourceLabel}]</span>
+                href ? <Link href={href} className="mono">[{sourceLabel}]</Link> : <span className="mono">[{sourceLabel}]</span>
               )}
               {' '}{l.message}
             </div>

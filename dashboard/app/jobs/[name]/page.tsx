@@ -2,6 +2,7 @@
 
 import { Fragment, use, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '../../lib/api';
 import { StatusBadge, backFrom, fmtDuration, fmtRelative, usePoll } from '../../ui';
 
@@ -56,7 +57,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
 
   return (
     <>
-      <p className="muted"><a href={back.href}>← {back.label}</a></p>
+      <p className="muted"><Link href={back.href}>← {back.label}</Link></p>
       <h1 style={{ margin: 0 }}>{name}</h1>
       <p className="sub">{job?.description}</p>
 
@@ -64,7 +65,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
           toggle and run-now live on the workflow — you run a workflow, never a
           job. This page is a read-only member view (status · history · logs). */}
       <p className="muted" style={{ marginTop: 0 }}>
-        Member job — runs as part of {job?.workflow ? <a href={`/workflows/${job.workflow}`}>{job.workflow}</a> : 'its workflow'} when its prerequisites are met. Schedule + run it from the workflow.
+        Member job — runs as part of {job?.workflow ? <Link href={`/workflows/${job.workflow}`}>{job.workflow}</Link> : 'its workflow'} when its prerequisites are met. Schedule + run it from the workflow.
       </p>
 
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
@@ -164,7 +165,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
                 <td className="muted">{fmtRelative(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>
                 <td>{r.attempt}</td>
-                <td><a href={`/runs/${r.id}`}>details →</a></td>
+                <td><Link href={`/runs/${r.id}`}>details →</Link></td>
               </tr>
             ))}
           </tbody>

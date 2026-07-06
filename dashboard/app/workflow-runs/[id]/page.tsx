@@ -1,6 +1,7 @@
 'use client';
 
 import React, { use, useCallback, useState } from 'react';
+import Link from 'next/link';
 import { DagFlow } from '../../components/DagFlow';
 import { MarkdownModal } from '../../components/MarkdownModal';
 import { StageIoPanel } from '../../components/StageIoLists';
@@ -417,7 +418,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
 
   return (
     <>
-      <p className="muted"><a href={run ? `/workflows/${run.workflow_name}` : '/workflows'}>← {run?.workflow_name ?? 'workflows'}</a></p>
+      <p className="muted"><Link href={run ? `/workflows/${run.workflow_name}` : '/workflows'}>← {run?.workflow_name ?? 'workflows'}</Link></p>
       <div className="row">
         <h1 style={{ margin: 0 }}>Workflow run</h1>
         <div className="spacer" />
@@ -459,7 +460,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
                     <td><StatusBadge status={r.status} /></td>
                     <td className="muted">{fmtRelative(r.started_at)}</td>
                     <td className="mono">{fmtDuration(r.duration_ms)}</td>
-                    <td><a href={`/runs/${r.id}`}>logs →</a></td>
+                    <td><Link href={`/runs/${r.id}`}>logs →</Link></td>
                   </tr>
                   {earlier.length > 0 && (
                     <tr>
@@ -488,7 +489,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
                       <td><StatusBadge status={e.status} /></td>
                       <td className="muted">{fmtRelative(e.started_at)}</td>
                       <td className="mono">{fmtDuration(e.duration_ms)}</td>
-                      <td><a href={`/runs/${e.id}`}>logs →</a></td>
+                      <td><Link href={`/runs/${e.id}`}>logs →</Link></td>
                     </tr>
                   ))}
                 </React.Fragment>

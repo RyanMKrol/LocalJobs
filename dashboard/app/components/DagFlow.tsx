@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   ReactFlow,
   Background,
@@ -47,14 +48,14 @@ function StageNode({ data }: { data: { label: string; status: string; href: stri
   // the left and the source handle on the right. Hidden + non-connectable (this is a read-only DAG),
   // but they MUST exist for the dependency edges to draw.
   return (
-    <a href={data.href} style={{ textDecoration: 'none', pointerEvents: 'auto' }}>
+    <Link href={data.href} style={{ textDecoration: 'none', pointerEvents: 'auto' }}>
       <Handle type="target" position={Position.Left} isConnectable={false} style={{ opacity: 0, border: 'none', background: 'transparent' }} />
       <div className={`dag-node rf-dag-node ${data.status}`} style={{ cursor: 'pointer', minWidth: 156 }}>
         <div className="dag-node-name">{data.label}</div>
         {data.showStatus && <div className="dag-node-status">{statusLabel(data.status)}</div>}
       </div>
       <Handle type="source" position={Position.Right} isConnectable={false} style={{ opacity: 0, border: 'none', background: 'transparent' }} />
-    </a>
+    </Link>
   );
 }
 
@@ -141,7 +142,7 @@ function GateEdge({
             }}
           >
             {gateHref ? (
-              <a
+              <Link
                 href={gateHref}
                 title={tooltipText}
                 className={lockClass}
@@ -149,7 +150,7 @@ function GateEdge({
                 aria-label={tooltipText}
               >
                 {padlockSvg}
-              </a>
+              </Link>
             ) : (
               <span
                 title={tooltipText}

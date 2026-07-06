@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useState } from 'react';
+import Link from 'next/link';
 import { api } from '../../lib/api';
 import { CopyLogsButton, ProgressBar, StatusBadge, WorkflowRunBackLink, exitCodeLabel, fmtDuration, fmtTime, usePoll } from '../../ui';
 
@@ -58,7 +59,7 @@ export default function RunDetail({ params }: { params: Promise<{ id: string }> 
 
           <div className="panel" style={{ padding: 18, marginBottom: 20 }}>
             <div className="kv">
-              <div className="k">Job</div><div><a href={`/jobs/${run.job_name}`}>{run.job_name}</a></div>
+              <div className="k">Job</div><div><Link href={`/jobs/${run.job_name}`}>{run.job_name}</Link></div>
               <div className="k">Trigger</div><div>{run.trigger}</div>
               <div className="k">Started</div><div>{fmtTime(run.started_at)}</div>
               <div className="k">Finished</div><div>{fmtTime(run.finished_at)}</div>

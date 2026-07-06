@@ -1,6 +1,7 @@
 'use client';
 
 import { use } from 'react';
+import Link from 'next/link';
 import { api } from '../../../../../lib/api';
 import type { ArtifactShape } from '../../../../../lib/api';
 import { WorkflowRunBackLink, usePoll } from '../../../../../ui';
@@ -56,7 +57,7 @@ function SideCard({
         <strong>{jobName}</strong>
       </div>
       <ShapeBody shape={shape} />
-      <p className="gate-card-foot"><a href={`/jobs/${jobName}`}>view {jobName} →</a></p>
+      <p className="gate-card-foot"><Link href={`/jobs/${jobName}`}>view {jobName} →</Link></p>
     </div>
   );
 }
@@ -137,9 +138,9 @@ export default function StructuralGateDetail({
                     </p>
                     <ShapeBody shape={shape} />
                     <p className="gate-card-foot">
-                      <a href={`/jobs/${gate.producer}`}>view {gate.producer} →</a>
+                      <Link href={`/jobs/${gate.producer}`}>view {gate.producer} →</Link>
                       <span className="muted"> · </span>
-                      <a href={`/jobs/${gate.consumer}`}>view {gate.consumer} →</a>
+                      <Link href={`/jobs/${gate.consumer}`}>view {gate.consumer} →</Link>
                     </p>
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { api } from '../lib/api';
 import { Pill } from '../components/Pill';
 
@@ -128,7 +129,7 @@ export default function AdminPage() {
               Started {runAllResult.startedCount} of {runAllResult.totalWorkflows} workflow(s);{' '}
               {runAllResult.skippedCount} skipped. "Started" means the run was dispatched, not that
               it has finished — watch progress on the{' '}
-              <a href="/workflows">Workflows page</a>.
+              <Link href="/workflows">Workflows page</Link>.
             </p>
             <div className="panel">
               <table>
