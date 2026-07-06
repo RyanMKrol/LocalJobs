@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS services (
   monthly_cap       INTEGER,                 -- NULL = no monthly quota
   paid              INTEGER NOT NULL DEFAULT 0,
   limits_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited limits; code-sync preserves them
+  rate_limit_source TEXT NOT NULL DEFAULT '', -- manifest-owned provenance of the limit numbers; always refreshed from code on sync
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

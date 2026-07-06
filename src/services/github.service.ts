@@ -17,6 +17,12 @@ const service: ServiceDefinition = {
   dailyCap: Number(process.env.GITHUB_DAILY_CAP ?? 200),
   monthlyCap: Number(process.env.GITHUB_MONTHLY_CAP ?? 3_000),
   paid: false,
+  rateLimitSource:
+    'Documented in GitHub\'s REST API docs ' +
+    '(https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api): ' +
+    '5,000 req/hr authenticated, 60 req/hr unauthenticated. ratePerMinute=30 / dailyCap=200 / ' +
+    'monthlyCap=3,000 are well below that documented ceiling — conservative headroom, not a guess ' +
+    'about the ceiling itself.',
 };
 
 export default service;

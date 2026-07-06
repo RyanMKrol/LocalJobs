@@ -23,6 +23,14 @@ const service: ServiceDefinition = {
   dailyCap: Number(process.env.TRADING212_DAILY_CAP ?? 100),
   monthlyCap: Number(process.env.TRADING212_MONTHLY_CAP ?? 1_000),
   paid: false,
+  rateLimitSource:
+    'Trading212\'s public API docs (https://docs.trading212.com/api) don\'t state an explicit ' +
+    'numeric rate limit for the portfolio endpoint; "roughly 1 req/sec" is an OBSERVED/INFERRED ' +
+    'estimate from testing against the real account, not a published number. ratePerMinute=10 / ' +
+    'dailyCap=100 / monthlyCap=1,000 are conservative estimates well under that observed ceiling, ' +
+    'chosen because we only poll daily. (Contrast: the separate trading212-instruments service has ' +
+    'a genuinely DOCUMENTED 1-request-per-50-seconds limit per Trading212\'s OpenAPI spec — the ' +
+    '"documented" end of this spectrum.)',
 };
 
 export default service;

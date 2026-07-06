@@ -18,6 +18,11 @@ const service: ServiceDefinition = {
   dailyCap,
   monthlyCap,
   paid: true,
+  rateLimitSource:
+    'Google Places API pricing/quota docs ' +
+    '(https://developers.google.com/maps/documentation/places/web-service/usage-and-billing); ' +
+    'monthlyCap=1000 mirrors the free Enterprise+Atmosphere tier\'s documented monthly allowance. ' +
+    'ratePerMinute=30 is our own conservative pacing choice, not a published RPM limit.',
 };
 
 export default service;

@@ -21,6 +21,11 @@ const service: ServiceDefinition = {
   dailyCap: Number(process.env.FINNHUB_DAILY_CAP ?? 500),
   monthlyCap: Number(process.env.FINNHUB_MONTHLY_CAP ?? 5_000),
   paid: false,
+  rateLimitSource:
+    'Finnhub\'s free-tier docs (https://finnhub.io/docs/api/rate-limit) state a ~60 calls/minute ' +
+    'limit — verify current figures there before citing a specific number. ratePerMinute=30 sits ' +
+    'below that documented ceiling as headroom; dailyCap/monthlyCap are our own conservative ' +
+    'estimates on top, not from Finnhub\'s docs.',
 };
 
 export default service;

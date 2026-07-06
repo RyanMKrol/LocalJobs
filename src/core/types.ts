@@ -281,4 +281,12 @@ export interface ServiceDefinition {
    *  'cli-tool' | 'website-scrape' | 'api'. Omit to fall back to 'uncategorized'.
    *  Manifest-owned only — no dashboard edit UI, refreshed from code on every sync. */
   category?: string;
+  /** Where this service's rate/quota numbers (ratePerMinute/dailyCap/monthlyCap/minIntervalMs) came
+   *  from — a documented API limits page (name + link when one exists), an empirical/observed
+   *  estimate from testing, or an explicit conservative guess when nothing is published. Write this
+   *  HONESTLY: say "documented at <url>" only when you can point at a real page stating the number;
+   *  otherwise say so plainly ("no public rate-limit docs found; empirically tuned" / "no published
+   *  limit; conservative estimate"). Manifest-owned only — no dashboard edit UI, refreshed from code
+   *  on every sync, exactly like `category`. */
+  rateLimitSource?: string;
 }

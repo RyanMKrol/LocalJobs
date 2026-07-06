@@ -12,6 +12,10 @@ const service: ServiceDefinition = {
   category: 'cli-tool',
   description: 'Claude Code CLI (`claude -p`). No local cap: usage is capped UPSTREAM by the Claude plan and fails out gracefully when hit (the loop backs off; jobs soft-fail). Sequential use.',
   paid: false,
+  rateLimitSource:
+    'No local numeric cap — governed by Anthropic\'s Claude plan usage window (a rolling 5-hour ' +
+    'limit), enforced upstream; the CLI fails out when hit and callers soft-fail. Not sourced from ' +
+    'a documented per-minute/day number because there isn\'t one to set locally.',
 };
 
 export default service;

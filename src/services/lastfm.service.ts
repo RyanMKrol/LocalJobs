@@ -10,6 +10,10 @@ const service: ServiceDefinition = {
   description: 'Last.fm API — monthly top-albums/top-tracks listening digest.',
   ratePerMinute: Number(process.env.LASTFM_RATE_PER_MIN ?? 30),
   paid: false,
+  rateLimitSource:
+    'Last.fm\'s API docs (https://www.last.fm/api) don\'t publish a hard rate limit; the stated ' +
+    'convention is to be a "good citizen". ratePerMinute=30 is our own courtesy pacing choice, not ' +
+    'a documented ceiling.',
 };
 
 export default service;

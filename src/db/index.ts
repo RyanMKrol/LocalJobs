@@ -52,6 +52,14 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec("ALTER TABLE services ADD COLUMN category TEXT NOT NULL DEFAULT ''");
   }
 
+  // Additive migration: manifest-owned rate-limit-source provenance label on services
+  // (T449, mirrors the `category` migration above). No `_overridden` column — always
+  // refreshed from the manifest on sync (see upsertServiceStmt). No index on this
+  // column, so no bootstrap-index trap (T098).
+  if (!svcCols.some((c) => c.name === 'rate_limit_source')) {
+    db.exec("ALTER TABLE services ADD COLUMN rate_limit_source TEXT NOT NULL DEFAULT ''");
+  }
+
   // Additive migration: user-owned schedule override flag on workflows (T135).
   // Like `limits_overridden` on services, this lets a dashboard edit take ownership
   // of the cron `schedule` so a later code-sync preserves it (see upsertWorkflowStmt).

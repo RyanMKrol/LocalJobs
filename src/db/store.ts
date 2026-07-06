@@ -1560,12 +1560,13 @@ export function getWorkflowLogs(workflowRunId: string, afterId = 0): { id: numbe
 // — the same reconcile the user-owned `enabled` flag gets. description/paid are
 // code-owned and always refreshed.
 const upsertServiceStmt = db.prepare(`
-  INSERT INTO services (name, description, category, rate_per_minute, daily_cap, monthly_cap, paid)
-  VALUES (@name, @description, @category, @rate, @daily, @monthly, @paid)
+  INSERT INTO services (name, description, category, rate_per_minute, daily_cap, monthly_cap, paid, rate_limit_source)
+  VALUES (@name, @description, @category, @rate, @daily, @monthly, @paid, @rateLimitSource)
   ON CONFLICT(name) DO UPDATE SET
-    description     = excluded.description,
-    category        = excluded.category,
-    paid            = excluded.paid,
+    description       = excluded.description,
+    category          = excluded.category,
+    paid              = excluded.paid,
+    rate_limit_source = excluded.rate_limit_source,
     rate_per_minute = CASE WHEN limits_overridden = 1 THEN rate_per_minute ELSE excluded.rate_per_minute END,
     daily_cap       = CASE WHEN limits_overridden = 1 THEN daily_cap       ELSE excluded.daily_cap       END,
     monthly_cap     = CASE WHEN limits_overridden = 1 THEN monthly_cap     ELSE excluded.monthly_cap     END
@@ -1580,6 +1581,7 @@ export function syncService(def: ServiceDefinition): void {
     daily: def.dailyCap ?? null,
     monthly: def.monthlyCap ?? null,
     paid: def.paid ? 1 : 0,
+    rateLimitSource: def.rateLimitSource ?? '',
   });
 }
 
@@ -1592,6 +1594,7 @@ export interface ServiceRow {
   monthly_cap: number | null;
   paid: number;
   limits_overridden: number;
+  rate_limit_source: string;
   created_at: string;
 }
 

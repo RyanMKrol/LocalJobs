@@ -228,6 +228,18 @@ test("workflows ends migrated: category column added (defaults '') (T292)", () =
   assert.equal(w.category, '', 'pre-existing workflow defaults to empty category (re-synced to manifest value at daemon start)');
 });
 
+test("services ends migrated: rate_limit_source column added (defaults '') (T449)", () => {
+  assert.ok(cols('services').includes('rate_limit_source'), 'rate_limit_source column added');
+  const s = migrated.prepare('SELECT rate_limit_source FROM services WHERE name = ?').get('google-places') as {
+    rate_limit_source: string;
+  };
+  assert.equal(
+    s.rate_limit_source,
+    '',
+    'pre-existing service defaults to empty rate_limit_source (re-synced to manifest value at daemon start)',
+  );
+});
+
 test('jobs ends migrated: legacy schedule + enabled columns dropped (T070)', () => {
   assert.ok(!cols('jobs').includes('schedule'), 'schedule column dropped');
   assert.ok(!cols('jobs').includes('enabled'), 'enabled column dropped');

@@ -18,6 +18,11 @@ const service: ServiceDefinition = {
   dailyCap: Number(process.env.TRADING212_INSTRUMENTS_DAILY_CAP ?? 20),
   monthlyCap: Number(process.env.TRADING212_INSTRUMENTS_MONTHLY_CAP ?? 200),
   paid: false,
+  rateLimitSource:
+    'Documented in Trading212\'s OpenAPI spec (https://docs.trading212.com/api): the ' +
+    'instruments-metadata endpoint is limited to 1 request per 50 seconds. minIntervalMs=50,000 ' +
+    'mirrors that documented limit exactly; dailyCap/monthlyCap are our own defensive estimates on ' +
+    'top.',
 };
 
 export default service;

@@ -169,6 +169,11 @@ const service: ServiceDefinition = {
   dailyCap,
   monthlyCap,
   paid: false,
+  rateLimitSource:
+    'AWS DynamoDB Always Free tier (25 provisioned RCU/WCU) — see https://aws.amazon.com/free/ — ' +
+    'comfortably covers the low ingestion volume here. ratePerMinute=30 / monthlyCap=50,000 are our ' +
+    'own conservative estimates layered well under that free-tier ceiling, not a number AWS ' +
+    'publishes as a hard per-minute limit.',
 };
 
 export default service;

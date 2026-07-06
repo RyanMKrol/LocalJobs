@@ -16,6 +16,10 @@ const service: ServiceDefinition = {
   minIntervalMs: Number(process.env.PERFUMES_FETCH_DELAY_MS ?? 12_000),
   maxJitterMs: Number(process.env.PERFUMES_FETCH_JITTER_MS ?? 6000),
   paid: false,
+  rateLimitSource:
+    'No public rate-limit docs — fragrantica.com is a scrape target, not an API. The ~12s ' +
+    'min-interval + jitter was EMPIRICALLY TUNED during development by observing Cloudflare\'s ' +
+    'blocking behavior — a guess validated by trial, not a documented number.',
 };
 
 export default service;

@@ -14,6 +14,10 @@ const service: ServiceDefinition = {
   dailyCap: Number(process.env.HEVY_DAILY_CAP ?? 500),
   monthlyCap: Number(process.env.HEVY_MONTHLY_CAP ?? 5_000),
   paid: false,
+  rateLimitSource:
+    'No published rate-limit documentation found for the Hevy API. ratePerMinute=20 / ' +
+    'dailyCap=500 / monthlyCap=5,000 are our own conservative estimates, chosen because sync is ' +
+    'infrequent and non-time-sensitive — a guess, not sourced from docs.',
 };
 
 export default service;

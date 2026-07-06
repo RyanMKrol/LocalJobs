@@ -758,6 +758,33 @@ console.log('  ✓ service limit override persists + survives code-sync (reconci
 }
 console.log('  ✓ service category is manifest-owned, always refreshed on sync (T305)');
 
+// ── service `rateLimitSource` is manifest-owned only — always tracks code, no override (T449) ──
+{
+  syncService({ name: 't-rls-a', rateLimitSource: 'documented at https://example.com/docs', paid: false });
+  syncService({ name: 't-rls-b', paid: false }); // no rateLimitSource set
+
+  assert.equal(
+    getServiceRow('t-rls-a')?.rate_limit_source,
+    'documented at https://example.com/docs',
+    'rate_limit_source matches manifest value',
+  );
+  assert.equal(getServiceRow('t-rls-b')?.rate_limit_source, '', 'omitted rateLimitSource falls back to empty string');
+
+  const listed = listServices();
+  assert.equal(listed.find((s) => s.name === 't-rls-a')?.rate_limit_source, 'documented at https://example.com/docs');
+  assert.equal(listed.find((s) => s.name === 't-rls-b')?.rate_limit_source, '');
+
+  // re-sync with a DIFFERENT rateLimitSource must update it — no `_overridden` column, no
+  // preservation behavior, same as category.
+  syncService({ name: 't-rls-a', rateLimitSource: 'empirically tuned', paid: false });
+  assert.equal(
+    getServiceRow('t-rls-a')?.rate_limit_source,
+    'empirically tuned',
+    'rate_limit_source always tracks the latest manifest value',
+  );
+}
+console.log('  ✓ service rateLimitSource is manifest-owned, always refreshed on sync (T449)');
+
 // ── callService enforces the OVERRIDE, not just the code default (T018) ──
 // A tighter user override must take effect: lowering the monthly quota below the
 // code default makes callService soft-fail earlier.

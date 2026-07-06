@@ -21,6 +21,11 @@ const service: ServiceDefinition = {
   dailyCap: Number(process.env.OPENFIGI_DAILY_CAP ?? 2_000),
   monthlyCap: Number(process.env.OPENFIGI_MONTHLY_CAP ?? 20_000),
   paid: false,
+  rateLimitSource:
+    'Documented in OpenFIGI\'s own API docs (https://www.openfigi.com/api/documentation): 25 ' +
+    'requests/minute + 10 jobs/request without an API key, 25 requests/6s + 100 jobs/request with ' +
+    'one. ratePerMinute=20 sits just under the documented no-key ceiling; dailyCap/monthlyCap are ' +
+    'our own defensive estimates on top (OpenFIGI itself has no daily/monthly cap).',
 };
 
 export default service;

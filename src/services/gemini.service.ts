@@ -19,6 +19,11 @@ const service: ServiceDefinition = {
   dailyCap,
   monthlyCap,
   paid: true,
+  rateLimitSource:
+    'Google\'s published Gemini API rate limits/quotas (verify current tier RPM at ' +
+    'https://ai.google.dev/gemini-api/docs/rate-limits). ratePerMinute=10 is set conservatively ' +
+    'below the documented tier RPM; dailyCap/monthlyCap are our own personal spend-budget ceiling, ' +
+    'not a limit Google enforces.',
 };
 
 export default service;

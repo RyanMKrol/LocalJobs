@@ -271,6 +271,7 @@ export interface Service {
   monthly_cap: number | null;
   paid: number;
   limits_overridden: number;
+  rate_limit_source: string;
   used_today: number;
   used_month: number;
   rate_last_min: number;
