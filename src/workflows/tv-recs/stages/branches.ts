@@ -113,7 +113,14 @@ function randomBranch(n: number): BranchSpec {
     id: `tv-rec-random-${n}`,
     lens: 'serendipity',
     kind: 'random',
-    description: `Stage: TV serendipity branch ${n} — recommends diverse shows from a stratified-random slice of the owned library.`,
+    description: `TV recommender serendipity branch ${n} of 3, one of eight parallel branches fanning out ` +
+      'from the tv-snapshot stage. It reads the owned-library snapshot and taste profile and asks Claude ' +
+      'for acclaimed, diverse recommendations drawn from a stratified-random slice of the owned shows ' +
+      `(sampled by primary genre, seeded uniquely per branch — ${1000 + n} — so the three random branches ` +
+      'see different slices and surface different picks), rather than steering towards any one genre or ' +
+      "era the way the targeted branches do. It excludes titles already owned and anything on this run's " +
+      'growing already-suggested list, then writes its raw suggestion list for tv-rec-merge to pool, ' +
+      'TMDB-verify, dedupe against the other seven branches, and quality-filter.',
     build(ctx) {
       const sample = stratifiedSample(ctx.shows, { keyFn: primaryGenre, target: ctx.sampleSize, seed: 1000 + n });
       return [
@@ -132,7 +139,14 @@ const creatorBranch: BranchSpec = {
   id: 'tv-rec-creator',
   lens: 'creator-completion',
   kind: 'targeted',
-  description: 'Stage: creator/showrunner-completion branch (depth) — acclaimed shows by creators I already follow heavily.',
+  description: 'TV recommender depth branch: creator/showrunner completion. It reads the owned-library ' +
+    'taste profile to find creators/actors the owner already follows heavily (owns at least 3 shows ' +
+    'featuring them, up to 8 such names) and asks Claude for acclaimed or notable shows featuring those ' +
+    'same people that are not already owned — deepening a collection around creators already loved rather ' +
+    'than branching out. When no creator meets the "owns at least 3" threshold the branch build() returns ' +
+    'null and the stage writes an empty suggestion list without calling Claude, a deliberate skip rather ' +
+    'than a failure. Otherwise it writes its raw suggestion list for tv-rec-merge to pool, TMDB-verify, ' +
+    'dedupe, and quality-filter alongside the other seven branches.',
   build(ctx) {
     const creators = creatorsOwnedAtLeast(ctx.profile, 3).slice(0, 8);
     if (!creators.length) return null;
@@ -154,7 +168,13 @@ const canonBranch: BranchSpec = {
   id: 'tv-rec-canon',
   lens: 'top-genre-canon',
   kind: 'targeted',
-  description: 'Stage: top-genre-canon branch (depth) — canonical shows in my strongest genres I somehow missed.',
+  description: 'TV recommender depth branch: top-genre canon. It reads the owned-library taste profile to ' +
+    'find the owner\'s 4 strongest genres by owned-show count, shows Claude a small sample of what is ' +
+    'already owned in each, and asks for canonical, acclaimed, or landmark shows in those SAME genres that ' +
+    'appear to be missing — blind spots inside the owner\'s own strengths, rather than branching into new ' +
+    'territory. When the taste profile has no genre data the branch build() returns null and the stage ' +
+    'writes an empty suggestion list without calling Claude. Otherwise it writes its raw suggestion list ' +
+    'for tv-rec-merge to pool, TMDB-verify, dedupe, and quality-filter alongside the other seven branches.',
   build(ctx) {
     const tg = topGenres(ctx.profile, 4);
     if (!tg.length) return null;
@@ -179,7 +199,13 @@ const thinGenreBranch: BranchSpec = {
   id: 'tv-rec-thin-genre',
   lens: 'thin-genre',
   kind: 'targeted',
-  description: 'Stage: thin-genre round-out branch (breadth) — acclaimed shows in genres I own few of.',
+  description: 'TV recommender breadth branch: thin-genre round-out. It reads the owned-library taste ' +
+    'profile to find the 5 genres the owner owns the fewest shows in, shows Claude a sample of what is ' +
+    'already owned in those thin genres, and asks for acclaimed shows in THOSE genres specifically — ' +
+    "broadening the library rather than amplifying already-dominant genres the way the canon branch does. " +
+    'When the taste profile shows no thin genres the branch build() returns null and the stage writes an ' +
+    'empty suggestion list without calling Claude. Otherwise it writes its raw suggestion list for ' +
+    'tv-rec-merge to pool, TMDB-verify, dedupe, and quality-filter alongside the other seven branches.',
   build(ctx) {
     const thin = thinGenres(ctx.profile, 5);
     if (!thin.length) return null;
@@ -199,7 +225,13 @@ const olderEraBranch: BranchSpec = {
   id: 'tv-rec-older-era',
   lens: 'older-era',
   kind: 'targeted',
-  description: 'Stage: older-era classics branch (breadth) — acclaimed pre-2000 shows from eras I under-own.',
+  description: 'TV recommender breadth branch: older-era classics. It reads the owned-library taste ' +
+    'profile\'s by-decade breakdown to show Claude how much of the owned library skews recent, shows a ' +
+    'sample of the pre-2000 shows already owned, and asks for acclaimed PRE-2000 classic TV shows — ' +
+    "foundational series from the golden age of television and earlier that the owner under-owns, " +
+    'broadening the library backwards in time rather than sideways by genre or country. It writes its raw ' +
+    'suggestion list for tv-rec-merge to pool, TMDB-verify, dedupe, and quality-filter alongside the other ' +
+    'seven branches.',
   build(ctx) {
     const decades = Object.entries(ctx.profile.decades)
       .filter(([d]) => d !== 'Unknown')
@@ -221,7 +253,12 @@ const worldTvBranch: BranchSpec = {
   id: 'tv-rec-world',
   lens: 'world-tv',
   kind: 'targeted',
-  description: 'Stage: world/international TV branch (breadth) — acclaimed non-English shows I under-own.',
+  description: 'TV recommender breadth branch: world/international TV. It reads the owned-library taste ' +
+    'profile\'s by-country breakdown to show Claude how Anglophone-dominated the owned library is, shows a ' +
+    'sample of non-Anglophone shows already owned, and asks for acclaimed NON-ENGLISH-LANGUAGE / ' +
+    'international shows that broaden the library beyond that Anglophone bias — a distinct axis from the ' +
+    'genre- and era-focused breadth branches. It writes its raw suggestion list for tv-rec-merge to pool, ' +
+    'TMDB-verify, dedupe, and quality-filter alongside the other seven branches.',
   build(ctx) {
     const countries = Object.entries(ctx.profile.countries)
       .sort((a, b) => b[1] - a[1])
