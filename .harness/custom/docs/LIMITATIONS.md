@@ -8,3 +8,513 @@ refreshed on upgrade. Harness upgrades never touch this file. (See `.harness/cus
 Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*.
 
 <!-- Add your project-specific limitation rows here. -->
+
+---
+
+## Harness
+
+- **Works in-place on `main` — no worktree isolation.**
+  *Why:* the real jobs + data live untracked in this checkout (a clean worktree couldn't see them),
+  and git revert is a simpler safety net than worktree quarantine.
+  *Impact:* an interrupted task can leave the working tree dirty; don't hand-edit or commit to the
+  repo while the loop runs. Safety = sequential + lock + local-DoD-before-commit + CI-red-stops +
+  one-line `git revert`.
+  *Revisit:* if the repo goes fully public and data moves out of the tree, the worktree variant
+  becomes viable again.
+
+- **Autonomous `git push` to a public `main`.**
+  *Why:* the loop integrates by pushing; there's no human in the loop to click merge.
+  *Impact:* a bad/secret-leaking commit could in principle reach GitHub.
+  *Mitigation / revisit:* the pre-push guard (HARNESS.md §4) halts on any sensitive path; CI-red
+  stops the loop. Tighten the guard's regex if new sensitive paths appear.
+
+- **CI-green-after-push, stop-on-red (not gate-before-merge).**
+  *Why:* CI can only run on pushed commits, and the local DoD mirrors CI, so red is rare.
+  *Impact:* `main` can be briefly red until a human reverts.
+  *Revisit:* if red happens often, move to a push-to-branch → ff-main gate.
+
+- **No live paid-API calls in verification.**
+  *Why:* Google Places / Gemini are metered with monthly caps we must not blow.
+  *Impact:* job logic is verified against fixtures / already-fetched local data, not a fresh live
+  call — a live-only regression could slip past.
+  *Revisit:* add an opt-in, cap-aware smoke test (using the existing `recordUsage`/`capStatus`
+  meters) gated behind a manual flag.
+
+- **`--dangerously-skip-permissions` removes per-action guardrails.**
+  *Why:* a headless loop has no human to answer prompts.
+  *Impact:* no per-action confirmation; the pre-push guard, CI gate, and reviewable per-task commits
+  are the backstop.
+
+- **The harness pushes its own backlog status commits to `main`.**
+  *Why:* `.harness/tracking/TASKS.json` is committed and the shell flips `status` to `done` after green CI.
+  *Impact:* one extra tiny `[skip ci]` commit per completed task in history.
+  *Revisit:* squash/clean up if the noise ever bothers you.
+
+- **Core unit tests spawn real child processes and use real (short) sleeps.**
+  *Why:* the executor/pipeline spawn `runJob` as a child and `callService` has no injectable clock
+  or `spawn` seam, so tests point `config.runJobScript` at a fake NDJSON-emitting script and bound
+  throttle waits with small/negative `maxWaitMs` rather than mocking timers.
+  *Impact:* the suite is a few seconds slower (process spawns + a ~2-3s min-interval spacing test)
+  and the scheduler/throttle tests are mildly timing-sensitive (generous margins keep them stable).
+  *Revisit:* inject a clock + a `spawn` factory if these ever flake or the suite gets too slow.
+
+- **Task do/doneWhen split across two files (JSON + per-task MD).** (T131)
+  *Why:* Markdown specs (`.harness/tasks/TNNN.md`) are far more expressive and render cleanly on the
+  dashboard than a flat JSON string; orchestration fields stay in `TASKS.json`.
+  *Impact:* a new task is now two coupled files — a JSON object with a `spec` path PLUS its MD — and
+  a missing/renamed spec file leaves the task with an empty body (the loop prompt warns, the backlog
+  page shows "No spec available"). The two can drift if edited carelessly.
+  *Mitigation / revisit:* `readTaskSpec` is path-confined to `.harness/tasks/*.md`; if drift becomes
+  a problem, add a backlog linter asserting every task has a readable spec with both sections.
+
+- **The loop-prompt unit test spawns `bash` and needs `jq`.** (T131)
+  *Why:* `loop.sh prompt()` is shell; the test sources it (`LOOP_SOURCE_ONLY=1`) and runs `prompt`,
+  which calls `jq` to resolve the `spec` path.
+  *Impact:* on a host without `bash`/`jq` the test self-skips (logged) rather than failing — so that
+  one assertion wouldn't run there. CI (ubuntu) and the Mac Mini both have them.
+  *Revisit:* port the prompt assembly to a tiny Node helper if a shell dependency ever bites.
+
+---
+
+## Project
+
+- **Publishing the perfumes pipeline exposes Fragrantica-scraping code.**
+  *Why:* the owner chose to make all job code public to unblock the harness.
+  *Impact:* the repo publicly documents Cloudflare-clearance / scraping technique against
+  Fragrantica, whose site ToS disallows automated access. Data (incl. the browser profile) stays
+  private.
+  *Revisit:* if Fragrantica objects or ToS posture changes, re-privatise `src/workflows/perfumes`.
+
+- **Stage validation gates run in the daemon, un-sandboxed and un-timed.**
+  *Why:* a gate must decide whether to even spawn the consumer, so its
+  `ArtifactContract.check()` runs inline in the parent (daemon) process before
+  the child is forked — unlike a job's `run()`, which is isolated + timeout-killed.
+  *Impact:* a slow or hanging `check()` blocks that pipeline (no per-gate timeout),
+  and a `check()` doing heavy I/O competes with the daemon. Throws are caught and
+  turned into violations, so a crash can't escape — but a hang isn't bounded.
+  *Revisit:* if a contract ever needs real work, give gates their own timeout
+  (or run them as a lightweight child) the way job runs are bounded.
+
+- **Gates are edge-scoped and matched purely by `key` string.**
+  *Why:* `deriveGates` only emits a gate where a DIRECT upstream `produces` a key
+  the downstream `consumes`; a consumed key with no producing upstream is treated
+  as an external input (no gate, no warning).
+  *Impact:* a typo'd/mismatched key silently produces NO gate rather than an error,
+  so a contract you thought was enforced may not be. There's also no config-time
+  check that declared contracts line up.
+  *Revisit:* add a registry-time warning when a job `consumes` a key that no
+  pipeline upstream `produces`.
+
+- **Perfume accord percentages depend on cached page HTML.** `perfumes-parse`
+  fills each accord's `pct` from the Fragrantica page's coloured-bar `width: NN%`
+  (`parseAccordPercents` in `src/workflows/perfumes/parse.ts`) — but `perfumes-fetch`
+  currently persists only the page *text* (`<id>.txt`) on success; the page HTML is
+  saved only for pages it diagnoses as failed (`pages-failed/<id>.html`).
+  *Impact:* `pct` populates only when an `<id>.html` is present next to the page; on
+  the normal text-only success path accords keep `pct: null`. The parser + merge are
+  empirically correct against real cached HTML (verified: green→100, woody→83,
+  coconut→51, an accord absent from the page→null), so the slice activates the moment
+  HTML is cached.
+  *Revisit:* a follow-up should have `perfumes-fetch` also write `<id>.html`
+  alongside `<id>.txt` so the whole library carries accord strengths (out of T009's
+  scope — `fetch.ts` was not in scope).
+
+- **Fragrantica-vs-LLM confidence weighting is prompt-enforced, not post-checked.**
+  `perfumes-build` computes a continuous sample-size confidence weight
+  `votes/(votes+k)` (k = corpus-median votes) and feeds the blend + an explicit
+  "state this in the profile" directive into the build prompt
+  (`confidenceClause` in `src/workflows/perfumes/build.ts`). The math, calibration,
+  and clause wording are unit-tested against low- and high-sample fixtures, but
+  the *actual* blend in the written markdown depends on the LLM honouring the
+  directive — there's no post-build validator that re-reads the profile and
+  asserts the stated confidence matches the votes (that would need either a live
+  build or a parser over the generated prose).
+  *Revisit:* add a cheap post-build check that the Community Sentiment section
+  contains the expected "Community-signal confidence: NN%" line and that NN
+  tracks the vote count, failing the run loud if the LLM dropped it.
+
+- **Confidence calibration is a snapshot of the currently-scraped corpus.** `k`
+  is the median vote count over whatever `data/out/fragrantica/*.json` exists at
+  build time, so the same perfume can get a slightly different weight as the
+  library grows and the median shifts. This is intended (high vs low is relative
+  to *this* ecosystem), but it means a profile's stated confidence isn't stable
+  across re-runs spanning corpus changes. Pin `PERFUMES_CONFIDENCE_K` for a fixed
+  reference point if that matters.
+
+- **Service migration leaves `job_usage` rows behind; backfill is month-scoped.**
+  T013 removed the per-job `recordUsage`/`capStatus` from `places-enrich` and
+  `enrich-with-llm` so the shared service quota (`google-places`, `gemini`) is the
+  sole governor. `scripts/backfill-service-usage.ts` tops up `service_usage` from
+  the legacy `job_usage` for **this calendar month only** (the window the live caps
+  actually care about) and is idempotent (adds `max(0, job − service)`). It does
+  NOT reconcile prior months, and the stale `job_usage` rows are left in place
+  (harmless — nothing reads them for these jobs anymore). It was run once in-place;
+  re-running is a safe no-op.
+  *Side effect:* with the per-job cap gone, a `dryRun` pass of `enrich-with-llm`
+  no longer increments any meter (it bypasses `callService`), so dry runs are now
+  entirely unmetered — fine, since they cost nothing.
+  *Revisit:* if cross-month accuracy ever matters, extend the backfill to walk
+  per-month buckets instead of just the current month.
+
+- **Orphaned ledger prune is manual and full-scan, not incremental.** T014 added
+  a manual prune (`POST /api/jobs/:name/prune`, `pruneOrphanedWorkItems` in
+  `store.ts`) that removes `work_items` whose `item_key` is no longer in a job's
+  current input set. It is deliberately **never automatic** — a scheduled run that
+  transiently sees a truncated/empty input could otherwise wipe a valid ledger, so
+  the human pulls the trigger. Trade-offs: (a) the job must expose `inputKeys()`
+  *or* the caller passes an explicit `{ keys: [...] }`; jobs without either can't
+  be pruned through `inputKeys()`. (b) An empty current set would orphan every row,
+  so the API refuses it unless `{ force: true }`. (c) It scans the job's full
+  `work_items` set in memory to diff against the key set — fine at the current
+  scale (thousands of rows), not built for millions.
+  *Revisit:* if a job legitimately needs auto-prune, add an opt-in guard (min-size
+  / change-ratio sanity check) rather than running it on every schedule.
+
+- **Pipeline progress roll-up is point-in-time, not monotonic, and its denominator
+  trusts `pipeline_jobs`.** T016 made pipeline `progress` a first-class roll-up:
+  `rollUpPipelineProgress` (in `store.ts`) sums each member stage's fraction
+  (terminal = 1, running = its `progress`/100, not-started = 0) over the member
+  count from the `pipeline_jobs` table, and `setProgress` calls it live whenever a
+  member emits progress. Trade-offs: (a) **non-monotonic under `repeatUntilStable`**
+  — each cycle creates fresh member runs starting at 0, so the bar sawtooths down at
+  cycle boundaries (acceptable: it's honestly redoing work). (b) The denominator is
+  the **current** `pipeline_jobs` count; if a pipeline is re-synced with a different
+  member set mid-run the percentage would shift — a non-issue in the single-process
+  daemon where syncs happen at startup, not during a run. (c) It recomputes the full
+  per-member latest-run query on **every** member progress event (one extra
+  correlated subquery per `setProgress`) — negligible at this scale, not built for
+  pipelines with hundreds of high-frequency-progress members.
+  *Revisit:* if non-monotonic display ever bothers, clamp to a max-so-far per cycle;
+  if membership can change mid-run, persist a `total_stages` snapshot on the
+  pipeline run instead of counting `pipeline_jobs`.
+
+- **Editable service limits are all-or-nothing per service, with no one-click
+  reset.** T018 made `rate_per_minute`/`daily_cap`/`monthly_cap` editable from the
+  Services page; the first edit flips `limits_overridden = 1` and a later code-sync
+  then preserves the user's values for ALL THREE (mirrors the `enabled` reconcile).
+  Trade-offs: (a) **no "revert to code default" control** — once overridden, the
+  row no longer tracks code changes to any of the three limits; to go back you edit
+  the values manually (or clear `limits_overridden` in the DB). (b) Only the three
+  numeric limits are editable; `minIntervalMs`/`maxJitterMs` remain code-only.
+  (c) The override is keyed by service name in the shared `services` table, so it's
+  a single global value — there's no per-job override of a shared service's limit
+  (by design: the whole point of a service is one cross-job governor).
+  *Revisit:* if reverting becomes common, add a `DELETE /api/services/:name/limits`
+  that clears the flag and re-seeds from the registered def.
+
+- **The read-only DB browser is intentionally minimal.** T019 added a generic
+  table viewer (`/db` page → `GET /api/db/tables[/:name]` → `browseTable` in
+  `store.ts`). It is strictly read-only by construction: only `SELECT`/`PRAGMA`
+  run, the table name is whitelisted against the live schema before any
+  interpolation (so injection / unknown names are rejected → 404), and no
+  write/mutation endpoint exists. Trade-offs: (a) **no arbitrary SQL** and **no
+  per-column filtering/sorting** — you page through whole tables only (ordered by
+  `rowid`, 50 rows/page, `limit` clamped to ≤500). (b) Rows are returned verbatim,
+  so wide JSON `detail` columns are truncated with an ellipsis in the UI (full
+  value in the cell `title`). (c) It reads the daemon's single shared connection
+  in WAL mode, so it's a point-in-time snapshot, not a streaming/transactional
+  view. *Revisit:* if ad-hoc filtering becomes common, add a constrained
+  `WHERE`/`ORDER BY` builder (still parameterized, column names whitelisted) rather
+  than exposing raw SQL.
+
+- **Remote dashboard proxies the API as a loopback caller → tailnet membership
+  IS the auth.** T024 made the dashboard reachable over a Tailscale tailnet via
+  `tailscale serve`, with the browser talking only to the dashboard origin and the
+  dashboard server proxying `/api/*` to the loopback daemon API
+  (`dashboard/next.config.js` `beforeFiles` rewrite → `127.0.0.1:4789`). *Why:* it
+  keeps the API bound to `127.0.0.1` and never exposed — the only thing on the
+  tailnet is the dashboard. *Impact:* because the proxy hop originates from
+  loopback, the daemon sees a loopback caller, so the T023 **mutation token guard
+  does not apply to requests that arrive via the dashboard proxy** — anyone who can
+  reach the dashboard (i.e. any device on the tailnet, or anyone local) can trigger
+  runs/toggles. The security boundary is therefore the **tailnet ACL**, not a
+  per-request token. This is acceptable only while (a) `tailscale serve` is used,
+  **never `tailscale funnel`** (Funnel = public internet), and (b) the tailnet is
+  trusted. The T023 guards (loopback bind, CORS allowlist, token-for-non-loopback)
+  still protect the API against any *directly*-exposed path; they just don't gate
+  the proxied path. *Revisit:* if the tailnet is shared with untrusted devices, add
+  an auth layer in front of the dashboard itself (e.g. Tailscale identity headers
+  via `tailscale serve`, or a dashboard-level token) rather than relying on tailnet
+  membership alone.
+
+- **Real-job stage-gate contracts check SHAPE + NON-EMPTY of a representative
+  artifact, not every item.** T027 declared `produces`/`consumes` contracts on the
+  perfumes + places pipeline stages (`src/workflows/{perfumes,places}/contracts.ts`), so
+  each pipeline now derives **3 gates** that fire at every boundary (previously the
+  mechanism existed but zero real jobs declared contracts, so no gate ever fired).
+  *Why:* the goal is catching real external-format drift (a reshaped Fragrantica
+  page, a changed Takeout CSV layout) cheaply. So the per-item directory contracts
+  (`fragrantica-pages`, `fragrantica-data`) pass when **at least one** captured
+  page / parsed record has the expected shape rather than validating all N, and the
+  resolve/enrich contracts require **≥1** entry with a real `place_id`, not all.
+  Contracts are **factory functions** taking an optional path (defaulting to the
+  job's real `data/` artifact) so the jobs wire the defaults while unit tests point
+  them at synthetic fixtures — the real gitignored `data/` is never needed to test.
+  *Impact:* a corpus where most items are well-formed but a minority drifted still
+  passes the gate (those bad items are handled per-item by the work_items ledger /
+  retries, not the gate). The gate is a coarse "the upstream format didn't break
+  and produced *something* usable" check, deliberately not a full-schema every-row
+  validation (brittle, and would block the whole consumer on one bad item).
+  *Revisit:* if silent per-item drift becomes a problem, add a stricter opt-in
+  contract variant that samples N records or asserts a minimum well-formed fraction.
+
+- **Gate markers are chips on the consumer node, not lines drawn on the edge.**
+  *Why:* the pipeline DAG renders as left-to-right *wave columns* (`Dag.tsx`), not
+  per-node SVG edges — there is no drawn producer→consumer line to attach a marker
+  to. Each inbound gate is shown as a small chip beneath its consumer node instead,
+  labelled with the producer + artifact key so the boundary it guards is explicit.
+  *Impact:* when a producer and consumer sit more than one wave apart, the chip
+  isn't visually connected to the producer by a line; you read the relationship
+  from the chip's label, not a drawn arrow. Gate STATE (passed/failed/pending) is
+  derived from member runs by string-matching the gate-failure error prefix
+  (`gateFailurePrefix`), so the executor's failure-detail format and the API's
+  classifier are coupled — both live in `core/dag.ts` to keep them in lockstep.
+  *Revisit:* if a true node-graph (SVG edges) replaces the wave layout, move the
+  gate marker onto the actual edge; if the failure-detail format must change, update
+  `gateFailurePrefix` (one place) so `classifyGates` keeps matching.
+
+- **The per-job `enabled` toggle + `schedule` field are now vestigial.** *Why:*
+  T037 made every job a pipeline member and moved scheduling/enable ownership to the
+  pipeline. The scheduler no longer reads a job's `schedule` or its `jobs.enabled`
+  flag — only the pipeline's. The job-level toggle still exists on the job detail
+  page and `POST /api/jobs/:name/toggle` / `setJobEnabled` still write the column,
+  but flipping it changes nothing about whether the job runs (the pipeline gates
+  that). *Impact:* a stale control that looks meaningful but isn't. It was left in
+  place because removing it cleanly would require editing the out-of-scope job
+  detail page and the `jobs.schedule`/`enabled` columns. *Revisit:* a follow-up can
+  drop the job toggle UI + endpoint + column and the unused `schedule` field from
+  `JobDefinition` once the schema change is in scope.
+
+- **The pipeline→workflow rename is a clean break with a one-way DB migration.**
+  *Why:* T038 renamed the "pipeline" concept to "workflow" everywhere (types, DB
+  tables `pipeline_*`→`workflow_*`, the `*.pipeline.ts` discovery glob, the
+  `pipeline-executor`, the `/api/pipelines` + `/pipeline-runs` routes and dashboard
+  pages, and all docs). No old-name redirects/aliases were kept, per the task.
+  *Impact:* (a) any external bookmark or integration hitting `/api/pipelines`,
+  `/pipeline-runs`, or `/pipelines` 404s — they're now `/api/workflows`,
+  `/workflow-runs`, `/workflows`. (b) The DB migration (`migrateWorkflowRename` in
+  `src/db/index.ts`, run before schema bootstrap) renames the legacy tables/columns
+  in place and is idempotent + lossless, but is **one-way** — there's no
+  down-migration back to `pipeline_*`. It relies on SQLite ≥ 3.25 `ALTER TABLE …
+  RENAME COLUMN` (better-sqlite3 bundles 3.49) and on `foreign_keys = ON` so child
+  FK references are rewritten automatically. *Revisit:* the migration block can be
+  deleted once every live DB is known to be on the `workflow_*` schema (it's a
+  no-op from then on).
+
+- **The mobile styling check is hermetic + local, not wired into CI.** *Why:*
+  T040 added `dashboard/scripts/mobile-check.mjs`, which boots a real `next start`
+  and drives a headless Chromium — too heavy/flaky for the CI Definition-of-Done
+  (which stays `tsc` + `npm test` + dashboard build). It also serves all `/api/*`
+  from **synthetic in-process fixtures** via Playwright route interception rather
+  than a seeded scratch SQLite + live daemon, so it never touches the DB or makes
+  paid calls. *Impact:* (a) a responsive regression won't be caught automatically
+  on push — you must run the check by hand after a dashboard UI change (it's
+  documented in `CLAUDE.md` + `README.md` as part of Done). (b) the fixtures are a
+  hand-maintained approximation of the API shapes in `dashboard/app/lib/api.ts`;
+  if an endpoint's response shape changes, update the fixtures too or the page may
+  render empty and silently pass. (c) it depends on Playwright's Chromium being
+  installed locally (`npx playwright install chromium`). *Revisit:* if responsive
+  regressions recur, promote it to a CI job with a cached browser.
+
+- **The gate page's "actual" is the artifact ON DISK NOW, not a snapshot of what
+  flowed at run time.** *Why:* T065's expected-vs-actual gate page
+  (`GET /api/workflow-runs/:id/gates/:producer/:key`) re-runs each side's contract
+  `check()` live against the `data/` files when you open the page, rather than
+  persisting the `GateResult` captured during the workflow run. This keeps the run
+  path unchanged (no new columns / no result serialization) and the endpoint
+  cheap + paid-call-free. *Impact:* for a historical run, the per-expectation ✓/✗
+  and sample reflect the CURRENT files — if a later run overwrote them, or the
+  files were deleted/regenerated, the page shows the latest state, which may differ
+  from what actually crossed the gate on that run. The gate *state* badge
+  (passed/failed/pending) is still run-scoped and accurate (it comes from
+  `classifyGates` over the run's member runs). *Revisit:* if per-run fidelity
+  matters, persist the producing/consuming `GateResult` (checks + sample) on the
+  member run when the gate is enforced and serve that instead of re-checking.
+
+- **Accord percentages backfill only on RE-FETCH, not retroactively.** *Why:*
+  T072 fixed `perfumes-fetch` to persist the raw page HTML (the success path used
+  to save only innerText `.txt`, so the parser's `pages/<id>.html` never existed
+  and every accord `pct` fell back to `null`). The parser was already correct —
+  verified end-to-end against a live fetch of Amouage Beach Hut Man, where it lifts
+  the real bar-width %s exactly. *Impact:* the ~42 perfume outputs built before
+  this fix still carry `pct: null`; they only gain real percentages when their page
+  is re-fetched (the fetch ledger must re-run that item) and re-parsed. Nothing
+  auto-invalidates the old `.txt`-only captures. *Revisit:* to backfill, clear the
+  `perfumes-fetch` work-items (or delete the stale `pages/*.txt`) so a run re-fetches
+  and now also saves `.html`, then let `perfumes-parse` re-run.
+
+- **Workflow-run cancellation is process-local and the DB transition is async.**
+  *Why:* T091 added `POST /api/workflow-runs/:id/cancel` backed by an in-memory
+  `workflowRunId → AbortController` registry in `workflow-executor.ts`. A run can
+  therefore only be cancelled while it is executing in THIS daemon process — a run
+  orphaned by a daemon restart isn't in the registry (cancel returns a 409), but
+  startup already reaps such runs to `cancelled` anyway, so there's nothing live to
+  stop. *Impact:* the API returns `{ ok: true }` the instant `abort()` is signalled;
+  the `cancelled` row(s) are written slightly later, when the executor observes the
+  abort, drains the hard-killed in-flight child, and finalises the run (keeping the
+  executor the sole DB writer). So a poll immediately after cancel may still briefly
+  show `running`. *Revisit:* if a synchronous guarantee is needed, have the API await
+  the run reaching a terminal state before responding.
+
+## Workflow run-limits (T094)
+
+- **RESOLVED by T163 — "pending" for re-selection is propagation through the TERMINAL stage, not
+  just entry-not-done.** The original rule described here (entry-not-done OR any descendant
+  outstanding) had a real bug: a root whose entry stage was done but whose LATER stages simply had
+  no ledger row yet (never attempted) was wrongly treated as "fully done" and skipped by a limited
+  run — silently selecting 0 roots and no-op'ing. T163 fixed this with a 4-branch check
+  (`isRootPending` in `src/db/store.ts`): (1) any retryable not-done row anywhere → pending; (2) a
+  done row at a terminal-wave job → fully done; (3) a gave-up marker (ignored/skipped/retry-exhausted)
+  with no retryable work → treat as done (avoids livelock); (4) otherwise (unattempted downstream
+  work) → pending. See root `CLAUDE.md`'s "Input lineage + manual run-limits (T094)" section for the
+  full current writeup. The "stuck descendant" caveat below still holds under the T163 rule (branch 3
+  applies): unstick a failed-past-budget item, or run unlimited, to retry it.
+
+- **A limited run selects roots from the root stage's CURRENT `inputKeys()` — which for `places`
+  reads `places.json` (the ingest output), not the raw CSVs.**
+  *Why:* the root stage is `cid-to-place-id-resolver`, and its candidate roots are the CIDs in
+  `places.json`. Selection runs in the daemon at run start, **before** `places-ingest` (re)builds
+  `places.json` that same run.
+  *Impact:* on a brand-new DB/checkout where `places.json` doesn't exist yet, a limited places run
+  selects **nothing** (inputKeys returns `[]`) and does no work. Run the workflow **unlimited once**
+  (so ingest produces `places.json`) before using a limit, or run `places-ingest` first. Perfumes is
+  unaffected — its root stage reads the committed-by-the-user `perfumes.json` input directly.
+  *Revisit:* if needed, run ingest's transform as part of `inputKeys()` (it's cheap + idempotent) so a
+  fresh limited run can enumerate roots without a prior unlimited pass.
+
+- **Stages topologically BEFORE the root stage run UNFILTERED under a limit.**
+  *Why:* they establish the universe of roots rather than consuming it — e.g. `places-ingest` parses
+  ALL Takeout CSVs into `places.json` regardless of the limit. The limit applies from the root stage
+  onward.
+  *Impact:* a limited places run still does the full (cheap, idempotent) bulk ingest each time; only
+  resolve/enrich/llm are bounded to N CIDs. This is intended, not a bug.
+  *Revisit:* only if a pre-root stage ever becomes expensive — then it would need its own bounding.
+
+- **Validation-gate display on the graph views is a TOGGLEABLE evaluation aid (T099).**
+  *Why:* the original single chip-per-gate (T090) took too much space, so five compact styles
+  (`icon`/`dot`/`key`/`connector`/`lock`) were added behind a live, `localStorage`-persisted
+  selector so the user can pick a favourite on the real site.
+  *Impact:* the graph views carry a "Gate style" selector and five code paths for the same gate
+  data — extra surface that is intentionally temporary, not a permanent feature.
+  *Revisit:* a FOLLOW-UP task hardcodes the chosen winner and deletes the toggle + the four unused
+  styles (and the `useGateStyle`/`GATE_STYLES` machinery in `app/ui.tsx`).
+
+- **The "one active run per workflow" guard is in-process (single-daemon), not DB-locking (T105).**
+  *Why:* the authoritative guard is a synchronous check-and-claim in `runWorkflow` (an in-process
+  `startingWorkflows` Set) combined with the DB's `status='running'` check — race-safe because the
+  daemon is the single writer/scheduler and Node is single-threaded. There is no SQL-level unique
+  constraint forbidding two `running` rows for one workflow.
+  *Impact:* correct for this architecture (ONE daemon owns all scheduling + manual runs). If the
+  framework ever ran TWO daemon processes against the same DB, two near-simultaneous starts could
+  each pass their own in-process claim and both create a `running` row. The API's 409 likewise relies
+  on the same single-process guard.
+  *Revisit:* only if multi-daemon is ever introduced — then the claim would need to move into the DB
+  (e.g. a conditional `INSERT … WHERE NOT EXISTS (running row)` or a unique partial index on
+  `workflow_name WHERE status='running'`).
+
+- **The workflow-run output preview fetches one request per output row (T110).**
+  *Why:* the IO panel's output cell (`OutputCell`) lazily fetches each row's produced markdown via
+  `GET /api/workflow-runs/:id/output` once on mount (deduped per row), to show a title/excerpt and
+  cache the full content for the click-to-open popover. There is no batch endpoint.
+  *Impact:* for a workflow with many first-stage inputs (the panel reflects the GLOBAL work-item
+  ledger, not just this run — the inherited T095 limitation), the page issues one cheap local
+  file-read request per output row. Fine for a personal, loopback dashboard; the browser caps
+  concurrency and reads are local-file-fast, but it is N requests, not one.
+  *Revisit:* if a workflow's ledger grows large enough to make the panel sluggish, add a batched
+  `outputs` endpoint or render previews only for visible rows (IntersectionObserver).
+
+- **`repeatUntilStable` no-forward-progress stop is heuristic, not a true fixpoint (T112).**
+  *Why:* the loop stops early when a whole cycle leaves the member work-item ledger signature
+  unchanged (row count + summed attempts) AND the retryable count didn't drop (`noForwardProgress`).
+  This robustly kills the perpetual-cycling case (a genuinely-unfindable input frozen below
+  `maxAttempts`, counted retryable every cycle yet never re-attempting) without depending on WHY a
+  given stage failed to advance it.
+  *Impact:* a cycle that legitimately makes NO ledger change but WOULD progress on a later cycle —
+  e.g. an external dependency that's momentarily unavailable and a job that neither increments
+  attempts nor records anything that pass — is treated as "no progress" and the run stops early
+  (resumes fine on the next scheduled/manual run, since idempotency means outstanding work is
+  retried). Jobs SHOULD advance the ledger (increment attempts / mark failed) on every real
+  attempt; a job that swallows a transient failure without touching the ledger can be stopped one
+  cycle sooner than strictly necessary.
+  *Revisit:* if a workflow needs in-run retry across a transient outage, give the stop condition a
+  small grace (e.g. stop only after K consecutive no-progress cycles) rather than the immediate
+  single-cycle break.
+
+- **The dashboard's `reviewed` write now lives in its own file + commits/pushes under the loop
+  lock (T136 — supersedes the T124 note).** *Why:* T124 wrote `reviewed` into `.harness/tracking/TASKS.json`
+  via atomic rename but with NO file lock and NO commit — so a click could (a) race the loop's `jq`
+  status rewrite (last-writer-wins on the whole file) and (b) never reach GitHub (a working-tree
+  reset silently lost it). T136 fixes both: `reviewed` moved OUT of TASKS.json into the owner-owned
+  `.harness/tracking/reviews.json`, the daemon writes it atomically AND commits+pushes it under the SAME
+  mkdir lock loop.sh uses (`src/core/repo-lock.ts`). Because reviews.json is a DISJOINT git path
+  from everything the loop commits (TASKS.json / worklog), merges are always clean and the two
+  writers can never clobber each other. *Impact:* the push is **best-effort** — if the box is
+  offline or has no remote, the endpoint returns `{ committed: true, pushed: false, warning }` and
+  the commit syncs on the next successful push (the local commit is the durability guarantee). The
+  daemon's git phase is bounded by a timeout and always releases the lock in a `finally`, so a hung
+  network can't pin the loop lock. The lock path MUST stay byte-identical between `loop.sh`'s
+  `acquire_lock` and `repo-lock.ts` — if one changes the derivation without the other, the two
+  could run git concurrently. *Revisit:* if the daemon and loop ever diverge on the lock path,
+  reviews + status commits could interleave; keep the two derivations in sync (both documented in
+  `repo-lock.ts`'s header).
+
+- **The run-IO panel's "no new items" vs "pre-feature" empty state is a heuristic (T139).** *Why:*
+  the new `work_item_runs` linkage records which workflow run advanced each item, so the run-page
+  Input→Output panel is genuinely run-scoped. But a run that recorded NO linkage rows is ambiguous:
+  it could be an OLD run created before this feature existed, OR a re-run that simply advanced
+  nothing new (every item was already done). Both look identical at the row level (zero linkage).
+  The API distinguishes them with `workflowHasRunLinkage(name)`: if the WORKFLOW has linkage from
+  ANY run → "processed no new items"; if it has none at all → "pre-feature". *Impact:* a genuinely
+  pre-feature run on a workflow that has SINCE had new linked runs is mislabelled "processed no new
+  items" (the workflow now has linkage, so the heuristic can't tell it predates the table). This is
+  cosmetic — both messages explain why the panel is empty and neither dumps the global ledger.
+  *Revisit:* if exact pre-feature detection ever matters, stamp each run with a feature-version flag
+  at creation; not worth a column today.
+
+- **The joyful theme/font switcher is auto-tested only on the DEFAULT look; non-default themes are
+  spot-checked manually (T142).** *Why:* `dashboard/scripts/mobile-check.mjs` loads pages with a
+  fresh browser context that sets no localStorage, so it always exercises the default theme +
+  system font. The 6 themes × 8 font pairs combinatorial space is validated by a throwaway
+  spot-check script (run during the build, not committed) that sets `localjobs.theme`/`localjobs.font`
+  via `addInitScript` across the demanding combos (Press Start / Silkscreen / VT323 pixel fonts ×
+  each bright theme) and asserts the same 402px no-overflow / no-boundary-crossing invariant.
+  *Impact:* a future theme/font edit could regress a non-default combo at phone width without the
+  committed check catching it; the default look IS guarded by CI-adjacent `mobile-check`. To keep
+  non-default combos safe, the signature success "spark" is a box-shadow glow + emoji transform
+  (neither affects layout, so it can never spill a badge box) rather than an absolutely-positioned
+  overflowing pseudo-element — an earlier `::after { content:'✨'; right:-7px }` spilled the badge
+  and tripped the boundary rule. *Revisit:* if theme regressions recur, fold a small matrix of
+  theme+font combos into `mobile-check.mjs` itself (it already has the fixture harness).
+
+- **Stat-tile "count-up" is a CSS entrance pop, not a JS number animation (T142).** *Why:* the
+  joyful-accents brief lists animated count-ups, but the stat tiles render in `dashboard/app/page.tsx`
+  which is OUT of T142's scope (`globals.css` / `ui.tsx` / `layout.tsx` / `package.json`). A true
+  count-up needs JS that owns the number. *Impact:* on joyful themes the stat numbers do a one-shot
+  scale-in "pop" (`joy-pop` keyframe on `.statcard .n`) rather than ticking up from 0 — a lively
+  entrance without touching the out-of-scope page component or adding JS. *Revisit:* if the owner
+  picks a theme and wants real count-ups, the T143 hardcode follow-up (or a separate task) can add a
+  small `<CountUp>` in `page.tsx`/`ui.tsx`.
+
+- **movies franchise-gap audit does TWO TMDB passes per run; the new `/movie-gaps` page
+  isn't in the committed mobile-check (T145).** *Why:* the deterministic detector must (1)
+  resolve each owned film's `belongs_to_collection` via `GET /movie/{id}` (~one call per
+  owned movie — ~1,500 on the owner's library) then (2) fetch each DISTINCT collection's
+  `parts[]`. TMDB is free + rate-paced through the `tmdb` service, and collection fetches are
+  deduped, so a monthly run is well within budget (~46s live in T109's validation), but the
+  call count scales with library size. *Impact:* a very large library lengthens the run; the
+  stage's 30-min `timeoutMs` + graceful `QuotaExceededError` stop (next run resumes) bound it.
+  *Also:* the `Movie gaps` dashboard page reuses the proven `.panel`/`table` chrome (mobile-safe
+  by the existing `@media` rules) but is NOT in `mobile-check.mjs`'s hardcoded page list, since
+  that harness needs a synthetic `/api/movie-gaps` fixture. *Revisit:* if the page grows custom
+  layout, add a `/api/movie-gaps` fixture + the route to `mobile-check.mjs`.
+
+- **movies recommendation layer: branch→merge has NO gate, the rec-ignore is store-only
+  and `claude.ts` is duplicated for now (T146).** *Why:* (1) An
+  empty branch is LEGITIMATE (Claude junk/error/rate-limit → skip), so a producer/consumer
+  gate on each of the 8 branch→merge edges would wrongly fail the run; only the `rec-merge`→
+  notify boundary is gated (`recommendationsContract`, SHAPE-only so an empty recs list still
+  lets the gaps digest fire). (2) The shared
+  Claude CLI helper now lives at `src/services/claude.ts`, but `perfumes/claude.ts` still has its
+  own copy of the spawn logic — refactoring perfumes onto the shared helper was out of scope, so
+  the spawn code is briefly duplicated. *Impact:* small; additive follow-up, does not
+  affect correctness. *Revisit:* migrate perfumes onto `src/services/claude.ts`.
