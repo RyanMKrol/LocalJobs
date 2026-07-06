@@ -1,61 +1,89 @@
 #!/usr/bin/env bash
-# .harness/scripts/repo-lock.sh — shared mkdir-based repo lock, SOURCEABLE from a bash script.
 #
-# ⚠️ Lock path derivation MUST stay byte-identical to loop.sh's acquire_lock (GIT_COMMON/NAME/
-# lock-dir-name) and src/core/repo-lock.ts's resolveRepoPaths — all three coordinate the SAME
-# mutex so loop.sh, the daemon's reviews.json commits, and this script never write TASKS.json /
-# push concurrently. If you change ROOT/GIT_COMMON/NAME/lock-dir-name here, change the other two
-# in the same commit, and vice-versa. Unlike loop.sh (which exits if the lock is held — only one
-# loop instance is ever wanted) this script WAITS/retries, since multiple idea-conversion shapers
-# legitimately want to take turns.
+# repo-lock.sh — shared mkdir-based lock so the loop and any ancillary script that writes to this
+# repo (mark-done.sh, mark-failed.sh, mark-reviewed.sh, consolidate-ideas.sh) never race each
+# other's git operations. Source it, then call acquire_lock / release_lock — every caller derives
+# the lock path from ROOT + GIT_COMMON (set by the caller before calling), so it can never drift
+# between scripts.
 #
-# Usage — acquire and release MUST happen inside the SAME shell process / SAME Bash tool call as
-# the critical section between them. The stale-holder reclaim is PID-liveness based: if you
-# acquire in one Bash invocation and release in another, the acquiring process has already exited
-# by the time anyone checks it, and the lock provides NO protection. Do the whole
-# acquire → work → release sequence as ONE script:
+# acquire_lock — mkdir-based acquire. By default EXITS THE WHOLE PROCESS immediately if the lock is
+#                held (the loop's behaviour: don't queue, just skip this run). Set REPO_LOCK_WAIT=1
+#                before calling to retry/wait instead (what ancillary scripts want — they'd rather
+#                wait a few seconds for the loop than silently no-op).
+# release_lock — safe to call even if this PID never held the lock.
 #
-#   source .harness/scripts/repo-lock.sh   (or "$HERE/repo-lock.sh" if self-relative from a sibling script)
-#   acquire_lock || exit 1
-#   trap release_lock EXIT          # always release, even on error/early exit
-#   ...critical section: read/modify/write TASKS.json, tasks/*.md, IDEAS.md, git commit + push...
-#   release_lock
-#
-# acquire_lock waits up to REPO_LOCK_MAX_WAIT_S (default 180s) before giving up.
-
-_repo_lock_paths() {
-  local self_dir root git_common
-  # Anchor to THIS script's own location (like loop.sh anchors to HARNESS_DIR), not cwd — so the
-  # derived lock path is correct regardless of where the caller `source`d this from.
-  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  root="$(git -C "$self_dir" rev-parse --show-toplevel)" || return 1
-  git_common="$(git -C "$root" rev-parse --git-common-dir)" || return 1
-  case "$git_common" in /*) ;; *) git_common="$root/$git_common" ;; esac
-  LOCK="$git_common/$(basename "$root")-loop.lock"
-}
+# Run this file directly with --selftest to exercise acquire/release + stale-PID reclaim in a
+# throwaway repo (used by the create-harness validation gate).
+set -uo pipefail
 
 acquire_lock() {
-  _repo_lock_paths || return 1
-  local max_wait="${REPO_LOCK_MAX_WAIT_S:-180}" waited=0
+  : "${ROOT:?acquire_lock: ROOT must be set}"; : "${GIT_COMMON:?acquire_lock: GIT_COMMON must be set}"
+  LOCK="$GIT_COMMON/$(basename "$ROOT")-loop.lock"
+  local waited=0 retry="${REPO_LOCK_RETRY:-2}"
   while ! mkdir "$LOCK" 2>/dev/null; do
     local owner; owner="$(cat "$LOCK/pid" 2>/dev/null || true)"
     if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then
-      echo "repo-lock: stale lock (dead PID $owner) — reclaiming" >&2
+      echo "[repo-lock] stale lock (dead PID $owner) — reclaiming" >&2
       rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null || true
       continue
     fi
-    if [ "$waited" -ge "$max_wait" ]; then
-      echo "repo-lock: ERROR could not acquire $LOCK (held by PID ${owner:-?}) after ${max_wait}s" >&2
+    if [ "${REPO_LOCK_WAIT:-0}" != "1" ]; then
+      echo "[repo-lock] another process holds the lock (PID ${owner:-?}) — exiting." >&2
+      exit 0
+    fi
+    sleep "$retry"; waited=$((waited + retry))
+    if [ -n "${REPO_LOCK_MAX_WAIT:-}" ] && [ "$waited" -ge "${REPO_LOCK_MAX_WAIT}" ]; then
+      echo "[repo-lock] gave up waiting after ${waited}s (held by PID ${owner:-?})" >&2
       return 1
     fi
-    echo "repo-lock: waiting on lock (held by PID ${owner:-?})…" >&2
-    sleep 2; waited=$((waited + 2))
   done
   echo "$$" >"$LOCK/pid"
-  echo "repo-lock: acquired ($LOCK, pid $$)" >&2
 }
 
 release_lock() {
   [ -n "${LOCK:-}" ] && [ -f "$LOCK/pid" ] && [ "$(cat "$LOCK/pid" 2>/dev/null)" = "$$" ] \
-    && { rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null || true; echo "repo-lock: released ($LOCK)" >&2; } || true
+    && { rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null || true; } || true
 }
+
+# push_with_retry <dir> <branch> — push HEAD to origin/<branch>, retrying up to 3x with a
+# fetch+rebase between attempts (handles the remote moving under us — e.g. the loop or another
+# owner action pushed first). Honors NO_PUSH=1 (commit-only, offline use) by skipping the push
+# entirely and returning success. Used by the mark-*.sh owner CLIs.
+push_with_retry() {
+  local dir="$1" branch="$2" ok=0 i
+  if [ -n "${NO_PUSH:-}" ]; then echo "committed (NO_PUSH set — not pushed)"; return 0; fi
+  for i in 1 2 3; do
+    git -C "$dir" fetch origin >/dev/null 2>&1 || true
+    git -C "$dir" rebase "origin/$branch" >/dev/null 2>&1 || git -C "$dir" rebase --abort >/dev/null 2>&1 || true
+    if git -C "$dir" push origin "HEAD:$branch" >/dev/null 2>&1; then ok=1; break; fi
+  done
+  [ "$ok" = 1 ]
+}
+
+_repo_lock_selftest() {
+  local tmp rc=0; tmp="$(mktemp -d)"
+  git init -q "$tmp"
+  (
+    set -e
+    ROOT="$tmp"; GIT_COMMON="$tmp/.git"
+    acquire_lock
+    [ -d "$GIT_COMMON/$(basename "$ROOT")-loop.lock" ] || { echo "selftest FAIL: lock dir missing after acquire"; exit 1; }
+    release_lock
+    [ -d "$GIT_COMMON/$(basename "$ROOT")-loop.lock" ] && { echo "selftest FAIL: lock dir still present after release"; exit 1; }
+    mkdir -p "$GIT_COMMON/$(basename "$ROOT")-loop.lock"
+    echo 999999 >"$GIT_COMMON/$(basename "$ROOT")-loop.lock/pid"   # simulate a stale/dead-PID holder
+    acquire_lock
+    [ -d "$GIT_COMMON/$(basename "$ROOT")-loop.lock" ] || { echo "selftest FAIL: did not reclaim a stale lock"; exit 1; }
+    release_lock
+    echo "repo-lock self-test OK (acquire/release/stale-PID reclaim)"
+  ) || rc=1
+  rm -rf "$tmp"
+  return $rc
+}
+
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  case "${1:-}" in
+    --selftest) _repo_lock_selftest; exit $? ;;
+    *) echo "usage: source repo-lock.sh (after setting ROOT + GIT_COMMON), or run: repo-lock.sh --selftest" >&2; exit 2 ;;
+  esac
+fi

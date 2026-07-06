@@ -1,87 +1,57 @@
 #!/usr/bin/env bash
 #
-# consolidate-ideas.sh — Stage 3 of /local-jobs-convert-ideas: the ONE locked consolidation pass.
+# consolidate-ideas.sh — Stage 3 of the ideas→tasks pipeline. The ONLY step that touches git/the
+# repo lock (the per-idea conversion agents in Stage 2 write to independent .pending-tasks/*.json
+# scratch files with no shared-resource contention, so they need no lock). Waits for the loop's
+# lock rather than exiting immediately (an owner-triggered conversion should queue behind a
+# running loop, not silently no-op).
 #
-# Runs consolidate-ideas.mjs (id allocation, dependsOn resolution, tasks/TNNN.md spec files copied
-# verbatim from each task's real markdown specFile, TASKS.json merge, IDEAS.md bullet removal) under
-# the shared repo lock, then commits + pushes the result and cleans up the consumed
-# .harness/.pending-tasks/*.json unit files AND the per-task *.md specFile scratch files they
-# referenced. This is the ONLY step in the whole ideas->tasks flow that touches the repo lock or git —
-# every per-idea agent in Stage 2 writes to its own pending files (a .json unit file + one real .md
-# spec file per task) with zero shared-resource contention, so there's nothing to serialize until this
-# single pass runs, once, after every launched unit has reported back.
-#
-# ⚠️ Run this via `bash .harness/scripts/consolidate-ideas.sh` (not `source` it, not run it under
-# zsh) — repo-lock.sh derives its lock path from ${BASH_SOURCE[0]}, which only resolves correctly
-# when the script is actually executed by bash.
-#
-# Usage:
-#   .harness/scripts/consolidate-ideas.sh              # consolidate + commit + push
-#   NO_PUSH=1 .harness/scripts/consolidate-ideas.sh     # consolidate + commit but don't push (offline)
-#
-# Safe to re-run: it only ever processes whatever .pending-tasks/*.json files still exist on disk
-# (a straggler unit that reports back after a prior consolidation just gets picked up next run).
+# Usage: consolidate-ideas.sh   (no args — processes every .pending-tasks/*.json present)
 set -euo pipefail
 
-# Anchor to THIS script's own location (self-relative — T327 normalized this off the old
-# cwd-relative `source .harness/repo-lock.sh`, which broke the moment this script no longer lived
-# directly at the repo-root-relative ".harness/" depth it assumed), then cd to the repo root so
-# every ".harness/..." path below (tracking/TASKS.json, tasks/, .pending-tasks/) still resolves as before.
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
-cd "$ROOT"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HARNESS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(git -C "$HARNESS_DIR" rev-parse --show-toplevel)"
+GIT_COMMON="$(git -C "$ROOT" rev-parse --git-common-dir)"
+case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$ROOT/$GIT_COMMON" ;; esac
+MAIN_BRANCH="${MAIN_BRANCH:-main}"
 
-source "$HERE/repo-lock.sh"
-acquire_lock || exit 1
-trap release_lock EXIT
+REPO_LOCK_WAIT=1
+. "$SCRIPT_DIR/repo-lock.sh"
 
-# --- everything below runs while holding the lock ---
+command -v node >/dev/null 2>&1 || { echo "node is required for the ideas pipeline" >&2; exit 3; }
+command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 3; }
 
-node "$HERE/consolidate-ideas.mjs"
-
-SUMMARY=.harness/.pending-tasks/.consolidation-summary.json
-if [ ! -f "$SUMMARY" ]; then
-  echo "no pending files were consolidated — nothing to commit"
+PENDING_DIR="$HARNESS_DIR/.pending-tasks"
+if [ ! -d "$PENDING_DIR" ] || [ -z "$(ls -A "$PENDING_DIR" 2>/dev/null)" ]; then
+  echo "consolidate-ideas: no pending task files — nothing to do"
   exit 0
 fi
 
-jq empty .harness/tracking/TASKS.json
+acquire_lock
+trap 'release_lock' EXIT INT TERM
 
-NEW_MD_FILES=$(jq -r '.allocatedTasks[].realId' "$SUMMARY" | sed 's#^#.harness/tasks/#; s#$#.md#')
-git add .harness/tracking/TASKS.json
-for f in $NEW_MD_FILES; do
-  git add "$f"
-done
+# Snapshot which files we're about to consume BEFORE running the .mjs, so we only delete what we
+# actually processed (a new idea agent could theoretically drop a file mid-run).
+files_before="$(ls "$PENDING_DIR"/*.json 2>/dev/null || true)"
 
-echo "--- staged ---"
-git status --short
+node "$SCRIPT_DIR/consolidate-ideas.mjs"
 
-if git diff --cached --quiet; then
-  echo "no changes staged (already up to date) — cleaning up pending files anyway"
+# Refuse to commit a corrupt backlog: if the .mjs produced invalid JSON, stop here (the pending files
+# are preserved for a retry) rather than committing+pushing a broken TASKS.json that would break the loop.
+jq empty "$HARNESS_DIR/tracking/TASKS.json" 2>/dev/null || { echo "ABORT: consolidate produced invalid TASKS.json — not committing (pending files kept)." >&2; exit 1; }
+
+git -C "$ROOT" add "$HARNESS_DIR/tracking/TASKS.json" "$HARNESS_DIR/tracking/IDEAS.md" "$HARNESS_DIR/tasks" 2>/dev/null || true
+if git -C "$ROOT" commit -q --no-gpg-sign -m "consolidate-ideas: apply pending task conversions [skip ci]" 2>/dev/null; then
+  # Reuse the shared push-with-retry (fetch+rebase between attempts) so a moved origin/main doesn't
+  # lose the conversion to a single failed push, matching the mark-*.sh resilience.
+  push_with_retry "$ROOT" "$MAIN_BRANCH" || { echo "WARN: commit made locally but push failed after retries — push $MAIN_BRANCH manually" >&2; exit 1; }
+  echo "consolidate-ideas: committed + pushed"
 else
-  MSG="$(jq -r '.suggestedCommitMessage' "$SUMMARY")"
-  git commit -m "$MSG"
-
-  if [ -z "${NO_PUSH:-}" ]; then
-    if ! git push; then
-      echo "push failed, attempting fetch+rebase+retry"
-      git fetch origin
-      git rebase origin/main
-      git push
-    fi
-  else
-    echo "NO_PUSH set — committed locally only"
-  fi
+  echo "consolidate-ideas: nothing to commit"
 fi
 
-echo "--- cleaning up consumed pending files ---"
-for f in $(jq -r '.pendingFilesConsumed[]' "$SUMMARY"); do
-  rm -f ".harness/.pending-tasks/$f"
-done
-for f in $(jq -r '.specFilesConsumed[]?' "$SUMMARY"); do
-  rm -f ".harness/.pending-tasks/$f"
-done
-rm -f "$SUMMARY"
-
-release_lock
-echo "--- DONE ---"
+# Clean up the consumed pending files only after a successful commit+push.
+if [ -n "$files_before" ]; then
+  printf '%s\n' "$files_before" | xargs rm -f
+fi

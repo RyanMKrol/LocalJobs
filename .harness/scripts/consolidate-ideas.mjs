@@ -1,252 +1,224 @@
 #!/usr/bin/env node
-// consolidate-ideas.mjs — the Stage 3 consolidation pass for /local-jobs-convert-ideas.
+// consolidate-ideas.mjs — the single locked consolidation pass of the ideas→tasks pipeline.
+// Pure data processing, NO git (that's consolidate-ideas.sh's job). Node core modules only.
 //
-// Reads every .harness/.pending-tasks/<slug>.json file (one per idea, or per shared-answer-space
-// cluster — see .claude/commands/local-jobs-convert-ideas.md), allocates real sequential task ids,
-// resolves cross-unit tempId `dependsOn` references, writes .harness/tasks/TNNN.md spec files by
-// COPYING each task's referenced `specFile` (a real markdown file the per-unit agent wrote alongside
-// this JSON, e.g. `<tempId>.md` — NOT a JSON string field; writing markdown as an actual file instead
-// of an escaped string lets agents be fully expressive with headers/code fences/lists instead of
-// compressing the spec to fit a flat string), merges the new tasks into TASKS.json, and removes each
-// converted idea's bullet from IDEAS.md.
+// Reads every .harness/.pending-tasks/<slug>.json left by the implementation-harness-convert-ideas
+// skill's per-idea conversion agents, each shaped:
+//   {
+//     "units": [
+//       { "tempId": "idea1-a", "title": "...", "dependsOn": ["idea1-a"|"T003"], "gate": null,
+//         "tags": [...], "scope": [...], "design": null, "verify": [...], "expectsTest": false,
+//         "facets": { "layer": "...", "workType": "...", "risk": [] },   // omit for needs-human
+//         "specDo": "...", "specDoneWhen": "..." },
+//       ...
+//     ],
+//     "ideaBullets": ["<original bullet text from IDEAS.md, for fuzzy removal>", ...]
+//   }
 //
-// This is pure data-processing — it does NOT touch git and does NOT take the repo lock itself.
-// Run it via consolidate-ideas.sh, which wraps it in the shared repo-lock.sh mutex and handles the
-// git add/commit/push. (Split this way because id allocation + IDEAS.md bullet removal need the
-// lock, but are much easier to get right in JS than in bash/jq — and lock acquisition itself is a
-// one-line bash `source`, no reason to reimplement it here.)
+// Does, in order:
+//   1. Allocate sequential real ids for every unit across every pending file (deterministic order:
+//      files sorted by name, units in array order).
+//   2. Resolve dependsOn: a tempId → its newly-allocated real id; an id that already matches an
+//      EXISTING task is left as-is; anything else is dropped with a warning (never silently kept
+//      as a dangling reference).
+//   3. Write each unit's tasks/TNNN.md spec file (## Do / ## Done when from specDo/specDoneWhen).
+//   4. Append the new task objects to TASKS.json (never touches existing tasks/status).
+//   5. Fuzzy-remove each processed idea's bullets from tracking/IDEAS.md (exact → prefix →
+//      substring fallback, since captured idea text won't byte-match hand-wrapped markdown).
 //
-// Bullet removal is FUZZY-matched (normalized: backticks stripped, whitespace collapsed), not exact
-// string match — a pending file's recorded `ideaBullets` text is a straight paragraph, while the
-// actual bullet in IDEAS.md is hand-line-wrapped markdown, so byte-identity is not realistic.
-//
-// Idempotent: safe to re-run — it only ever processes whatever `.pending-tasks/*.json` files still
-// exist on disk, and a bullet that's already gone from IDEAS.md is skipped (not an error). Units
-// that were deliberately deferred (owner declined, no pending file written — see the plex-file-naming
-// worked example in the skill) are correctly invisible to this script; their bullet stays untouched.
-//
-// Usage: node .harness/scripts/consolidate-ideas.mjs
-// Writes .harness/.pending-tasks/.consolidation-summary.json — the wrapper script reads this to know
-// which files to `git add` and to build the commit message, then deletes it once committed.
+// Idempotent: only ever processes whatever .pending-tasks/*.json files exist right now; the
+// wrapper script (consolidate-ideas.sh) deletes them after a successful commit.
+'use strict';
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO = execFileSync('git', ['-C', HERE, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
+const HARNESS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = path.join(HARNESS_DIR, '..');
+const TASKS_PATH = path.join(HARNESS_DIR, 'tracking', 'TASKS.json');
+const IDEAS_PATH = path.join(HARNESS_DIR, 'tracking', 'IDEAS.md');
+const PENDING_DIR = path.join(HARNESS_DIR, '.pending-tasks');
+const TASKS_DIR = path.join(HARNESS_DIR, 'tasks');
 
-const PENDING_DIR = path.join(REPO, '.harness/.pending-tasks');
-const TASKS_PATH = path.join(REPO, '.harness/tracking/TASKS.json');
-const TASKS_DIR = path.join(REPO, '.harness/tasks');
-const IDEAS_PATH = path.join(REPO, '.harness/tracking/IDEAS.md');
-const SUMMARY_PATH = path.join(PENDING_DIR, '.consolidation-summary.json');
-
-function normalize(s) {
-  return s.replace(/`/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+function readJson(p) {
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
-// ---- 1. Read TASKS.json fresh, compute next id ----
-const tasksDoc = JSON.parse(fs.readFileSync(TASKS_PATH, 'utf8'));
-const existingIds = tasksDoc.tasks.map(t => t.id);
-const idNums = existingIds.map(id => parseInt(id.slice(1), 10));
-const width = existingIds.length ? existingIds[0].slice(1).length : 3;
-let nextNum = Math.max(0, ...idNums) + 1;
-
-function allocId() {
-  const id = 'T' + String(nextNum).padStart(width, '0');
-  nextNum += 1;
-  return id;
-}
-
-// ---- 2. Read every pending file, stable order (sorted by filename == agentSlug) ----
-fs.mkdirSync(PENDING_DIR, { recursive: true });
-const pendingFiles = fs.readdirSync(PENDING_DIR).filter(f => f.endsWith('.json') && f !== '.consolidation-summary.json').sort();
-if (pendingFiles.length === 0) {
-  console.log('No pending files found — nothing to consolidate.');
-  process.exit(0);
-}
-
-const units = pendingFiles.map(f => {
-  const full = path.join(PENDING_DIR, f);
-  return { file: full, fname: f, data: JSON.parse(fs.readFileSync(full, 'utf8')) };
-});
-
-const tempIdMap = new Map(); // tempId -> realId
-const allocatedTasks = [];   // { realId, tempId, raw, unit }
-
-for (const unit of units) {
-  for (const t of (unit.data.tasks || [])) {
-    const realId = allocId();
-    tempIdMap.set(t.tempId, realId);
-    allocatedTasks.push({ realId, tempId: t.tempId, raw: t, unit });
+function nextIdSequence(existingIds, count) {
+  let max = 0;
+  for (const id of existingIds) {
+    const m = /^T(\d+)$/.exec(id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
   }
+  const width = Math.max(3, String(max).length);
+  const out = [];
+  for (let i = 1; i <= count; i++) {
+    out.push('T' + String(max + i).padStart(width, '0'));
+  }
+  return out;
 }
 
-console.log(`Allocated ${allocatedTasks.length} task id(s): ${allocatedTasks.map(a => a.realId).join(', ') || '(none)'}`);
+function normalizeForMatch(text) {
+  // Strip a leading bullet marker + backticks, so the stored bullet (no marker, no backticks) matches
+  // a wrapped file bullet reconstructed from its lines.
+  return text
+    .replace(/^\s*([-*]|\d+\.)\s+/, '')
+    .replace(/`/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
 
-// ---- 3. Resolve dependsOn ----
-const droppedDeps = [];
-for (const a of allocatedTasks) {
-  const resolved = [];
-  for (const dep of (a.raw.dependsOn || [])) {
-    if (/^T\d+$/.test(dep)) {
-      const existsOld = existingIds.includes(dep);
-      const existsNew = allocatedTasks.some(x => x.realId === dep);
-      if (existsOld || existsNew) resolved.push(dep);
-      else droppedDeps.push({ realId: a.realId, tempId: a.tempId, dep, reason: 'referenced real id does not exist' });
-    } else if (tempIdMap.has(dep)) {
-      resolved.push(tempIdMap.get(dep));
-    } else {
-      droppedDeps.push({ realId: a.realId, tempId: a.tempId, dep, reason: 'tempId has no matching produced task (unit likely produced zero tasks)' });
+const isBulletStart = (l) => /^\s*([-*]|\d+\.)\s+/.test(l);
+const isHeading = (l) => /^\s*#{1,6}\s+/.test(l);
+
+// Bounds [lo, hi) of the "## Inbox" section, so bullet removal only ever touches the inbox and can't
+// splice a matching line out of a heading or a done/archive section. No explicit Inbox → whole file.
+function inboxBounds(lines) {
+  const start = lines.findIndex((l) => /^\s*##\s+Inbox\b/i.test(l));
+  if (start === -1) return [0, lines.length];
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^\s*##\s+/.test(lines[i])) { end = i; break; }
+  }
+  return [start + 1, end];
+}
+
+// Reconstruct the inbox's LOGICAL bullets: each is a bullet-start line plus its wrapped continuation
+// lines (not a new bullet / heading / blank), joined and normalized. So a bullet that wraps across
+// lines matches its single-line stored form.
+function inboxBullets(lines) {
+  const [lo, hi] = inboxBounds(lines);
+  const bullets = [];
+  for (let i = lo; i < hi; i++) {
+    if (!isBulletStart(lines[i])) continue;
+    let end = i + 1;
+    while (end < hi && !isBulletStart(lines[end]) && !isHeading(lines[end]) && lines[end].trim() !== '') end++;
+    bullets.push({ start: i, end, text: normalizeForMatch(lines.slice(i, end).join(' ')) });
+    i = end - 1;
+  }
+  return bullets;
+}
+
+// Fuzzy-remove a bullet from IDEAS.md's Inbox: exact → prefix → substring (either direction), matched
+// against reconstructed logical bullets; removes the WHOLE span (bullet line + wrapped continuations).
+// Warns (doesn't throw) if nothing matches — the bullet may already be hand-edited/removed.
+function removeIdeaBullet(ideasText, bullet) {
+  const lines = ideasText.split('\n');
+  const bullets = inboxBullets(lines);
+  const target = normalizeForMatch(bullet);
+  const targetPrefix = target.slice(0, 200);
+
+  let b = bullets.find((x) => x.text === target);
+  if (!b) b = bullets.find((x) => targetPrefix.length > 20 && x.text.startsWith(targetPrefix));
+  if (!b) b = bullets.find((x) => target.length > 20 && x.text.includes(target.slice(0, 80)));
+  if (!b) b = bullets.find((x) => x.text.length > 20 && target.includes(x.text.slice(0, 80)));
+  if (!b) {
+    console.warn(`WARN: could not find idea bullet to remove (already edited?): ${bullet.slice(0, 60)}...`);
+    return ideasText;
+  }
+  lines.splice(b.start, b.end - b.start);
+  return lines.join('\n');
+}
+
+function main() {
+  if (!fs.existsSync(PENDING_DIR)) {
+    console.log('consolidate-ideas: no .pending-tasks/ directory — nothing to do');
+    return;
+  }
+  const files = fs.readdirSync(PENDING_DIR).filter((f) => f.endsWith('.json')).sort();
+  if (!files.length) {
+    console.log('consolidate-ideas: no pending task files — nothing to do');
+    return;
+  }
+
+  const tasksDoc = readJson(TASKS_PATH);
+  const existingIds = new Set(tasksDoc.tasks.map((t) => t.id));
+
+  const allUnits = [];
+  const allBullets = [];
+  for (const f of files) {
+    const parsed = readJson(path.join(PENDING_DIR, f));
+    for (const unit of parsed.units || []) allUnits.push(unit);
+    for (const bullet of parsed.ideaBullets || []) allBullets.push(bullet);
+  }
+  if (!allUnits.length) {
+    console.log('consolidate-ideas: pending files had no units — nothing to do');
+    return;
+  }
+
+  const realIds = nextIdSequence(existingIds, allUnits.length);
+  const tempToReal = new Map();
+  allUnits.forEach((unit, i) => {
+    if (unit.tempId) tempToReal.set(unit.tempId, realIds[i]);
+  });
+
+  const newTasks = [];
+  allUnits.forEach((unit, i) => {
+    const id = realIds[i];
+    const resolvedDeps = (unit.dependsOn || [])
+      .map((d) => {
+        if (tempToReal.has(d)) return tempToReal.get(d);
+        if (existingIds.has(d)) return d;
+        console.warn(`WARN: ${id} dependsOn "${d}" does not resolve to any temp or real id — dropped`);
+        return null;
+      })
+      .filter(Boolean);
+
+    const specRel = path.join('.harness', 'tasks', `${id}.md`).split(path.sep).join('/');
+    const specOverview = unit.specOverview || '';
+    const specDo = unit.specDo || '(missing ## Do — fix before building)';
+    const specDoneWhen = unit.specDoneWhen || '(missing ## Done when — fix before building)';
+    if (!unit.specDo || !unit.specDoneWhen) {
+      console.warn(`WARN: ${id} is missing specDo/specDoneWhen — wrote a placeholder spec`);
     }
-  }
-  a.resolvedDependsOn = resolved;
-}
-
-if (droppedDeps.length) {
-  console.log(`WARNING: ${droppedDeps.length} dependsOn reference(s) dropped:`);
-  for (const d of droppedDeps) console.log(`  ${d.realId} (${d.tempId}) -> "${d.dep}": ${d.reason}`);
-}
-
-// ---- 4. Write tasks/TNNN.md spec files by copying each task's referenced specFile ----
-fs.mkdirSync(TASKS_DIR, { recursive: true });
-const consumedSpecFiles = [];
-for (const a of allocatedTasks) {
-  if (!a.raw.specFile) {
-    throw new Error(`${a.tempId} (unit "${a.unit.data.agentSlug}") has no "specFile" field — every task must reference a real markdown spec file written alongside the unit's .json file. Refusing to write an empty spec.`);
-  }
-  const specSrcPath = path.join(PENDING_DIR, a.raw.specFile);
-  if (!fs.existsSync(specSrcPath)) {
-    throw new Error(`${a.tempId} (unit "${a.unit.data.agentSlug}") references specFile "${a.raw.specFile}" but ${specSrcPath} does not exist.`);
-  }
-  const content = fs.readFileSync(specSrcPath, 'utf8');
-  if (!/^## Do\b/m.test(content) || !/^## Done when\b/m.test(content)) {
-    console.log(`WARNING: ${a.tempId}'s spec file (${a.raw.specFile}) is missing a "## Do" or "## Done when" heading — copying it as-is, but this likely needs a manual look.`);
-  }
-  if (!/^## Overview\b/m.test(content)) {
-    console.log(`WARNING: ${a.tempId}'s spec file (${a.raw.specFile}) is missing a "## Overview" heading (a 1-2 sentence plain-language summary at the top) — copying it as-is, but this likely needs a manual look.`);
-  }
-  const mdPath = path.join(TASKS_DIR, `${a.realId}.md`);
-  fs.writeFileSync(mdPath, content, 'utf8');
-  consumedSpecFiles.push(a.raw.specFile);
-}
-
-// ---- 5. Build final task objects ----
-const newTaskObjects = allocatedTasks.map(a => {
-  const t = a.raw;
-  const isNeedsHuman = t.gate === 'needs-human';
-  const tags = Array.isArray(t.tags) ? [...t.tags] : [];
-  if (isNeedsHuman && !tags.includes('needs-human')) tags.push('needs-human');
-
-  const obj = {
-    id: a.realId,
-    title: t.title,
-    status: 'pending',
-    dependsOn: a.resolvedDependsOn,
-    gate: t.gate ?? null,
-    tags,
-    scope: Array.isArray(t.scope) ? t.scope : [],
-    design: t.design ?? null,
-    verify: Array.isArray(t.verify) ? t.verify : [],
-    spec: `.harness/tasks/${a.realId}.md`,
-  };
-  if (!isNeedsHuman) {
-    obj.facets = t.facets ?? null;
-    obj.expectsTest = !!t.expectsTest;
-  }
-  return obj;
-});
-
-// ---- 6. Merge into TASKS.json ----
-tasksDoc.tasks.push(...newTaskObjects);
-fs.writeFileSync(TASKS_PATH, JSON.stringify(tasksDoc, null, 2) + '\n', 'utf8');
-
-// ---- 7. Remove converted idea bullets from IDEAS.md (fuzzy match, re-read fresh) ----
-let removedBulletCount = 0;
-if (fs.existsSync(IDEAS_PATH)) {
-  const ideasRaw = fs.readFileSync(IDEAS_PATH, 'utf8');
-  const lines = ideasRaw.split('\n');
-  const inboxHeaderIdx = lines.findIndex(l => l.trim() === '## Inbox');
-
-  if (inboxHeaderIdx === -1) {
-    console.error('WARNING: could not find "## Inbox" header in IDEAS.md — skipping bullet removal');
-  } else {
-    // IDEAS.md's ## Inbox uses sequentially numbered bullets ("1. ", "2. ", ...) since T328 —
-    // previously it used literal "- " bullets. NUMBERED_BULLET_RE matches a top-level bullet start;
-    // update this in lockstep with IDEAS.md's actual format if it ever changes again.
-    const NUMBERED_BULLET_RE = /^\d+\.\s/;
-    const bulletSpans = [];
-    let i = inboxHeaderIdx + 1;
-    while (i < lines.length) {
-      if (NUMBERED_BULLET_RE.test(lines[i])) {
-        const start = i;
-        let j = i + 1;
-        while (j < lines.length && !NUMBERED_BULLET_RE.test(lines[j]) && !lines[j].startsWith('## ')) j++;
-        bulletSpans.push({ start, end: j, text: lines.slice(start, j).join('\n') });
-        i = j;
-      } else if (lines[i].startsWith('## ')) {
-        break;
-      } else {
-        i++;
-      }
+    if (!specOverview) {
+      console.warn(`WARN: ${id} has no specOverview — spec written without the leading ## Overview (one or two plain-language sentences: what & why)`);
     }
-    console.log(`Parsed ${bulletSpans.length} bullet(s) from IDEAS.md inbox.`);
+    // A leading ## Overview (the plain-language "what are we doing, at a glance" — read first) precedes
+    // the denser Do / Done-when detail when the author supplied one.
+    const overviewBlock = specOverview ? `## Overview\n${specOverview}\n\n` : '';
+    fs.writeFileSync(
+      path.join(TASKS_DIR, `${id}.md`),
+      `${overviewBlock}## Do\n${specDo}\n\n## Done when\n${specDoneWhen}\n`
+    );
 
-    const allRecordedBullets = [];
-    for (const unit of units) {
-      for (const b of (unit.data.ideaBullets || [])) allRecordedBullets.push({ text: b, slug: unit.data.agentSlug });
-    }
+    // A needs-human task carries a "needs-human" tag so any tag-based consumer (dashboards, filters)
+    // sees it, not just readers of the `gate` field.
+    const tags = Array.isArray(unit.tags) ? [...unit.tags] : [];
+    if (unit.gate === 'needs-human' && !tags.includes('needs-human')) tags.push('needs-human');
 
-    const normBullets = bulletSpans.map(b => ({ ...b, norm: normalize(b.text) }));
-    const matchedSpans = new Set();
+    const task = {
+      id,
+      title: unit.title || id,
+      status: 'pending',
+      dependsOn: resolvedDeps,
+      gate: unit.gate ?? null,
+      tags,
+      scope: unit.scope || [],
+      design: unit.design ?? null,
+      verify: unit.verify || [],
+      expectsTest: !!unit.expectsTest,
+      spec: specRel,
+    };
+    // Carry the optional visualVerify opt-in/out THROUGH to the task (only when the unit set it —
+    // omitting the field means "fall back to the facets heuristic at runtime"). A boolean check keeps
+    // a stray string/null from becoming a truthy field.
+    if (typeof unit.visualVerify === 'boolean') task.visualVerify = unit.visualVerify;
+    if (unit.gate !== 'needs-human' && unit.facets) task.facets = unit.facets;
+    newTasks.push(task);
+  });
 
-    for (const rec of allRecordedBullets) {
-      const recNorm = normalize(rec.text);
-      let match = normBullets.find(b => b.norm === recNorm);
-      if (!match) match = normBullets.find(b => b.norm.slice(0, 200) === recNorm.slice(0, 200));
-      if (!match) {
-        const recPrefix100 = recNorm.slice(0, 100);
-        match = normBullets.find(b => b.norm.includes(recPrefix100) || recNorm.includes(b.norm.slice(0, 100)));
-      }
-      if (match) {
-        matchedSpans.add(match.start);
-        console.log(`MATCHED bullet for unit "${rec.slug}": line ${match.start + 1}`);
-      } else {
-        console.log(`WARNING: no bullet match for unit "${rec.slug}" (starts: "${rec.text.slice(0, 80)}...") — leaving it in IDEAS.md`);
-      }
-    }
+  tasksDoc.tasks.push(...newTasks);
+  fs.writeFileSync(TASKS_PATH, JSON.stringify(tasksDoc, null, 2) + '\n');
 
-    const spansToRemove = normBullets.filter(b => matchedSpans.has(b.start)).sort((a, b) => b.start - a.start);
-    let newLines = [...lines];
-    for (const span of spansToRemove) newLines.splice(span.start, span.end - span.start);
-    fs.writeFileSync(IDEAS_PATH, newLines.join('\n'), 'utf8');
-    removedBulletCount = spansToRemove.length;
-    console.log(`Removed ${removedBulletCount} bullet(s) from IDEAS.md.`);
+  if (fs.existsSync(IDEAS_PATH)) {
+    let ideasText = fs.readFileSync(IDEAS_PATH, 'utf8');
+    for (const bullet of allBullets) ideasText = removeIdeaBullet(ideasText, bullet);
+    fs.writeFileSync(IDEAS_PATH, ideasText);
   }
-} else {
-  console.log('IDEAS.md does not exist — skipping bullet removal (nothing to clean up).');
+
+  console.log(`consolidate-ideas: added ${newTasks.length} task(s): ${newTasks.map((t) => t.id).join(', ')}`);
 }
 
-// ---- 8. Write summary for the shell wrapper ----
-const idList = allocatedTasks.map(a => a.realId);
-const first = idList[0];
-const last = idList[idList.length - 1];
-const idRange = idList.length === 0 ? '' : idList.length === 1 ? first : `${first}-${last}`;
-const unitSlugs = [...new Set(units.map(u => u.data.agentSlug))];
-const suggestedCommitMessage = idList.length
-  ? `backlog: add ${idRange} from idea conversion sweep\n\nConverted ${unitSlugs.length} idea unit(s): ${unitSlugs.join(', ')}.\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
-  : '';
-
-const summary = {
-  allocatedTasks: allocatedTasks.map(a => ({ realId: a.realId, tempId: a.tempId, unit: a.unit.data.agentSlug, title: a.raw.title })),
-  droppedDeps,
-  removedBulletCount,
-  pendingFilesConsumed: pendingFiles,
-  specFilesConsumed: consumedSpecFiles,
-  suggestedCommitMessage,
-};
-fs.writeFileSync(SUMMARY_PATH, JSON.stringify(summary, null, 2), 'utf8');
-console.log('\n--- SUMMARY ---');
-console.log(JSON.stringify(summary, null, 2));
+main();
