@@ -28,7 +28,17 @@ Runs its own internal timeout-and-kill (10 min) separate from the job's outer `t
 the spawned `vercel` subprocess is always killed cleanly before the executor would ever need to
 hard-kill the job process itself.
 
-No `work_items` ledger — pure fire-and-forget trigger, no items to track. Not yet gated through
-`callService`/a `ServiceDefinition` (see backlog task T426, still pending). `category:
+No `work_items` ledger — pure fire-and-forget trigger, no items to track. `category:
 'regular-maintenance'`. Runs daily at 23:00 (`'0 23 * * *'`), deliberately late in the day, after a
 typical day's activity on `ryankrol.co.uk`.
+
+**Gated through `callService('vercel', ...)` (T426).** The deploy operation (spawn + await exit) is
+wrapped in `callService('vercel', ...)`, gated by `src/services/vercel.service.ts` — a `cli-tool`
+category, unpaid service with conservative `dailyCap`/`monthlyCap` (env-overridable via
+`VERCEL_DAILY_CAP`/`VERCEL_MONTHLY_CAP`, defaults 3/30 — see `.env.example`). No `ratePerMinute` /
+`minIntervalMs`: a deploy takes minutes by itself, so a per-call throttle is meaningless; the day/month
+caps are the only meaningful governor, sized to allow the scheduled run plus a couple of manual
+re-runs the same day without ever blocking legitimate use, while still catching a genuine scheduling
+bug that fires repeatedly. A `QuotaExceededError` from the service check is caught and logged as a
+clean WARN ("no deploy attempted today, budget exhausted") — it does NOT fail the run, mirroring the
+existing soft-skip for an unconfigured `RYANKROL_CO_UK_PATH`.

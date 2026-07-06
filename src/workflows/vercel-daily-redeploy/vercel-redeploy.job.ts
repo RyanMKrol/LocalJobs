@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
+import { callService, QuotaExceededError } from '../../core/services.js';
 import type { JobContext, JobDefinition } from '../../core/types.js';
 
 /** Injectable child-process spawn (real implementation runs the Vercel CLI; tests stub this). */
@@ -24,7 +25,12 @@ export function defaultSpawn(cwd: string): ChildProcess {
  */
 export async function runVercelRedeploy(
   ctx: JobContext,
-  opts: { checkoutPath?: string; spawnFn?: SpawnFn; timeoutMs?: number } = {},
+  opts: {
+    checkoutPath?: string;
+    spawnFn?: SpawnFn;
+    timeoutMs?: number;
+    callServiceFn?: typeof callService;
+  } = {},
 ): Promise<void> {
   const checkoutPath = opts.checkoutPath ?? process.env.RYANKROL_CO_UK_PATH;
   if (!checkoutPath) {
@@ -38,13 +44,26 @@ export async function runVercelRedeploy(
 
   const spawnFn = opts.spawnFn ?? defaultSpawn;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const callServiceFn = opts.callServiceFn ?? callService;
 
   ctx.log(
     `Running "vercel --prod --yes" in ${checkoutPath} — a direct production deploy of the current ` +
       'working tree, independent of Git integration/auto-deploy state...',
   );
 
-  await new Promise<void>((resolvePromise, reject) => {
+  try {
+    await callServiceFn('vercel', () => deployOnce(ctx, checkoutPath, spawnFn, timeoutMs));
+  } catch (e) {
+    if (e instanceof QuotaExceededError) {
+      ctx.log(`vercel service quota exhausted — skipping today's redeploy (${e.message})`, 'warn');
+      return;
+    }
+    throw e;
+  }
+}
+
+function deployOnce(ctx: JobContext, checkoutPath: string, spawnFn: SpawnFn, timeoutMs: number): Promise<void> {
+  return new Promise<void>((resolvePromise, reject) => {
     let child: ChildProcess;
     try {
       child = spawnFn(checkoutPath);

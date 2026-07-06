@@ -8,8 +8,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 
+import { QuotaExceededError, type callService } from '../../core/services.js';
 import type { JobContext, LogLevel } from '../../core/types.js';
 import { runVercelRedeploy, type SpawnFn } from './vercel-redeploy.job.js';
+
+// Bypasses the real "vercel" service gate — used by tests that exercise the spawn/stream/
+// timeout behaviour and don't care about service gating. Without this, running the FULL
+// suite (where the registry has registered the real "vercel" service elsewhere) would route
+// these calls through the real callService and its shared, cross-test dailyCap quota.
+const bypassCallService = (async (_name: string, fn: () => Promise<unknown>) => fn()) as unknown as typeof callService;
 
 function fakeCtx(): JobContext & { logs: Array<{ message: string; level?: LogLevel }> } {
   const logs: Array<{ message: string; level?: LogLevel }> = [];
@@ -74,7 +81,7 @@ describe('runVercelRedeploy', () => {
       return makeFakeChild({ stdout: 'Vercel CLI 54.20.0\nhttps://ryankrol-co-uk.vercel.app\n', exitCode: 0 });
     };
 
-    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn });
+    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn: bypassCallService });
 
     assert.equal(calledCwd, dir);
     assert.ok(ctx.logs.some((l) => l.message.includes('Deploy succeeded') && l.message.includes('https://ryankrol-co-uk.vercel.app')));
@@ -86,7 +93,7 @@ describe('runVercelRedeploy', () => {
     const spawnFn: SpawnFn = () => makeFakeChild({ stderr: 'Error: not authenticated\n', exitCode: 1 });
 
     await assert.rejects(
-      () => runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn }),
+      () => runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn: bypassCallService }),
       /exited with code 1/,
     );
   });
@@ -96,7 +103,7 @@ describe('runVercelRedeploy', () => {
     const ctx = fakeCtx();
     const spawnFn: SpawnFn = () => makeFakeChild({ emitError: new Error('ENOENT') });
 
-    await assert.rejects(() => runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn }), /ENOENT/);
+    await assert.rejects(() => runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn: bypassCallService }), /ENOENT/);
   });
 
   it('kills the child and throws on timeout', async () => {
@@ -118,7 +125,7 @@ describe('runVercelRedeploy', () => {
     };
 
     await assert.rejects(
-      () => runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, timeoutMs: 10 }),
+      () => runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, timeoutMs: 10, callServiceFn: bypassCallService }),
       /timed out after 10ms/,
     );
     assert.equal(killed, true);
@@ -129,7 +136,7 @@ describe('runVercelRedeploy', () => {
     const ctx = fakeCtx();
     const spawnFn: SpawnFn = () => makeFakeChild({ stdout: 'Building...\nUploading...\n', exitCode: 0 });
 
-    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn });
+    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn: bypassCallService });
 
     assert.ok(ctx.logs.some((l) => l.message.includes('Building...')));
     assert.ok(ctx.logs.some((l) => l.message.includes('Uploading...')));
@@ -140,10 +147,45 @@ describe('runVercelRedeploy', () => {
     const ctx = fakeCtx();
     const spawnFn: SpawnFn = () => makeFakeChild({ stderr: 'Running "vercel build"\nBuild Completed in /vercel/output [45s]\n', exitCode: 0 });
 
-    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn });
+    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn: bypassCallService });
 
     const stderrLine = ctx.logs.find((l) => l.message.includes('Build Completed'));
     assert.ok(stderrLine, 'stderr line should be logged');
     assert.notEqual(stderrLine!.level, 'warn', 'routine stderr progress must not be logged as warn');
+  });
+
+  it('gates the deploy through callService("vercel", ...)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vercel-redeploy-'));
+    const ctx = fakeCtx();
+    const spawnFn: SpawnFn = () => makeFakeChild({ exitCode: 0 });
+
+    const calls: string[] = [];
+    const callServiceFn = (async (name: string, fn: () => Promise<unknown>) => {
+      calls.push(name);
+      return fn();
+    }) as unknown as typeof callService;
+
+    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn });
+
+    assert.deepEqual(calls, ['vercel'], 'callService should be invoked once with the "vercel" service name');
+  });
+
+  it('soft-skips with a warn log (not a throw) when the vercel service quota is exhausted', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vercel-redeploy-'));
+    const ctx = fakeCtx();
+    let spawnCalled = false;
+    const spawnFn: SpawnFn = () => { spawnCalled = true; return makeFakeChild({ exitCode: 0 }); };
+
+    const callServiceFn = (async () => {
+      throw new QuotaExceededError('vercel', 'daily', 3, 3);
+    }) as unknown as typeof callService;
+
+    await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn });
+
+    assert.equal(spawnCalled, false, 'the deploy never spawns once the quota check throws');
+    assert.ok(
+      ctx.logs.some((l) => l.level === 'warn' && l.message.includes('quota exhausted')),
+      'expected a warn log about the exhausted quota',
+    );
   });
 });
