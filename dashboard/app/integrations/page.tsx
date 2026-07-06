@@ -31,7 +31,7 @@ const validField = (s: string): boolean => {
   return n === null || (Number.isInteger(n) && n >= 0);
 };
 
-function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }) {
+function ConsumersPanel({ name, service, onClose }: { name: string; service?: Service; onClose: () => void }) {
   const { data, error } = usePoll(() => api.serviceConsumers(name), 5000);
   const consumers: ServiceConsumerGroup[] = data?.consumers ?? [];
   const total = consumers.reduce((s, g) => s + g.jobs.length, 0);
@@ -43,6 +43,14 @@ function ConsumersPanel({ name, onClose }: { name: string; onClose: () => void }
         <div className="consumers-modal-header">
           <strong>Consumers of {name}</strong>
           <button className="btn secondary" onClick={onClose}>✕ Close</button>
+        </div>
+        <div className="provenance-section">
+          <strong>Rate limit provenance</strong>
+          {service?.rate_limit_source ? (
+            <p style={{ fontSize: 13, marginTop: 4 }}>{service.rate_limit_source}</p>
+          ) : (
+            <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>not documented yet</p>
+          )}
         </div>
         {error && <p className="muted">⚠ Could not load consumers ({error}).</p>}
         {!error && total === 0 && (
@@ -140,7 +148,11 @@ export default function Services() {
       {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       {err && <p className="muted" style={{ color: 'var(--red)' }}>⚠ {err}</p>}
       {viewingConsumers && (
-        <ConsumersPanel name={viewingConsumers} onClose={() => setViewingConsumers(null)} />
+        <ConsumersPanel
+          name={viewingConsumers}
+          service={allServices.find((s) => s.name === viewingConsumers)}
+          onClose={() => setViewingConsumers(null)}
+        />
       )}
       {allServices.length === 0 && (
         <div className="panel">

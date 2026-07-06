@@ -599,6 +599,11 @@ select:focus { border-color: var(--accent); }
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 14px;
 }
+.provenance-section {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
 
 /* ── Stuck-items popover (T118) ────────────────────────────────────────────── */
 /* Reuses the db-modal overlay/chrome; just a wider width + bulk-action footer. */

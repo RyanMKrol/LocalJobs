@@ -71,7 +71,9 @@ const workflow = (over) => ({
 const service = (over) => ({
   name: 'google-places', description: 'Google Places API — ' + LONG, category: 'api', rate_per_minute: 60,
   daily_cap: 100, monthly_cap: 3000, paid: 1, limits_overridden: 1,
-  used_today: 42, used_month: 123456, rate_last_min: 12, ...over,
+  used_today: 42, used_month: 123456, rate_last_min: 12,
+  rate_limit_source: 'Documented at https://developers.google.com/maps/documentation/places/web-service/usage-and-billing — ' + LONG,
+  ...over,
 });
 
 const job = (over) => ({
@@ -934,7 +936,8 @@ export const FLOWS = [
     },
   },
   {
-    // The "Consumers of …" modal, opened by clicking a service name on the Services page.
+    // The service detail modal, opened by clicking a service name on the Services page.
+    // Shows both the "Rate limit provenance" section and the "Consumers of …" list.
     // viewport: true — the modal backdrop covers only the viewport.
     name: 'service-consumers-modal',
     path: '/integrations',
