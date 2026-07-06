@@ -11275,7 +11275,7 @@
     {
       "id": "T428",
       "title": "dynamodb service: disable dynamoPut/dynamoDelete/dynamoBatchWrite until explicitly re-enabled",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
