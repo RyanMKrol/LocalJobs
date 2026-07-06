@@ -11576,7 +11576,7 @@
     {
       "id": "T438",
       "title": "Job descriptions: stocks-sync (4 jobs)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T429"
       ],
