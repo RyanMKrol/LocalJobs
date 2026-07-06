@@ -8,8 +8,15 @@ const WARM_PROMPT = 'hi';
 const job: JobDefinition = {
   name: 'claude-warm',
   description:
-    'Issue one minimal Claude CLI prompt to start/maintain the 5-hour usage window. ' +
-    'Handles upstream rate-limit / quota errors defensively (logs + exits cleanly).',
+    'Fires one minimal "hi" prompt at the cheapest available Claude model purely to keep the ' +
+    'account\'s 5-hour rolling usage window warm. Claude plans meter usage in rolling windows, ' +
+    'so if this workflow runs proactively every 30 minutes through off-hours, the window is ' +
+    'already running (or freshly reset) by the time a real, more expensive job actually needs ' +
+    'Claude, instead of that job paying the cost of opening a fresh window itself. This job ' +
+    'enforces no local quota or spend cap of its own — the upstream Claude plan is the sole ' +
+    'limiter. A hit rate limit or quota ceiling is treated as an expected, non-fatal outcome: ' +
+    'it is logged as a warning and the run exits cleanly rather than failing, since a limit ' +
+    'being hit simply means the usage window is already active, which is this job\'s entire goal.',
   timeoutMs: 60_000,
   maxRetries: 0,
   async run(ctx) {
