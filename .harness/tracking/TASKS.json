@@ -11961,6 +11961,87 @@
         "risk": []
       },
       "expectsTest": false
+    },
+    {
+      "id": "T451",
+      "title": "Add opt-in 5-minute response cache to callService for 'api'-category services",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "services",
+        "caching"
+      ],
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": [
+          "touches-schema",
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "src/core/services.ts",
+        "src/db/store.ts",
+        "src/db/schema.sql"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T451.md"
+    },
+    {
+      "id": "T452",
+      "title": "Remove plex-language-no-track-flag job from plex-language-fix",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex-language-fix",
+        "cleanup"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      },
+      "scope": [
+        "src/workflows/plex-language-fix/**",
+        "src/api/server.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T452.md"
+    },
+    {
+      "id": "T453",
+      "title": "Restructure plex-language-fix into discover/resolve/evaluate/apply with per-file idempotency",
+      "status": "pending",
+      "dependsOn": [
+        "T451",
+        "T452"
+      ],
+      "gate": null,
+      "tags": [
+        "plex-language-fix",
+        "workflow-migration"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "migration",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "src/workflows/plex-language-fix/**",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T453.md"
     }
   ]
 }
