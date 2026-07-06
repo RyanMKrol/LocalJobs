@@ -374,6 +374,103 @@ export async function plexGet<T = unknown>(path: string): Promise<T> {
 }
 
 /**
+ * PUT the default audio/subtitle stream selection for a Plex Part — the SAME
+ * documented endpoint Plex's own clients call when a user manually picks a track
+ * (`PUT /library/parts/<partId>?audioStreamID=<id>&subtitleStreamID=<id>&allParts=1`).
+ * `subtitleStreamId` may be `null` to explicitly select "no subtitle". Uses the
+ * same resolved host + scoped insecure-TLS agent as `plexGet` — no second TLS
+ * bypass. Throws on a non-2xx so the caller can record the failure.
+ */
+export async function plexPutStreams(partId: number, audioStreamId: number, subtitleStreamId?: number | null): Promise<void> {
+  if (!PLEX_API_TOKEN) {
+    throw new Error('Plex token missing — set PLEX_API_TOKEN in .env.');
+  }
+  const host = await resolvePlexHost();
+  const url = new URL(`/library/parts/${partId}`, host);
+  url.searchParams.set('X-Plex-Token', PLEX_API_TOKEN);
+  url.searchParams.set('audioStreamID', String(audioStreamId));
+  if (subtitleStreamId !== undefined && subtitleStreamId !== null) {
+    url.searchParams.set('subtitleStreamID', String(subtitleStreamId));
+  }
+  url.searchParams.set('allParts', '1');
+  const isHttps = url.protocol === 'https:';
+  const mod = isHttps ? https : http;
+
+  await new Promise<void>((resolve, reject) => {
+    const req = mod.request(
+      url,
+      {
+        method: 'PUT',
+        agent: isHttps ? insecurePlexAgent : undefined,
+        headers: { Accept: 'application/json' },
+        timeout: PLEX_REQUEST_TIMEOUT_MS,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        res.resume();
+        if (status >= 400) {
+          reject(new Error(`Plex HTTP ${status} for PUT /library/parts/${partId}`));
+          return;
+        }
+        resolve();
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for PUT /library/parts/${partId} (${PLEX_REQUEST_TIMEOUT_MS}ms)`)));
+    req.on('error', (e) =>
+      reject(new Error(`Plex unreachable at ${host} — ${e instanceof Error ? e.message : e}. Check PLEX_HOST / that the server is awake.`)),
+    );
+    req.end();
+  });
+}
+
+/**
+ * Trigger a Plex Butler on-demand database backup (`POST /butler/BackupDatabase`)
+ * — the safety net a mutating run leans on instead of a human reviewing every
+ * run. Validated live: produces a real dated backup within about a minute.
+ * Never throws — resolves `{ ok: true }` on a 2xx, `{ ok: false, error }`
+ * otherwise, so a failed trigger can be logged as a WARN without blocking the
+ * caller's mutating work (the per-file undo log is the primary safety net).
+ */
+export async function triggerButlerBackup(): Promise<{ ok: boolean; error?: string }> {
+  if (!PLEX_API_TOKEN) {
+    return { ok: false, error: 'Plex token missing — set PLEX_API_TOKEN in .env.' };
+  }
+  try {
+    const host = await resolvePlexHost();
+    const url = new URL('/butler/BackupDatabase', host);
+    url.searchParams.set('X-Plex-Token', PLEX_API_TOKEN);
+    const isHttps = url.protocol === 'https:';
+    const mod = isHttps ? https : http;
+    await new Promise<void>((resolve, reject) => {
+      const req = mod.request(
+        url,
+        {
+          method: 'POST',
+          agent: isHttps ? insecurePlexAgent : undefined,
+          headers: { Accept: 'application/json' },
+          timeout: PLEX_REQUEST_TIMEOUT_MS,
+        },
+        (res) => {
+          const status = res.statusCode ?? 0;
+          res.resume();
+          if (status >= 400) {
+            reject(new Error(`Plex HTTP ${status} for POST /butler/BackupDatabase`));
+            return;
+          }
+          resolve();
+        },
+      );
+      req.on('timeout', () => req.destroy(new Error('Plex Butler backup request timed out')));
+      req.on('error', (e) => reject(e instanceof Error ? e : new Error(String(e))));
+      req.end();
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
  * GET a TMDB v3 API path with the Bearer token. TMDB has a valid cert (normal
  * fetch + TLS verification). Throws on a non-2xx so the caller can decide whether
  * to skip the show or stop.

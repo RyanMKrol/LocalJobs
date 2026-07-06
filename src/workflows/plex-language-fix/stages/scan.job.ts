@@ -1,4 +1,5 @@
 import type { JobDefinition } from '../../../core/types.js';
+import { plexLanguageScanContract } from '../contracts.js';
 import { runScan } from './scan.js';
 
 const job: JobDefinition = {
@@ -17,6 +18,7 @@ const job: JobDefinition = {
     'is written to data/out/language-scan.json for a later stage (or the owner) to act on.',
   timeoutMs: 3_600_000,
   maxRetries: 3,
+  produces: [plexLanguageScanContract()],
   async run(ctx) {
     await runScan(ctx);
   },

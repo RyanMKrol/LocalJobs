@@ -5,32 +5,38 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * default-audio-language preference, which is wrong for any library whose original
  * language isn't English (a foreign-language show/movie's own baked-in file default
  * can silently win over that global preference too). This workflow scans the whole
- * library, resolves each title's TRUE original language via TMDB, and works out
- * which audio/subtitle track SHOULD be selected per file versus what's currently
- * selected — a per-title, original-language-aware replacement for that single
- * global setting.
+ * library, resolves each title's TRUE original language via TMDB, works out which
+ * audio/subtitle track SHOULD be selected per file versus what's currently selected,
+ * and now APPLIES it — a per-title, original-language-aware replacement for that
+ * single global setting.
  *
- * SCAN ONLY for now: `plex-language-scan` is read-only and never touches Plex — it
- * just reports proposed changes to `data/out/language-scan.json`. Applying the
- * proposed selections (`plex-language-apply`) and flagging titles with no matching
- * track (`plex-language-no-track-flag`) are separate, already-planned follow-up
- * tasks that will join this workflow as additional members `dependsOn:
- * ['plex-language-scan']` — this manifest is left easy to extend for that.
+ * `plex-language-scan` is read-only and never touches Plex — it reports proposed
+ * changes to `data/out/language-scan.json`. `plex-language-apply` (depends on
+ * plex-language-scan) applies every proposed change via Plex's own official
+ * "PUT /library/parts/<id>" stream-selection endpoint. There is NO manual
+ * approval step: the owner explicitly chose full unattended automation over a
+ * per-run sign-off. The safety net is a Plex Butler on-demand backup triggered
+ * before the first change of a run, plus a self-contained per-run applied-changes
+ * log that the manual, never-scheduled `scripts/plex-language-undo.ts` can replay
+ * to revert. Flagging titles with no matching track (`plex-language-no-track-flag`)
+ * is a separate, already-planned follow-up task.
  *
  * Re-scans fresh every run (an audit of drifting real-world state, not a one-time
  * build), idempotent per ISO calendar week via the work_items ledger — a manual
  * re-run the same week regenerates that week's scan rather than duplicating it.
- * One member so far, so no DAG edge — no gate needed (see src/workflows/CLAUDE.md).
  */
 const workflow: WorkflowDefinition = {
   name: 'plex-language-fix',
   category: 'regular-maintenance',
   description:
-    'Scans your whole Plex library, resolves each show/movie\'s true original language via TMDB, ' +
-    'and reports which audio/subtitle track should be selected by default per file versus what is ' +
-    'currently selected — read-only for now (report only; no Plex mutation). Weekly.',
+    'Scans your whole Plex library, resolves each show/movie\'s true original language via TMDB, and ' +
+    'applies the correct default audio/subtitle track selection per file via Plex\'s own API — fully ' +
+    'unattended (a Plex Butler backup + a per-file undo log stand in for manual review). Weekly.',
   schedule: '0 4 * * 0',
-  jobs: [{ job: 'plex-language-scan' }],
+  jobs: [
+    { job: 'plex-language-scan' },
+    { job: 'plex-language-apply', dependsOn: ['plex-language-scan'] },
+  ],
 };
 
 export default workflow;

@@ -19,6 +19,8 @@ export const plexLanguageFixConfig = {
   dataDir,
   outDir: resolve(dataDir, 'out'),
   scanOut: resolve(dataDir, 'out', 'language-scan.json'),
+  /** Prefix for per-run applied-changes logs (`<prefix>-<ISO-timestamp>.json`), read by scripts/plex-language-undo.ts. */
+  appliedLogPrefix: resolve(dataDir, 'out', 'applied-log'),
 
   /** The movie library section to scan. Default 4 (the owner's "Movies"). */
   movieSection: process.env.PLEX_MOVIE_SECTION ?? '4',

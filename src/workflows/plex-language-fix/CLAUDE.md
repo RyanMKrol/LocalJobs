@@ -7,12 +7,35 @@ per-language server setting. This workflow builds a per-title, original-language
 resolve each show/movie's TRUE original language via TMDB, then work out which audio/subtitle track
 SHOULD be selected by default per file versus what's currently selected.
 
-**Scan-only so far.** `plex-language-scan` (the only member — no DAG edge yet, no gate needed) is
-strictly READ-ONLY: it never issues a mutating request to Plex, only writes its proposed changeset to
-`data/out/language-scan.json`. Applying the proposed selections (`plex-language-apply`) and flagging
-titles with genuinely no track in the target language (`plex-language-no-track-flag`) are separate,
-already-planned follow-up tasks that will join this workflow as additional members `dependsOn:
-['plex-language-scan']` — the manifest is left easy to extend for that.
+**Two members: scan (read-only) → apply (mutating).** `plex-language-scan` is strictly READ-ONLY: it
+never issues a mutating request to Plex, only writes its proposed changeset to
+`data/out/language-scan.json`. `plex-language-apply` (`dependsOn: ['plex-language-scan']`, gated on the
+`plex-language-scan` contract — see `contracts.ts`) reads that changeset and APPLIES every `status:
+'change'` entry via Plex's own official `PUT /library/parts/<id>?audioStreamID=&subtitleStreamID=&
+allParts=1` endpoint — the same call Plex's own clients make when a user manually picks a track
+(`plexPutStreams` in `src/core/plex-client.ts`, shared there rather than kept workflow-local since it's a
+Plex-generic mutating primitive, like `plexGet` is a Plex-generic read). Flagging titles with genuinely
+no track in the target language (`plex-language-no-track-flag`) is a separate, already-planned follow-up
+task that will join as another member `dependsOn: ['plex-language-scan']`.
+
+**Fully unattended — no per-run manual sign-off, by explicit owner decision.** The owner does not want
+to review every run by hand; this runs on the workflow's weekly schedule with no approval gate. Every
+`'change'` entry (including what would previously have been flagged an ambiguous channel-count tie — see
+below) is applied the same way, using the scan stage's best-judgment pick. In place of manual review, two
+safety nets stand in:
+1. **Plex Butler backup, triggered once per run before the first real PUT** (`triggerButlerBackup()` in
+   `src/core/plex-client.ts`, `POST /butler/BackupDatabase`) — validated live to produce a real dated
+   backup within about a minute. A failed trigger only logs a WARN; it does not block applying (the
+   per-file undo log below is the primary safety net, Butler the secondary one).
+2. **A self-contained per-run applied-changes log**, `data/out/applied-log-<ISO-timestamp>.json`,
+   recording every applied (or failed) file's `partId`, path, and BOTH its before AND after
+   audio/subtitle selection — so a revert never needs to cross-reference the scan file. The manual,
+   NEVER-scheduled `scripts/plex-language-undo.ts` (top-level `scripts/`, run directly by the owner:
+   `tsx scripts/plex-language-undo.ts [--apply] [path]`, dry-run by default) reads the most recent (or a
+   given) log and reverts every `'applied'` entry back to its recorded before-state.
+`plex-language-apply` records every processed file on the `work_items` ledger (`success`/`failed`, keyed
+by `partId`) and throws (failing the run itself) if any file failed to apply this run, per the repo-wide
+item-loop convention.
 
 **Ambiguous ties are NOT a thing here — the owner explicitly ruled it out.** An earlier scratch
 exploration flagged a genuine audio-candidate tie (same original-mix status, channel count, and codec

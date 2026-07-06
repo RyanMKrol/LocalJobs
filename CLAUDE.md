@@ -130,7 +130,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **stock-digest** | `src/workflows/stock-digest/` | Weekly Claude-narrated stock holdings/performance/sector digest |
 | **vercel-daily-redeploy** | `src/workflows/vercel-daily-redeploy/` | Daily safety-net production deploy trigger for the owner's separate `ryankrol.co.uk` site |
 | **plex-space-saver** | `src/workflows/plex-space-saver/` | Weekly, report-only audit of where Plex library disk space is going |
-| **plex-language-fix** | `src/workflows/plex-language-fix/` | Weekly, report-only audit resolving each title's true original language via TMDB and proposing per-title audio/subtitle defaults (scan stage only so far — no Plex mutation yet) |
+| **plex-language-fix** | `src/workflows/plex-language-fix/` | Weekly: resolves each title's true original language via TMDB, proposes per-title audio/subtitle defaults, and now APPLIES them via Plex's own API — fully unattended, with a Plex Butler backup + a per-file undo log (`scripts/plex-language-undo.ts`) as the safety net instead of manual sign-off |
 
 Five workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
 `plex-space-saver`, `plex-language-fix`) share one Plex/TMDB connectivity client,
@@ -325,7 +325,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification. `notifyWorkflow` is called once per workflow run at completion (aggregate). `notifyStage` is exported but no longer called by the executor (T189) |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
-| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan) — used by all 5 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `plex-space-saver`, `plex-language-fix`), owned by none of them |
+| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan, plus the mutating `plexPutStreams`/`triggerButlerBackup` used by `plex-language-apply`) — used by all 5 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `plex-space-saver`, `plex-language-fix`), owned by none of them |
 | `src/core/repo-lock.ts` | The shared mkdir-based repo lock (`acquireRepoLock`/`resolveRepoPaths`) the daemon's reviews commit+push uses to be mutually exclusive with the autonomous loop (T136). The lock path MUST stay byte-identical to `loop.sh`'s `acquire_lock` (`<git-common-dir>/<basename(repo-root)>-loop.lock` + `pid` file + stale-pid reclaim) |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
@@ -342,7 +342,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `dashboard/scripts/_dashboard-harness.mjs` | Shared hermetic test harness (the SINGLE living artifact): `PAGES` list + synthetic API fixtures + `next start` spawn + `/api/**` interception + theme seeding; imported by both checks below. Update it when the UI surface changes |
 | `dashboard/scripts/mobile-check.mjs` | Hermetic phone-viewport (402px) styling check — overflow/box-spill; local only, not in CI |
 | `dashboard/scripts/visual-check.mjs` | Hermetic desktop-viewport SCREENSHOT capture for visual confirmation (the thing actually renders) — writes PNGs to the gitignored `visual-out/`; no appearance assertions; local/loop only, not in CI |
-| `scripts/*` | launchd install scripts + start wrapper |
+| `scripts/*` | launchd install scripts + start wrapper, plus one-off manual admin scripts (`backfill-service-usage.ts`, `cleanup-listens-spotify.ts`, `reset-stock-sector-lookup-null-successes.ts`, `plex-language-undo.ts` — a manual, never-scheduled revert tool for `plex-language-apply`, dry-run by default, `--apply` to actually revert) |
 
 ## How to add a job (the common request)
 

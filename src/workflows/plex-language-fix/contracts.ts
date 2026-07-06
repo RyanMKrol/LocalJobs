@@ -1,7 +1,7 @@
-// Typed-artifact contract for the language scan output. Not currently wired to any
-// DAG edge (this workflow has only one member so far — no gate needed, see
-// src/workflows/CLAUDE.md) but kept ready for when the planned apply/no-track-flag
-// stages consume this artifact.
+// Typed-artifact contract for the language scan output — the gate on the
+// plex-language-scan → plex-language-apply DAG edge. Both sides reuse the SAME
+// factory (the established convention in this repo when both sides of an edge
+// assert the same shape — see root CLAUDE.md's gate-collapse note).
 import { existsSync, readFileSync } from 'node:fs';
 import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
 import { plexLanguageFixConfig } from './config.js';
