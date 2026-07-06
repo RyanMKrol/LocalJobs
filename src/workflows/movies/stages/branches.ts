@@ -140,7 +140,7 @@ function randomBranch(n: number): BranchSpec {
     id: `rec-random-${n}`,
     lens: 'serendipity',
     kind: 'random',
-    description: `Stage: serendipity branch ${n} — recommends diverse films from a stratified-random slice of the owned library.`,
+    description: `One of 3 stratified-random serendipity branches (this is branch ${n} of the set) in the movie-recommendations workflow's recommender fan-out. It reads the taste profile and a balanced, stratified-random sample of the owned movie library (sampled across genres rather than any single lens, since this branch has no narrow filter of its own) plus the full history of already-recommended or ignored titles, and asks Claude for a batch of diverse, un-owned films favouring variety of genre, era, and country over the obvious next pick. Running 3 independent instances of this same prompt shape with different random seeds intentionally widens the pool of candidate titles rec-merge has to verify and balance from. Writes its raw suggestion list to its own file under data/out/recs/ for rec-merge to pool alongside the other 7 branches.`,
     build(ctx) {
       // Random branches use the stratified sample (balanced across genres) for owned context —
       // they have no narrow lens to filter by, so a representative sample is appropriate.
@@ -161,7 +161,7 @@ const auteurBranch: BranchSpec = {
   id: 'rec-auteur',
   lens: 'auteur-completion',
   kind: 'targeted',
-  description: 'Stage: auteur-completion branch (depth) — acclaimed films by directors I already collect heavily.',
+  description: 'The auteur-completion depth branch of the recommender fan-out. It reads the taste profile to find directors the owner already collects heavily (at least 3 owned films by that director), builds a lens-targeted subset of the owned library limited to films by those specific directors, and asks Claude for acclaimed or notable films by those SAME directors that the owner likely does not yet own — deepening a collection around directors already loved rather than branching out. When no director in the library meets the ownership threshold this branch returns null and is skipped gracefully, writing empty suggestions rather than failing the run. Writes its raw suggestion list to its own file under data/out/recs/ for rec-merge to pool alongside the other 7 branches.',
   build(ctx) {
     const dirs = directorsOwnedAtLeast(ctx.profile, 3).slice(0, 8);
     if (!dirs.length) return null; // nothing to complete → skip gracefully
@@ -184,7 +184,7 @@ const canonBranch: BranchSpec = {
   id: 'rec-canon',
   lens: 'top-genre-canon',
   kind: 'targeted',
-  description: 'Stage: top-genre-canon branch (depth) — canonical films in my strongest genres I somehow missed.',
+  description: 'The top-genre-canon depth branch of the recommender fan-out. It reads the taste profile to identify the owner\'s 4 strongest genres by owned-film count, builds a lens-targeted subset of owned films within those genres for context, and asks Claude for canonical, acclaimed, or landmark films IN THOSE SAME GENRES that the owner appears to have missed — surfacing blind spots within their own established strengths rather than pushing into unfamiliar territory. If the taste profile yields no genres this branch returns null and is skipped gracefully. Writes its raw suggestion list to its own file under data/out/recs/ for rec-merge to pool alongside the other 7 branches.',
   build(ctx) {
     const tg = topGenres(ctx.profile, 4);
     if (!tg.length) return null;
@@ -210,7 +210,7 @@ const thinGenreBranch: BranchSpec = {
   id: 'rec-thin-genre',
   lens: 'thin-genre',
   kind: 'targeted',
-  description: 'Stage: thin-genre round-out branch (breadth) — acclaimed films in genres I own few of.',
+  description: 'The thin-genre round-out breadth branch of the recommender fan-out. It reads the taste profile to find the genres the owner owns the fewest films in, builds a lens-targeted subset of the (few) owned films in those thin genres for context, and asks Claude for acclaimed films in THOSE SPECIFIC under-owned genres, explicitly instructed not to amplify the owner\'s already-dominant genres — broadening the library\'s coverage rather than deepening its existing strengths. If the taste profile has no genres thin enough to qualify this branch returns null and is skipped gracefully. Writes its raw suggestion list to its own file under data/out/recs/ for rec-merge to pool alongside the other 7 branches.',
   build(ctx) {
     const thin = thinGenres(ctx.profile, 5);
     if (!thin.length) return null;
@@ -231,7 +231,7 @@ const olderEraBranch: BranchSpec = {
   id: 'rec-older-era',
   lens: 'older-era',
   kind: 'targeted',
-  description: 'Stage: older-era classics branch (breadth) — acclaimed pre-1980 films from eras I under-own.',
+  description: 'The older-era classics breadth branch of the recommender fan-out. It reads the taste profile\'s by-decade ownership counts to show Claude how modern-skewed the library is, builds a lens-targeted subset of the owned pre-1980 films for context, and asks for acclaimed PRE-1980 classics — foundational films from the silent era through the 1970s that the owner under-owns relative to modern decades — deliberately counteracting a recency bias rather than reinforcing it. Writes its raw suggestion list to its own file under data/out/recs/ for rec-merge to pool alongside the other 7 branches.',
   build(ctx) {
     const decades = Object.entries(ctx.profile.decades)
       .filter(([d]) => d !== 'Unknown')
@@ -254,7 +254,7 @@ const worldCinemaBranch: BranchSpec = {
   id: 'rec-world-cinema',
   lens: 'world-cinema',
   kind: 'targeted',
-  description: 'Stage: world-cinema branch (breadth) — acclaimed non-English films I under-own.',
+  description: 'The world-cinema breadth branch of the recommender fan-out. It reads the taste profile\'s country counts to show Claude how Anglophone-dominated the library is, builds a lens-targeted subset of the owned non-Anglophone films for context, and asks for acclaimed NON-ENGLISH-LANGUAGE / world-cinema films the owner likely does not own — broadening the library beyond its Anglophone bias rather than reinforcing it. Writes its raw suggestion list to its own file under data/out/recs/ for rec-merge to pool alongside the other 7 branches.',
   build(ctx) {
     const countries = Object.entries(ctx.profile.countries)
       .sort((a, b) => b[1] - a[1])
