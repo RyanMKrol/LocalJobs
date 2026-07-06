@@ -11250,7 +11250,7 @@
     {
       "id": "T427",
       "title": "Dashboard: convert internal navigation to next/link Link for real client-side SPA transitions",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
