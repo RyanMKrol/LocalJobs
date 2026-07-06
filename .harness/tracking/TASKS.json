@@ -11399,7 +11399,7 @@
     {
       "id": "T432",
       "title": "Job descriptions: movies / movie-recommendations (11 jobs)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T429"
       ],
