@@ -108,7 +108,7 @@ work** that doesn't fit serverless or a web request.
 
 ### Shipped example workflows — one folder, one `CLAUDE.md`, each
 
-The repo ships 13 worked-example workflows under `src/workflows/`. Each workflow's full
+The repo ships 14 worked-example workflows under `src/workflows/`. Each workflow's full
 current-state documentation — DAG stages, file paths, ledger conventions, credentials, schedule,
 and any non-obvious invariant worth protecting — lives in its OWN `CLAUDE.md` inside its folder
 (auto-loaded by Claude Code when working in that directory, same mechanism as this file and
@@ -130,10 +130,12 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **stock-digest** | `src/workflows/stock-digest/` | Weekly Claude-narrated stock holdings/performance/sector digest |
 | **vercel-daily-redeploy** | `src/workflows/vercel-daily-redeploy/` | Daily safety-net production deploy trigger for the owner's separate `ryankrol.co.uk` site |
 | **plex-space-saver** | `src/workflows/plex-space-saver/` | Weekly, report-only audit of where Plex library disk space is going |
+| **plex-language-fix** | `src/workflows/plex-language-fix/` | Weekly, report-only audit resolving each title's true original language via TMDB and proposing per-title audio/subtitle defaults (scan stage only so far — no Plex mutation yet) |
 
-Four workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
-`plex-space-saver`) share one Plex/TMDB connectivity client, `src/core/plex-client.ts` — see that
-file, or any of the four workflows' own `CLAUDE.md`, for the DHCP-self-heal mechanism.
+Five workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
+`plex-space-saver`, `plex-language-fix`) share one Plex/TMDB connectivity client,
+`src/core/plex-client.ts` — see that file, or any of the five workflows' own `CLAUDE.md`, for the
+DHCP-self-heal mechanism.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
 distributed system. Do not introduce Docker, external databases, message
@@ -323,7 +325,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification. `notifyWorkflow` is called once per workflow run at completion (aggregate). `notifyStage` is exported but no longer called by the executor (T189) |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
-| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan) — used by all 4 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `plex-space-saver`), owned by none of them |
+| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan) — used by all 5 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `plex-space-saver`, `plex-language-fix`), owned by none of them |
 | `src/core/repo-lock.ts` | The shared mkdir-based repo lock (`acquireRepoLock`/`resolveRepoPaths`) the daemon's reviews commit+push uses to be mutually exclusive with the autonomous loop (T136). The lock path MUST stay byte-identical to `loop.sh`'s `acquire_lock` (`<git-common-dir>/<basename(repo-root)>-loop.lock` + `pid` file + stale-pid reclaim) |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
@@ -332,7 +334,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
 | `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/docs/LIMITATIONS.md`.) |
-| `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
+| `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
 | `src/workflows/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/workflows/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the workflow-folder root |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
@@ -418,7 +420,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/workflows/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, and `plex-space-saver/` subfolder workflows as
+> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, and `plex-language-fix/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
