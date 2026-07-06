@@ -11197,7 +11197,7 @@
     {
       "id": "T425",
       "title": "trading212: encode the 1-per-50s instruments-metadata limit as a dedicated service (minIntervalMs)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
