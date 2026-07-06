@@ -11607,7 +11607,7 @@
     {
       "id": "T439",
       "title": "Job descriptions: stock-digest (3 jobs)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T429"
       ],
