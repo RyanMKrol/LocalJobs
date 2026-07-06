@@ -123,8 +123,19 @@ function deployOnce(ctx: JobContext, checkoutPath: string, spawnFn: SpawnFn, tim
 const job: JobDefinition = {
   name: 'vercel-redeploy',
   description:
-    'Run "vercel --prod --yes" directly in the ryankrol.co.uk checkout — a daily safety-net ' +
-    'production deploy in case that repo\'s own deploy task fails or a session forgets to author one.',
+    'Once a day this job runs "vercel --prod --yes" directly in the separate ryankrol.co.uk ' +
+    'checkout, deploying that repo\'s current working tree to production as a safety net in case ' +
+    'that repo\'s own deploy task fails or a session forgets to author one. It deploys via the ' +
+    'real Vercel CLI rather than an HTTP call to a Deploy Hook because ryankrol.co.uk deliberately ' +
+    'disconnected its Vercel Git integration, so a Deploy Hook is no longer a reliably viable ' +
+    'trigger there; the CLI deploys the local working tree directly and needs no Git integration ' +
+    'at all. It relies on the Vercel CLI\'s existing persistent login session already established ' +
+    'on this machine, so there is no credential to provision for this job. The checkout path comes ' +
+    'from the RYANKROL_CO_UK_PATH env var — if that var is unset or points at a path that does not ' +
+    'exist on disk, the job logs a warning and soft-skips rather than failing. The spawned "vercel" ' +
+    'process is subject to its own internal 10-minute timeout-and-kill, separate from and shorter ' +
+    'than the job\'s own outer timeout, so a hung deploy is always cleaned up before the executor ' +
+    'would otherwise need to hard-kill the job process itself.',
   timeoutMs: 660_000,
   maxRetries: 1,
   async run(ctx) {
