@@ -11828,7 +11828,7 @@
     {
       "id": "T447",
       "title": "Fix framework-wide stale absolute output-artifact paths in work_items.detail (post-rename breakage)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
