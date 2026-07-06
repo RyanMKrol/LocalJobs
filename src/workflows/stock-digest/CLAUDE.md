@@ -81,7 +81,9 @@ rows and stage 4's own week-keyed row both pass that identical value explicitly.
 "one output" by `root_key` would either collapse real data away or show a confusing mismatched union.
 This workflow's run page instead renders `StageIoPanel` (`dashboard/app/components/StageIoLists.tsx`) —
 per stage, two independent, un-paired lists (predecessor(s)' ledger rows as Inputs, its own as
-Outputs) — gated to `stock-digest` only; every other workflow keeps the generic joined `IoPanel`.
+Outputs). This used to be gated to `stock-digest` only, but **T386 made `StageIoPanel` the default for
+every workflow's run page** — see the root `CLAUDE.md`'s note on this component for the current state;
+the generic joined `IoPanel` this workflow was originally built to avoid is no longer used anywhere.
 
 ## Files
 

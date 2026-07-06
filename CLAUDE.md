@@ -1263,16 +1263,24 @@ doubt, log it.
     (frontmatter parsed to a compact key-value header + `react-markdown` body,
     XSS-safe). Also exports `parseFrontmatter`. Reused by both the generic `IoPanel`
     and `StageIoPanel` (below) — do not re-implement the popover per component.
-  - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`, T382) — a
-    workflow-scoped ALTERNATIVE to the generic joined `IoPanel` for workflows with a
+  - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`, T382 →
+    T386) — the workflow-run page's Inputs & Outputs panel. Originally a
+    workflow-scoped ALTERNATIVE to a generic joined `IoPanel`, for workflows with a
     genuine fan-out/fan-in shape a single "input → output" row can't represent
-    honestly (see `stock-digest.workflow.ts`'s file comment). Renders one block per
-    DAG member with two independent, un-paired lists (its predecessor(s)' ledger
-    rows this run as Inputs, its own ledger rows this run as Outputs), backed by
-    `GET /workflow-runs/:id/stage-io` → `stageIoLists` in `src/db/store.ts`. Gated
-    per-workflow in `workflow-runs/[id]/page.tsx` (`run?.workflow_name ===
-    'stock-digest'` today) — every other workflow keeps the generic `IoPanel`. A
-    future workflow with the same many-to-one shape can opt in the same way.
+    honestly (see `stock-digest.workflow.ts`'s file comment) — but **T386 made it
+    the default for EVERY workflow's run page**, not just `stock-digest`. Renders
+    one block per DAG member with two independent, un-paired lists (its
+    predecessor(s)' ledger rows this run as Inputs, its own ledger rows this run as
+    Outputs — the lists are never forced into a 1:1 join, so a genuine many-to-one
+    or one-to-many stage shows every row honestly, not just a representative one),
+    backed by `GET /workflow-runs/:id/stage-io` → `stageIoLists` in
+    `src/db/store.ts`. The older per-workflow gate (`run?.workflow_name ===
+    'stock-digest'`) and the generic joined `IoPanel` it used to fall back to are
+    GONE from `workflow-runs/[id]/page.tsx`'s render path — `IoPanel` is still
+    defined in that file but is now unreferenced dead code, left over from before
+    T386 (a candidate for a future cleanup, not removed here). Every new workflow
+    gets this same honest, un-paired treatment automatically; there is no
+    per-workflow opt-in to make.
   - **`<IgnoredSection>`** (`dashboard/app/components/IgnoredSection.tsx`, T390) —
     the "Ignored (N)" panel used by `TvRecsManager`/`MovieRecsManager`/
     `MovieGapsManager`/`MissingSeasonsManager` on `workflows/[name]/page.tsx`. Owns
