@@ -1,0 +1,958 @@
+#!/usr/bin/env node
+// server.js — a portable, dependency-free backlog dashboard for the implementation harness.
+//
+// Pure Node core modules only (http, fs, path, child_process) — no npm install, no build step.
+// Launch: node .harness/dashboard/server.js   (binds 127.0.0.1 only; port via HARNESS_DASHBOARD_PORT)
+//
+// Every GET /api/backlog re-reads TASKS.json + the owner overlays + worklog fresh from disk — no
+// caching, no daemon polling loop of its own. Mutation endpoints (mark done/failed/reviewed) do
+// NOT reimplement overlay-writing logic: they shell out to the exact same scripts/mark-*.sh a
+// human would run by hand, so a dashboard click takes the identical, already-tested code path
+// (including the loop's own repo-lock).
+'use strict';
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { execFile, execFileSync } = require('child_process');
+const { computeBacklog, parseJsonl, coldTierIndex, harnessCells, recentActivity, failureKinds, mdToHtml } = require('./lib');
+
+const HARNESS_DIR = path.join(__dirname, '..');
+const ROOT = path.join(HARNESS_DIR, '..');
+const TASKS_PATH = path.join(HARNESS_DIR, 'tracking', 'TASKS.json');
+const OVERLAY_PATHS = {
+  humanDone: path.join(HARNESS_DIR, 'tracking', 'human-done.json'),
+  manualFail: path.join(HARNESS_DIR, 'tracking', 'manual-fail.json'),
+  reviews: path.join(HARNESS_DIR, 'tracking', 'reviews.json'),
+};
+const WORKLOG_DIR = path.join(HARNESS_DIR, 'worklog');
+const LEDGERS_DIR = path.join(HARNESS_DIR, 'ledgers');
+const SCRIPTS_DIR = path.join(HARNESS_DIR, 'scripts');
+const IDEAS_PATH = path.join(HARNESS_DIR, 'tracking', 'IDEAS.md');
+const FACETS_PATH = path.join(HARNESS_DIR, 'config', 'facets.json');
+const HARNESS_ENV_PATH = path.join(HARNESS_DIR, 'config', 'harness.env');
+const OUTCOMES_PATH = path.join(LEDGERS_DIR, 'outcomes.jsonl');
+const FAILURES_PATH = path.join(LEDGERS_DIR, 'failures.jsonl');
+const POLICY_JQ = path.join(SCRIPTS_DIR, 'policy.jq');
+const PORT = parseInt(process.env.HARNESS_DASHBOARD_PORT || '4790', 10);
+
+function readJson(p, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (_err) {
+    return fallback;
+  }
+}
+
+function readText(p) {
+  try {
+    return fs.readFileSync(p, 'utf8');
+  } catch (_err) {
+    return null;
+  }
+}
+
+// blockedIds() — scan worklog/*.md for the literal string "failed:blocked", mirroring the loop's
+// own task_blocked() grep exactly, so the dashboard can never disagree with what the loop sees.
+function blockedIds() {
+  const ids = new Set();
+  let files;
+  try {
+    files = fs.readdirSync(WORKLOG_DIR);
+  } catch (_err) {
+    return ids;
+  }
+  for (const f of files) {
+    if (!f.endsWith('.md') || f.endsWith('.audit.md')) continue;
+    const text = readText(path.join(WORKLOG_DIR, f));
+    if (text && /failed:blocked/i.test(text)) ids.add(f.replace(/\.md$/, ''));
+  }
+  return ids;
+}
+
+// buildFailures() — aggregate ledgers/failures.jsonl (the loop's per-attempt diagnostics, appended by
+// record_failure) into { <taskId>: { count, latestKind, latestDetail } }, so a not-yet-done task can
+// show a "⚠ N failed attempts" pill. Robust to a missing/garbled ledger (returns {}).
+function buildFailures() {
+  const out = {};
+  const text = readText(path.join(LEDGERS_DIR, 'failures.jsonl'));
+  if (!text) return out;
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let row;
+    try { row = JSON.parse(line); } catch (_err) { continue; }
+    if (!row || !row.id) continue;
+    const cur = out[row.id] || (out[row.id] = { count: 0, latestKind: '', latestDetail: '' });
+    cur.count += 1;
+    cur.latestKind = row.kind || cur.latestKind;
+    cur.latestDetail = row.detail || cur.latestDetail;   // rows are append-order → last wins
+  }
+  return out;
+}
+
+function loadState() {
+  const tasksJson = readJson(TASKS_PATH, { tasks: [] });
+  const failures = buildFailures();
+  const overlays = {
+    humanDone: readJson(OVERLAY_PATHS.humanDone, {}),
+    manualFail: readJson(OVERLAY_PATHS.manualFail, {}),
+    reviews: readJson(OVERLAY_PATHS.reviews, {}),
+  };
+  const buckets = computeBacklog(tasksJson, overlays, blockedIds());   // already attaches `reviewed`
+  for (const bucket of Object.values(buckets)) {
+    for (const task of bucket) {
+      task.spec = task.spec ? readText(path.join(ROOT, task.spec)) : null;
+      task.worklog = readText(path.join(WORKLOG_DIR, `${task.id}.md`));
+      task.audit = readText(path.join(WORKLOG_DIR, `${task.id}.audit.md`));
+      // Attach failed-attempt history to NON-done tasks (a done task's past soft-fails aren't
+      // interesting; a still-open task with failures is the signal worth surfacing).
+      if (!task.failed && failures[task.id]) task.buildFailures = failures[task.id];
+    }
+  }
+  return {
+    counts: {
+      ready: buckets.ready.length,
+      waiting: buckets.waiting.length,
+      needsHuman: buckets.needsHuman.length,
+      done: buckets.done.length,
+    },
+    buckets,
+  };
+}
+
+// ─── Internals view: per-facet calibration state ─────────────────────────────────────────────────
+// buildHarnessState() surfaces the harness's OWN calibration for each (layer × work-type) cell:
+//   • chosen start model/effort + audit rate — by INVOKING scripts/policy.jq exactly as the loop's
+//     pick_base()/audit_gate() do, so the dashboard shows the SAME numbers the loop uses (no reimpl);
+//   • build/failure counts — aggregated in lib.js (harnessCells);
+//   • the tier ladder + policy knobs (facets.json) + a recent-activity feed.
+// Memoised on the max mtime of the inputs so the 5s poll only re-runs jq when a ledger actually changed.
+let _harnessCache = { key: null, value: null };
+
+function mtimeKey(paths) {
+  let mx = 0;
+  for (const p of paths) { try { mx = Math.max(mx, fs.statSync(p).mtimeMs); } catch (_err) { /* missing = 0 */ } }
+  return mx;
+}
+
+// Cold-start prior: env MODEL/EFFORT wins, else the harness.env `${X:=default}`, else cheapest tier.
+function coldStartTuple(ladder) {
+  const env = readText(HARNESS_ENV_PATH) || '';
+  const grab = (name, envVal) => {
+    if (envVal) return envVal;
+    const m = new RegExp('\\$\\{' + name + ':=([^}"\\s]+)').exec(env);
+    return m ? m[1] : null;
+  };
+  return {
+    model: grab('MODEL', process.env.MODEL) || (ladder[0] && ladder[0].model),
+    effort: grab('EFFORT', process.env.EFFORT) || (ladder[0] && ladder[0].effort),
+  };
+}
+
+// runPolicy(argPairs) — invoke scripts/policy.jq and return the parsed number (or null). Every policy.jq
+// arg must be supplied on every call (both branches compile), so callers pass the full set with
+// placeholders for the unused branch — mirroring loop.sh's pick_base()/audit_gate() invocations.
+function runPolicy(argPairs) {
+  const args = ['-n', '-f', POLICY_JQ];
+  for (const [flag, name, val] of argPairs) args.push(flag, name, val);
+  const out = execFileSync('jq', args, { encoding: 'utf8', timeout: 5000 });
+  const n = Number(String(out).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildHarnessState() {
+  const facets = readJson(FACETS_PATH, {});
+  const ladder = (facets.tiers && facets.tiers.ladder) || [];
+  const pol = facets.policy || {};
+  const floor = pol.floor != null ? pol.floor : 0.75;
+  const minN = pol.minN != null ? pol.minN : 6;
+  const auditStartN = pol.auditStartN != null ? pol.auditStartN : 3;
+  const auditFloorN = pol.auditFloorN != null ? pol.auditFloorN : 8;
+  const auditFloorPM = Math.round((pol.auditFloor != null ? pol.auditFloor : 0.10) * 1000);
+
+  const key = mtimeKey([OUTCOMES_PATH, FAILURES_PATH, FACETS_PATH, OVERLAY_PATHS.manualFail, TASKS_PATH]);
+  if (_harnessCache.key === key && _harnessCache.value) return _harnessCache.value;
+
+  const outcomes = parseJsonl(readText(OUTCOMES_PATH));
+  const failures = parseJsonl(readText(FAILURES_PATH));
+  const manualFail = readJson(OVERLAY_PATHS.manualFail, {});
+  const tasks = (readJson(TASKS_PATH, { tasks: [] }).tasks) || [];
+  const coldIdx = coldTierIndex(ladder, ...Object.values(coldStartTuple(ladder)));
+  const cells = harnessCells(outcomes, failures, tasks, manualFail);
+
+  let jqOk = true;
+  try { execFileSync('jq', ['--version'], { timeout: 3000, stdio: 'ignore' }); } catch (_e) { jqOk = false; }
+  if (jqOk && cells.length) {
+    const rowsJson = JSON.stringify(outcomes), ladderJson = JSON.stringify(ladder), mfJson = JSON.stringify(manualFail);
+    for (const c of cells) {
+      try {
+        const chosenIdx = runPolicy([
+          ['--argjson', 'rows', rowsJson], ['--argjson', 'tiers', ladderJson],
+          ['--arg', 'layer', c.layer], ['--arg', 'wt', c.workType],
+          ['--argjson', 'floor', String(floor)], ['--argjson', 'minN', String(minN)], ['--argjson', 'coldIdx', String(coldIdx)],
+          ['--argjson', 'manualFail', mfJson], ['--argjson', 'risk', '[]'],
+          ['--argjson', 'auditCount', '-1'], ['--argjson', 'auditStartN', String(auditStartN)],
+          ['--argjson', 'auditFloorN', String(auditFloorN)], ['--argjson', 'auditFloorPM', String(auditFloorPM)],
+        ]);
+        const tier = (chosenIdx != null && ladder[chosenIdx]) || null;
+        c.chosenModel = tier ? tier.model : null;
+        c.chosenEffort = tier ? tier.effort : null;
+        c.chosenIdx = chosenIdx;
+        c.hasHistory = c.builds >= minN;   // rough "data-driven vs cold-start prior" hint
+
+        // audit rate: confirmed-audited successes in the cell (== loop's audit_gate query), then policy audit branch
+        const auditCount = outcomes.filter((r) => r.facets && r.facets.layer === c.layer && r.facets.workType === c.workType
+          && r.blocked === false && r.verification === 'audited' && !(manualFail[r.id] && manualFail[r.id].failed === true)).length;
+        const pm = runPolicy([
+          ['--argjson', 'auditCount', String(auditCount)], ['--argjson', 'risk', '[]'],
+          ['--argjson', 'auditStartN', String(auditStartN)], ['--argjson', 'auditFloorN', String(auditFloorN)], ['--argjson', 'auditFloorPM', String(auditFloorPM)],
+          ['--argjson', 'rows', '[]'], ['--argjson', 'tiers', '[]'], ['--arg', 'layer', ''], ['--arg', 'wt', ''],
+          ['--argjson', 'floor', '0'], ['--argjson', 'minN', '0'], ['--argjson', 'coldIdx', '0'], ['--argjson', 'manualFail', '{}'],
+        ]);
+        c.auditPct = pm != null ? Math.round(pm / 10) : null;
+      } catch (_err) { /* one bad cell shouldn't blank the rest; leave its calibration fields undefined */ }
+    }
+  }
+
+  const value = {
+    ladder, coldIdx,
+    policy: { floor, minN, auditStartN, auditFloorN, auditFloor: auditFloorPM / 1000, auditorModel: pol.auditorModel || null, auditorEffort: pol.auditorEffort || null },
+    cells, recent: recentActivity(outcomes, failures, 20), failureKinds: failureKinds(failures), jqOk,
+  };
+  _harnessCache = { key, value };
+  return value;
+}
+
+// ─── Live activity ("Now" strip): lock + heartbeat + log tail + freshness ────────────────────────
+const NAME = path.basename(ROOT);
+const HEARTBEAT_PATH = path.join(WORKLOG_DIR, '.current.json');
+
+// envKnob(name, fallback) — real env wins, else the harness.env `${NAME:=default}` line, else fallback
+// (same precedence the loop's own `: "${VAR:=…}"` sourcing gives).
+function envKnob(name, fallback) {
+  if (process.env[name]) return process.env[name];
+  const env = readText(HARNESS_ENV_PATH) || '';
+  const m = new RegExp('\\$\\{' + name + ':=([^}"\\s]+)').exec(env);
+  return m ? m[1] : fallback;
+}
+
+let _gitCommon = undefined;   // memoised — the git common dir never changes while the server runs
+function gitCommonDir() {
+  if (_gitCommon !== undefined) return _gitCommon;
+  try {
+    let d = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8', timeout: 3000 }).trim();
+    if (!path.isAbsolute(d)) d = path.join(ROOT, d);
+    _gitCommon = d;
+  } catch (_err) { _gitCommon = null; }
+  return _gitCommon;
+}
+
+// lockState() — read the loop's own mkdir lock (<git-common>/<name>-loop.lock/pid, identical
+// derivation to repo-lock.sh) and probe the PID, so "running / idle / stale lock" can never
+// disagree with what the loop itself would conclude.
+function lockState() {
+  const common = gitCommonDir();
+  if (!common) return { held: false, pid: null, alive: false };
+  const lockDir = path.join(common, `${NAME}-loop.lock`);
+  if (!fs.existsSync(lockDir)) return { held: false, pid: null, alive: false };
+  const pid = parseInt(readText(path.join(lockDir, 'pid')) || '', 10);
+  if (!Number.isFinite(pid)) return { held: true, pid: null, alive: false };
+  let alive = true;
+  try { process.kill(pid, 0); } catch (_err) { alive = false; }
+  return { held: true, pid, alive };
+}
+
+// claudeOutTail() — the last ~40 lines of the builder/auditor's live output. The worktree variant
+// writes it inside the loop worktree (../<name>-loop/.harness/worklog/), the in-place variant in the
+// primary checkout — read whichever was touched most recently.
+function claudeOutTail() {
+  const candidates = [
+    path.join(WORKLOG_DIR, '.claude-out'),
+    path.join(path.dirname(ROOT), `${NAME}-loop`, '.harness', 'worklog', '.claude-out'),
+  ];
+  let best = null, bestM = 0;
+  for (const p of candidates) {
+    try { const m = fs.statSync(p).mtimeMs; if (m > bestM) { bestM = m; best = p; } } catch (_err) { /* absent */ }
+  }
+  if (!best) return null;
+  const text = readText(best);
+  if (!text) return null;
+  const lines = text.split('\n');
+  return lines.slice(-40).join('\n').slice(-8000);
+}
+
+// freshness() — how stale is what this dashboard renders? Age of the last `git fetch` (FETCH_HEAD
+// mtime) + whether the local checkout's HEAD is the same commit as origin/<main>. The dashboard reads
+// LOCAL files, so with the loop stopped and no fetch, it can silently lag origin — this surfaces that.
+function freshness() {
+  const common = gitCommonDir();
+  let lastFetchSec = null;
+  if (common) {
+    try { lastFetchSec = Math.max(0, Math.round((Date.now() - fs.statSync(path.join(common, 'FETCH_HEAD')).mtimeMs) / 1000)); } catch (_err) { /* never fetched */ }
+  }
+  const rev = (ref) => {
+    try { return execFileSync('git', ['rev-parse', ref], { cwd: ROOT, encoding: 'utf8', timeout: 3000 }).trim(); } catch (_err) { return null; }
+  };
+  const mainBranch = envKnob('MAIN_BRANCH', 'main');
+  const localHead = rev('HEAD');
+  const originHead = rev(`origin/${mainBranch}`);
+  return {
+    lastFetchSec,
+    mainBranch,
+    inSync: !!(localHead && originHead && localHead === originHead),
+    known: !!(localHead && originHead),
+  };
+}
+
+function activityState() {
+  return {
+    lock: lockState(),
+    current: readJson(HEARTBEAT_PATH, null),
+    logTail: claudeOutTail(),
+    freshness: freshness(),
+    fetchEverySec: parseInt(envKnob('HARNESS_DASHBOARD_FETCH_SECONDS', '0'), 10) || 0,
+  };
+}
+
+function isLoopback(req) {
+  const addr = req.socket.remoteAddress || '';
+  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
+function runScript(scriptName, args) {
+  return new Promise((resolve, reject) => {
+    const script = path.join(SCRIPTS_DIR, scriptName);
+    execFile('bash', [script, ...args], { cwd: HARNESS_DIR, timeout: 30000 }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr || stdout || err.message));
+      else resolve(stdout);
+    });
+  });
+}
+
+function sendJson(res, status, body) {
+  const data = JSON.stringify(body);
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(data) });
+  res.end(data);
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 1e6) req.destroy();
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function isValidTaskId(id) {
+  return typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id);
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, 'http://localhost');
+
+    if (req.method === 'GET' && url.pathname === '/api/backlog') {
+      return sendJson(res, 200, loadState());
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/ideas') {
+      const html = mdToHtml(readText(IDEAS_PATH) || '');
+      return sendJson(res, 200, { html, empty: html.trim() === '' });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/harness') {
+      return sendJson(res, 200, buildHarnessState());
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/activity') {
+      return sendJson(res, 200, activityState());
+    }
+
+    if (req.method === 'GET' && url.pathname === '/') {
+      const html = renderPage();
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(html);
+    }
+
+    if (req.method === 'POST' && url.pathname.startsWith('/api/mark-')) {
+      if (!isLoopback(req)) return sendJson(res, 403, { error: 'dashboard mutation endpoints are loopback-only' });
+      const body = await readBody(req);
+
+      if (url.pathname === '/api/mark-done') {
+        const ids = Array.isArray(body.ids) ? body.ids : [body.id];
+        if (!ids.length || !ids.every(isValidTaskId)) return sendJson(res, 400, { error: 'ids required' });
+        await runScript('mark-done.sh', ids);
+        return sendJson(res, 200, { ok: true, ids });
+      }
+      if (url.pathname === '/api/mark-failed') {
+        if (!isValidTaskId(body.id) || !body.reason) return sendJson(res, 400, { error: 'id and reason required' });
+        await runScript('mark-failed.sh', [body.id, body.reason]);
+        return sendJson(res, 200, { ok: true, id: body.id });
+      }
+      if (url.pathname === '/api/mark-reviewed') {
+        const ids = Array.isArray(body.ids) ? body.ids : [body.id];
+        if (!ids.length || !ids.every(isValidTaskId)) return sendJson(res, 400, { error: 'ids required' });
+        await runScript('mark-reviewed.sh', ids);
+        return sendJson(res, 200, { ok: true, ids });
+      }
+      return sendJson(res, 404, { error: 'unknown endpoint' });
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('not found');
+  } catch (err) {
+    sendJson(res, 500, { error: err.message });
+  }
+});
+
+function renderPage() {
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Backlog — implementation harness</title>
+<style>
+  :root{
+    --bg:#fbf3dd; --panel:#fff9ec; --panel-2:#ffeec2; --border:#f0d49a;
+    --text:#4a3613; --muted:#9c7e44; --accent:#e8821f;
+    --green:#5a9e2e; --red:#e0492e; --yellow:#c98a12; --amber:#d9791a; --human:#3a7bd0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .container{max-width:1000px;margin:0 auto;padding:26px 20px 72px;}
+  h1{font-size:22px;font-weight:700;margin:0 0 4px;}
+  .sub{color:var(--muted);margin:0 0 22px;font-size:13px;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  button{cursor:pointer;font:inherit}
+
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border);color:var(--muted);white-space:nowrap;margin-left:4px;}
+  .pill.buildable{color:var(--amber);background:rgba(232,160,32,.14);border-color:rgba(232,160,32,.4);}
+  .pill.human{color:#fff;background:var(--human);border-color:var(--human);}
+  .pill.blocked{color:var(--yellow);background:rgba(201,138,18,.16);border-color:rgba(201,138,18,.45);font-weight:600;}
+  .pill.done{color:var(--green);background:rgba(90,158,46,.14);border-color:rgba(90,158,46,.35);}
+  .pill.failed{color:var(--red);background:rgba(224,73,46,.12);border-color:rgba(224,73,46,.35);}
+  .pill.reviewed{color:var(--green);background:rgba(90,158,46,.14);border-color:rgba(90,158,46,.35);}
+
+  details.section{margin:0 0 26px;}
+  summary.section-heading{font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);cursor:pointer;list-style:none;user-select:none;display:flex;align-items:center;gap:9px;padding:4px 0;}
+  summary.section-heading::-webkit-details-marker{display:none}
+  summary.section-heading::before{content:'\\203A';font-size:20px;font-weight:900;color:var(--accent);transform:rotate(90deg);transition:transform .2s;line-height:1;}
+  details:not([open]) > summary.section-heading::before{transform:rotate(0)}
+  details[open] > summary.section-heading{color:var(--text)}
+  .section-desc{color:var(--muted);font-size:13px;margin:2px 0 10px 30px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:0 14px;}
+  .empty{color:var(--muted);padding:11px 2px;}
+
+  .taskrow .row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:6px 0;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);}
+  .panel > .taskrow:last-child .row{border-bottom:none}
+  .caret{color:var(--muted);font-size:10px;min-width:10px}
+  .tid{font-weight:700;min-width:46px}
+  .title{flex:1;min-width:220px}
+
+  .expand{padding:12px 16px 14px;margin:0 0 8px;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;font-size:13px;}
+  .expand pre{white-space:pre-wrap;background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:8px;max-height:300px;overflow:auto;font-size:12px;}
+  .expand details{margin-top:8px} .expand summary{color:var(--muted);font-size:12px;cursor:pointer;user-select:none}
+  .dep-link{font-family:ui-monospace,Menlo,monospace;color:var(--accent);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+  .kv{font-size:12px;color:var(--muted);margin-bottom:6px}
+
+  .bar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:8px 0 6px;}
+  .barlabel{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .barbtn{font-size:11px;padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted);}
+  .barbtn:hover{border-color:var(--accent);color:var(--text)}
+  .barbtn.on{border-color:var(--accent);color:var(--accent);background:rgba(232,130,31,.12)}
+  .act{font-size:12px;padding:3px 11px;border-radius:6px;border:1px solid var(--border);background:var(--panel-2);color:var(--text)}
+  .act:hover{border-color:var(--accent)}
+  .act.danger:hover{border-color:var(--red);color:var(--red)}
+  .act[disabled]{opacity:.5;cursor:default}
+  label.sel{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--muted)}
+
+  .flash{animation:flash 1.6s ease-out;border-radius:6px}
+  @keyframes flash{from{background:rgba(232,130,31,.25)}to{background:transparent}}
+
+  .topbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px;}
+  .topbar h1{margin:0}
+
+  /* "Now" strip — live loop status + freshness, on every tab */
+  .nowbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 18px;font-size:12px}
+  .nowpill{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 11px;border-radius:999px;border:1px solid var(--border);background:var(--panel);color:var(--muted);white-space:nowrap}
+  .nowpill.run{color:var(--green);border-color:rgba(90,158,46,.45);background:rgba(90,158,46,.10);font-weight:600}
+  .nowpill.idle{color:var(--muted)}
+  .nowpill.warn{color:var(--yellow);border-color:rgba(201,138,18,.45);background:rgba(201,138,18,.10);font-weight:600}
+  .nowpill.bad{color:var(--red);border-color:rgba(224,73,46,.4);background:rgba(224,73,46,.08);font-weight:600}
+  .nowbar details{flex-basis:100%;margin-top:2px}
+  .nowbar summary{color:var(--muted);font-size:12px;cursor:pointer;user-select:none}
+  .nowbar pre{white-space:pre-wrap;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:260px;overflow:auto;font-size:11px;font-family:ui-monospace,Menlo,monospace;margin:6px 0 0}
+
+  .kindpills{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 2px}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .tab{font-size:13px;padding:5px 13px;border-radius:7px;border:1px solid var(--border);background:var(--panel);color:var(--muted);}
+  .tab:hover{border-color:var(--accent);color:var(--text)}
+  .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .view[hidden]{display:none}
+  .note{color:var(--muted);font-size:12px;margin:6px 0 14px}
+
+  /* Ideas (rendered markdown) */
+  .md-body{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:6px 22px 20px;}
+  .md-body h1,.md-body h2,.md-body h3,.md-body h4{color:var(--text);margin:18px 0 8px}
+  .md-body h1{font-size:20px} .md-body h2{font-size:17px} .md-body h3{font-size:15px} .md-body h4{font-size:13px}
+  .md-body p{margin:8px 0}
+  .md-body ul,.md-body ol{margin:8px 0;padding-left:24px} .md-body li{margin:3px 0}
+  .md-body code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+  .md-body pre{background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:10px;overflow:auto} .md-body pre code{background:none;border:none;padding:0}
+  .md-body blockquote{margin:8px 0;padding:2px 14px;border-left:3px solid var(--border);color:var(--muted)}
+  .md-body hr{border:none;border-top:1px solid var(--border);margin:16px 0}
+  .md-body a{color:var(--accent)}
+
+  /* Internals (per-facet calibration) */
+  .htitle{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:22px 0 8px}
+  .htitle:first-child{margin-top:2px}
+  .ftable{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:13px}
+  .ftable th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600}
+  .ftable td{padding:7px 10px;border-bottom:1px solid var(--border)} .ftable tr:last-child td{border-bottom:none}
+  .ftable td.num,.ftable th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .facet-name{font-weight:600}
+  .model-tag{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .cold-tag{font-size:10px;color:var(--muted);margin-left:5px}
+  .refgrid{display:flex;gap:16px;flex-wrap:wrap}
+  .refcard{flex:1;min-width:240px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:13px}
+  .refcard ol{margin:6px 0 0;padding-left:22px} .refcard li{margin:2px 0;font-size:12px}
+  .refcard .knob{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:2px 0;color:var(--muted)} .refcard .knob b{color:var(--text);font-weight:600;text-align:right}
+  .recent{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:4px 14px}
+  .recent .ev{display:flex;gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px} .recent .ev:last-child{border-bottom:none}
+  .recent .ev .t{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .recent .ev .eid{font-weight:700;min-width:42px}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="topbar">
+  <h1>⚙ Harness</h1>
+  <nav class="tabs">
+    <button class="tab on" data-view="backlog" onclick="switchView('backlog')">Backlog</button>
+    <button class="tab" data-view="ideas" onclick="switchView('ideas')">Ideas</button>
+    <button class="tab" data-view="harness" onclick="switchView('harness')">Internals</button>
+  </nav>
+</div>
+<div id="nowbar" class="nowbar"></div>
+<div id="view-backlog" class="view">
+  <p class="sub" id="summary"></p>
+  <div id="sections"></div>
+</div>
+<div id="view-ideas" class="view" hidden>
+  <div id="ideas-md" class="md-body"></div>
+</div>
+<div id="view-harness" class="view" hidden>
+  <div id="harness-body"></div>
+</div>
+</div>
+<script>
+const state = { activeView: 'backlog', open: new Set(), openLogs: new Set(), closedSections: new Set(), selected: new Set(), doneFilter: 'all', lastClicked: null, lastData: null, lastFetchedJson: null, lastIdeasJson: null, lastHarnessJson: null, lastNowJson: null, nowLogOpen: false };
+
+function switchView(name) {
+  state.activeView = name;
+  var tabs = document.querySelectorAll('.tab');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle('on', tabs[i].dataset.view === name);
+  var views = document.querySelectorAll('.view');
+  for (var j = 0; j < views.length; j++) views[j].hidden = (views[j].id !== 'view-' + name);
+  refreshActive();
+}
+
+// One 5s poll, dispatched to whichever view is active (plus the always-on "Now" strip). Each view
+// keeps its own change-guard so an unchanged poll never rebuilds the DOM (preserves scroll / open
+// <pre> position — see the backlog note).
+function refreshActive() {
+  refreshNow();
+  if (state.activeView === 'ideas') return refreshIdeas();
+  if (state.activeView === 'harness') return refreshHarness();
+  return refreshBacklog();
+}
+
+async function refreshNow() {
+  let data; try { data = await (await fetch('/api/activity')).json(); } catch (e) { return; }
+  const json = JSON.stringify(data);
+  if (json === state.lastNowJson) return;
+  state.lastNowJson = json;
+  renderNow(data);
+}
+
+function ago(sec) {
+  if (sec == null) return 'never';
+  if (sec < 60) return sec + 's ago';
+  if (sec < 3600) return Math.round(sec / 60) + 'm ago';
+  return (sec / 3600).toFixed(1) + 'h ago';
+}
+
+// renderNow(data) — the live status strip: what the loop is doing RIGHT NOW (from its lock +
+// worklog/.current.json heartbeat), how fresh the rendered data is vs origin, and a collapsible
+// tail of the builder's live output.
+function renderNow(data) {
+  const el = document.getElementById('nowbar');
+  const lock = data.lock || {}, cur = data.current, fr = data.freshness || {};
+  let h = '';
+  if (lock.held && lock.alive) {
+    if (cur && cur.task) {
+      const tier = cur.model ? ' · ' + esc(cur.model) + '/' + esc(cur.effort) : '';
+      h += '<span class="nowpill run">▶ ' + esc(cur.task) + ' — ' + esc(cur.phase || 'working')
+         + ' (rung ' + esc(String(cur.rung)) + ', attempt ' + esc(String(+cur.attempt + 1)) + tier + ')</span>';
+    } else {
+      h += '<span class="nowpill run">▶ loop running (PID ' + esc(String(lock.pid || '?')) + ')</span>';
+    }
+  } else if (lock.held && !lock.alive) {
+    h += '<span class="nowpill warn" title="The lock dir exists but its PID is dead — a loop was interrupted. Run the loop-recover skill.">⚠ stale lock (PID ' + esc(String(lock.pid || '?')) + ' dead) — run loop-recover</span>';
+  } else {
+    h += '<span class="nowpill idle">◼ loop idle</span>';
+  }
+  if (fr.known && !fr.inSync) {
+    h += '<span class="nowpill bad" title="The local checkout this dashboard reads is not on the same commit as origin/' + esc(fr.mainBranch || 'main') + ' — what you see may be stale or ahead.">local ≠ origin/' + esc(fr.mainBranch || 'main') + '</span>';
+  }
+  const fetchCls = (fr.lastFetchSec == null || fr.lastFetchSec > 900) ? 'nowpill warn' : 'nowpill idle';
+  const fetchNote = data.fetchEverySec > 0 ? ' (auto-fetch ' + data.fetchEverySec + 's)' : '';
+  h += '<span class="' + fetchCls + '" title="Age of the last git fetch — the dashboard renders LOCAL files, so origin changes are invisible until something fetches. Set HARNESS_DASHBOARD_FETCH_SECONDS to have the dashboard fetch itself.">origin seen: ' + ago(fr.lastFetchSec) + fetchNote + '</span>';
+  if (data.logTail) {
+    h += '<details id="now-log" ontoggle="state.nowLogOpen=this.open"' + (state.nowLogOpen ? ' open' : '') + '>'
+       + '<summary>live output (' + (cur && cur.task ? esc(cur.task) : 'last run') + ')</summary>'
+       + '<pre id="now-log-pre">' + esc(data.logTail) + '</pre></details>';
+  }
+  el.innerHTML = h;
+  const pre = document.getElementById('now-log-pre');
+  if (pre && state.nowLogOpen) pre.scrollTop = pre.scrollHeight;
+}
+
+async function refreshBacklog() {
+  let data; try { data = await (await fetch('/api/backlog')).json(); } catch (e) { return; }
+  const json = JSON.stringify(data);
+  if (json === state.lastFetchedJson) return;
+  state.lastFetchedJson = json;
+  renderBacklog(data);
+}
+
+async function refreshIdeas() {
+  let data; try { data = await (await fetch('/api/ideas')).json(); } catch (e) { return; }
+  const json = JSON.stringify(data);
+  if (json === state.lastIdeasJson) return;
+  state.lastIdeasJson = json;
+  renderIdeas(data);
+}
+
+async function refreshHarness() {
+  let data; try { data = await (await fetch('/api/harness')).json(); } catch (e) { return; }
+  const json = JSON.stringify(data);
+  if (json === state.lastHarnessJson) return;
+  state.lastHarnessJson = json;
+  renderHarness(data);
+}
+
+function renderIdeas(data) {
+  const el = document.getElementById('ideas-md');
+  if (data.empty) {
+    el.innerHTML = '<p class="note">No ideas captured yet — add one with <span class="mono">/implementation-harness-capture-idea</span>, then sweep them into tasks with <span class="mono">/implementation-harness-convert-ideas</span>.</p>';
+    return;
+  }
+  el.innerHTML = data.html;   // server-rendered by lib.js mdToHtml (HTML-escaped first → XSS-safe)
+}
+
+function knob(label, val) { return '<div class="knob"><span>' + label + '</span><b>' + esc(String(val)) + '</b></div>'; }
+
+function renderHarness(data) {
+  const el = document.getElementById('harness-body');
+  const L = data.ladder || [], cells = data.cells || [], recent = data.recent || [], p = data.policy || {};
+  let h = '';
+  h += '<div class="htitle">Model tiers &amp; policy</div><div class="refgrid">';
+  h += '<div class="refcard"><b>Tier ladder</b> — cheapest → priciest<ol>' +
+       L.map(function (t) { return '<li class="model-tag">' + esc(t.model) + ' / ' + esc(t.effort) + '</li>'; }).join('') + '</ol></div>';
+  h += '<div class="refcard"><b>Policy knobs</b>' +
+       knob('pass floor', Math.round((p.floor || 0) * 100) + '% first-attempt') +
+       knob('min samples', p.minN) +
+       knob('audit taper', '100% until ' + p.auditStartN + ' → ' + Math.round((p.auditFloor || 0) * 100) + '% by ' + p.auditFloorN + ' audited') +
+       knob('auditor', (p.auditorModel || '—') + ' / ' + (p.auditorEffort || '—')) +
+       '</div></div>';
+
+  h += '<div class="htitle">Per-facet calibration</div>';
+  if (data.jqOk === false) h += '<p class="note">⚠ <span class="mono">jq</span> not found on PATH — install jq to compute the chosen model &amp; audit rate. The counts below are still accurate.</p>';
+  h += '<p class="note">Baseline per <b>layer × work-type</b> cell (no risk flags). A task carrying a risk facet always audits (100%) and starts at least one tier higher.</p>';
+  if (!cells.length) {
+    h += '<p class="note">No calibration data yet — the harness records an outcome each time it builds a task.</p>';
+  } else {
+    h += '<table class="ftable"><thead><tr><th>Facet</th><th>Start model</th><th class="num" title="The sampling probability the policy will use for the NEXT build in this cell">Audit (policy)</th><th class="num" title="What actually happened: audited successes / all successes recorded in the ledger">Audited (observed)</th><th class="num">Builds</th><th class="num">✓</th><th class="num">✗</th><th class="num">⚠ fails</th></tr></thead><tbody>';
+    for (const c of cells) {
+      const model = c.chosenModel ? esc(c.chosenModel) + ' / ' + esc(c.chosenEffort) : '—';
+      const cold = (c.chosenModel && !c.hasHistory) ? '<span class="cold-tag">cold</span>' : '';
+      const audit = (c.auditPct != null) ? c.auditPct + '%' : '—';
+      const observed = c.successes ? Math.round((c.audited / c.successes) * 100) + '% <span class="cold-tag">' + c.audited + '/' + c.successes + '</span>' : '—';
+      const failTip = Object.entries(c.kinds || {}).map(function (kv) { return kv[0] + ' ×' + kv[1]; }).join(', ');
+      h += '<tr><td class="facet-name">' + esc(c.layer) + '/' + esc(c.workType) + '</td>' +
+           '<td class="model-tag">' + model + cold + '</td>' +
+           '<td class="num">' + audit + '</td>' +
+           '<td class="num">' + observed + '</td>' +
+           '<td class="num">' + c.builds + '</td>' +
+           '<td class="num">' + c.successes + '</td>' +
+           '<td class="num">' + c.blocked + '</td>' +
+           '<td class="num"' + (failTip ? ' title="' + esc(failTip) + '"' : '') + '>' + c.failures + '</td></tr>';
+    }
+    h += '</tbody></table>';
+  }
+
+  const kinds = data.failureKinds || [];
+  if (kinds.length) {
+    h += '<div class="htitle">Failure health</div>';
+    h += '<p class="note">Every failed attempt in <span class="mono">ledgers/failures.jsonl</span>, by kind — which gate is actually catching things. (Hover a cell\\'s ⚠ count above for its per-facet breakdown.)</p>';
+    h += '<div class="kindpills">' + kinds.map(function (k) {
+      return '<span class="pill blocked">' + esc(k.kind) + ' ×' + k.count + '</span>';
+    }).join('') + '</div>';
+  }
+
+  h += '<div class="htitle">Recent activity</div>';
+  if (!recent.length) {
+    h += '<p class="note">Nothing recorded yet.</p>';
+  } else {
+    h += '<div class="recent">' + recent.map(function (e) {
+      const when = (e.ts || '').slice(0, 16).replace('T', ' ');
+      const cls = e.type === 'failure' ? 'pill blocked' : 'pill done';
+      return '<div class="ev"><span class="t">' + esc(when) + '</span><span class="eid mono">' + esc(e.id) + '</span>' +
+             '<span class="' + cls + '">' + esc(e.label) + '</span>' +
+             '<span class="t">' + esc(e.facet) + '</span>' +
+             (e.detail ? '<span>' + esc(e.detail) + '</span>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+  el.innerHTML = h;
+}
+
+function esc(s) { return (s || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function depLinks(ids) {
+  return (ids || []).map(id => \`<span class="dep-link" onclick="event.stopPropagation(); openTask('\${id}')">\${esc(id)}</span>\`).join(', ') || '(none)';
+}
+
+function failPill(task, bucketName) {
+  if (bucketName === 'done' || !task.buildFailures || !task.buildFailures.count) return '';
+  const bf = task.buildFailures, n = bf.count;
+  const tip = esc((bf.latestKind || '') + (bf.latestDetail ? ': ' + bf.latestDetail : ''));
+  return \`<span class="pill blocked" title="\${tip}">⚠ \${n} failed attempt\${n === 1 ? '' : 's'}</span>\`;
+}
+
+function pillsFor(task, bucketName) {
+  let pills = '';
+  if (bucketName === 'ready' || bucketName === 'waiting') {
+    if (task.unmetDeps && task.unmetDeps.length) pills += \`<span class="pill">needs: \${depLinks(task.unmetDeps)}</span>\`;
+    else if (bucketName === 'ready') pills += '<span class="pill buildable">🤖 buildable</span>';
+  } else if (bucketName === 'needsHuman') {
+    // Distinguish a task the loop gave up on (status:"blocked") from one authored as a human gate.
+    pills += task.status === 'blocked'
+      ? '<span class="pill blocked">⚠ blocked (loop gave up)</span>'
+      : '<span class="pill human">🔒 needs human</span>';
+  } else if (bucketName === 'done') {
+    pills += task.reviewed ? '<span class="pill reviewed">👁 reviewed</span>' : '<span class="pill">not reviewed</span>';
+    pills += task.failed ? '<span class="pill failed">✗ failed</span>' : '<span class="pill done">✓ done</span>';
+  }
+  pills += failPill(task, bucketName);
+  return pills;
+}
+
+function renderTask(task, bucketName) {
+  const open = state.open.has(task.id);
+  const checked = state.selected.has(task.id) ? 'checked' : '';
+  let detail = '';
+  if (open) {
+    detail = '<div class="expand" onclick="event.stopPropagation()">';
+    if (task.dependsOn && task.dependsOn.length) detail += \`<div class="kv">depends on: \${depLinks(task.dependsOn)}</div>\`;
+    const facets = task.facets ? esc(task.facets.layer + '/' + task.facets.workType + (task.facets.risk && task.facets.risk.length ? ' · ' + task.facets.risk.join(',') : '')) : '—';
+    detail += \`<div class="kv">scope: \${(task.scope || []).map(esc).join('  ') || '(none)'} · facets: \${facets}\${task.expectsTest ? ' · expectsTest' : ''}</div>\`;
+    // Give each log <details> a stable id + ontoggle so its open/closed state survives a re-render
+    // (the 5s auto-refresh rebuilds innerHTML, which would otherwise snap every open section shut).
+    const lg = (kind, label, body) => {
+      const lid = 'log-' + task.id + '-' + kind;
+      const isOpen = state.openLogs.has(lid) || kind === 'spec';
+      return \`<details id="\${lid}" ontoggle="onLogToggle(this)"\${isOpen ? ' open' : ''}><summary>\${label}</summary><pre>\${esc(body)}</pre></details>\`;
+    };
+    if (task.spec) detail += lg('spec', 'spec', task.spec);
+    if (task.worklog) detail += lg('worklog', 'build log', task.worklog);
+    if (task.audit) detail += lg('audit', 'audit', task.audit);
+    detail += '<div class="bar" style="margin-top:10px">';
+    if (bucketName === 'needsHuman') detail += \`<button class="act" onclick="markDone('\${task.id}')">Mark done</button>\`;
+    if (bucketName === 'done' && !task.failed) detail += \`<button class="act danger" onclick="markFailed('\${task.id}')">Mark failed</button>\`;
+    // A failed task is implicitly reviewed (see lib.js) — offer the review toggle only when NOT failed.
+    if (!task.failed) detail += \`<button class="act" onclick="markReviewed('\${task.id}')">\${task.reviewed ? 'Reviewed ✓' : 'Mark reviewed'}</button>\`;
+    detail += '</div></div>';
+  }
+  // Only offer a bulk-select checkbox where bulk actions exist: needsHuman (mark-done) and
+  // not-yet-reviewed done tasks (mark-reviewed) — mirrors the two bulk-action groups.
+  const showCheckbox = bucketName === 'needsHuman' || (bucketName === 'done' && !task.reviewed);
+  const checkbox = showCheckbox
+    ? \`<input type="checkbox" \${checked} data-id="\${task.id}" data-bucket="\${bucketName}" onclick="event.stopPropagation(); rangeSelect(event, this)" onchange="toggleSelect(this)">\`
+    : '';
+  const hidden = (bucketName === 'done' && state.doneFilter !== 'all' && ((state.doneFilter === 'reviewed') !== !!task.reviewed)) ? ' style="display:none"' : '';
+  return \`<div class="taskrow" id="task-\${task.id}"\${hidden}>
+    <div class="row" onclick="toggleOpen('\${task.id}')">
+      \${checkbox}<span class="caret">\${open ? '▾' : '▸'}</span>
+      <span class="tid mono">\${esc(task.id)}</span>
+      <span class="title">\${esc(task.title || '')}</span>
+      \${pillsFor(task, bucketName)}
+    </div>
+    \${detail}
+  </div>\`;
+}
+
+function renderSection(name, emoji, label, desc, tasks, countStr) {
+  const openAttr = state.closedSections.has(name) ? '' : ' open';
+  let bar = '';
+  if (name === 'needsHuman' || name === 'done') {
+    const selectable = tasks.filter(t => name === 'needsHuman' || !t.reviewed).map(t => t.id);
+    const n = selectable.filter(id => state.selected.has(id)).length;
+    const allSel = selectable.length > 0 && n === selectable.length;
+    if (selectable.length) {
+      const verb = name === 'needsHuman' ? 'done' : 'reviewed';
+      bar = \`<div class="bar"><label class="sel"><input type="checkbox" \${allSel ? 'checked' : ''} onclick="toggleAll('\${name}', this.checked)"> select all (\${selectable.length})</label>\`
+          + \`<button class="act" onclick="bulkAction('\${name}')" \${n ? '' : 'disabled'}>Mark \${n} \${verb}</button></div>\`;
+    }
+  }
+  let filterBar = '';
+  if (name === 'done') {
+    const mk = (mode, text) => \`<button class="barbtn\${state.doneFilter === mode ? ' on' : ''}" onclick="setDoneFilter('\${mode}')">\${text}</button>\`;
+    filterBar = \`<div class="bar"><span class="barlabel">Show</span>\${mk('all', 'All')}\${mk('reviewed', 'Reviewed')}\${mk('unreviewed', 'Not reviewed')}</div>\`;
+  }
+  const rows = tasks.length ? tasks.map(t => renderTask(t, name)).join('') : '<p class="empty">None.</p>';
+  const descHtml = desc ? \`<p class="section-desc">\${desc}</p>\` : '';
+  return \`<details class="section"\${openAttr} ontoggle="onSectionToggle('\${name}', this)">
+    <summary class="section-heading">\${emoji} \${label} (\${countStr})</summary>
+    \${descHtml}\${filterBar}\${bar}
+    <div class="panel">\${rows}</div>
+  </details>\`;
+}
+
+function renderBacklog(data) {
+  state.lastData = data;   // cache so pure-UI actions (expand, filter, select) re-render without a refetch
+  const b = data.buckets, c = data.counts;
+  const total = b.ready.length + b.waiting.length + b.needsHuman.length + b.done.length;
+  const reviewed = b.done.filter(t => t.reviewed).length;
+  document.getElementById('summary').innerHTML =
+    'The harness task list (<span class="mono">.harness/tracking/TASKS.json</span>), rendered. '
+    + \`\${total} task(s) · \${c.ready} ready · \${c.waiting} waiting · \${c.needsHuman} need a human · \${c.done} done (\${reviewed} reviewed). Auto-refreshes.\`;
+  document.getElementById('sections').innerHTML =
+    renderSection('ready', '🤖', 'Ready', 'Everything the harness can build with no human involved — either right now, or once an earlier, equally-buildable task in its chain lands.', b.ready, b.ready.length)
+    + renderSection('waiting', '⏳', 'Waiting on human tasks', 'Buildable, but blocked somewhere upstream by a task a human still has to clear.', b.waiting, b.waiting.length)
+    + renderSection('needsHuman', '🔒', 'Human tasks', 'The loop skips these — a needs-human step, or a task it gave up on. Work them yourself, then mark done.', b.needsHuman, b.needsHuman.length)
+    + renderSection('done', '✅', 'Done', null, b.done, \`\${b.done.length} · \${reviewed} reviewed · \${b.done.length - reviewed} not reviewed\`);
+}
+
+// Re-render from cached data (no network) — for expand/collapse, filter, and selection changes.
+function rerender() { if (state.lastData) renderBacklog(state.lastData); }
+
+function onLogToggle(el) { el.open ? state.openLogs.add(el.id) : state.openLogs.delete(el.id); }
+
+// Persist a section's collapsed state across re-renders (the 5s refresh rebuilds innerHTML).
+function onSectionToggle(name, el) { el.open ? state.closedSections.delete(name) : state.closedSections.add(name); }
+
+function toggleAll(name, checked) {
+  const tasks = (state.lastData && state.lastData.buckets && state.lastData.buckets[name]) || [];
+  for (const t of tasks) {
+    if (!(name === 'needsHuman' || !t.reviewed)) continue;   // only the selectable ones
+    checked ? state.selected.add(t.id) : state.selected.delete(t.id);
+  }
+  rerender();
+}
+
+function toggleOpen(id) { state.open.has(id) ? state.open.delete(id) : state.open.add(id); rerender(); }
+function toggleSelect(cb) { cb.checked ? state.selected.add(cb.dataset.id) : state.selected.delete(cb.dataset.id); rerender(); }
+
+// Dependency navigation: expand + scroll to + briefly highlight a task wherever it currently lives.
+function openTask(id) {
+  if (!document.getElementById('task-' + id)) return;
+  state.open.add(id);
+  rerender();
+  const el = document.getElementById('task-' + id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 1500);
+}
+
+function setDoneFilter(mode) { state.doneFilter = mode; rerender(); }
+
+// Shift-click range-select: tracks the last checkbox clicked (by id + bucket). Shift-clicking a
+// second checkbox in the SAME bucket selects every checkbox in between to match the just-clicked
+// box's new state.
+function rangeSelect(e, cb) {
+  const bucket = cb.dataset.bucket;
+  if (e.shiftKey && state.lastClicked && state.lastClicked.bucket === bucket) {
+    const boxes = [...document.querySelectorAll('input[data-bucket="' + bucket + '"]')];
+    const i1 = boxes.findIndex(b => b.dataset.id === state.lastClicked.id);
+    const i2 = boxes.indexOf(cb);
+    if (i1 !== -1 && i2 !== -1) {
+      const [lo, hi] = i1 < i2 ? [i1, i2] : [i2, i1];
+      const on = cb.checked;
+      for (let i = lo; i <= hi; i++) { on ? state.selected.add(boxes[i].dataset.id) : state.selected.delete(boxes[i].dataset.id); }
+    }
+  }
+  state.lastClicked = { bucket, id: cb.dataset.id };
+}
+
+// POST + surface failures: a mark-*.sh that errors (e.g. push rejected, gpg-sign failure) comes back
+// as res.ok=false or {ok:false}; alert the reason instead of silently re-rendering unchanged (the old
+// fire-and-forget looked like a successful no-op when the action had actually failed).
+async function post(path, body) {
+  try {
+    const res = await fetch(path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) { alert('Action failed:\\n' + (data.error || res.statusText || 'unknown error')); return false; }
+    return true;
+  } catch (e) { alert('Action error: ' + e); return false; }
+}
+
+async function markDone(id) {
+  if (!confirm('Mark ' + id + ' done? Writes human-done.json, commits + pushes.')) return;
+  if (await post('/api/mark-done', { ids: [id] })) refreshActive();
+}
+async function markFailed(id) {
+  const reason = prompt('Mark ' + id + ' as a false success — what was actually wrong?');
+  if (!reason) return;
+  if (await post('/api/mark-failed', { id, reason })) refreshActive();
+}
+async function markReviewed(id) { if (await post('/api/mark-reviewed', { ids: [id] })) refreshActive(); }
+
+async function bulkAction(bucket) {
+  const ids = [...state.selected];
+  if (!ids.length) return;
+  let ok = true;
+  if (bucket === 'needsHuman') {
+    if (!confirm('Mark ' + ids.length + ' task(s) done? Writes human-done.json, commits + pushes.')) return;
+    ok = await post('/api/mark-done', { ids });
+  }
+  if (bucket === 'done') ok = await post('/api/mark-reviewed', { ids });
+  if (ok) { state.selected.clear(); refreshActive(); }
+}
+
+refreshActive();
+setInterval(refreshActive, 5000);   // one poll → the active view (each keeps its own change-guard)
+</script>
+</body>
+</html>`;
+}
+
+if (require.main === module) {
+  server.listen(PORT, '127.0.0.1', () => {
+    console.log(`[dashboard] listening on http://127.0.0.1:${PORT}`);
+  });
+  // Opt-in freshness fetch (HARNESS_DASHBOARD_FETCH_SECONDS > 0): keep FETCH_HEAD / origin refs
+  // current so the backlog can't silently lag origin when the loop isn't running. Fetch-only —
+  // never touches the working tree; failures (offline, no remote) are silent and harmless.
+  const fetchEvery = parseInt(envKnob('HARNESS_DASHBOARD_FETCH_SECONDS', '0'), 10) || 0;
+  if (fetchEvery > 0) {
+    setInterval(() => {
+      execFile('git', ['fetch', 'origin', '--quiet'], { cwd: ROOT, timeout: 60000 }, () => {});
+    }, fetchEvery * 1000);
+    console.log(`[dashboard] fetching origin every ${fetchEvery}s (HARNESS_DASHBOARD_FETCH_SECONDS)`);
+  }
+}
+
+module.exports = { server, loadState, isLoopback };

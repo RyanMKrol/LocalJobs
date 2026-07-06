@@ -315,53 +315,6 @@ const singleStageStageIoOverall = {
   inputs: [], outputs: [singleStageOutput], predecessorJobs: [], outputJobs: ['claude-warm'], job: '__overall__',
 };
 
-const tasks = [
-  // T001 is a standalone ready pending task (no longer anyone's dependency) — a valid "Ready" example
-  // with no unmet deps at all (shows the "🤖 buildable" pill, not a "needs:" pill).
-  // T294: T001 also carries prior build-attempt failure history, exercising the amber
-  // "⚠ N failed attempt(s)" pill alongside the "🤖 buildable" pill in the Ready section.
-  { id: 'T001', title: 'Foundation task — ' + LONG, status: 'pending', gate: null, dependsOn: [],
-    tags: ['infra'], do: 'Set up the thing. ' + LONG, doneWhen: 'It is set up.',
-    buildFailures: { count: 2, latestKind: 'agent-blocked', latestDetail: 'scope excludes a needed file', latestAt: '2026-06-30T12:00:00Z' } },
-  // T002 depends on T001 (buildable, unmet, non-human) — T293 follow-up to T283: a task blocked
-  // solely by an ordinary buildable dependency now shows in READY (not hidden), with a "needs: T001"
-  // pill instead of the "🤖 buildable" pill.
-  { id: 'T002', title: 'Depends on a buildable task — ' + LONG, status: 'pending', gate: null,
-    dependsOn: ['T001'], tags: ['infra'], do: 'Build on top of the foundation. ' + LONG, doneWhen: 'Done.' },
-  // T098 is a needs-human blocker — T040 depends on it (unmet + human-gated) so T040 appears in
-  // Waiting with a "needs:" pill pointing only at T098.
-  { id: 'T098', title: 'A human-gated blocker', status: 'pending', gate: 'needs-human', dependsOn: [],
-    tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
-  // T040 depends on T098 (unmet + human-gated, → Waiting section pill) AND T050 (done, → expanded-body
-  // dep link). This exercises both pill dep-click (T098) and cross-section dep navigation (T050 in Done).
-  { id: 'T040', title: 'Mobile dashboard styling pass — ' + LONG, status: 'pending', gate: null,
-    dependsOn: ['T098', 'T050'], tags: ['dashboard', 'ui', 'testing'], model: 'claude-opus-4-8',
-    effort: 'high', do: 'Make the dashboard responsive on mobile. ' + LONG, doneWhen: 'It passes. ' + LONG },
-  // T041 depends ONLY on T040 (gate:null, not itself human-gated) — but T040 is transitively blocked
-  // by T098. Exercises the TRANSITIVE walk: T041 must land in Waiting (not Ready) with its "needs:"
-  // pill pointing at T098 (the actual upstream human blocker), not T040 (its direct, non-human dep).
-  { id: 'T041', title: 'Transitively blocked by a human gate — ' + LONG, status: 'pending', gate: null,
-    dependsOn: ['T040'], tags: ['dashboard'], do: 'Depends on T040. ' + LONG, doneWhen: 'Done.' },
-  { id: 'T099', title: 'A human-gated task', status: 'pending', gate: 'needs-human', dependsOn: [],
-    tags: ['infra'], do: 'Do a thing a human must do. ' + LONG, doneWhen: 'A human did it.' },
-  // A done task (exercises the "Mark failed" button) and a done task already marked
-  // failed (exercises the red "failed" pill + "Undo fail" button) — manual-fail-signal.
-  // T050 is intentionally a dep target from T040 above, exercising cross-section dep navigation.
-  { id: 'T050', title: 'A finished task — ' + LONG, status: 'done', gate: null, dependsOn: [],
-    tags: ['ui'], reviewed: true },
-  { id: 'T051', title: 'A finished task the owner marked failed', status: 'failed', gate: null,
-    dependsOn: [], tags: ['ui'], reviewed: true, failed: true, failReason: 'padlock never renders on the DAG' },
-  // T052-T054: unreviewed done tasks (T374) — exercise the shift-click range-select checkboxes in
-  // the Done section. T050/T051 above are both reviewed:true, so without these the Done section
-  // renders zero checkboxes at all.
-  { id: 'T052', title: 'Unreviewed finished task one', status: 'done', gate: null, dependsOn: [],
-    tags: ['ui'] },
-  { id: 'T053', title: 'Unreviewed finished task two', status: 'done', gate: null, dependsOn: [],
-    tags: ['ui'] },
-  { id: 'T054', title: 'Unreviewed finished task three', status: 'done', gate: null, dependsOn: [],
-    tags: ['ui'] },
-];
-
 const rec = (over) => ({
   tmdbId: 100, title: 'Inception', year: 2010, reason: 'A deeply layered thriller.', lens: 'cerebral',
   genre: 'Science Fiction', tmdbRating: 8.4, notified: false, ignored: false, ...over,
@@ -705,7 +658,6 @@ export function fixtureFor(pathname, searchParams) {
       { name: 'movie-recommendations', status: 'skipped', reason: 'workflow has an active run' },
     ],
   };
-  if (pathname === '/api/backlog') return { tasks };
   if (pathname === '/api/logs') {
     const allLogs = [
       { id: 6, ts: NOW, level: 'error', message: 'Places API returned 429 — quota exceeded for the day', source: 'job', jobName: 'places-enrich', workflowName: null, runId: '1', workflowRunId: null },
@@ -751,7 +703,6 @@ export const PAGES = [
   { name: 'job',                     path: '/jobs/places-enrich' },
   { name: 'run',                     path: '/runs/1' },
   { name: 'services',                path: '/integrations' },
-  { name: 'backlog',                 path: '/backlog' },
   { name: 'logs',                    path: '/logs' },
   { name: 'admin',                   path: '/admin' },
 ];
@@ -879,60 +830,6 @@ export const FLOWS = [
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ generatedAt: null, pooled: 0, recommendations: [] }) });
       });
       await page.reload({ waitUntil: 'networkidle' });
-    },
-  },
-  {
-    // The Backlog "Done" section is collapsed by default — expand every <details> so the
-    // done rows (and their reviewed/done/failed chips + buttons) are visible.
-    name: 'backlog-expanded',
-    path: '/backlog',
-    actions: async (page) => {
-      await page.evaluate(() =>
-        document.querySelectorAll('details:not([open])').forEach((d) => d.setAttribute('open', '')),
-      );
-    },
-  },
-  {
-    // Clickable dep ids — two interactions:
-    // 1. Click T098 link in T040's "needs:" pill (Waiting section) → scrolls to T098 in Needs a human.
-    // 2. Expand T040 and click T050 in its "depends on:" body line → Done section opens + T050 expands.
-    name: 'backlog-dep-click',
-    path: '/backlog',
-    settleMs: 1200,
-    actions: async (page) => {
-      // Step 1: click T098 in the Waiting-section pill — T098 is in Needs a human (already open via
-      // <details open>), should expand.
-      await page.waitForSelector('.dep-id-link', { state: 'visible', timeout: 5000 });
-      await page.click('.dep-id-link:has-text("T098")');
-      await page.waitForSelector('#task-T098', { state: 'visible', timeout: 3000 });
-      await page.waitForTimeout(300);
-
-      // Step 2: expand T040 (click on its row) to reveal the "depends on:" body with T050 link.
-      await page.click('#task-T040 .done-row');
-      await page.waitForSelector('#task-T040 .task-expand-body', { state: 'visible', timeout: 3000 });
-
-      // Step 3: click T050 dep link in the body → Done section (collapsed) should open + T050 highlighted.
-      await page.click('#task-T040 .dep-id-link:has-text("T050")');
-      await page.waitForSelector('#task-T050', { state: 'visible', timeout: 3000 });
-      await page.waitForTimeout(500);
-    },
-  },
-  {
-    // T374: shift-click range-select on the Done section checkboxes — plain-click T052's
-    // checkbox, then Shift-click T054's checkbox, and every row in between (T052, T053, T054)
-    // should render checked, with the bulk "Mark N as reviewed" button showing the range count.
-    name: 'backlog-shift-select',
-    path: '/backlog',
-    settleMs: 800,
-    actions: async (page) => {
-      await page.evaluate(() =>
-        document.querySelectorAll('details:not([open])').forEach((d) => d.setAttribute('open', '')),
-      );
-      await page.waitForSelector('#task-T052 input[type="checkbox"]', { state: 'visible', timeout: 5000 });
-      await page.click('#task-T052 input[type="checkbox"]');
-      await page.waitForTimeout(200);
-      await page.click('#task-T054 input[type="checkbox"]', { modifiers: ['Shift'] });
-      await page.waitForTimeout(300);
     },
   },
   {

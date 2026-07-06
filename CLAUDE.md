@@ -244,55 +244,22 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   the `rowid` tiebreaker the dashboard's last-write-wins "latest per stage" could
   pick the stale settled run over the live one — the succeeded→running→succeeded
   status flicker. Keep any "latest run" derivation ordering by `(started_at, rowid)`.
-- **The dashboard is a pure read/refresh client of the API.** It never touches
-  SQLite directly and is not required for jobs to run. There are **exactly THREE
-  deliberate write exceptions**, all owner-owned overlay files in `.harness/`:
-  - **`reviewed` flag (T136, was T124):** lives in `.harness/tracking/reviews.json` (a
-    committed `id → { reviewed, at }` map — NOT in TASKS.json, which the loop owns).
-    Two endpoints write it: `POST /api/backlog/:id/reviewed` (single task, any
-    `reviewed` bool) and `POST /api/backlog/reviewed-bulk { ids: string[] }` (multiple
-    tasks reviewed=true in **one** atomic write + **one** git commit). Both atomically
-    write the file (temp-file + rename) AND, under the SAME mkdir lock loop.sh uses
-    (`src/core/repo-lock.ts`), commit it `[skip ci]` + push to GitHub (fetch+rebase+
-    retry; a failed push is a non-fatal warning). The bulk endpoint produces exactly ONE
-    git commit for the whole batch — the Backlog UI uses it for the select-all/bulk
-    flow (T191).
-  - **`done` flag (T208):** lives in `.harness/tracking/human-done.json` (a committed
-    `id → { done: true, at }` map). `POST /api/backlog/:id/done` applies only to
-    tasks with `gate === 'needs-human'` (400 otherwise); it atomically writes the
-    file and commits+pushes under the same repo lock. **Marking done implies
-    reviewed**: `GET /api/backlog` overlays `done=true` and derives `reviewed=true`
-    for any human-done task. The dashboard/API write ONLY the overlay; the loop then
-    RECONCILES it → `TASKS.json` `status=done` at pre-flight (T261, `reconcile_overlays`
-    in `loop.sh`), so a needs-human blocker marked done actually unblocks its dependents
-    (the loop keys selection on `TASKS.json` status, not the overlay). The Backlog page
-    shows a **"Mark done"** button on needs-human tasks that aren't already done.
-  - **`failed` flag (manual-fail-signal):** lives in `.harness/tracking/manual-fail.json` (a
-    committed `id → { failed: true, reason, at }` map). `POST /api/backlog/:id/failed`
-    is the owner's "this DONE task actually failed" correction — it applies only to
-    `status === 'done'` tasks (400 otherwise) and requires a `reason`; `{ failed: false }`
-    undoes. Same atomic write + commit/push-under-repo-lock pattern. **Marking failed
-    implies reviewed**: `GET /api/backlog` overlays `failed=true` + `failReason` and
-    derives `reviewed=true`. Crucially this is NOT just display — the **loop READS this
-    overlay** (the only overlay it reads) to CORRECT calibration: a falsely-recorded
-    success is re-counted as a failure for difficulty tuning AND dropped from its
-    `(layer×workType)` cell's confirmed-audited count, so that category is built with a
-    stronger model and audited more often. The dashboard/API write ONLY the overlay; the
-    loop then RECONCILES it → `TASKS.json` `status=failed` at pre-flight (T279,
-    `reconcile_overlays`) — an authoritative TERMINAL status the loop skips (it does NOT
-    re-open/rebuild; the re-do is a separate follow-up task). The Backlog page shows a
-    **"Mark failed"** button on done tasks — the sole interface to this overlay (a
-    portable, no-dashboard `mark-failed.sh` script + `/local-jobs-mark-task-failed` command
-    used to exist alongside it; both were removed since every project this harness runs
-    in now has a dashboard — see "Known-but-deferred issues" if portability is needed
-    again). Full design: `.harness/docs/designs/manual-fail-signal.md`.
-  All three overlay files are disjoint git paths from TASKS.json and from each other,
-  so no writer ever conflicts with the loop or another file. The dashboard/API still
-  write ONLY the overlays and NEVER touch TASKS.json — the decoupling holds. The loop is
-  the sole TASKS.json writer: at pre-flight it READS the `human-done`/`manual-fail`
-  overlays and RECONCILES their verdicts into `TASKS.json` `status` (done / failed)
-  (T261/T279, `reconcile_overlays` in `loop.sh`), so the overlays are the owner's
-  write-surface and `TASKS.json` status is the authoritative reconciled state.
+- **The product dashboard is a pure read/refresh client of the API — NO write
+  exceptions.** It never touches SQLite directly, is not required for jobs to run, and
+  the product API is entirely read-only. The harness's owner-overlay writes
+  (`reviewed`/`done`/`failed`) live in the **self-contained harness backlog dashboard**
+  (`.harness/dashboard/server.js`, run as its own launchd agent on `:4791`), NOT in this
+  product: its `POST /api/mark-{reviewed,done,failed}` endpoints shell out to
+  `.harness/scripts/mark-*.sh`, which atomically write the overlay files AND commit+push
+  them `[skip ci]` under the SAME mkdir repo lock the loop uses (`.harness/scripts/repo-lock.sh`).
+  The overlays are unchanged owner-owned files under `.harness/tracking/`
+  (`reviews.json` T136, `human-done.json` T208, `manual-fail.json` manual-fail-signal),
+  each a disjoint git path so no writer conflicts. The loop still READS `manual-fail` for
+  calibration (a false success is re-counted as a failure and dropped from its
+  `(layer×workType)` audited-success count) and RECONCILES `human-done`/`manual-fail` →
+  `TASKS.json` `status` (done / failed) at pre-flight (T261/T279, `reconcile_overlays` in
+  `loop.sh`) — so the overlays are the owner's write-surface and `TASKS.json` status is
+  the authoritative reconciled state. Full design: `.harness/docs/designs/manual-fail-signal.md`.
 - **A `status="blocked"` task is the LOOP's own failure signal — distinct from the owner's
   `status="failed"` above, and NOT an overlay.** When `block_task()` (in `loop.sh`) gives up on
   a task (either the agent itself reports `failed:blocked` mid-attempt, or `MAX_ATTEMPTS` is
@@ -327,7 +294,6 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
 | `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan, plus the mutating `plexPutStreams`/`triggerButlerBackup` used by `plex-language-apply`) — used by all 6 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`), owned by none of them |
-| `src/core/repo-lock.ts` | The shared mkdir-based repo lock (`acquireRepoLock`/`resolveRepoPaths`) the daemon's reviews commit+push uses to be mutually exclusive with the autonomous loop (T136). The lock path MUST stay byte-identical to `loop.sh`'s `acquire_lock` (`<git-common-dir>/<basename(repo-root)>-loop.lock` + `pid` file + stale-pid reclaim) |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
@@ -1416,27 +1382,22 @@ this in addition to everything above:
     TASKS.json.** The loop NEVER WRITES any of them (it only writes TASKS.json `status` + the
     worklog), so the writers stay decoupled.
     - **`reviewed` (T136):** lives in `.harness/tracking/reviews.json` (`id → { reviewed, at }`). Set via
-      `POST /api/backlog/:id/reviewed` or bulk `POST /api/backlog/reviewed-bulk`. Both atomically
-      write the file AND commit+push `[skip ci]` under the repo lock (fetch+rebase+retry; failed
-      push = non-fatal warning). `GET /api/backlog` overlays `reviewed` (absent → false).
+      the harness backlog dashboard (`.harness/dashboard/server.js` → `mark-reviewed.sh`), which
+      atomically writes the file AND commits+pushes `[skip ci]` under the repo lock (fetch+rebase+retry;
+      failed push = non-fatal warning).
     - **`done` (T208):** lives in `.harness/tracking/human-done.json` (`id → { done: true, at }`). Set via
-      `POST /api/backlog/:id/done` (needs-human tasks only — 400 otherwise). Same atomic
-      write+commit+push pattern. `GET /api/backlog` overlays `done=true` and derives
-      `reviewed=true` for human-done tasks (done implies reviewed). The Backlog page shows a
-      "Mark done" button on needs-human tasks that aren't already done.
+      the harness dashboard's "Mark done" on needs-human tasks (→ `mark-done.sh`). Same atomic
+      write+commit+push pattern; done implies reviewed.
     - **`failed` (manual-fail-signal):** lives in `.harness/tracking/manual-fail.json` (`id → { failed,
-      reason, at }`). The owner's "this DONE task actually failed" correction. Set via `POST
-      /api/backlog/:id/failed` (done tasks only, reason required; `{failed:false}` undoes), via the
-      Backlog page's "Mark failed" button — the sole interface (a portable, no-dashboard
-      `mark-failed.sh` script + `/local-jobs-mark-task-failed` command used to exist alongside it;
-      both were removed as redundant once every project this harness runs in had a dashboard).
-      Same atomic write+commit+push pattern. **The loop READS this overlay** (it still never
-      WRITES it) to correct calibration —
-      `policy.jq`/`pick_base` re-count the task as a failure for tier tuning, and `audit_gate` drops it
-      from its cell's confirmed-audited count (built stronger + audited more). It ALSO reconciles it →
-      `TASKS.json` `status=failed` (see below). Design: `.harness/docs/designs/manual-fail-signal.md`.
-    The agent must not hand-edit any of these overlay files — they are UI / owner actions. (To mark
-    a task failed when asked, use the dashboard's "Mark failed" button, never a hand-edit.)
+      reason, at }`). The owner's "this DONE task actually failed" correction. Set via the harness
+      dashboard's "Mark failed" on done tasks (→ `mark-failed.sh`; reason required; `{failed:false}`
+      undoes). Same atomic write+commit+push pattern. **The loop READS this overlay** (it still never
+      WRITES it) to correct calibration — `policy.jq`/`pick_base` re-count the task as a failure for
+      tier tuning, and `audit_gate` drops it from its cell's confirmed-audited count (built stronger +
+      audited more). It ALSO reconciles it → `TASKS.json` `status=failed` (see below). Design:
+      `.harness/docs/designs/manual-fail-signal.md`.
+    The agent must not hand-edit any of these overlay files — they are owner actions via the harness
+    dashboard. (To mark a task failed when asked, use the harness dashboard's "Mark failed" button.)
     - **Overlay → status reconcile (T261/T279, `reconcile_overlays` in `loop.sh`).** The loop NEVER
       writes the overlay files, but at PRE-FLIGHT it reads `human-done`/`manual-fail` and promotes their
       verdicts into `TASKS.json` `status`: human-done → `status=done` (so a needs-human blocker actually
@@ -1454,9 +1415,9 @@ this in addition to everything above:
   going forward, to newly-authored specs. TASKS.json keeps every OTHER field (`status`, `dependsOn`, `gate`,
   `model`/`effort`/`escalation`, `scope`, `tags`, `verify`, `design` — but NOT `reviewed`, which
   lives in `.harness/tracking/reviews.json` since T136). The loop's prompt
-  reads the orchestration fields from JSON and appends the spec MD verbatim; `GET /api/backlog`
-  inlines it as `specContent` (`readTaskSpec`, confined to `.harness/tasks/*.md`) and the Backlog
-  page renders it as markdown. **Authoring a NEW task = a JSON object with a `spec` field PLUS its
+  reads the orchestration fields from JSON and appends the spec MD verbatim; the harness backlog
+  dashboard (`.harness/dashboard/server.js`) inlines each spec into its Backlog view and renders it
+  as markdown. **Authoring a NEW task = a JSON object with a `spec` field PLUS its
   matching `.harness/tasks/TNNN.md` (no `do`/`doneWhen` in JSON), created in the same edit.**
 - **Backlog authoring: pair every "options/chooser" task with a review task (T129) — the GENERAL
   pattern for "a human must sign off on this deliverable before dependents proceed" (2026-07).**

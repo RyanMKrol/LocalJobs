@@ -1,0 +1,4 @@
+{
+  "type": "commonjs",
+  "//": "Scopes the harness dashboard (pristine CommonJS server.js/lib.js) back to CommonJS, overriding the repo root's \"type\": \"module\". NOT a fork — the plugin-owned .js files are byte-identical to the reference; this local override just lets them run in an ESM project. Upstream candidate: the plugin should ship this itself so the dashboard works in type:module projects out of the box."
+}

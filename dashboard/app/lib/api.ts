@@ -329,36 +329,6 @@ export interface GlobalLogLine {
   workflowRunId: string | null;
 }
 
-export interface BacklogTask {
-  id: string;
-  title: string;
-  status: string;
-  gate: null | 'needs-human';
-  dependsOn: string[];
-  tags?: string[];
-  scope?: string[];
-  verify?: string[];
-  // The task's do/doneWhen live in a per-task Markdown spec (T131): `spec` is the
-  // repo-relative path (.harness/tasks/TNNN.md) and `specContent` is its inlined
-  // text (## Do / ## Done when), supplied by GET /api/backlog for rendering.
-  spec?: string;
-  specContent?: string;
-  // Committed worklog for this task (.harness/worklog/<id>.md), inlined by GET /api/backlog.
-  // Absent when no worklog file exists yet.
-  worklogContent?: string;
-  // Human-review flag (T124): owner-set via the dashboard, not the harness loop.
-  // Defaults to false (the API normalises absent values).
-  reviewed?: boolean;
-  // Human-done flag (T208): set when the owner marks a needs-human task done.
-  // Implies reviewed=true. Only present (true) when the task is human-done.
-  done?: boolean;
-  // Manual-fail flag (manual-fail-signal): set when the owner overturns a recorded
-  // success — the task was marked done but actually failed. Implies reviewed=true.
-  // Only present (true) when failed; `failReason` is the owner's note.
-  failed?: boolean;
-  failReason?: string;
-}
-
 /** One complete-missing TV season (plex workflow), overlaid with ledger status. */
 export interface MissingSeason {
   tmdbId: number;
@@ -686,35 +656,5 @@ export const api = {
     post<{ ok: boolean; service: Service }>(`/api/services/${name}/limits`, limits),
   serviceConsumers: (name: string) =>
     get<{ consumers: ServiceConsumerGroup[] }>(`/api/services/${name}/consumers`),
-
-  // Harness backlog (.harness/tracking/TASKS.json). Read-only EXCEPT the human-owned
-  // `reviewed` flag, which lives in the owner-owned .harness/tracking/reviews.json (T136).
-  // `markReviewed` writes it AND the daemon commits + pushes it to GitHub under the
-  // loop lock; the response reports whether the push succeeded (`pushed`) and a
-  // non-fatal `warning` if it didn't (e.g. offline) — the commit still persists.
-  // `markReviewedBulk` marks multiple tasks reviewed in a SINGLE git commit.
-  backlog: () => get<{ tasks: BacklogTask[]; error?: string }>('/api/backlog'),
-  markReviewed: (id: string, reviewed: boolean) =>
-    post<{ ok: boolean; id: string; reviewed: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
-      `/api/backlog/${encodeURIComponent(id)}/reviewed`,
-      { reviewed },
-    ),
-  markReviewedBulk: (ids: string[]) =>
-    post<{ ok: boolean; ids: string[]; count: number; committed?: boolean; pushed?: boolean; warning?: string }>(
-      '/api/backlog/reviewed-bulk',
-      { ids },
-    ),
-  markBacklogDone: (id: string) =>
-    post<{ ok: boolean; id: string; done: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
-      `/api/backlog/${encodeURIComponent(id)}/done`,
-      {},
-    ),
-  // Mark a DONE task as failed (the owner's "this wasn't actually done" correction —
-  // manual-fail-signal). `reason` is required when failing; pass failed=false to undo.
-  markBacklogFailed: (id: string, failed: boolean, reason?: string) =>
-    post<{ ok: boolean; id: string; failed: boolean; committed?: boolean; pushed?: boolean; warning?: string }>(
-      `/api/backlog/${encodeURIComponent(id)}/failed`,
-      failed ? { failed: true, reason: reason ?? '' } : { failed: false },
-    ),
 
 };
