@@ -11802,7 +11802,7 @@
     {
       "id": "T446",
       "title": "New plex-profiles workflow: per-title (movie + TV show) markdown profiles from pure Plex API data, no LLM",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
