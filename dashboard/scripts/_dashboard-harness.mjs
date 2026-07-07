@@ -283,8 +283,10 @@ const stockDigestStageIoOverall = {
 // places-enrich-with-llm, no fan-out/fan-in at all), proving StageIoPanel against the
 // simplest multi-stage shape now that it's the default for every workflow. Reuses the
 // existing `/workflow-runs/1` run (workflow_name: 'places', `members` above).
-const placesResolveOutput = { jobName: 'places-resolve', itemKey: 'cid:' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name' } };
-const placesEnrichOutput = { jobName: 'places-enrich', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name — enriched fields only' } };
+// T457: detail carries fields beyond `name` (mirroring the real resolve.ts/enrich.ts
+// `markWorkItem` calls) so the dashboard's per-item detail-hint pills are exercised.
+const placesResolveOutput = { jobName: 'places-resolve', itemKey: 'cid:' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', placeId: 'ChIJN1t_tDeuEmsRUsoyG83frY4' } };
+const placesEnrichOutput = { jobName: 'places-enrich', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name — enriched fields only', rating: 4.6, type: 'Restaurant', address: '221B Baker Street, London' } };
 const placesLlmOutput = { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', markdown: '/abs/data/out/' + LONG + '.md' } };
 const placesStageIo = {
   'places-resolve': { inputs: [], outputs: [placesResolveOutput], predecessorJobs: [], job: 'places-resolve' },

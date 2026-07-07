@@ -18,6 +18,53 @@ function itemLabel(key: string, detail: StageIoItem['detail']): string {
   return key;
 }
 
+/** Detail keys handled elsewhere (name is the label; the rest are artifact/bookkeeping
+ *  plumbing) — never shown as generic hint pills. */
+const DETAIL_HINT_EXCLUDED_KEYS = new Set(['name', 'markdown', 'path', 'format', 'attempts']);
+
+const MAX_DETAIL_HINT_VALUE_LENGTH = 80;
+const MAX_DETAIL_HINTS = 4;
+
+/** Humanize a camelCase/snake_case detail key into a Title Case label, e.g.
+ *  `placeId` -> 'Place Id', `resolved_count` -> 'Resolved Count'. */
+export function humanizeDetailKey(key: string): string {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function truncateDetailValue(value: string): string {
+  if (value.length <= MAX_DETAIL_HINT_VALUE_LENGTH) return value;
+  return `${value.slice(0, MAX_DETAIL_HINT_VALUE_LENGTH - 1)}…`;
+}
+
+export interface DetailHint {
+  label: string;
+  value: string;
+}
+
+/** Extract up to `MAX_DETAIL_HINTS` labeled scalar fields from a work-item detail blob,
+ *  beyond the primary `name` label — a scannable proof of what a stage actually recorded
+ *  (a resolved place_id, a rating, a resolved count, …), without dumping the whole blob. */
+export function detailHints(detail: StageIoItem['detail']): DetailHint[] {
+  if (!detail) return [];
+  const hints: DetailHint[] = [];
+  for (const key of Object.keys(detail)) {
+    if (hints.length >= MAX_DETAIL_HINTS) break;
+    if (DETAIL_HINT_EXCLUDED_KEYS.has(key)) continue;
+    const value = detail[key];
+    if (value === null || value === undefined) continue;
+    const type = typeof value;
+    if (type !== 'string' && type !== 'number' && type !== 'boolean') continue;
+    hints.push({ label: humanizeDetailKey(key), value: truncateDetailValue(String(value)) });
+  }
+  return hints;
+}
+
 /** The path to an artifact this item's stage produced, if any — `detail.markdown` for a
  *  markdown artifact (T110) or `detail.path` for any other declared output form (T262,
  *  generalized to every stage, not just a workflow's terminal one). Either is served by
@@ -40,6 +87,7 @@ function StageIoItemRow(
 ) {
   const label = itemLabel(item.itemKey, item.detail);
   const artifact = artifactPath(item.detail);
+  const hints = detailHints(item.detail);
 
   const open = () => {
     const contentPromise = api.workflowRunOutput(runId, item.jobName, item.itemKey)
@@ -56,6 +104,13 @@ function StageIoItemRow(
           <button type="button" className="stage-io-item-link" onClick={open} title={artifact}>
             {label} — click to preview
           </button>
+        )}
+        {hints.length > 0 && (
+          <div className="stage-io-item-hints">
+            {hints.map((h) => (
+              <span key={h.label} className="stage-io-item-hint">{h.label}: {h.value}</span>
+            ))}
+          </div>
         )}
       </div>
       <span className={`badge ${item.status}`}>{item.status}</span>

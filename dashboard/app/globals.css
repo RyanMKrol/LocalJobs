@@ -210,6 +210,8 @@ tbody tr:hover { background: var(--panel-2); }
 .stage-io-item-name { color: var(--muted); font-size: 0.85em; margin-top: 1px; }
 .stage-io-item-link { background: none; border: none; padding: 0; color: var(--accent); font-family: var(--font-mono, monospace); font-size: 0.82em; cursor: pointer; text-align: left; }
 .stage-io-item-link:hover { text-decoration: underline; }
+.stage-io-item-hints { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.stage-io-item-hint { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
 /* Recent workflow runs scroll container (T185) — bounded height ~12 rows, sticky header. */
 .recent-runs-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
 .recent-runs-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
