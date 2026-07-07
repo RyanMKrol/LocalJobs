@@ -12017,7 +12017,7 @@
     {
       "id": "T453",
       "title": "Restructure plex-language-fix into discover/resolve/evaluate/apply with per-file idempotency",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T451",
         "T452"
