@@ -1,9 +1,11 @@
 import {
+  getCachedServiceResponse,
   getServiceRow,
   recordServiceCall,
   recordServiceConsumer,
   serviceCallsThisMonth,
   serviceCallsToday,
+  setCachedServiceResponse,
   tryReserveMinInterval,
   tryReserveServiceSlot,
 } from '../db/store.js';
@@ -74,7 +76,17 @@ export interface CallServiceOpts {
   maxWaitMs?: number;
   /** Called once if the call had to wait for a rate slot (so callers can log it). */
   onThrottle?: (waitedMs: number) => void;
+  /**
+   * Opt-in cache key for deduping near-simultaneous identical calls. Only honored
+   * for 'api'-category services; ignored for every other category. A hit within
+   * SERVICE_CACHE_TTL_MS short-circuits the call entirely (no consumer recording,
+   * no quota/rate checks, no fn()).
+   */
+  cacheKey?: string;
 }
+
+/** Response cache TTL for 'api'-category services opting in via cacheKey (T451). */
+const SERVICE_CACHE_TTL_MS = 5 * 60_000;
 
 /**
  * Gate an external call behind a service's SHARED, cross-job limits:
@@ -92,6 +104,12 @@ export async function callService<T>(
   const def = getServiceDef(name);
   if (!def) return fn();
 
+  const useCache = Boolean(opts.cacheKey) && def.category === 'api';
+  if (useCache) {
+    const cached = getCachedServiceResponse<T>(name, opts.cacheKey as string, SERVICE_CACHE_TTL_MS);
+    if (cached !== undefined) return cached;
+  }
+
   // Record that this job used this service (best-effort — never block the call).
   if (_callingJobName) {
     try { recordServiceConsumer(name, _callingJobName); } catch { /* non-fatal */ }
@@ -101,6 +119,12 @@ export async function callService<T>(
   // default; otherwise the code default is the source of truth. minIntervalMs /
   // maxJitterMs are code-only (not editable) and always come from the def.
   const { ratePerMinute, dailyCap, monthlyCap } = effectiveLimits(def);
+
+  const runAndCache = async (): Promise<T> => {
+    const result = await fn();
+    if (useCache) setCachedServiceResponse(name, opts.cacheKey as string, result);
+    return result;
+  };
 
   // ── quota (long window) → soft-fail ──
   if (monthlyCap != null) {
@@ -126,7 +150,7 @@ export async function callService<T>(
     }
     if (def.maxJitterMs && def.maxJitterMs > 0) await sleep(Math.floor(Math.random() * def.maxJitterMs));
     if (waited) opts.onThrottle?.(Date.now() - start);
-    return fn();
+    return runAndCache();
   }
 
   // ── per-minute rate → throttle (the reservation records the usage row) ──
@@ -142,10 +166,10 @@ export async function callService<T>(
       await sleep(2000 + Math.floor(Math.random() * 1500));
     }
     if (waited) opts.onThrottle?.(Date.now() - start);
-    return fn();
+    return runAndCache();
   }
 
   // ── no rate limit → just meter + run ──
   recordServiceCall(name);
-  return fn();
+  return runAndCache();
 }

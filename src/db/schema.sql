@@ -217,3 +217,14 @@ CREATE TABLE IF NOT EXISTS service_consumers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_service_consumers_service ON service_consumers(service_name);
+
+-- Opt-in short-TTL response cache for 'api'-category services (T451). Populated
+-- by callService() in src/core/services.ts when a caller passes cacheKey; the
+-- TTL itself is enforced in code (getCachedServiceResponse), not in SQL.
+CREATE TABLE IF NOT EXISTS service_cache (
+  service_name    TEXT NOT NULL,
+  cache_key       TEXT NOT NULL,
+  response_json   TEXT NOT NULL,
+  cached_at       TEXT NOT NULL,
+  PRIMARY KEY (service_name, cache_key)
+);

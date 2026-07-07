@@ -130,4 +130,62 @@ await test('listServiceConsumers returns empty array for unknown service', async
   assert.deepEqual(rows, []);
 });
 
+// ── response cache (T451) ───────────────────────────────────────────────────
+import { db } from '../db/index.js';
+
+await test('cacheKey on an api-category service: second call within TTL is a cache hit, fn NOT re-invoked, no extra usage row', async () => {
+  svc({ name: 'svc-cache-api', category: 'api' });
+  let calls = 0;
+  const first = await callService('svc-cache-api', async () => { calls++; return { n: calls }; }, { cacheKey: 'k1' });
+  assert.deepEqual(first, { n: 1 });
+  assert.equal(serviceCallsToday('svc-cache-api'), 1);
+
+  const second = await callService('svc-cache-api', async () => { calls++; return { n: calls }; }, { cacheKey: 'k1' });
+  assert.deepEqual(second, { n: 1 }); // cached value, not a fresh call
+  assert.equal(calls, 1); // fn was never invoked the second time
+  assert.equal(serviceCallsToday('svc-cache-api'), 1); // no additional usage row
+});
+
+await test('cacheKey on an api-category service: a different cacheKey is its own cache miss', async () => {
+  svc({ name: 'svc-cache-api-2', category: 'api' });
+  let calls = 0;
+  await callService('svc-cache-api-2', async () => { calls++; return calls; }, { cacheKey: 'a' });
+  await callService('svc-cache-api-2', async () => { calls++; return calls; }, { cacheKey: 'b' });
+  assert.equal(calls, 2);
+});
+
+await test('cacheKey expiry: a stale cached_at re-invokes fn and refreshes the row', async () => {
+  svc({ name: 'svc-cache-ttl', category: 'api' });
+  let calls = 0;
+  await callService('svc-cache-ttl', async () => { calls++; return calls; }, { cacheKey: 'k' });
+  assert.equal(calls, 1);
+
+  // Backdate the cached row past the 5-minute TTL.
+  const stale = new Date(Date.now() - 6 * 60_000).toISOString();
+  db.prepare('UPDATE service_cache SET cached_at = ? WHERE service_name = ? AND cache_key = ?')
+    .run(stale, 'svc-cache-ttl', 'k');
+
+  const out = await callService('svc-cache-ttl', async () => { calls++; return calls; }, { cacheKey: 'k' });
+  assert.equal(calls, 2); // re-fetched after TTL expiry
+  assert.equal(out, 2);
+});
+
+await test('cacheKey is ignored for a non-api-category service (cli-tool): always calls fn, nothing cached', async () => {
+  svc({ name: 'svc-cache-cli', category: 'cli-tool' });
+  let calls = 0;
+  await callService('svc-cache-cli', async () => { calls++; }, { cacheKey: 'k' });
+  await callService('svc-cache-cli', async () => { calls++; }, { cacheKey: 'k' });
+  assert.equal(calls, 2); // never short-circuited
+  const row = db.prepare('SELECT * FROM service_cache WHERE service_name = ?').get('svc-cache-cli');
+  assert.equal(row, undefined); // nothing written for a non-api service
+});
+
+await test('cacheKey is ignored for a non-api-category service (website-scrape): always calls fn, nothing cached', async () => {
+  svc({ name: 'svc-cache-scrape', category: 'website-scrape' });
+  let calls = 0;
+  await callService('svc-cache-scrape', async () => { calls++; }, { cacheKey: 'k' });
+  await callService('svc-cache-scrape', async () => { calls++; }, { cacheKey: 'k' });
+  assert.equal(calls, 2);
+});
+
 console.log(`\n${passed} services test(s) passed.`);

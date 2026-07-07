@@ -1775,6 +1775,43 @@ export function listServiceConsumers(serviceName: string): ServiceConsumerRow[] 
   `).all(serviceName) as ServiceConsumerRow[];
 }
 
+// ════════════════════ service response cache (T451) ════════════════════
+
+const _getServiceCache = db.prepare(
+  'SELECT response_json, cached_at FROM service_cache WHERE service_name = ? AND cache_key = ?',
+);
+
+/**
+ * Read a cached service response, honoring a TTL. Returns undefined if there is
+ * no row or the row is older than `ttlMs`. Used by callService() to short-circuit
+ * a real call for an opted-in 'api'-category service.
+ */
+export function getCachedServiceResponse<T>(
+  serviceName: string,
+  cacheKey: string,
+  ttlMs: number,
+): T | undefined {
+  const row = _getServiceCache.get(serviceName, cacheKey) as
+    | { response_json: string; cached_at: string }
+    | undefined;
+  if (!row) return undefined;
+  if (Date.now() - Date.parse(row.cached_at) > ttlMs) return undefined;
+  return JSON.parse(row.response_json) as T;
+}
+
+const _setServiceCache = db.prepare(`
+  INSERT INTO service_cache (service_name, cache_key, response_json, cached_at)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(service_name, cache_key) DO UPDATE SET
+    response_json = excluded.response_json,
+    cached_at     = excluded.cached_at
+`);
+
+/** Upsert a service response into the cache. Used by callService() (T451). */
+export function setCachedServiceResponse(serviceName: string, cacheKey: string, value: unknown): void {
+  _setServiceCache.run(serviceName, cacheKey, JSON.stringify(value), new Date().toISOString());
+}
+
 // ════════════════════ workflow output reset (T203) ════════════════════
 
 export interface WorkflowResetResult {
