@@ -1,13 +1,12 @@
-// Typed-artifact contract for the language scan output — the gate on the
-// plex-language-scan → plex-language-apply DAG edge. Both sides reuse the SAME
-// factory (the established convention in this repo when both sides of an edge
-// assert the same shape — see root CLAUDE.md's gate-collapse note).
-import { existsSync, readFileSync } from 'node:fs';
+// Typed-artifact contracts for the plex-language-fix DAG (T453):
+// plex-language-discover → plex-language-resolve → plex-language-evaluate → plex-language-apply.
+// Unlike places/perfumes, this workflow's stages chain through the per-item
+// `work_items` ledger, not a shared JSON file — each `check()` below is a
+// deliberately trivial "did the producer record anything" gate (an acceptable
+// minimum per this repo's gate-coverage rule), reading the ledger read-only via
+// `stages/ledger.ts` (never a paid/remote call).
 import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
-import { plexLanguageFixConfig } from './config.js';
-import type { LanguageScanFile } from './types.js';
-
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+import { ledgerSuccessCount } from './stages/ledger.js';
 
 function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
   const failed = checks.filter((c) => !c.ok);
@@ -21,42 +20,55 @@ function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
   };
 }
 
-const EXP = {
-  json: 'A readable language-scan JSON object',
-  items: 'Contains the items array',
-};
+const EXP_RECORDED = 'The ledger is readable (the library may legitimately be empty).';
 
-/** scan output boundary: the per-title language-scan changeset. */
-export function plexLanguageScanContract(file: string = plexLanguageFixConfig.scanOut): ArtifactContract {
+/** discover → resolve / discover → evaluate boundary: every discovered file. */
+export function plexLanguageDiscoverContract(): ArtifactContract {
   return {
-    key: 'plex-language-scan',
-    description: 'scan output: { items: [{ title, originalLanguage, files: [{ status, currentAudio, proposedAudio, ... }] }] } — readable, non-empty.',
+    key: 'plex-language-discover',
+    description: 'discover output: one work_items row per known file, keyed by "<itemRatingKey>::part<partId>", detail { name, file, itemRatingKey, partId, type, tmdbId, seasonEpisode? }.',
     shape: {
-      summary: 'The full per-title language scan: every show/movie file with its current vs proposed audio/subtitle.',
-      format: 'JSON object { generatedAt, sectionsScanned[], items[] }',
-      expectations: [
-        { label: EXP.json, detail: 'The scan file exists and parses as a JSON object.' },
-        { label: EXP.items, detail: 'It has an `items` array (the library may legitimately be empty).' },
-      ],
+      summary: 'Every file (movie or TV episode) discovered across the configured Plex library sections.',
+      format: 'work_items ledger rows for job "plex-language-discover"',
+      expectations: [{ label: EXP_RECORDED, detail: 'The ledger for this job is queryable.' }],
     },
     check(): GateResult {
-      const checks: ExpectationResult[] = [];
-      if (!existsSync(file)) {
-        checks.push({ label: EXP.json, ok: false, actual: `scan output missing: ${file}` });
-        return fromChecks(checks);
-      }
-      let parsed: LanguageScanFile;
-      try {
-        parsed = JSON.parse(readFileSync(file, 'utf8')) as LanguageScanFile;
-      } catch (e) {
-        checks.push({ label: EXP.json, ok: false, actual: `not valid JSON — ${errMsg(e)}` });
-        return fromChecks(checks);
-      }
-      checks.push({ label: EXP.json, ok: true, actual: 'valid JSON object' });
-      const items = Array.isArray(parsed.items) ? parsed.items : null;
-      checks.push({ label: EXP.items, ok: !!items, actual: items ? `${items.length} item(s)` : 'no items array' });
-      if (!items) return fromChecks(checks);
-      return fromChecks(checks, `${items.length} item(s)`);
+      const n = ledgerSuccessCount('plex-language-discover');
+      return fromChecks([{ label: EXP_RECORDED, ok: true, actual: `${n} file(s) known` }], `${n} file(s)`);
+    },
+  };
+}
+
+/** resolve → evaluate boundary: every file with a resolved candidate-language list. */
+export function plexLanguageResolveContract(): ArtifactContract {
+  return {
+    key: 'plex-language-resolve',
+    description: 'resolve output: one work_items row per resolved file, detail { name, originalLanguage?, candidateLanguages[] }.',
+    shape: {
+      summary: 'Every discovered file whose show/movie true original language has been resolved via TMDB.',
+      format: 'work_items ledger rows for job "plex-language-resolve"',
+      expectations: [{ label: EXP_RECORDED, detail: 'The ledger for this job is queryable.' }],
+    },
+    check(): GateResult {
+      const n = ledgerSuccessCount('plex-language-resolve');
+      return fromChecks([{ label: EXP_RECORDED, ok: true, actual: `${n} file(s) resolved` }], `${n} file(s)`);
+    },
+  };
+}
+
+/** evaluate → apply boundary: every file with a change/skip decision. */
+export function plexLanguageEvaluateContract(): ArtifactContract {
+  return {
+    key: 'plex-language-evaluate',
+    description: 'evaluate output: one work_items row per evaluated file, detail { name, status: "change"|"skip", currentAudio, currentSubtitle, proposedAudio?, proposedSubtitle? }.',
+    shape: {
+      summary: 'Every resolved file\'s change/skip decision, with the current + proposed stream selection.',
+      format: 'work_items ledger rows for job "plex-language-evaluate"',
+      expectations: [{ label: EXP_RECORDED, detail: 'The ledger for this job is queryable.' }],
+    },
+    check(): GateResult {
+      const n = ledgerSuccessCount('plex-language-evaluate');
+      return fromChecks([{ label: EXP_RECORDED, ok: true, actual: `${n} file(s) evaluated` }], `${n} file(s)`);
     },
   };
 }

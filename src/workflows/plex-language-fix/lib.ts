@@ -258,7 +258,7 @@ export function evaluatePart(
     seasonEpisode,
     partId: part.id,
     file: part.file,
-    status: 'no-match',
+    status: 'skip',
     currentAudio,
     currentSubtitle,
   };
@@ -284,7 +284,7 @@ export function evaluatePart(
   if (!audioChanged && !subtitleChanged) {
     return {
       ...base,
-      status: 'already-correct',
+      status: 'skip',
       proposedAudio: audioResult.choice,
       proposedSubtitle,
       resolvedLanguage: targetLang,
@@ -300,20 +300,6 @@ export function evaluatePart(
     resolvedLanguage: targetLang,
     note: subtitleNote,
   };
-}
-
-export function summarize(items: { files: FileEntry[] }[]) {
-  let changes = 0;
-  let alreadyCorrect = 0;
-  let noMatch = 0;
-  for (const item of items) {
-    for (const f of item.files) {
-      if (f.status === 'change') changes++;
-      else if (f.status === 'already-correct') alreadyCorrect++;
-      else if (f.status === 'no-match') noMatch++;
-    }
-  }
-  return { changes, alreadyCorrect, noMatch };
 }
 
 /**

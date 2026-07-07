@@ -1,21 +1,18 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 
 import type { JobContext } from '../../../core/types.js';
-import { markWorkItem } from '../../../db/store.js';
+import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { plexPutStreams, triggerButlerBackup } from '../../../core/plex-client.js';
 import { plexLanguageFixConfig } from '../config.js';
-import type { AppliedChangeEntry, AppliedLog, AppliedStreamState, FileEntry, LanguageScanFile, StreamChoice } from '../types.js';
+import type { AppliedChangeEntry, AppliedLog, AppliedStreamState, DiscoverDetail, EvaluateDetail, StreamChoice } from '../types.js';
+import { ledgerSuccessRows } from './ledger.js';
 
 export const JOB_NAME = 'plex-language-apply';
+const MAX_ATTEMPTS = 3;
 
 function toAppliedState(choice: StreamChoice | undefined): AppliedStreamState | null {
   if (!choice || choice.streamId === null) return null;
   return { streamId: choice.streamId, label: choice.label };
-}
-
-/** A qualifying entry needs a real change status AND a usable proposed audio stream id. */
-function isEligible(f: FileEntry): boolean {
-  return f.status === 'change' && typeof f.proposedAudio?.streamId === 'number';
 }
 
 export interface PlexClientOverrides {
@@ -24,35 +21,41 @@ export interface PlexClientOverrides {
   now?: () => string;
 }
 
-export async function runApply(
-  ctx: JobContext,
-  opts: { scanPath?: string; appliedLogPrefix?: string } & PlexClientOverrides = {},
-): Promise<void> {
-  const scanPath = opts.scanPath ?? plexLanguageFixConfig.scanOut;
+/**
+ * For every file evaluate marked `status: 'change'` that this stage has not yet
+ * applied, applies the proposed audio (and, when set, subtitle) selection via
+ * Plex's own official "PUT /library/parts/<id>" endpoint. PERMANENT idempotency:
+ * once a file is recorded done here it is NEVER automatically re-touched by a
+ * future run, even if evaluate's ledger row for that file is later re-flagged
+ * 'change' — re-applying requires the operator to manually unstick this job's
+ * ledger row for that file (POST /api/stuck/unstick). Reads its eligible work
+ * directly from the evaluate/discover ledgers — there is no more
+ * data/out/language-scan.json changeset file to read.
+ */
+export async function runApply(ctx: JobContext, opts: { appliedLogPrefix?: string } & PlexClientOverrides = {}): Promise<void> {
   const appliedLogPrefix = opts.appliedLogPrefix ?? plexLanguageFixConfig.appliedLogPrefix;
   const putStreams = opts.putStreams ?? plexPutStreams;
   const triggerBackup = opts.triggerBackup ?? triggerButlerBackup;
   const now = opts.now ?? (() => new Date().toISOString());
 
-  ctx.log(`info: plex-language-apply starting — reading scan from ${scanPath}`);
+  ctx.log('info: plex-language-apply starting — reading eligible changes from the evaluate/discover ledgers');
 
-  if (!existsSync(scanPath)) {
-    throw new Error(`Scan output missing: ${scanPath} — run plex-language-scan first.`);
-  }
-  const scan = JSON.parse(readFileSync(scanPath, 'utf8')) as LanguageScanFile;
+  const discoveredByKey = new Map(ledgerSuccessRows('plex-language-discover').map((r) => [r.itemKey, r.detail as DiscoverDetail]));
 
-  const qualifying: Array<{ item: string; file: FileEntry }> = [];
+  const qualifying: Array<{ itemKey: string; name: string; discover: DiscoverDetail; evalDetail: EvaluateDetail }> = [];
   let skipped = 0;
-  for (const item of scan.items) {
-    for (const file of item.files) {
-      if (file.status !== 'change') continue;
-      if (!isEligible(file)) {
-        skipped++;
-        ctx.log(`  ⚠ skipping "${item.title}" partId=${file.partId} — malformed proposed audio (no usable streamId)`, 'warn');
-        continue;
-      }
-      qualifying.push({ item: item.title, file });
+  for (const row of ledgerSuccessRows('plex-language-evaluate')) {
+    if (!ctx.rootAllowed(row.itemKey)) continue;
+    if (isWorkItemDone(JOB_NAME, row.itemKey, MAX_ATTEMPTS)) continue; // already applied, ever — never re-touched
+    const evalDetail = row.detail as EvaluateDetail;
+    if (evalDetail.status !== 'change') continue;
+    const discover = discoveredByKey.get(row.itemKey);
+    if (!discover || typeof evalDetail.proposedAudio?.streamId !== 'number') {
+      skipped++;
+      ctx.log(`  ⚠ skipping "${evalDetail.name}" (${row.itemKey}) — missing discover record or usable proposed audio streamId`, 'warn');
+      continue;
     }
+    qualifying.push({ itemKey: row.itemKey, name: evalDetail.name, discover, evalDetail });
   }
 
   ctx.log(`info: ${qualifying.length} file(s) qualify for apply (${skipped} skipped as malformed)`);
@@ -73,19 +76,19 @@ export async function runApply(
   let failed = 0;
 
   for (let i = 0; i < qualifying.length; i++) {
-    const { item, file } = qualifying[i];
-    const beforeAudio = toAppliedState(file.currentAudio);
-    const beforeSubtitle = toAppliedState(file.currentSubtitle);
-    const afterAudio = toAppliedState(file.proposedAudio);
-    const afterSubtitle = toAppliedState(file.proposedSubtitle);
+    const { itemKey, name, discover, evalDetail } = qualifying[i];
+    const beforeAudio = toAppliedState(evalDetail.currentAudio);
+    const beforeSubtitle = toAppliedState(evalDetail.currentSubtitle);
+    const afterAudio = toAppliedState(evalDetail.proposedAudio);
+    const afterSubtitle = toAppliedState(evalDetail.proposedSubtitle);
 
     try {
-      await putStreams(file.partId, afterAudio!.streamId, afterSubtitle?.streamId ?? null);
+      await putStreams(discover.partId, afterAudio!.streamId, afterSubtitle?.streamId ?? null);
       applied++;
       entries.push({
-        partId: file.partId,
-        file: file.file,
-        itemTitle: item,
+        partId: discover.partId,
+        file: discover.file,
+        itemTitle: name,
         beforeAudio,
         afterAudio,
         beforeSubtitle,
@@ -93,21 +96,17 @@ export async function runApply(
         outcome: 'applied',
         at: now(),
       });
-      ctx.log(`  ✓ [${i + 1}/${qualifying.length}] "${item}" (partId=${file.partId}) — audio → ${afterAudio?.label}${afterSubtitle ? `, subtitle → ${afterSubtitle.label}` : ''}`);
-      markWorkItem(JOB_NAME, String(file.partId), 'success', {
-        detail: {
-          name: `${item} — applied`,
-          path: `${appliedLogPrefix}.json`,
-          format: 'json',
-        },
+      ctx.log(`  ✓ [${i + 1}/${qualifying.length}] "${name}" (partId=${discover.partId}) — audio → ${afterAudio?.label}${afterSubtitle ? `, subtitle → ${afterSubtitle.label}` : ''}`);
+      markWorkItem(JOB_NAME, itemKey, 'success', {
+        detail: { name: `${name} — applied`, path: `${appliedLogPrefix}.json`, format: 'json' },
       });
     } catch (err) {
       failed++;
       const error = err instanceof Error ? err.message : String(err);
       entries.push({
-        partId: file.partId,
-        file: file.file,
-        itemTitle: item,
+        partId: discover.partId,
+        file: discover.file,
+        itemTitle: name,
         beforeAudio,
         afterAudio,
         beforeSubtitle,
@@ -116,8 +115,8 @@ export async function runApply(
         error,
         at: now(),
       });
-      ctx.log(`  ✗ [${i + 1}/${qualifying.length}] "${item}" (partId=${file.partId}) — ${error}`, 'error');
-      markWorkItem(JOB_NAME, String(file.partId), 'failed', { detail: { name: `${item} — apply failed`, error } });
+      ctx.log(`  ✗ [${i + 1}/${qualifying.length}] "${name}" (partId=${discover.partId}) — ${error}`, 'error');
+      markWorkItem(JOB_NAME, itemKey, 'failed', { detail: { name: `${name} — apply failed`, error } });
     }
 
     ctx.progress(Math.round(((i + 1) / Math.max(qualifying.length, 1)) * 90), `${i + 1}/${qualifying.length} applied`);

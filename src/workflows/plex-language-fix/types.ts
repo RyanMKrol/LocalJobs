@@ -68,10 +68,11 @@ export interface StreamChoice {
  * Every genuine tie is resolved deterministically by `pickAudioCandidate`'s
  * existing best-judgment heuristic (original-mix label, then highest channel
  * count, then codec quality, then lowest stream index) — there is no 4th
- * "ambiguous" carve-out. A tie always ends up as either `'change'` or
- * `'already-correct'`, never a status of its own.
+ * "ambiguous" carve-out. `'already-correct'` and `'no-match'` were collapsed
+ * into a single `'skip'` outcome in T453 (both mean "apply does nothing"; the
+ * `note` field still records WHY when it's a no-match).
  */
-export type FileStatus = 'change' | 'already-correct' | 'no-match';
+export type FileStatus = 'change' | 'skip';
 
 export interface FileEntry {
   itemRatingKey: string;
@@ -89,25 +90,44 @@ export interface FileEntry {
   note?: string;
 }
 
-export interface ShowOrMovieEntry {
-  sectionTitle: string;
-  ratingKey: string;
-  title: string;
-  type: 'show' | 'movie';
-  tmdbId?: number;
-  originalLanguage?: string;
-  spokenLanguages?: { code: string; name: string }[];
-  /** The ordered list of language codes tried for every file in this title: spoken_languages in TMDB order, then original_language as a final fallback. */
-  candidateLanguages?: string[];
-  skippedReason?: string; // set when we didn't process files at all (no tmdb id / lookup failure)
-  files: FileEntry[];
+/**
+ * The `plex-language-discover` ledger's per-file `detail` (T453). Recorded once
+ * per file, forever — the identity + the show/movie's tmdb id, so later stages
+ * never need to re-walk Plex's section tree to find a file again. `itemRatingKey`
+ * is the file's OWN rating key (a movie's own key, or an episode leaf's own key —
+ * NOT the parent show's key, since a per-file identity is what the ledger keys on).
+ */
+export interface DiscoverDetail {
+  name: string; // e.g. "<Show> — S04E12" or "<Movie Title>"
+  file?: string;
+  itemRatingKey: string;
+  partId: number;
+  type: 'movie' | 'show';
+  tmdbId: number;
+  seasonEpisode?: string;
 }
 
-/** The workflow's output artifact — the full scan of every show/movie's files. */
-export interface LanguageScanFile {
-  generatedAt: string;
-  sectionsScanned: string[];
-  items: ShowOrMovieEntry[];
+/** The `plex-language-resolve` ledger's per-file `detail` (T453). */
+export interface ResolveDetail {
+  name: string;
+  originalLanguage?: string;
+  candidateLanguages: string[];
+}
+
+/**
+ * The `plex-language-evaluate` ledger's per-file `detail` (T453). Carries the
+ * CURRENT audio/subtitle selection as observed at evaluate time (not re-fetched
+ * at apply time) so `plex-language-apply` can record a real before/after in its
+ * applied-changes log — the same undo-log contract `scripts/plex-language-undo.ts`
+ * relies on.
+ */
+export interface EvaluateDetail {
+  name: string;
+  status: FileStatus;
+  currentAudio: StreamChoice;
+  currentSubtitle: StreamChoice;
+  proposedAudio?: StreamChoice;
+  proposedSubtitle?: StreamChoice;
 }
 
 /** A stream's id + label as applied (or as it was before applying) — enough for undo to revert it. */

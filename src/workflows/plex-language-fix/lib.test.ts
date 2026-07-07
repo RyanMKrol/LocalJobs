@@ -1,15 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { evaluatePart } from '../lib.js';
-import type { PlexPart } from '../types.js';
-import { weekKey } from './scan.js';
+import { evaluatePart } from './lib.js';
+import type { PlexPart } from './types.js';
 
-test('weekKey formats an ISO calendar week', () => {
-  // 2026-07-06 is a Monday in ISO week 28.
-  assert.equal(weekKey(new Date('2026-07-06T00:00:00Z')), '2026-W28');
-});
-
-test('evaluatePart resolves a genuine channel-count tie to change/already-correct, never a 4th status', () => {
+test('evaluatePart resolves a genuine channel-count tie to change/skip, never a 3rd status', () => {
   const part: PlexPart = {
     id: 1,
     file: '/movies/example/example.mkv',
@@ -21,8 +15,8 @@ test('evaluatePart resolves a genuine channel-count tie to change/already-correc
 
   const entry = evaluatePart('123', 'Example Movie', undefined, part, ['ja']);
 
-  // Only the 3 real statuses may ever be produced — no 'ambiguous' carve-out.
-  assert.ok(entry.status === 'change' || entry.status === 'already-correct');
+  // Only the 2 real statuses may ever be produced — 'already-correct'/'no-match' collapsed (T453).
+  assert.ok(entry.status === 'change' || entry.status === 'skip');
   // The tie resolves deterministically to the lowest-index candidate.
   assert.equal(entry.proposedAudio?.streamId, 10);
 });
@@ -38,11 +32,11 @@ test('evaluatePart still resolves a tie deterministically when the two candidate
 
   const entry = evaluatePart('456', 'Example Show', 'S01E01', part, ['ko']);
 
-  assert.ok(entry.status === 'change' || entry.status === 'already-correct');
+  assert.ok(entry.status === 'change' || entry.status === 'skip');
   assert.equal(entry.proposedAudio?.streamId, 21);
 });
 
-test('evaluatePart reports no-match when no track exists in any candidate language', () => {
+test('evaluatePart reports skip (no-match) when no track exists in any candidate language', () => {
   const part: PlexPart = {
     id: 3,
     Stream: [{ id: 31, streamType: 2, index: 0, languageTag: 'en', channels: 2, codec: 'ac3' }],
@@ -50,6 +44,19 @@ test('evaluatePart reports no-match when no track exists in any candidate langua
 
   const entry = evaluatePart('789', 'Example Movie 2', undefined, part, ['fr']);
 
-  assert.equal(entry.status, 'no-match');
+  assert.equal(entry.status, 'skip');
   assert.equal(entry.proposedAudio, undefined);
+  assert.match(entry.note ?? '', /no audio track found/);
+});
+
+test('evaluatePart reports skip when the current selection already matches (no change needed)', () => {
+  const part: PlexPart = {
+    id: 4,
+    Stream: [{ id: 41, streamType: 2, index: 0, languageTag: 'en', channels: 2, codec: 'ac3', selected: true }],
+  };
+
+  const entry = evaluatePart('999', 'Example Movie 3', undefined, part, ['en']);
+
+  assert.equal(entry.status, 'skip');
+  assert.equal(entry.proposedAudio?.streamId, 41);
 });
