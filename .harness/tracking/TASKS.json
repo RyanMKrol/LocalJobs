@@ -12046,7 +12046,7 @@
     {
       "id": "T454",
       "title": "Add a batch un-ignore store function + unignore-bulk endpoints for all 4 output managers",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
