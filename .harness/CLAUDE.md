@@ -9,7 +9,7 @@ loop's design is in `docs/HARNESS.md` + `docs/designs/`.)
 
 **This is the #1 way to wreck the harness's upgradeability — treat an in-place edit as a red flag.** The
 plugin owns almost everything under `.harness/`: `scripts/*` (including `loop.sh`), `.harness/CLAUDE.md`
-(this file), `README.md`, and everything under `docs/`. `/implementation-harness-upgrade` keeps these
+(this file), `README.md`, and everything under `docs/`. `implementation-harness:implementation-harness-upgrade` keeps these
 **byte-identical to the plugin** and refreshes them in place. The moment you hand-edit one of them, that file
 stops matching the reference, and **every future upgrade of it degrades into slow, error-prone manual
 reconciliation** — the exact "forked install that can never cleanly upgrade" trap the `custom/` overlay
@@ -27,10 +27,11 @@ realistically want to customize has a supported `custom/` home the upgrade **nev
 | block more secret paths from being pushed | `custom/sensitive-paths.txt` (append-only) |
 | add richer visual-verification guidance | `custom/visual-verify-{build,audit}.md` |
 | inject a standing rule into every build/audit (e.g. no live paid-API calls) | `custom/{build,audit}-preamble.md` |
+| label the dashboard so it's distinguishable from other projects' | `custom/dashboard-title.txt` |
 | add project notes to a shipped doc | the matching `custom/docs/…` overlay |
 
-Not sure which, or want a guided setup? Run **`/implementation-harness-customize`** — it walks these one at a
-time and drafts them with you. Full mechanics: `docs/HARNESS.md` §8.3.
+Not sure which, or want a guided setup? Run **`implementation-harness:implementation-harness-customize`** —
+it walks these one at a time and drafts them with you. Full mechanics: `docs/HARNESS.md` §8.3.
 
 **The only genuine exception** is deeper `loop.sh`/script *logic* that no hook or `custom/` file can express
 (and `harness.env` scalar knobs, which are meant to be edited). Even then, don't hand-edit the script in
@@ -82,11 +83,12 @@ loop is for buildable tasks; gates are for you.
 
 ## Capturing & converting ideas
 
-Rough ideas go in `tracking/IDEAS.md` (a committed inbox) via the capture-idea skill — zero
-ceremony, no interview. The convert-ideas skill later turns a batch of them into real backlog tasks
-(one agent per idea → a single locked `scripts/consolidate-ideas.sh` pass that allocates ids, writes
-specs, and removes the converted bullets). Both are documented here so the flow surfaces at the
-authoring surface, not just in the README.
+Rough ideas go in `tracking/IDEAS.jsonl` (a committed inbox — JSONL, one `{id, title, description,
+capturedAt}` object per line) via the capture-idea skill — zero ceremony, no interview. The
+convert-ideas skill later turns a batch of them into real backlog tasks (one agent per idea → a
+single locked `scripts/consolidate-ideas.sh` pass that allocates ids, writes specs, and removes the
+converted rows). Both are documented here so the flow surfaces at the authoring surface, not just
+in the README.
 
 ## Operating the loop — the three operational skills
 
