@@ -64,6 +64,7 @@ function groupByCollection(gaps: MovieGap[]): [string, MovieGap[]][] {
 function TvRecsManager() {
   const { data, error } = usePoll(() => api.tvRecs(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
+  const [busyAll, setBusyAll] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<RecSortCol>('tmdb');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -102,6 +103,20 @@ function TvRecsManager() {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function unignoreAll() {
+    const count = ignored.length;
+    if (!confirm(`Un-ignore all ${count} show${count === 1 ? '' : 's'}? They will be treated as brand-new and may be recommended/notified again.`)) return;
+    setBusyAll(true);
+    setErr(null);
+    try {
+      await api.unignoreTvRecBulk(ignored.map((r) => r.tmdbId));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyAll(false);
     }
   }
 
@@ -176,7 +191,15 @@ function TvRecsManager() {
         )}
 
         {ignored.length > 0 && (
-          <IgnoredSection count={ignored.length} subtitle="Dismissed by you — never recommended or notified again.">
+          <IgnoredSection
+            count={ignored.length}
+            subtitle="Dismissed by you — never recommended or notified again."
+            action={
+              <button className="btn btn-sm" onClick={unignoreAll} disabled={busyAll}>
+                {busyAll ? 'Un-ignoring…' : '↺ Un-ignore all'}
+              </button>
+            }
+          >
             <table>
               <thead>
                 <tr><th>Show</th><th>Year</th><th>Genre</th><th></th></tr>
@@ -216,6 +239,7 @@ function TvRecsManager() {
 function MovieRecsManager() {
   const { data, error } = usePoll(() => api.movieRecs(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
+  const [busyAll, setBusyAll] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<RecSortCol>('tmdb');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -254,6 +278,20 @@ function MovieRecsManager() {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function unignoreAll() {
+    const count = ignored.length;
+    if (!confirm(`Un-ignore all ${count} film${count === 1 ? '' : 's'}? They will be treated as brand-new and may be recommended/notified again.`)) return;
+    setBusyAll(true);
+    setErr(null);
+    try {
+      await api.unignoreMovieRecBulk(ignored.map((r) => r.tmdbId));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyAll(false);
     }
   }
 
@@ -328,7 +366,15 @@ function MovieRecsManager() {
         )}
 
         {ignored.length > 0 && (
-          <IgnoredSection count={ignored.length} subtitle="Dismissed by you — never recommended or notified again.">
+          <IgnoredSection
+            count={ignored.length}
+            subtitle="Dismissed by you — never recommended or notified again."
+            action={
+              <button className="btn btn-sm" onClick={unignoreAll} disabled={busyAll}>
+                {busyAll ? 'Un-ignoring…' : '↺ Un-ignore all'}
+              </button>
+            }
+          >
             <table>
               <thead>
                 <tr><th>Film</th><th>Year</th><th>Genre</th><th></th></tr>
@@ -371,6 +417,7 @@ function MovieGapsManager() {
   const { data, error } = usePoll(() => api.movieGaps(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
   const [busyCollection, setBusyCollection] = useState<string | null>(null);
+  const [busyIgnoredCollection, setBusyIgnoredCollection] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const all = data?.gaps ?? [];
@@ -414,6 +461,20 @@ function MovieGapsManager() {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyCollection(null);
+    }
+  }
+
+  async function unignoreCollection(cname: string, films: MovieGap[]) {
+    const count = films.length;
+    if (!confirm(`Un-ignore all ${count} gap${count === 1 ? '' : 's'} in “${cname}”? They will be treated as brand-new and may be reported/notified again.`)) return;
+    setBusyIgnoredCollection(cname);
+    setErr(null);
+    try {
+      await api.unignoreMovieGapBulk(films.map((f) => f.tmdbId));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyIgnoredCollection(null);
     }
   }
 
@@ -514,24 +575,44 @@ function MovieGapsManager() {
         >
           <table>
             <thead>
-              <tr><th>Film</th><th>Collection</th><th>Year</th><th></th></tr>
+              <tr><th>Film</th><th>Year</th><th></th></tr>
             </thead>
             <tbody>
-              {ignored.map((g) => (
-                <tr key={g.tmdbId} className="muted">
-                  <td>
-                    <a href={`https://www.themoviedb.org/movie/${g.tmdbId}`} target="_blank" rel="noreferrer">
-                      {g.title}
-                    </a>
-                  </td>
-                  <td>{g.collectionName}</td>
-                  <td>{g.year ?? '—'}</td>
-                  <td>
-                    <button className="btn btn-sm" onClick={() => unignore(g)} disabled={busy === g.tmdbId}>
-                      {busy === g.tmdbId ? 'Un-ignoring…' : '↺ Un-ignore'}
-                    </button>
-                  </td>
-                </tr>
+              {groupByCollection(ignored).map(([cname, films]) => (
+                <Fragment key={cname}>
+                  <tr className="table-group-header">
+                    <td colSpan={3}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                        <span>{cname}</span>
+                        {films.length > 1 && (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => unignoreCollection(cname, films)}
+                            disabled={busyIgnoredCollection === cname}
+                            style={{ flexShrink: 0 }}
+                          >
+                            {busyIgnoredCollection === cname ? 'Un-ignoring…' : '↺ Un-ignore all'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {films.map((g) => (
+                    <tr key={g.tmdbId} className="muted">
+                      <td>
+                        <a href={`https://www.themoviedb.org/movie/${g.tmdbId}`} target="_blank" rel="noreferrer">
+                          {g.title}
+                        </a>
+                      </td>
+                      <td>{g.year ?? '—'}</td>
+                      <td>
+                        <button className="btn btn-sm" onClick={() => unignore(g)} disabled={busy === g.tmdbId}>
+                          {busy === g.tmdbId ? 'Un-ignoring…' : '↺ Un-ignore'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -565,6 +646,7 @@ function MissingSeasonsManager() {
   const { data, error } = usePoll(() => api.missingSeasons(), 5000);
   const [busy, setBusy] = useState<string | null>(null);
   const [busyShow, setBusyShow] = useState<number | null>(null);
+  const [busyIgnoredShow, setBusyIgnoredShow] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const all = data?.shows ?? [];
@@ -612,6 +694,20 @@ function MissingSeasonsManager() {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyShow(null);
+    }
+  }
+
+  async function unignoreShow(meta: MissingSeason, nums: number[]) {
+    const count = nums.length;
+    if (!confirm(`Un-ignore all ${count} season${count === 1 ? '' : 's'} of "${meta.title}"? They will be treated as brand-new and may be reported/notified again.`)) return;
+    setBusyIgnoredShow(meta.tmdbId);
+    setErr(null);
+    try {
+      await api.missingSeasonsUnignoreBulk(nums.map((season) => ({ tmdbId: meta.tmdbId, season })));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyIgnoredShow(null);
     }
   }
 
@@ -704,27 +800,49 @@ function MissingSeasonsManager() {
         <IgnoredSection count={ignored.length} subtitle="Suppressed by you — never reported or notified again.">
           <table>
             <thead>
-              <tr><th>Show</th><th>Season</th><th></th></tr>
+              <tr><th>Season</th><th></th></tr>
             </thead>
             <tbody>
-              {[...ignored].sort((a, b) => a.title.localeCompare(b.title) || a.season - b.season).map((s) => {
-                const key = `${s.tmdbId}:${s.season}`;
-                return (
-                <tr key={key} className="muted">
-                  <td>
-                    <a href={`https://www.themoviedb.org/tv/${s.tmdbId}`} target="_blank" rel="noreferrer">
-                      {s.title}
-                    </a>
-                  </td>
-                  <td>Season {s.season}</td>
-                  <td>
-                    <button className="btn btn-sm" onClick={() => unignore(s)} disabled={busy === key}>
-                      {busy === key ? 'Un-ignoring…' : '↺ Un-ignore'}
-                    </button>
-                  </td>
-                </tr>
-                );
-              })}
+              {groupByShow(ignored).map(([meta, nums]) => (
+                <Fragment key={meta.tmdbId}>
+                  <tr className="table-group-header">
+                    <td colSpan={2}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                        <span>
+                          <a href={`https://www.themoviedb.org/tv/${meta.tmdbId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>
+                            {meta.title}
+                          </a>
+                          {meta.year ? <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>({meta.year})</span> : null}
+                        </span>
+                        {nums.length > 1 && (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => unignoreShow(meta, nums)}
+                            disabled={busyIgnoredShow === meta.tmdbId}
+                            style={{ flexShrink: 0 }}
+                          >
+                            {busyIgnoredShow === meta.tmdbId ? 'Un-ignoring…' : '↺ Un-ignore all'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {nums.map((season) => {
+                    const row = ignored.find((s) => s.tmdbId === meta.tmdbId && s.season === season)!;
+                    const key = `${meta.tmdbId}:${season}`;
+                    return (
+                      <tr key={key} className="muted">
+                        <td>Season {season}</td>
+                        <td>
+                          <button className="btn btn-sm" onClick={() => unignore(row)} disabled={busy === key}>
+                            {busy === key ? 'Un-ignoring…' : '↺ Un-ignore'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </IgnoredSection>

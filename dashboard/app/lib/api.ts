@@ -487,6 +487,8 @@ export const api = {
     post<{ ok: boolean; ignored: number }>('/api/missing-seasons/ignore-bulk', { items }),
   unignoreMissingSeason: (tmdbId: number, season: number) =>
     post<{ ok: boolean; unignored: number }>(`/api/missing-seasons/${tmdbId}/${season}/unignore`),
+  missingSeasonsUnignoreBulk: (items: { tmdbId: number; season: number }[]) =>
+    post<{ ok: boolean; unignored: number }>('/api/missing-seasons/unignore-bulk', { items }),
 
   // Movies franchise-gap audit: list current gaps + manually ignore one (T145).
   movieGaps: () => get<MovieGaps>('/api/movie-gaps'),
@@ -496,6 +498,8 @@ export const api = {
     post<{ ok: boolean; ignored: number }>('/api/movie-gaps/ignore-bulk', { tmdbIds }),
   unignoreMovieGap: (tmdbId: number) =>
     post<{ ok: boolean; unignored: number }>(`/api/movie-gaps/${tmdbId}/unignore`),
+  unignoreMovieGapBulk: (tmdbIds: number[]) =>
+    post<{ ok: boolean; unignored: number }>('/api/movie-gaps/unignore-bulk', { tmdbIds }),
 
   // Movies recommendations: list current recs + manually ignore one (T209).
   movieRecs: () => get<MovieRecs>('/api/movie-recs'),
@@ -503,6 +507,8 @@ export const api = {
     post<{ ok: boolean; ignored: number }>(`/api/movie-recs/${tmdbId}/ignore`),
   unignoreMovieRec: (tmdbId: number) =>
     post<{ ok: boolean; unignored: number }>(`/api/movie-recs/${tmdbId}/unignore`),
+  unignoreMovieRecBulk: (tmdbIds: number[]) =>
+    post<{ ok: boolean; unignored: number }>('/api/movie-recs/unignore-bulk', { tmdbIds }),
 
   // TV recommendations: list current recs + manually ignore one (T219).
   tvRecs: () => get<TvRecs>('/api/tv-recs'),
@@ -510,6 +516,8 @@ export const api = {
     post<{ ok: boolean; ignored: number }>(`/api/tv-recs/${tmdbId}/ignore`),
   unignoreTvRec: (tmdbId: number) =>
     post<{ ok: boolean; unignored: number }>(`/api/tv-recs/${tmdbId}/unignore`),
+  unignoreTvRecBulk: (tmdbIds: number[]) =>
+    post<{ ok: boolean; unignored: number }>('/api/tv-recs/unignore-bulk', { tmdbIds }),
 
   // Global cross-cutting log feed (T311/T312): merges every job + workflow run's
   // logs, newest first. `level` is a comma-joined subset of info/warn/error (omit

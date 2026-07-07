@@ -356,6 +356,9 @@ const movieGaps = {
     { collectionId: 1, collectionName: 'The Bourne Collection', tmdbId: 601, title: 'The Bourne Ultimatum', year: 2007, tmdbRating: 7.6, notified: true, ignored: false },
     { collectionId: 2, collectionName: LONG, tmdbId: 602, title: 'Some Sequel', year: 2018, tmdbRating: 6.1, notified: false, ignored: false },
     { collectionId: 3, collectionName: 'An Ignored Collection', tmdbId: 603, title: 'An Ignored Film', year: 2011, tmdbRating: 5.4, notified: false, ignored: true },
+    // T455: a second ignored film in the same collection so the grouped Ignored panel's
+    // per-group "Un-ignore all" button (shown only when a group has >1 item) is reachable.
+    { collectionId: 3, collectionName: 'An Ignored Collection', tmdbId: 604, title: 'Another Ignored Film', year: 2013, tmdbRating: 5.0, notified: false, ignored: true },
   ],
 };
 
@@ -367,6 +370,9 @@ const missingSeasons = {
     { tmdbId: 501, title: LONG, year: 2015, season: 2, tmdbStatus: 'Ended', notified: false, ignored: false },
     { tmdbId: 502, title: 'Fargo', year: 2014, season: 5, tmdbStatus: 'Returning Series', notified: false, ignored: false },
     { tmdbId: 503, title: 'An Ignored Show', year: 2010, season: 1, tmdbStatus: 'Ended', notified: false, ignored: true },
+    // T455: a second ignored season of the same show so the grouped Ignored panel's
+    // per-group "Un-ignore all" button (shown only when a group has >1 item) is reachable.
+    { tmdbId: 503, title: 'An Ignored Show', year: 2010, season: 2, tmdbStatus: 'Ended', notified: false, ignored: true },
   ],
 };
 
