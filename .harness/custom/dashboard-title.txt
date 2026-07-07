@@ -1,0 +1,6 @@
+# dashboard-title.txt — a short project label shown in the harness dashboard's header (next to the
+# gear icon) and browser tab, so you can tell multiple open dashboards apart when running the harness
+# on more than one project. Blank lines and #-comments are ignored; the first remaining line is used
+# verbatim — keep it short, since it's the browser tab title too.
+
+Local Jobs
