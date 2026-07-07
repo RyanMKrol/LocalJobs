@@ -654,8 +654,6 @@ function MissingSeasonsManager() {
   const ignored = all.filter((s) => s.ignored);
 
   async function ignore(s: MissingSeason) {
-    const label = `"${s.title}" S${s.season}`;
-    if (!confirm(`Ignore ${label}? It will be excluded from future reports and notifications.`)) return;
     const key = `${s.tmdbId}:${s.season}`;
     setBusy(key);
     setErr(null);
