@@ -12073,7 +12073,7 @@
     {
       "id": "T455",
       "title": "Group the Ignored panel + add 'Un-ignore all' across all 4 output managers",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T454"
       ],
