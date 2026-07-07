@@ -26,9 +26,11 @@ Add your project's harness-authoring conventions, house rules, and reminders bel
 
 This project keeps a deliberately **un-prefixed** `/idea` capture command (`.claude/commands/idea.md`) so the
 same keystroke/macro works across every repo — mirror that bare filename in other repos rather than prefixing
-it. It appends one bullet to `tracking/IDEAS.md`. Conversion to real tasks uses the plugin's
+it. It appends one JSON line to `tracking/IDEAS.jsonl`. Conversion to real tasks uses the plugin's
 `/implementation-harness-convert-ideas` skill (the former project-local `/local-jobs-convert-ideas` fork was
-retired). `tracking/IDEAS.md` is gitignored — raw ideas may reference private jobs, so they stay local.
+retired). Unlike the template default (a *committed* inbox), this project keeps `tracking/IDEAS.jsonl`
+**gitignored** — raw ideas may reference private jobs, so they stay local (migrated from the pre-1.31.0
+`tracking/IDEAS.md`, same privacy convention, 2026-07-07).
 
 ## Bumping the base model (preserve calibration — migrate the ledger in lockstep)
 

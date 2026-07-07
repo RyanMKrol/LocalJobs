@@ -57,7 +57,7 @@ TODO.md
 # The ideas inbox is a PRIVATE, transient capture scratchpad (raw, unfleshed ideas —
 # may reference private jobs). The mechanism travels via .harness/CLAUDE.md; the ideas
 # themselves stay local and are DELETED once converted into a TASKS.json task.
-.harness/tracking/IDEAS.md
+.harness/tracking/IDEAS.jsonl
 
 # /local-jobs-convert-ideas scratch: per-unit agents each write one file here (decided task
 # data, no id yet) instead of racing for the repo lock; a single consolidation pass allocates
