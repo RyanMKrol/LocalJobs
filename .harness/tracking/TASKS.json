@@ -12105,7 +12105,7 @@
     {
       "id": "T456",
       "title": "Remove the confirm() popup on MissingSeasonsManager's single-item Ignore clicks",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
