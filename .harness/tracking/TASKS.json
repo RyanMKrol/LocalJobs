@@ -12133,7 +12133,7 @@
     {
       "id": "T457",
       "title": "Surface more of a work item's `detail` (not just `name`) in Input/Output row rendering",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
