@@ -18,11 +18,7 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * per-run sign-off. The safety net is a Plex Butler on-demand backup triggered
  * before the first change of a run, plus a self-contained per-run applied-changes
  * log that the manual, never-scheduled `scripts/plex-language-undo.ts` can replay
- * to revert. `plex-language-no-track-flag` (also depends on plex-language-scan, and
- * runs in parallel with plex-language-apply since neither depends on the other)
- * flags files with NO audio track at all in their title's true original language —
- * a probable wrong-release signal, distinct from switching which existing track
- * plays by default.
+ * to revert.
  *
  * Re-scans fresh every run (an audit of drifting real-world state, not a one-time
  * build), idempotent per ISO calendar week via the work_items ledger — a manual
@@ -39,7 +35,6 @@ const workflow: WorkflowDefinition = {
   jobs: [
     { job: 'plex-language-scan' },
     { job: 'plex-language-apply', dependsOn: ['plex-language-scan'] },
-    { job: 'plex-language-no-track-flag', dependsOn: ['plex-language-scan'] },
   ],
 };
 
