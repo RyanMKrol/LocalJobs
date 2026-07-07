@@ -12523,7 +12523,14 @@
         "npm test"
       ],
       "expectsTest": true,
-      "spec": ".harness/tasks/T468.md"
+      "spec": ".harness/tasks/T468.md",
+      "facets": {
+        "layer": "job",
+        "workType": "migration",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
     },
     {
       "id": "T469",
