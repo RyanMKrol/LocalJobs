@@ -1031,6 +1031,23 @@ export function unignoreSurfacedItem(jobName: string, itemKey: string): number {
     .run(jobName, itemKey).changes;
 }
 
+/**
+ * Bulk "un-ignore" multiple surfaced items in a single transaction. Calls
+ * {@link unignoreSurfacedItem} semantics for each key: deletes each key's `ignored`
+ * ledger row so it's treated as brand-new on the next run. A key that isn't
+ * currently ignored is a no-op for that key. Returns the total rows removed.
+ */
+export function unignoreSurfacedItems(jobName: string, itemKeys: string[]): number {
+  if (itemKeys.length === 0) return 0;
+  const stmt = db.prepare("DELETE FROM work_items WHERE job_name = ? AND item_key = ? AND status = 'ignored'");
+  const run = db.transaction((keys: string[]) => {
+    let total = 0;
+    for (const key of keys) total += stmt.run(jobName, key).changes;
+    return total;
+  });
+  return run(itemKeys);
+}
+
 /** The set of `item_key`s a job has manually `ignored` — used to exclude ignored
  *  gaps from a fresh audit's report (the audit recomputes every run, so it must
  *  re-filter against this each time). */

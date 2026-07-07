@@ -7,7 +7,7 @@ import {
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop,
-  ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoredWorkItemDetails, ignoreSurfacedItem, ignoreSurfacedItems, unignoreSurfacedItem, isWorkItemDone,
+  ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoredWorkItemDetails, ignoreSurfacedItem, ignoreSurfacedItems, unignoreSurfacedItem, unignoreSurfacedItems, isWorkItemDone,
   listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, workItemIoRows, stageIoLists, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
@@ -1170,6 +1170,38 @@ console.log('  ✓ T210 ignoreSurfacedItems: bulk-dismiss ignores only supplied 
   assert.equal(unignoreSurfacedItem(JOB, 'gap:absent'), 0, 'no-op on an absent key');
 }
 console.log('  ✓ T391 unignoreSurfacedItem: deletes ignored row, no-op otherwise');
+
+// T454 — unignoreSurfacedItems: bulk-reverse a set of ignored ledger rows; a
+// partial batch only removes the exact keys supplied and a never-ignored key is a
+// no-op contributing 0 to the total.
+{
+  const JOB = 't454-notify';
+  syncJob({ name: JOB, run: async () => {} });
+
+  markWorkItem(JOB, 'gap:1', 'success');
+  markWorkItem(JOB, 'gap:2', 'success');
+  markWorkItem(JOB, 'gap:3', 'success');
+  ignoreSurfacedItems(JOB, ['gap:1', 'gap:2', 'gap:3']);
+  assert.ok(isWorkItemDone(JOB, 'gap:1', 1) && isWorkItemDone(JOB, 'gap:2', 1) && isWorkItemDone(JOB, 'gap:3', 1));
+
+  // Un-ignore a subset (gap:1, gap:2) — exactly those rows are removed; gap:3 untouched.
+  const removed = unignoreSurfacedItems(JOB, ['gap:1', 'gap:2']);
+  assert.equal(removed, 2, 'unignoreSurfacedItems removes exactly the 2 supplied keys');
+  assert.ok(!isWorkItemDone(JOB, 'gap:1', 1), 'gap:1 is treated as brand-new after unignore');
+  assert.ok(!isWorkItemDone(JOB, 'gap:2', 1), 'gap:2 is treated as brand-new after unignore');
+  assert.ok(isWorkItemDone(JOB, 'gap:3', 1), 'gap:3 is left untouched (still ignored)');
+  assert.ok(ignoredItemKeys(JOB).has('gap:3') && !ignoredItemKeys(JOB).has('gap:1') && !ignoredItemKeys(JOB).has('gap:2'));
+
+  // A key that was never ignored is a no-op, contributing 0 to the count.
+  markWorkItem(JOB, 'gap:4', 'success');
+  const noop = unignoreSurfacedItems(JOB, ['gap:4']);
+  assert.equal(noop, 0, 'un-ignoring a never-ignored key is a no-op');
+  assert.ok(isWorkItemDone(JOB, 'gap:4', 1), 'gap:4 (plain success, never ignored) is untouched');
+
+  // Empty array returns 0.
+  assert.equal(unignoreSurfacedItems(JOB, []), 0, 'empty key array returns 0');
+}
+console.log('  ✓ T454 unignoreSurfacedItems: bulk-reverses only the supplied keys, no-op on never-ignored keys');
 
 // T404 — ignoreSurfacedItem accepts an optional `detail` and never clobbers an
 // existing non-null detail when the arg is omitted; ignoredWorkItemDetails reads

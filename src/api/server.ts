@@ -64,6 +64,7 @@ import {
   ignoreSurfacedItem,
   ignoreSurfacedItems,
   unignoreSurfacedItem,
+  unignoreSurfacedItems,
   ignoredItemKeys,
   isWorkItemDone,
   ignoredItems,
@@ -600,6 +601,20 @@ export function createApiServer(
         return json(res, 200, { ok: true, ignored });
       }
 
+      // POST /api/movie-gaps/unignore-bulk { tmdbIds: number[] } — reverse a bulk
+      // ignore: deletes the ignored ledger rows so those gaps are treated as
+      // brand-new and can resurface/re-notify on a future run. Idempotent.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'movie-gaps' && parts[2] === 'unignore-bulk') {
+        const body: { tmdbIds?: unknown } = await readBody(req).catch(() => ({}));
+        const ids = body.tmdbIds;
+        if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+          return json(res, 400, { error: 'tmdbIds must be an array of positive integers' });
+        }
+        const keys = (ids as number[]).map((id) => gapKey(id));
+        const unignored = unignoreSurfacedItems(MOVIE_GAPS_JOB, keys);
+        return json(res, 200, { ok: true, unignored });
+      }
+
       // GET /api/movie-recs — the current recommendations (read from the movies
       // workflow's recommendations.json), each overlaid with its ledger status:
       // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
@@ -660,6 +675,20 @@ export function createApiServer(
         return json(res, 200, { ok: true, unignored });
       }
 
+      // POST /api/movie-recs/unignore-bulk { tmdbIds: number[] } — reverse a bulk
+      // ignore: deletes the ignored ledger rows so those recommendations are treated
+      // as brand-new and can resurface/re-notify on a future run. Idempotent.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'movie-recs' && parts[2] === 'unignore-bulk') {
+        const body: { tmdbIds?: unknown } = await readBody(req).catch(() => ({}));
+        const ids = body.tmdbIds;
+        if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+          return json(res, 400, { error: 'tmdbIds must be an array of positive integers' });
+        }
+        const keys = (ids as number[]).map((id) => recKey(id));
+        const unignored = unignoreSurfacedItems(RECS_JOB, keys);
+        return json(res, 200, { ok: true, unignored });
+      }
+
       // GET /api/tv-recs — the current TV recommendations (read from the tv-recs
       // workflow's recommendations.json), each overlaid with its ledger status:
       // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
@@ -717,6 +746,20 @@ export function createApiServer(
           return json(res, 400, { error: 'tmdbId must be a positive integer' });
         }
         const unignored = unignoreSurfacedItem(TV_RECS_JOB, tvRecKey(tmdbId));
+        return json(res, 200, { ok: true, unignored });
+      }
+
+      // POST /api/tv-recs/unignore-bulk { tmdbIds: number[] } — reverse a bulk
+      // ignore: deletes the ignored ledger rows so those recommendations are treated
+      // as brand-new and can resurface/re-notify on a future run. Idempotent.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'tv-recs' && parts[2] === 'unignore-bulk') {
+        const body: { tmdbIds?: unknown } = await readBody(req).catch(() => ({}));
+        const ids = body.tmdbIds;
+        if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+          return json(res, 400, { error: 'tmdbIds must be an array of positive integers' });
+        }
+        const keys = (ids as number[]).map((id) => tvRecKey(id));
+        const unignored = unignoreSurfacedItems(TV_RECS_JOB, keys);
         return json(res, 200, { ok: true, unignored });
       }
 
@@ -798,6 +841,31 @@ export function createApiServer(
         const keys = (items as { tmdbId: number; season: number }[]).map((it) => pairKey(it.tmdbId, it.season));
         const ignored = ignoreSurfacedItems(PLEX_SEASONS_JOB, keys);
         return json(res, 200, { ok: true, ignored });
+      }
+
+      // POST /api/missing-seasons/unignore-bulk { items: { tmdbId, season }[] } —
+      // reverse a bulk ignore: deletes the ignored ledger rows so those season gaps
+      // are treated as brand-new and can resurface/re-notify on a future run.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'missing-seasons' && parts[2] === 'unignore-bulk') {
+        const body: { items?: unknown } = await readBody(req).catch(() => ({}));
+        const items = body.items;
+        if (
+          !Array.isArray(items) ||
+          items.some(
+            (it) =>
+              typeof it !== 'object' ||
+              it === null ||
+              !Number.isInteger((it as Record<string, unknown>).tmdbId) ||
+              ((it as Record<string, unknown>).tmdbId as number) <= 0 ||
+              !Number.isInteger((it as Record<string, unknown>).season) ||
+              ((it as Record<string, unknown>).season as number) <= 0,
+          )
+        ) {
+          return json(res, 400, { error: 'items must be an array of { tmdbId, season } objects with positive integers' });
+        }
+        const keys = (items as { tmdbId: number; season: number }[]).map((it) => pairKey(it.tmdbId, it.season));
+        const unignored = unignoreSurfacedItems(PLEX_SEASONS_JOB, keys);
+        return json(res, 200, { ok: true, unignored });
       }
 
       // GET /api/jobs  (each flagged with its workflow, if it's a member)
