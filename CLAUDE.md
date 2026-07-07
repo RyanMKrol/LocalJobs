@@ -1224,13 +1224,31 @@ doubt, log it.
     enumeration labels must use `<Pill>`, not bare `<span className="pill ...">`.
   - `DagFlow`, `WorkflowOutputSection` — existing components for the workflow DAG
     graph and unified output panel.
+  - **`renderOutputBody`/`OUTPUT_RENDERERS`** (`dashboard/app/components/OutputRenderer.tsx`,
+    T458) — the SINGLE format-keyed output-artifact renderer dispatch, keyed by an output
+    item's declared `WorkflowRunOutput.format` (T262/T282: `markdown` when unset). Owns the
+    renderer bodies themselves: `MarkdownOutputBody` (frontmatter header + `react-markdown`
+    body — the `markdown` form), `JsonOutputBody` (`JSON.parse` + `JSON.stringify(…, null, 2)`
+    pretty-print inside a monospace `<pre>`, falling back to the raw content on a parse
+    failure — the `json` form), and `RawOutputBody` (plain monospace, preserved whitespace —
+    both the registered `text` form AND the fallback for any unrecognized format, e.g.
+    `plex-space-saver`'s `size-table`). `renderOutputBody(result: WorkflowRunOutput)` is the
+    entry point — call it, don't hand-roll a new dispatch. Both `WorkflowOutputSection` (the
+    workflow-definition-page Output section popover) and `StageIoPanel`/`StageIoLists.tsx`
+    (the workflow-RUN-page Stage I/O popover) import from here — before T458 each surface had
+    its OWN copy of this dispatch, and `StageIoLists.tsx` didn't consult `format` at all
+    (always forced content through `MarkdownModal`, collapsing e.g. a pretty-printed JSON
+    artifact into one unbroken paragraph). Add a new form's renderer HERE, once — never
+    re-duplicate a third copy of this dispatch table in a new component.
   - **`<MarkdownModal>`** (`dashboard/app/components/MarkdownModal.tsx`, extracted
     from `workflow-runs/[id]/page.tsx` in T382) — the full-markdown preview popover
     (frontmatter parsed to a compact key-value header + `react-markdown` body,
-    XSS-safe). Also exports `parseFrontmatter`. Reused by both the generic `IoPanel`
-    and `StageIoPanel` (below) — do not re-implement the popover per component.
+    XSS-safe). Also exports `parseFrontmatter`. This is the renderer `OutputRenderer`'s
+    `markdown` form delegates to conceptually (each keeps its own small
+    `MarkdownOutputBody`/`parseFrontmatter` copy since `MarkdownModal` is a full modal
+    wrapper, not just a body) — do not re-implement the popover chrome per component.
   - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`, T382 →
-    T386) — the workflow-run page's Inputs & Outputs panel. Originally a
+    T386 → T458) — the workflow-run page's Inputs & Outputs panel. Originally a
     workflow-scoped ALTERNATIVE to a generic joined `IoPanel`, for workflows with a
     genuine fan-out/fan-in shape a single "input → output" row can't represent
     honestly (see `stock-digest.workflow.ts`'s file comment) — but **T386 made it

@@ -288,14 +288,35 @@ const stockDigestStageIoOverall = {
 const placesResolveOutput = { jobName: 'places-resolve', itemKey: 'cid:' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', placeId: 'ChIJN1t_tDeuEmsRUsoyG83frY4' } };
 const placesEnrichOutput = { jobName: 'places-enrich', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name — enriched fields only', rating: 4.6, type: 'Restaurant', address: '221B Baker Street, London' } };
 const placesLlmOutput = { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', markdown: '/abs/data/out/' + LONG + '.md' } };
+// T458: a JSON-format (detail.path + format:'json', not detail.markdown) output item, so
+// visual-check exercises the OutputRenderer's real json renderer (pretty-printed, not
+// collapsed through the markdown viewer) on the Stage I/O popover.
+const PLACES_JSON_ITEM_KEY = 'place:json-summary';
+const placesLlmJsonOutput = {
+  jobName: 'places-enrich-with-llm', itemKey: PLACES_JSON_ITEM_KEY, status: 'success',
+  detail: { name: 'Enrichment summary (JSON)', path: '/abs/data/out/place-summary.json', format: 'json' },
+};
+// The GET .../output(-items)?...&key=<PLACES_JSON_ITEM_KEY> response body — a real
+// (unformatted) JSON string so the OutputRenderer json path's own pretty-printing
+// (JSON.stringify(..., null, 2)) is what's actually visible in the screenshot.
+const placesJsonOutputFixture = {
+  found: true, job: 'places-enrich-with-llm', key: PLACES_JSON_ITEM_KEY, format: 'json',
+  file: '/abs/data/out/place-summary.json', bytes: 256, truncated: false,
+  content: JSON.stringify({
+    name: 'A Resolved Place With A Long Name',
+    rating: 4.6,
+    tags: ['restaurant', 'italian'],
+    location: { lat: 51.5237, lng: -0.1586 },
+  }),
+};
 const placesStageIo = {
   'places-resolve': { inputs: [], outputs: [placesResolveOutput], predecessorJobs: [], job: 'places-resolve' },
   'places-enrich': { inputs: [placesResolveOutput], outputs: [placesEnrichOutput], predecessorJobs: ['places-resolve'], job: 'places-enrich' },
-  'places-enrich-with-llm': { inputs: [placesEnrichOutput], outputs: [placesLlmOutput], predecessorJobs: ['places-enrich'], job: 'places-enrich-with-llm' },
+  'places-enrich-with-llm': { inputs: [placesEnrichOutput], outputs: [placesLlmOutput, placesLlmJsonOutput], predecessorJobs: ['places-enrich'], job: 'places-enrich-with-llm' },
 };
 const placesStageIoOverall = {
   inputs: [placesResolveOutput],
-  outputs: [placesLlmOutput],
+  outputs: [placesLlmOutput, placesLlmJsonOutput],
   predecessorJobs: ['places-resolve'],
   outputJobs: ['places-enrich-with-llm'],
   job: '__overall__',
@@ -591,7 +612,10 @@ export function fixtureFor(pathname, searchParams) {
     if (job === 'places-enrich') return workflowIoScopedToEnrich;
     return workflowIo;
   }
-  if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
+  if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) {
+    if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
+    return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
+  }
   if (pathname.startsWith('/api/workflow-runs/')) {
     return {
       run: workflowRun(),
@@ -626,6 +650,10 @@ export function fixtureFor(pathname, searchParams) {
         items: [
           { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, name: 'A Resolved Place', hasMarkdown: true, updatedAt: NOW },
           { jobName: 'places-enrich-with-llm', itemKey: 'place:second', name: null, hasMarkdown: false, updatedAt: NOW },
+          // T458: a JSON-format item (not backed by detail.markdown in real production
+          // semantics — `hasMarkdown: true` here is purely a fixture convenience so the
+          // synthetic "View" button renders, exercising the json OutputRenderer path).
+          { jobName: 'places-enrich-with-llm', itemKey: PLACES_JSON_ITEM_KEY, name: 'Enrichment summary (JSON)', hasMarkdown: true, updatedAt: NOW },
         ],
         terminalJobs: ['places-enrich-with-llm'],
       };
@@ -636,6 +664,7 @@ export function fixtureFor(pathname, searchParams) {
   // (not-run-scoped) artifact fetch, dispatched by the item's declared `format`
   // (T262). Reuses the same synthetic markdown body as the run-scoped fixture above.
   if (pathname.endsWith('/output') && pathname.startsWith('/api/workflows/')) {
+    if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     return { found: true, job: 'places-enrich-with-llm', key: 'place:ChIJ' + LONG, format: 'markdown', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
   }
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
@@ -1011,6 +1040,37 @@ export const FLOWS = [
     actions: async (page) => {
       await page.hover('.cron-help');
       await page.waitForSelector('.cron-tooltip', { state: 'visible', timeout: 5000 });
+    },
+  },
+  {
+    // T458: the Stage I/O popover now dispatches by the item's declared `format` via the
+    // shared OutputRenderer instead of always forcing content through MarkdownModal —
+    // opens the JSON-format item's popover and confirms it renders as indented, monospace
+    // JSON (not one collapsed paragraph).
+    name: 'stage-io-json-output-popover',
+    path: '/workflow-runs/1',
+    viewport: true,
+    waitFor: ['.stage-io-item-link'],
+    actions: async (page) => {
+      await page.locator('.stage-io-item-link', { hasText: 'Enrichment summary (JSON)' }).click();
+      await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForSelector('.db-modal-body pre', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    // T458: same JSON-format renderer, exercised via the OTHER I/O surface — the
+    // workflow definition page's unified Output section (WorkflowOutputSection), whose
+    // dispatch/renderer table now lives in the same shared OutputRenderer module.
+    name: 'workflow-output-section-json-popover',
+    path: '/workflows/places',
+    viewport: true,
+    waitFor: ['.output-section button.btn.btn-sm'],
+    actions: async (page) => {
+      await page.locator('tr', { hasText: 'Enrichment summary (JSON)' }).locator('button').click();
+      await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForSelector('.db-modal-body pre', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
     },
   },
 ];

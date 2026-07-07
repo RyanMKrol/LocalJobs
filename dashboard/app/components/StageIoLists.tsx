@@ -1,16 +1,44 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { MarkdownModal } from './MarkdownModal';
+import { renderOutputBody } from './OutputRenderer';
 import { api } from '../lib/api';
-import type { StageIoItem, WorkflowMember } from '../lib/api';
+import type { StageIoItem, WorkflowMember, WorkflowRunOutput } from '../lib/api';
 import { usePoll } from '../ui';
 
 const OVERALL_TAB = '__overall__';
 
 type ModalState =
   | { loading: true; title: string }
-  | { loading: false; title: string; content: string; truncated: boolean };
+  | { loading: false; title: string; result: WorkflowRunOutput };
+
+/** The workflow-run output modal, rendered via the shared format-keyed
+ *  dispatch (`OutputRenderer`) so a `json`/`text` artifact renders through its
+ *  real renderer instead of being force-fed through the markdown viewer. */
+function StageIoModal({ title, loading, result, onClose }: {
+  title: string;
+  loading: boolean;
+  result?: WorkflowRunOutput;
+  onClose: () => void;
+}) {
+  return (
+    <div className="db-modal-overlay" onClick={onClose}>
+      <div className="db-modal md-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="db-modal-header">
+          <span>{title}</span>
+          <button className="db-modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="db-modal-body">
+          {loading && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
+          {!loading && result && result.found && renderOutputBody(result)}
+          {!loading && result && !result.found && (
+            <p className="muted" style={{ margin: 0 }}>No output content found.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Extract a display label from a work-item detail blob: prefers `detail.name`, falls back to the key. */
 function itemLabel(key: string, detail: StageIoItem['detail']): string {
@@ -82,7 +110,7 @@ function StageIoItemRow(
   { runId, item, onOpen }: {
     runId: string;
     item: StageIoItem;
-    onOpen: (title: string, contentPromise: Promise<{ content: string; truncated: boolean }>) => void;
+    onOpen: (title: string, resultPromise: Promise<WorkflowRunOutput>) => void;
   },
 ) {
   const label = itemLabel(item.itemKey, item.detail);
@@ -90,9 +118,8 @@ function StageIoItemRow(
   const hints = detailHints(item.detail);
 
   const open = () => {
-    const contentPromise = api.workflowRunOutput(runId, item.jobName, item.itemKey)
-      .then((o) => ({ content: o.content ?? '', truncated: !!o.truncated }));
-    onOpen(label, contentPromise);
+    const resultPromise = api.workflowRunOutput(runId, item.jobName, item.itemKey);
+    onOpen(label, resultPromise);
   };
 
   return (
@@ -124,7 +151,7 @@ function StageIoColumn(
     items: StageIoItem[];
     runId: string;
     emptyText: string;
-    onOpen: (title: string, contentPromise: Promise<{ content: string; truncated: boolean }>) => void;
+    onOpen: (title: string, resultPromise: Promise<WorkflowRunOutput>) => void;
   },
 ) {
   return (
@@ -150,10 +177,10 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
   const { data } = usePoll(() => api.workflowRunStageIo(runId, jobName), 5000, [runId, jobName]);
 
   const openModal = useCallback(
-    (title: string, contentPromise: Promise<{ content: string; truncated: boolean }>) => {
+    (title: string, resultPromise: Promise<WorkflowRunOutput>) => {
       setModal({ loading: true, title });
-      contentPromise
-        .then(({ content, truncated }) => setModal({ loading: false, title, content, truncated }))
+      resultPromise
+        .then((result) => setModal({ loading: false, title, result }))
         .catch(() => setModal(null));
     },
     [],
@@ -181,11 +208,10 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
         />
       </div>
       {modal && (
-        <MarkdownModal
+        <StageIoModal
           title={modal.title}
           loading={modal.loading}
-          content={!modal.loading ? modal.content : undefined}
-          truncated={!modal.loading ? modal.truncated : undefined}
+          result={!modal.loading ? modal.result : undefined}
           onClose={() => setModal(null)}
         />
       )}
@@ -201,10 +227,10 @@ function StageIoOverallBlock({ runId }: { runId: string }) {
   const { data } = usePoll(() => api.workflowRunStageIoOverall(runId), 5000, [runId]);
 
   const openModal = useCallback(
-    (title: string, contentPromise: Promise<{ content: string; truncated: boolean }>) => {
+    (title: string, resultPromise: Promise<WorkflowRunOutput>) => {
       setModal({ loading: true, title });
-      contentPromise
-        .then(({ content, truncated }) => setModal({ loading: false, title, content, truncated }))
+      resultPromise
+        .then((result) => setModal({ loading: false, title, result }))
         .catch(() => setModal(null));
     },
     [],
@@ -232,11 +258,10 @@ function StageIoOverallBlock({ runId }: { runId: string }) {
         />
       </div>
       {modal && (
-        <MarkdownModal
+        <StageIoModal
           title={modal.title}
           loading={modal.loading}
-          content={!modal.loading ? modal.content : undefined}
-          truncated={!modal.loading ? modal.truncated : undefined}
+          result={!modal.loading ? modal.result : undefined}
           onClose={() => setModal(null)}
         />
       )}
