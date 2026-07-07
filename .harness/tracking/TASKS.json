@@ -12042,6 +12042,539 @@
       "verify": [],
       "expectsTest": true,
       "spec": ".harness/tasks/T453.md"
+    },
+    {
+      "id": "T454",
+      "title": "Add a batch un-ignore store function + unignore-bulk endpoints for all 4 output managers",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ignore-unignore-ux"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/api/server.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T454.md",
+      "facets": {
+        "layer": "api",
+        "workType": "endpoint",
+        "risk": []
+      }
+    },
+    {
+      "id": "T455",
+      "title": "Group the Ignored panel + add 'Un-ignore all' across all 4 output managers",
+      "status": "pending",
+      "dependsOn": [
+        "T454"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ignore-unignore-ux"
+      ],
+      "scope": [
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/components/IgnoredSection.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T455.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T456",
+      "title": "Remove the confirm() popup on MissingSeasonsManager's single-item Ignore clicks",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ignore-unignore-ux"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T456.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T457",
+      "title": "Surface more of a work item's `detail` (not just `name`) in Input/Output row rendering",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "io-panel",
+        "stage-io"
+      ],
+      "scope": [
+        "dashboard/app/components/StageIoLists.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/app/components/StageIoLists.test.ts",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T457.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T458",
+      "title": "Format-driven renderer dispatch (JSON pretty-print + plain text), wired into BOTH the Stage I/O popover and the Output section",
+      "status": "pending",
+      "dependsOn": [
+        "T457"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "io-panel",
+        "renderer-dispatch",
+        "output-form"
+      ],
+      "scope": [
+        "dashboard/app/components/StageIoLists.tsx",
+        "dashboard/app/components/WorkflowOutputSection.tsx",
+        "dashboard/app/components/OutputRenderer.tsx",
+        "dashboard/app/components/OutputRenderer.test.ts",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T458.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T459",
+      "title": "Require an Input/Output-shape design step when scoping a new or restructured workflow",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "docs",
+        "harness",
+        "convention",
+        "workflow-design",
+        "needs-human"
+      ],
+      "scope": [
+        ".harness/custom/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T459.md"
+    },
+    {
+      "id": "T460",
+      "title": "Add a trailing-3-month digest file to the listening-digest workflow",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "listening-digest",
+        "lastfm",
+        "feature"
+      ],
+      "scope": [
+        "src/workflows/listening-digest/stages/listening-digest.ts",
+        "src/workflows/listening-digest/stages/listening-digest.test.ts",
+        "src/workflows/listening-digest/stages/listening-digest.job.ts",
+        "src/workflows/listening-digest/config.ts",
+        "src/workflows/listening-digest/CLAUDE.md",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T460.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T461",
+      "title": "Read the 8 unused owner-authored PerfumeRatings fields into PerfumeInput",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "perfumes",
+        "dynamodb"
+      ],
+      "scope": [
+        "src/workflows/perfumes/types.ts",
+        "src/workflows/perfumes/lib.ts",
+        "src/workflows/perfumes/lib.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npm test",
+        "npx tsc --noEmit"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T461.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T462",
+      "title": "Surface the 8 owner-authored perfume fields in the generated markdown profile",
+      "status": "pending",
+      "dependsOn": [
+        "T461"
+      ],
+      "gate": null,
+      "tags": [
+        "perfumes",
+        "template"
+      ],
+      "scope": [
+        "src/workflows/perfumes/profile.template.md",
+        "src/workflows/perfumes/stages/build.ts",
+        "src/workflows/perfumes/stages/build.test.ts",
+        "src/workflows/perfumes/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npm test",
+        "npx tsc --noEmit"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T462.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T463",
+      "title": "Define src/services/plex.service.ts (Plex as a first-class Services-model entry)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "integration"
+      ],
+      "scope": [
+        "src/services/plex.service.ts",
+        "src/services/plex.service.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T463.md",
+      "facets": {
+        "layer": "service",
+        "workType": "config",
+        "risk": []
+      }
+    },
+    {
+      "id": "T464",
+      "title": "Migrate every direct Plex call site (6 workflows) onto callService('plex', ...)",
+      "status": "pending",
+      "dependsOn": [
+        "T463"
+      ],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "migration",
+        "integration"
+      ],
+      "scope": [
+        "src/workflows/plex-language-fix/lib.ts",
+        "src/workflows/plex-language-fix/stages/apply.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts",
+        "src/workflows/missing-tv-seasons/stages/snapshot.ts",
+        "src/workflows/plex-profiles/stages/build.ts",
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/plex-space-saver/stages/scan.ts",
+        "src/workflows/plex-language-fix/lib.test.ts",
+        "src/workflows/plex-language-fix/stages/apply.test.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.test.ts",
+        "src/workflows/missing-tv-seasons/stages/snapshot.test.ts",
+        "src/workflows/plex-profiles/stages/build.test.ts",
+        "src/workflows/movies/stages/snapshot.test.ts",
+        "src/workflows/plex-space-saver/stages/scan.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T464.md",
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T465",
+      "title": "Add a generic, dashboard-editable timeoutMs field to ServiceDefinition; wire Plex's AND claude-cli's timeouts through it",
+      "status": "pending",
+      "dependsOn": [
+        "T463"
+      ],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "integration",
+        "timeout"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "src/core/services.ts",
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "src/services/plex.service.ts",
+        "src/services/claude.service.ts",
+        "src/services/claude.ts",
+        "src/core/plex-client.ts",
+        "src/core/services.test.ts",
+        "src/db/store.test.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T465.md",
+      "facets": {
+        "layer": "db",
+        "workType": "feature",
+        "risk": [
+          "touches-schema"
+        ]
+      }
+    },
+    {
+      "id": "T466",
+      "title": "Integrations page: editable per-service timeout + modest per-service prominence bump",
+      "status": "pending",
+      "dependsOn": [
+        "T465"
+      ],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "integration",
+        "dashboard"
+      ],
+      "scope": [
+        "dashboard/app/integrations/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T466.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T467",
+      "title": "Decide the missing-movies split design (name, schedule, category, snapshot duplication, folder layout, ledger continuity)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "movies",
+        "missing-movies",
+        "workflow-split",
+        "design",
+        "needs-human"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T467.md"
+    },
+    {
+      "id": "T468",
+      "title": "Split the movie-recommendations DAG into two independent workflows: movie-recommendations (recs-only) and missing-movies (franchise-gaps-only)",
+      "status": "pending",
+      "dependsOn": [
+        "T467"
+      ],
+      "gate": null,
+      "tags": [
+        "movies",
+        "missing-movies",
+        "workflow-split",
+        "backend"
+      ],
+      "scope": [
+        "src/workflows/movies/movies.workflow.ts",
+        "src/workflows/movies/config.ts",
+        "src/workflows/movies/contracts.ts",
+        "src/workflows/movies/CLAUDE.md",
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/movies/stages/snapshot.job.ts",
+        "src/workflows/movies/stages/franchise-gaps.ts",
+        "src/workflows/movies/stages/franchise-gaps.job.ts",
+        "src/workflows/movies/stages/franchise-gaps.test.ts",
+        "src/workflows/movies/stages/notify.ts",
+        "src/workflows/movies/stages/notify.job.ts",
+        "src/workflows/movies/stages/notify.test.ts",
+        "src/workflows/movies/movies.ts",
+        "src/workflows/movies/movies.test.ts",
+        "src/workflows/missing-movies/**",
+        "CLAUDE.md"
+      ],
+      "design": ".harness/worklog/split-movie-workflows-design.md (the decision record from the needs-human task above)",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T468.md"
+    },
+    {
+      "id": "T469",
+      "title": "Split the movie dashboard managers onto their own workflow detail pages (MovieGapsManager → missing-movies, MovieRecsManager stays on movie-recommendations)",
+      "status": "pending",
+      "dependsOn": [
+        "T468"
+      ],
+      "gate": null,
+      "tags": [
+        "movies",
+        "missing-movies",
+        "workflow-split",
+        "dashboard"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "src/workflows/movies/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T469.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T470",
+      "title": "Evaluate whether the framework should gain a cross-workflow job-sharing mechanism",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "framework",
+        "job-sharing",
+        "design",
+        "needs-human"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T470.md"
     }
   ]
 }
