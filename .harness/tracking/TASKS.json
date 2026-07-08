@@ -12167,7 +12167,7 @@
     {
       "id": "T458",
       "title": "Format-driven renderer dispatch (JSON pretty-print + plain text), wired into BOTH the Stage I/O popover and the Output section",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T457"
       ],
