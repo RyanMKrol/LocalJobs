@@ -32,7 +32,14 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
   sits at weight 0.5), overridable via `PERFUMES_CONFIDENCE_K`; the computed weight + an explicit
   "state this in the profile" directive are fed into the build prompt (`confidenceClause`) — the LLM
   is trusted to honor it, there's no post-build validator re-checking the written prose against it.
-  Writes `data/out/markdown/<id>.md`.
+  Separately, 8 owner-authored personal fields from the `PerfumeRatings` Dynamo row (own `rating`,
+  `dateAdded`, `ownership`, `personalLongevity`, `personalProjection`, `personalSeasons`, `description`,
+  `applicationSpots` — T461) are passed through **verbatim, never researched or blended** via
+  `personalFieldsClause`, populating the frontmatter's `rating`/`date_added`/`ownership`/
+  `personal_longevity`/`personal_projection`/`personal_seasons` keys and the `## Personal Notes`/
+  `## Application` sections — each falls back to an honest `null`/`[]`/"not recorded yet" when the
+  Dynamo field is absent, same tone as the notes-pyramid honest-gap convention; `status` stays a fixed
+  `"owned"`, unrelated to these. Writes `data/out/markdown/<id>.md`.
 
 ## Files & config (`src/workflows/perfumes/config.ts`)
 

@@ -9,10 +9,12 @@ import {
   confidenceWeight,
   DEFAULT_CONFIDENCE_K,
   notesMappingClause,
+  personalFieldsClause,
   voteDistribution,
   votesFromFragJson,
 } from './build.js';
 import { normalizeNotes, notesEmpty } from './parse.js';
+import type { PerfumeInput } from '../types.js';
 
 // ── normalizeNotes: canonical shape; entries trimmed; empty stays empty. ──
 {
@@ -148,3 +150,51 @@ console.log('  ✓ perfumes empty notes-pyramid handled honestly (normalize + bu
 }
 
 console.log('  ✓ perfumes Fragrantica-vs-LLM confidence blend weights by corpus-calibrated sample size');
+
+// ───────────── personalFieldsClause: the 8 owner-authored personal fields (T462) ─────────────
+
+const BASE_PERFUME: PerfumeInput = { id: 'x__y__edp', name: 'X', concentration: 'EDP', brand: 'Y' };
+
+// ── FULLY-POPULATED FIXTURE: every real value appears verbatim + verbatim/no-invention. ──
+{
+  const p: PerfumeInput = {
+    ...BASE_PERFUME,
+    rating: 8,
+    description: 'A cosy autumn scent I reach for constantly.',
+    dateAdded: '05-03-2024',
+    ownership: 'Full bottle',
+    personalLongevity: 6,
+    personalProjection: 3,
+    personalSeasons: ['autumn', 'winter'],
+    applicationSpots: ['2 to chest', '1 to each wrist'],
+  };
+  const clause = personalFieldsClause(p);
+  assert.match(clause, /rating: 8/, 'rating value appears verbatim');
+  assert.match(clause, /"05-03-2024"/, 'date_added value appears verbatim');
+  assert.match(clause, /"Full bottle"/, 'ownership value appears verbatim');
+  assert.match(clause, /personal_longevity: 6/, 'personal_longevity value appears verbatim');
+  assert.match(clause, /personal_projection: 3/, 'personal_projection value appears verbatim');
+  assert.match(clause, /\["autumn","winter"\]/, 'personal_seasons values appear verbatim');
+  assert.match(clause, /A cosy autumn scent I reach for constantly\./, 'description appears verbatim');
+  assert.match(clause, /\["2 to chest","1 to each wrist"\]/, 'applicationSpots appear verbatim');
+  assert.match(clause, /copy th(is|ese) exact/i, 'instructs copying the exact value(s)');
+  assert.match(clause, /do NOT alter, reinterpret/, 'instructs no alteration/reinterpretation');
+  assert.match(clause, /invent additional values/, 'instructs no invention');
+}
+
+// ── EMPTY FIXTURE: no personal fields set → honest fallbacks, no fabrication. ──
+{
+  const clause = personalFieldsClause(BASE_PERFUME);
+  assert.match(clause, /rating:.*use null/, 'rating falls back to null');
+  assert.match(clause, /date_added:.*use null/, 'date_added falls back to null');
+  assert.match(clause, /ownership:.*use null/, 'ownership falls back to null');
+  assert.match(clause, /personal_longevity:.*use null/, 'personal_longevity falls back to null');
+  assert.match(clause, /personal_projection:.*use null/, 'personal_projection falls back to null');
+  assert.match(clause, /personal_seasons:.*empty array/, 'personal_seasons falls back to []');
+  assert.match(clause, /Personal Notes section:.*not recorded yet/, 'Personal Notes falls back to placeholder text');
+  assert.match(clause, /Application section:.*not recorded yet/, 'Application falls back to placeholder text');
+  assert.doesNotMatch(clause, /\d{2}-\d{2}-\d{4}/, 'no fabricated date appears');
+  assert.doesNotMatch(clause, /Full bottle|Sample|Travel size/, 'no fabricated ownership value appears');
+}
+
+console.log('  ✓ perfumes personalFieldsClause copies real personal values verbatim, falls back honestly otherwise');

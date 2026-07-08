@@ -25,8 +25,14 @@ community_rating: "4.15 / 5 (2310 votes)"   # aggregate score + vote count; null
 fragrantica_status: "ok"   # was Fragrantica data actually used? ok | blocked | not-found
 fragrantica_url: "https://www.fragrantica.com/perfume/Brand/Name-12345.html"   # page used, or null
 # ── Personal (you fill these over time — may stay blank for now) ─────────
-rating: null              # your own score, 1–10
+rating: null              # your own score, 1–10 — from your PerfumeRatings row when present
 status: "owned"           # owned | decant | sample | wishlist
+# ── Personal (from your own PerfumeRatings row) ──────────────────────────
+date_added: null          # DD-MM-YYYY string, or null if unknown
+ownership: null           # Sample | Travel size | Full bottle, or null if unknown
+personal_longevity: null  # 0–8, or null if unknown
+personal_projection: null # 1–4, or null if unknown
+personal_seasons: []      # your own season tags, or [] if unknown
 # ── Provenance ──────────────────────────────────────────────────────────
 sources:
   - "https://example.com/source-1"
@@ -61,10 +67,12 @@ each (shared accords, similar vibe, a cheaper alternative, etc.).
 Release story, the perfumer, the house, and any notable reformulations or context.
 
 ## Personal Notes
-<!-- Your own thoughts over time — leave blank for now. -->
+<!-- Your own thoughts over time. Filled from your own PerfumeRatings description when
+     present; otherwise leave blank for now. -->
 
 ## Application
-<!-- Your spray pattern, e.g. "2 to chest, 1 to each wrist, 1 to back of neck." Leave blank for now. -->
+<!-- Your spray pattern, e.g. "2 to chest, 1 to each wrist, 1 to back of neck." Filled from
+     your own PerfumeRatings applicationSpots when present; otherwise leave blank for now. -->
 
 ## Sources
 1. https://example.com/source-1
