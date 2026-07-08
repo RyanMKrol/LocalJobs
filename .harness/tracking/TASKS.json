@@ -12436,7 +12436,7 @@
     {
       "id": "T466",
       "title": "Integrations page: editable per-service timeout + modest per-service prominence bump",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T465"
       ],
