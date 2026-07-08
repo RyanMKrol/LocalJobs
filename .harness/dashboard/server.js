@@ -15,7 +15,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { execFile, execFileSync } = require('child_process');
-const { computeBacklog, parseJsonl, coldTierIndex, harnessCells, recentActivity, failureKinds, ideasFromJsonl } = require('./lib');
+const { computeBacklog, parseJsonl, coldTierIndex, harnessCells, recentActivity, failureKinds, ideasFromJsonl, liveOutputFromJsonl } = require('./lib');
 
 const HARNESS_DIR = path.join(__dirname, '..');
 const ROOT = path.join(HARNESS_DIR, '..');
@@ -109,9 +109,23 @@ function buildFailures() {
   return out;
 }
 
+// buildOutcomesByTask() — { <taskId>: <latest ledgers/outcomes.jsonl row for that id> }, so a done
+// task can show which model/effort actually completed it (finalModel/finalEffort — the tier that
+// succeeded, after any escalation, as opposed to startModel/startEffort which is just the cold-start
+// floor it began at). Rows are append-order → last wins (a task id should only ever get one terminal
+// row, but this stays robust if that ever changes). Robust to a missing/garbled ledger (returns {}).
+function buildOutcomesByTask() {
+  const out = {};
+  for (const row of parseJsonl(readText(OUTCOMES_PATH))) {
+    if (row && row.id) out[row.id] = row;
+  }
+  return out;
+}
+
 function loadState() {
   const tasksJson = readJson(TASKS_PATH, { tasks: [] });
   const failures = buildFailures();
+  const outcomesByTask = buildOutcomesByTask();
   const overlays = {
     humanDone: readJson(OVERLAY_PATHS.humanDone, {}),
     manualFail: readJson(OVERLAY_PATHS.manualFail, {}),
@@ -126,6 +140,17 @@ function loadState() {
       // Attach failed-attempt history to NON-done tasks (a done task's past soft-fails aren't
       // interesting; a still-open task with failures is the signal worth surfacing).
       if (!task.failed && failures[task.id]) task.buildFailures = failures[task.id];
+      // Which model/effort actually completed this task, once it has a terminal outcome. A task
+      // marked done via the human-done overlay (a needs-human gate, or any task completed by hand)
+      // never goes through run_claude()/record_outcome(), so it has no ledger row at all — that's
+      // not a gap to leave blank, it's a distinct, equally real "who completed this" answer.
+      const oc = outcomesByTask[task.id];
+      if (oc && (oc.finalModel || oc.finalEffort)) {
+        task.completedWith = { model: oc.finalModel || null, effort: oc.finalEffort || null };
+      } else {
+        const hd = overlays.humanDone[task.id];
+        if (hd && hd.done === true) task.completedWith = { human: true };
+      }
     }
   }
   return {
@@ -281,23 +306,36 @@ function lockState() {
   return { held: true, pid, alive };
 }
 
-// claudeOutTail() — the last ~40 lines of the builder/auditor's live output. The worktree variant
-// writes it inside the loop worktree (../<name>-loop/.harness/worklog/), the in-place variant in the
-// primary checkout — read whichever was touched most recently.
-function claudeOutTail() {
-  const candidates = [
-    path.join(WORKLOG_DIR, '.claude-out'),
-    path.join(path.dirname(ROOT), `${NAME}-loop`, '.harness', 'worklog', '.claude-out'),
-  ];
+// claudeOutTailFor(phase) — the builder's or auditor's live output, reconstructed from whichever
+// worklog was touched most recently (the worktree variant writes inside the loop worktree,
+// ../<name>-loop/.harness/worklog/; the in-place variant writes in the primary checkout). Since
+// loop.sh/loop.in-place.sh invoke claude with --output-format stream-json, the raw transcript lives
+// in `.claude-out.<phase>.jsonl` (streamed incrementally — see run_claude()); `.claude-out.<phase>`
+// is that same invocation's plain-text reconstruction. Build and audit are SEPARATE files precisely
+// so one doesn't truncate the other — before this, both phases shared one filename, so the moment
+// the audit started, its first byte wiped out the builder's still-fresh output via `tee`.
+function claudeOutTailFor(phase) {
+  const dirs = [WORKLOG_DIR, path.join(path.dirname(ROOT), `${NAME}-loop`, '.harness', 'worklog')];
+  const candidates = [];
+  for (const d of dirs) { candidates.push(path.join(d, `.claude-out.${phase}.jsonl`), path.join(d, `.claude-out.${phase}`)); }
   let best = null, bestM = 0;
   for (const p of candidates) {
     try { const m = fs.statSync(p).mtimeMs; if (m > bestM) { bestM = m; best = p; } } catch (_err) { /* absent */ }
   }
-  if (!best) return null;
+  if (!best) return { text: null, tool: null };
   const text = readText(best);
-  if (!text) return null;
+  if (!text) return { text: null, tool: null };
+  if (best.endsWith('.jsonl')) {
+    const live = liveOutputFromJsonl(text);
+    return { text: live.text ? live.text.slice(-8000) : null, tool: live.tool };
+  }
   const lines = text.split('\n');
-  return lines.slice(-40).join('\n').slice(-8000);
+  return { text: lines.slice(-40).join('\n').slice(-8000), tool: null };
+}
+
+// claudeOutTail() — both phases' live output, each independent (see claudeOutTailFor above).
+function claudeOutTail() {
+  return { build: claudeOutTailFor('build'), audit: claudeOutTailFor('audit') };
 }
 
 // freshness() — how stale is what this dashboard renders? Age of the last `git fetch` (FETCH_HEAD
@@ -324,10 +362,12 @@ function freshness() {
 }
 
 function activityState() {
+  const live = claudeOutTail();
   return {
     lock: lockState(),
     current: readJson(HEARTBEAT_PATH, null),
-    logTail: claudeOutTail(),
+    build: live.build,
+    audit: live.audit,
     freshness: freshness(),
     fetchEverySec: parseInt(envKnob('HARNESS_DASHBOARD_FETCH_SECONDS', '0'), 10) || 0,
   };
@@ -443,10 +483,29 @@ function renderPage() {
 <meta charset="utf-8">
 <title>${titleHtml ? titleHtml + ' — ' : ''}Backlog — implementation harness</title>
 <style>
-  :root{
-    --bg:#fbf3dd; --panel:#fff9ec; --panel-2:#ffeec2; --border:#f0d49a;
-    --text:#4a3613; --muted:#9c7e44; --accent:#e8821f;
-    --green:#5a9e2e; --red:#e0492e; --yellow:#c98a12; --amber:#d9791a; --human:#3a7bd0;
+  /* Four bold, hue-distinct dark themes (client picks one — see the theme picker below); baked in
+     at +10% brightness over the originally-workshopped values. Semantic colors (green/red/yellow/
+     human) are tuned per theme for contrast, not swapped for the accent — they mean the same thing
+     (done/failed/blocked/needs-human) in every theme. */
+  :root, [data-theme="amber"]{
+    --bg:#3d2a15; --panel:#483414; --panel-2:#543717; --border:#73511d;
+    --text:#f5e9d6; --muted:#ba9a69; --accent:#ffa629;
+    --green:#6bd453; --red:#ff5c5c; --yellow:#f0c33e; --amber:#ffa629; --human:#5b9bff;
+  }
+  [data-theme="ink"]{
+    --bg:#1a2b45; --panel:#203453; --panel-2:#273d65; --border:#3c537a;
+    --text:#e9eefb; --muted:#9fafcd; --accent:#ff7a54;
+    --green:#4ad991; --red:#ff5c6e; --yellow:#ffcf5c; --amber:#ff9d4d; --human:#b98bff;
+  }
+  [data-theme="forest"]{
+    --bg:#1e3c2e; --panel:#254435; --panel-2:#2c513d; --border:#426953;
+    --text:#e7f2ea; --muted:#94b5a1; --accent:#f2b53c;
+    --green:#4fd1a5; --red:#ff6b5c; --yellow:#e0c34a; --amber:#f2b53c; --human:#6fa8ff;
+  }
+  [data-theme="plum"]{
+    --bg:#2f1f45; --panel:#362553; --panel-2:#402c63; --border:#584180;
+    --text:#f1e9f8; --muted:#b8a5cf; --accent:#ff5ec4;
+    --green:#5fd18a; --red:#ff5c6e; --yellow:#f0c14a; --amber:#f2b53c; --human:#6fa8ff;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
@@ -458,12 +517,12 @@ function renderPage() {
   button{cursor:pointer;font:inherit}
 
   .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border);color:var(--muted);white-space:nowrap;margin-left:4px;}
-  .pill.buildable{color:var(--amber);background:rgba(232,160,32,.14);border-color:rgba(232,160,32,.4);}
+  .pill.buildable{color:var(--amber);background:color-mix(in srgb, var(--amber) 14%, transparent);border-color:color-mix(in srgb, var(--amber) 40%, transparent);}
   .pill.human{color:#fff;background:var(--human);border-color:var(--human);}
-  .pill.blocked{color:var(--yellow);background:rgba(201,138,18,.16);border-color:rgba(201,138,18,.45);font-weight:600;}
-  .pill.done{color:var(--green);background:rgba(90,158,46,.14);border-color:rgba(90,158,46,.35);}
-  .pill.failed{color:var(--red);background:rgba(224,73,46,.12);border-color:rgba(224,73,46,.35);}
-  .pill.reviewed{color:var(--green);background:rgba(90,158,46,.14);border-color:rgba(90,158,46,.35);}
+  .pill.blocked{color:var(--yellow);background:color-mix(in srgb, var(--yellow) 16%, transparent);border-color:color-mix(in srgb, var(--yellow) 45%, transparent);font-weight:600;}
+  .pill.done{color:var(--green);background:color-mix(in srgb, var(--green) 14%, transparent);border-color:color-mix(in srgb, var(--green) 35%, transparent);}
+  .pill.failed{color:var(--red);background:color-mix(in srgb, var(--red) 12%, transparent);border-color:color-mix(in srgb, var(--red) 35%, transparent);}
+  .pill.reviewed{color:var(--green);background:color-mix(in srgb, var(--green) 14%, transparent);border-color:color-mix(in srgb, var(--green) 35%, transparent);}
 
   details.section{margin:0 0 26px;}
   summary.section-heading{font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);cursor:pointer;list-style:none;user-select:none;display:flex;align-items:center;gap:9px;padding:4px 0;}
@@ -492,7 +551,7 @@ function renderPage() {
   .barlabel{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .barbtn{font-size:11px;padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted);}
   .barbtn:hover{border-color:var(--accent);color:var(--text)}
-  .barbtn.on{border-color:var(--accent);color:var(--accent);background:rgba(232,130,31,.12)}
+  .barbtn.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, transparent)}
   .act{font-size:12px;padding:3px 11px;border-radius:6px;border:1px solid var(--border);background:var(--panel-2);color:var(--text)}
   .act:hover{border-color:var(--accent)}
   .act.danger:hover{border-color:var(--red);color:var(--red)}
@@ -500,26 +559,33 @@ function renderPage() {
   label.sel{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--muted)}
 
   .flash{animation:flash 1.6s ease-out;border-radius:6px}
-  @keyframes flash{from{background:rgba(232,130,31,.25)}to{background:transparent}}
+  @keyframes flash{from{background:color-mix(in srgb, var(--accent) 25%, transparent)}to{background:transparent}}
 
   .topbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px;}
   .topbar h1{margin:0}
-  .cog{display:inline-block}
-  .cog.spin{animation:cogspin 2.5s linear infinite}
+  /* An SVG icon, not a text/emoji glyph — confirmed by pixel-level screenshot verification (real
+     GPU compositing, not disabled) that a rotating text glyph visibly wobbles: the browser
+     re-hints/re-rasterizes the glyph's font-atlas texture at each angle, drifting up to ~0.7px
+     per frame. An SVG shape has no such glyph-atlas resampling step and measured EXACTLY 0px of
+     centroid drift across a full rotation under the same conditions. 29px = the 22px h1 baseline
+     + 30%, rounded to a whole pixel (fractional dimensions add their own sub-pixel layout drift).
+     will-change/backface-visibility:hidden put the rotation on its own GPU layer. */
+  .cog{display:inline-block;width:29px;height:29px;color:var(--text);vertical-align:middle;transform-origin:50% 50%;will-change:transform;backface-visibility:hidden}
+  .cog.spin{animation:cogspin 1s linear infinite}
   @keyframes cogspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion: reduce){.cog.spin{animation:none}}
-  .bgpicker{display:flex;align-items:center;gap:5px;margin-left:auto}
+  .themepicker{display:flex;align-items:center;gap:5px;margin-left:auto}
   .swatch{width:20px;height:20px;padding:0;border-radius:50%;border:2px solid var(--border);cursor:pointer;box-shadow:none}
   .swatch:hover{border-color:var(--muted)}
-  .swatch.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(232,130,31,.3)}
+  .swatch.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 
   /* "Now" strip — live loop status + freshness, on every tab */
   .nowbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 18px;font-size:12px}
   .nowpill{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 11px;border-radius:999px;border:1px solid var(--border);background:var(--panel);color:var(--muted);white-space:nowrap}
-  .nowpill.run{color:var(--green);border-color:rgba(90,158,46,.45);background:rgba(90,158,46,.10);font-weight:600}
+  .nowpill.run{color:var(--green);border-color:color-mix(in srgb, var(--green) 45%, transparent);background:color-mix(in srgb, var(--green) 10%, transparent);font-weight:600}
   .nowpill.idle{color:var(--muted)}
-  .nowpill.warn{color:var(--yellow);border-color:rgba(201,138,18,.45);background:rgba(201,138,18,.10);font-weight:600}
-  .nowpill.bad{color:var(--red);border-color:rgba(224,73,46,.4);background:rgba(224,73,46,.08);font-weight:600}
+  .nowpill.warn{color:var(--yellow);border-color:color-mix(in srgb, var(--yellow) 45%, transparent);background:color-mix(in srgb, var(--yellow) 10%, transparent);font-weight:600}
+  .nowpill.bad{color:var(--red);border-color:color-mix(in srgb, var(--red) 40%, transparent);background:color-mix(in srgb, var(--red) 8%, transparent);font-weight:600}
   .nowbar details{flex-basis:100%;margin-top:2px}
   .nowbar summary{color:var(--muted);font-size:12px;cursor:pointer;user-select:none}
   .nowbar pre{white-space:pre-wrap;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:260px;overflow:auto;font-size:11px;font-family:ui-monospace,Menlo,monospace;margin:6px 0 0}
@@ -528,7 +594,7 @@ function renderPage() {
   .tabs{display:flex;gap:6px;flex-wrap:wrap}
   .tab{font-size:13px;padding:5px 13px;border-radius:7px;border:1px solid var(--border);background:var(--panel);color:var(--muted);}
   .tab:hover{border-color:var(--accent);color:var(--text)}
-  .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .tab.on{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}
   .view[hidden]{display:none}
   .note{color:var(--muted);font-size:12px;margin:6px 0 14px}
 
@@ -551,6 +617,10 @@ function renderPage() {
   .ftable th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600}
   .ftable td{padding:7px 10px;border-bottom:1px solid var(--border)} .ftable tr:last-child td{border-bottom:none}
   .ftable td.num,.ftable th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .qtip{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);color:var(--muted);font-size:9px;font-weight:700;line-height:1;cursor:help;text-transform:none;letter-spacing:normal;vertical-align:1px}
+  .qtip:hover,.qtip:focus{border-color:var(--accent);color:var(--accent)}
+  .qtip:focus{outline:2px solid var(--accent);outline-offset:2px}
+  #qtip-popup{position:fixed;z-index:50;max-width:260px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);padding:7px 10px;border-radius:7px;font-size:11.5px;font-weight:400;line-height:1.4;text-transform:none;letter-spacing:normal;box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none;display:none}
   .facet-name{font-weight:600}
   .model-tag{font-family:ui-monospace,Menlo,monospace;font-size:12px}
   .cold-tag{font-size:10px;color:var(--muted);margin-left:5px}
@@ -567,23 +637,17 @@ function renderPage() {
 <body>
 <div class="container">
 <div class="topbar">
-  <h1><span id="cog" class="cog" title="Spins while the loop is actively running">⚙</span> ${titleHtml || 'Harness'}</h1>
+  <h1><svg id="cog" class="cog" viewBox="0 0 24 24" role="img" aria-label="loop status gear"><title>Spins while the loop is actively running</title><defs><mask id="gearHole"><rect width="24" height="24" fill="white"/><circle cx="12" cy="12" r="1.9" fill="black"/></mask></defs><g fill="currentColor" mask="url(#gearHole)"><circle cx="12" cy="12" r="4.6"/><rect x="10.70" y="5.30" width="2.60" height="3.10" rx="0.6" transform="rotate(0.0 12 12)"/><rect x="10.70" y="5.30" width="2.60" height="3.10" rx="0.6" transform="rotate(45.0 12 12)"/><rect x="10.70" y="5.30" width="2.60" height="3.10" rx="0.6" transform="rotate(90.0 12 12)"/><rect x="10.70" y="5.30" width="2.60" height="3.10" rx="0.6" transform="rotate(135.0 12 12)"/><rect x="10.70" y="5.30" width="2.60" height="3.10" rx="0.6" transform="rotate(180.0 12 12)"/><rect x="10.70" y="5.30" width="2.60" height="3.10" rx="0.6" transform="rotate(225.0 12 12)"/><rect x="10.70" y="5.30" width="2.60" height="3.10" rx="0.6" transform="rotate(270.0 12 12)"/><rect x="10.70" y="5.30" width="2.60" height="3.10" rx="0.6" transform="rotate(315.0 12 12)"/></g></svg> ${titleHtml || 'Harness'}</h1>
   <nav class="tabs">
     <button class="tab on" data-view="backlog" onclick="switchView('backlog')">Backlog</button>
     <button class="tab" data-view="ideas" onclick="switchView('ideas')">Ideas</button>
     <button class="tab" data-view="harness" onclick="switchView('harness')">Internals</button>
   </nav>
-  <div class="bgpicker" title="Dashboard background color — saved in this browser only">
-    <button type="button" class="swatch" data-color="#fbf3dd" style="background:#fbf3dd" title="Cream" onclick="setBg('#fbf3dd')"></button>
-    <button type="button" class="swatch" data-color="#dbeeff" style="background:#dbeeff" title="Sky Blue" onclick="setBg('#dbeeff')"></button>
-    <button type="button" class="swatch" data-color="#dcf6e6" style="background:#dcf6e6" title="Mint" onclick="setBg('#dcf6e6')"></button>
-    <button type="button" class="swatch" data-color="#e8e0ff" style="background:#e8e0ff" title="Lavender" onclick="setBg('#e8e0ff')"></button>
-    <button type="button" class="swatch" data-color="#ffe4cf" style="background:#ffe4cf" title="Peach" onclick="setBg('#ffe4cf')"></button>
-    <button type="button" class="swatch" data-color="#ffe0ec" style="background:#ffe0ec" title="Blush Pink" onclick="setBg('#ffe0ec')"></button>
-    <button type="button" class="swatch" data-color="#d9f7f4" style="background:#d9f7f4" title="Aqua" onclick="setBg('#d9f7f4')"></button>
-    <button type="button" class="swatch" data-color="#fff3b0" style="background:#fff3b0" title="Butter Yellow" onclick="setBg('#fff3b0')"></button>
-    <button type="button" class="swatch" data-color="#ffd9d2" style="background:#ffd9d2" title="Coral" onclick="setBg('#ffd9d2')"></button>
-    <button type="button" class="swatch" data-color="#dde3ff" style="background:#dde3ff" title="Periwinkle" onclick="setBg('#dde3ff')"></button>
+  <div class="themepicker" title="Dashboard theme — saved in this browser only">
+    <button type="button" class="swatch" data-theme="amber" style="background:#3d2a15" title="Amber" onclick="setTheme('amber')"></button>
+    <button type="button" class="swatch" data-theme="ink" style="background:#1a2b45" title="Ink" onclick="setTheme('ink')"></button>
+    <button type="button" class="swatch" data-theme="forest" style="background:#1e3c2e" title="Forest" onclick="setTheme('forest')"></button>
+    <button type="button" class="swatch" data-theme="plum" style="background:#2f1f45" title="Plum" onclick="setTheme('plum')"></button>
   </div>
 </div>
 <div id="nowbar" class="nowbar"></div>
@@ -601,7 +665,7 @@ function renderPage() {
 </div>
 <script>
 const HARNESS_PROJECT_KEY = ${JSON.stringify(NAME)};
-const state = { activeView: 'backlog', open: new Set(), openLogs: new Set(), closedSections: new Set(), selected: new Set(), doneFilter: 'all', lastClicked: null, lastData: null, lastFetchedJson: null, openIdeas: new Set(), lastIdeasData: null, lastIdeasJson: null, lastHarnessJson: null, lastNowJson: null, nowLogOpen: false };
+const state = { activeView: 'backlog', open: new Set(), openLogs: new Set(), closedSections: new Set(), selected: new Set(), doneFilter: 'all', lastClicked: null, lastData: null, lastFetchedJson: null, openIdeas: new Set(), lastIdeasData: null, lastIdeasJson: null, lastHarnessJson: null, lastNowJson: null, nowLogOpen: { build: false, audit: false } };
 
 function switchView(name) {
   state.activeView = name;
@@ -640,6 +704,24 @@ function ago(sec) {
 // renderNow(data) — the live status strip: what the loop is doing RIGHT NOW (from its lock +
 // worklog/.current.json heartbeat), how fresh the rendered data is vs origin, and a collapsible
 // tail of the builder's live output.
+// nowLogDetails(phase, info, cur) — one collapsible live-output panel for a single phase (build or
+// audit). Build and audit are rendered as two INDEPENDENT panels (not one shared one) because they
+// now come from two independent files — see claudeOutTailFor() — so the audit starting no longer
+// blanks out the builder's still-fresh output, and vice versa.
+function nowLogDetails(phase, info, cur) {
+  if (!info || !info.text) return '';
+  const id = 'now-log-' + phase;
+  const open = state.nowLogOpen[phase];
+  const activeTask = cur && cur.task && (cur.phase || '').toLowerCase().indexOf(phase === 'audit' ? 'audit' : 'build') !== -1;
+  const label = 'live output — ' + phase + (activeTask ? ' (' + esc(cur.task) + ')' : '');
+  return \`<details id="\${id}" ontoggle="onNowLogToggle('\${phase}', this)"\${open ? ' open' : ''}>
+    <summary>\${label}</summary>
+    <pre id="\${id}-pre">\${esc(info.text)}</pre>
+  </details>\`;
+}
+
+function onNowLogToggle(phase, el) { state.nowLogOpen[phase] = el.open; }
+
 function renderNow(data) {
   const el = document.getElementById('nowbar');
   const lock = data.lock || {}, cur = data.current, fr = data.freshness || {};
@@ -659,20 +741,26 @@ function renderNow(data) {
   } else {
     h += '<span class="nowpill idle">◼ loop idle</span>';
   }
+  // Which phase is CURRENTLY active drives the tool pill — the heartbeat's own phase (e.g.
+  // "auditing") decides between the build and audit live-output streams' tool field.
+  const activePhase = (cur && /audit/i.test(cur.phase || '')) ? 'audit' : 'build';
+  const activeTool = data[activePhase] && data[activePhase].tool;
+  if (lock.held && lock.alive && activeTool) {
+    h += '<span class="nowpill run" title="From the live output stream — the tool call most recently started, with no response text after it yet">▶ running ' + esc(activeTool) + '…</span>';
+  }
   if (fr.known && !fr.inSync) {
     h += '<span class="nowpill bad" title="The local checkout this dashboard reads is not on the same commit as origin/' + esc(fr.mainBranch || 'main') + ' — what you see may be stale or ahead.">local ≠ origin/' + esc(fr.mainBranch || 'main') + '</span>';
   }
   const fetchCls = (fr.lastFetchSec == null || fr.lastFetchSec > 900) ? 'nowpill warn' : 'nowpill idle';
   const fetchNote = data.fetchEverySec > 0 ? ' (auto-fetch ' + data.fetchEverySec + 's)' : '';
   h += '<span class="' + fetchCls + '" title="Age of the last git fetch — the dashboard renders LOCAL files, so origin changes are invisible until something fetches. Set HARNESS_DASHBOARD_FETCH_SECONDS to have the dashboard fetch itself.">origin seen: ' + ago(fr.lastFetchSec) + fetchNote + '</span>';
-  if (data.logTail) {
-    h += '<details id="now-log" ontoggle="state.nowLogOpen=this.open"' + (state.nowLogOpen ? ' open' : '') + '>'
-       + '<summary>live output (' + (cur && cur.task ? esc(cur.task) : 'last run') + ')</summary>'
-       + '<pre id="now-log-pre">' + esc(data.logTail) + '</pre></details>';
-  }
+  h += nowLogDetails('build', data.build, cur);
+  h += nowLogDetails('audit', data.audit, cur);
   el.innerHTML = h;
-  const pre = document.getElementById('now-log-pre');
-  if (pre && state.nowLogOpen) pre.scrollTop = pre.scrollHeight;
+  ['build', 'audit'].forEach(function (phase) {
+    const pre = document.getElementById('now-log-' + phase + '-pre');
+    if (pre && state.nowLogOpen[phase]) pre.scrollTop = pre.scrollHeight;
+  });
 }
 
 async function refreshBacklog() {
@@ -775,14 +863,14 @@ function renderHarness(data) {
     h += '<p class="note">No calibration data yet — the harness records an outcome each time it builds a task.</p>';
   } else {
     h += '<table class="ftable"><thead><tr>'
-       + '<th title="The layer × work-type combination this row\\'s stats are calibrated for (e.g. backend/feature).">Facet</th>'
-       + '<th title="The model/effort the policy would pick to START a task in this cell right now (it only escalates from here on real failure). \\'cold\\' = no build history yet, using the cold-start prior.">Start model</th>'
-       + '<th class="num" title="The sampling probability the policy will use for the NEXT build in this cell">Audit (policy)</th>'
-       + '<th class="num" title="What actually happened: audited successes / all successes recorded in the ledger">Audited (observed)</th>'
-       + '<th class="num" title="Total tasks in this cell that reached a terminal outcome (success or blocked), per the outcomes ledger.">Builds</th>'
-       + '<th class="num" title="Successful builds in this cell that the owner did NOT overturn.">✓</th>'
-       + '<th class="num" title="Builds the owner overturned as a false success, or that the loop itself gave up on (blocked).">✗</th>'
-       + '<th class="num" title="Failed attempts recorded before a task in this cell eventually succeeded or was blocked — see Failure health below for a kind breakdown.">⚠ fails</th>'
+       + '<th>Facet <span class="qtip" tabindex="0" data-tip="The layer × work-type combination this row\\'s stats are calibrated for (e.g. backend/feature).">?</span></th>'
+       + '<th>Start model <span class="qtip" tabindex="0" data-tip="The model/effort the policy would pick to START a task in this cell right now (it only escalates from here on real failure). \\'cold\\' = no build history yet, using the cold-start prior.">?</span></th>'
+       + '<th class="num">Audit (policy) <span class="qtip" tabindex="0" data-tip="The sampling probability the policy will use for the NEXT build in this cell">?</span></th>'
+       + '<th class="num">Audited (observed) <span class="qtip" tabindex="0" data-tip="What actually happened: audited successes / all successes recorded in the ledger">?</span></th>'
+       + '<th class="num">Builds <span class="qtip" tabindex="0" data-tip="Total tasks in this cell that reached a terminal outcome (success or blocked), per the outcomes ledger.">?</span></th>'
+       + '<th class="num">✓ <span class="qtip" tabindex="0" data-tip="Successful builds in this cell that the owner did NOT overturn.">?</span></th>'
+       + '<th class="num">✗ <span class="qtip" tabindex="0" data-tip="Builds the owner overturned as a false success, or that the loop itself gave up on (blocked).">?</span></th>'
+       + '<th class="num">⚠ fails <span class="qtip" tabindex="0" data-tip="Failed attempts recorded before a task in this cell eventually succeeded or was blocked — see Failure health below for a kind breakdown.">?</span></th>'
        + '</tr></thead><tbody>';
     for (const c of cells) {
       const model = c.chosenModel ? esc(c.chosenModel) + ' / ' + esc(c.chosenEffort) : '—';
@@ -853,6 +941,15 @@ function pillsFor(task, bucketName) {
   } else if (bucketName === 'done') {
     pills += task.reviewed ? '<span class="pill reviewed">👁 reviewed</span>' : '<span class="pill">not reviewed</span>';
     pills += task.failed ? '<span class="pill failed">✗ failed</span>' : '<span class="pill done">✓ done</span>';
+    if (task.completedWith) {
+      const cw = task.completedWith;
+      if (cw.human) {
+        pills += '<span class="pill" title="No ledgers/outcomes.jsonl row for this task — it was marked done via the human-done overlay (a needs-human gate, or a task completed by hand), not built by the loop.">🧑 implemented manually</span>';
+      } else {
+        const label = esc(cw.model || '?') + (cw.effort ? '/' + esc(cw.effort) : '');
+        pills += '<span class="pill model-tag" title="The model/effort that completed this task, from ledgers/outcomes.jsonl">' + label + '</span>';
+      }
+    }
   }
   pills += failPill(task, bucketName);
   return pills;
@@ -1031,29 +1128,65 @@ async function bulkAction(bucket) {
   if (ok) { state.selected.clear(); refreshActive(); }
 }
 
-// Background color picker — a fixed set of 10 preset swatches (client-only, localStorage,
-// namespaced by project dir name so several projects' dashboards, even on the same port at
-// different times, don't clobber each other's choice). No open-ended color input — picking a good
-// background from unlimited options is fiddly; a small curated set is not.
-const BG_STORAGE_KEY = 'harness-dashboard-bg:' + HARNESS_PROJECT_KEY;
-function markActiveSwatch(hex) {
-  const want = (hex || '').toLowerCase();
+// Theme picker — four bold, hue-distinct dark themes, baked in as [data-theme="…"] CSS blocks
+// above (client-only, localStorage, namespaced by project dir name so several projects'
+// dashboards, even on the same port at different times, don't clobber each other's choice). No
+// open-ended color input — picking a good palette from unlimited options is fiddly; a small
+// curated set is not.
+const THEME_STORAGE_KEY = 'harness-dashboard-theme:' + HARNESS_PROJECT_KEY;
+const THEME_NAMES = ['amber', 'ink', 'forest', 'plum'];
+function markActiveTheme(name) {
   document.querySelectorAll('.swatch').forEach(function (b) {
-    b.classList.toggle('active', (b.dataset.color || '').toLowerCase() === want);
+    b.classList.toggle('active', b.dataset.theme === name);
   });
 }
-function setBg(hex) {
-  document.documentElement.style.setProperty('--bg', hex);
-  localStorage.setItem(BG_STORAGE_KEY, hex);
-  markActiveSwatch(hex);
+function setTheme(name) {
+  document.documentElement.setAttribute('data-theme', name);
+  localStorage.setItem(THEME_STORAGE_KEY, name);
+  markActiveTheme(name);
 }
-function initBgPicker() {
+function initThemePicker() {
   if (!document.querySelector('.swatch')) return;
-  const saved = localStorage.getItem(BG_STORAGE_KEY);
-  if (saved) document.documentElement.style.setProperty('--bg', saved);
-  markActiveSwatch(saved || '#fbf3dd');
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  const theme = THEME_NAMES.includes(saved) ? saved : 'amber';
+  document.documentElement.setAttribute('data-theme', theme);
+  markActiveTheme(theme);
 }
-initBgPicker();
+initThemePicker();
+
+// Instant tooltips for .qtip icons — the native title= attribute has a browser-enforced ~1-1.5s
+// hover delay that CSS can't shorten. One popup element, positioned via getBoundingClientRect and
+// clamped to the viewport (so it's never clipped by a table's own overflow:hidden, unlike a
+// CSS-only ::after pinned to the icon would be), shown/hidden via event delegation on document so
+// it keeps working across re-renders (the Internals tab rebuilds its innerHTML on every poll).
+function initQtips() {
+  let popup = document.getElementById('qtip-popup');
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'qtip-popup';
+    document.body.appendChild(popup);
+  }
+  function show(el) {
+    const tip = el.getAttribute('data-tip');
+    if (!tip) return;
+    popup.textContent = tip;
+    popup.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    const pr = popup.getBoundingClientRect();
+    let left = r.left + r.width / 2 - pr.width / 2;
+    left = Math.max(6, Math.min(left, window.innerWidth - pr.width - 6));
+    let top = r.bottom + 7;
+    if (top + pr.height > window.innerHeight - 6) top = r.top - pr.height - 7;
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+  }
+  function hide() { popup.style.display = 'none'; }
+  document.addEventListener('mouseover', function (e) { const q = e.target.closest('.qtip'); if (q) show(q); });
+  document.addEventListener('mouseout', function (e) { const q = e.target.closest('.qtip'); if (q) hide(); });
+  document.addEventListener('focusin', function (e) { const q = e.target.closest('.qtip'); if (q) show(q); });
+  document.addEventListener('focusout', function (e) { const q = e.target.closest('.qtip'); if (q) hide(); });
+}
+initQtips();
 
 refreshActive();
 setInterval(refreshActive, 5000);   // one poll → the active view (each keeps its own change-guard)

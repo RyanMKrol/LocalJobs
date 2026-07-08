@@ -47,7 +47,7 @@ TODO.md
 # The backlog (.harness/tracking/TASKS.json) and per-task worklog ARE committed; only the loop's
 # transient scratch is ignored.
 .harness/worklog/.result
-.harness/worklog/.claude-out
+.harness/worklog/.claude-out*
 .harness/worklog/STATUS.md
 .harness/worklog/*.audit.md
 .harness/worklog/.failures.buf

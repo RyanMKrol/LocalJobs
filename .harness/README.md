@@ -121,6 +121,10 @@ deliberately *not* parallel).
 
 - **Backlog** — the live task buckets (ready / waiting / needs-you / done) with per-task detail (spec,
   worklog, audit log) and buttons that call the same `mark-*.sh` scripts a human would run by hand.
+  Each done task also shows the model/effort that actually completed it (`finalModel`/`finalEffort`
+  from `ledgers/outcomes.jsonl` — the tier that succeeded, after any escalation), or "🧑 implemented
+  manually" for a task marked done via the human-done overlay instead (a needs-human gate, or any
+  task completed by hand) — those never go through the loop, so they have no ledger row at all.
 - **Ideas** — `tracking/IDEAS.jsonl` rendered as a one-line-per-idea list (id, title, captured date);
   click a row to expand its full description (rendered markdown), so the inbox is scannable without
   opening the file or wading through every idea's full text at once. An "Expand all"/"Collapse all"
@@ -130,11 +134,19 @@ deliberately *not* parallel).
   as the loop does, so the numbers match what the loop actually uses) **alongside the observed audited
   fraction from the ledger**, plus build/failure counts, a failure-kind health panel (which gate is
   actually catching things), the tier ladder, the policy knobs, and a recent-activity feed. Every column
-  header in the per-facet calibration table carries a hover tooltip explaining what it means.
+  header in the per-facet calibration table carries a small "?" icon explaining what it means on hover.
 
 Every tab also carries a live **"Now" strip**: whether the loop is running (from its own repo lock —
 including a ⚠ stale-lock warning after an interrupt), the current task/phase/rung/attempt from the loop's
-`worklog/.current.json` heartbeat, a collapsible tail of the builder's live output, and a freshness badge
+`worklog/.current.json` heartbeat, two independent collapsible tails of the builder's and auditor's
+*genuinely* live output (the loop invokes `claude` with `--output-format stream-json`, so each updates
+incrementally as it's generated rather than dumping everything at once when the process exits — build
+and audit are separate files precisely so the audit starting doesn't blank out the builder's still-fresh
+output, and vice versa; every tool call gets an inline `▶ <Tool>` marker in order, so a long silent
+stretch of reading/running things with no narration in between reads as an actual sequence of tool
+calls rather than looking like the panel started mid-conversation; a `▶ running <Tool>…` pill shows
+whichever phase is currently active when a tool call is in flight with no response text after it
+yet), and a freshness badge
 ("origin seen Xm ago" / "local ≠ origin") — the dashboard renders LOCAL files, so this surfaces when
 nothing has fetched recently. Set `HARNESS_DASHBOARD_FETCH_SECONDS` (harness.env) to have the dashboard
 `git fetch` on an interval itself (fetch-only; it never touches the working tree). The ⚙ next to the
@@ -143,8 +155,8 @@ header title also spins for as long as that same lock check says the loop is act
 The header also carries two ways to tell dashboards apart when you have several open (e.g. multiple
 projects, or multiple harness-driven repos): an optional project title — set `.harness/custom/dashboard-title.txt`
 (see the customization walkthrough) and it shows next to the gear icon and in the browser tab — and a
-background-color picker (10 preset light/bright swatches, top right — no open-ended color input) that's
-a client-only preference saved per-browser via `localStorage`.
+theme picker (4 bold, hue-distinct dark themes — Amber, Ink, Forest, Plum — top right, no open-ended
+color input) that's a client-only preference saved per-browser via `localStorage`.
 
 It re-reads everything from disk on every request — no daemon; the Internals tab memoises its per-facet
 `jq` work on the ledger mtimes so the 5s refresh is cheap.
