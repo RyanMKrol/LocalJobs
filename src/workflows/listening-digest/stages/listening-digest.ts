@@ -112,17 +112,17 @@ export function renderDigestMarkdown(opts: {
 // Last.fm fetchers (injectable for tests)
 // ---------------------------------------------------------------------------
 
-export type TopAlbumsFetcher = () => Promise<LastFmTopAlbumsResponse>;
-export type TopTracksFetcher = () => Promise<LastFmTopTracksResponse>;
+export type TopAlbumsFetcher = (period: string) => Promise<LastFmTopAlbumsResponse>;
+export type TopTracksFetcher = (period: string) => Promise<LastFmTopTracksResponse>;
 
 export function makeTopAlbumsFetcher(apiKey: string, username: string): TopAlbumsFetcher {
-  return async () => {
+  return async (period: string) => {
     const params = new URLSearchParams({
       method: 'user.getTopAlbums',
       user: username,
       api_key: apiKey,
       format: 'json',
-      period: listeningDigestConfig.period,
+      period,
       limit: String(listeningDigestConfig.topAlbumsLimit),
     });
     const url = `${listeningDigestConfig.lastFmApiBase}/?${params}`;
@@ -135,13 +135,13 @@ export function makeTopAlbumsFetcher(apiKey: string, username: string): TopAlbum
 }
 
 export function makeTopTracksFetcher(apiKey: string, username: string): TopTracksFetcher {
-  return async () => {
+  return async (period: string) => {
     const params = new URLSearchParams({
       method: 'user.getTopTracks',
       user: username,
       api_key: apiKey,
       format: 'json',
-      period: listeningDigestConfig.period,
+      period,
       limit: String(listeningDigestConfig.topTracksLimit),
     });
     const url = `${listeningDigestConfig.lastFmApiBase}/?${params}`;
@@ -184,12 +184,12 @@ export async function runListeningDigest(
   );
 
   ctx.log('info: fetching top albums from Last.fm…');
-  const albumsData = await callService('lastfm', () => fetchTopAlbums());
+  const albumsData = await callService('lastfm', () => fetchTopAlbums(listeningDigestConfig.period));
   const albums = toArray(albumsData.topalbums?.album);
   ctx.log(`info: fetched ${albums.length} top album(s)`);
 
   ctx.log('info: fetching top tracks from Last.fm…');
-  const tracksData = await callService('lastfm', () => fetchTopTracks());
+  const tracksData = await callService('lastfm', () => fetchTopTracks(listeningDigestConfig.period));
   const tracks = toArray(tracksData.toptracks?.track);
   ctx.log(`info: fetched ${tracks.length} top track(s)`);
 
@@ -220,8 +220,63 @@ export async function runListeningDigest(
     detail: { name: `Listening digest — ${label}`, markdown: mdPath },
   });
 
-  ctx.progress(100, `digest for ${label} written`);
+  ctx.progress(50, `digest for ${label} written — starting trailing ${listeningDigestConfig.trailingPeriod} pass`);
   ctx.log(
-    `info: listening-digest complete — ${filteredAlbums.length} album(s), ${tracks.length} track(s) for ${label}`,
+    `info: 1-month pass complete — ${filteredAlbums.length} album(s), ${tracks.length} track(s) for ${label}`,
+  );
+
+  const trailingPeriod = listeningDigestConfig.trailingPeriod;
+  const trailingKey = `${key}-3month`;
+  const trailingLabel = `${label} (Trailing 3 Months)`;
+
+  ctx.log(
+    `info: listening-digest starting trailing pass — user: ${username}, period: ${trailingPeriod}, key: ${trailingKey}`,
+  );
+
+  ctx.log('info: fetching trailing top albums from Last.fm…');
+  const trailingAlbumsData = await callService('lastfm', () => fetchTopAlbums(trailingPeriod));
+  const trailingAlbums = toArray(trailingAlbumsData.topalbums?.album);
+  ctx.log(`info: fetched ${trailingAlbums.length} trailing top album(s)`);
+
+  ctx.log('info: fetching trailing top tracks from Last.fm…');
+  const trailingTracksData = await callService('lastfm', () => fetchTopTracks(trailingPeriod));
+  const trailingTracks = toArray(trailingTracksData.toptracks?.track);
+  ctx.log(`info: fetched ${trailingTracks.length} trailing top track(s)`);
+
+  const filteredTrailingAlbums = filterRealAlbums(
+    trailingAlbums,
+    trailingTracks,
+    listeningDigestConfig.singleTrackAlbumRatio,
+  );
+  ctx.log(
+    `info: kept ${filteredTrailingAlbums.length}/${trailingAlbums.length} trailing album(s) after filtering out ` +
+      `single-track-dominated albums (a track making up >= ${listeningDigestConfig.singleTrackAlbumRatio * 100}% ` +
+      `of the album's plays)`,
+  );
+  for (const dropped of trailingAlbums.filter((a) => !filteredTrailingAlbums.includes(a))) {
+    ctx.log(`info: dropped trailing "${dropped.name}" by ${dropped.artist.name} — single-track-dominated`);
+  }
+
+  const trailingMarkdown = renderDigestMarkdown({
+    username,
+    monthLabel: trailingLabel,
+    generatedAtIso: now.toISOString(),
+    period: trailingPeriod,
+    albums: filteredTrailingAlbums,
+    tracks: trailingTracks,
+  });
+
+  const trailingMdPath = resolve(outDir, `listening-digest-${key}-3month.md`);
+  writeFileSync(trailingMdPath, trailingMarkdown, 'utf8');
+  ctx.log(`info: wrote trailing digest markdown to ${trailingMdPath}`);
+
+  markWorkItem(JOB_NAME, trailingKey, 'success', {
+    detail: { name: `Listening digest (trailing 3 months) — ${label}`, markdown: trailingMdPath },
+  });
+
+  ctx.progress(100, `digest for ${label} (both periods) written`);
+  ctx.log(
+    `info: listening-digest complete — 1-month: ${filteredAlbums.length} album(s)/${tracks.length} track(s); ` +
+      `trailing 3-month: ${filteredTrailingAlbums.length} album(s)/${trailingTracks.length} track(s) for ${label}`,
   );
 }

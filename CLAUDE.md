@@ -123,7 +123,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **movie-recommendations** | `src/workflows/movies/` | Monthly Plex movie audit: franchise gaps (TMDB Collections) + an 8-branch Claude recommender fan-out → one merged digest |
 | **tv-recommendations** | `src/workflows/tv-recs/` | Monthly Plex TV show recommender: snapshot → 8 Claude branches → merge/verify/dedupe → digest |
 | **workouts-sync** | `src/workflows/workouts-sync/` | Monthly Hevy workout ingestion + a 6-month progress report (Claude-narrated) |
-| **listening-digest** | `src/workflows/listening-digest/` | Monthly Last.fm top-albums/top-tracks digest |
+| **listening-digest** | `src/workflows/listening-digest/` | Monthly Last.fm top-albums/top-tracks digest — writes both a current-month and a trailing-3-month markdown file each run |
 | **projects-sync** | `src/workflows/projects-sync/` | Weekly GitHub repo catalog + a Claude-summarized markdown profile per project |
 | **claude-warmer** | `src/workflows/claude-warmer/` | Proactive Claude usage-window warmer, every 30 minutes |
 | **stocks-sync** | `src/workflows/stocks-sync/` | Daily Trading212 portfolio snapshot + gain-alert (strictly read-only) |
