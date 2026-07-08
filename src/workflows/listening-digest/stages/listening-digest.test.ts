@@ -47,11 +47,21 @@ function track(name: string, artist: string, albumName: string, playcount: numbe
 }
 
 function albumsFetcher(albums: LastFmTopAlbum[]): TopAlbumsFetcher {
-  return async () => ({ topalbums: { album: albums } });
+  return async (_period: string) => ({ topalbums: { album: albums } });
 }
 
 function tracksFetcher(tracks: LastFmTopTrack[]): TopTracksFetcher {
-  return async () => ({ toptracks: { track: tracks } });
+  return async (_period: string) => ({ toptracks: { track: tracks } });
+}
+
+/** Returns different album data depending on which period is requested. */
+function periodAwareAlbumsFetcher(byPeriod: Record<string, LastFmTopAlbum[]>): TopAlbumsFetcher {
+  return async (period: string) => ({ topalbums: { album: byPeriod[period] ?? [] } });
+}
+
+/** Returns different track data depending on which period is requested. */
+function periodAwareTracksFetcher(byPeriod: Record<string, LastFmTopTrack[]>): TopTracksFetcher {
+  return async (period: string) => ({ toptracks: { track: byPeriod[period] ?? [] } });
 }
 
 const JOB = 'lastfm-digest';
@@ -229,6 +239,59 @@ describe('runListeningDigest — normal behaviour', () => {
     const content = readFileSync(mdPath, 'utf8');
     assert.match(content, /Second Run Album/);
     assert.doesNotMatch(content, /First Run Album/);
+
+    const trailingMdPath = join(outDir, 'listening-digest-2026-08-3month.md');
+    const trailingContent = readFileSync(trailingMdPath, 'utf8');
+    assert.match(trailingContent, /Second Run Album/);
+    assert.doesNotMatch(trailingContent, /First Run Album/);
+  });
+
+  it('writes a trailing 3-month digest alongside the 1-month one, with period-correct content', async () => {
+    const now = new Date('2026-11-01T00:00:00Z');
+    await runListeningDigest(fakeCtx(), {
+      fetchTopAlbums: periodAwareAlbumsFetcher({
+        '1month': [album('Recent Album', 'Artist A', 10)],
+        '3month': [album('Quarterly Album', 'Artist B', 30)],
+      }),
+      fetchTopTracks: periodAwareTracksFetcher({
+        '1month': [track('Recent Track', 'Artist A', 'Recent Album', 8)],
+        '3month': [track('Quarterly Track', 'Artist B', 'Quarterly Album', 25)],
+      }),
+      now,
+      outDir,
+    });
+
+    const mdPath = join(outDir, 'listening-digest-2026-11.md');
+    const trailingMdPath = join(outDir, 'listening-digest-2026-11-3month.md');
+    assert.ok(existsSync(mdPath), '1-month markdown file should be written');
+    assert.ok(existsSync(trailingMdPath), 'trailing 3-month markdown file should be written');
+
+    const content = readFileSync(mdPath, 'utf8');
+    assert.match(content, /Recent Album/);
+    assert.match(content, /Recent Track/);
+    assert.doesNotMatch(content, /Quarterly Album/);
+
+    const trailingContent = readFileSync(trailingMdPath, 'utf8');
+    assert.match(trailingContent, /Quarterly Album/);
+    assert.match(trailingContent, /Quarterly Track/);
+    assert.doesNotMatch(trailingContent, /Recent Album/);
+    assert.match(trailingContent, /Trailing 3 Months/);
+
+    assert.ok(isWorkItemDone(JOB, '2026-11', 3), '1-month key should be marked done in the ledger');
+    assert.ok(
+      isWorkItemDone(JOB, '2026-11-3month', 3),
+      '3-month key should be marked done in the ledger',
+    );
+
+    const outputItems = workflowTerminalItems(['lastfm-digest']);
+    assert.ok(
+      outputItems.some((item) => item.jobName === 'lastfm-digest' && item.itemKey === '2026-11'),
+      '1-month digest item should surface in workflowTerminalItems',
+    );
+    assert.ok(
+      outputItems.some((item) => item.jobName === 'lastfm-digest' && item.itemKey === '2026-11-3month'),
+      '3-month digest item should surface in workflowTerminalItems',
+    );
   });
 
   it('filters single-track-dominated albums out of the written digest', async () => {

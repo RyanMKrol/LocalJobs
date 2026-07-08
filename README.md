@@ -192,11 +192,13 @@ summaries below are a quick-reference index, not the source of truth.
   narrate it into `data/out/workouts-progress.md` (raw comparison also written
   to `data/out/progress-data.json`). Runs monthly on the 1st at 06:00.
 - **listening-digest** — Monthly Last.fm listening digest: fetch top albums + top
-  tracks (`period=1month`) directly from Last.fm's own aggregation endpoints (no
-  raw scrobble ingestion, no DynamoDB), filter out single-track-dominated "albums",
-  and write a markdown report to `data/out/`. Idempotent per calendar month via the
-  work_items ledger; a manual re-run the same month regenerates that month's file.
-  Runs monthly on the 1st.
+  tracks TWICE (`period=1month` AND `period=3month`) directly from Last.fm's own
+  aggregation endpoints (no raw scrobble ingestion, no DynamoDB), filter out
+  single-track-dominated "albums" in each pass, and write TWO markdown reports to
+  `data/out/` — a current-month digest and a trailing-3-month digest. Idempotent
+  per calendar month via the work_items ledger (one ledger row per period); a
+  manual re-run the same month regenerates both files in place. Runs monthly on
+  the 1st.
 - **projects-sync** — Weekly GitHub repo ingestion, 2-stage DAG. Stage 1 (`github-sync`)
   fetches the owner's repos via the GitHub REST API → filters out forks/archived/private
   → sorts by pushed_at → writes the filtered list to a local `data/out/projects.json`

@@ -9,6 +9,8 @@ export const listeningDigestConfig = {
   lastFmApiBase: 'https://ws.audioscrobbler.com/2.0',
   /** Last.fm `period` param — trailing 1 month from run time (not calendar month). */
   period: '1month',
+  /** Last.fm `period` param for the second, trailing-3-month digest written alongside the 1-month one. */
+  trailingPeriod: '3month',
   /** How many top albums / top tracks to request from Last.fm. */
   topAlbumsLimit: 25,
   topTracksLimit: 50,
