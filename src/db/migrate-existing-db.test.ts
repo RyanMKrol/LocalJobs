@@ -240,6 +240,14 @@ test("services ends migrated: rate_limit_source column added (defaults '') (T449
   );
 });
 
+test('services ends migrated: timeout_ms column added (defaults NULL = no override) (T465)', () => {
+  assert.ok(cols('services').includes('timeout_ms'), 'timeout_ms column added');
+  const s = migrated.prepare('SELECT timeout_ms FROM services WHERE name = ?').get('google-places') as {
+    timeout_ms: number | null;
+  };
+  assert.equal(s.timeout_ms, null, 'pre-existing service defaults to a null timeout_ms (no override yet)');
+});
+
 test('jobs ends migrated: legacy schedule + enabled columns dropped (T070)', () => {
   assert.ok(!cols('jobs').includes('schedule'), 'schedule column dropped');
   assert.ok(!cols('jobs').includes('enabled'), 'enabled column dropped');

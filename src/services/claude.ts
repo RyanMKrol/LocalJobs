@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { callService } from '../core/services.js';
+import { callService, effectiveServiceTimeoutMs } from '../core/services.js';
 
 /**
  * Shared, self-contained Claude Code CLI helper (the `claude -p --output-format
@@ -8,9 +8,10 @@ import { callService } from '../core/services.js';
  * layer (sibling of `claude-cli.service.ts`) precisely because more than one
  * workflow drives Claude: the perfumes build stage and the movies recommendation
  * branches (T146). Like every service helper it is self-contained — it reads its
- * binary + timeout from env with sensible defaults and imports nothing from any
- * workflow's config. Every call is gated through the shared `claude-cli` service
- * (metered, sequential, no rate cap).
+ * binary from env and its timeout from `claudeTimeoutMs()` (an env-seeded default,
+ * dashboard-overridable via the `claude-cli` service's limits, T465), and imports
+ * nothing from any workflow's config. Every call is gated through the shared
+ * `claude-cli` service (metered, sequential, no rate cap).
  *
  * (Perfumes keeps its own `perfumes/claude.ts` for now — migrating it onto this
  * shared helper is a follow-up; it was out of scope for T146. See
@@ -28,7 +29,16 @@ export interface ClaudeResult {
 const RATE_LIMIT_RE = /claude usage limit reached|rate.?limit|usage limit|429|too many requests|quota|exceeded your|reached your|limit reached|overloaded/i;
 
 const claudeBin = process.env.LOCALJOBS_CLAUDE_BIN ?? 'claude';
-const claudeTimeoutMs = Number(process.env.LOCALJOBS_CLAUDE_TIMEOUT_MS ?? 300_000); // 5 min/call
+const claudeTimeoutMsDefault = Number(process.env.LOCALJOBS_CLAUDE_TIMEOUT_MS ?? 300_000); // 5 min/call
+/**
+ * The EFFECTIVE claude-cli timeout (ms) — a dashboard override (T465, via the
+ * `claude-cli` service's `limits_overridden`/`timeout_ms`) wins over the env-var
+ * default above. Read PER CALL (not cached at module load) so an edit takes effect
+ * on the very next call without a daemon restart.
+ */
+export function claudeTimeoutMs(): number {
+  return effectiveServiceTimeoutMs('claude-cli', claudeTimeoutMsDefault);
+}
 
 /**
  * Run a one-shot Claude Code CLI query. The prompt is piped via stdin (so a large
@@ -61,7 +71,8 @@ function spawnClaude(prompt: string, model: string, effort?: string): Promise<Cl
     let out = '';
     let err = '';
     let killedForTimeout = false;
-    const timer = setTimeout(() => { killedForTimeout = true; child.kill('SIGKILL'); }, claudeTimeoutMs);
+    const timeoutMs = claudeTimeoutMs();
+    const timer = setTimeout(() => { killedForTimeout = true; child.kill('SIGKILL'); }, timeoutMs);
 
     child.stdout.on('data', (d) => { out += d.toString(); });
     child.stderr.on('data', (d) => { err += d.toString(); });
@@ -69,7 +80,7 @@ function spawnClaude(prompt: string, model: string, effort?: string): Promise<Cl
     child.on('close', () => {
       clearTimeout(timer);
       if (killedForTimeout) {
-        return resolvePromise({ ok: false, text: '', rateLimited: false, error: `claude timed out after ${claudeTimeoutMs}ms` });
+        return resolvePromise({ ok: false, text: '', rateLimited: false, error: `claude timed out after ${timeoutMs}ms` });
       }
       const blob = out.trim();
       try {

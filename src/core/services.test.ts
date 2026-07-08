@@ -5,8 +5,8 @@
 // sleeps bounded by maxWaitMs; the timeout paths use a negative maxWaitMs to throw
 // on the first loop iteration (no sleep) and stay fast.
 import assert from 'node:assert/strict';
-import { callService, QuotaExceededError, registerService } from './services.js';
-import { recordServiceCall, serviceCallsToday, syncService, listServiceConsumers } from '../db/store.js';
+import { callService, effectiveServiceTimeoutMs, QuotaExceededError, registerService } from './services.js';
+import { recordServiceCall, serviceCallsToday, syncService, listServiceConsumers, updateServiceLimits } from '../db/store.js';
 
 let passed = 0;
 async function test(name: string, fn: () => Promise<void>) {
@@ -186,6 +186,29 @@ await test('cacheKey is ignored for a non-api-category service (website-scrape):
   await callService('svc-cache-scrape', async () => { calls++; }, { cacheKey: 'k' });
   await callService('svc-cache-scrape', async () => { calls++; }, { cacheKey: 'k' });
   assert.equal(calls, 2);
+});
+
+// ── effectiveServiceTimeoutMs: override wins, else code default, else fallback (T465) ──
+await test('effectiveServiceTimeoutMs: no def, no row → the caller fallback', async () => {
+  assert.equal(effectiveServiceTimeoutMs('svc-timeout-unknown', 12_345), 12_345);
+});
+
+await test('effectiveServiceTimeoutMs: a code default (ServiceDefinition.timeoutMs) beats the fallback', async () => {
+  svc({ name: 'svc-timeout-code', timeoutMs: 20_000 });
+  assert.equal(effectiveServiceTimeoutMs('svc-timeout-code', 12_345), 20_000);
+});
+
+await test('effectiveServiceTimeoutMs: a dashboard override beats the code default', async () => {
+  svc({ name: 'svc-timeout-override', timeoutMs: 20_000 });
+  updateServiceLimits('svc-timeout-override', { rate_per_minute: null, daily_cap: null, monthly_cap: null, timeout_ms: 45_000 });
+  assert.equal(effectiveServiceTimeoutMs('svc-timeout-override', 12_345), 45_000);
+});
+
+await test('effectiveServiceTimeoutMs: overridden but null timeout_ms falls back to the code default', async () => {
+  svc({ name: 'svc-timeout-override-null', timeoutMs: 20_000 });
+  // Override rate only — timeout_ms stays null, but limits_overridden flips true.
+  updateServiceLimits('svc-timeout-override-null', { rate_per_minute: 5, daily_cap: null, monthly_cap: null, timeout_ms: null });
+  assert.equal(effectiveServiceTimeoutMs('svc-timeout-override-null', 12_345), 20_000);
 });
 
 console.log(`\n${passed} services test(s) passed.`);

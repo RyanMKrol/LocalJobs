@@ -1,6 +1,7 @@
 // Pure-logic tests for the shared Plex connectivity client — NO live Plex/TMDB.
 import assert from 'node:assert/strict';
-import { enumerateSubnetHosts, resetPlexHostCacheForTests, resolvePlexHost, type PlexProbe } from './plex-client.js';
+import { enumerateSubnetHosts, plexRequestTimeoutMs, resetPlexHostCacheForTests, resolvePlexHost, type PlexProbe } from './plex-client.js';
+import { syncService, updateServiceLimits } from '../db/store.js';
 
 // ── resolvePlexHost: DHCP-resilient host resolution (injected probe, no network) ──
 // A fake probe maps host → machineIdentifier; everything else is unreachable (null).
@@ -166,6 +167,21 @@ await (async () => {
   const withUnmatchedPreferred = enumerateSubnetHosts({ interfaces: fixture, preferredHost: 'https://172.16.0.1:32400' });
   assert.equal(withUnmatchedPreferred.length, 254 * 2 * 2, 'unmatched preferred prefix does not crash or drop candidates');
   console.log('  ✓ enumerateSubnetHosts behaves unchanged with no matching preferred subnet');
+}
+
+{
+  // plexRequestTimeoutMs (T465): a dashboard override of the `plex` service's
+  // timeout_ms takes effect WITHOUT touching PLEX_REQUEST_TIMEOUT_MS/any env var.
+  const before = plexRequestTimeoutMs();
+  syncService({ name: 'plex' }); // ensure a services row exists (registry does this in production)
+  updateServiceLimits('plex', { rate_per_minute: null, daily_cap: null, monthly_cap: null, timeout_ms: 111_222 });
+  assert.equal(plexRequestTimeoutMs(), 111_222, 'a dashboard override changes the effective Plex timeout');
+  assert.notEqual(before, 111_222, 'the override value differs from whatever the code default was');
+
+  // Clearing the override reverts to the code default (the env-derived constant).
+  updateServiceLimits('plex', { rate_per_minute: null, daily_cap: null, monthly_cap: null, timeout_ms: null });
+  assert.equal(plexRequestTimeoutMs(), before, 'clearing the override reverts to the code default');
+  console.log('  ✓ plexRequestTimeoutMs: dashboard override wins over the env/code default');
 }
 
 console.log('  ✓ plex-client pure-logic tests passed');

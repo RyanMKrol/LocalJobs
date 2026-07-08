@@ -56,6 +56,26 @@ function effectiveLimits(def: ServiceDefinition): {
   };
 }
 
+/**
+ * Resolve the EFFECTIVE per-call request/process timeout for a service, mirroring
+ * `effectiveLimits`' override-wins-else-code-default precedence: a dashboard override
+ * (`limits_overridden` + a non-null `timeout_ms`) wins, else the service's own
+ * `ServiceDefinition.timeoutMs` code default, else the caller-supplied `fallbackMs`.
+ *
+ * Unlike rate/quota — enforced generically inside `callService` — a timeout must
+ * actually CANCEL in-flight work, so it is NOT enforced here. This is exported so
+ * each service's own client code (e.g. `core/plex-client.ts`, `services/claude.ts`)
+ * can read the effective value at its real request/process-level timeout point,
+ * which is what lets a dashboard edit take effect without a daemon restart.
+ */
+export function effectiveServiceTimeoutMs(name: string, fallbackMs: number): number {
+  const row = getServiceRow(name);
+  if (row && row.limits_overridden && row.timeout_ms != null) return row.timeout_ms;
+  const def = getServiceDef(name);
+  if (def?.timeoutMs != null) return def.timeoutMs;
+  return fallbackMs;
+}
+
 /** Thrown when a service's day/month quota is exhausted. A retryable soft-fail:
  *  the caller leaves the item un-done and the next run resumes when it resets. */
 export class QuotaExceededError extends Error {

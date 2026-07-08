@@ -1577,8 +1577,8 @@ export function getWorkflowLogs(workflowRunId: string, afterId = 0): { id: numbe
 // — the same reconcile the user-owned `enabled` flag gets. description/paid are
 // code-owned and always refreshed.
 const upsertServiceStmt = db.prepare(`
-  INSERT INTO services (name, description, category, rate_per_minute, daily_cap, monthly_cap, paid, rate_limit_source)
-  VALUES (@name, @description, @category, @rate, @daily, @monthly, @paid, @rateLimitSource)
+  INSERT INTO services (name, description, category, rate_per_minute, daily_cap, monthly_cap, timeout_ms, paid, rate_limit_source)
+  VALUES (@name, @description, @category, @rate, @daily, @monthly, @timeoutMs, @paid, @rateLimitSource)
   ON CONFLICT(name) DO UPDATE SET
     description       = excluded.description,
     category          = excluded.category,
@@ -1586,7 +1586,8 @@ const upsertServiceStmt = db.prepare(`
     rate_limit_source = excluded.rate_limit_source,
     rate_per_minute = CASE WHEN limits_overridden = 1 THEN rate_per_minute ELSE excluded.rate_per_minute END,
     daily_cap       = CASE WHEN limits_overridden = 1 THEN daily_cap       ELSE excluded.daily_cap       END,
-    monthly_cap     = CASE WHEN limits_overridden = 1 THEN monthly_cap     ELSE excluded.monthly_cap     END
+    monthly_cap     = CASE WHEN limits_overridden = 1 THEN monthly_cap     ELSE excluded.monthly_cap     END,
+    timeout_ms      = CASE WHEN limits_overridden = 1 THEN timeout_ms      ELSE excluded.timeout_ms      END
 `);
 
 export function syncService(def: ServiceDefinition): void {
@@ -1597,6 +1598,7 @@ export function syncService(def: ServiceDefinition): void {
     rate: def.ratePerMinute ?? null,
     daily: def.dailyCap ?? null,
     monthly: def.monthlyCap ?? null,
+    timeoutMs: def.timeoutMs ?? null,
     paid: def.paid ? 1 : 0,
     rateLimitSource: def.rateLimitSource ?? '',
   });
@@ -1609,6 +1611,7 @@ export interface ServiceRow {
   rate_per_minute: number | null;
   daily_cap: number | null;
   monthly_cap: number | null;
+  timeout_ms: number | null;
   paid: number;
   limits_overridden: number;
   rate_limit_source: string;
@@ -1627,19 +1630,20 @@ export interface ServiceLimits {
   rate_per_minute: number | null;
   daily_cap: number | null;
   monthly_cap: number | null;
+  timeout_ms: number | null;
 }
 
 const updateServiceLimitsStmt = db.prepare(`
   UPDATE services
-     SET rate_per_minute = @rate, daily_cap = @daily, monthly_cap = @monthly, limits_overridden = 1
+     SET rate_per_minute = @rate, daily_cap = @daily, monthly_cap = @monthly, timeout_ms = @timeoutMs, limits_overridden = 1
    WHERE name = @name
 `);
 
 /**
  * Persist a USER override of a service's limits (from the dashboard). Sets the
- * three limit columns and flips `limits_overridden` so a later code-sync keeps
- * them. A `null` means "no throttle / no cap". Returns the updated row, or
- * undefined if the service doesn't exist (no row touched).
+ * four limit columns and flips `limits_overridden` so a later code-sync keeps
+ * them. A `null` means "no throttle / no cap / no timeout override". Returns the
+ * updated row, or undefined if the service doesn't exist (no row touched).
  */
 export function updateServiceLimits(name: string, limits: ServiceLimits): ServiceRow | undefined {
   const info = updateServiceLimitsStmt.run({
@@ -1647,6 +1651,7 @@ export function updateServiceLimits(name: string, limits: ServiceLimits): Servic
     rate: limits.rate_per_minute,
     daily: limits.daily_cap,
     monthly: limits.monthly_cap,
+    timeoutMs: limits.timeout_ms,
   });
   if (info.changes === 0) return undefined;
   return getServiceRow(name);

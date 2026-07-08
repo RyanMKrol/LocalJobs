@@ -20,6 +20,10 @@ const service: ServiceDefinition = {
     'Local LAN server the owner runs — no external rate limit or quota applies; this ' +
     'service exists purely for call-count visibility and per-job consumer tracking on the ' +
     'Integrations page.',
+  // Matches plex-client.ts's own PLEX_REQUEST_TIMEOUT_MS env-var default (T465) — kept
+  // in sync so the code default is the same whether read via the env var or this
+  // ServiceDefinition. Dashboard-editable via effectiveServiceTimeoutMs('plex', ...).
+  timeoutMs: 300_000,
 };
 
 export default service;

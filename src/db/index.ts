@@ -60,6 +60,15 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec("ALTER TABLE services ADD COLUMN rate_limit_source TEXT NOT NULL DEFAULT ''");
   }
 
+  // Additive migration: user-owned request-timeout override on services (T465). Reuses
+  // the EXISTING `limits_overridden` flag — a service-wide "user has customized this
+  // service's limits" flag already covers rate/daily/monthly, and a timeout override is
+  // the same concept, so no second overridden column is added. No index on this column,
+  // so no bootstrap-index trap (T098).
+  if (!svcCols.some((c) => c.name === 'timeout_ms')) {
+    db.exec('ALTER TABLE services ADD COLUMN timeout_ms INTEGER');
+  }
+
   // Additive migration: user-owned schedule override flag on workflows (T135).
   // Like `limits_overridden` on services, this lets a dashboard edit take ownership
   // of the cron `schedule` so a later code-sync preserves it (see upsertWorkflowStmt).

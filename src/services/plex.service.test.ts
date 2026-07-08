@@ -13,6 +13,7 @@ describe('plex service — unit', () => {
     assert.equal(service.monthlyCap, undefined);
     assert.equal(service.minIntervalMs, undefined);
     assert.equal(service.maxJitterMs, undefined);
+    assert.equal(service.timeoutMs, 300_000);
     assert.ok(typeof service.description === 'string' && service.description.length > 0);
     assert.ok(typeof service.rateLimitSource === 'string' && service.rateLimitSource.length > 0);
   });

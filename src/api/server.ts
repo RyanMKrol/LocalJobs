@@ -1544,12 +1544,12 @@ export function createApiServer(
         return json(res, 200, { services: rows });
       }
 
-      // POST /api/services/:name/limits  { rate_per_minute, daily_cap, monthly_cap }
-      // Each value: a non-negative integer, or null (no throttle / no cap). User
-      // override — persisted and preserved across code-sync.
+      // POST /api/services/:name/limits  { rate_per_minute, daily_cap, monthly_cap, timeout_ms }
+      // Each value: a non-negative integer, or null (no throttle / no cap / no timeout
+      // override). User override — persisted and preserved across code-sync.
       if (method === 'POST' && parts[0] === 'api' && parts[1] === 'services' && parts[3] === 'limits') {
         const body = await readBody(req);
-        const fields = ['rate_per_minute', 'daily_cap', 'monthly_cap'] as const;
+        const fields = ['rate_per_minute', 'daily_cap', 'monthly_cap', 'timeout_ms'] as const;
         const limits: Record<string, number | null> = {};
         for (const f of fields) {
           const v = body[f];
@@ -1562,7 +1562,7 @@ export function createApiServer(
           }
         }
         const updated = updateServiceLimits(parts[2], limits as unknown as {
-          rate_per_minute: number | null; daily_cap: number | null; monthly_cap: number | null;
+          rate_per_minute: number | null; daily_cap: number | null; monthly_cap: number | null; timeout_ms: number | null;
         });
         if (!updated) return json(res, 404, { error: 'service not found' });
         console.log(`[api] service ${parts[2]} limits updated:`, limits);

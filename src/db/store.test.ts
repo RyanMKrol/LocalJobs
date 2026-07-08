@@ -693,48 +693,53 @@ console.log('  ✓ createWorkflowRun persists run_limit/selected_roots; getWorkf
 }
 console.log('  ✓ run-limit fan-out: ALL descendants of the selected root run; unselected root runs nothing');
 
-// ── service limit overrides: persistence + reconcile across code-sync (T018) ──
-// The Services page can override a service's rate/quota. The override must persist
-// AND survive a later code-sync (same reconcile as the user-owned `enabled` flag),
-// while a service the user hasn't touched still tracks the code default.
+// ── service limit overrides: persistence + reconcile across code-sync (T018, T465) ──
+// The Services page can override a service's rate/quota/timeout. The override must
+// persist AND survive a later code-sync (same reconcile as the user-owned `enabled`
+// flag), while a service the user hasn't touched still tracks the code default.
 {
   // seed from code
-  syncService({ name: 't-lim', description: 'orig', ratePerMinute: 10, dailyCap: 100, monthlyCap: 1000, paid: true });
+  syncService({ name: 't-lim', description: 'orig', ratePerMinute: 10, dailyCap: 100, monthlyCap: 1000, timeoutMs: 60_000, paid: true });
   let row = getServiceRow('t-lim');
   assert.equal(row?.rate_per_minute, 10);
+  assert.equal(row?.timeout_ms, 60_000, 'timeoutMs seeds timeout_ms on fresh sync');
   assert.equal(row?.limits_overridden, 0, 'fresh sync is not an override');
 
   // user override → persisted + flag flips
-  const updated = updateServiceLimits('t-lim', { rate_per_minute: 3, daily_cap: 30, monthly_cap: 300 });
+  const updated = updateServiceLimits('t-lim', { rate_per_minute: 3, daily_cap: 30, monthly_cap: 300, timeout_ms: 90_000 });
   assert.equal(updated?.rate_per_minute, 3);
   assert.equal(updated?.daily_cap, 30);
   assert.equal(updated?.monthly_cap, 300);
+  assert.equal(updated?.timeout_ms, 90_000);
   assert.equal(updated?.limits_overridden, 1, 'override sets the flag');
 
   // a later code-sync with DIFFERENT code defaults must NOT clobber the override,
   // but description/paid (code-owned) still refresh.
-  syncService({ name: 't-lim', description: 'changed', ratePerMinute: 99, dailyCap: 999, monthlyCap: 9999, paid: false });
+  syncService({ name: 't-lim', description: 'changed', ratePerMinute: 99, dailyCap: 999, monthlyCap: 9999, timeoutMs: 999_000, paid: false });
   row = getServiceRow('t-lim');
   assert.equal(row?.rate_per_minute, 3, 'code-sync preserves user rate override');
   assert.equal(row?.daily_cap, 30, 'code-sync preserves user daily override');
   assert.equal(row?.monthly_cap, 300, 'code-sync preserves user monthly override');
+  assert.equal(row?.timeout_ms, 90_000, 'code-sync preserves user timeout override');
   assert.equal(row?.description, 'changed', 'description is code-owned, refreshed');
   assert.equal(row?.paid, 0, 'paid is code-owned, refreshed');
 
-  // null clears a limit (no throttle / no cap)
-  updateServiceLimits('t-lim', { rate_per_minute: null, daily_cap: null, monthly_cap: 50 });
+  // null clears a limit (no throttle / no cap / no timeout override)
+  updateServiceLimits('t-lim', { rate_per_minute: null, daily_cap: null, monthly_cap: 50, timeout_ms: null });
   row = getServiceRow('t-lim');
   assert.equal(row?.rate_per_minute, null);
   assert.equal(row?.daily_cap, null);
   assert.equal(row?.monthly_cap, 50);
+  assert.equal(row?.timeout_ms, null);
 
   // a non-overridden service keeps tracking the code default across re-sync
   syncService({ name: 't-noov', ratePerMinute: 5 });
   syncService({ name: 't-noov', ratePerMinute: 7 });
   assert.equal(getServiceRow('t-noov')?.rate_per_minute, 7, 'untouched service follows code default');
+  assert.equal(getServiceRow('t-noov')?.timeout_ms, null, 'no timeoutMs in the def leaves timeout_ms null');
 
   // updating a service that doesn't exist is a no-op (no row created)
-  assert.equal(updateServiceLimits('t-nope', { rate_per_minute: 1, daily_cap: null, monthly_cap: null }), undefined);
+  assert.equal(updateServiceLimits('t-nope', { rate_per_minute: 1, daily_cap: null, monthly_cap: null, timeout_ms: null }), undefined);
   assert.equal(getServiceRow('t-nope'), undefined);
 }
 console.log('  ✓ service limit override persists + survives code-sync (reconciled like enabled)');
@@ -791,7 +796,7 @@ console.log('  ✓ service rateLimitSource is manifest-owned, always refreshed o
 {
   registerService({ name: 't-lim-enf', monthlyCap: 100, paid: true });
   syncService({ name: 't-lim-enf', monthlyCap: 100, paid: true });
-  updateServiceLimits('t-lim-enf', { rate_per_minute: null, daily_cap: null, monthly_cap: 1 });
+  updateServiceLimits('t-lim-enf', { rate_per_minute: null, daily_cap: null, monthly_cap: 1, timeout_ms: null });
 
   let calls = 0;
   await callService('t-lim-enf', async () => { calls++; }); // 1st call → recorded

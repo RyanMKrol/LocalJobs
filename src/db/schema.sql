@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS services (
   rate_per_minute   INTEGER,                 -- NULL = no throttle
   daily_cap         INTEGER,                 -- NULL = no daily quota
   monthly_cap       INTEGER,                 -- NULL = no monthly quota
+  timeout_ms        INTEGER,                 -- NULL = no override; falls back to ServiceDefinition.timeoutMs / caller default (T465)
   paid              INTEGER NOT NULL DEFAULT 0,
   limits_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited limits; code-sync preserves them
   rate_limit_source TEXT NOT NULL DEFAULT '', -- manifest-owned provenance of the limit numbers; always refreshed from code on sync

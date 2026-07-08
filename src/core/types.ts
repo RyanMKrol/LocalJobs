@@ -289,4 +289,14 @@ export interface ServiceDefinition {
    *  limit; conservative estimate"). Manifest-owned only — no dashboard edit UI, refreshed from code
    *  on every sync, exactly like `category`. */
   rateLimitSource?: string;
+  /** Code default for this service's per-call request/process timeout (ms). Unlike
+   *  ratePerMinute/dailyCap/monthlyCap — enforced generically inside `callService` —
+   *  a timeout must actually CANCEL in-flight work, so it is NOT enforced there;
+   *  each service's own client code reads the effective value via
+   *  `effectiveServiceTimeoutMs(name, fallbackMs)` (`src/core/services.ts`) at its
+   *  real request/process-level timeout point. Dashboard-editable + code-reconciled
+   *  via the same `limits_overridden` flag as the other limit fields (see
+   *  `updateServiceLimits`/`syncService` in `src/db/store.ts`). Omit for "no code
+   *  default" — the caller's own fallback then applies. */
+  timeoutMs?: number;
 }

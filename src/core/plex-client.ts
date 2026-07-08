@@ -1,6 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import os from 'node:os';
+import { effectiveServiceTimeoutMs } from './services.js';
 
 /**
  * Shared Plex + TMDB connectivity helper — used by every Plex-touching workflow
@@ -13,7 +14,17 @@ import os from 'node:os';
 const PLEX_HOST = process.env.PLEX_HOST ?? '';
 const PLEX_API_TOKEN = process.env.PLEX_API_TOKEN ?? '';
 const PLEX_MACHINE_ID = process.env.PLEX_MACHINE_ID ?? '';
-const PLEX_REQUEST_TIMEOUT_MS = Number(process.env.PLEX_REQUEST_TIMEOUT_MS ?? 300_000);
+const PLEX_REQUEST_TIMEOUT_MS_DEFAULT = Number(process.env.PLEX_REQUEST_TIMEOUT_MS ?? 300_000);
+/**
+ * The EFFECTIVE Plex request timeout (ms) — a dashboard override (T465, via the
+ * `plex` service's `limits_overridden`/`timeout_ms`) wins over the env-var-derived
+ * code default. Read PER CALL (not cached at module load) so an edit takes effect
+ * on the very next request without a daemon restart, matching how every other
+ * user-editable service/workflow property in this repo behaves.
+ */
+export function plexRequestTimeoutMs(): number {
+  return effectiveServiceTimeoutMs('plex', PLEX_REQUEST_TIMEOUT_MS_DEFAULT);
+}
 /** Bearer token. Accept the legacy TVDB_API_TOKEN name as a fallback. */
 const TMDB_API_TOKEN = process.env.TMDB_API_TOKEN ?? process.env.TVDB_API_TOKEN ?? '';
 
@@ -338,6 +349,7 @@ export async function plexGet<T = unknown>(path: string): Promise<T> {
   url.searchParams.set('X-Plex-Token', PLEX_API_TOKEN);
   const isHttps = url.protocol === 'https:';
   const mod = isHttps ? https : http;
+  const timeoutMs = plexRequestTimeoutMs();
 
   return new Promise<T>((resolve, reject) => {
     const req = mod.get(
@@ -345,7 +357,7 @@ export async function plexGet<T = unknown>(path: string): Promise<T> {
       {
         agent: isHttps ? insecurePlexAgent : undefined,
         headers: { Accept: 'application/json' },
-        timeout: PLEX_REQUEST_TIMEOUT_MS,
+        timeout: timeoutMs,
       },
       (res) => {
         const status = res.statusCode ?? 0;
@@ -366,7 +378,7 @@ export async function plexGet<T = unknown>(path: string): Promise<T> {
         });
       },
     );
-    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for ${path} (${PLEX_REQUEST_TIMEOUT_MS}ms)`)));
+    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for ${path} (${timeoutMs}ms)`)));
     req.on('error', (e) =>
       reject(new Error(`Plex unreachable at ${host} — ${e instanceof Error ? e.message : e}. Check PLEX_HOST / that the server is awake.`)),
     );
@@ -395,6 +407,7 @@ export async function plexPutStreams(partId: number, audioStreamId: number, subt
   url.searchParams.set('allParts', '1');
   const isHttps = url.protocol === 'https:';
   const mod = isHttps ? https : http;
+  const timeoutMs = plexRequestTimeoutMs();
 
   await new Promise<void>((resolve, reject) => {
     const req = mod.request(
@@ -403,7 +416,7 @@ export async function plexPutStreams(partId: number, audioStreamId: number, subt
         method: 'PUT',
         agent: isHttps ? insecurePlexAgent : undefined,
         headers: { Accept: 'application/json' },
-        timeout: PLEX_REQUEST_TIMEOUT_MS,
+        timeout: timeoutMs,
       },
       (res) => {
         const status = res.statusCode ?? 0;
@@ -415,7 +428,7 @@ export async function plexPutStreams(partId: number, audioStreamId: number, subt
         resolve();
       },
     );
-    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for PUT /library/parts/${partId} (${PLEX_REQUEST_TIMEOUT_MS}ms)`)));
+    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for PUT /library/parts/${partId} (${timeoutMs}ms)`)));
     req.on('error', (e) =>
       reject(new Error(`Plex unreachable at ${host} — ${e instanceof Error ? e.message : e}. Check PLEX_HOST / that the server is awake.`)),
     );
@@ -448,7 +461,7 @@ export async function triggerButlerBackup(): Promise<{ ok: boolean; error?: stri
           method: 'POST',
           agent: isHttps ? insecurePlexAgent : undefined,
           headers: { Accept: 'application/json' },
-          timeout: PLEX_REQUEST_TIMEOUT_MS,
+          timeout: plexRequestTimeoutMs(),
         },
         (res) => {
           const status = res.statusCode ?? 0;
