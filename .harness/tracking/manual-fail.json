@@ -48,5 +48,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T472/T473 — the block was a false positive in mobile-check.mjs's own ancestor-unaware heuristic, not a real dashboard bug; T472 fixes the check, T473 (depends on T472) redoes the original fixture-coverage sweep",
     "at": "2026-07-08T21:12:32Z"
+  },
+  "T464": {
+    "failed": true,
+    "reason": "review-failed: superseded by T474 — original scope omitted 7 required CLAUDE.md doc updates and the code migration itself never actually landed on main; T474 redoes the full migration with corrected scope",
+    "at": "2026-07-08T21:12:33Z"
   }
 }
