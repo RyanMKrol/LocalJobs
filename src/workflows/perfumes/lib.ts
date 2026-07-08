@@ -18,7 +18,10 @@ export async function loadPerfumes(): Promise<PerfumeInput[]> {
   const items = await callService('dynamodb', () => dynamoScan(perfumesConfig.perfumeRatingsTable));
   const perfumes: PerfumeInput[] = [];
   for (const item of items) {
-    const { id, title, designer, type, fragranticaUrl } = item as Record<string, unknown>;
+    const {
+      id, title, designer, type, fragranticaUrl,
+      description, rating, date, ownership, longevity, projection, seasons, applicationSpots,
+    } = item as Record<string, unknown>;
     if (typeof id !== 'string' || typeof title !== 'string' || typeof designer !== 'string' || typeof type !== 'string') {
       console.warn(`[perfumes] warn: skipping malformed PerfumeRatings item: ${JSON.stringify(item)}`);
       continue;
@@ -29,6 +32,14 @@ export async function loadPerfumes(): Promise<PerfumeInput[]> {
       brand: designer,
       concentration: type,
       ...(typeof fragranticaUrl === 'string' && fragranticaUrl ? { fragranticaUrl } : {}),
+      ...(typeof description === 'string' ? { description } : {}),
+      ...(typeof rating === 'number' && Number.isFinite(rating) ? { rating } : {}),
+      ...(typeof date === 'string' ? { dateAdded: date } : {}),
+      ...(typeof ownership === 'string' ? { ownership: ownership as PerfumeInput['ownership'] } : {}),
+      ...(typeof longevity === 'number' && Number.isFinite(longevity) ? { personalLongevity: longevity } : {}),
+      ...(typeof projection === 'number' && Number.isFinite(projection) ? { personalProjection: projection } : {}),
+      ...(Array.isArray(seasons) ? { personalSeasons: seasons } : {}),
+      ...(Array.isArray(applicationSpots) ? { applicationSpots } : {}),
     });
   }
   return perfumes;

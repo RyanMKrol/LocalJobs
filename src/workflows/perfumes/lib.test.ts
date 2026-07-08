@@ -32,8 +32,14 @@ describe('loadPerfumes — reads live from PerfumeRatings (T401)', () => {
           designer: 'Parfums de Marly',
           type: 'EDP',
           fragranticaUrl: 'https://www.fragrantica.com/perfume/Parfums-de-Marly/Althair-12345.html',
+          description: 'A gift from my wife',
           rating: 5,
-          longevity: 'long',
+          date: '01-06-2023',
+          ownership: 'Full bottle',
+          longevity: 6,
+          projection: 3,
+          seasons: ['Fall', 'Winter'],
+          applicationSpots: ['Wrists', 'Neck'],
         },
       ]),
     );
@@ -45,6 +51,14 @@ describe('loadPerfumes — reads live from PerfumeRatings (T401)', () => {
         brand: 'Parfums de Marly',
         concentration: 'EDP',
         fragranticaUrl: 'https://www.fragrantica.com/perfume/Parfums-de-Marly/Althair-12345.html',
+        description: 'A gift from my wife',
+        rating: 5,
+        dateAdded: '01-06-2023',
+        ownership: 'Full bottle',
+        personalLongevity: 6,
+        personalProjection: 3,
+        personalSeasons: ['Fall', 'Winter'],
+        applicationSpots: ['Wrists', 'Neck'],
       },
     ]);
   });
@@ -55,6 +69,40 @@ describe('loadPerfumes — reads live from PerfumeRatings (T401)', () => {
     );
     const [p] = await loadPerfumes();
     assert.equal(p.fragranticaUrl, undefined);
+  });
+
+  it('omits a wrong-typed optional field without dropping the item', async () => {
+    _resetClient(
+      makeMockClient([
+        {
+          id: 'x__y__edt',
+          title: 'X',
+          designer: 'Y',
+          type: 'EDT',
+          rating: 'five',
+          longevity: 'long',
+          seasons: 'Fall',
+        },
+      ]),
+    );
+    const perfumes = await loadPerfumes();
+    assert.equal(perfumes.length, 1);
+    assert.equal(perfumes[0].rating, undefined);
+    assert.equal(perfumes[0].personalLongevity, undefined);
+    assert.equal(perfumes[0].personalSeasons, undefined);
+  });
+
+  it('omits all 8 optional fields when none are present on the source item', async () => {
+    _resetClient(
+      makeMockClient([{ id: 'x__y__edt', title: 'X', designer: 'Y', type: 'EDT' }]),
+    );
+    const [p] = await loadPerfumes();
+    for (const key of [
+      'description', 'rating', 'dateAdded', 'ownership',
+      'personalLongevity', 'personalProjection', 'personalSeasons', 'applicationSpots',
+    ] as const) {
+      assert.equal(p[key], undefined);
+    }
   });
 
   it('skips a malformed item (missing required field) rather than throwing', async () => {
