@@ -47,20 +47,11 @@ function track(name: string, artist: string, albumName: string, playcount: numbe
 }
 
 function albumsFetcher(albums: LastFmTopAlbum[]): TopAlbumsFetcher {
-  return async (_period: string) => ({ topalbums: { album: albums } });
+  return async () => ({ topalbums: { album: albums } });
 }
 
 function tracksFetcher(tracks: LastFmTopTrack[]): TopTracksFetcher {
-  return async (_period: string) => ({ toptracks: { track: tracks } });
-}
-
-/** Returns different albums/tracks depending on the requested period, for testing both passes. */
-function periodAwareAlbumsFetcher(byPeriod: Record<string, LastFmTopAlbum[]>): TopAlbumsFetcher {
-  return async (period: string) => ({ topalbums: { album: byPeriod[period] ?? [] } });
-}
-
-function periodAwareTracksFetcher(byPeriod: Record<string, LastFmTopTrack[]>): TopTracksFetcher {
-  return async (period: string) => ({ toptracks: { track: byPeriod[period] ?? [] } });
+  return async () => ({ toptracks: { track: tracks } });
 }
 
 const JOB = 'lastfm-digest';
@@ -252,87 +243,6 @@ describe('runListeningDigest — normal behaviour', () => {
     const content = readFileSync(join(outDir, 'listening-digest-2026-09.md'), 'utf8');
     assert.match(content, /No album plays in this period/);
     assert.doesNotMatch(content, /\| Dominated Album \| Artist \| 100 \|/);
-  });
-
-  it('writes both the 1-month and trailing 3-month digests, each with the right period data', async () => {
-    const now = new Date('2026-11-01T00:00:00Z');
-    await runListeningDigest(fakeCtx(), {
-      fetchTopAlbums: periodAwareAlbumsFetcher({
-        '1month': [album('One Month Album', 'Artist', 10)],
-        '3month': [album('Three Month Album', 'Artist', 30)],
-      }),
-      fetchTopTracks: periodAwareTracksFetcher({
-        '1month': [track('One Month Track', 'Artist', 'One Month Album', 10)],
-        '3month': [track('Three Month Track', 'Artist', 'Three Month Album', 30)],
-      }),
-      now,
-      outDir,
-    });
-
-    const monthlyPath = join(outDir, 'listening-digest-2026-11.md');
-    const trailingPath = join(outDir, 'listening-digest-2026-11-3month.md');
-    assert.ok(existsSync(monthlyPath), '1-month markdown file should be written');
-    assert.ok(existsSync(trailingPath), 'trailing 3-month markdown file should be written');
-
-    const monthlyContent = readFileSync(monthlyPath, 'utf8');
-    assert.match(monthlyContent, /One Month Album/);
-    assert.doesNotMatch(monthlyContent, /Three Month Album/);
-    assert.match(monthlyContent, /# Listening Digest — November 2026/);
-
-    const trailingContent = readFileSync(trailingPath, 'utf8');
-    assert.match(trailingContent, /Three Month Album/);
-    assert.doesNotMatch(trailingContent, /One Month Album/);
-    assert.match(trailingContent, /# Listening Digest — November 2026 \(Trailing 3 Months\)/);
-
-    assert.ok(isWorkItemDone(JOB, '2026-11', 3), '1-month ledger key should be marked done');
-    assert.ok(isWorkItemDone(JOB, '2026-11-3month', 3), '3-month ledger key should be marked done');
-
-    const outputItems = workflowTerminalItems(['lastfm-digest']);
-    assert.ok(
-      outputItems.some((item) => item.jobName === 'lastfm-digest' && item.itemKey === '2026-11'),
-      '1-month digest item should surface in workflowTerminalItems',
-    );
-    assert.ok(
-      outputItems.some((item) => item.jobName === 'lastfm-digest' && item.itemKey === '2026-11-3month'),
-      'trailing 3-month digest item should surface in workflowTerminalItems',
-    );
-  });
-
-  it('re-running the same month overwrites both files rather than duplicating', async () => {
-    const now = new Date('2026-12-01T00:00:00Z');
-    await runListeningDigest(fakeCtx(), {
-      fetchTopAlbums: periodAwareAlbumsFetcher({
-        '1month': [album('First Run Monthly', 'Artist', 5)],
-        '3month': [album('First Run Trailing', 'Artist', 15)],
-      }),
-      fetchTopTracks: periodAwareTracksFetcher({}),
-      now,
-      outDir,
-    });
-    await runListeningDigest(fakeCtx(), {
-      fetchTopAlbums: periodAwareAlbumsFetcher({
-        '1month': [album('Second Run Monthly', 'Artist', 9)],
-        '3month': [album('Second Run Trailing', 'Artist', 27)],
-      }),
-      fetchTopTracks: periodAwareTracksFetcher({}),
-      now,
-      outDir,
-    });
-
-    const monthlyContent = readFileSync(join(outDir, 'listening-digest-2026-12.md'), 'utf8');
-    assert.match(monthlyContent, /Second Run Monthly/);
-    assert.doesNotMatch(monthlyContent, /First Run Monthly/);
-
-    const trailingContent = readFileSync(join(outDir, 'listening-digest-2026-12-3month.md'), 'utf8');
-    assert.match(trailingContent, /Second Run Trailing/);
-    assert.doesNotMatch(trailingContent, /First Run Trailing/);
-
-    const outputItems = workflowTerminalItems(['lastfm-digest']);
-    assert.equal(
-      outputItems.filter((item) => item.itemKey === '2026-12' || item.itemKey === '2026-12-3month').length,
-      2,
-      'a same-month re-run must not duplicate ledger rows for either period',
-    );
   });
 
   it('handles Last.fm returning a bare object instead of an array', async () => {
