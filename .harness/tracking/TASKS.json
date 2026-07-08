@@ -12709,6 +12709,538 @@
           "cross-cutting"
         ]
       }
+    },
+    {
+      "id": "T475",
+      "title": "Build periodic audit workflow surfacing dashboard overrides stable 2+ weeks as candidates for code fold-back",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "dashboard-overrides",
+        "audit"
+      ],
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "src/workflows/overrides-audit/overrides-audit.workflow.ts",
+        "src/workflows/overrides-audit/stages/scan.job.ts",
+        "src/workflows/overrides-audit/stages/scan.ts",
+        "src/workflows/overrides-audit/stages/scan.test.ts",
+        "src/workflows/overrides-audit/config.ts",
+        "src/workflows/overrides-audit/types.ts",
+        "src/workflows/overrides-audit/CLAUDE.md",
+        "CLAUDE.md",
+        "README.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T475.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": [
+          "touches-schema"
+        ]
+      }
+    },
+    {
+      "id": "T476",
+      "title": "Add per-service configurable cache TTL (cacheTtlMs) to ServiceDefinition/callService, default plex to 3 hours",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "caching",
+        "callService",
+        "config"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "src/core/services.ts",
+        "src/core/services.test.ts",
+        "src/services/plex.service.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T476.md",
+      "facets": {
+        "layer": "service",
+        "workType": "config",
+        "risk": []
+      }
+    },
+    {
+      "id": "T477",
+      "title": "Cache Plex reads via callService cacheKey (reuse the T451 service_cache mechanism, 3-hour TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T474",
+        "T476"
+      ],
+      "gate": null,
+      "tags": [
+        "plex",
+        "caching",
+        "callService",
+        "performance"
+      ],
+      "scope": [
+        "src/workflows/missing-tv-seasons/stages/snapshot.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts",
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/plex-space-saver/stages/scan.ts",
+        "src/workflows/plex-language-fix/lib.ts",
+        "src/workflows/plex-profiles/stages/build.ts",
+        "src/workflows/missing-tv-seasons/CLAUDE.md",
+        "src/workflows/tv-recs/CLAUDE.md",
+        "src/workflows/movies/CLAUDE.md",
+        "src/workflows/plex-space-saver/CLAUDE.md",
+        "src/workflows/plex-language-fix/CLAUDE.md",
+        "src/workflows/plex-profiles/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T477.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T478",
+      "title": "New admin page to clear cached service responses (separate from Delete all workflow output)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "admin",
+        "caching",
+        "dashboard"
+      ],
+      "scope": [
+        "dashboard/app/admin-cache/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "src/db/store.ts",
+        "src/db/store.test.ts",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T478.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": [
+          "full-stack"
+        ]
+      }
+    },
+    {
+      "id": "T479",
+      "title": "Decide: which other services should adopt response caching (cacheKey), and with what TTL",
+      "status": "pending",
+      "dependsOn": [
+        "T476"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "caching",
+        "review",
+        "needs-human"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T479.md"
+    },
+    {
+      "id": "T480",
+      "title": "missing-tv-seasons: add per-show work_items ledger rows to stages 1-2, status='failed' for TMDB-unverifiable shows, rootKey lineage through stage 3",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "job",
+        "plex",
+        "work-items-ledger",
+        "dashboard-visibility"
+      ],
+      "scope": [
+        "src/workflows/missing-tv-seasons/stages/snapshot.ts",
+        "src/workflows/missing-tv-seasons/stages/season-check.ts",
+        "src/workflows/missing-tv-seasons/stages/notify.ts",
+        "src/workflows/missing-tv-seasons/stages/notify.test.ts",
+        "src/workflows/missing-tv-seasons/stages/season-check.test.ts",
+        "src/workflows/missing-tv-seasons/plex.test.ts",
+        "src/workflows/missing-tv-seasons/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "restart the daemon and manually trigger a missing-tv-seasons run, then confirm on the dashboard's workflow-run page (StageIoPanel) that plex-tv-snapshot and tmdb-season-check now show real per-show Input/Output rows instead of being blank, and that the panel is legible (not garbled/overwhelming) at the workflow's real scale (~600+ shows)"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T480.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T481",
+      "title": "Perfumes profile: prefix personal fields with personal_, merge & reposition the personal section, drop status, halve rating in loadPerfumes()",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "perfumes",
+        "template",
+        "personal-fields"
+      ],
+      "scope": [
+        "src/workflows/perfumes/profile.template.md",
+        "src/workflows/perfumes/stages/build.ts",
+        "src/workflows/perfumes/lib.ts",
+        "src/workflows/perfumes/types.ts",
+        "src/workflows/perfumes/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T481.md",
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T482",
+      "title": "Integrations page: remove timeout/source line from service description cell",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "integrations",
+        "cleanup"
+      ],
+      "scope": [
+        "dashboard/app/integrations/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T482.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      }
+    },
+    {
+      "id": "T483",
+      "title": "Create fs pseudo-service for local-file-backed root inputKeys()",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "services",
+        "inputkeys",
+        "architecture"
+      ],
+      "scope": [
+        "src/services/fs.service.ts",
+        "src/services/fs.service.test.ts"
+      ],
+      "design": "Model directly on src/services/plex.service.ts (the confirmed reference pattern): default-export a ServiceDefinition named 'fs' with paid: false and NO ratePerMinute/dailyCap/monthlyCap/minIntervalMs/maxJitterMs — there is no real external rate limit to model, only the owner's own local disk. description must explain this exists purely so the inputKeysService contract (a later unit) can require EVERY inputKeys()-declaring job to name a real registered service, with zero carve-outs for 'this one just reads a local file' — i.e. this is a deliberate conceptual stretch chosen by the owner to keep the enforcement rule mechanically universal, not because there's a real quota/rate limit to govern. rateLimitSource should say something like 'Local disk the owner controls — no external rate limit or quota applies; this service exists purely so a local-file-backed inputKeys() can be governed by the same callService contract as every real external dependency.' category: the current controlled vocabulary (checked live: src/services/*.service.ts + root CLAUDE.md's T305 note) is only 'cli-tool' | 'website-scrape' | 'api', with 'uncategorized' as the unset default — none fit 'local filesystem' cleanly. Introduce a new category value 'local' (used by exactly this one service for now) rather than force-fitting into 'api' — but this is a judgment call the builder should make explicitly and document (either choice is acceptable; do not silently default to uncategorized without a documented reason). No dashboard edit UI is needed for category (per the existing T292/T305 convention — category is manifest-owned only). timeoutMs: use a short default (e.g. a few seconds) reflecting that a local file read is near-instant, rather than reusing a network-service-scale timeout default.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T483.md",
+      "facets": {
+        "layer": "service",
+        "workType": "feature"
+      }
+    },
+    {
+      "id": "T484",
+      "title": "Migrate places' resolveInputKeys() off the self-referential data/out/places.json read onto the fs service + shared CSV-parse helper",
+      "status": "pending",
+      "dependsOn": [
+        "T483"
+      ],
+      "gate": null,
+      "tags": [
+        "places",
+        "inputkeys",
+        "bugfix",
+        "architecture"
+      ],
+      "scope": [
+        "src/workflows/places/stages/resolve.ts",
+        "src/workflows/places/stages/resolve.test.ts",
+        "src/workflows/places/stages/ingest.ts",
+        "src/workflows/places/parse.ts",
+        "src/workflows/places/CLAUDE.md"
+      ],
+      "design": "Current broken state (verified live, src/workflows/places/stages/resolve.ts:18-26): resolveInputKeys() reads placesConfig.placesOut (data/out/places.json), which is written by the UPSTREAM places-ingest stage on a prior run — after a 'Clear output data' reset this returns [] until an unlimited run reseeds the file, which is exactly the trap idea 13 describes (the T094 selectPendingRoots empty-candidate-list -> ctx.rootAllowed rejects everything including the root stage's own recording -> silent no-op). Fix: change resolveInputKeys() to derive the candidate CID list DIRECTLY from the raw Google Takeout CSVs in data/raw/Saved/ — the SAME true source places-ingest itself parses (verified: src/workflows/places/stages/ingest.ts's runIngest() already does readdirSync(placesConfig.savedDir) + parseListFile()+extractFeatureId() from ../parse.js to build exactly this CID list) — routed through callService('fs', () => <csv read + parse>). Avoid duplicating the CSV-parsing/CID-extraction logic a second time: extract the minimal shared piece (walk data/raw/Saved/*.csv, parse each with the existing parseListFile, pull cid via extractFeatureId, dedupe) into a small exported helper (e.g. in ingest.ts or parse.ts) that BOTH runIngest() and resolveInputKeys() call, so the two can never drift out of sync. Keep runIngest()'s own behavior/output unchanged (still writes places.json + validation-report.json + records the ledger) — only its internal CID-list-building step should now call the shared helper instead of (or alongside) its existing inline loop, whichever refactor is cleanest without changing runIngest's logged narration or validation-report semantics. Update places/CLAUDE.md's cid-to-place-id-resolver section to note resolveInputKeys() now derives from the raw CSVs via the fs service, not from places.json.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T484.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix"
+      }
+    },
+    {
+      "id": "T485",
+      "title": "Fix plex-language-fix's discoverInputKeys() self-referential ledger read with a live Plex library walk",
+      "status": "pending",
+      "dependsOn": [
+        "T474"
+      ],
+      "gate": null,
+      "tags": [
+        "plex-language-fix",
+        "inputkeys",
+        "bugfix",
+        "architecture"
+      ],
+      "scope": [
+        "src/workflows/plex-language-fix/stages/discover.ts",
+        "src/workflows/plex-language-fix/stages/discover.test.ts",
+        "src/workflows/plex-language-fix/CLAUDE.md"
+      ],
+      "design": "Current broken state (verified live, src/workflows/plex-language-fix/stages/discover.ts:23-25): discoverInputKeys() calls ledgerSuccessRows(JOB_NAME) — reads back THIS SAME JOB's own prior work_items 'success' rows (stages/ledger.ts), which is exactly the self-referential trap: after a ledger reset it returns [], selectedRoots becomes empty, and ctx.rootAllowed rejects even the root stage's own fresh discoveries (see discover.ts:89's recordFile()'s `if (!ctx.rootAllowed(key)) return;` check on the SAME stage that's supposed to be populating the ledger). Fix: change discoverInputKeys() to perform a live walk of the configured Plex library sections (mirroring plex-profiles' resolveInputKeys() in src/workflows/plex-profiles/stages/build.ts:41-51, and reusing runDiscover()'s own existing fetchSections/fetchSectionItems fetch logic in this same file rather than re-implementing it) and return the resulting file keys (fileKey(itemRatingKey, partId) for every movie/episode part found) computed fresh each call — a live query against the true external source (Plex), never this workflow's own ledger. This is a genuinely more expensive candidate-enumeration than before (a full or partial library crawl per manual limited-run request) — this is the KNOWN, EXPLICITLY ACCEPTED tradeoff named in idea 13's text; do not try to avoid it by caching. Per the sequencing decision, this depends on T474 (which migrates this workflow's plexGet-based calls, including this file's fetchSections/fetchSectionItems machinery, onto callService('plex', ...)) landing first — after T474, whatever discoverInputKeys() calls to enumerate the library should already be routed through the plex service by construction (reusing the now-wrapped fetch functions), giving this unit its inputKeysService:'plex' backing for free rather than needing to add a second, parallel callService('plex', ...) wrap. If T474 has NOT landed by the time this unit is picked, the builder must still wrap the live Plex calls this unit adds in callService('plex', ...) directly (don't leave a raw plexGet call), so the dependency is a strong recommendation for ordering/reuse, not a hard technical blocker. Update plex-language-fix/CLAUDE.md's discover-stage description to reflect the new live-walk-based inputKeys() (replacing the 'Returns every file key the discover ledger already knows about' language) and to note the per-limited-run crawl-cost tradeoff.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T485.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix"
+      }
+    },
+    {
+      "id": "T486",
+      "title": "Fix projects-sync's githubSyncInputKeys() self-referential catalog-file read with a live GitHub API call",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "projects-sync",
+        "inputkeys",
+        "bugfix",
+        "architecture"
+      ],
+      "scope": [
+        "src/workflows/projects-sync/stages/github-sync.ts",
+        "src/workflows/projects-sync/stages/github-sync.test.ts",
+        "src/workflows/projects-sync/CLAUDE.md"
+      ],
+      "design": "Current broken state (verified live, src/workflows/projects-sync/stages/github-sync.ts:207-217): githubSyncInputKeys() reads back projectsSyncConfig.catalogPath (data/out/projects.json) — the file written by writeCatalog() inside the SAME stage's own runGithubSync(), the most direct form of the trap (not even an upstream-stage read, a same-stage read-your-own-write). Fix: change githubSyncInputKeys() to call the live GitHub API directly (GET /users/<GITHUB_USERNAME>/repos, mirroring fetchAllRepos()'s existing request shape in this same file) and derive repo ids from the live response via the existing filterAndSortRepos() + repoIdsFromCatalog()/repoToCatalogEntry() pipeline, rather than reading the catalog file. Route this call through the SAME existing callService('github', ...) wrapper already used at line 81 for the main sync fetch (verified: this workflow already imports and uses callService('github', ...) in this exact file) — this is the cheapest of the three fixes since no new service wiring is needed. A full multi-page fetch for inputKeys() alone may be wasteful just to enumerate candidate ids; consider whether a single-page fetch (or the full fetchAllRepos()) is more appropriate given inputKeys() is only called once per manual limited-run start, not per scheduled run — builder's call, document the choice. Update projects-sync/CLAUDE.md's github-sync stage description to note inputKeys() now queries GitHub live rather than reading back the catalog file.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T486.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix"
+      }
+    },
+    {
+      "id": "T487",
+      "title": "Add inputKeysService field to JobDefinition + retrofit onto every job that declares inputKeys()",
+      "status": "pending",
+      "dependsOn": [
+        "T483",
+        "T484",
+        "T485",
+        "T486",
+        "T474"
+      ],
+      "gate": null,
+      "tags": [
+        "types",
+        "inputkeys",
+        "architecture"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "src/workflows/perfumes/stages/find-url.job.ts",
+        "src/workflows/places/stages/resolve.ts",
+        "src/workflows/plex-language-fix/stages/discover.ts",
+        "src/workflows/projects-sync/stages/github-sync.ts",
+        "src/workflows/plex-profiles/stages/build.ts",
+        "src/workflows/places/CLAUDE.md",
+        "src/workflows/plex-language-fix/CLAUDE.md",
+        "src/workflows/projects-sync/CLAUDE.md",
+        "src/workflows/plex-profiles/CLAUDE.md",
+        "src/workflows/CLAUDE.md"
+      ],
+      "design": "Add a new optional field to JobDefinition in src/core/types.ts, directly below the existing `inputKeys?(): string[] | Promise<string[]>;` at line 147: `inputKeysService?: string;` with a doc comment explaining it names the ServiceDefinition (by its `name`) that the job's inputKeys() call is routed through — proving it's a LIVE query against the true external source, never this workflow's own prior output — and that it's enforced by the (later) mechanical test. Retrofit onto every job in the registry that currently declares inputKeys() (5 total, confirmed by exploration): (1) perfumes' find-url.job.ts -> inputKeysService: 'dynamodb' (already live via loadPerfumes()'s callService('dynamodb', ...) — pure field addition, no behavior change); (2) places' resolve.ts's job definition (wherever the JobDefinition with inputKeys: resolveInputKeys is assembled — locate the *.job.ts that wires this in) -> inputKeysService: 'fs' (now true after unit B); (3) plex-language-fix's discover job definition -> inputKeysService: 'plex' (now true after unit C, which depends on T474); (4) projects-sync's github-sync job definition -> inputKeysService: 'github' (now true after unit D); (5) plex-profiles' build job definition -> inputKeysService: 'plex' (true once T474 lands, since T474's scope already includes src/workflows/plex-profiles/stages/build.ts's plexGet calls — confirm at build time that resolveInputKeys() itself, not just runBuild(), is wrapped in callService('plex', ...) per T474's Done-when; if T474 wrapped only the main build loop's plexGet calls and NOT resolveInputKeys()'s two plexGet calls, this unit must add the callService('plex', ...) wrap to resolveInputKeys() itself as a small supplementary fix, since the inputKeysService claim must be truthful). Each workflow's own CLAUDE.md should get a one-line note that its root stage's inputKeys() now declares inputKeysService alongside the existing description. Do NOT touch the enforcing test (next unit) or make any further behavioral changes to inputKeys() itself here — this unit is scoped to the field + the 5 retrofits only.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T487.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "feature"
+      }
+    },
+    {
+      "id": "T488",
+      "title": "Add mechanical test enforcing every inputKeys()-declaring job also names a valid inputKeysService",
+      "status": "pending",
+      "dependsOn": [
+        "T487"
+      ],
+      "gate": null,
+      "tags": [
+        "testing",
+        "inputkeys",
+        "architecture"
+      ],
+      "scope": [
+        "src/core/root-inputkeys-service.test.ts"
+      ],
+      "design": "Mirror src/core/gate-coverage.test.ts's existing walk-the-registry pattern exactly (same imports from src/workflows/registry.js, same lightweight test()/assert helper style, same 'real-registry walk' + small synthetic pass/fail regression-guard tests shape). New test file src/core/root-inputkeys-service.test.ts: (1) load every job the registry discovers (jobs from src/workflows/registry.js); (2) for every job with a truthy `inputKeys` field, assert `inputKeysService` is also set to a non-empty string, failing with a clear message naming the offending job if not; (3) assert that string matches the `name` of a real ServiceDefinition the registry loaded (services from the same registry module — confirm the registry's exported service list name/shape before wiring this check); (4) include the same style of small synthetic positive/negative regression-guard tests gate-coverage.test.ts has (a fake job with inputKeys+valid inputKeysService passes; a fake job with inputKeys but no/invalid inputKeysService is genuinely caught) so the checker itself is tested, not just exercised once against current registry state. This test MUST NOT be added before units A-E (and transitively T474) have landed, since it will otherwise immediately fail npm test against the current codebase (places/plex-language-fix/projects-sync currently have inputKeys with no inputKeysService at all) — the dependsOn on idea-13-17-e (which itself depends on a-d and T474) enforces this ordering. If, at build time, any of the 5 jobs' inputKeysService is found to not actually be backed by a real callService(<name>, ...) call in its source (the optional stronger static-source-heuristic idea 17 flags as v1-optional), prefer shipping the mechanical existence/registry-membership check (steps 2-3) as the hard-enforced v1 and note the static-source heuristic as a documented future enhancement rather than blocking this task on it.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T488.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "feature"
+      }
+    },
+    {
+      "id": "T489",
+      "title": "Ignore/un-ignore buttons: instant list update + drop confirm() popups (4 output managers)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ux",
+        "ignore",
+        "usePoll"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs",
+        "grep -n \"confirm(\" dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T489.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T490",
+      "title": "Admin: remove type-to-confirm phrase gate on Delete all workflow output",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "admin",
+        "confirmation-ux"
+      ],
+      "scope": [
+        "dashboard/app/admin/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T490.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T491",
+      "title": "Admin: remove two-step confirm panel on Run all workflows button",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "admin",
+        "confirmation-ux"
+      ],
+      "scope": [
+        "dashboard/app/admin/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T491.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
     }
   ]
 }
