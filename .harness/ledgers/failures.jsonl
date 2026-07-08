@@ -45,3 +45,5 @@
 {"id":"T443","ts":"2026-07-06T06:29:02Z","kind":"local-dod","rung":0,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"job","workType":"feature","risk":["cross-cutting"]},"detail":"npx tsc --noEmit && npm test"}
 {"id":"T452","ts":"2026-07-07T20:56:26Z","kind":"audit-fail","rung":0,"attempt":0,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"job","workType":"refactor","risk":[]},"detail":""}
 {"id":"T452","ts":"2026-07-07T21:06:31Z","kind":"audit-fail","rung":0,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"job","workType":"refactor","risk":[]},"detail":""}
+{"id":"T460","ts":"2026-07-08T00:36:14Z","kind":"ci-red","rung":0,"attempt":0,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"job","workType":"feature","risk":[]},"detail":"CI checks failed on the pushed commit"}
+{"id":"T460","ts":"2026-07-08T00:47:45Z","kind":"ci-red","rung":0,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"job","workType":"feature","risk":[]},"detail":"CI checks failed on the pushed commit"}

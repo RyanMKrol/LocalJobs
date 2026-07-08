@@ -12227,7 +12227,7 @@
     {
       "id": "T460",
       "title": "Add a trailing-3-month digest file to the listening-digest workflow",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
