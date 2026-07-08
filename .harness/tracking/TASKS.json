@@ -12288,7 +12288,7 @@
     {
       "id": "T462",
       "title": "Surface the 8 owner-authored perfume fields in the generated markdown profile",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T461"
       ],
