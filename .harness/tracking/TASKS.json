@@ -12582,6 +12582,133 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T470.md"
+    },
+    {
+      "id": "T471",
+      "title": "Extract a shared table/category-panel component and migrate Workflows + Integrations onto it",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/components/*.tsx",
+        "dashboard/app/integrations/page.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T471.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T472",
+      "title": "Fix mobile-check's ancestor-unaware spill heuristic (false positive on DagFlow single-node canvas) and add the missing single-stage PAGES entry",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard-io"
+      ],
+      "scope": [
+        "dashboard/scripts/mobile-check.mjs",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T472.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T473",
+      "title": "Add StageIoPanel /stage-io fixture coverage + PAGES entries for the remaining workflows without one (missing-tv-seasons, workouts-sync, listening-digest, projects-sync, plex-space-saver, and any others discoverable via src/workflows/*/*.workflow.ts)",
+      "status": "pending",
+      "dependsOn": [
+        "T472"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard-io"
+      ],
+      "scope": [
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T473.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T474",
+      "title": "Migrate every direct Plex call site (6 workflows) onto callService('plex', ...) — code + docs in scope together",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "migration",
+        "integration"
+      ],
+      "scope": [
+        "src/workflows/plex-language-fix/lib.ts",
+        "src/workflows/plex-language-fix/stages/apply.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts",
+        "src/workflows/missing-tv-seasons/stages/snapshot.ts",
+        "src/workflows/plex-profiles/stages/build.ts",
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/plex-space-saver/stages/scan.ts",
+        "src/workflows/plex-language-fix/lib.test.ts",
+        "src/workflows/plex-language-fix/stages/apply.test.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.test.ts",
+        "src/workflows/missing-tv-seasons/stages/snapshot.test.ts",
+        "src/workflows/plex-profiles/stages/build.test.ts",
+        "src/workflows/movies/stages/snapshot.test.ts",
+        "src/workflows/plex-space-saver/stages/scan.test.ts",
+        "src/workflows/plex-language-fix/CLAUDE.md",
+        "src/workflows/tv-recs/CLAUDE.md",
+        "src/workflows/missing-tv-seasons/CLAUDE.md",
+        "src/workflows/plex-profiles/CLAUDE.md",
+        "src/workflows/movies/CLAUDE.md",
+        "src/workflows/plex-space-saver/CLAUDE.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T474.md",
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
     }
   ]
 }
