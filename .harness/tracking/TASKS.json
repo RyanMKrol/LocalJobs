@@ -12319,7 +12319,7 @@
     {
       "id": "T463",
       "title": "Define src/services/plex.service.ts (Plex as a first-class Services-model entry)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
