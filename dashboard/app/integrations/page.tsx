@@ -105,7 +105,7 @@ export default function Services() {
   // The row currently being edited, plus its draft values (kept local so polling
   // doesn't clobber typing).
   const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ rate: '', daily: '', monthly: '' });
+  const [draft, setDraft] = useState({ rate: '', daily: '', monthly: '', timeout: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [viewingConsumers, setViewingConsumers] = useState<string | null>(null);
@@ -117,11 +117,12 @@ export default function Services() {
       rate: toField(s.rate_per_minute),
       daily: toField(s.daily_cap),
       monthly: toField(s.monthly_cap),
+      timeout: toField(s.timeout_ms),
     });
   }
 
   async function save(name: string) {
-    if (!validField(draft.rate) || !validField(draft.daily) || !validField(draft.monthly)) {
+    if (!validField(draft.rate) || !validField(draft.daily) || !validField(draft.monthly) || !validField(draft.timeout)) {
       setErr('Each limit must be a non-negative whole number, or blank for no limit.');
       return;
     }
@@ -132,6 +133,7 @@ export default function Services() {
         rate_per_minute: parseField(draft.rate),
         daily_cap: parseField(draft.daily),
         monthly_cap: parseField(draft.monthly),
+        timeout_ms: parseField(draft.timeout),
       });
       setEditing(null);
     } catch (e) {
@@ -167,15 +169,16 @@ export default function Services() {
             <h2>{label}</h2>
             <table className="services-table">
               <colgroup>
-                <col style={{ width: '38%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '17%' }} />
+                <col style={{ width: '32%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '16%' }} />
               </colgroup>
               <thead>
                 <tr>
-                  <th>Service</th><th>Rate / min</th><th>Rate / day</th><th>Rate / month</th><th></th>
+                  <th>Service</th><th>Rate / min</th><th>Rate / day</th><th>Rate / month</th><th>Timeout (ms)</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -194,6 +197,10 @@ export default function Services() {
                         {s.paid ? <Pill kind="paid">paid</Pill> : <Pill kind="free">free</Pill>}
                         {s.limits_overridden ? <Pill title="Limits edited from the dashboard; preserved across code-sync"> edited</Pill> : null}
                         <div className="muted" style={{ fontSize: 12 }}>{s.description}</div>
+                        <div className="muted mono service-meta" style={{ fontSize: 11 }}>
+                          timeout: {s.timeout_ms == null || s.timeout_ms === 0 ? 'none' : `${s.timeout_ms}ms`}
+                          {s.rate_limit_source ? ` · source: ${s.rate_limit_source}` : ''}
+                        </div>
                       </td>
                       {isEditing ? (
                         <>
@@ -209,6 +216,10 @@ export default function Services() {
                             <input type="text" className="mono limit-input" value={draft.monthly} placeholder="no limit" onChange={(e) => setDraft((d) => ({ ...d, monthly: e.target.value }))} />
                             {draft.monthly !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Set to no limit" onClick={() => setDraft((d) => ({ ...d, monthly: '' }))}>✕</button>}
                           </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <input type="text" className="mono limit-input" value={draft.timeout} placeholder="default" onChange={(e) => setDraft((d) => ({ ...d, timeout: e.target.value }))} />
+                            {draft.timeout !== '' && <button className="btn secondary" style={{ marginLeft: 4, padding: '1px 5px', fontSize: 11 }} title="Reset to code default" onClick={() => setDraft((d) => ({ ...d, timeout: '' }))}>✕</button>}
+                          </td>
                           <td>
                             <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
                               <button className="btn" onClick={() => save(s.name)} disabled={busy}>{busy ? 'Saving…' : '✓ Save'}</button>
@@ -221,6 +232,9 @@ export default function Services() {
                           <td><Bar used={s.rate_last_min} cap={s.rate_per_minute} /></td>
                           <td><Bar used={s.used_today} cap={s.daily_cap} /></td>
                           <td><Bar used={s.used_month} cap={s.monthly_cap} /></td>
+                          <td className="mono" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                            {s.timeout_ms == null || s.timeout_ms === 0 ? <span className="muted">none</span> : `${s.timeout_ms}`}
+                          </td>
                           <td><button className="btn secondary" onClick={() => startEdit(s)}>✎ Edit limits</button></td>
                         </>
                       )}

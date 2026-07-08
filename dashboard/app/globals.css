@@ -108,6 +108,7 @@ table { width: 100%; border-collapse: collapse; }
    overflow past the panel's clipped edge; wrap onto a second line instead if it doesn't fit. */
 .services-table td:last-child { text-align: right; }
 .services-table td:last-child .btn { white-space: normal; text-align: center; }
+.service-meta { white-space: normal; word-break: break-word; }
 th, td { text-align: left; padding: 8px 18px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
 tr:last-child td { border-bottom: none; }

@@ -269,6 +269,7 @@ export interface Service {
   rate_per_minute: number | null;
   daily_cap: number | null;
   monthly_cap: number | null;
+  timeout_ms: number | null;
   paid: number;
   limits_overridden: number;
   rate_limit_source: string;
@@ -281,6 +282,7 @@ export interface ServiceLimits {
   rate_per_minute: number | null;
   daily_cap: number | null;
   monthly_cap: number | null;
+  timeout_ms: number | null;
 }
 
 export interface ServiceConsumerGroup {
