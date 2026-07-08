@@ -38,5 +38,10 @@
     "failed": true,
     "reason": "The Theme Picker or the Light/Dark Picker still flashes on every single navigation between two pages. This is not acceptable, and it's still not working as I've intended, so clearly the validation that we're doing is not good enough.",
     "at": "2026-07-03T08:57:21.703Z"
+  },
+  "T342": {
+    "failed": true,
+    "reason": "review-failed: superseded by T471 — original scope had two stale-path bugs (missing CLAUDE.md, then a renamed page path); T471 re-specifies the same work with corrected scope",
+    "at": "2026-07-08T21:12:30Z"
   }
 }
