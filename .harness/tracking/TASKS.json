@@ -12392,7 +12392,7 @@
     {
       "id": "T465",
       "title": "Add a generic, dashboard-editable timeoutMs field to ServiceDefinition; wire Plex's AND claude-cli's timeouts through it",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T463"
       ],
