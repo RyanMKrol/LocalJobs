@@ -43,5 +43,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T471 — original scope had two stale-path bugs (missing CLAUDE.md, then a renamed page path); T471 re-specifies the same work with corrected scope",
     "at": "2026-07-08T21:12:30Z"
+  },
+  "T388": {
+    "failed": true,
+    "reason": "review-failed: superseded by T472/T473 — the block was a false positive in mobile-check.mjs's own ancestor-unaware heuristic, not a real dashboard bug; T472 fixes the check, T473 (depends on T472) redoes the original fixture-coverage sweep",
+    "at": "2026-07-08T21:12:32Z"
   }
 }
