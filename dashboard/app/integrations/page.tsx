@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api, type Service, type ServiceConsumerGroup } from '../lib/api';
 import { usePoll } from '../ui';
 import { Pill } from '../components/Pill';
+import { CategoryTable } from '../components/CategoryTable';
 
 function Bar({ used, cap }: { used: number; cap: number | null }) {
   if (cap == null) return <span className="muted">no limit</span>;
@@ -165,24 +166,20 @@ export default function Services() {
         const services = sortServices(allServices.filter((s) => (s.category || 'uncategorized') === key));
         if (services.length === 0) return null;
         return (
-          <div className="panel" key={key}>
-            <h2>{label}</h2>
-            <table className="services-table">
-              <colgroup>
-                <col style={{ width: '32%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '16%' }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Service</th><th>Rate / min</th><th>Rate / day</th><th>Rate / month</th><th>Timeout (ms)</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {services.map((s) => {
+          <CategoryTable
+            key={key}
+            label={label}
+            tableClassName="services-table"
+            columns={[
+              { key: 'service', label: 'Service', width: '32%' },
+              { key: 'rate-min', label: 'Rate / min', width: '13%' },
+              { key: 'rate-day', label: 'Rate / day', width: '13%' },
+              { key: 'rate-month', label: 'Rate / month', width: '13%' },
+              { key: 'timeout', label: 'Timeout (ms)', width: '13%' },
+              { key: 'actions', label: '', width: '16%' },
+            ]}
+          >
+            {services.map((s) => {
                   const isEditing = editing === s.name;
                   return (
                     <tr key={s.name}>
@@ -241,9 +238,7 @@ export default function Services() {
                     </tr>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+          </CategoryTable>
         );
       })}
     </>

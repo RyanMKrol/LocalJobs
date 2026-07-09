@@ -1224,6 +1224,15 @@ doubt, log it.
     enumeration labels must use `<Pill>`, not bare `<span className="pill ...">`.
   - `DagFlow`, `WorkflowOutputSection` — existing components for the workflow DAG
     graph and unified output panel.
+  - **`<CategoryTable>`** (`dashboard/app/components/CategoryTable.tsx`, T471) — the
+    "one category group" wrapper for pages that group a list into labelled sections
+    (`workflows/page.tsx`, `integrations/page.tsx`): owns the `.panel` wrapper, the
+    `<h2>` category label, and the `<table>`/`<thead>` scaffold (with an optional
+    `<colgroup>` when a column declares a `width`). Props: `label`, `columns:
+    { key, label, align?, width? }[]`, optional `tableClassName`, and `children` for
+    the `<tbody>` — each page still authors its own `<tr>`/`<td>` markup and
+    interactivity. Stacked instances get spacing for free via the existing `.panel +
+    .panel` rule in `globals.css` — don't add new spacing CSS.
   - **`renderOutputBody`/`OUTPUT_RENDERERS`** (`dashboard/app/components/OutputRenderer.tsx`,
     T458) — the SINGLE format-keyed output-artifact renderer dispatch, keyed by an output
     item's declared `WorkflowRunOutput.format` (T262/T282: `markdown` when unset). Owns the

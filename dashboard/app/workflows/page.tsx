@@ -8,6 +8,7 @@ import { CronBadge, StuckPopover, fmtRelative, fmtTime, statusLabel, usePoll } f
 import type { Workflow } from '../lib/api';
 import { RunButton } from '../components/RunButton';
 import { Pill } from '../components/Pill';
+import { CategoryTable } from '../components/CategoryTable';
 
 /** `category` is a manifest-owned field (T292) surfaced by the API but not yet on the `Workflow` type. */
 type WorkflowWithCategory = Workflow & { category?: string };
@@ -70,60 +71,65 @@ export default function Workflows() {
         .filter(({ group }) => group.length > 0)
         .map(({ key, label, group }) => {
         return (
-          <div className="panel" key={key}>
-            <h2>{label}</h2>
-            <table>
-              <thead>
-                <tr><th>Workflow</th><th style={{ textAlign: 'center' }}>Enabled</th><th style={{ textAlign: 'center' }}>Notifications</th><th style={{ textAlign: 'center' }}>Stages</th><th style={{ textAlign: 'center' }}>Schedule</th><th style={{ textAlign: 'center' }}>Last run</th><th>Next</th><th></th></tr>
-              </thead>
-              <tbody>
-                {group.map((p) => (
-                  <tr key={p.name}>
-                    <td>
-                      <Link href={`/workflows/${p.name}`}><strong>{p.name}</strong></Link>
-                      {p.stuck > 0 && (
-                        <button
-                          className="btn-link"
-                          style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}
-                          onClick={() => openStuck(p.name)}
-                          title={`${p.stuck} stuck item${p.stuck === 1 ? '' : 's'} — click to manage`}
-                        >
-                          ⛔ {p.stuck} stuck
-                        </button>
-                      )}
-                      <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <Pill kind={p.enabled ? 'on' : 'off'}>{p.enabled ? 'on' : 'off'}</Pill>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <Pill kind={p.effective_notify_enabled ? 'on' : 'off'}>{p.effective_notify_enabled ? 'on' : 'off'}</Pill>
-                    </td>
-                    <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
-                    <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
-                      {p.schedule
-                        ? <CronBadge expr={p.schedule} />
-                        : <span className="muted">manual</span>}
+          <CategoryTable
+            key={key}
+            label={label}
+            columns={[
+              { key: 'workflow', label: 'Workflow' },
+              { key: 'enabled', label: 'Enabled', align: 'center' },
+              { key: 'notifications', label: 'Notifications', align: 'center' },
+              { key: 'stages', label: 'Stages', align: 'center' },
+              { key: 'schedule', label: 'Schedule', align: 'center' },
+              { key: 'last-run', label: 'Last run', align: 'center' },
+              { key: 'next', label: 'Next' },
+              { key: 'actions', label: '' },
+            ]}
+          >
+            {group.map((p) => (
+              <tr key={p.name}>
+                <td>
+                  <Link href={`/workflows/${p.name}`}><strong>{p.name}</strong></Link>
+                  {p.stuck > 0 && (
+                    <button
+                      className="btn-link"
+                      style={{ color: 'var(--red)', fontSize: 12, marginLeft: 8 }}
+                      onClick={() => openStuck(p.name)}
+                      title={`${p.stuck} stuck item${p.stuck === 1 ? '' : 's'} — click to manage`}
+                    >
+                      ⛔ {p.stuck} stuck
+                    </button>
+                  )}
+                  <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <Pill kind={p.enabled ? 'on' : 'off'}>{p.enabled ? 'on' : 'off'}</Pill>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <Pill kind={p.effective_notify_enabled ? 'on' : 'off'}>{p.effective_notify_enabled ? 'on' : 'off'}</Pill>
+                </td>
+                <td className="muted" style={{ textAlign: 'center' }}>{p.jobs.length}</td>
+                <td className="mono" style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
+                  {p.schedule
+                    ? <CronBadge expr={p.schedule} />
+                    : <span className="muted">manual</span>}
 
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      {p.last_run
-                        ? <span className="last-run-cell"><Link href={`/workflow-runs/${p.last_run.id}`} className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</Link><span className="muted last-run-time">{fmtRelative(p.last_run.started_at)}</span></span>
-                        : <span className="muted">never</span>}
-                    </td>
-                    <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
-                    <td>
-                      <RunButton
-                        isRunning={p.last_run?.status === 'running'}
-                        onClick={() => run(p.name)}
-                        label="▶ Run"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  {p.last_run
+                    ? <span className="last-run-cell"><Link href={`/workflow-runs/${p.last_run.id}`} className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</Link><span className="muted last-run-time">{fmtRelative(p.last_run.started_at)}</span></span>
+                    : <span className="muted">never</span>}
+                </td>
+                <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
+                <td>
+                  <RunButton
+                    isRunning={p.last_run?.status === 'running'}
+                    onClick={() => run(p.name)}
+                    label="▶ Run"
+                  />
+                </td>
+              </tr>
+            ))}
+          </CategoryTable>
         );
       })}
     </>
