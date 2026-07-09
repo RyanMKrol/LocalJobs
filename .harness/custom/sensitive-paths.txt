@@ -1,0 +1,25 @@
+# sensitive-paths.txt — extra pre-push secret-guard patterns for THIS project.
+# Copy to `sensitive-paths.txt` (drop the .example) to activate. One extended-regex (ERE) fragment per
+# line; blank lines and #-comments ignored. These are OR-APPENDED to the built-in guard — they can only
+# ADD protection, never remove it. If any line makes the combined regex invalid, the whole file is ignored
+# and the base guard is used. Check a path with:  .harness/scripts/loop.sh --guard-selftest <path>
+#
+# Example (a project deployed on Vercel that also uses AWS):
+# (^|/)\.vercel/
+# (^|/)\.aws/
+# aws-credentials
+
+# local-jobs-specific additions (base guard already covers data/, .env*, chrome-profile,
+# *.pem/*.key/*.p12, service-account*, credentials.json — these close remaining gaps from
+# this repo's own .gitignore/CLAUDE.md privacy rules):
+
+# plex-language-fix/ — a personal Plex library-maintenance scratch kept at the repo root
+# (deliberately outside src/workflows/), not just its data/ subfolder.
+(^|/)plex-language-fix/
+
+# Any gcp-*.json credential file, even one that doesn't literally contain "service-account"
+# or "credentials.json" (the base guard's substring matches for those).
+(^|/)gcp-.*\.json
+
+# TODO.md — the owner's personal running backlog; may reference private job details.
+(^|/)TODO\.md$
