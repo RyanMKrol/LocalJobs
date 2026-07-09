@@ -27,6 +27,28 @@ function measure() {
   const vw = window.innerWidth;
   const docOverflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
   const offenders = [];
+  // An element with `overflow-x: visible` and excess scrollWidth is only a REAL,
+  // visible spill if the excess actually paints outside the viewport. If a nearer
+  // ancestor (up to <body>) already clips horizontally (overflow-x hidden/auto/
+  // scroll) AND that ancestor itself isn't already off-screen, the descendant's
+  // excess is invisible — clipped away, not painted. Without this, React Flow's
+  // internal `.react-flow__renderer`/`.react-flow__pane` layers (which report a
+  // large scrollWidth from their unzoomed canvas coordinate space but sit two
+  // levels inside a `.react-flow`/`.dag-flow-wrap` ancestor that clips with
+  // `overflow: hidden`) were flagged as false-positive boundary-crossing spills
+  // even though nothing ever crosses the visible page. Do not remove this check.
+  function isClippedByAncestor(el) {
+    let node = el.parentElement;
+    while (node && node !== document.body) {
+      const ncs = getComputedStyle(node);
+      if (ncs.overflowX !== 'visible') {
+        const nr = node.getBoundingClientRect();
+        if (nr.right <= vw) return true;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  }
   for (const el of document.querySelectorAll('body *')) {
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') continue;
@@ -37,7 +59,7 @@ function measure() {
     // intentionally clipped/scrolled and not a violation.
     if (cs.overflowX === 'visible') {
       const spill = el.scrollWidth - el.clientWidth;
-      if (spill > 1) {
+      if (spill > 1 && !isClippedByAncestor(el)) {
         offenders.push({
           sel: el.tagName.toLowerCase() + (el.className ? '.' + String(el.className).trim().split(/\s+/).join('.') : ''),
           spill: Math.round(spill),

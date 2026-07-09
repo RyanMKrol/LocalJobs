@@ -735,6 +735,7 @@ export const PAGES = [
   { name: 'workflow-run-skipped',    path: '/workflow-runs/skipped',          waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-stocks-io',  path: '/workflow-runs/stocks',           waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-stock-digest', path: '/workflow-runs/stock-digest-run', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-claude-warmer', path: '/workflow-runs/claude-warmer-run', waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },
