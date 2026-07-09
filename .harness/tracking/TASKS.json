@@ -8216,7 +8216,8 @@
         "dag"
       ],
       "scope": [
-        "dashboard/app/components/DagFlow.tsx"
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
       ],
       "design": null,
       "verify": [],
@@ -10331,7 +10332,8 @@
         "src/db/store.ts",
         "src/db/store.test.ts",
         "src/api/server.ts",
-        "src/api/server.test.ts"
+        "src/api/server.test.ts",
+        "CLAUDE.md"
       ],
       "design": null,
       "verify": [],
@@ -12372,7 +12374,14 @@
         "src/workflows/missing-tv-seasons/stages/snapshot.test.ts",
         "src/workflows/plex-profiles/stages/build.test.ts",
         "src/workflows/movies/stages/snapshot.test.ts",
-        "src/workflows/plex-space-saver/stages/scan.test.ts"
+        "src/workflows/plex-space-saver/stages/scan.test.ts",
+        "CLAUDE.md",
+        "src/workflows/plex-language-fix/CLAUDE.md",
+        "src/workflows/tv-recs/CLAUDE.md",
+        "src/workflows/missing-tv-seasons/CLAUDE.md",
+        "src/workflows/plex-profiles/CLAUDE.md",
+        "src/workflows/movies/CLAUDE.md",
+        "src/workflows/plex-space-saver/CLAUDE.md"
       ],
       "design": null,
       "verify": [
@@ -13286,7 +13295,8 @@
         "dashboard/app/lib/api.ts",
         "dashboard/app/top-of-mind/page.tsx",
         "dashboard/app/layout.tsx",
-        "dashboard/scripts/_dashboard-harness.mjs"
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "src/db/top-of-mind.test.ts"
       ],
       "design": null,
       "verify": [],
