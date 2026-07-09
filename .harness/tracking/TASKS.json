@@ -12596,7 +12596,7 @@
     {
       "id": "T471",
       "title": "Extract a shared table/category-panel component and migrate Workflows + Integrations onto it",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
