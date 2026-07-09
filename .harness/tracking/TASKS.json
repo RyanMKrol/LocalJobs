@@ -13292,7 +13292,15 @@
       "verify": [],
       "expectsTest": true,
       "spec": ".harness/tasks/T493.md",
-      "visualVerify": true
+      "visualVerify": true,
+      "facets": {
+        "layer": "db",
+        "workType": "feature",
+        "risk": [
+          "full-stack",
+          "touches-schema"
+        ]
+      }
     },
     {
       "id": "T494",
@@ -13313,7 +13321,12 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T494.md",
-      "visualVerify": true
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
     },
     {
       "id": "T495",
@@ -13355,7 +13368,12 @@
       "verify": [],
       "expectsTest": false,
       "spec": ".harness/tasks/T496.md",
-      "visualVerify": true
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
     },
     {
       "id": "T497",
