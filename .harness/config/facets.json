@@ -124,6 +124,10 @@
     "_about": "The GLOBAL difficulty ladder, cheapest → most expensive. The policy chooses a START tier from here per task; escalation walks UP it. The authored model/effort is the cold-start start tier. Project-specific (override per project).",
     "ladder": [
       {
+        "model": "claude-haiku-4-5",
+        "effort": null
+      },
+      {
         "model": "claude-sonnet-5",
         "effort": "low"
       },
