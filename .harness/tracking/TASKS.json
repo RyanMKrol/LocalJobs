@@ -12622,7 +12622,7 @@
     {
       "id": "T472",
       "title": "Fix mobile-check's ancestor-unaware spill heuristic (false positive on DagFlow single-node canvas) and add the missing single-stage PAGES entry",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
