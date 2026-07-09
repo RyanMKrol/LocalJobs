@@ -10333,7 +10333,8 @@
         "src/db/store.test.ts",
         "src/api/server.ts",
         "src/api/server.test.ts",
-        "CLAUDE.md"
+        "CLAUDE.md",
+        "dashboard/scripts/_dashboard-harness.mjs"
       ],
       "design": null,
       "verify": [],
@@ -12993,7 +12994,8 @@
       ],
       "scope": [
         "src/services/fs.service.ts",
-        "src/services/fs.service.test.ts"
+        "src/services/fs.service.test.ts",
+        "dashboard/app/integrations/page.tsx"
       ],
       "design": "Model directly on src/services/plex.service.ts (the confirmed reference pattern): default-export a ServiceDefinition named 'fs' with paid: false and NO ratePerMinute/dailyCap/monthlyCap/minIntervalMs/maxJitterMs — there is no real external rate limit to model, only the owner's own local disk. description must explain this exists purely so the inputKeysService contract (a later unit) can require EVERY inputKeys()-declaring job to name a real registered service, with zero carve-outs for 'this one just reads a local file' — i.e. this is a deliberate conceptual stretch chosen by the owner to keep the enforcement rule mechanically universal, not because there's a real quota/rate limit to govern. rateLimitSource should say something like 'Local disk the owner controls — no external rate limit or quota applies; this service exists purely so a local-file-backed inputKeys() can be governed by the same callService contract as every real external dependency.' category: the current controlled vocabulary (checked live: src/services/*.service.ts + root CLAUDE.md's T305 note) is only 'cli-tool' | 'website-scrape' | 'api', with 'uncategorized' as the unset default — none fit 'local filesystem' cleanly. Introduce a new category value 'local' (used by exactly this one service for now) rather than force-fitting into 'api' — but this is a judgment call the builder should make explicitly and document (either choice is acceptable; do not silently default to uncategorized without a documented reason). No dashboard edit UI is needed for category (per the existing T292/T305 convention — category is manifest-owned only). timeoutMs: use a short default (e.g. a few seconds) reflecting that a local file read is near-instant, rather than reusing a network-service-scale timeout default.",
       "verify": [
@@ -13026,7 +13028,8 @@
         "src/workflows/places/stages/resolve.test.ts",
         "src/workflows/places/stages/ingest.ts",
         "src/workflows/places/parse.ts",
-        "src/workflows/places/CLAUDE.md"
+        "src/workflows/places/CLAUDE.md",
+        "data/raw/"
       ],
       "design": "Current broken state (verified live, src/workflows/places/stages/resolve.ts:18-26): resolveInputKeys() reads placesConfig.placesOut (data/out/places.json), which is written by the UPSTREAM places-ingest stage on a prior run — after a 'Clear output data' reset this returns [] until an unlimited run reseeds the file, which is exactly the trap idea 13 describes (the T094 selectPendingRoots empty-candidate-list -> ctx.rootAllowed rejects everything including the root stage's own recording -> silent no-op). Fix: change resolveInputKeys() to derive the candidate CID list DIRECTLY from the raw Google Takeout CSVs in data/raw/Saved/ — the SAME true source places-ingest itself parses (verified: src/workflows/places/stages/ingest.ts's runIngest() already does readdirSync(placesConfig.savedDir) + parseListFile()+extractFeatureId() from ../parse.js to build exactly this CID list) — routed through callService('fs', () => <csv read + parse>). Avoid duplicating the CSV-parsing/CID-extraction logic a second time: extract the minimal shared piece (walk data/raw/Saved/*.csv, parse each with the existing parseListFile, pull cid via extractFeatureId, dedupe) into a small exported helper (e.g. in ingest.ts or parse.ts) that BOTH runIngest() and resolveInputKeys() call, so the two can never drift out of sync. Keep runIngest()'s own behavior/output unchanged (still writes places.json + validation-report.json + records the ledger) — only its internal CID-list-building step should now call the shared helper instead of (or alongside) its existing inline loop, whichever refactor is cleanest without changing runIngest's logged narration or validation-report semantics. Update places/CLAUDE.md's cid-to-place-id-resolver section to note resolveInputKeys() now derives from the raw CSVs via the fs service, not from places.json.",
       "verify": [
