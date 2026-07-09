@@ -524,7 +524,8 @@ function renderPage() {
 
   /* ---- overview strip: at-a-glance counts above the sections ---- */
   .summary-strip{display:flex;gap:10px;margin:0 0 22px;flex-wrap:wrap;}
-  .summary-chip{flex:1 1 160px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;}
+  .summary-chip{flex:1 1 160px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;cursor:pointer;text-align:left;font:inherit;color:inherit;transition:border-color .15s,background .15s;}
+  .summary-chip:hover{background:color-mix(in srgb, var(--text) 4%, var(--panel));border-color:color-mix(in srgb, var(--text) 20%, var(--border));}
   .summary-chip .n{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;line-height:1.1;}
   .summary-chip .n small{color:var(--muted);font-weight:500;font-size:14px;}
   .summary-chip .lbl{font-size:11.5px;color:var(--muted);letter-spacing:.02em;}
@@ -752,7 +753,7 @@ function renderNow(data) {
   let h = '';
   if (lock.held && lock.alive) {
     if (cur && cur.task) {
-      const tier = cur.model ? ' · ' + esc(cur.model) + '/' + esc(cur.effort) : '';
+      const tier = cur.model ? ' · ' + esc(cur.model) + (cur.effort ? '/' + esc(cur.effort) : '') : '';
       h += '<span class="nowpill run">▶ ' + esc(cur.task) + ' — ' + esc(cur.phase || 'working')
          + ' (rung ' + esc(String(cur.rung)) + ', attempt ' + esc(String(+cur.attempt + 1)) + tier + ')</span>';
     } else {
@@ -870,7 +871,7 @@ function renderHarness(data) {
   let h = '';
   h += '<div class="htitle">Model tiers &amp; policy</div><div class="refgrid">';
   h += '<div class="refcard"><b>Tier ladder</b> — cheapest → priciest<ol>' +
-       L.map(function (t) { return '<li class="model-tag">' + esc(t.model) + ' / ' + esc(t.effort) + '</li>'; }).join('') + '</ol></div>';
+       L.map(function (t) { return '<li class="model-tag">' + esc(t.model) + (t.effort ? ' / ' + esc(t.effort) : '') + '</li>'; }).join('') + '</ol></div>';
   h += '<div class="refcard"><b>Policy knobs</b>' +
        knob('pass floor', Math.round((p.floor || 0) * 100) + '% first-attempt') +
        knob('min samples', p.minN) +
@@ -895,7 +896,7 @@ function renderHarness(data) {
        + '<th class="num">⚠ fails <span class="qtip" tabindex="0" data-tip="Failed attempts recorded before a task in this cell eventually succeeded or was blocked — see Failure health below for a kind breakdown.">?</span></th>'
        + '</tr></thead><tbody>';
     for (const c of cells) {
-      const model = c.chosenModel ? esc(c.chosenModel) + ' / ' + esc(c.chosenEffort) : '—';
+      const model = c.chosenModel ? esc(c.chosenModel) + (c.chosenEffort ? ' / ' + esc(c.chosenEffort) : '') : '—';
       const cold = (c.chosenModel && !c.hasHistory) ? '<span class="cold-tag">cold</span>' : '';
       const audit = (c.auditPct != null) ? c.auditPct + '%' : '—';
       const observed = c.successes ? Math.round((c.audited / c.successes) * 100) + '% <span class="cold-tag">' + c.audited + '/' + c.successes + '</span>' : '—';
@@ -1049,7 +1050,7 @@ function renderSection(name, emoji, label, desc, tasks, countStr) {
   }
   const rows = tasks.length ? tasks.map(t => renderTask(t, name)).join('') : '<p class="empty">None.</p>';
   const descHtml = desc ? \`<p class="section-desc">\${desc}</p>\` : '';
-  return \`<details class="section"\${openAttr} ontoggle="onSectionToggle('\${name}', this)">
+  return \`<details id="section-\${name}" class="section"\${openAttr} ontoggle="onSectionToggle('\${name}', this)">
     <summary class="section-heading">\${emoji} \${label} <span class="count">(\${countStr})</span></summary>
     <div class="section-body">
       \${descHtml}\${filterBar}\${bar}
@@ -1067,9 +1068,9 @@ function renderBacklog(data) {
     'The harness task list (<span class="mono">.harness/tracking/TASKS.json</span>), rendered. '
     + \`\${total} task(s) · \${c.ready} ready · \${c.waiting} waiting · \${c.needsHuman} need a human · \${c.failedPendingReview} failed (pending review) · \${c.done} done (\${reviewed} reviewed). Auto-refreshes.\`;
   document.getElementById('summary-chips').innerHTML =
-    \`<div class="summary-chip action"><span class="n">\${c.needsHuman}</span><span class="lbl">need your action</span></div>\`
-    + \`<div class="summary-chip review"><span class="n">\${c.failedPendingReview}</span><span class="lbl">failed, pending review</span></div>\`
-    + \`<div class="summary-chip done"><span class="n">\${c.done} <small>· \${reviewed} reviewed</small></span><span class="lbl">done</span></div>\`;
+    \`<button class="summary-chip action" onclick="scrollToSection('needsHuman')"><span class="n">\${c.needsHuman}</span><span class="lbl">need your action</span></button>\`
+    + \`<button class="summary-chip review" onclick="scrollToSection('failedPendingReview')"><span class="n">\${c.failedPendingReview}</span><span class="lbl">failed, pending review</span></button>\`
+    + \`<button class="summary-chip done" onclick="scrollToSection('done')"><span class="n">\${c.done} <small>· \${reviewed} reviewed</small></span><span class="lbl">done</span></button>\`;
   document.getElementById('sections').innerHTML =
     renderSection('ready', '🤖', 'Ready', 'Everything the harness can build with no human involved — either right now, or once an earlier, equally-buildable task in its chain lands.', b.ready, b.ready.length)
     + renderSection('waiting', '⏳', 'Waiting on Human Tasks', 'Buildable, but blocked somewhere upstream by a task a human still has to clear.', b.waiting, b.waiting.length)
@@ -1106,6 +1107,17 @@ function openTask(id) {
   const el = document.getElementById('task-' + id);
   if (!el) return;
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 1500);
+}
+
+// Summary-chip navigation: expand + scroll to + briefly highlight the section the chip refers to.
+function scrollToSection(name) {
+  state.closedSections.delete(name);
+  rerender();
+  const el = document.getElementById('section-' + name);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   el.classList.add('flash');
   setTimeout(() => el.classList.remove('flash'), 1500);
 }
