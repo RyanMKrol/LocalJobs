@@ -71,6 +71,13 @@ TODO.md
 # skill's Stage 0/2.
 .harness/.pending-questions/
 
+# implementation-harness-fix-scope-gaps scratch: a dismissed check-task-scope.sh false-positive
+# warning is recorded here (keyed by task id, with the spec's content hash) so pre-loop-checkin
+# doesn't re-flag it every run. A stale dismissal (spec edited since) simply stops matching and
+# the warning re-surfaces on its own. Never committed.
+.harness/.scope-gap-ignores/*
+!.harness/.scope-gap-ignores/.gitkeep
+
 # harness: atomic-write temps for TASKS.json + the owner-owned reviews store (T136).
 # .harness/tracking/reviews.json itself IS committed (owner-owned; the daemon commits+pushes it).
 .harness/tracking/TASKS.json.tmp
