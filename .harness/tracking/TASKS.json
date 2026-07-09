@@ -13241,6 +13241,183 @@
         "workType": "component",
         "risk": []
       }
+    },
+    {
+      "id": "T492",
+      "title": "Retarget claude-warmer's schedule to 8am/4pm usage-window priming",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "claude-warmer",
+        "schedule",
+        "config"
+      ],
+      "scope": [
+        "src/workflows/claude-warmer/claude-warmer.workflow.ts",
+        "src/workflows/claude-warmer/CLAUDE.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T492.md",
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      }
+    },
+    {
+      "id": "T493",
+      "title": "Top of mind: storage + dedicated markdown edit page",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "top-of-mind",
+        "settings"
+      ],
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/top-of-mind/page.tsx",
+        "dashboard/app/layout.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T493.md",
+      "visualVerify": true
+    },
+    {
+      "id": "T494",
+      "title": "Top of mind: five placement/treatment variants on the Overview page (chooser)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "top-of-mind",
+        "chooser"
+      ],
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T494.md",
+      "visualVerify": true
+    },
+    {
+      "id": "T495",
+      "title": "Top of mind: owner reviews the five placement variants and picks one",
+      "status": "pending",
+      "dependsOn": [
+        "T494"
+      ],
+      "gate": "needs-human",
+      "tags": [
+        "top-of-mind",
+        "review",
+        "needs-human"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T495.md"
+    },
+    {
+      "id": "T496",
+      "title": "Top of mind: hardcode the chosen variant and wire it to real content",
+      "status": "pending",
+      "dependsOn": [
+        "T495",
+        "T493"
+      ],
+      "gate": null,
+      "tags": [
+        "top-of-mind"
+      ],
+      "scope": [
+        "dashboard/app/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T496.md",
+      "visualVerify": true
+    },
+    {
+      "id": "T497",
+      "title": "Add a user-set 'certified' flag on workflows (schema + store + API)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "db",
+        "api",
+        "workflows"
+      ],
+      "scope": [
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store.ts",
+        "src/api/server.ts",
+        "dashboard/app/lib/api.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T497.md",
+      "facets": {
+        "layer": "db",
+        "workType": "migration",
+        "risk": [
+          "touches-schema",
+          "full-stack"
+        ]
+      }
+    },
+    {
+      "id": "T498",
+      "title": "Add a Certify button + green badge on the workflow detail page and Workflows list",
+      "status": "pending",
+      "dependsOn": [
+        "T497"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "ui",
+        "workflows"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T498.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
     }
   ]
 }
