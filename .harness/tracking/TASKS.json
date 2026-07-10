@@ -13283,7 +13283,7 @@
     {
       "id": "T497",
       "title": "Add a user-set 'certified' flag on workflows (schema + store + API)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
