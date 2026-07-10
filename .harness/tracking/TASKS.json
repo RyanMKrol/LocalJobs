@@ -13233,7 +13233,7 @@
     {
       "id": "T491",
       "title": "Admin: remove two-step confirm panel on Run all workflows button",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
