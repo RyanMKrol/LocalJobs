@@ -12673,7 +12673,7 @@
     {
       "id": "T474",
       "title": "Migrate every direct Plex call site (6 workflows) onto callService('plex', ...) — code + docs in scope together",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [],
       "gate": null,
       "tags": [
