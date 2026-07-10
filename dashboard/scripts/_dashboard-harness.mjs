@@ -1007,19 +1007,6 @@ export const PAGES = [
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
   {
-    // T397: the Admin page's fleet-wide "Run all workflows" action reveals an inline
-    // confirm panel (Confirm/Cancel) before dispatching — confirms it's visibly
-    // distinct from the collapsed button state.
-    name: 'admin-run-all-confirm',
-    path: '/admin',
-    viewport: true,
-    waitFor: ['button'],
-    actions: async (page) => {
-      await page.getByRole('button', { name: 'Run all workflows' }).click();
-      await page.waitForTimeout(200);
-    },
-  },
-  {
     // T282: the workflow-detail page's unified Output section (WorkflowOutputSection)
     // now dispatches its popover renderer by the item's declared `format` (T262) —
     // confirms the 'markdown' form still renders identically via this new dispatch.

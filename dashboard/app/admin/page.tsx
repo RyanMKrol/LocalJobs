@@ -16,7 +16,6 @@ export default function AdminPage() {
   const [err, setErr] = useState<string | null>(null);
 
   const [runAllLimit, setRunAllLimit] = useState(DEFAULT_RUN_ALL_LIMIT);
-  const [runAllConfirming, setRunAllConfirming] = useState(false);
   const [runAllBusy, setRunAllBusy] = useState(false);
   const [runAllResult, setRunAllResult] = useState<RunAllResult | null>(null);
   const [runAllErr, setRunAllErr] = useState<string | null>(null);
@@ -42,7 +41,6 @@ export default function AdminPage() {
     try {
       const r = await api.runAllWorkflows(runAllLimit);
       setRunAllResult(r);
-      setRunAllConfirming(false);
     } catch (e) {
       setRunAllErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -79,41 +77,18 @@ export default function AdminPage() {
             min={1}
             value={runAllLimit}
             onChange={(e) => setRunAllLimit(Math.max(1, Number(e.target.value) || DEFAULT_RUN_ALL_LIMIT))}
-            disabled={runAllBusy || runAllConfirming}
+            disabled={runAllBusy}
             style={{ width: 80 }}
           />
         </div>
 
-        {!runAllConfirming && (
-          <button
-            className="btn"
-            onClick={() => setRunAllConfirming(true)}
-            disabled={runAllBusy}
-          >
-            Run all workflows
-          </button>
-        )}
-
-        {runAllConfirming && (
-          <div className="panel" style={{ borderLeft: '3px solid var(--yellow, orange)', padding: 12, marginBottom: 12 }}>
-            <p style={{ fontSize: 13, margin: '0 0 10px' }}>
-              This will start a manual run of every workflow (limit {runAllLimit} input
-              {runAllLimit === 1 ? '' : 's'} where supported). Continue?
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn" onClick={confirmRunAll} disabled={runAllBusy}>
-                {runAllBusy ? 'Starting…' : 'Confirm'}
-              </button>
-              <button
-                className="btn"
-                onClick={() => setRunAllConfirming(false)}
-                disabled={runAllBusy}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+        <button
+          className="btn"
+          onClick={confirmRunAll}
+          disabled={runAllBusy}
+        >
+          {runAllBusy ? 'Starting…' : 'Run all workflows'}
+        </button>
 
         {runAllErr && <p style={{ fontSize: 12, color: 'var(--red)', marginTop: 10 }}>{runAllErr}</p>}
 
