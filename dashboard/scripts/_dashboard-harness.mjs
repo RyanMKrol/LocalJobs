@@ -65,7 +65,7 @@ const workflow = (over) => ({
   category: 'second-brain',
   enabled: 1, effective_notify_enabled: true, created_at: NOW, last_run: workflowRun(), next_run: NOW, jobs: members,
   stuck: 2, runs: [workflowRun(), workflowRun({ id: '2', status: 'partial' })],
-  gates: structuralGates, ...over,
+  gates: structuralGates, certified: 1, ...over,
 });
 
 const service = (over) => ({
@@ -712,8 +712,11 @@ export function fixtureFor(pathname, searchParams) {
     // where the very first .panel card in the Overview grid had no `.panel + .panel` sibling
     // margin, so grid's stretch alignment compressed every other (non-first) card instead.
     workflow({ name: 'claude-warmer', category: 'regular-maintenance', schedule: '*/30 * * * *', jobs: singleStageMembers, stuck: 0 }),
+    // T498: `places` is certified by default (see the `workflow()` factory) — exercises the
+    // 🏅 badge on both the Workflows list and its detail page; `perfumes` stays un-certified
+    // below so both states render.
     workflow(),
-    workflow({ name: 'perfumes', enabled: 0, effective_notify_enabled: false }),
+    workflow({ name: 'perfumes', enabled: 0, effective_notify_enabled: false, certified: 0 }),
     workflow({ name: 'movie-recommendations', category: 'recommendations', stuck: 0 }),
     workflow({ name: 'workouts-sync', category: 'regular-maintenance', stuck: 0 }),
     workflow({ name: 'legacy-job', category: 'uncategorized', stuck: 0 }),

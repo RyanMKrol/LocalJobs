@@ -4,6 +4,7 @@ import { Fragment, use, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { DagFlow } from '../../components/DagFlow';
 import { IgnoredSection } from '../../components/IgnoredSection';
+import { Pill } from '../../components/Pill';
 import { RunButton } from '../../components/RunButton';
 import { SortTh, type SortDir } from '../../components/SortTh';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
@@ -952,12 +953,14 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
   }
   async function toggle() { if (p) await api.toggleWorkflow(name, p.enabled === 0); }
   async function toggleNotify() { if (p) await api.updateWorkflowNotify(name, !p.effective_notify_enabled); }
+  async function toggleCertified() { if (p) await api.updateWorkflowCertified(name, !p.certified); }
 
   return (
     <>
       <p className="muted"><Link href="/workflows">← Workflows</Link></p>
       <div className="row" style={{ gap: 20 }}>
         <h1 style={{ margin: 0 }}>{name}</h1>
+        {p?.certified ? <Pill kind="certified">🏅 Certified</Pill> : null}
         <div className="spacer" />
         {p?.limitable && (
           <div className="run-limit-control">
@@ -1058,6 +1061,12 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
           <div>
             <span className="toggle" onClick={toggleNotify}>
               <input type="checkbox" checked={!!p?.effective_notify_enabled} readOnly /> {p?.effective_notify_enabled ? 'notifications on' : 'notifications off'} (click to toggle)
+            </span>
+          </div>
+          <div className="k">Certified</div>
+          <div>
+            <span className="toggle" onClick={toggleCertified}>
+              <input type="checkbox" checked={!!p?.certified} readOnly /> {p?.certified ? 'certified ✓' : 'not certified'} (click to {p?.certified ? 'un-certify' : 'certify'})
             </span>
           </div>
           <div className="k">Next run</div><div className="muted">{p?.next_run ? fmtTime(p.next_run) : '—'}</div>

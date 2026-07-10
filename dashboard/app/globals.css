@@ -338,6 +338,8 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 /* Workflow enabled/disabled state pills. */
 .pill.on  { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.off { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
+/* T498: certified-workflow badge — green, matching .pill.on/.pill.done. */
+.pill.certified { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 /* T315: full-contrast status pill — unlike the base .pill's --muted text, this uses --text so it stays legible in low-contrast theme/mode combos (e.g. sunny-8bit light). */
 .pill.info { color: var(--text); background: var(--panel-2); border-color: var(--border); }
 /* Clickable dependency id chip — inline button that looks like a mono link. */

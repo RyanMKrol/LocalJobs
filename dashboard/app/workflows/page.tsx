@@ -89,6 +89,7 @@ export default function Workflows() {
               <tr key={p.name}>
                 <td>
                   <Link href={`/workflows/${p.name}`}><strong>{p.name}</strong></Link>
+                  {p.certified ? <Pill kind="certified" title="Certified" style={{ marginLeft: 6 }}>🏅</Pill> : null}
                   {p.stuck > 0 && (
                     <button
                       className="btn-link"
