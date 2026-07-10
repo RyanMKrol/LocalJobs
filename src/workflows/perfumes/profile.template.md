@@ -24,15 +24,13 @@ sillage: "moderate"       # community vote: intimate | moderate | strong | enorm
 community_rating: "4.15 / 5 (2310 votes)"   # aggregate score + vote count; null if none found
 fragrantica_status: "ok"   # was Fragrantica data actually used? ok | blocked | not-found
 fragrantica_url: "https://www.fragrantica.com/perfume/Brand/Name-12345.html"   # page used, or null
-# ── Personal (you fill these over time — may stay blank for now) ─────────
-rating: null              # your own score, 1–10 — from your PerfumeRatings row when present
-status: "owned"           # owned | decant | sample | wishlist
-# ── Personal (from your own PerfumeRatings row) ──────────────────────────
-date_added: null          # DD-MM-YYYY string, or null if unknown
-ownership: null           # Sample | Travel size | Full bottle, or null if unknown
-personal_longevity: null  # 0–8, or null if unknown
-personal_projection: null # 1–4, or null if unknown
-personal_seasons: []      # your own season tags, or [] if unknown
+# ── Personal (from your own PerfumeRatings row — may stay blank for now) ─
+personal_rating: null        # your own score, 0.5–5 (halved from the raw 0-10 row value), or null if unknown
+personal_date_added: null    # DD-MM-YYYY string, or null if unknown
+personal_ownership: null     # Sample | Travel size | Full bottle, or null if unknown
+personal_longevity: null     # 0–8, or null if unknown
+personal_projection: null    # 1–4, or null if unknown
+personal_seasons: []         # your own season tags, or [] if unknown
 # ── Provenance ──────────────────────────────────────────────────────────
 sources:
   - "https://example.com/source-1"
@@ -42,6 +40,14 @@ sources:
 
 ## Overview
 One short paragraph: what it is, the house context, and why it's notable.
+
+## Personal Notes
+<!-- Your own thoughts over time. Filled from your own PerfumeRatings description when
+     present; otherwise leave blank for now. -->
+
+## Application
+<!-- Your spray pattern, e.g. "2 to chest, 1 to each wrist, 1 to back of neck." Filled from
+     your own PerfumeRatings applicationSpots when present; otherwise leave blank for now. -->
 
 ## Olfactory Profile
 How it actually smells — the opening, the development, the drydown. Describe the
@@ -65,14 +71,6 @@ each (shared accords, similar vibe, a cheaper alternative, etc.).
 
 ## History & Background
 Release story, the perfumer, the house, and any notable reformulations or context.
-
-## Personal Notes
-<!-- Your own thoughts over time. Filled from your own PerfumeRatings description when
-     present; otherwise leave blank for now. -->
-
-## Application
-<!-- Your spray pattern, e.g. "2 to chest, 1 to each wrist, 1 to back of neck." Filled from
-     your own PerfumeRatings applicationSpots when present; otherwise leave blank for now. -->
 
 ## Sources
 1. https://example.com/source-1

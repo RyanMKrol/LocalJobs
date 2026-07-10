@@ -34,12 +34,17 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
   is trusted to honor it, there's no post-build validator re-checking the written prose against it.
   Separately, 8 owner-authored personal fields from the `PerfumeRatings` Dynamo row (own `rating`,
   `dateAdded`, `ownership`, `personalLongevity`, `personalProjection`, `personalSeasons`, `description`,
-  `applicationSpots` — T461) are passed through **verbatim, never researched or blended** via
-  `personalFieldsClause`, populating the frontmatter's `rating`/`date_added`/`ownership`/
-  `personal_longevity`/`personal_projection`/`personal_seasons` keys and the `## Personal Notes`/
-  `## Application` sections — each falls back to an honest `null`/`[]`/"not recorded yet" when the
-  Dynamo field is absent, same tone as the notes-pyramid honest-gap convention; `status` stays a fixed
-  `"owned"`, unrelated to these. Writes `data/out/markdown/<id>.md`.
+  `applicationSpots` — T461, T481) are passed through **verbatim, never researched or blended** via
+  `personalFieldsClause`, populating the frontmatter's `personal_rating`/`personal_date_added`/
+  `personal_ownership`/`personal_longevity`/`personal_projection`/`personal_seasons` keys and the
+  `## Personal Notes`/`## Application` sections — each falls back to an honest `null`/`[]`/"not
+  recorded yet" when the Dynamo field is absent, same tone as the notes-pyramid honest-gap
+  convention. The dead `status: "owned"` frontmatter field (it never varied) was removed in T481.
+  `personal_rating` is `loadPerfumes`'s Dynamo `rating` halved (0-10 → 0-5) so it lines up with
+  Fragrantica's 0-5 `community_rating` scale, rather than the raw 0-10 owner score. The personal
+  frontmatter block and the `## Personal Notes`/`## Application` body sections sit immediately after
+  the researched/crawled data (right after the frontmatter's researched fields, and right after
+  `## Overview` in the body) rather than at the end of the document. Writes `data/out/markdown/<id>.md`.
 
 ## Files & config (`src/workflows/perfumes/config.ts`)
 

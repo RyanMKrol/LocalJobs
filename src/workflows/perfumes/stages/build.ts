@@ -294,10 +294,9 @@ export function personalFieldsClause(p: PerfumeInput): string {
     'corresponding frontmatter key or section below; do NOT alter, reinterpret, round, translate, or',
     'invent additional values). These are entirely separate from the researched/community fields above.',
     '',
-    `- rating: ${p.rating != null ? `${p.rating} — copy this exact number verbatim.` : 'not provided — use null (do not invent a score).'}`,
-    `- status: always "owned" (unchanged, unrelated to these personal fields).`,
-    `- date_added: ${p.dateAdded ? `"${p.dateAdded}" — copy this exact DD-MM-YYYY string verbatim.` : 'not provided — use null.'}`,
-    `- ownership: ${p.ownership ? `"${p.ownership}" — copy this exact value verbatim.` : 'not provided — use null.'}`,
+    `- personal_rating: ${p.rating != null ? `${p.rating} — copy this exact number verbatim.` : 'not provided — use null (do not invent a score).'}`,
+    `- personal_date_added: ${p.dateAdded ? `"${p.dateAdded}" — copy this exact DD-MM-YYYY string verbatim.` : 'not provided — use null.'}`,
+    `- personal_ownership: ${p.ownership ? `"${p.ownership}" — copy this exact value verbatim.` : 'not provided — use null.'}`,
     `- personal_longevity: ${p.personalLongevity != null ? `${p.personalLongevity} — copy this exact number verbatim.` : 'not provided — use null.'}`,
     `- personal_projection: ${p.personalProjection != null ? `${p.personalProjection} — copy this exact number verbatim.` : 'not provided — use null.'}`,
     `- personal_seasons: ${p.personalSeasons && p.personalSeasons.length > 0 ? `${JSON.stringify(p.personalSeasons)} — copy these exact values verbatim.` : 'not provided — use an empty array ([]).'}`,
@@ -307,4 +306,4 @@ export function personalFieldsClause(p: PerfumeInput): string {
   return lines.join('\n');
 }
 
-const FALLBACK_TEMPLATE = '---\nname: ""\nbrand: ""\nyear: null\nperfumer: ""\nconcentration: ""\nfamily: ""\naccords: []\nnotes:\n  top: []\n  heart: []\n  base: []\nseason: []\ntime: []\noccasion: []\nmood: []\ngender: ""\nlongevity: ""\nsillage: ""\ncommunity_rating: null\nfragrantica_status: "ok"\nfragrantica_url: null\nrating: null\nstatus: "owned"\ndate_added: null\nownership: null\npersonal_longevity: null\npersonal_projection: null\npersonal_seasons: []\nsources: []\n---\n\n# Name — Brand\n\n## Overview\n\n## Olfactory Profile\n\n## Community Sentiment\n\n## Recommended Settings\n\n## Similar Fragrances\n\n## History & Background\n\n## Personal Notes\n\n## Application\n\n## Sources\n';
+const FALLBACK_TEMPLATE = '---\nname: ""\nbrand: ""\nyear: null\nperfumer: ""\nconcentration: ""\nfamily: ""\naccords: []\nnotes:\n  top: []\n  heart: []\n  base: []\nseason: []\ntime: []\noccasion: []\nmood: []\ngender: ""\nlongevity: ""\nsillage: ""\ncommunity_rating: null\nfragrantica_status: "ok"\nfragrantica_url: null\npersonal_rating: null\npersonal_date_added: null\npersonal_ownership: null\npersonal_longevity: null\npersonal_projection: null\npersonal_seasons: []\nsources: []\n---\n\n# Name — Brand\n\n## Overview\n\n## Personal Notes\n\n## Application\n\n## Olfactory Profile\n\n## Community Sentiment\n\n## Recommended Settings\n\n## Similar Fragrances\n\n## History & Background\n\n## Sources\n';

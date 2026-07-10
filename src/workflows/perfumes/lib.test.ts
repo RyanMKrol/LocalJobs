@@ -52,7 +52,7 @@ describe('loadPerfumes — reads live from PerfumeRatings (T401)', () => {
         concentration: 'EDP',
         fragranticaUrl: 'https://www.fragrantica.com/perfume/Parfums-de-Marly/Althair-12345.html',
         description: 'A gift from my wife',
-        rating: 5,
+        rating: 2.5,
         dateAdded: '01-06-2023',
         ownership: 'Full bottle',
         personalLongevity: 6,

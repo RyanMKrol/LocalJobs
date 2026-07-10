@@ -8,12 +8,16 @@ export interface PerfumeInput {
   fragranticaUrl?: string;
   /** Owner's free-text notes on the perfume, from Dynamo's `description`. */
   description?: string;
-  /** The owner's own 0-10 score, from Dynamo's `rating`. Distinct from
-   *  profile.template.md's own-score frontmatter key of the same name. */
+  /** The owner's own score, halved from Dynamo's raw 0-10 `rating` to a 0-5
+   *  scale (by `loadPerfumes`) so it lines up with Fragrantica's 0-5
+   *  `community_rating`. Maps to the template's `personal_rating` frontmatter
+   *  key (not `rating` — the property here keeps its original name for now). */
   rating?: number;
-  /** Raw `DD-MM-YYYY` string, from Dynamo's `date` — passed through verbatim. */
+  /** Raw `DD-MM-YYYY` string, from Dynamo's `date` — passed through verbatim.
+   *  Maps to the template's `personal_date_added` frontmatter key. */
   dateAdded?: string;
-  /** From Dynamo's `ownership`. */
+  /** From Dynamo's `ownership`. Maps to the template's `personal_ownership`
+   *  frontmatter key. */
   ownership?: 'Sample' | 'Travel size' | 'Full bottle';
   /** 0-8, from Dynamo's `longevity`. `personal`-prefixed so it's never confused
    *  with the template's community-vote-derived `longevity` enum field. */

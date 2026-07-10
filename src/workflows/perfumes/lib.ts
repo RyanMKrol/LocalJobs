@@ -33,7 +33,7 @@ export async function loadPerfumes(): Promise<PerfumeInput[]> {
       concentration: type,
       ...(typeof fragranticaUrl === 'string' && fragranticaUrl ? { fragranticaUrl } : {}),
       ...(typeof description === 'string' ? { description } : {}),
-      ...(typeof rating === 'number' && Number.isFinite(rating) ? { rating } : {}),
+      ...(typeof rating === 'number' && Number.isFinite(rating) ? { rating: rating / 2 } : {}),
       ...(typeof date === 'string' ? { dateAdded: date } : {}),
       ...(typeof ownership === 'string' ? { ownership: ownership as PerfumeInput['ownership'] } : {}),
       ...(typeof longevity === 'number' && Number.isFinite(longevity) ? { personalLongevity: longevity } : {}),
