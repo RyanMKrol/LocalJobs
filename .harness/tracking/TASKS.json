@@ -12796,8 +12796,8 @@
       "title": "Cache Plex reads via callService cacheKey (reuse the T451 service_cache mechanism, 3-hour TTL)",
       "status": "pending",
       "dependsOn": [
-        "T474",
-        "T476"
+        "T476",
+        "T499"
       ],
       "gate": null,
       "tags": [
@@ -13048,7 +13048,7 @@
       "title": "Fix plex-language-fix's discoverInputKeys() self-referential ledger read with a live Plex library walk",
       "status": "pending",
       "dependsOn": [
-        "T474"
+        "T499"
       ],
       "gate": null,
       "tags": [
@@ -13112,7 +13112,7 @@
         "T484",
         "T485",
         "T486",
-        "T474"
+        "T499"
       ],
       "gate": null,
       "tags": [
@@ -13340,6 +13340,56 @@
         "layer": "ui",
         "workType": "component",
         "risk": []
+      }
+    },
+    {
+      "id": "T499",
+      "title": "Migrate every direct Plex call site (6 workflows) onto callService('plex', ...) — code + docs together (re-attempt of T474)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "migration",
+        "integration"
+      ],
+      "scope": [
+        "src/workflows/plex-language-fix/lib.ts",
+        "src/workflows/plex-language-fix/stages/apply.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts",
+        "src/workflows/missing-tv-seasons/stages/snapshot.ts",
+        "src/workflows/plex-profiles/stages/build.ts",
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/plex-space-saver/stages/scan.ts",
+        "src/workflows/plex-language-fix/lib.test.ts",
+        "src/workflows/plex-language-fix/stages/apply.test.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.test.ts",
+        "src/workflows/missing-tv-seasons/stages/snapshot.test.ts",
+        "src/workflows/plex-profiles/stages/build.test.ts",
+        "src/workflows/movies/stages/snapshot.test.ts",
+        "src/workflows/plex-space-saver/stages/scan.test.ts",
+        "src/workflows/plex-language-fix/CLAUDE.md",
+        "src/workflows/tv-recs/CLAUDE.md",
+        "src/workflows/missing-tv-seasons/CLAUDE.md",
+        "src/workflows/plex-profiles/CLAUDE.md",
+        "src/workflows/movies/CLAUDE.md",
+        "src/workflows/plex-space-saver/CLAUDE.md",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T499.md",
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
       }
     }
   ]
