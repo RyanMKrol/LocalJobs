@@ -1948,6 +1948,36 @@ export function setCachedServiceResponse(serviceName: string, cacheKey: string, 
   _setServiceCache.run(serviceName, cacheKey, JSON.stringify(value), new Date().toISOString());
 }
 
+export interface ServiceCacheCount {
+  service_name: string;
+  count: number;
+}
+
+/** Row counts in service_cache, grouped by service, ordered by service name. */
+export function serviceCacheCounts(): ServiceCacheCount[] {
+  return db.prepare(`
+    SELECT service_name, COUNT(*) as count
+    FROM service_cache
+    GROUP BY service_name
+    ORDER BY service_name
+  `).all() as ServiceCacheCount[];
+}
+
+/**
+ * Delete rows from service_cache — all rows if `serviceName` is omitted, else
+ * scoped to that one service. Returns the number of rows deleted. This is
+ * DELIBERATELY separate from resetWorkflowOutput (T203): the response cache is
+ * a service-level concern (T451), not a workflow's output ledger, and clearing
+ * it must never happen as a side effect of the "Delete all workflow output"
+ * danger-zone action.
+ */
+export function clearServiceCache(serviceName?: string): number {
+  const result = serviceName
+    ? db.prepare('DELETE FROM service_cache WHERE service_name = ?').run(serviceName)
+    : db.prepare('DELETE FROM service_cache').run();
+  return result.changes;
+}
+
 // ════════════════════ workflow output reset (T203) ════════════════════
 
 export interface WorkflowResetResult {

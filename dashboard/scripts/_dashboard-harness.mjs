@@ -998,6 +998,8 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname.endsWith('/runs') && pathname.startsWith('/api/jobs/')) return { runs: [run(), run({ id: '2', status: 'failed' })] };
   if (pathname.startsWith('/api/jobs/')) return { job: job() };
   if (pathname.startsWith('/api/runs/')) return { run: run(), logs };
+  if (pathname === '/api/cache') return { counts: [{ service_name: 'gemini', count: 12 }, { service_name: 'google-places', count: 4 }] };
+  if (pathname === '/api/cache/clear') return { ok: true, cleared: 16 };
   if (pathname === '/api/services') return { services: [service(), service({ name: 'gemini', paid: 1 }), service({ name: 'fragrantica', category: 'website-scrape', paid: 0, daily_cap: null, monthly_cap: null }), service({ name: 'claude-cli', category: 'cli-tool', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null }), service({ name: 'legacy-service', category: 'uncategorized', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null }), service({ name: 'plex', category: 'api', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null, timeout_ms: 8000, limits_overridden: 0, rate_limit_source: 'Local Plex server on the LAN — no external rate limit; timeout guards against a DHCP-stale host hanging a request.' })] };
   if (pathname.startsWith('/api/services/') && pathname.endsWith('/consumers')) return { consumers: [{ workflow_name: 'places', jobs: [{ job_name: 'places-enrich', last_used: NOW }, { job_name: 'places-enrich-with-llm', last_used: NOW }] }, { workflow_name: 'perfumes', jobs: [{ job_name: 'perfumes-build', last_used: NOW }] }] };
   if (pathname === '/api/workflows/reset-output-all') return {
@@ -1080,6 +1082,7 @@ export const PAGES = [
   { name: 'services',                path: '/integrations' },
   { name: 'logs',                    path: '/logs' },
   { name: 'admin',                   path: '/admin' },
+  { name: 'admin-cache',              path: '/admin-cache' },
 ];
 
 // ── Interaction flows ─────────────────────────────────────────────────────────

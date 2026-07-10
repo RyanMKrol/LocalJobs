@@ -42,6 +42,8 @@ import {
   orphanedWorkItems,
   pruneOrphanedWorkItems,
   resetWorkflowOutput,
+  serviceCacheCounts,
+  clearServiceCache,
   workItemIoRows,
   stageIoLists,
   workflowHasRunLinkage,
@@ -1302,6 +1304,25 @@ export function createApiServer(
           filesRemoved,
           outDir: outDir ? relativePath(WORKFLOWS_ROOT, outDir) : null,
         });
+      }
+
+      // GET /api/cache
+      // Read-only: per-service row counts in the service_cache table (T451).
+      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'cache' && parts.length === 2) {
+        return json(res, 200, { counts: serviceCacheCounts() });
+      }
+
+      // POST /api/cache/clear
+      // Deletes rows from service_cache — all rows, or just one service when a
+      // { serviceName } body is given. Distinct from /api/workflows/reset-output(-all),
+      // which never touches service_cache. Mutating — behind the same loopback/token
+      // guard as all other POST endpoints.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'cache' && parts[2] === 'clear' && parts.length === 3) {
+        const body = await readBody(req);
+        const serviceName = typeof body.serviceName === 'string' && body.serviceName.length > 0 ? body.serviceName : undefined;
+        const cleared = clearServiceCache(serviceName);
+        console.log(`[api] cache/clear${serviceName ? ` (${serviceName})` : ' (all services)'}: ${cleared} row(s) deleted`);
+        return json(res, 200, { ok: true, cleared });
       }
 
       // GET /api/workflow-runs?limit=

@@ -1882,4 +1882,55 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   }
 }
 
+// ── T478: GET /api/cache + POST /api/cache/clear — service_cache management ──
+{
+  const { setCachedServiceResponse: t478SetCache } = await import('../db/store.js');
+  t478SetCache('t478-api-svc-a', 'k1', { x: 1 });
+  t478SetCache('t478-api-svc-a', 'k2', { x: 2 });
+  t478SetCache('t478-api-svc-b', 'k1', { y: 1 });
+
+  await test('GET /api/cache: reports per-service row counts', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/cache`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { counts: Array<{ service_name: string; count: number }> };
+      const a = body.counts.find((c) => c.service_name === 't478-api-svc-a');
+      const b = body.counts.find((c) => c.service_name === 't478-api-svc-b');
+      assert.equal(a?.count, 2);
+      assert.equal(b?.count, 1);
+    });
+  });
+
+  await test('POST /api/cache/clear { serviceName }: clears only that service', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/cache/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceName: 't478-api-svc-a' }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; cleared: number };
+      assert.equal(body.ok, true);
+      assert.equal(body.cleared, 2);
+
+      const after = await (await fetch(`${base}/api/cache`)).json() as { counts: Array<{ service_name: string; count: number }> };
+      assert.equal(after.counts.find((c) => c.service_name === 't478-api-svc-a'), undefined, 'cleared service is gone');
+      assert.ok(after.counts.some((c) => c.service_name === 't478-api-svc-b'), 'other service untouched');
+    });
+  });
+
+  await test('POST /api/cache/clear {}: clears every remaining service', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/cache/clear`, { method: 'POST' });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; cleared: number };
+      assert.equal(body.ok, true);
+      assert.equal(body.cleared, 1);
+
+      const after = await (await fetch(`${base}/api/cache`)).json() as { counts: Array<{ service_name: string; count: number }> };
+      assert.equal(after.counts.length, 0, 'service_cache is empty');
+    });
+  });
+}
+
 console.log(`\n  ${passed} assertions passed`);

@@ -17,6 +17,7 @@ import {
   recordServiceConsumer, listServiceConsumers,
   deleteNullDetailSuccessItems,
   listStaleOverrides,
+  serviceCacheCounts, clearServiceCache, setCachedServiceResponse,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 import { db } from './index.js';
@@ -1448,3 +1449,27 @@ console.log('  ✓ T475: updateServiceLimits/updateJobTimeout/updateWorkflowSche
   );
 }
 console.log('  ✓ T475: listStaleOverrides returns NULL-timestamped-or-older-than-threshold overrides across services/workflows/jobs');
+
+{
+  // ── T478: serviceCacheCounts / clearServiceCache ──
+  db.prepare('DELETE FROM service_cache').run();
+  setCachedServiceResponse('t478-svc-a', 'key1', { a: 1 });
+  setCachedServiceResponse('t478-svc-a', 'key2', { a: 2 });
+  setCachedServiceResponse('t478-svc-b', 'key1', { b: 1 });
+
+  const counts = serviceCacheCounts();
+  const a = counts.find((c) => c.service_name === 't478-svc-a');
+  const b = counts.find((c) => c.service_name === 't478-svc-b');
+  assert.equal(a?.count, 2, 'serviceCacheCounts groups rows per service');
+  assert.equal(b?.count, 1, 'serviceCacheCounts groups rows per service');
+
+  const clearedOne = clearServiceCache('t478-svc-a');
+  assert.equal(clearedOne, 2, 'clearServiceCache(name) deletes only that service\'s rows and returns the count');
+  assert.equal(serviceCacheCounts().find((c) => c.service_name === 't478-svc-a'), undefined, 'cleared service no longer appears');
+  assert.ok(serviceCacheCounts().some((c) => c.service_name === 't478-svc-b'), 'other services are untouched');
+
+  const clearedAll = clearServiceCache();
+  assert.equal(clearedAll, 1, 'clearServiceCache() with no argument clears every remaining row');
+  assert.equal(serviceCacheCounts().length, 0, 'service_cache is empty after clearing all');
+}
+console.log('  ✓ T478: serviceCacheCounts/clearServiceCache scope correctly and report accurate counts');

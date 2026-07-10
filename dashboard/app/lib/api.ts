@@ -645,6 +645,13 @@ export const api = {
         | { name: string; status: 'skipped'; reason: string }
       >;
     }>('/api/workflows/reset-output-all'),
+  // Service response cache (T451/T478) — read-only per-service row counts.
+  serviceCacheCounts: () => get<{ counts: Array<{ service_name: string; count: number }> }>('/api/cache'),
+  // Clear service_cache rows — all services, or one when serviceName is given.
+  // Distinct from resetWorkflowOutput/resetAllWorkflowsOutput above, which never
+  // touch service_cache.
+  clearServiceCache: (serviceName?: string) =>
+    post<{ ok: boolean; cleared: number }>('/api/cache/clear', serviceName ? { serviceName } : {}),
   // Fleet-wide "run everything" sweep (T396): fires a manual run of every
   // workflow (including disabled ones), defaulting non-limited runs to `limit`
   // originating inputs for workflows that support limiting (default 3). Fire-
