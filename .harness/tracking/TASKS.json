@@ -12960,7 +12960,7 @@
     {
       "id": "T482",
       "title": "Integrations page: remove timeout/source line from service description cell",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
