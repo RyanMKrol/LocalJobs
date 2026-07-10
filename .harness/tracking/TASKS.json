@@ -12764,7 +12764,7 @@
     {
       "id": "T476",
       "title": "Add per-service configurable cache TTL (cacheTtlMs) to ServiceDefinition/callService, default plex to 3 hours",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [],
       "gate": null,
       "tags": [
