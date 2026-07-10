@@ -12646,7 +12646,7 @@
     {
       "id": "T473",
       "title": "Add StageIoPanel /stage-io fixture coverage + PAGES entries for the remaining workflows without one (missing-tv-seasons, workouts-sync, listening-digest, projects-sync, plex-space-saver, and any others discoverable via src/workflows/*/*.workflow.ts)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T472"
       ],
