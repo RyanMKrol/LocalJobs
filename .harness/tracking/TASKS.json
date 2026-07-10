@@ -13176,7 +13176,7 @@
     {
       "id": "T489",
       "title": "Ignore/un-ignore buttons: instant list update + drop confirm() popups (4 output managers)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
