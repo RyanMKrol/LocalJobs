@@ -210,6 +210,13 @@ function runPolicy(argPairs) {
   const n = Number(String(out).trim().split(/\s+/)[0]);
   return Number.isFinite(n) ? n : null;
 }
+// runPolicyRaw — like runPolicy but returns the FULL parsed token array (TIER mode is
+// "chosenIdx explorePM exploreIdx remain"), so the internals view can show the downward-exploration state.
+function runPolicyRaw(argPairs) {
+  const args = ['-rn', '-f', POLICY_JQ];
+  for (const [flag, name, val] of argPairs) args.push(flag, name, val);
+  return String(execFileSync('jq', args, { encoding: 'utf8', timeout: 5000 })).trim().split(/\s+/).map(Number);
+}
 
 function buildHarnessState() {
   const facets = readJson(FACETS_PATH, {});
@@ -221,7 +228,7 @@ function buildHarnessState() {
   const auditFloorN = pol.auditFloorN != null ? pol.auditFloorN : 8;
   const auditFloorPM = Math.round((pol.auditFloor != null ? pol.auditFloor : 0.10) * 1000);
   const explorePM = pol.exploreProbabilityPM != null ? pol.exploreProbabilityPM : 0;
-  const exploreCooldownN = pol.exploreCooldownN != null ? pol.exploreCooldownN : 40;
+  const exploreCooldownN = pol.exploreCooldownN != null ? pol.exploreCooldownN : 20;
 
   const key = mtimeKey([OUTCOMES_PATH, FAILURES_PATH, FACETS_PATH, OVERLAY_PATHS.manualFail, TASKS_PATH]);
   if (_harnessCache.key === key && _harnessCache.value) return _harnessCache.value;
@@ -239,7 +246,7 @@ function buildHarnessState() {
     const rowsJson = JSON.stringify(outcomes), ladderJson = JSON.stringify(ladder), mfJson = JSON.stringify(manualFail);
     for (const c of cells) {
       try {
-        const chosenIdx = runPolicy([
+        const parts = runPolicyRaw([
           ['--argjson', 'rows', rowsJson], ['--argjson', 'tiers', ladderJson],
           ['--arg', 'layer', c.layer], ['--arg', 'wt', c.workType],
           ['--argjson', 'floor', String(floor)], ['--argjson', 'minN', String(minN)], ['--argjson', 'coldIdx', String(coldIdx)],
@@ -248,6 +255,12 @@ function buildHarnessState() {
           ['--argjson', 'auditFloorN', String(auditFloorN)], ['--argjson', 'auditFloorPM', String(auditFloorPM)],
           ['--argjson', 'explorePM', String(explorePM)], ['--argjson', 'exploreCooldownN', String(exploreCooldownN)],
         ]);
+        const chosenIdx = Number.isFinite(parts[0]) ? parts[0] : null;
+        c.explorePMOut = Number.isFinite(parts[1]) ? parts[1] : 0;    // per-mille offered THIS call (0 = not armed now)
+        c.exploreIdx = Number.isFinite(parts[2]) ? parts[2] : -1;     // the cheaper rung being probed, -1 = none / promoted
+        c.exploreRemain = Number.isFinite(parts[3]) ? parts[3] : -2;  // -2 no cheaper rung · -1 promoted · 0 armed · N>0 cell-rows until re-armed
+        c.exploreN = Number.isFinite(parts[4]) ? parts[4] : 0;        // samples the candidate rung has gathered
+        c.exploreWinOk = Number.isFinite(parts[5]) ? parts[5] : 0;    // successes in its trailing minN window
         const tier = (chosenIdx != null && ladder[chosenIdx]) || null;
         c.chosenModel = tier ? tier.model : null;
         c.chosenEffort = tier ? tier.effort : null;
@@ -271,7 +284,7 @@ function buildHarnessState() {
 
   const value = {
     ladder, coldIdx,
-    policy: { floor, minN, auditStartN, auditFloorN, auditFloor: auditFloorPM / 1000, auditorModel: pol.auditorModel || null, auditorEffort: pol.auditorEffort || null },
+    policy: { floor, minN, auditStartN, auditFloorN, auditFloor: auditFloorPM / 1000, auditorModel: pol.auditorModel || null, auditorEffort: pol.auditorEffort || null, explorePM, exploreCooldownN },
     cells, recent: recentActivity(outcomes, failures, 20), failureKinds: failureKinds(failures), jqOk,
   };
   _harnessCache = { key, value };
@@ -697,8 +710,8 @@ function renderPage() {
     </div>
     <label class="bright-ctl" title="Brightness of the light themes — tune to taste">
       <span>☀</span>
-      <input type="range" id="brightness" min="80" max="99" step="1" value="96" oninput="onBrightness(this.value)">
-      <span class="bv mono" id="bright-val">96</span>
+      <input type="range" id="brightness" min="0" max="40" step="1" value="12" oninput="onBrightness(this.value)">
+      <span class="bv mono" id="bright-val">12</span>
     </label>
   </div>
 </div>
@@ -907,6 +920,9 @@ function renderHarness(data) {
        knob('min samples', p.minN) +
        knob('audit taper', '100% until ' + p.auditStartN + ' → ' + Math.round((p.auditFloor || 0) * 100) + '% by ' + p.auditFloorN + ' audited') +
        knob('auditor', (p.auditorModel || '—') + ' / ' + (p.auditorEffort || '—')) +
+       knob('downward explore', (p.explorePM || 0) > 0
+            ? (Math.round(p.explorePM / 10) + '% chance · re-arm after ' + p.exploreCooldownN + ' rows / cell')
+            : 'off') +
        '</div></div>';
 
   h += '<div class="htitle">Per-facet calibration</div>';
@@ -915,9 +931,28 @@ function renderHarness(data) {
   if (!cells.length) {
     h += '<p class="note">No calibration data yet — the harness records an outcome each time it builds a task.</p>';
   } else {
+    const showExplore = (p.explorePM || 0) > 0;   // only surface the exploration column when it's enabled
+    const minN = p.minN || 6;
+    const exploreCell = function (c) {
+      const r = c.exploreRemain, tgt = L[c.exploreIdx];
+      const tl = tgt ? esc(tgt.model.replace(/^claude-/, '') + (tgt.effort ? '/' + tgt.effort : '')) : ('tier ' + c.exploreIdx);
+      if (r === -2) return '<span class="cold-tag">—</span>';                                             // already cheapest — nothing below
+      if (r === -1) return '<span class="pill done" title="a cheaper rung passed its probe and is now the Start model">↓ promoted</span>';
+      // shared probe stats: how far the current batch is + how it's doing
+      const eN = c.exploreN || 0, winN = Math.min(minN, eN), winOk = c.exploreWinOk || 0;
+      const rate = winN ? (winOk + '/' + winN + ' passed (' + Math.round((winOk / winN) * 100) + '%)') : 'no probes recorded yet';
+      const pct = Math.round((c.explorePMOut || 0) / 10);
+      if (r === 0) {
+        const left = eN < minN ? (minN - eN) : 0;
+        const leftTxt = left > 0 ? (left + ' more probe' + (left === 1 ? '' : 's') + ' complete this ' + minN + '-probe batch') : 'batch full — re-judged every run';
+        return '<span class="pill" title="probing the cheaper rung ' + tl + ' at ' + pct + '% on each eligible task · ' + rate + ' · ' + leftTxt + '">↓ ' + tl + ' · ' + pct + '%</span>';
+      }
+      return '<span class="cold-tag" title="rung ' + tl + ' failed its last batch (' + rate + '); re-offered after ' + r + ' more builds land in this cell">↓ ' + tl + ' · ' + r + ' left</span>';
+    };
     h += '<table class="ftable"><thead><tr>'
        + '<th>Facet <span class="qtip" tabindex="0" data-tip="The layer × work-type combination this row\\'s stats are calibrated for (e.g. backend/feature).">?</span></th>'
        + '<th>Start model <span class="qtip" tabindex="0" data-tip="The model/effort the policy would pick to START a task in this cell right now (it only escalates from here on real failure). \\'cold\\' = no build history yet, using the cold-start prior.">?</span></th>'
+       + (showExplore ? '<th>Explore ↓ <span class="qtip" tabindex="0" data-tip="Downward exploration for this cell: which cheaper rung the policy is probing, and whether it is armed now (with the % chance per eligible task), in cooldown (N more builds in THIS cell until it re-arms), promoted (the probe succeeded), or — (already the cheapest rung).">?</span></th>' : '')
        + '<th class="num">Audit (policy) <span class="qtip" tabindex="0" data-tip="The sampling probability the policy will use for the NEXT build in this cell">?</span></th>'
        + '<th class="num">Audited (observed) <span class="qtip" tabindex="0" data-tip="What actually happened: audited successes / all successes recorded in the ledger">?</span></th>'
        + '<th class="num">Builds <span class="qtip" tabindex="0" data-tip="Total tasks in this cell that reached a terminal outcome (success or blocked), per the outcomes ledger.">?</span></th>'
@@ -933,6 +968,7 @@ function renderHarness(data) {
       const failTip = Object.entries(c.kinds || {}).map(function (kv) { return kv[0] + ' ×' + kv[1]; }).join(', ');
       h += '<tr><td class="facet-name">' + esc(c.layer) + '/' + esc(c.workType) + '</td>' +
            '<td class="model-tag">' + model + cold + '</td>' +
+           (showExplore ? '<td>' + exploreCell(c) + '</td>' : '') +
            '<td class="num">' + audit + '</td>' +
            '<td class="num">' + observed + '</td>' +
            '<td class="num">' + c.builds + '</td>' +
@@ -1218,13 +1254,13 @@ async function bulkAction(bucket) {
 // open-ended color input — picking a good palette from unlimited options is fiddly; a small
 // curated set is not.
 const THEME_STORAGE_KEY = 'harness-dashboard-theme:' + HARNESS_PROJECT_KEY;
-const BRIGHT_STORAGE_KEY = 'harness-dashboard-brightness:' + HARNESS_PROJECT_KEY;
+const BRIGHT_STORAGE_KEY = 'harness-dashboard-lightlift:' + HARNESS_PROJECT_KEY;   // lightness lift for the light variants (new key: the old 'brightness' had a different meaning)
 const BASE_THEMES = ['ink', 'forest', 'plum', 'amber'];
 const THEME_VARS = ['--bg','--panel','--panel-2','--border','--text','--muted','--accent','--green','--red','--yellow','--amber','--human'];
 // The dark palettes, mirrored from the [data-theme] CSS blocks above (KEEP IN SYNC) — needed in JS so
-// each theme's LIGHT variant can be derived from its dark palette by an HSL transform: light-tinted
-// backgrounds at the "brightness" slider's lightness, dark tinted text, and darkened+saturated accents
-// so semantic pill colours (done/failed/blocked) stay readable on a light base. A light theme is
+// each theme's LIGHT variant can be derived from its OWN dark palette. The light variant is NOT a new
+// baseline: it is the SAME dark theme with its SURFACE colours lifted lighter by the slider amount (see
+// deriveLight); text and accent colours are left exactly as the dark theme has them. A light theme is
 // applied as inline CSS vars on <html> (overriding the dark CSS block); switching back removes them.
 const DARK_PALETTES = {
   ink:    {'--bg':'#1a2b45','--panel':'#203453','--panel-2':'#273d65','--border':'#3c537a','--text':'#e9eefb','--muted':'#9fafcd','--accent':'#ff7a54','--green':'#4ad991','--red':'#ff5c6e','--yellow':'#ffcf5c','--amber':'#ff9d4d','--human':'#b98bff'},
@@ -1247,22 +1283,21 @@ function hslToHex(h, s, l) {
   const to = function(x){ return ('0' + Math.round(clamp(x,0,1)*255).toString(16)).slice(-2); };
   return '#' + to(f(0)) + to(f(8)) + to(f(4));
 }
-// deriveLight(base, B): the light palette for a theme at background-lightness B (the slider value).
-function deriveLight(base, B) {
-  const p = DARK_PALETTES[base], out = {}, bg = hexToHsl(p['--bg']);
-  const put = function(k, h, s, l){ out[k] = hslToHex(h, clamp(s,0,100), clamp(l,0,100)); };
-  put('--bg',      bg.h, Math.min(bg.s, 30), B);
-  put('--panel',   bg.h, Math.min(bg.s, 26), Math.min(99, B + 3));
-  put('--panel-2', bg.h, Math.min(bg.s, 24), Math.min(99, B + 6));
-  put('--border',  bg.h, 22, clamp(B - 20, 58, 86));
-  put('--text',    bg.h, 22, 17);
-  put('--muted',   bg.h, 14, 42);
-  ['--accent','--green','--red','--yellow','--amber','--human'].forEach(function(k){
-    const c = hexToHsl(p[k]); put(k, c.h, Math.min(100, c.s), k === '--accent' ? 46 : 44);
+// deriveLight(base, lift): a LIGHTER rendition of the DARK theme — NOT a new light baseline. "lift" is
+// how many lightness points (0..~40) to ADD to the theme's SURFACE colours (bg / panel / panel-2 /
+// border), keeping each theme's own hue + saturation; text, muted, and accent colours are left exactly
+// as the dark theme has them (they stay readable as the surfaces lighten within the bounded range).
+// lift 0 == the dark theme unchanged; higher == progressively lighter, still a dark-with-light-text theme.
+function deriveLight(base, lift) {
+  const p = DARK_PALETTES[base], out = {};
+  const SURFACE = { '--bg': 1, '--panel': 1, '--panel-2': 1, '--border': 1 };
+  THEME_VARS.forEach(function(k){
+    if (SURFACE[k]) { const c = hexToHsl(p[k]); out[k] = hslToHex(c.h, c.s, clamp(c.l + lift, 0, 100)); }
+    else out[k] = p[k];
   });
   return out;
 }
-function currentBrightness() { const v = parseInt(localStorage.getItem(BRIGHT_STORAGE_KEY) || '96', 10); return isNaN(v) ? 96 : clamp(v, 60, 100); }
+function currentBrightness() { const v = parseInt(localStorage.getItem(BRIGHT_STORAGE_KEY) || '12', 10); return isNaN(v) ? 12 : clamp(v, 0, 40); }
 function markActiveTheme(sel) {
   document.querySelectorAll('.swatch').forEach(function (b) { b.classList.toggle('active', b.dataset.sel === sel); });
 }
@@ -1279,7 +1314,7 @@ function updateLightSwatches(B) {
   BASE_THEMES.forEach(function(base){ const btn = document.querySelector('.swatch[data-sel="' + base + '-light"]'); if (btn) btn.style.background = deriveLight(base, B)['--bg']; });
 }
 function onBrightness(val) {
-  val = clamp(parseInt(val, 10) || 96, 60, 100); localStorage.setItem(BRIGHT_STORAGE_KEY, String(val));
+  val = clamp(parseInt(val, 10) || 12, 0, 40); localStorage.setItem(BRIGHT_STORAGE_KEY, String(val));
   const bv = document.getElementById('bright-val'); if (bv) bv.textContent = val;
   updateLightSwatches(val);
   const cur = localStorage.getItem(THEME_STORAGE_KEY) || '';

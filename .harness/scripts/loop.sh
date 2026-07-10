@@ -58,6 +58,9 @@ case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$ROOT/$GIT_COMMON" ;; esac   # make 
 # Shared mkdir-based repo lock (acquire_lock/release_lock) — sourced so its path derivation can
 # never drift from other scripts (mark-*.sh, consolidate-ideas.sh) that coordinate with this loop.
 . "$SCRIPT_DIR/repo-lock.sh"
+# Shared scope-matching (normalize_scope_prefix + scope_match) — the SINGLE implementation, also sourced
+# by loop.sh + check-task-scope.sh so the gate and the linter can never disagree.
+. "$SCRIPT_DIR/scope-lib.sh"
 
 BACKLOG="$HARNESS_DIR/tracking/TASKS.json"
 WORKLOG="$HARNESS_DIR/worklog"
@@ -86,6 +89,7 @@ SCOPE_EXEMPT_GLOBS="${SCOPE_EXEMPT_GLOBS:-}"       # optional space-separated ex
 PUSH_COOLDOWN_SECONDS="${PUSH_COOLDOWN_SECONDS:-0}"   # optional min seconds between integration pushes (0=off) — see harness.env
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 CLAUDE_FLAGS="${CLAUDE_FLAGS:---dangerously-skip-permissions}"
+PRINT_PROMPT="${PRINT_PROMPT:-1}"                # 1 = echo each prompt (the running phase only: build OR audit) to the console before invoking Claude; 0 = silence
 # Rate-limit-aware handling: when Claude hits a usage/session limit, resume the SAME task. A PARSED
 # reset time is honoured directly (+ RL_BUFFER cushion, capped at RL_BACKOFF_MAX); when nothing
 # parses, the build path backs off exponentially (RL_BACKOFF_MIN doubling to RL_EXP_MAX) instead of
@@ -478,7 +482,7 @@ POLICY_MINN="$(jq -r '.policy.minN // 6' "$FACETS" 2>/dev/null || echo 6)"
 POLICY_EXPLORE_PM="$(jq -r '.policy.exploreProbabilityPM // 0' "$FACETS" 2>/dev/null || echo 0)"
 # Periodic recheck of a rejected exploration rung: rows of other cell activity that must land since
 # that rung's last touch before it's offered again (batch-boundary judgment — see policy.jq header).
-POLICY_EXPLORE_COOLDOWN_N="$(jq -r '.policy.exploreCooldownN // 40' "$FACETS" 2>/dev/null || echo 40)"
+POLICY_EXPLORE_COOLDOWN_N="$(jq -r '.policy.exploreCooldownN // 20' "$FACETS" 2>/dev/null || echo 20)"
 POLICY_JQ="$SCRIPT_DIR/policy.jq"                # .harness/scripts/policy.jq, alongside this loop
 # Verification-aware calibration knobs (the blocking audit gate — designs/audit-verification.md §4.6).
 AUDIT_START_N="$(jq -r '.policy.auditStartN // 3' "$FACETS" 2>/dev/null || echo 3)"
@@ -535,8 +539,8 @@ pick_base() {
   if [ -z "$layer" ] || [ -z "$wt" ] || [ ! -s "$OUTCOMES" ] || [ -z "$tiers" ] || [ ! -f "$POLICY_JQ" ]; then printf '%s 0' "$cold"; return; fi
   local mf risk; mf="$(cat "$MANUAL_FAIL" 2>/dev/null || echo '{}')"
   risk="$(tj -c --arg id "$id" '.tasks[]|select(.id==$id)|.facets.risk // []')"; [ -n "$risk" ] || risk='[]'
-  local chosen pm exploreIdx
-  read -r chosen pm exploreIdx <<<"$(jq -rn -f "$POLICY_JQ" --slurpfile rows "$OUTCOMES" --argjson tiers "$tiers" \
+  local chosen pm exploreIdx _erem   # _erem = policy.jq's 4th field (dashboard cooldown state) — unused here
+  read -r chosen pm exploreIdx _erem <<<"$(jq -rn -f "$POLICY_JQ" --slurpfile rows "$OUTCOMES" --argjson tiers "$tiers" \
      --arg layer "$layer" --arg wt "$wt" --argjson floor "$POLICY_FLOOR" --argjson minN "$POLICY_MINN" \
      --argjson coldIdx "$cold" --argjson manualFail "$mf" --argjson risk "$risk" --argjson explorePM "$POLICY_EXPLORE_PM" --argjson exploreCooldownN "$POLICY_EXPLORE_COOLDOWN_N" \
      --argjson auditCount -1 --argjson auditStartN "$AUDIT_START_N" --argjson auditFloorN "$AUDIT_FLOOR_N" --argjson auditFloorPM "$AUDIT_FLOOR_PM" \
@@ -714,6 +718,15 @@ run_claude() {
   local out="$WORKLOG/.claude-out.${phase}"          # reassembled plain text — unchanged meaning
   local rc
   local -a eff=(); [ -n "$effort" ] && eff=(--effort "$effort")   # some models (e.g. Haiku) have no effort param — omit the flag entirely
+  # Echo the EXACT prompt handed to Claude (build or audit), wrapped in a heavy banner, so a human
+  # watching the console can read what the agent was actually asked. To stderr (never into claude's
+  # stdin/stdout pipeline below). PRINT_PROMPT=0 in harness.env silences it.
+  if [ "${PRINT_PROMPT:-1}" = 1 ]; then
+    local _ph _bar='================================================================================'
+    _ph="$(printf '%s' "$phase" | tr '[:lower:]' '[:upper:]')"
+    { printf '\n%s\n=====  %s PROMPT  —  task %s  (%s%s)\n%s\n%s\n%s\n=====  END %s PROMPT  —  task %s\n%s\n\n' \
+        "$_bar" "$_ph" "${cur_task:-?}" "$model" "${effort:+ / $effort}" "$_bar" "$pr" "$_bar" "$_ph" "${cur_task:-?}" "$_bar"; } >&2
+  fi
   set +e
   # `${arr[@]+"${arr[@]}"}` (guard, NOT a bare "${arr[@]}") — on bash < 4.4 (macOS ships 3.2) expanding a
   # declared-but-EMPTY array under `set -u` throws `unbound variable` and crashes run_claude BEFORE claude
@@ -829,47 +842,10 @@ cold_reset() {
   git -C "$ROOT" clean -fd >/dev/null 2>&1 || true
 }
 
-# normalize_scope_prefix <raw> — strip a trailing `/`, `/**`, or `/*` so a directory-style glob
-# becomes a bare prefix. Shared by `scope` entries (structural_checks) and SCOPE_EXEMPT_GLOBS
-# (in_scope_exempt) — keep both on this ONE implementation; they drifted apart once already.
-normalize_scope_prefix() {
-  local s="$1"
-  s="${s%/}"; s="${s%/\*\*}"; s="${s%/\*}"
-  printf '%s' "$s"
-}
-
-# scope_match <file> <scope-entry> — true if <file> is within <scope-entry>. THE single scope-matching
-# implementation, shared by `scope` (structural_checks) and SCOPE_EXEMPT_GLOBS (in_scope_exempt), and
-# mirrored verbatim in loop.sh + check-task-scope.sh — keep all four identical. Supports:
-#   • an exact path                          (src/auth/session.ts)
-#   • a directory prefix, recursive          (dir/  dir/**  dir/*  → everything under dir)
-#   • a single-level extension glob          (dir/*.tsx → any *.tsx DIRECTLY in dir, not nested)
-# A double-quoted ${f#"$s"/} treats `*` as a literal, so an extension glob like dir/*.tsx used to match
-# NOTHING (permanent scope-creep). The single-level case below matches with an UNQUOTED case pattern —
-# which does expand `*`/`?`/`[…]` — engaged ONLY when a metacharacter survives normalization, so every
-# entry that worked before (no residual metachar) still takes the identical exact/prefix path.
-scope_match() {
-  local f="$1" s d1 d2
-  s="$(normalize_scope_prefix "$2")"
-  case "$s" in
-    *[*?[]*)
-      # residual glob metacharacter → single-level glob: case-glob match, then require equal directory
-      # depth so `*` can't span a `/` (an unquoted case `*` otherwise matches across directories).
-      case "$f" in
-        $s)
-          d1="${f//[!\/]/}"; d2="${s//[!\/]/}"
-          [ "${#d1}" -eq "${#d2}" ] && return 0
-          ;;
-      esac
-      return 1
-      ;;
-    *)
-      [ "$f" = "$s" ] && return 0
-      [ "${f#"$s"/}" != "$f" ] && return 0
-      return 1
-      ;;
-  esac
-}
+# normalize_scope_prefix + scope_match live in the shared scope-lib.sh (sourced at the top of this
+# script, next to repo-lock.sh) — the SINGLE implementation shared with loop.sh and check-task-scope.sh.
+# It used to be duplicated verbatim in all three and drifted/re-broke; don't inline it here again
+# (scope-match.test.sh fails if any of the three grows its own copy).
 
 # in_scope_exempt <file> — true if <file> matches one of SCOPE_EXEMPT_GLOBS (space-separated
 # repo-relative path entries, same matching rule as `scope` itself via scope_match).
