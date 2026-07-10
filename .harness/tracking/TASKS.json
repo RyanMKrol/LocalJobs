@@ -12838,7 +12838,7 @@
     {
       "id": "T478",
       "title": "New admin page to clear cached service responses (separate from Delete all workflow output)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
