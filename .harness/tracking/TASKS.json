@@ -12894,7 +12894,7 @@
     {
       "id": "T480",
       "title": "missing-tv-seasons: add per-show work_items ledger rows to stages 1-2, status='failed' for TMDB-unverifiable shows, rootKey lineage through stage 3",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
