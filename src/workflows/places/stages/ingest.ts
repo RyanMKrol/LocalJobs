@@ -1,9 +1,9 @@
-import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { markWorkItem } from '../../../db/store.js';
 import { placesConfig } from '../config.js';
-import { extractFeatureId, nameFromUrl, parseListFile } from '../parse.js';
+import { extractFeatureId, listSavedCsvFiles, nameFromUrl, parseListFile } from '../parse.js';
 import type {
   IngestOutput,
   NormalizedPlace,
@@ -56,9 +56,7 @@ export async function runIngest(ctx: JobContext): Promise<ValidationReport> {
   ctx.log(`  outDir:   ${placesConfig.outDir}`);
   mkdirSync(placesConfig.outDir, { recursive: true });
 
-  const csvFiles = readdirSync(placesConfig.savedDir)
-    .filter((f) => f.toLowerCase().endsWith('.csv'))
-    .sort();
+  const csvFiles = listSavedCsvFiles(placesConfig.savedDir);
   ctx.log(`Discovered ${csvFiles.length} saved lists: ${csvFiles.map((f) => f.replace(/\.csv$/, '')).join(', ')}`);
   ctx.log('Per place we log: action (ADDED = first time seen · ALREADY SAVED = also in another list), name, CID, and feature ID.');
 

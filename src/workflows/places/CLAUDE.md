@@ -35,6 +35,20 @@ the shared `launchPersistentBrowser` helper). Free (no paid API), so its own
 not a spend cap. Writes `data/out/resolved.json`. Paced by `PLACES_RESOLVE_DELAY_MS`
 (default 1500ms).
 
+**This is the workflow's root stage — `resolveInputKeys()` derives its input keys
+LIVE from the raw CSVs, never from this workflow's own output (T484).** It used
+to read back `data/out/places.json` — a file THIS workflow itself writes on a
+prior run — so after a "Clear output data" reset it returned `[]` until an
+unlimited run reseeded the file, silently no-opping any limited manual run in
+the meantime. It now calls the shared `collectResolvableCids(savedDir)` helper
+(`src/workflows/places/parse.ts`) directly against `data/raw/Saved/`'s CSVs —
+the SAME true source `places-ingest` parses — routed through
+`callService('fs', …)` (the local-filesystem service, T483) so this read is
+metered like any other input-key source. `collectResolvableCids` and
+`listSavedCsvFiles` are the shared helpers both `places-ingest`'s `run()` and
+`resolveInputKeys()` call, so the two can never drift on which CSV rows count
+as a resolvable CID.
+
 **`places-enrich`** fetches full Place Details (New) via the Google Places API
 using a wildcard field mask (`*` — the raw response is stored as-is, trimmed
 downstream; billing tier is unaffected since `*` is already Enterprise+Atmosphere).
@@ -66,7 +80,9 @@ place in this workflow where `rootKey` isn't implicit). Credential:
   `resolveConfig` (resolver knobs + its own free-tier `job_usage` caps).
 - `contracts.ts` — 3 gates: `places-normalized` (ingest→resolver),
   `resolved-place-ids` (resolver→enrich), `enriched-places` (enrich→llm).
-- `parse.ts` — CSV parsing helpers (`parseListFile`, CID/name extraction).
+- `parse.ts` — CSV parsing helpers (`parseListFile`, CID/name extraction, plus
+  `listSavedCsvFiles`/`collectResolvableCids` — the shared CSV-walk + CID-list
+  helpers used by both `places-ingest` and `resolveInputKeys`).
 - `types.ts` — shared shapes (`NormalizedPlace`, `ResolvedFile`,
   `EnrichedFile`, `ValidationReport`, etc.).
 

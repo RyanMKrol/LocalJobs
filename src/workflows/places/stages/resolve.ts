@@ -1,9 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { type BrowserContext, chromium } from 'playwright';
+import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { capStatus, getWorkItem, isWorkItemDone, markWorkItem, recordUsage, workItemCounts } from '../../../db/store.js';
 import { placesConfig, resolveConfig } from '../config.js';
-import { extractFeatureId } from '../parse.js';
+import { collectResolvableCids, extractFeatureId } from '../parse.js';
 import type { IngestOutput, ResolvedFile, ResolvedPlace } from '../types.js';
 
 const JOB_NAME = 'cid-to-place-id-resolver';
@@ -11,15 +12,20 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * The originating-input keys for the places workflow (T094): every saved place's
- * CID from the ingest output (places.json). Used by a manual run-limit to select
- * the first N roots. Guarded — returns [] if places.json isn't present yet (the
- * limit then selects nothing; run ingest first, or run unlimited).
+ * CID, derived LIVE from the raw Google Takeout CSVs under data/raw/Saved/ — the
+ * same true source places-ingest itself parses (via the shared
+ * `collectResolvableCids` helper, so the two can never disagree on which CIDs
+ * count). Deliberately does NOT read data/out/places.json: that file is this
+ * workflow's OWN prior output, so reading it back was a self-referential trap —
+ * after a "Clear output data" reset it returns [] until an unlimited run reseeds
+ * the file, silently no-opping any limited manual run in the meantime (T484).
+ * Routed through the `fs` service (T483) so this local-file read is metered like
+ * any other input-key source. Guarded — returns [] on any read/parse error (e.g.
+ * data/raw/Saved/ missing), same as before.
  */
-export function resolveInputKeys(): string[] {
+export async function resolveInputKeys(): Promise<string[]> {
   try {
-    if (!existsSync(placesConfig.placesOut)) return [];
-    const ingest = JSON.parse(readFileSync(placesConfig.placesOut, 'utf8')) as IngestOutput;
-    return ingest.places.filter((p) => p.cid).map((p) => p.cid!);
+    return await callService('fs', async () => collectResolvableCids(placesConfig.savedDir));
   } catch {
     return [];
   }

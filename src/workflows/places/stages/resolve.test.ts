@@ -74,6 +74,43 @@ function withTmpPaths<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
+await test('resolveInputKeys derives CIDs live from data/raw CSVs, not from data/out/places.json (T484)', async () => {
+  await withTmpPaths(async () => {
+    const { resolveInputKeys } = await import('./resolve.js');
+    const savedDir = mkdtempSync(join(tmpdir(), 'places-saved-'));
+    const origSavedDir = placesConfig.savedDir;
+    (placesConfig as { savedDir: string }).savedDir = savedDir;
+    try {
+      writeFileSync(
+        join(savedDir, 'Favourites.csv'),
+        'Title,Note,URL,Tags,Comment\n' +
+          'Test Place,,https://www.google.com/maps/place/Test+Place/data=!4m6!3m5!1s0x1234:0xabcdef!8m2!3d1!4d2,,\n',
+      );
+      // Simulate a "Clear output data" reset: places.json does NOT exist (never
+      // written by withTmpPaths, and not created by this test either).
+      const keys = await resolveInputKeys();
+      assert.deepEqual(keys, ['11259375']); // decimal of 0xabcdef
+    } finally {
+      (placesConfig as { savedDir: string }).savedDir = origSavedDir;
+    }
+  });
+});
+
+await test('resolveInputKeys returns [] when data/raw/Saved has no CSVs', async () => {
+  await withTmpPaths(async () => {
+    const { resolveInputKeys } = await import('./resolve.js');
+    const savedDir = mkdtempSync(join(tmpdir(), 'places-saved-empty-'));
+    const origSavedDir = placesConfig.savedDir;
+    (placesConfig as { savedDir: string }).savedDir = savedDir;
+    try {
+      const keys = await resolveInputKeys();
+      assert.deepEqual(keys, []);
+    } finally {
+      (placesConfig as { savedDir: string }).savedDir = origSavedDir;
+    }
+  });
+});
+
 await test('runResolve throws naming the failed count when some places fail to resolve this run', async () => {
   await withTmpPaths(async () => {
     const { runResolve } = await import('./resolve.js');
