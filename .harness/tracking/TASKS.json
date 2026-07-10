@@ -13077,7 +13077,7 @@
     {
       "id": "T486",
       "title": "Fix projects-sync's githubSyncInputKeys() self-referential catalog-file read with a live GitHub API call",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
