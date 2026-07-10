@@ -126,7 +126,8 @@ export async function callService<T>(
 
   const useCache = Boolean(opts.cacheKey) && def.category === 'api';
   if (useCache) {
-    const cached = getCachedServiceResponse<T>(name, opts.cacheKey as string, SERVICE_CACHE_TTL_MS);
+    const cacheTtl = def.cacheTtlMs ?? SERVICE_CACHE_TTL_MS;
+    const cached = getCachedServiceResponse<T>(name, opts.cacheKey as string, cacheTtl);
     if (cached !== undefined) return cached;
   }
 

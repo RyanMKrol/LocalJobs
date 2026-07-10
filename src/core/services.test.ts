@@ -198,6 +198,24 @@ await test('effectiveServiceTimeoutMs: a code default (ServiceDefinition.timeout
   assert.equal(effectiveServiceTimeoutMs('svc-timeout-code', 12_345), 20_000);
 });
 
+// ── per-service cache TTL (T476) ────────────────────────────────────────────
+await test('cacheTtlMs: a service with custom cacheTtlMs uses that TTL instead of the global default', async () => {
+  svc({ name: 'svc-cache-custom-ttl', category: 'api', cacheTtlMs: 10 * 60_000 }); // 10 minutes
+  let calls = 0;
+  await callService('svc-cache-custom-ttl', async () => { calls++; return calls; }, { cacheKey: 'k' });
+  assert.equal(calls, 1);
+
+  // Backdate the cached row past the 5-minute GLOBAL default but BEFORE the 10-minute custom TTL.
+  const staleByGlobal = new Date(Date.now() - 7 * 60_000).toISOString(); // 7 min old
+  db.prepare('UPDATE service_cache SET cached_at = ? WHERE service_name = ? AND cache_key = ?')
+    .run(staleByGlobal, 'svc-cache-custom-ttl', 'k');
+
+  // With the custom 10-minute TTL, this stale entry should still be a cache hit.
+  const out = await callService('svc-cache-custom-ttl', async () => { calls++; return calls; }, { cacheKey: 'k' });
+  assert.equal(calls, 1); // fn was NOT re-invoked
+  assert.equal(out, 1); // still the cached value
+});
+
 await test('effectiveServiceTimeoutMs: a dashboard override beats the code default', async () => {
   svc({ name: 'svc-timeout-override', timeoutMs: 20_000 });
   updateServiceLimits('svc-timeout-override', { rate_per_minute: null, daily_cap: null, monthly_cap: null, timeout_ms: 45_000 });

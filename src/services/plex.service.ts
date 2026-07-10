@@ -24,6 +24,11 @@ const service: ServiceDefinition = {
   // in sync so the code default is the same whether read via the env var or this
   // ServiceDefinition. Dashboard-editable via effectiveServiceTimeoutMs('plex', ...).
   timeoutMs: 300_000,
+  // 3-hour cache TTL for Plex responses (T476). A full-library crawl is expensive,
+  // and Plex library contents change slowly enough that multi-hour-stale cache is
+  // acceptable, unlike TMDB's cheaper per-lookup calls which keep the 5-minute
+  // global default.
+  cacheTtlMs: 3 * 60 * 60 * 1000,
 };
 
 export default service;

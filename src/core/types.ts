@@ -299,4 +299,11 @@ export interface ServiceDefinition {
    *  `updateServiceLimits`/`syncService` in `src/db/store.ts`). Omit for "no code
    *  default" — the caller's own fallback then applies. */
   timeoutMs?: number;
+  /** Code-level cache TTL (ms) for 'api'-category services opting into response
+   *  caching via `cacheKey` in CallServiceOpts. Like `minIntervalMs`/`maxJitterMs`,
+   *  this is code-only, not dashboard-editable. Falls back to `SERVICE_CACHE_TTL_MS`
+   *  (currently 5 minutes) when unset. Use for services with slower/expensive
+   *  operations whose results change infrequently (e.g. Plex library metadata,
+   *  TMDB lookups). */
+  cacheTtlMs?: number;
 }
