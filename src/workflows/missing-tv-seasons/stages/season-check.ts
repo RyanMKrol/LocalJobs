@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { QuotaExceededError, callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { tmdbGet } from '../../../core/plex-client.js';
+import { markWorkItem } from '../../../db/store.js';
 import { plexConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
 import {
@@ -46,13 +47,23 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
   let checked = 0;
   let tmdbCalls = 0;
   let failed = 0;
+  let unverifiableFailedCount = 0;
 
   for (let i = 0; i < shows.length; i++) {
     const show = shows[i];
     ctx.progress((i / Math.max(shows.length, 1)) * 100, `checked ${checked}/${shows.length}`);
 
     if (show.tmdbId == null) {
+      const key = String(show.ratingKey);
       unverifiable.push({ title: show.title, ratingKey: show.ratingKey });
+      markWorkItem('tmdb-season-check', key, 'failed', {
+        rootKey: key,
+        detail: {
+          name: show.title,
+          reason: 'no tmdb:// GUID',
+        },
+      });
+      unverifiableFailedCount++;
       continue;
     }
 
@@ -72,9 +83,30 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
 
       const result = evaluateShow(show as PlexShow & { tmdbId: number }, detail, seasonEpisodes, now);
       checked++;
+      const key = String(show.tmdbId);
       if (result) {
         actionable.push(result);
         ctx.log(`  ✓ "${show.title}" [${result.tmdbStatus}] — own S${show.highestOwnedSeason}, aired S${aired} → missing complete ${result.completeMissingSeasons.map((s) => `S${s}`).join(', ')}`);
+        markWorkItem('tmdb-season-check', key, 'success', {
+          rootKey: key,
+          detail: {
+            name: show.title,
+            tmdbStatus: result.tmdbStatus,
+            highestAiredSeason: aired,
+            completeMissingSeasons: result.completeMissingSeasons,
+          },
+        });
+      } else {
+        // Checked successfully, but no complete missing seasons.
+        markWorkItem('tmdb-season-check', key, 'success', {
+          rootKey: key,
+          detail: {
+            name: show.title,
+            tmdbStatus: detail.status ?? 'Unknown',
+            highestAiredSeason: aired,
+            completeMissingSeasons: [],
+          },
+        });
       }
     } catch (err) {
       if (err instanceof QuotaExceededError) {
@@ -84,6 +116,14 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
       const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
       // One bad show must not fail the whole audit — log + skip it.
       ctx.log(`  ✗ "${show.title}" (tmdb=${show.tmdbId}) — ${msg}`, 'warn');
+      const key = String(show.tmdbId);
+      markWorkItem('tmdb-season-check', key, 'failed', {
+        rootKey: key,
+        detail: {
+          name: show.title,
+          error: msg,
+        },
+      });
       failed++;
     }
   }
@@ -103,7 +143,8 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
   ctx.log(`Wrote ${plexConfig.missingOut}`);
   ctx.log('═════════════════════════════════════════════════════');
 
-  if (failed > 0) {
-    throw new Error(`${failed}/${shows.length - unverifiable.length} show(s) failed their TMDB check this run — see logs above`);
+  const totalFailed = failed + unverifiableFailedCount;
+  if (totalFailed > 0) {
+    throw new Error(`${totalFailed} show(s) failed this run (${unverifiableFailedCount} unverifiable + ${failed} TMDB errors) — see logs above`);
   }
 }

@@ -99,7 +99,7 @@ async function runChildAssertions(): Promise<void> {
     }
 
     assert.ok(threw instanceof Error, 'run rejects when a genuine per-show TMDB failure occurred');
-    assert.match((threw as Error).message, /1\/2 show\(s\) failed their TMDB check this run/);
+    assert.match((threw as Error).message, /1 show\(s\) failed this run.*1 TMDB errors/);
 
     // Even though the run failed, the successful show's check was still persisted.
     const missing = readMissing();
@@ -120,19 +120,24 @@ async function runChildAssertions(): Promise<void> {
     console.log('  ✓ all-success case resolves without throwing');
   }
 
-  // ── Case 3: an unverifiable show (no tmdbId) alongside a successful one → resolves normally. ──
+  // ── Case 3: an unverifiable show (no tmdbId) alongside a successful one → THROWS (unverifiable blocks the run). ──
   {
     writeSnapshot([show({ title: 'No Tmdb', tmdbId: null, ratingKey: 'n' }), show({ title: 'Good', tmdbId: 9201, ratingKey: 'g' })]);
     const originalFetch = global.fetch;
     global.fetch = (async () => ({ ok: true, json: async () => seriesDetailJson() } as Response)) as typeof fetch;
+    let threw: unknown;
     try {
       await runSeasonCheck(fakeCtx());
+    } catch (err) {
+      threw = err;
     } finally {
       global.fetch = originalFetch;
     }
+    assert.ok(threw instanceof Error, 'unverifiable show blocks the run');
+    assert.match((threw as Error).message, /1 show\(s\) failed this run.*1 unverifiable/);
     const missing = readMissing();
-    assert.equal(missing.unverifiable.length, 1, 'the unverifiable show is recorded, not counted as a failure');
-    console.log('  ✓ unverifiable-only case resolves without throwing');
+    assert.equal(missing.unverifiable.length, 1, 'the unverifiable show is recorded in the output');
+    console.log('  ✓ unverifiable show blocks the run with clear messaging');
   }
 
   // ── Case 4: the FIRST tmdb call hits the service's daily quota → soft-stop (break),

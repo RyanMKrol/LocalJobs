@@ -23,13 +23,40 @@ snapshot → check → notify, scheduled weekly.
 ## Idempotency — "re-scan + notification-log", not "work-done"
 
 This workflow has NO static input list — its inputs are DISCOVERED live from Plex every run, so it
-declares no `inputKeys()` (not limitable; scheduled-only, always unlimited). Stages 1–2 deliberately
-RE-COMPUTE FRESH every run (no skip-if-done). Idempotency lives ONLY in stage 3: its `work_items`
-ledger is a "have I already notified this?" log, not a work-done log — keyed
-`pairKey(tmdbId, season) = "<tmdbId>::S<season>"` under job name `plex-seasons-notify`. A row not yet
-`success` is newly-detected; only actionable (still-missing) pairs get ledger rows at all, so an
-"up to date" show never appears in the ledger. The first-ever run announces the whole current backlog
-in one digest.
+declares no `inputKeys()` (not limitable; scheduled-only, always unlimited).
+
+**Stages 1–2: Per-show ledger for visibility + failure gating (NOT for skip-if-done).** Both
+stages now record `work_items` rows for dashboard Inputs & Outputs visibility and (for stage 2) to
+drive the failed-count-blocks-the-run guard:
+
+- **Stage 1 (`plex-tv-snapshot`)** records one row per show with key `<tmdbId ?? ratingKey>` (the
+  TMDB id as string when present, else the Plex ratingKey). All rows are `status='success'` (a show
+  is successfully snapshotted whether it has a TMDB GUID or not). `detail` captures the show's name,
+  TMDB id (or null), and highest owned season.
+- **Stage 2 (`tmdb-season-check`)** records one row per show, also keyed by `<tmdbId ?? ratingKey>`,
+  with `rootKey` explicitly set to chain back to stage 1's row. Outcomes:
+  - **Checked successfully, actionable** (`status='success'`): `detail` includes the TMDB status,
+    highest aired season, and the list of complete missing seasons.
+  - **Checked successfully, nothing missing** (`status='success'`): `detail` includes the TMDB status,
+    highest aired season, and an empty `completeMissingSeasons` list.
+  - **No tmdb:// GUID** (`status='failed'`): `detail` states `reason: 'no tmdb:// GUID'`. This
+    deliberately blocks the run via the failed-count guard, so a show with no GUID will block every
+    subsequent scheduled run until a human **Unstick**s or **Ignore**s it on the dashboard. Note:
+    neither control currently provides a permanent fix for a show that will never get a GUID —
+    Unstick just deletes the row so it fails fresh next run; Ignore marks it ignored but stage 2
+    does NOT currently consult the ledger before recomputing failed status, so it would be
+    recounted as failed again. This is an **accepted rough edge** per the owner's guidance
+    ("I don't care about the gap ... I'll deal with the problem if it pops up") and is deliberately
+    out of scope for this task.
+  - **Genuine TMDB call error** (`status='failed'`): `detail` includes the error message.
+
+Stages 1–2 deliberately RE-COMPUTE FRESH every run (no skip-if-done — the ledger rows are upserted,
+not gated by `isWorkItemDone` checks). Idempotency in the traditional skip-if-done sense lives ONLY
+in stage 3: its `work_items` ledger is a "have I already notified this?" log, not a work-done log —
+keyed `pairKey(tmdbId, season) = "<tmdbId>::S<season>"` under job name `plex-seasons-notify`. A
+row not yet `success` is newly-detected; only actionable (still-missing) pairs get ledger rows at
+all, so an "up to date" show never appears in the ledger. The first-ever run announces the whole
+current backlog in one digest.
 
 The owner can permanently silence a factual-but-unwanted gap via `ignoreSurfacedItem` (the same
 ignore-to-suppress mechanism `movie-recommendations`'s franchise-gaps/recs use) —

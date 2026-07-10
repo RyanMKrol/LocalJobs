@@ -106,6 +106,7 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   for (const s of newShows) {
     for (const season of s.seasons) {
       markWorkItem(NOTIFY_JOB, pairKey(s.tmdbId, season), 'success', {
+        rootKey: String(s.tmdbId),
         detail: { name: `${s.title} S${season}`, markdown: reportPath },
       });
     }

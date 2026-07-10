@@ -1,5 +1,6 @@
 import type { JobContext } from '../../../core/types.js';
 import { plexGet } from '../../../core/plex-client.js';
+import { markWorkItem } from '../../../db/store.js';
 import { plexConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
 import { buildShowSnapshots } from '../plex.js';
@@ -49,6 +50,19 @@ export async function runSnapshot(ctx: JobContext): Promise<void> {
 
   const out: SnapshotFile = { generatedAt: new Date().toISOString(), section, shows };
   writeJsonFile(plexConfig.snapshotOut, out);
+
+  // Record each show in the ledger for dashboard Input/Output visibility.
+  for (const s of shows) {
+    const key = String(s.tmdbId ?? s.ratingKey);
+    markWorkItem('plex-tv-snapshot', key, 'success', {
+      detail: {
+        name: s.title,
+        tmdbId: s.tmdbId,
+        highestOwnedSeason: s.highestOwnedSeason,
+      },
+    });
+  }
+
   ctx.progress(100, `${shows.length} shows snapshotted`);
   ctx.log(`Wrote ${plexConfig.snapshotOut}`);
 }
