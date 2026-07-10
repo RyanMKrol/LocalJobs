@@ -12929,7 +12929,7 @@
     {
       "id": "T481",
       "title": "Perfumes profile: prefix personal fields with personal_, merge & reposition the personal section, drop status, halve rating in loadPerfumes()",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
