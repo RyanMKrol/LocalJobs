@@ -299,6 +299,16 @@ summaries below are a quick-reference index, not the source of truth.
   re-run only rebuilds what actually changed. Single stage, runs weekly
   (Saturdays 05:00). Phase 2 (an optional Claude-narrated commentary layer on
   top) is a deliberately deferred, separate future task.
+- **overrides-audit** — Weekly, report-only audit of every dashboard override
+  currently set across services (rate/quota limits), workflows (schedule, max
+  concurrency, notify-on-completion), and jobs (timeout). Reports any override
+  that's either unknown-age (set before the age-tracking column existed) or has
+  been live and unchanged for 2+ weeks, as a candidate to fold into its
+  manifest/service-definition code default — a dashboard override is provisional,
+  not a permanent home for a value. Never sends a notification, never writes to
+  the ideas inbox, and never patches any file itself — folding an override into
+  code stays a fully manual step. Idempotent per ISO week via the work_items
+  ledger. Single stage, runs weekly (Sundays 07:00).
 
 ## Dashboard pages
 

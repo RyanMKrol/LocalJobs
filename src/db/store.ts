@@ -80,6 +80,7 @@ export interface JobRow {
   description: string;
   timeout_ms: number;
   timeout_ms_overridden: number;
+  timeout_ms_overridden_at: string | null;
   max_retries: number;
   created_at: string;
 }
@@ -100,7 +101,7 @@ export function listJobs(): JobRow[] {
  */
 export function updateJobTimeout(name: string, timeoutMs: number): JobRow | undefined {
   const info = db
-    .prepare('UPDATE jobs SET timeout_ms = ?, timeout_ms_overridden = 1 WHERE name = ?')
+    .prepare("UPDATE jobs SET timeout_ms = ?, timeout_ms_overridden = 1, timeout_ms_overridden_at = datetime('now') WHERE name = ?")
     .run(timeoutMs, name);
   if (info.changes === 0) return undefined;
   return getJob(name);
@@ -1264,10 +1265,13 @@ export interface WorkflowRow {
   schedule: string | null;
   enabled: number;
   schedule_overridden: number;
+  schedule_overridden_at: string | null;
   max_concurrency: number | null;
   max_concurrency_overridden: number;
+  max_concurrency_overridden_at: string | null;
   notify_enabled: number;
   notify_enabled_overridden: number;
+  notify_enabled_overridden_at: string | null;
   created_at: string;
 }
 
@@ -1293,7 +1297,7 @@ export function setWorkflowEnabled(name: string, enabled: boolean): void {
 export function updateWorkflowSchedule(name: string, schedule: string | null): WorkflowRow | undefined {
   const normalised = schedule && schedule.trim() !== '' ? schedule.trim() : null;
   const info = db
-    .prepare('UPDATE workflows SET schedule = ?, schedule_overridden = 1 WHERE name = ?')
+    .prepare("UPDATE workflows SET schedule = ?, schedule_overridden = 1, schedule_overridden_at = datetime('now') WHERE name = ?")
     .run(normalised, name);
   if (info.changes === 0) return undefined;
   return getWorkflow(name);
@@ -1313,7 +1317,7 @@ export function updateWorkflowConcurrency(name: string, n: number): WorkflowRow 
     throw new Error(`maxConcurrency must be a positive integer ≥ 1 or 0 (unlimited), got ${n}`);
   }
   const info = db
-    .prepare('UPDATE workflows SET max_concurrency = ?, max_concurrency_overridden = 1 WHERE name = ?')
+    .prepare("UPDATE workflows SET max_concurrency = ?, max_concurrency_overridden = 1, max_concurrency_overridden_at = datetime('now') WHERE name = ?")
     .run(n, name);
   if (info.changes === 0) return undefined;
   return getWorkflow(name);
@@ -1328,7 +1332,7 @@ export function updateWorkflowConcurrency(name: string, n: number): WorkflowRow 
  */
 export function updateWorkflowNotifyEnabled(name: string, enabled: boolean): WorkflowRow | undefined {
   const info = db
-    .prepare('UPDATE workflows SET notify_enabled = ?, notify_enabled_overridden = 1 WHERE name = ?')
+    .prepare("UPDATE workflows SET notify_enabled = ?, notify_enabled_overridden = 1, notify_enabled_overridden_at = datetime('now') WHERE name = ?")
     .run(enabled ? 1 : 0, name);
   if (info.changes === 0) return undefined;
   return getWorkflow(name);
@@ -1614,6 +1618,7 @@ export interface ServiceRow {
   timeout_ms: number | null;
   paid: number;
   limits_overridden: number;
+  limits_overridden_at: string | null;
   rate_limit_source: string;
   created_at: string;
 }
@@ -1635,7 +1640,8 @@ export interface ServiceLimits {
 
 const updateServiceLimitsStmt = db.prepare(`
   UPDATE services
-     SET rate_per_minute = @rate, daily_cap = @daily, monthly_cap = @monthly, timeout_ms = @timeoutMs, limits_overridden = 1
+     SET rate_per_minute = @rate, daily_cap = @daily, monthly_cap = @monthly, timeout_ms = @timeoutMs,
+         limits_overridden = 1, limits_overridden_at = datetime('now')
    WHERE name = @name
 `);
 
@@ -1655,6 +1661,114 @@ export function updateServiceLimits(name: string, limits: ServiceLimits): Servic
   });
   if (info.changes === 0) return undefined;
   return getServiceRow(name);
+}
+
+// ═══════════════════════ stale override audit (T475) ═══════════════════════
+
+/**
+ * A single `_overridden` flag found set across services/workflows/jobs, for the
+ * `overrides-audit` workflow's report. `ageMs` is `null` when the override's
+ * `_overridden_at` is NULL — either the flag was set before that column existed
+ * (unknown age), or (in principle) some future path re-sets `_overridden` without
+ * stamping the timestamp; either way, treat it as "unknown age, always report".
+ */
+export interface StaleOverride {
+  table: 'services' | 'workflows' | 'jobs';
+  name: string;
+  field: string;
+  currentValue: unknown;
+  overriddenAt: string | null;
+  ageMs: number | null;
+}
+
+/**
+ * Every currently-set `_overridden` flag across services/workflows/jobs whose
+ * override is either unknown-age (`_overridden_at IS NULL`) or has been live for
+ * at least `minAgeMs`. Used by the `overrides-audit` workflow to nudge a stable
+ * override into becoming the manifest's code default (see the root CLAUDE.md
+ * Conventions section: an override is provisional, not a place to retire a value).
+ */
+export function listStaleOverrides(minAgeMs: number): StaleOverride[] {
+  const now = Date.now();
+  const isStale = (overriddenAt: string | null): boolean => {
+    if (!overriddenAt) return true;
+    // SQLite datetimes are UTC strings without a trailing 'Z' (see root CLAUDE.md
+    // Gotchas) — append it so Date parses them as UTC, not local time.
+    const ts = Date.parse(overriddenAt.endsWith('Z') ? overriddenAt : `${overriddenAt}Z`);
+    if (Number.isNaN(ts)) return true;
+    return now - ts >= minAgeMs;
+  };
+  const ageOf = (overriddenAt: string | null): number | null => {
+    if (!overriddenAt) return null;
+    const ts = Date.parse(overriddenAt.endsWith('Z') ? overriddenAt : `${overriddenAt}Z`);
+    return Number.isNaN(ts) ? null : now - ts;
+  };
+
+  const out: StaleOverride[] = [];
+
+  for (const s of listServices()) {
+    if (s.limits_overridden !== 1 || !isStale(s.limits_overridden_at)) continue;
+    out.push({
+      table: 'services',
+      name: s.name,
+      field: 'limits',
+      currentValue: {
+        rate_per_minute: s.rate_per_minute,
+        daily_cap: s.daily_cap,
+        monthly_cap: s.monthly_cap,
+        timeout_ms: s.timeout_ms,
+      },
+      overriddenAt: s.limits_overridden_at,
+      ageMs: ageOf(s.limits_overridden_at),
+    });
+  }
+
+  for (const w of listWorkflows()) {
+    if (w.schedule_overridden === 1 && isStale(w.schedule_overridden_at)) {
+      out.push({
+        table: 'workflows',
+        name: w.name,
+        field: 'schedule',
+        currentValue: w.schedule,
+        overriddenAt: w.schedule_overridden_at,
+        ageMs: ageOf(w.schedule_overridden_at),
+      });
+    }
+    if (w.max_concurrency_overridden === 1 && isStale(w.max_concurrency_overridden_at)) {
+      out.push({
+        table: 'workflows',
+        name: w.name,
+        field: 'max_concurrency',
+        currentValue: w.max_concurrency,
+        overriddenAt: w.max_concurrency_overridden_at,
+        ageMs: ageOf(w.max_concurrency_overridden_at),
+      });
+    }
+    if (w.notify_enabled_overridden === 1 && isStale(w.notify_enabled_overridden_at)) {
+      out.push({
+        table: 'workflows',
+        name: w.name,
+        field: 'notify_enabled',
+        currentValue: w.notify_enabled,
+        overriddenAt: w.notify_enabled_overridden_at,
+        ageMs: ageOf(w.notify_enabled_overridden_at),
+      });
+    }
+  }
+
+  for (const j of listJobs()) {
+    if (j.timeout_ms_overridden !== 1 || !isStale(j.timeout_ms_overridden_at)) continue;
+    out.push({
+      table: 'jobs',
+      name: j.name,
+      field: 'timeout_ms',
+      currentValue: j.timeout_ms,
+      overriddenAt: j.timeout_ms_overridden_at,
+      ageMs: ageOf(j.timeout_ms_overridden_at),
+    });
+  }
+
+  return out;
 }
 
 export function recordServiceCall(service: string): void {

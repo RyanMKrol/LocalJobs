@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   description  TEXT NOT NULL DEFAULT '',
   timeout_ms   INTEGER NOT NULL DEFAULT 0, -- 0 = no timeout
   timeout_ms_overridden INTEGER NOT NULL DEFAULT 0, -- user-editable override (T297), mirrors workflow schedule/maxConcurrency overrides
+  timeout_ms_overridden_at TEXT, -- when the override was set (T475); NULL = never overridden, or overridden before this column existed
   max_retries  INTEGER NOT NULL DEFAULT 0,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -124,10 +125,13 @@ CREATE TABLE IF NOT EXISTS workflows (
   schedule                TEXT,                       -- cron, or NULL for manual-only
   enabled                 INTEGER NOT NULL DEFAULT 1,
   schedule_overridden     INTEGER NOT NULL DEFAULT 0, -- 1 = user edited the schedule; code-sync preserves it
+  schedule_overridden_at  TEXT,                       -- when the override was set (T475); NULL = never overridden, or overridden before this column existed
   max_concurrency         INTEGER,                    -- bounded parallelism for independent stages; NULL = use code default
   max_concurrency_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited maxConcurrency; code-sync preserves it
+  max_concurrency_overridden_at TEXT,                 -- when the override was set (T475); NULL = never overridden, or overridden before this column existed
   notify_enabled          INTEGER NOT NULL DEFAULT 1, -- 1 = send the run-end aggregate push notification
   notify_enabled_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited notifyEnabled; code-sync preserves it
+  notify_enabled_overridden_at TEXT,                  -- when the override was set (T475); NULL = never overridden, or overridden before this column existed
   created_at              TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -193,6 +197,7 @@ CREATE TABLE IF NOT EXISTS services (
   timeout_ms        INTEGER,                 -- NULL = no override; falls back to ServiceDefinition.timeoutMs / caller default (T465)
   paid              INTEGER NOT NULL DEFAULT 0,
   limits_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited limits; code-sync preserves them
+  limits_overridden_at TEXT,                    -- when the override was set (T475); NULL = never overridden, or overridden before this column existed
   rate_limit_source TEXT NOT NULL DEFAULT '', -- manifest-owned provenance of the limit numbers; always refreshed from code on sync
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );

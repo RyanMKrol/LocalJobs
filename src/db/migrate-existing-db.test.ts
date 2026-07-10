@@ -261,6 +261,24 @@ test('jobs ends migrated: timeout_ms_overridden column added (defaults 0 = code-
   assert.equal(j.timeout_ms_overridden, 0, 'pre-existing job defaults to NOT overridden');
 });
 
+test('services/workflows/jobs end migrated: every "_overridden_at" timestamp column added, defaults NULL (T475)', () => {
+  assert.ok(cols('services').includes('limits_overridden_at'), 'limits_overridden_at column added');
+  assert.ok(cols('workflows').includes('schedule_overridden_at'), 'schedule_overridden_at column added');
+  assert.ok(cols('workflows').includes('max_concurrency_overridden_at'), 'max_concurrency_overridden_at column added');
+  assert.ok(cols('workflows').includes('notify_enabled_overridden_at'), 'notify_enabled_overridden_at column added');
+  assert.ok(cols('jobs').includes('timeout_ms_overridden_at'), 'timeout_ms_overridden_at column added');
+  const s = migrated.prepare('SELECT limits_overridden_at FROM services WHERE name = ?').get('google-places') as { limits_overridden_at: string | null };
+  assert.equal(s.limits_overridden_at, null, 'pre-existing overridden service has NULL timestamp — unknown age, always report');
+  const w = migrated.prepare('SELECT schedule_overridden_at, max_concurrency_overridden_at, notify_enabled_overridden_at FROM workflows WHERE name = ?').get('places') as {
+    schedule_overridden_at: string | null; max_concurrency_overridden_at: string | null; notify_enabled_overridden_at: string | null;
+  };
+  assert.equal(w.schedule_overridden_at, null);
+  assert.equal(w.max_concurrency_overridden_at, null);
+  assert.equal(w.notify_enabled_overridden_at, null);
+  const j = migrated.prepare('SELECT timeout_ms_overridden_at FROM jobs WHERE name = ?').get('resolve') as { timeout_ms_overridden_at: string | null };
+  assert.equal(j.timeout_ms_overridden_at, null);
+});
+
 test("legacy 'dismissed' work_item is migrated to 'ignored' (T033)", () => {
   const r = migrated.prepare('SELECT status FROM work_items WHERE item_key = ?').get('cid-3') as { status: string };
   assert.equal(r.status, 'ignored');

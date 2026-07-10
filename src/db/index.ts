@@ -119,6 +119,33 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec('ALTER TABLE jobs ADD COLUMN timeout_ms_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Additive migration: `_overridden_at` timestamp alongside each existing
+  // `_overridden` flag on services/workflows/jobs (T475). Lets the overrides-audit
+  // workflow (src/workflows/overrides-audit/) report how long an override has been
+  // live, as a reminder that a dashboard override is provisional, not permanent —
+  // see the root CLAUDE.md Conventions section. NULL = never overridden, OR
+  // overridden before this column existed (treated as "unknown age, always
+  // report" by listStaleOverrides — never backfilled with a guessed date). No
+  // index on any of these columns, so no bootstrap-index trap (T098). There is no
+  // "reset override to code default" action anywhere in the codebase today, so
+  // there is nowhere that needs to clear these back to NULL yet — if one is ever
+  // added, it should null out the matching `_overridden`/`_overridden_at` pair.
+  if (!svcCols.some((c) => c.name === 'limits_overridden_at')) {
+    db.exec('ALTER TABLE services ADD COLUMN limits_overridden_at TEXT');
+  }
+  if (!wfCols.some((c) => c.name === 'schedule_overridden_at')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN schedule_overridden_at TEXT');
+  }
+  if (!wfCols.some((c) => c.name === 'max_concurrency_overridden_at')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN max_concurrency_overridden_at TEXT');
+  }
+  if (!wfCols.some((c) => c.name === 'notify_enabled_overridden_at')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN notify_enabled_overridden_at TEXT');
+  }
+  if (!jobCols.some((c) => c.name === 'timeout_ms_overridden_at')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN timeout_ms_overridden_at TEXT');
+  }
+
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
   migrateRenamePlexWorkflow(db);

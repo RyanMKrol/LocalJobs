@@ -16,6 +16,7 @@ import {
   deleteWorkflowCompletely, deleteJobCompletely, deleteServiceCompletely,
   recordServiceConsumer, listServiceConsumers,
   deleteNullDetailSuccessItems,
+  listStaleOverrides,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 import { db } from './index.js';
@@ -1394,3 +1395,56 @@ console.log('  ✓ T336 full-delete admin helpers: deleteWorkflowCompletely / de
   assert.deepEqual(deleteNullDetailSuccessItems('t352-job', 'industry'), [], 'second call is a no-op');
 }
 console.log('  ✓ T352 deleteNullDetailSuccessItems: removes only null-field success rows for the given job, idempotent, leaves other jobs untouched');
+
+{
+  // ── T475: every override setter stamps its matching _overridden_at column ──
+  syncService({ name: 't475-svc', description: 'd', ratePerMinute: 10, paid: false });
+  assert.equal(getServiceRow('t475-svc')?.limits_overridden_at, null, 'not overridden initially → null timestamp');
+  const svc = updateServiceLimits('t475-svc', { rate_per_minute: 1, daily_cap: null, monthly_cap: null, timeout_ms: null });
+  assert.ok(svc?.limits_overridden_at, 'updateServiceLimits stamps limits_overridden_at');
+
+  syncJob({ name: 't475-job', timeoutMs: 1000, run: async () => {} });
+  assert.equal(getJob('t475-job')?.timeout_ms_overridden_at, null, 'not overridden initially → null timestamp');
+  const job = updateJobTimeout('t475-job', 2000);
+  assert.ok(job?.timeout_ms_overridden_at, 'updateJobTimeout stamps timeout_ms_overridden_at');
+
+  syncWorkflow({ name: 't475-wf', schedule: '0 2 * * *', jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t475-wf')?.schedule_overridden_at, null, 'not overridden initially → null timestamp');
+  const wfSched = updateWorkflowSchedule('t475-wf', '30 4 * * *');
+  assert.ok(wfSched?.schedule_overridden_at, 'updateWorkflowSchedule stamps schedule_overridden_at');
+  const wfConc = updateWorkflowConcurrency('t475-wf', 2);
+  assert.ok(wfConc?.max_concurrency_overridden_at, 'updateWorkflowConcurrency stamps max_concurrency_overridden_at');
+  const wfNotify = updateWorkflowNotifyEnabled('t475-wf', false);
+  assert.ok(wfNotify?.notify_enabled_overridden_at, 'updateWorkflowNotifyEnabled stamps notify_enabled_overridden_at');
+}
+console.log('  ✓ T475: updateServiceLimits/updateJobTimeout/updateWorkflowSchedule/Concurrency/NotifyEnabled stamp the matching _overridden_at column');
+
+{
+  // ── T475: listStaleOverrides — NULL-timestamped or older-than-threshold ──
+  syncService({ name: 't475-stale-svc', description: 'd', ratePerMinute: 10, paid: false });
+  updateServiceLimits('t475-stale-svc', { rate_per_minute: 5, daily_cap: null, monthly_cap: null, timeout_ms: null });
+  // Force a NULL timestamp directly (simulates an override set before this column existed).
+  db.prepare('UPDATE services SET limits_overridden_at = NULL WHERE name = ?').run('t475-stale-svc');
+
+  syncJob({ name: 't475-fresh-job', timeoutMs: 1000, run: async () => {} });
+  updateJobTimeout('t475-fresh-job', 2000); // freshly overridden — should NOT be stale under a real threshold
+
+  const staleAll = listStaleOverrides(0); // threshold 0 → everything overridden counts as stale
+  assert.ok(
+    staleAll.some((s) => s.table === 'services' && s.name === 't475-stale-svc' && s.field === 'limits'),
+    'NULL-timestamped override is reported (unknown age, always report)',
+  );
+  const staleEntry = staleAll.find((s) => s.table === 'services' && s.name === 't475-stale-svc')!;
+  assert.equal(staleEntry.ageMs, null, 'NULL-timestamped override has ageMs === null');
+
+  const staleFarFuture = listStaleOverrides(365 * 24 * 60 * 60 * 1000); // 1 year threshold
+  assert.ok(
+    !staleFarFuture.some((s) => s.table === 'jobs' && s.name === 't475-fresh-job'),
+    'a freshly-set override is NOT reported under a 1-year threshold',
+  );
+  assert.ok(
+    staleFarFuture.some((s) => s.table === 'services' && s.name === 't475-stale-svc'),
+    'the NULL-timestamped override is still reported regardless of threshold',
+  );
+}
+console.log('  ✓ T475: listStaleOverrides returns NULL-timestamped-or-older-than-threshold overrides across services/workflows/jobs');
