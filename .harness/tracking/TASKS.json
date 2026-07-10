@@ -13315,7 +13315,7 @@
     {
       "id": "T498",
       "title": "Add a Certify button + green badge on the workflow detail page and Workflows list",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T497"
       ],
