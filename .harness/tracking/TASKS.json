@@ -13345,7 +13345,7 @@
     {
       "id": "T499",
       "title": "Migrate every direct Plex call site (6 workflows) onto callService('plex', ...) — code + docs together (re-attempt of T474)",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [],
       "gate": null,
       "tags": [
