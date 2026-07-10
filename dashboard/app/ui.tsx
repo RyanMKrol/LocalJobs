@@ -285,6 +285,8 @@ export function usePoll<T>(fn: () => Promise<T>, intervalMs: number, deps: unkno
   const fnRef = useRef(fn);
   fnRef.current = fn;
 
+  const tickRef = useRef<() => Promise<void>>(async () => {});
+
   useEffect(() => {
     let alive = true;
     const tick = async () => {
@@ -295,13 +297,16 @@ export function usePoll<T>(fn: () => Promise<T>, intervalMs: number, deps: unkno
         if (alive) setError(e instanceof Error ? e.message : 'error');
       }
     };
+    tickRef.current = tick;
     tick();
     const id = setInterval(tick, intervalMs);
     return () => { alive = false; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  return { data, error };
+  const refetch = useCallback(() => tickRef.current(), []);
+
+  return { data, error, refetch };
 }
 
 /**

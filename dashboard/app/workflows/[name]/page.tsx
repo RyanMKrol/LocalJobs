@@ -62,7 +62,7 @@ function groupByCollection(gaps: MovieGap[]): [string, MovieGap[]][] {
  * in. Backed by `/api/tv-recs` + `/api/tv-recs/:id/ignore`. Mirrors MovieRecsManager.
  */
 function TvRecsManager() {
-  const { data, error } = usePoll(() => api.tvRecs(), 5000);
+  const { data, error, refetch } = usePoll(() => api.tvRecs(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
   const [busyAll, setBusyAll] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -81,11 +81,11 @@ function TvRecsManager() {
   const sortedActive = sortRecs(active, sortCol, sortDir);
 
   async function ignore(r: TvRec) {
-    if (!confirm(`Ignore "${r.title}"? It will be excluded from future digests and notifications.`)) return;
     setBusy(r.tmdbId);
     setErr(null);
     try {
       await api.ignoreTvRec(r.tmdbId);
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -94,11 +94,11 @@ function TvRecsManager() {
   }
 
   async function unignore(r: TvRec) {
-    if (!confirm(`Un-ignore "${r.title}"? It will be treated as brand-new and may be recommended/notified again.`)) return;
     setBusy(r.tmdbId);
     setErr(null);
     try {
       await api.unignoreTvRec(r.tmdbId);
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -107,12 +107,11 @@ function TvRecsManager() {
   }
 
   async function unignoreAll() {
-    const count = ignored.length;
-    if (!confirm(`Un-ignore all ${count} show${count === 1 ? '' : 's'}? They will be treated as brand-new and may be recommended/notified again.`)) return;
     setBusyAll(true);
     setErr(null);
     try {
       await api.unignoreTvRecBulk(ignored.map((r) => r.tmdbId));
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -237,7 +236,7 @@ function TvRecsManager() {
  * Mirrors `MovieGapsManager` but for recommendations, not franchise gaps.
  */
 function MovieRecsManager() {
-  const { data, error } = usePoll(() => api.movieRecs(), 5000);
+  const { data, error, refetch } = usePoll(() => api.movieRecs(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
   const [busyAll, setBusyAll] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -256,11 +255,11 @@ function MovieRecsManager() {
   const sortedActive = sortRecs(active, sortCol, sortDir);
 
   async function ignore(r: MovieRec) {
-    if (!confirm(`Ignore "${r.title}"? It will be excluded from future digests and notifications.`)) return;
     setBusy(r.tmdbId);
     setErr(null);
     try {
       await api.ignoreMovieRec(r.tmdbId);
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -269,11 +268,11 @@ function MovieRecsManager() {
   }
 
   async function unignore(r: MovieRec) {
-    if (!confirm(`Un-ignore "${r.title}"? It will be treated as brand-new and may be recommended/notified again.`)) return;
     setBusy(r.tmdbId);
     setErr(null);
     try {
       await api.unignoreMovieRec(r.tmdbId);
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -282,12 +281,11 @@ function MovieRecsManager() {
   }
 
   async function unignoreAll() {
-    const count = ignored.length;
-    if (!confirm(`Un-ignore all ${count} film${count === 1 ? '' : 's'}? They will be treated as brand-new and may be recommended/notified again.`)) return;
     setBusyAll(true);
     setErr(null);
     try {
       await api.unignoreMovieRecBulk(ignored.map((r) => r.tmdbId));
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -414,7 +412,7 @@ function MovieRecsManager() {
  * own detail page since it only manages this one workflow's outputs.
  */
 function MovieGapsManager() {
-  const { data, error } = usePoll(() => api.movieGaps(), 5000);
+  const { data, error, refetch } = usePoll(() => api.movieGaps(), 5000);
   const [busy, setBusy] = useState<number | null>(null);
   const [busyCollection, setBusyCollection] = useState<string | null>(null);
   const [busyIgnoredCollection, setBusyIgnoredCollection] = useState<string | null>(null);
@@ -425,11 +423,11 @@ function MovieGapsManager() {
   const ignored = all.filter((g) => g.ignored);
 
   async function ignore(g: MovieGap) {
-    if (!confirm(`Ignore “${g.title}”? It will be excluded from future reports and notifications, even though you don't own it.`)) return;
     setBusy(g.tmdbId);
     setErr(null);
     try {
       await api.ignoreMovieGap(g.tmdbId);
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -438,11 +436,11 @@ function MovieGapsManager() {
   }
 
   async function unignore(g: MovieGap) {
-    if (!confirm(`Un-ignore “${g.title}”? It will be treated as brand-new and may be reported/notified again.`)) return;
     setBusy(g.tmdbId);
     setErr(null);
     try {
       await api.unignoreMovieGap(g.tmdbId);
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -451,12 +449,11 @@ function MovieGapsManager() {
   }
 
   async function ignoreCollection(cname: string, films: MovieGap[]) {
-    const count = films.length;
-    if (!confirm(`Ignore all ${count} gap${count === 1 ? '' : 's'} in “${cname}”? Only these specific films will be ignored — any new gaps added to this collection later will still surface.`)) return;
     setBusyCollection(cname);
     setErr(null);
     try {
       await api.ignoreMovieGapBulk(films.map((f) => f.tmdbId));
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -465,12 +462,11 @@ function MovieGapsManager() {
   }
 
   async function unignoreCollection(cname: string, films: MovieGap[]) {
-    const count = films.length;
-    if (!confirm(`Un-ignore all ${count} gap${count === 1 ? '' : 's'} in “${cname}”? They will be treated as brand-new and may be reported/notified again.`)) return;
     setBusyIgnoredCollection(cname);
     setErr(null);
     try {
       await api.unignoreMovieGapBulk(films.map((f) => f.tmdbId));
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -643,7 +639,7 @@ function groupByShow(seasons: MissingSeason[]): [MissingSeason, number[]][] {
  * reports and notifications (`ignoreSurfacedItem`). Mirrors `MovieGapsManager`.
  */
 function MissingSeasonsManager() {
-  const { data, error } = usePoll(() => api.missingSeasons(), 5000);
+  const { data, error, refetch } = usePoll(() => api.missingSeasons(), 5000);
   const [busy, setBusy] = useState<string | null>(null);
   const [busyShow, setBusyShow] = useState<number | null>(null);
   const [busyIgnoredShow, setBusyIgnoredShow] = useState<number | null>(null);
@@ -659,6 +655,7 @@ function MissingSeasonsManager() {
     setErr(null);
     try {
       await api.missingSeasonsIgnore(s.tmdbId, s.season);
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -667,13 +664,12 @@ function MissingSeasonsManager() {
   }
 
   async function unignore(s: MissingSeason) {
-    const label = `"${s.title}" S${s.season}`;
-    if (!confirm(`Un-ignore ${label}? It will be treated as brand-new and may be reported/notified again.`)) return;
     const key = `${s.tmdbId}:${s.season}`;
     setBusy(key);
     setErr(null);
     try {
       await api.unignoreMissingSeason(s.tmdbId, s.season);
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -682,12 +678,11 @@ function MissingSeasonsManager() {
   }
 
   async function ignoreShow(meta: MissingSeason, nums: number[]) {
-    const count = nums.length;
-    if (!confirm(`Ignore all ${count} missing season${count === 1 ? '' : 's'} of "${meta.title}"? Only these specific seasons will be ignored — any new missing seasons detected later will still surface.`)) return;
     setBusyShow(meta.tmdbId);
     setErr(null);
     try {
       await api.missingSeasonsIgnoreBulk(nums.map((season) => ({ tmdbId: meta.tmdbId, season })));
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -696,12 +691,11 @@ function MissingSeasonsManager() {
   }
 
   async function unignoreShow(meta: MissingSeason, nums: number[]) {
-    const count = nums.length;
-    if (!confirm(`Un-ignore all ${count} season${count === 1 ? '' : 's'} of "${meta.title}"? They will be treated as brand-new and may be reported/notified again.`)) return;
     setBusyIgnoredShow(meta.tmdbId);
     setErr(null);
     try {
       await api.missingSeasonsUnignoreBulk(nums.map((season) => ({ tmdbId: meta.tmdbId, season })));
+      await refetch();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
