@@ -551,6 +551,243 @@ const tvRecs = {
   ],
 };
 
+// T473: fixture sets for every remaining shipped workflow that previously had NO
+// /stage-io fixture + PAGES run-detail coverage — missing-tv-seasons, workouts-sync,
+// listening-digest, projects-sync, plex-space-saver, plex-language-fix, plex-profiles,
+// vercel-daily-redeploy, tv-recommendations, perfumes. Each mirrors the SAME 3-part shape
+// as the existing sets above (`<name>Members` / `<name>WorkflowRun` + run jobs /
+// `<name>StageIo` + an `Overall` variant), matching each workflow's REAL DAG from its
+// `*.workflow.ts` manifest.
+
+// missing-tv-seasons — plex-tv-snapshot -> tmdb-season-check -> plex-seasons-notify (linear).
+const missingTvSeasonsMembers = [
+  { job_name: 'plex-tv-snapshot', depends_on: [] },
+  { job_name: 'tmdb-season-check', depends_on: ['plex-tv-snapshot'] },
+  { job_name: 'plex-seasons-notify', depends_on: ['tmdb-season-check'] },
+];
+const missingTvSeasonsWorkflowRun = workflowRun({ id: 'missing-tv-seasons-run', workflow_name: 'missing-tv-seasons' });
+const missingTvSeasonsRunJobs = missingTvSeasonsMembers.map((m, i) => run({
+  id: `missing-tv-seasons-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'missing-tv-seasons-run',
+}));
+const missingTvSeasonsSnapshotOutput = { jobName: 'plex-tv-snapshot', itemKey: 'tmdb:1399::S8', status: 'success', detail: { name: 'Game of Thrones — highest owned season 7' } };
+const missingTvSeasonsCheckOutput = { jobName: 'tmdb-season-check', itemKey: 'tmdb:1399::S8', status: 'success', detail: { name: 'Game of Thrones — season 8 fully aired, missing' } };
+const missingTvSeasonsNotifyOutput = { jobName: 'plex-seasons-notify', itemKey: 'tmdb:1399::S8', status: 'success', detail: { name: 'Game of Thrones — season 8 notified' } };
+const missingTvSeasonsStageIo = {
+  'plex-tv-snapshot': { inputs: [], outputs: [missingTvSeasonsSnapshotOutput], predecessorJobs: [], job: 'plex-tv-snapshot' },
+  'tmdb-season-check': { inputs: [missingTvSeasonsSnapshotOutput], outputs: [missingTvSeasonsCheckOutput], predecessorJobs: ['plex-tv-snapshot'], job: 'tmdb-season-check' },
+  'plex-seasons-notify': { inputs: [missingTvSeasonsCheckOutput], outputs: [missingTvSeasonsNotifyOutput], predecessorJobs: ['tmdb-season-check'], job: 'plex-seasons-notify' },
+};
+const missingTvSeasonsStageIoOverall = {
+  inputs: [missingTvSeasonsSnapshotOutput], outputs: [missingTvSeasonsNotifyOutput],
+  predecessorJobs: ['plex-tv-snapshot'], outputJobs: ['plex-seasons-notify'], job: '__overall__',
+};
+
+// workouts-sync — hevy-sync -> workouts-progress (linear, 2 stages).
+const workoutsSyncMembers = [
+  { job_name: 'hevy-sync', depends_on: [] },
+  { job_name: 'workouts-progress', depends_on: ['hevy-sync'] },
+];
+const workoutsSyncWorkflowRun = workflowRun({ id: 'workouts-sync-run', workflow_name: 'workouts-sync' });
+const workoutsSyncRunJobs = workoutsSyncMembers.map((m, i) => run({
+  id: `workouts-sync-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'workouts-sync-run',
+}));
+const workoutsSyncSyncOutput = { jobName: 'hevy-sync', itemKey: 'workout:2026-06-15-abc123', status: 'success', detail: { name: 'Push day — 2026-06-15' } };
+const workoutsSyncProgressOutput = { jobName: 'workouts-progress', itemKey: '2026-06', status: 'success', detail: { name: 'Progress report — June 2026', markdown: '/abs/data/out/workouts-progress.md' } };
+const workoutsSyncStageIo = {
+  'hevy-sync': { inputs: [], outputs: [workoutsSyncSyncOutput], predecessorJobs: [], job: 'hevy-sync' },
+  'workouts-progress': { inputs: [workoutsSyncSyncOutput], outputs: [workoutsSyncProgressOutput], predecessorJobs: ['hevy-sync'], job: 'workouts-progress' },
+};
+const workoutsSyncStageIoOverall = {
+  inputs: [workoutsSyncSyncOutput], outputs: [workoutsSyncProgressOutput],
+  predecessorJobs: ['hevy-sync'], outputJobs: ['workouts-progress'], job: '__overall__',
+};
+
+// listening-digest — single stage: lastfm-digest.
+const listeningDigestMembers = [{ job_name: 'lastfm-digest', depends_on: [] }];
+const listeningDigestWorkflowRun = workflowRun({ id: 'listening-digest-run', workflow_name: 'listening-digest' });
+const listeningDigestRunJobs = listeningDigestMembers.map((m, i) => run({
+  id: `listening-digest-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'listening-digest-run',
+}));
+const listeningDigestOutput = { jobName: 'lastfm-digest', itemKey: '2026-06', status: 'success', detail: { name: 'Listening digest — June 2026', markdown: '/abs/data/out/listening-digest-2026-06.md' } };
+const listeningDigestStageIo = {
+  'lastfm-digest': { inputs: [], outputs: [listeningDigestOutput], predecessorJobs: [], job: 'lastfm-digest' },
+};
+const listeningDigestStageIoOverall = {
+  inputs: [], outputs: [listeningDigestOutput], predecessorJobs: [], outputJobs: ['lastfm-digest'], job: '__overall__',
+};
+
+// projects-sync — github-sync -> project-summarize (linear, 2 stages).
+const projectsSyncMembers = [
+  { job_name: 'github-sync', depends_on: [] },
+  { job_name: 'project-summarize', depends_on: ['github-sync'] },
+];
+const projectsSyncWorkflowRun = workflowRun({ id: 'projects-sync-run', workflow_name: 'projects-sync' });
+const projectsSyncRunJobs = projectsSyncMembers.map((m, i) => run({
+  id: `projects-sync-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'projects-sync-run',
+}));
+const projectsSyncSyncOutput = { jobName: 'github-sync', itemKey: '123456', status: 'success', detail: { name: 'local-jobs', pushedAt: NOW } };
+const projectsSyncSummarizeOutput = { jobName: 'project-summarize', itemKey: '123456', status: 'success', detail: { name: 'local-jobs', markdown: '/abs/data/out/local-jobs.md' } };
+const projectsSyncStageIo = {
+  'github-sync': { inputs: [], outputs: [projectsSyncSyncOutput], predecessorJobs: [], job: 'github-sync' },
+  'project-summarize': { inputs: [projectsSyncSyncOutput], outputs: [projectsSyncSummarizeOutput], predecessorJobs: ['github-sync'], job: 'project-summarize' },
+};
+const projectsSyncStageIoOverall = {
+  inputs: [projectsSyncSyncOutput], outputs: [projectsSyncSummarizeOutput],
+  predecessorJobs: ['github-sync'], outputJobs: ['project-summarize'], job: '__overall__',
+};
+
+// plex-space-saver — single stage: plex-space-saver-scan.
+const plexSpaceSaverMembers = [{ job_name: 'plex-space-saver-scan', depends_on: [] }];
+const plexSpaceSaverWorkflowRun = workflowRun({ id: 'plex-space-saver-run', workflow_name: 'plex-space-saver' });
+const plexSpaceSaverRunJobs = plexSpaceSaverMembers.map((m, i) => run({
+  id: `plex-space-saver-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-space-saver-run',
+}));
+const plexSpaceSaverOutput = { jobName: 'plex-space-saver-scan', itemKey: '2026-W25', status: 'success', detail: { name: 'Disk-size breakdown — Week 25, 2026', path: '/abs/data/out/size-breakdown-2026-W25.json', format: 'size-table' } };
+const plexSpaceSaverStageIo = {
+  'plex-space-saver-scan': { inputs: [], outputs: [plexSpaceSaverOutput], predecessorJobs: [], job: 'plex-space-saver-scan' },
+};
+const plexSpaceSaverStageIoOverall = {
+  inputs: [], outputs: [plexSpaceSaverOutput], predecessorJobs: [], outputJobs: ['plex-space-saver-scan'], job: '__overall__',
+};
+
+// plex-language-fix — discover -> resolve -> evaluate (fan-in on discover+resolve) -> apply.
+const plexLanguageFixMembers = [
+  { job_name: 'plex-language-discover', depends_on: [] },
+  { job_name: 'plex-language-resolve', depends_on: ['plex-language-discover'] },
+  { job_name: 'plex-language-evaluate', depends_on: ['plex-language-discover', 'plex-language-resolve'] },
+  { job_name: 'plex-language-apply', depends_on: ['plex-language-evaluate'] },
+];
+const plexLanguageFixWorkflowRun = workflowRun({ id: 'plex-language-fix-run', workflow_name: 'plex-language-fix' });
+const plexLanguageFixRunJobs = plexLanguageFixMembers.map((m, i) => run({
+  id: `plex-language-fix-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-language-fix-run',
+}));
+const plexLanguageFixDiscoverOutput = { jobName: 'plex-language-discover', itemKey: 'file:12345', status: 'success', detail: { name: 'Amélie — /movies/Amelie.mkv' } };
+const plexLanguageFixResolveOutput = { jobName: 'plex-language-resolve', itemKey: 'tmdb:194', status: 'success', detail: { name: 'Amélie', originalLanguage: 'fr' } };
+const plexLanguageFixEvaluateOutput = { jobName: 'plex-language-evaluate', itemKey: 'file:12345', status: 'success', detail: { name: 'Amélie — audio should be French, currently English' } };
+const plexLanguageFixApplyOutput = { jobName: 'plex-language-apply', itemKey: 'file:12345', status: 'success', detail: { name: 'Amélie — audio track switched to French' } };
+const plexLanguageFixStageIo = {
+  'plex-language-discover': { inputs: [], outputs: [plexLanguageFixDiscoverOutput], predecessorJobs: [], job: 'plex-language-discover' },
+  'plex-language-resolve': { inputs: [plexLanguageFixDiscoverOutput], outputs: [plexLanguageFixResolveOutput], predecessorJobs: ['plex-language-discover'], job: 'plex-language-resolve' },
+  'plex-language-evaluate': {
+    inputs: [plexLanguageFixDiscoverOutput, plexLanguageFixResolveOutput],
+    outputs: [plexLanguageFixEvaluateOutput],
+    predecessorJobs: ['plex-language-discover', 'plex-language-resolve'],
+    job: 'plex-language-evaluate',
+  },
+  'plex-language-apply': { inputs: [plexLanguageFixEvaluateOutput], outputs: [plexLanguageFixApplyOutput], predecessorJobs: ['plex-language-evaluate'], job: 'plex-language-apply' },
+};
+const plexLanguageFixStageIoOverall = {
+  inputs: [plexLanguageFixDiscoverOutput], outputs: [plexLanguageFixApplyOutput],
+  predecessorJobs: ['plex-language-discover'], outputJobs: ['plex-language-apply'], job: '__overall__',
+};
+
+// plex-profiles — single stage: plex-profiles-build.
+const plexProfilesMembers = [{ job_name: 'plex-profiles-build', depends_on: [] }];
+const plexProfilesWorkflowRun = workflowRun({ id: 'plex-profiles-run', workflow_name: 'plex-profiles' });
+const plexProfilesRunJobs = plexProfilesMembers.map((m, i) => run({
+  id: `plex-profiles-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-profiles-run',
+}));
+const plexProfilesOutput = { jobName: 'plex-profiles-build', itemKey: 'tmdb:1399', status: 'success', detail: { name: 'Game of Thrones', markdown: '/abs/data/out/game-of-thrones.md' } };
+const plexProfilesStageIo = {
+  'plex-profiles-build': { inputs: [], outputs: [plexProfilesOutput], predecessorJobs: [], job: 'plex-profiles-build' },
+};
+const plexProfilesStageIoOverall = {
+  inputs: [], outputs: [plexProfilesOutput], predecessorJobs: [], outputJobs: ['plex-profiles-build'], job: '__overall__',
+};
+
+// vercel-daily-redeploy — single stage: vercel-redeploy.
+const vercelDailyRedeployMembers = [{ job_name: 'vercel-redeploy', depends_on: [] }];
+const vercelDailyRedeployWorkflowRun = workflowRun({ id: 'vercel-daily-redeploy-run', workflow_name: 'vercel-daily-redeploy' });
+const vercelDailyRedeployRunJobs = vercelDailyRedeployMembers.map((m, i) => run({
+  id: `vercel-daily-redeploy-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'vercel-daily-redeploy-run',
+}));
+const vercelDailyRedeployOutput = { jobName: 'vercel-redeploy', itemKey: '2026-07-10', status: 'success', detail: { name: 'ryankrol.co.uk — production redeploy triggered' } };
+const vercelDailyRedeployStageIo = {
+  'vercel-redeploy': { inputs: [], outputs: [vercelDailyRedeployOutput], predecessorJobs: [], job: 'vercel-redeploy' },
+};
+const vercelDailyRedeployStageIoOverall = {
+  inputs: [], outputs: [vercelDailyRedeployOutput], predecessorJobs: [], outputJobs: ['vercel-redeploy'], job: '__overall__',
+};
+
+// tv-recommendations — tv-snapshot -> 8 rec branches -> tv-rec-merge -> tv-recs-notify.
+const tvRecommendationsMembers = [
+  { job_name: 'tv-snapshot', depends_on: [] },
+  { job_name: 'tv-rec-random-1', depends_on: ['tv-snapshot'] },
+  { job_name: 'tv-rec-random-2', depends_on: ['tv-snapshot'] },
+  { job_name: 'tv-rec-random-3', depends_on: ['tv-snapshot'] },
+  { job_name: 'tv-rec-creator', depends_on: ['tv-snapshot'] },
+  { job_name: 'tv-rec-canon', depends_on: ['tv-snapshot'] },
+  { job_name: 'tv-rec-thin-genre', depends_on: ['tv-snapshot'] },
+  { job_name: 'tv-rec-older-era', depends_on: ['tv-snapshot'] },
+  { job_name: 'tv-rec-world', depends_on: ['tv-snapshot'] },
+  {
+    job_name: 'tv-rec-merge',
+    depends_on: ['tv-rec-random-1', 'tv-rec-random-2', 'tv-rec-random-3', 'tv-rec-creator', 'tv-rec-canon', 'tv-rec-thin-genre', 'tv-rec-older-era', 'tv-rec-world'],
+  },
+  { job_name: 'tv-recs-notify', depends_on: ['tv-rec-merge'] },
+];
+const tvRecommendationsWorkflowRun = workflowRun({ id: 'tv-recommendations-run', workflow_name: 'tv-recommendations' });
+const tvRecommendationsRunJobs = tvRecommendationsMembers.map((m, i) => run({
+  id: `tv-recommendations-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'tv-recommendations-run',
+}));
+const tvSnapshotOutput = { jobName: 'tv-snapshot', itemKey: 'snapshot-2026-06', status: 'success', detail: { name: 'TV library snapshot — June 2026', showCount: 214 } };
+const tvRecBranchOutput = {
+  'tv-rec-random-1': { jobName: 'tv-rec-random-1', itemKey: '300', status: 'success', detail: { name: 'Severance', lens: 'random' } },
+  'tv-rec-random-2': { jobName: 'tv-rec-random-2', itemKey: '302', status: 'success', detail: { name: 'Dark', lens: 'random' } },
+  'tv-rec-random-3': { jobName: 'tv-rec-random-3', itemKey: '306', status: 'success', detail: { name: 'Money Heist', lens: 'random' } },
+  'tv-rec-creator': { jobName: 'tv-rec-creator', itemKey: '303', status: 'success', detail: { name: 'Fleabag', lens: 'creator' } },
+  'tv-rec-canon': { jobName: 'tv-rec-canon', itemKey: '307', status: 'success', detail: { name: 'The Wire', lens: 'canon' } },
+  'tv-rec-thin-genre': { jobName: 'tv-rec-thin-genre', itemKey: '308', status: 'success', detail: { name: 'Atlanta', lens: 'thin-genre' } },
+  'tv-rec-older-era': { jobName: 'tv-rec-older-era', itemKey: '312', status: 'success', detail: { name: 'Cheers', lens: 'older-era' } },
+  'tv-rec-world': { jobName: 'tv-rec-world', itemKey: '311', status: 'success', detail: { name: 'Babylon Berlin', lens: 'world-cinema' } },
+};
+const tvRecMergeOutput = { jobName: 'tv-rec-merge', itemKey: 'tv-recs-merged-2026-06', status: 'success', detail: { name: 'Merged TV recommendations — June 2026', count: 12 } };
+const tvRecsNotifyOutput = { jobName: 'tv-recs-notify', itemKey: '2026-06', status: 'success', detail: { name: 'TV recs digest — June 2026' } };
+const tvRecommendationsStageIo = {
+  'tv-snapshot': { inputs: [], outputs: [tvSnapshotOutput], predecessorJobs: [], job: 'tv-snapshot' },
+  ...Object.fromEntries(
+    Object.keys(tvRecBranchOutput).map((branch) => [
+      branch,
+      { inputs: [tvSnapshotOutput], outputs: [tvRecBranchOutput[branch]], predecessorJobs: ['tv-snapshot'], job: branch },
+    ]),
+  ),
+  'tv-rec-merge': {
+    inputs: Object.values(tvRecBranchOutput), outputs: [tvRecMergeOutput],
+    predecessorJobs: Object.keys(tvRecBranchOutput), job: 'tv-rec-merge',
+  },
+  'tv-recs-notify': { inputs: [tvRecMergeOutput], outputs: [tvRecsNotifyOutput], predecessorJobs: ['tv-rec-merge'], job: 'tv-recs-notify' },
+};
+const tvRecommendationsStageIoOverall = {
+  inputs: [tvSnapshotOutput], outputs: [tvRecsNotifyOutput],
+  predecessorJobs: ['tv-snapshot'], outputJobs: ['tv-recs-notify'], job: '__overall__',
+};
+
+// perfumes — find-url -> fetch -> parse -> build (linear, 4 stages).
+const perfumesMembers = [
+  { job_name: 'perfumes-find-url', depends_on: [] },
+  { job_name: 'perfumes-fetch', depends_on: ['perfumes-find-url'] },
+  { job_name: 'perfumes-parse', depends_on: ['perfumes-fetch'] },
+  { job_name: 'perfumes-build', depends_on: ['perfumes-parse'] },
+];
+const perfumesWorkflowRun = workflowRun({ id: 'perfumes-run', workflow_name: 'perfumes' });
+const perfumesRunJobs = perfumesMembers.map((m, i) => run({
+  id: `perfumes-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'perfumes-run',
+}));
+const perfumesFindUrlOutput = { jobName: 'perfumes-find-url', itemKey: 'p:1', status: 'success', detail: { name: 'Aventus', url: LONG_URL } };
+const perfumesFetchOutput = { jobName: 'perfumes-fetch', itemKey: 'p:1', status: 'success', detail: { name: 'Aventus', path: '/abs/data/out/raw/aventus.html', format: 'html' } };
+const perfumesParseOutput = { jobName: 'perfumes-parse', itemKey: 'p:1', status: 'success', detail: { name: 'Aventus', path: '/abs/data/out/parsed/aventus.json', format: 'json' } };
+const perfumesBuildOutput = { jobName: 'perfumes-build', itemKey: 'p:1', status: 'success', detail: { name: 'Aventus', markdown: '/abs/data/out/aventus.md' } };
+const perfumesStageIo = {
+  'perfumes-find-url': { inputs: [], outputs: [perfumesFindUrlOutput], predecessorJobs: [], job: 'perfumes-find-url' },
+  'perfumes-fetch': { inputs: [perfumesFindUrlOutput], outputs: [perfumesFetchOutput], predecessorJobs: ['perfumes-find-url'], job: 'perfumes-fetch' },
+  'perfumes-parse': { inputs: [perfumesFetchOutput], outputs: [perfumesParseOutput], predecessorJobs: ['perfumes-fetch'], job: 'perfumes-parse' },
+  'perfumes-build': { inputs: [perfumesParseOutput], outputs: [perfumesBuildOutput], predecessorJobs: ['perfumes-parse'], job: 'perfumes-build' },
+};
+const perfumesStageIoOverall = {
+  inputs: [perfumesFindUrlOutput], outputs: [perfumesBuildOutput],
+  predecessorJobs: ['perfumes-find-url'], outputJobs: ['perfumes-build'], job: '__overall__',
+};
+
 // Map an /api/* pathname (+ optional search params) to a fixture body.
 export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
@@ -607,6 +844,66 @@ export function fixtureFor(pathname, searchParams) {
     return singleStageStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/claude-warmer-run') return { run: singleStageWorkflowRun, jobs: singleStageRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/missing-tv-seasons-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return missingTvSeasonsStageIoOverall;
+    const job = searchParams?.get('job');
+    return missingTvSeasonsStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/missing-tv-seasons-run') return { run: missingTvSeasonsWorkflowRun, jobs: missingTvSeasonsRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/workouts-sync-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return workoutsSyncStageIoOverall;
+    const job = searchParams?.get('job');
+    return workoutsSyncStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/workouts-sync-run') return { run: workoutsSyncWorkflowRun, jobs: workoutsSyncRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/listening-digest-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return listeningDigestStageIoOverall;
+    const job = searchParams?.get('job');
+    return listeningDigestStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/listening-digest-run') return { run: listeningDigestWorkflowRun, jobs: listeningDigestRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/projects-sync-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return projectsSyncStageIoOverall;
+    const job = searchParams?.get('job');
+    return projectsSyncStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/projects-sync-run') return { run: projectsSyncWorkflowRun, jobs: projectsSyncRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/plex-space-saver-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return plexSpaceSaverStageIoOverall;
+    const job = searchParams?.get('job');
+    return plexSpaceSaverStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/plex-space-saver-run') return { run: plexSpaceSaverWorkflowRun, jobs: plexSpaceSaverRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/plex-language-fix-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return plexLanguageFixStageIoOverall;
+    const job = searchParams?.get('job');
+    return plexLanguageFixStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/plex-language-fix-run') return { run: plexLanguageFixWorkflowRun, jobs: plexLanguageFixRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/plex-profiles-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return plexProfilesStageIoOverall;
+    const job = searchParams?.get('job');
+    return plexProfilesStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/plex-profiles-run') return { run: plexProfilesWorkflowRun, jobs: plexProfilesRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/vercel-daily-redeploy-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return vercelDailyRedeployStageIoOverall;
+    const job = searchParams?.get('job');
+    return vercelDailyRedeployStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/vercel-daily-redeploy-run') return { run: vercelDailyRedeployWorkflowRun, jobs: vercelDailyRedeployRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/tv-recommendations-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return tvRecommendationsStageIoOverall;
+    const job = searchParams?.get('job');
+    return tvRecommendationsStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/tv-recommendations-run') return { run: tvRecommendationsWorkflowRun, jobs: tvRecommendationsRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/perfumes-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return perfumesStageIoOverall;
+    const job = searchParams?.get('job');
+    return perfumesStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/perfumes-run') return { run: perfumesWorkflowRun, jobs: perfumesRunJobs, logs, gates: [] };
   if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) {
     const job = searchParams?.get('job');
     if (job === 'places-enrich') return workflowIoScopedToEnrich;
@@ -643,6 +940,36 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/claude-warmer') {
     return { workflow: workflow({ name: 'claude-warmer', category: 'regular-maintenance', jobs: singleStageMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/missing-tv-seasons') {
+    return { workflow: workflow({ name: 'missing-tv-seasons', category: 'recommendations', jobs: missingTvSeasonsMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/workouts-sync') {
+    return { workflow: workflow({ name: 'workouts-sync', category: 'regular-maintenance', jobs: workoutsSyncMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/listening-digest') {
+    return { workflow: workflow({ name: 'listening-digest', category: 'regular-maintenance', jobs: listeningDigestMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/projects-sync') {
+    return { workflow: workflow({ name: 'projects-sync', category: 'regular-maintenance', jobs: projectsSyncMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/plex-space-saver') {
+    return { workflow: workflow({ name: 'plex-space-saver', category: 'regular-maintenance', jobs: plexSpaceSaverMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/plex-language-fix') {
+    return { workflow: workflow({ name: 'plex-language-fix', category: 'regular-maintenance', jobs: plexLanguageFixMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/plex-profiles') {
+    return { workflow: workflow({ name: 'plex-profiles', category: 'second-brain', jobs: plexProfilesMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/vercel-daily-redeploy') {
+    return { workflow: workflow({ name: 'vercel-daily-redeploy', category: 'regular-maintenance', jobs: vercelDailyRedeployMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/tv-recommendations') {
+    return { workflow: workflow({ name: 'tv-recommendations', category: 'recommendations', jobs: tvRecommendationsMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/perfumes') {
+    return { workflow: workflow({ name: 'perfumes', category: 'second-brain', jobs: perfumesMembers, gates: [] }) };
   }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
@@ -736,6 +1063,16 @@ export const PAGES = [
   { name: 'workflow-run-stocks-io',  path: '/workflow-runs/stocks',           waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-stock-digest', path: '/workflow-runs/stock-digest-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-claude-warmer', path: '/workflow-runs/claude-warmer-run', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-missing-tv-seasons', path: '/workflow-runs/missing-tv-seasons-run', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-workouts-sync',      path: '/workflow-runs/workouts-sync-run',      waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-listening-digest',   path: '/workflow-runs/listening-digest-run',   waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-projects-sync',      path: '/workflow-runs/projects-sync-run',      waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-plex-space-saver',   path: '/workflow-runs/plex-space-saver-run',   waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-plex-language-fix',  path: '/workflow-runs/plex-language-fix-run',  waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-plex-profiles',      path: '/workflow-runs/plex-profiles-run',      waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-vercel-daily-redeploy', path: '/workflow-runs/vercel-daily-redeploy-run', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-tv-recommendations', path: '/workflow-runs/tv-recommendations-run', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-perfumes',           path: '/workflow-runs/perfumes-run',           waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },
