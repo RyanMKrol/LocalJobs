@@ -27,10 +27,18 @@ if (!process.env.SEASON_CHECK_TEST_CHILD) {
 
 async function runChildAssertions(): Promise<void> {
   const { readFileSync, writeFileSync } = await import('node:fs');
-  const { syncService } = await import('../../../db/store.js');
+  const { getWorkItem, syncService, updateServiceLimits } = await import('../../../db/store.js');
+  const { registerService } = await import('../../../core/services.js');
   const { plexConfig } = await import('../config.js');
   const { ensureDirs } = await import('../lib.js');
   const { runSeasonCheck } = await import('./season-check.js');
+
+  // `callService('tmdb', ...)` only enforces quota if 'tmdb' is registered in the
+  // in-process service registry — normally done by loading the daemon's registry,
+  // which this standalone test never does. Register it here (unlimited by default)
+  // so Case 4 below can force a real quota via `updateServiceLimits`.
+  registerService({ name: 'tmdb' });
+  syncService({ name: 'tmdb' });
   type JobContext = import('../../../core/types.js').JobContext;
   type MissingSeasonsFile = import('../types.js').MissingSeasonsFile;
   type PlexShow = import('../types.js').PlexShow;
@@ -104,7 +112,22 @@ async function runChildAssertions(): Promise<void> {
     // Even though the run failed, the successful show's check was still persisted.
     const missing = readMissing();
     assert.equal(missing.unverifiable.length, 0);
-    console.log('  ✓ one bad show + one good show: run throws, good show still persisted');
+
+    // Both shows get a ledger row, chained back to stage 1's key via rootKey.
+    const failRow = getWorkItem('tmdb-season-check', String(FAIL_ID));
+    assert.ok(failRow, 'a ledger row is recorded for the errored show too');
+    assert.equal(failRow!.status, 'failed');
+    assert.equal(failRow!.root_key, String(FAIL_ID), 'rootKey chains to the same key stage 1 would use');
+    const failDetail = JSON.parse(failRow!.detail!);
+    assert.equal(failDetail.name, 'Fails');
+    assert.ok(typeof failDetail.error === 'string' && failDetail.error.length > 0, 'detail captures the error message');
+
+    const okRow = getWorkItem('tmdb-season-check', String(OK_ID));
+    assert.ok(okRow, 'a ledger row is recorded for the successful show');
+    assert.equal(okRow!.status, 'success');
+    assert.equal(okRow!.root_key, String(OK_ID));
+
+    console.log('  ✓ one bad show + one good show: run throws, good show still persisted, both ledgered');
   }
 
   // ── Case 2: all shows succeed → resolves normally. ──
@@ -117,7 +140,21 @@ async function runChildAssertions(): Promise<void> {
     } finally {
       global.fetch = originalFetch;
     }
-    console.log('  ✓ all-success case resolves without throwing');
+
+    const rowA = getWorkItem('tmdb-season-check', '9101');
+    assert.ok(rowA, 'a ledger row is recorded for the checked-successfully, nothing-missing outcome');
+    assert.equal(rowA!.status, 'success');
+    assert.equal(rowA!.root_key, '9101');
+    const detailA = JSON.parse(rowA!.detail!);
+    assert.equal(detailA.name, 'A');
+    assert.equal(detailA.tmdbStatus, 'Ended');
+    assert.deepEqual(detailA.completeMissingSeasons, [], 'nothing missing → empty list');
+
+    const rowB = getWorkItem('tmdb-season-check', '9102');
+    assert.ok(rowB, 'a ledger row is recorded for the second show too');
+    assert.equal(rowB!.status, 'success');
+
+    console.log('  ✓ all-success case resolves without throwing and ledgers both shows');
   }
 
   // ── Case 3: an unverifiable show (no tmdbId) alongside a successful one → THROWS (unverifiable blocks the run). ──
@@ -137,15 +174,32 @@ async function runChildAssertions(): Promise<void> {
     assert.match((threw as Error).message, /1 show\(s\) failed this run.*1 unverifiable/);
     const missing = readMissing();
     assert.equal(missing.unverifiable.length, 1, 'the unverifiable show is recorded in the output');
-    console.log('  ✓ unverifiable show blocks the run with clear messaging');
+
+    // The unverifiable show gets a 'failed' ledger row, keyed by its ratingKey (no tmdbId),
+    // chained via rootKey to the same key stage 1 would have used.
+    const noTmdbRow = getWorkItem('tmdb-season-check', 'n');
+    assert.ok(noTmdbRow, 'a ledger row is recorded for the unverifiable show');
+    assert.equal(noTmdbRow!.status, 'failed', 'reuses the failed status so it surfaces via the dashboard stuck-item infra');
+    assert.equal(noTmdbRow!.root_key, 'n');
+    const noTmdbDetail = JSON.parse(noTmdbRow!.detail!);
+    assert.equal(noTmdbDetail.name, 'No Tmdb');
+    assert.equal(noTmdbDetail.reason, 'no tmdb:// GUID');
+
+    const goodRow = getWorkItem('tmdb-season-check', '9201');
+    assert.ok(goodRow, 'the other, verifiable show is still ledgered as success');
+    assert.equal(goodRow!.status, 'success');
+
+    console.log('  ✓ unverifiable show blocks the run with clear messaging and is ledgered as failed');
   }
 
   // ── Case 4: the FIRST tmdb call hits the service's daily quota → soft-stop (break),
   // zero genuine failures → resolves normally. ──
   {
     writeSnapshot([show({ title: 'Quota Hit', tmdbId: 9301, ratingKey: 'q' })]);
-    // Force QuotaExceededError on the very first `tmdb` service call via a zero daily cap.
-    syncService({ name: 'tmdb', dailyCap: 0 });
+    // Force QuotaExceededError on the very first `tmdb` service call via a zero daily
+    // cap override (a plain `syncService` daily cap alone would NOT be enforced here —
+    // `effectiveLimits` only honours the DB value once `limits_overridden` is set).
+    updateServiceLimits('tmdb', { rate_per_minute: null, daily_cap: 0, monthly_cap: null, timeout_ms: null });
     const originalFetch = global.fetch;
     global.fetch = (async () => ({ ok: true, json: async () => seriesDetailJson() } as Response)) as typeof fetch;
     try {
@@ -153,9 +207,15 @@ async function runChildAssertions(): Promise<void> {
     } finally {
       global.fetch = originalFetch;
       // Restore the tmdb service to unlimited so it doesn't leak into other tests/processes.
-      syncService({ name: 'tmdb' });
+      updateServiceLimits('tmdb', { rate_per_minute: null, daily_cap: null, monthly_cap: null, timeout_ms: null });
     }
-    console.log('  ✓ quota-only case (soft-stop) resolves without throwing');
+
+    // The quota soft-stop breaks before the show is ever checked — it must NOT be
+    // recorded as a ledger row at all (it's neither succeeded nor genuinely failed;
+    // it's simply deferred to the next run, same as the pre-existing skip semantics).
+    assert.equal(getWorkItem('tmdb-season-check', '9301'), undefined, 'a quota soft-stop records no ledger row for the deferred show');
+
+    console.log('  ✓ quota-only case (soft-stop) resolves without throwing and ledgers nothing');
   }
 
   console.log('  ✓ season-check failure-tally tests passed');

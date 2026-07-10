@@ -4,10 +4,32 @@ import { markWorkItem } from '../../../db/store.js';
 import { plexConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
 import { buildShowSnapshots } from '../plex.js';
-import type { PlexEpisodeMeta, PlexShowMeta, SnapshotFile } from '../types.js';
+import type { PlexEpisodeMeta, PlexShow, PlexShowMeta, SnapshotFile } from '../types.js';
 
 interface PlexAllResponse<T> {
   MediaContainer?: { Metadata?: T[] };
+}
+
+/** Ledger key for one show: prefer the resolved tmdbId, else fall back to the Plex ratingKey. */
+export function snapshotItemKey(show: Pick<PlexShow, 'tmdbId' | 'ratingKey'>): string {
+  return String(show.tmdbId ?? show.ratingKey);
+}
+
+/**
+ * Record one work_items row per show, for dashboard Input/Output visibility (not
+ * skip-if-done idempotency — this stage re-scans fresh every run regardless).
+ * Extracted as its own function so it can be unit-tested without touching Plex.
+ */
+export function recordSnapshotLedger(shows: PlexShow[]): void {
+  for (const s of shows) {
+    markWorkItem('plex-tv-snapshot', snapshotItemKey(s), 'success', {
+      detail: {
+        name: s.title,
+        tmdbId: s.tmdbId,
+        highestOwnedSeason: s.highestOwnedSeason,
+      },
+    });
+  }
 }
 
 /**
@@ -52,16 +74,7 @@ export async function runSnapshot(ctx: JobContext): Promise<void> {
   writeJsonFile(plexConfig.snapshotOut, out);
 
   // Record each show in the ledger for dashboard Input/Output visibility.
-  for (const s of shows) {
-    const key = String(s.tmdbId ?? s.ratingKey);
-    markWorkItem('plex-tv-snapshot', key, 'success', {
-      detail: {
-        name: s.title,
-        tmdbId: s.tmdbId,
-        highestOwnedSeason: s.highestOwnedSeason,
-      },
-    });
-  }
+  recordSnapshotLedger(shows);
 
   ctx.progress(100, `${shows.length} shows snapshotted`);
   ctx.log(`Wrote ${plexConfig.snapshotOut}`);

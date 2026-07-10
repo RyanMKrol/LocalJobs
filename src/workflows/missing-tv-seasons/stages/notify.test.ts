@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { NOTIFY_JOB, buildDigest, pairKey, runNotify } from './notify.js';
 import type { MissingSeasonsFile } from '../types.js';
@@ -75,7 +75,12 @@ const backlog: MissingSeasonsFile = {
   assert.ok(isWorkItemDone(NOTIFY_JOB, pairKey(FUTURAMA, 8), 1));
   assert.ok(isWorkItemDone(NOTIFY_JOB, pairKey(FUTURAMA, 9), 1));
   assert.ok(isWorkItemDone(NOTIFY_JOB, pairKey(BRIDGERTON, 4), 1));
-  console.log('  ✓ first run digests the whole backlog and marks the ledger');
+  // Each pair's rootKey chains back to its show's tmdbId, so the dashboard's
+  // Inputs & Outputs panel can join stage 3's per-season rows to stage 1/2's per-show rows.
+  assert.equal(getWorkItem(NOTIFY_JOB, pairKey(FUTURAMA, 8))?.root_key, String(FUTURAMA));
+  assert.equal(getWorkItem(NOTIFY_JOB, pairKey(FUTURAMA, 9))?.root_key, String(FUTURAMA));
+  assert.equal(getWorkItem(NOTIFY_JOB, pairKey(BRIDGERTON, 4))?.root_key, String(BRIDGERTON));
+  console.log('  ✓ first run digests the whole backlog and marks the ledger, chained by rootKey');
 }
 
 // Run 2 — same backlog, nothing new → NO push sent.

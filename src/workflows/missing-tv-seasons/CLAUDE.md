@@ -58,6 +58,11 @@ row not yet `success` is newly-detected; only actionable (still-missing) pairs g
 all, so an "up to date" show never appears in the ledger. The first-ever run announces the whole
 current backlog in one digest.
 
+Stage 3's `markWorkItem` call also carries `rootKey: String(tmdbId)` (the same key stages 1–2 use
+for that show), so the dashboard's per-run Inputs & Outputs panel can chain a notified `(show,
+season)` pair all the way back through stage 2's per-show row to stage 1's — completing the lineage
+across all three stages.
+
 The owner can permanently silence a factual-but-unwanted gap via `ignoreSurfacedItem` (the same
 ignore-to-suppress mechanism `movie-recommendations`'s franchise-gaps/recs use) —
 `POST /api/missing-seasons/:tmdbId/:season/ignore` (plus bulk and unignore counterparts), surfaced on
