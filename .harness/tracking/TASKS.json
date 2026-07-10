@@ -10310,7 +10310,7 @@
     {
       "id": "T389",
       "title": "Retire the old joined IoPanel/workItemIoRows/GET .../io once every workflow runs on StageIoPanel",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T473"
       ],

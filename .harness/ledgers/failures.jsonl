@@ -69,3 +69,7 @@
 {"id":"T480","ts":"2026-07-10T06:12:36Z","kind":"empty-diff","rung":1,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"job","workType":"feature","risk":[]},"detail":""}
 {"id":"T480","ts":"2026-07-10T06:16:38Z","kind":"empty-diff","rung":2,"attempt":0,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"job","workType":"feature","risk":[]},"detail":""}
 {"id":"T480","ts":"2026-07-10T06:20:14Z","kind":"empty-diff","rung":2,"attempt":1,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"job","workType":"feature","risk":[]},"detail":""}
+{"id":"T389","ts":"2026-07-10T12:19:56Z","kind":"audit-fail","rung":0,"attempt":0,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"db","workType":"refactor","risk":["full-stack"]},"detail":""}
+{"id":"T389","ts":"2026-07-10T12:56:14Z","kind":"audit-fail","rung":0,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"db","workType":"refactor","risk":["full-stack"]},"detail":""}
+{"id":"T389","ts":"2026-07-10T14:44:21Z","kind":"audit-fail","rung":1,"attempt":0,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"db","workType":"refactor","risk":["full-stack"]},"detail":""}
+{"id":"T389","ts":"2026-07-10T15:30:04Z","kind":"audit-fail","rung":1,"attempt":1,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"db","workType":"refactor","risk":["full-stack"]},"detail":""}
