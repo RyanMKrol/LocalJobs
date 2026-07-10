@@ -204,13 +204,24 @@ export async function runGithubSync(
   ctx.log(`info: projects-sync complete — recorded ${done} out of ${entries.length} repos`);
 }
 
-/** Root stage inputKeys(): the repo ids in the last-written catalog. */
-export async function githubSyncInputKeys(): Promise<string[]> {
+/**
+ * Root stage inputKeys(): the repo ids GitHub reports RIGHT NOW, via a live API call —
+ * NOT a read-back of `data/out/projects.json`. This stage is the SAME stage that writes
+ * that catalog file, so reading it back is self-referential: a reset/fresh checkout with
+ * no catalog file yet would return `[]` and make every repo look "already complete" to the
+ * run-limit selector (T094), even though nothing has ever actually synced (T486).
+ */
+export async function githubSyncInputKeys(
+  fetchRepos: ReposFetcher = fetchAllRepos,
+): Promise<string[]> {
+  const username = process.env.GITHUB_USERNAME ?? '';
+  if (!username) return [];
+
+  const token = process.env.GITHUB_TOKEN ?? '';
+
   try {
-    const { readFileSync } = await import('fs');
-    const raw = readFileSync(projectsSyncConfig.catalogPath, 'utf-8');
-    const entries = JSON.parse(raw) as CatalogEntry[];
-    return repoIdsFromCatalog(entries);
+    const repos = await fetchRepos(username, token);
+    return repoIdsFromCatalog(filterAndSortRepos(repos).map(repoToCatalogEntry));
   } catch {
     return [];
   }

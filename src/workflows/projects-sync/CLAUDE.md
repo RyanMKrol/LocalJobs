@@ -15,6 +15,15 @@ The GitHub API call is rate/quota-gated through the `github` service via `callSe
 ONCE PER PAGE fetched (T424) — a multi-page catalog reserves one slot per request, not one for the
 whole paginated fetch.
 
+**`githubSyncInputKeys()` (the root-stage `inputKeys()`, T094) is a LIVE API call, not a read-back of
+`data/out/projects.json` (T486).** This stage is the SAME stage that writes that catalog file, so an
+earlier version that read it back to derive candidate roots was self-referential: on a fresh checkout
+or after a `data/` reset (no catalog file yet), it caught the read error and returned `[]` — making
+every repo look "already complete" to the limited-run root selector even though nothing had ever
+synced. It now calls `fetchAllRepos` (the same paginated fetcher + `callService('github', ...)` wrapper
+`runGithubSync` uses for its main sync) directly, filters/sorts identically, and derives the candidate
+repo-id list from that live response.
+
 ## Stage 2 — `project-summarize`
 
 Shallow-clones each cataloged repo into a gitignored `data/repos/<name>/` (pulling/resetting instead of

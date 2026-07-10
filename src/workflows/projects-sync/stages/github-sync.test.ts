@@ -15,6 +15,7 @@ import {
   repoToCatalogEntry,
   repoIdsFromCatalog,
   fetchAllRepos,
+  githubSyncInputKeys,
   type GitHubRepo,
   type CatalogEntry,
   type CatalogWriter,
@@ -196,6 +197,54 @@ describe('fetchAllRepos', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// githubSyncInputKeys — must be a LIVE API-derived candidate list, not a
+// read-back of data/out/projects.json (T486: that file is written by this
+// SAME stage, so reading it back is self-referential — a reset/fresh checkout
+// with no catalog file yet would wrongly report zero candidates).
+// ---------------------------------------------------------------------------
+
+describe('githubSyncInputKeys', () => {
+  beforeEach(() => {
+    process.env.GITHUB_USERNAME = 'testuser';
+    process.env.GITHUB_TOKEN = 'test-token';
+  });
+
+  it('returns repo ids from a live fetch, simulating a reset with no catalog file on disk', async () => {
+    // Simulate `data/out/projects.json` having been deleted (a fresh checkout / reset) by
+    // never touching the filesystem at all here — the old implementation would have caught
+    // an ENOENT and returned [].
+    const repos = [makeRepo({ id: uid() }), makeRepo({ id: uid() }), makeRepo({ id: uid(), fork: true })];
+    const keys = await githubSyncInputKeys(async () => repos);
+
+    assert.equal(keys.length, 2, 'excludes the forked repo, same filter as the real sync');
+    assert.deepEqual(keys.sort(), [String(repos[0].id), String(repos[1].id)].sort());
+  });
+
+  it('returns [] when GITHUB_USERNAME is not set, without attempting a fetch', async () => {
+    const saved = process.env.GITHUB_USERNAME;
+    delete process.env.GITHUB_USERNAME;
+    try {
+      let called = false;
+      const keys = await githubSyncInputKeys(async () => {
+        called = true;
+        return [];
+      });
+      assert.deepEqual(keys, []);
+      assert.equal(called, false);
+    } finally {
+      if (saved !== undefined) process.env.GITHUB_USERNAME = saved;
+    }
+  });
+
+  it('returns [] if the live fetch fails, rather than throwing', async () => {
+    const keys = await githubSyncInputKeys(async () => {
+      throw new Error('GitHub API error 500');
+    });
+    assert.deepEqual(keys, []);
   });
 });
 
