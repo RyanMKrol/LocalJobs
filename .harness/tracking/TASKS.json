@@ -13257,7 +13257,7 @@
     {
       "id": "T492",
       "title": "Retarget claude-warmer's schedule to 8am/4pm usage-window priming",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [

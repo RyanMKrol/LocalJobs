@@ -73,3 +73,7 @@
 {"id":"T389","ts":"2026-07-10T12:56:14Z","kind":"audit-fail","rung":0,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"db","workType":"refactor","risk":["full-stack"]},"detail":""}
 {"id":"T389","ts":"2026-07-10T14:44:21Z","kind":"audit-fail","rung":1,"attempt":0,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"db","workType":"refactor","risk":["full-stack"]},"detail":""}
 {"id":"T389","ts":"2026-07-10T15:30:04Z","kind":"audit-fail","rung":1,"attempt":1,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"db","workType":"refactor","risk":["full-stack"]},"detail":""}
+{"id":"T491","ts":"2026-07-10T16:42:46Z","kind":"empty-diff","rung":0,"attempt":0,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"ui","workType":"component","risk":[]},"detail":""}
+{"id":"T491","ts":"2026-07-10T16:53:56Z","kind":"empty-diff","rung":0,"attempt":1,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"ui","workType":"component","risk":[]},"detail":""}
+{"id":"T491","ts":"2026-07-10T16:55:03Z","kind":"empty-diff","rung":1,"attempt":0,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"ui","workType":"component","risk":[]},"detail":""}
+{"id":"T492","ts":"2026-07-10T19:58:48Z","kind":"empty-diff","rung":0,"attempt":0,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"job","workType":"config","risk":[]},"detail":""}
