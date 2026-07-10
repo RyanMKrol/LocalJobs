@@ -13012,7 +13012,7 @@
     {
       "id": "T484",
       "title": "Migrate places' resolveInputKeys() off the self-referential data/out/places.json read onto the fs service + shared CSV-parse helper",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T483"
       ],
