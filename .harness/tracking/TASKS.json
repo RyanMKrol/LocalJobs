@@ -12984,7 +12984,7 @@
     {
       "id": "T483",
       "title": "Create fs pseudo-service for local-file-backed root inputKeys()",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
