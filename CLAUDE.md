@@ -125,7 +125,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **workouts-sync** | `src/workflows/workouts-sync/` | Monthly Hevy workout ingestion + a 6-month progress report (Claude-narrated) |
 | **listening-digest** | `src/workflows/listening-digest/` | Monthly Last.fm top-albums/top-tracks digest — writes both a current-month AND a trailing-3-month markdown digest per run |
 | **projects-sync** | `src/workflows/projects-sync/` | Weekly GitHub repo catalog + a Claude-summarized markdown profile per project |
-| **claude-warmer** | `src/workflows/claude-warmer/` | Proactive Claude usage-window warmer, every 30 minutes |
+| **claude-warmer** | `src/workflows/claude-warmer/` | Proactive Claude usage-window warmer, twice daily at 08:00 and 16:00 |
 | **stocks-sync** | `src/workflows/stocks-sync/` | Daily Trading212 portfolio snapshot + gain-alert (strictly read-only) |
 | **stock-digest** | `src/workflows/stock-digest/` | Weekly Claude-narrated stock holdings/performance/sector digest |
 | **vercel-daily-redeploy** | `src/workflows/vercel-daily-redeploy/` | Daily safety-net production deploy trigger for the owner's separate `ryankrol.co.uk` site |
