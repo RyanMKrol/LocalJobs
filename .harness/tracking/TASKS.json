@@ -13209,7 +13209,7 @@
     {
       "id": "T490",
       "title": "Admin: remove type-to-confirm phrase gate on Delete all workflow output",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
