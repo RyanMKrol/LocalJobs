@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS workflows (
   notify_enabled          INTEGER NOT NULL DEFAULT 1, -- 1 = send the run-end aggregate push notification
   notify_enabled_overridden INTEGER NOT NULL DEFAULT 0, -- 1 = user edited notifyEnabled; code-sync preserves it
   notify_enabled_overridden_at TEXT,                  -- when the override was set (T475); NULL = never overridden, or overridden before this column existed
+  certified               INTEGER NOT NULL DEFAULT 0, -- plain user-set "reviewed & settled" flag (T497) — no code/manifest source, so unlike the above there is NO `_overridden` companion column and NO code-sync reconcile; toggle-only, purely informational
   created_at              TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

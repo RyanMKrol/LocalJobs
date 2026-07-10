@@ -641,6 +641,26 @@ doubt, log it.
   The `notify_enabled` + `notify_enabled_overridden` columns are added by
   `schema.sql` (fresh DBs, default `1` = ON) + an additive `ALTER TABLE` migration in
   `index.ts` (existing DBs, per the T098 rule — no index on the new columns).
+- **A workflow's `certified` flag is a plain user-set toggle — deliberately simpler
+  than the three above, no `_overridden` column at all (T497).** Unlike `schedule`/
+  `maxConcurrency`/`notifyEnabled`, `certified` has no code/manifest source to seed
+  from or reconcile against — it exists purely so the owner can mark a whole
+  workflow "reviewed & settled" (distinct from the harness's own per-task
+  reviewed/done overlays under `.harness/tracking/`) and stop re-reviewing its output
+  every session. `POST /api/workflows/:name/certify { certified }`
+  (`setWorkflowCertified` in `store.ts`) does a plain `UPDATE workflows SET
+  certified = ?` — no override flag to flip, no `_overridden_at` timestamp, and
+  `syncWorkflow`'s upsert never references `certified` at all, so a code-sync can
+  never reset it either way. It persists until manually un-set and is purely
+  informational: no functional, scheduling, or notification side effects. The API
+  validates the body is a boolean (else **400**) before it reaches the store; it's a
+  mutating endpoint behind the same loopback/token guard as `/toggle`, `/run`,
+  `/schedule`, `/concurrency`, `/notify`. `certified` is exposed on both
+  `GET /api/workflows` and `GET /api/workflows/:name` with no extra wiring — both
+  already spread the raw `WorkflowRow`. The `certified` column is added by
+  `schema.sql` (fresh DBs, default `0`) + an additive `ALTER TABLE` migration in
+  `index.ts` (existing DBs, per the T098 rule — no index on the column, and since
+  there's no `_overridden` companion column, no bootstrap-index trap either).
 - **A dashboard override is provisional, not a place to retire a value (T475).** Every
   `_overridden` flag above (service limits, workflow schedule/concurrency/notify, job
   timeout) exists so a dashboard edit can temporarily take ownership away from the

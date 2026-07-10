@@ -11,7 +11,7 @@ import {
   listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, stageIoLists, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
   serviceCallsThisMonth, serviceCallsToday, stuckCount, stuckItems, syncJob, syncWorkflow, syncService,
-  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, updateJobTimeout, getJob, usageThisMonth,
+  tryReserveMinInterval, tryReserveServiceSlot, unstickWorkItem, updateServiceLimits, updateWorkflowSchedule, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, setWorkflowCertified, updateJobTimeout, getJob, usageThisMonth,
   bulkUnstickItems, bulkIgnoreItems,
   deleteWorkflowCompletely, deleteJobCompletely, deleteServiceCompletely,
   recordServiceConsumer, listServiceConsumers,
@@ -172,6 +172,27 @@ console.log('  ✓ updateWorkflowConcurrency: set + max_concurrency_overridden r
   assert.equal(updateWorkflowNotifyEnabled('t-no-such-wf', false), undefined, 'unknown workflow → undefined');
 }
 console.log('  ✓ updateWorkflowNotifyEnabled: set + notify_enabled_overridden reconcile across sync (T285)');
+
+// ── plain user-set certified flag (T497): toggle-only, no code-sync reconcile ──
+{
+  syncWorkflow({ name: 't-certified', jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-certified')?.certified, 0, 'default certified 0 (not certified)');
+
+  const on = setWorkflowCertified('t-certified', true);
+  assert.equal(on?.certified, 1, 'setWorkflowCertified(true) sets certified = 1');
+
+  const off = setWorkflowCertified('t-certified', false);
+  assert.equal(off?.certified, 0, 'setWorkflowCertified(false) sets certified = 0');
+
+  // a re-sync must NOT touch/reset certified either way
+  setWorkflowCertified('t-certified', true);
+  syncWorkflow({ name: 't-certified', jobs: [{ job: 't-a' }] });
+  assert.equal(getWorkflow('t-certified')?.certified, 1, 'certified survives an unrelated re-sync');
+
+  // unknown workflow → undefined (no row touched)
+  assert.equal(setWorkflowCertified('t-no-such-wf', true), undefined, 'unknown workflow → undefined');
+}
+console.log('  ✓ setWorkflowCertified: toggle + survives code-sync untouched (T497)');
 
 // ── manifest-owned category (T292): always tracks the manifest, no override ──
 {

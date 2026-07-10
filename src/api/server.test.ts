@@ -435,6 +435,61 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   { const i = workflows.indexOf(notifyWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
+// ── plain user-set certified flag (T497): POST /api/workflows/:name/certify
+// validates (boolean) server-side, persists via setWorkflowCertified, and is
+// surfaced on both the GET detail and GET list payloads with no extra wiring
+// (both already spread the raw row). ──
+{
+  const certifyJob: JobDefinition = { name: 'certify-api-job', run: async () => {} };
+  syncJob(certifyJob); jobs.push(certifyJob);
+  const certifyWf: WorkflowDefinition = { name: 'certify-api-wf', jobs: [{ job: 'certify-api-job' }] };
+  syncWorkflow(certifyWf); workflows.push(certifyWf);
+
+  await test('certify: a valid value is accepted (200), persisted, surfaced on GET detail + list', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/certify-api-wf/certify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ certified: true }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(((await res.json()) as { certified: boolean }).certified, true);
+      assert.equal(getWorkflow('certify-api-wf')?.certified, 1, 'persisted to the DB');
+
+      const get = await fetch(`${base}/api/workflows/certify-api-wf`);
+      const wf = ((await get.json()) as { workflow: { certified?: number } }).workflow;
+      assert.equal(wf.certified, 1, 'certified surfaced on the workflow detail payload');
+
+      const list = await fetch(`${base}/api/workflows`);
+      const body = (await list.json()) as { workflows: { name: string; certified?: number }[] };
+      const row = body.workflows.find((w) => w.name === 'certify-api-wf');
+      assert.equal(row?.certified, 1, 'certified surfaced on the workflow list payload');
+    });
+  });
+
+  for (const bad of [1, 'x', null] as const) {
+    await test(`certify: a non-boolean value (${bad}) is rejected 400`, async () => {
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/workflows/certify-api-wf/certify`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ certified: bad }),
+        });
+        assert.equal(res.status, 400);
+        assert.match(((await res.json()) as { error?: string }).error ?? '', /boolean/);
+      });
+    });
+  }
+
+  await test('certify: unknown workflow → 404', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/__no_such_wf__/certify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ certified: true }),
+      });
+      assert.equal(res.status, 404);
+    });
+  });
+
+  { const i = jobs.indexOf(certifyJob); if (i >= 0) jobs.splice(i, 1); }
+  { const i = workflows.indexOf(certifyWf); if (i >= 0) workflows.splice(i, 1); }
+}
+
 // ── T291: GET /api/workflows (the list endpoint) must surface the EFFECTIVE
 // notify-enabled value (via effectiveWorkflowNotifyEnabled), computed the same
 // way the single-workflow detail endpoint already does, rather than omitting it

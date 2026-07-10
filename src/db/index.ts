@@ -146,6 +146,14 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec('ALTER TABLE jobs ADD COLUMN timeout_ms_overridden_at TEXT');
   }
 
+  // Additive migration: plain user-set "certified" flag on workflows (T497, per
+  // CLAUDE.md-T098). Unlike the overrides above, this has no code/manifest source
+  // to reconcile against, so there is no `_overridden` companion column and no
+  // index on it, so no bootstrap-index trap (T098).
+  if (!wfCols.some((c) => c.name === 'certified')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN certified INTEGER NOT NULL DEFAULT 0');
+  }
+
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
   migrateRenamePlexWorkflow(db);

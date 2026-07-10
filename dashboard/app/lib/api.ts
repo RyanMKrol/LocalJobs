@@ -80,6 +80,8 @@ export interface Workflow {
   notify_enabled_overridden?: number;
   /** Effective notify-enabled the next run will use — override / manifest / default true (T285). */
   effective_notify_enabled?: boolean;
+  /** Plain user-set "reviewed & settled" flag (T497) — no code/manifest source, toggle-only, purely informational. */
+  certified?: number;
   created_at: string;
   last_run: WorkflowRun | null;
   next_run: string | null;
@@ -573,6 +575,18 @@ export const api = {
     const data = (await res.json().catch(() => ({}))) as { error?: string; notify_enabled?: boolean };
     if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
     return data as { ok: boolean; notify_enabled: boolean };
+  },
+  // Persist a plain user-set "certified" flag on a workflow (T497) — no
+  // code/manifest source, so this is a toggle-only, purely informational setting.
+  updateWorkflowCertified: async (name: string, certified: boolean) => {
+    const res = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/certify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ certified }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; certified?: boolean };
+    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+    return data as { ok: boolean; certified: boolean };
   },
   // Persist a user override of a job's timeoutMs (T297) — mirrors
   // updateWorkflowSchedule/updateWorkflowConcurrency, but scoped to a job row.

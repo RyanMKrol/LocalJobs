@@ -57,6 +57,7 @@ import {
   updateWorkflowSchedule,
   updateWorkflowConcurrency,
   updateWorkflowNotifyEnabled,
+  setWorkflowCertified,
   stuckCount,
   stuckItems,
   unstickWorkItem,
@@ -1224,6 +1225,25 @@ export function createApiServer(
         }
         updateWorkflowNotifyEnabled(name, body.notifyEnabled);
         return json(res, 200, { ok: true, notify_enabled: body.notifyEnabled });
+      }
+
+      // POST /api/workflows/:name/certify  { certified }
+      // Persist a plain USER-set "reviewed & settled" flag on the workflow (T497) —
+      // distinct from the harness's own per-task reviewed/done overlays. Unlike the
+      // overrides above, this has no code/manifest source, so there is no
+      // `_overridden` reconcile — it's a toggle-only, purely informational flag with
+      // no functional/scheduling/notification side effects. The body MUST be a
+      // boolean — else 400. Unknown workflow → 404. Mutating, so it goes through the
+      // same loopback/token guard as /toggle, /run, /schedule, /concurrency, /notify.
+      if (method === 'POST' && parts[0] === 'api' && parts[1] === 'workflows' && parts[3] === 'certify') {
+        const name = parts[2];
+        if (!getWorkflow(name)) return json(res, 404, { error: 'workflow not found' });
+        const body = await readBody(req);
+        if (typeof body.certified !== 'boolean') {
+          return json(res, 400, { error: 'certified must be a boolean' });
+        }
+        setWorkflowCertified(name, body.certified);
+        return json(res, 200, { ok: true, certified: body.certified });
       }
 
       // POST /api/workflows/reset-output-all

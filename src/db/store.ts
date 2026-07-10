@@ -1159,6 +1159,7 @@ export interface WorkflowRow {
   notify_enabled: number;
   notify_enabled_overridden: number;
   notify_enabled_overridden_at: string | null;
+  certified: number;
   created_at: string;
 }
 
@@ -1221,6 +1222,20 @@ export function updateWorkflowNotifyEnabled(name: string, enabled: boolean): Wor
   const info = db
     .prepare("UPDATE workflows SET notify_enabled = ?, notify_enabled_overridden = 1, notify_enabled_overridden_at = datetime('now') WHERE name = ?")
     .run(enabled ? 1 : 0, name);
+  if (info.changes === 0) return undefined;
+  return getWorkflow(name);
+}
+
+/**
+ * Persist a plain USER-set "certified" flag on a workflow (T497) — a
+ * reviewed-and-settled marker distinct from the harness's own per-task overlays.
+ * Unlike `enabled`/`schedule`/`max_concurrency`/`notify_enabled`, this has no
+ * code/manifest source to reconcile against, so there is no `_overridden`
+ * companion column and `syncWorkflow`'s upsert never touches it. Returns the
+ * updated row, or undefined if the workflow doesn't exist (no row touched).
+ */
+export function setWorkflowCertified(name: string, certified: boolean): WorkflowRow | undefined {
+  const info = db.prepare('UPDATE workflows SET certified = ? WHERE name = ?').run(certified ? 1 : 0, name);
   if (info.changes === 0) return undefined;
   return getWorkflow(name);
 }

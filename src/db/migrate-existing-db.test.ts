@@ -228,6 +228,12 @@ test("workflows ends migrated: category column added (defaults '') (T292)", () =
   assert.equal(w.category, '', 'pre-existing workflow defaults to empty category (re-synced to manifest value at daemon start)');
 });
 
+test('workflows ends migrated: certified column added (defaults 0) (T497)', () => {
+  assert.ok(cols('workflows').includes('certified'), 'certified column added');
+  const w = migrated.prepare('SELECT certified FROM workflows WHERE name = ?').get('places') as { certified: number };
+  assert.equal(w.certified, 0, 'pre-existing workflow defaults to certified 0 (not certified)');
+});
+
 test("services ends migrated: rate_limit_source column added (defaults '') (T449)", () => {
   assert.ok(cols('services').includes('rate_limit_source'), 'rate_limit_source column added');
   const s = migrated.prepare('SELECT rate_limit_source FROM services WHERE name = ?').get('google-places') as {
