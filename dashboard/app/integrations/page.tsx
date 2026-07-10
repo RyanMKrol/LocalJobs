@@ -194,10 +194,6 @@ export default function Services() {
                         {s.paid ? <Pill kind="paid">paid</Pill> : <Pill kind="free">free</Pill>}
                         {s.limits_overridden ? <Pill title="Limits edited from the dashboard; preserved across code-sync"> edited</Pill> : null}
                         <div className="muted" style={{ fontSize: 12 }}>{s.description}</div>
-                        <div className="muted mono service-meta" style={{ fontSize: 11 }}>
-                          timeout: {s.timeout_ms == null || s.timeout_ms === 0 ? 'none' : `${s.timeout_ms}ms`}
-                          {s.rate_limit_source ? ` · source: ${s.rate_limit_source}` : ''}
-                        </div>
                       </td>
                       {isEditing ? (
                         <>
