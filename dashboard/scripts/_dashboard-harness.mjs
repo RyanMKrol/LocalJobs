@@ -129,77 +129,16 @@ const structuralGateDetail = {
   identical: true,
 };
 
-// Input → Output mapping rows for a workflow run (the IoPanel on the run detail page).
-// A places-style fan-out: a CID input resolves to a place_id whose terminal stage
-// produces a markdown profile. Exercises the markdown-output "View" affordance.
-const ioRow = (over) => ({
-  inputJob: 'places-resolve', inputKey: 'cid:' + LONG, inputStatus: 'success',
-  inputDetail: { name: 'A Resolved Place With A Long Name' },
-  outputJob: 'places-enrich-with-llm', outputKey: 'place:ChIJ' + LONG, outputStatus: 'success',
-  outputDetail: { name: 'A Resolved Place With A Long Name', markdown: '/abs/data/out/' + LONG + '.md' },
-  ...over,
-});
-const workflowIo = {
-  io: [
-    ioRow(),
-    ioRow({ inputKey: 'cid:second-place', outputKey: 'place:second', outputStatus: 'failed',
-            outputDetail: { name: 'A Place That Failed Enrichment' } }),
-    ioRow({ inputKey: 'cid:third-place', inputStatus: 'failed', outputJob: null, outputKey: null,
-            outputStatus: null, outputDetail: null, inputDetail: { name: 'A Place That Failed To Resolve' } }),
-  ],
-  firstWave: ['places-resolve'],
-  lastWave: ['places-enrich-with-llm'],
-  scoped: true,
-  emptyReason: null,
-  note: '',
-  selectedJob: null,
-  scopedProducerJobs: [],
-  scopedConsumerJobs: [],
-};
-
-// Job-scoped IO view (T314): `?job=places-enrich` re-scopes the mapping to that ONE
-// stage's own pairing (input = its predecessor's ledger row, output = its own ledger
-// row) — deliberately DIFFERENT rows/statuses from `workflowIo` above so a screenshot
-// visibly differs when a job pill is selected.
-const workflowIoScopedToEnrich = {
-  io: [
-    ioRow({ outputJob: 'places-enrich', outputKey: 'place:ChIJ' + LONG, outputStatus: 'success',
-            outputDetail: { name: 'A Resolved Place With A Long Name — enriched fields only' } }),
-    ioRow({ inputKey: 'cid:second-place', outputJob: 'places-enrich', outputKey: 'place:second',
-            outputStatus: 'success', outputDetail: { name: 'A Place Successfully Enriched (not yet LLM-summarized)' } }),
-    ioRow({ inputKey: 'cid:fourth-place', outputJob: 'places-enrich', outputKey: 'place:fourth',
-            outputStatus: 'failed', outputDetail: { name: 'Enrichment failed for this place' } }),
-  ],
-  firstWave: ['places-resolve'],
-  lastWave: ['places-enrich-with-llm'],
-  scoped: true,
-  emptyReason: null,
-  note: '',
-  selectedJob: 'places-enrich',
-  scopedProducerJobs: ['places-resolve'],
-  scopedConsumerJobs: ['places-enrich'],
-};
-
 // A run/stage that did no work (T258 noop detection) — settles 'skipped' instead of
 // 'success' so the dashboard reads "nothing to do", not a misleading green success.
-// Exercises T281's distinct skipped pill/label + the IO panel's "processed no new
-// items" empty state (no rows freshly shown as succeeded).
+// Exercises T281's distinct skipped pill/label.
 const workflowRunSkipped = workflowRun({
   id: 'skipped', status: 'skipped', progress: 100, progress_msg: 'nothing to do',
 });
 const membersSkipped = members.map((m, i) => run({
   id: `skipped-${i}`, job_name: m.job_name, status: 'skipped', workflow_run_id: 'skipped',
 }));
-const workflowIoSkipped = {
-  io: [], firstWave: ['places-resolve'], lastWave: ['places-enrich-with-llm'],
-  scoped: true, emptyReason: null, note: '',
-  selectedJob: null, scopedProducerJobs: [], scopedConsumerJobs: [],
-};
 
-// T350: a stocks-sync-shaped IO row — `detail.currentPrice`/`detail.averageBuyPrice`
-// (no `markdown`), landing on the INPUT side since `stocks-snapshot` is the DAG's first
-// wave. Exercises the generic price-pair rendering in the IO panel (distinct from every
-// other fixture above, which is places-shaped `{ name, markdown }`).
 const stocksMembers = [
   { job_name: 'stocks-snapshot', depends_on: [] },
   { job_name: 'stocks-watch', depends_on: ['stocks-snapshot'] },
@@ -209,30 +148,6 @@ const stocksWorkflowRun = workflowRun({ id: 'stocks', workflow_name: 'stocks-syn
 const stocksRunJobs = stocksMembers.map((m, i) => run({
   id: `stocks-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'stocks',
 }));
-const workflowIoStocks = {
-  io: [
-    ioRow({
-      inputJob: 'stocks-snapshot', inputKey: 'invest:AAPL', inputStatus: 'success',
-      inputDetail: { name: 'AAPL', currentPrice: 198.32, averageBuyPrice: 150.0 },
-      outputJob: 'stocks-notify', outputKey: 'invest:AAPL', outputStatus: 'success',
-      outputDetail: null,
-    }),
-    ioRow({
-      inputJob: 'stocks-snapshot', inputKey: 'isa:VUSA', inputStatus: 'success',
-      inputDetail: { name: 'VUSA', currentPrice: 82.1, averageBuyPrice: 90.5 },
-      outputJob: 'stocks-notify', outputKey: 'isa:VUSA', outputStatus: 'success',
-      outputDetail: null,
-    }),
-  ],
-  firstWave: ['stocks-snapshot'],
-  lastWave: ['stocks-notify'],
-  scoped: true,
-  emptyReason: null,
-  note: '',
-  selectedJob: null,
-  scopedProducerJobs: [],
-  scopedConsumerJobs: [],
-};
 
 // stock-digest — exercises StageIoPanel (decoupled inputs/outputs, T382 follow-up).
 // StageIoPanel is now (T386) the default for EVERY workflow's run-detail page, so this
@@ -811,16 +726,13 @@ export function fixtureFor(pathname, searchParams) {
   // Sub-routes must precede the generic `/api/workflow-runs/<id>` catch-all below.
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflow-runs/')) return gateInspection;
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflows/')) return structuralGateDetail;
-  if (pathname === '/api/workflow-runs/skipped/io') return workflowIoSkipped;
   if (pathname === '/api/workflow-runs/skipped') return { run: workflowRunSkipped, jobs: membersSkipped, logs, gates: [] };
-  if (pathname === '/api/workflow-runs/movie-recs-run/io') return workflowIoSkipped;
   if (pathname === '/api/workflow-runs/movie-recs-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return movieRecsStageIoOverall;
     const job = searchParams?.get('job');
     return movieRecsStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/movie-recs-run') return { run: movieRecsWorkflowRun, jobs: movieRecsRunJobs, logs, gates: movieRecsGates };
-  if (pathname === '/api/workflow-runs/stocks/io') return workflowIoStocks;
   if (pathname === '/api/workflow-runs/stocks/stage-io') {
     if (searchParams?.get('overall') === 'true') return stocksStageIoOverall;
     const job = searchParams?.get('job');
@@ -904,11 +816,6 @@ export function fixtureFor(pathname, searchParams) {
     return perfumesStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/perfumes-run') return { run: perfumesWorkflowRun, jobs: perfumesRunJobs, logs, gates: [] };
-  if (pathname.endsWith('/io') && pathname.startsWith('/api/workflow-runs/')) {
-    const job = searchParams?.get('job');
-    if (job === 'places-enrich') return workflowIoScopedToEnrich;
-    return workflowIo;
-  }
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
@@ -1237,10 +1144,10 @@ export const FLOWS = [
     },
   },
   {
-    // T386 follow-up to T314: `places` (a strictly-linear multi-stage workflow) now
-    // renders StageIoPanel instead of the old joined IoPanel — clicking a per-stage
-    // chip re-scopes the view to that ONE stage's own decoupled inputs/outputs.
-    name: 'io-panel-job-scoped',
+    // `places` (a strictly-linear multi-stage workflow) — clicking a per-stage
+    // chip on StageIoPanel re-scopes the view to that ONE stage's own decoupled
+    // inputs/outputs.
+    name: 'stage-io-job-scoped-places',
     path: '/workflow-runs/1',
     waitFor: ['.io-job-filter-bar'],
     actions: async (page) => {

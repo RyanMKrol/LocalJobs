@@ -167,18 +167,11 @@ tbody tr:hover { background: var(--panel-2); }
 .kv { display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; }
 .kv .k { color: var(--muted); }
 .muted { color: var(--muted); }
-/* Subtle caveat footnote under the Input→Output table (T139). */
-.io-footnote { color: var(--muted); font-size: 0.8em; margin: 0; padding: 8px 14px; border-top: 1px solid var(--border); display: flex; align-items: center; }
 /* Input→Output empty-state (T195) — muted, padded, centred placeholder. */
 .io-empty-state { color: var(--muted); font-size: 0.9em; text-align: center; padding: 24px 16px; margin: 0; }
 /* Boxed empty-state convention: a panel containing nothing but a single centred sentence — for "nothing here yet" states across the dashboard */
 .empty-state-panel { display: flex; align-items: center; justify-content: center; min-height: 96px; padding: 24px 16px; text-align: center; color: var(--muted); font-size: 0.9em; margin: 0; }
-/* IO table scroll container (T148) — height-capped, both-axis scroll, sticky header. */
-.io-table-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
-.io-table-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
-/* Remove last row's bottom border so hover flush-abuts the footnote border-top (T194). */
-.io-table-scroll tbody tr:last-child td { border-bottom: none; }
-/* IO state-filter chip bar (T226) */
+/* State-filter chip bar (T226) — shared by the Logs page's level filter (T312). */
 .io-filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 14px 0; }
 .io-filter-chip { background: none; border: 1px solid var(--border); border-radius: 20px; color: var(--muted); cursor: pointer; font-size: 0.8em; padding: 2px 10px; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .io-filter-chip:disabled { opacity: 0.38; cursor: default; }
@@ -193,11 +186,8 @@ tbody tr:hover { background: var(--panel-2); }
 .io-job-filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 12px 14px 0; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
 .io-job-filter-chip { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 0.8em; padding: 3px 10px; font-family: var(--font-mono, monospace); transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .io-job-filter-chip.active { background: rgba(88,166,255,.12); border-color: var(--accent); color: var(--accent); }
-/* Inline input→output state transition arrow (T226) */
-.io-state-arrow { margin-left: 4px; color: var(--muted); font-size: 0.88em; white-space: nowrap; }
-/* Decoupled per-stage inputs/outputs lists (stock-digest workflow-run page) — a
-   deliberate alternative to the joined io-* table above, for a workflow with a
-   genuine many-to-one aggregation stage a single joined row can't represent. */
+/* Decoupled per-stage inputs/outputs lists (stock-digest workflow-run page, now the
+   default panel every workflow's run page uses). */
 .stage-io-block { padding: 14px; margin-bottom: 12px; }
 .stage-io-block:last-child { margin-bottom: 0; }
 .stage-io-stage-name { margin: 0 0 10px; font-family: var(--font-mono, monospace); font-size: 0.95em; }

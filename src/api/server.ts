@@ -44,9 +44,7 @@ import {
   resetWorkflowOutput,
   serviceCacheCounts,
   clearServiceCache,
-  workItemIoRows,
   stageIoLists,
-  workflowHasRunLinkage,
   workItemMarkdownPath,
   workflowTerminalItems,
   type OutputItem,
@@ -1400,80 +1398,11 @@ export function createApiServer(
         return json(res, 200, { gate, produced, consumed, identical });
       }
 
-      // GET /api/workflow-runs/:id/io
-      // Run-scoped input→output mapping for a workflow run (T095, T139). Lists the
-      // originating inputs THIS run advanced (from the work_item_runs linkage) and
-      // resolves each one's output from the first/last-wave work_items. DB reads
-      // only — safe to poll. A run with no linkage (pre-feature or a re-run that
-      // advanced nothing new) returns an empty, honestly-explained result rather
-      // than dumping the global ledger.
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'io' && parts.length === 4) {
-        const run = getWorkflowRun(parts[2]);
-        if (!run) return json(res, 404, { error: 'workflow run not found' });
-        const refs = getWorkflowJobs(run.workflow_name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
-        let firstWave: string[] = [];
-        let lastWave: string[] = [];
-        let dependencies: Map<string, string[]> = new Map();
-        try {
-          const dag = buildDag(refs);
-          firstWave = dag.waves[0] ?? [];
-          lastWave = dag.waves[dag.waves.length - 1] ?? [];
-          dependencies = dag.dependencies;
-          // If the workflow is a single stage, first == last — show it as both input and output.
-        } catch {
-          return json(res, 200, {
-            io: [],
-            firstWave: [],
-            lastWave: [],
-            scoped: false,
-            emptyReason: null,
-            note: 'workflow DAG could not be parsed',
-            selectedJob: null,
-            scopedProducerJobs: [],
-            scopedConsumerJobs: [],
-          });
-        }
-        const jobParam = url.searchParams.get('job');
-        let producerJobs = firstWave;
-        let consumerJobs = lastWave;
-        if (jobParam != null) {
-          if (!refs.some((r) => r.job === jobParam)) {
-            return json(res, 400, { error: `unknown job "${jobParam}" for this workflow` });
-          }
-          const predecessors = dependencies.get(jobParam) ?? [];
-          if (predecessors.length === 0) {
-            producerJobs = [jobParam];
-            consumerJobs = [jobParam];
-          } else {
-            producerJobs = predecessors;
-            consumerJobs = [jobParam];
-          }
-        }
-        const { rows, scoped } = workItemIoRows(producerJobs, consumerJobs, run.id);
-        // Distinguish an old pre-feature run (workflow has NO linkage at all) from a
-        // re-run that simply advanced nothing new (the workflow HAS linkage elsewhere).
-        const emptyReason = scoped || rows.length > 0
-          ? null
-          : workflowHasRunLinkage(run.workflow_name) ? 'no-new' : 'pre-feature';
-        return json(res, 200, {
-          io: rows,
-          firstWave,
-          lastWave,
-          scoped,
-          emptyReason,
-          // Honest caveat shown as a footnote when there ARE rows.
-          note: 'One output is shown per input (fan-out is collapsed to its first output).',
-          selectedJob: jobParam ?? null,
-          scopedProducerJobs: jobParam != null ? producerJobs : [],
-          scopedConsumerJobs: jobParam != null ? consumerJobs : [],
-        });
-      }
-
       // GET /api/workflow-runs/:id/stage-io?job=<job>
-      // Decoupled inputs/outputs for ONE stage of a run — an alternative to /io's
-      // joined-by-root_key table (added for stock-digest's workflow-run page, which
-      // has a genuine many-to-one aggregation stage that a single joined row can't
-      // represent honestly). Returns the stage's own work_items rows this run as
+      // Decoupled inputs/outputs for ONE stage of a run (added for stock-digest's
+      // workflow-run page, which has a genuine many-to-one aggregation stage that a
+      // single joined row can't represent honestly; now the panel every workflow's
+      // run page uses). Returns the stage's own work_items rows this run as
       // `outputs` and its direct predecessor(s)' rows this run as `inputs`, with NO
       // attempt to pair them 1:1 — a real 9-row fan-out stays 9 rows. DB reads only.
       if (method === 'GET' && parts[0] === 'api' && parts[1] === 'workflow-runs' && parts[3] === 'stage-io' && parts.length === 4) {

@@ -177,40 +177,6 @@ export interface StructuralGateDetail {
   identical: boolean;
 }
 
-/** One row in the run-scoped input→output mapping for a workflow run (T095, T139). */
-export interface IoRow {
-  inputJob: string;
-  inputKey: string;
-  inputStatus: string;
-  /** Arbitrary JSON detail recorded by the job; may contain `name` for display. */
-  inputDetail: Record<string, unknown> | null;
-  outputJob: string | null;
-  outputKey: string | null;
-  outputStatus: string | null;
-  outputDetail: Record<string, unknown> | null;
-}
-
-/** Response from GET /api/workflow-runs/:id/io */
-export interface WorkflowIo {
-  io: IoRow[];
-  firstWave: string[];
-  lastWave: string[];
-  /** True when the rows are scoped to the items THIS run advanced (T139). */
-  scoped: boolean;
-  /**
-   * Why the mapping is empty when not scoped (T139): `no-new` = this run advanced
-   * nothing new; `pre-feature` = an old run created before per-run IO was recorded.
-   */
-  emptyReason: 'no-new' | 'pre-feature' | null;
-  note: string;
-  /** Set when the `?job=` param scoped this response to one stage's own pairing (T314). */
-  selectedJob: string | null;
-  /** The stage(s) whose ledger rows supply the Input column when `selectedJob` is set. */
-  scopedProducerJobs: string[];
-  /** The stage(s) whose ledger rows supply the Output column when `selectedJob` is set. */
-  scopedConsumerJobs: string[];
-}
-
 /** One row in a decoupled stage inputs/outputs list (GET /api/workflow-runs/:id/stage-io). */
 export interface StageIoItem {
   jobName: string;
@@ -220,11 +186,12 @@ export interface StageIoItem {
 }
 
 /**
- * Response from GET /api/workflow-runs/:id/stage-io?job=<job> — an alternative to
- * WorkflowIo's joined-by-root_key table: two independent, un-paired lists (a stage's
- * own rows this run as `outputs`, its direct predecessor(s)' rows this run as
- * `inputs`). Added for stock-digest's workflow-run page, which has a genuine
- * many-to-one aggregation stage a single joined row can't represent honestly.
+ * Response from GET /api/workflow-runs/:id/stage-io?job=<job> — two independent,
+ * un-paired lists (a stage's own rows this run as `outputs`, its direct
+ * predecessor(s)' rows this run as `inputs`). Added for stock-digest's
+ * workflow-run page, which has a genuine many-to-one aggregation stage a single
+ * joined row can't represent honestly, and is now the panel every workflow's
+ * run page uses.
  */
 export interface StageIo {
   inputs: StageIoItem[];
@@ -550,8 +517,6 @@ export const api = {
     get<StructuralGateDetail>(
       `/api/workflows/${encodeURIComponent(name)}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
     ),
-  workflowRunIo: (id: string, job?: string) =>
-    get<WorkflowIo>(`/api/workflow-runs/${id}/io${job ? `?job=${encodeURIComponent(job)}` : ''}`),
   workflowRunStageIo: (id: string, job: string) =>
     get<StageIo>(`/api/workflow-runs/${id}/stage-io?job=${encodeURIComponent(job)}`),
   workflowRunStageIoOverall: (id: string) =>

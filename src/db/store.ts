@@ -659,120 +659,7 @@ export function selectPendingRoots(
   return selected;
 }
 
-/**
- * Input→output mapping between two sets of stages in a workflow (T095, T139, T313).
- *
- * Callers pick which stages to join: either the whole workflow's first/last wave
- * (the default overview panel), or — for inspecting one intermediate stage — that
- * stage's direct predecessor(s) as "producer" and the stage itself as "consumer"
- * (a stage with no predecessors self-pairs: producer == consumer == that stage).
- * This function itself is agnostic to wave semantics; it just joins whichever
- * `producerJobs`' ledger rows to whichever `consumerJobs`' ledger rows by root_key.
- *
- * When `workflowRunId` is given the mapping is genuinely RUN-SCOPED: it lists only
- * the originating roots THIS run advanced (from the `work_item_runs` linkage —
- * recorded by {@link markWorkItem}), then resolves each root's input (first-wave
- * ledger row) and output (last-wave ledger row) from the cumulative `work_items`
- * ledger. Resolving outputs from the ledger means an output produced in an EARLIER
- * run still shows for a root this run touched. If the run has NO linkage rows (an
- * OLD run created before this feature, or a re-run that advanced nothing new) the
- * result is empty with `scoped: false` — it does NOT fall back to the global ledger.
- *
- * With NO `workflowRunId` (or `null`) it keeps the legacy un-scoped behaviour:
- * every first-wave input joined to its output by root_key, `scoped: false`.
- *
- * Fan-out (1 input → many outputs) is collapsed to the first matching output.
- * For the example workflows (perfumes: all stages share item_key; places: later
- * stages use root_key = CID from the first stage) this join is exact.
- */
-export interface IoRow {
-  inputJob: string;
-  inputKey: string;
-  inputStatus: string;
-  inputDetail: unknown;
-  outputJob: string | null;
-  outputKey: string | null;
-  outputStatus: string | null;
-  outputDetail: unknown;
-}
-
-export interface IoResult {
-  rows: IoRow[];
-  /** True when the rows are scoped to a specific run's advanced items. */
-  scoped: boolean;
-}
-
 type LedgerRow = { job_name: string; item_key: string; status: string; detail: string | null; root_key: string | null };
-
-function toIoRow(input: LedgerRow | undefined, out: LedgerRow | undefined, rootFallback: string, firstJob: string): IoRow {
-  return {
-    inputJob: input?.job_name ?? firstJob,
-    inputKey: input?.item_key ?? rootFallback,
-    inputStatus: input?.status ?? 'unknown',
-    inputDetail: input?.detail != null ? (JSON.parse(input.detail) as unknown) : null,
-    outputJob: out?.job_name ?? null,
-    outputKey: out?.item_key ?? null,
-    outputStatus: out?.status ?? null,
-    outputDetail: out?.detail != null ? (JSON.parse(out.detail) as unknown) : null,
-  };
-}
-
-export function workItemIoRows(
-  firstWaveJobs: string[],
-  lastWaveJobs: string[],
-  workflowRunId?: string | null,
-): IoResult {
-  if (firstWaveJobs.length === 0) return { rows: [], scoped: false };
-
-  // Build a root_key → first matching output map from the last wave (cumulative).
-  const outputByRoot = new Map<string, LedgerRow>();
-  if (lastWaveJobs.length > 0) {
-    const ph2 = lastWaveJobs.map(() => '?').join(',');
-    const outputs = db.prepare(
-      `SELECT job_name, item_key, status, detail, root_key FROM work_items WHERE job_name IN (${ph2}) ORDER BY item_key`,
-    ).all(...lastWaveJobs) as LedgerRow[];
-    for (const o of outputs) {
-      const rk = o.root_key ?? o.item_key;
-      if (!outputByRoot.has(rk)) outputByRoot.set(rk, o);
-    }
-  }
-
-  const ph1 = firstWaveJobs.map(() => '?').join(',');
-
-  // Run-scoped (T139): only the roots THIS run advanced.
-  if (workflowRunId != null) {
-    const roots = db.prepare(
-      'SELECT DISTINCT root_key FROM work_item_runs WHERE workflow_run_id = ? AND root_key IS NOT NULL ORDER BY root_key',
-    ).all(workflowRunId) as { root_key: string }[];
-    if (roots.length === 0) return { rows: [], scoped: false };
-
-    // Resolve each root's first-wave input row from the cumulative ledger.
-    const inputByRoot = new Map<string, LedgerRow>();
-    const firstInputs = db.prepare(
-      `SELECT job_name, item_key, status, detail, root_key FROM work_items WHERE job_name IN (${ph1}) ORDER BY item_key`,
-    ).all(...firstWaveJobs) as LedgerRow[];
-    for (const i of firstInputs) {
-      const rk = i.root_key ?? i.item_key;
-      if (!inputByRoot.has(rk)) inputByRoot.set(rk, i);
-    }
-
-    const rows: IoRow[] = [];
-    for (const { root_key: root } of roots) {
-      const input = inputByRoot.get(root);
-      const out = outputByRoot.get(root);
-      if (!input && !out) continue; // root with neither input nor output ledger row — skip
-      rows.push(toIoRow(input, out, root, firstWaveJobs[0]));
-    }
-    return { rows, scoped: true };
-  }
-
-  // Legacy un-scoped: every first-wave input joined to its output by root_key.
-  const inputs = db.prepare(
-    `SELECT job_name, item_key, status, detail, root_key FROM work_items WHERE job_name IN (${ph1}) ORDER BY item_key`,
-  ).all(...firstWaveJobs) as LedgerRow[];
-  const rows = inputs.map((r) => toIoRow(r, outputByRoot.get(r.item_key), r.item_key, firstWaveJobs[0]));
-  return { rows, scoped: false };
-}
 
 /** A single work-item ledger row, as shown in a decoupled inputs/outputs list. */
 export interface StageIoItem {
@@ -797,14 +684,14 @@ function toStageIoItem(r: LedgerRow): StageIoItem {
 }
 
 /**
- * Decoupled inputs/outputs for a set of stages of ONE workflow run (a deliberate
- * alternative to {@link workItemIoRows}'s joined-by-root_key table, added for
- * `stock-digest` — see its workflow-run page). Rather than pairing each input
- * to "the first matching output by root_key" (which silently collapses genuine
- * fan-out/fan-in to one row and looks confusing for a many-to-one aggregation
- * stage), this returns TWO independent, un-paired lists:
+ * Decoupled inputs/outputs for a set of stages of ONE workflow run (added for
+ * `stock-digest` — see its workflow-run page, now the panel every workflow's run
+ * page uses). Rather than pairing each input to "the first matching output by
+ * root_key" (which silently collapses genuine fan-out/fan-in to one row and looks
+ * confusing for a many-to-one aggregation stage), this returns TWO independent,
+ * un-paired lists:
  *  - `outputs`: every `work_items` row any of `outputJobNames` recorded THIS run
- *    (via the `work_item_runs` linkage — same run-scoping `workItemIoRows` uses).
+ *    (via the `work_item_runs` linkage).
  *  - `inputs`: every `work_items` row any of `inputJobNames` recorded THIS run.
  * Neither list tries to line up with the other — a genuine 9-ticker output
  * list and a genuine 1-item input list are both shown in full, honestly.

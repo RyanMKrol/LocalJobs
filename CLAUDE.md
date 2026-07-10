@@ -749,16 +749,13 @@ doubt, log it.
     workflow run — it reads the run id from its optional `workflowRunId` param,
     defaulting to `process.env.LOCALJOBS_WORKFLOW_RUN_ID` (set by the executor for
     every child), so existing call sites are UNCHANGED and a standalone run records
-    nothing. This powers the **genuinely run-scoped** workflow-run Input→Output
-    panel: `workItemIoRows(first, last, runId)` lists ONLY the roots that run
-    advanced (resolving each one's input + output from the cumulative ledger), and
-    returns `{ rows, scoped }`. A run with NO linkage (an OLD run created before
-    this feature, or a re-run that advanced nothing new) returns empty + `scoped:
-    false` — it does NOT fall back to dumping the global ledger; the API
-    distinguishes the two cases via `workflowHasRunLinkage(name)` (workflow has
-    linkage elsewhere → "processed no new items"; none at all → "pre-feature").
-    Being a brand-new table, its index lives in `schema.sql` (the columns exist on
-    creation for fresh AND existing DBs, so it does NOT hit the T098 trap).
+    nothing. This powers the **genuinely run-scoped** workflow-run Inputs & Outputs
+    panel: `stageIoLists(outputJobNames, inputJobNames, runId)` (T386, superseding
+    the original T139 `workItemIoRows` joined-table function, removed in T389)
+    lists every ledger row THIS run recorded for the given stage(s), as two
+    independent, un-paired lists — see the `<StageIoPanel>` entry above. Being a
+    brand-new table, `work_item_runs`' index lives in `schema.sql` (the columns
+    exist on creation for fresh AND existing DBs, so it does NOT hit the T098 trap).
   - **The FIRST stage owns the per-item list (convention).** A multi-stage
     workflow's first stage must record the canonical per-item work-item list that
     the rest of the pipeline keys on — one `markWorkItem` per input item, keyed by
@@ -1270,23 +1267,21 @@ doubt, log it.
     `MarkdownOutputBody`/`parseFrontmatter` copy since `MarkdownModal` is a full modal
     wrapper, not just a body) — do not re-implement the popover chrome per component.
   - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`, T382 →
-    T386 → T458) — the workflow-run page's Inputs & Outputs panel. Originally a
-    workflow-scoped ALTERNATIVE to a generic joined `IoPanel`, for workflows with a
-    genuine fan-out/fan-in shape a single "input → output" row can't represent
-    honestly (see `stock-digest.workflow.ts`'s file comment) — but **T386 made it
-    the default for EVERY workflow's run page**, not just `stock-digest`. Renders
-    one block per DAG member with two independent, un-paired lists (its
-    predecessor(s)' ledger rows this run as Inputs, its own ledger rows this run as
-    Outputs — the lists are never forced into a 1:1 join, so a genuine many-to-one
-    or one-to-many stage shows every row honestly, not just a representative one),
-    backed by `GET /workflow-runs/:id/stage-io` → `stageIoLists` in
-    `src/db/store.ts`. The older per-workflow gate (`run?.workflow_name ===
-    'stock-digest'`) and the generic joined `IoPanel` it used to fall back to are
-    GONE from `workflow-runs/[id]/page.tsx`'s render path — `IoPanel` is still
-    defined in that file but is now unreferenced dead code, left over from before
-    T386 (a candidate for a future cleanup, not removed here). Every new workflow
-    gets this same honest, un-paired treatment automatically; there is no
-    per-workflow opt-in to make.
+    T386 → T389 → T458) — the workflow-run page's ONLY Inputs & Outputs panel.
+    Originally built for workflows with a genuine fan-out/fan-in shape a single
+    "input → output" row can't represent honestly (see `stock-digest.workflow.ts`'s
+    file comment), **T386 made it the default for EVERY workflow's run page**, not
+    just `stock-digest`, and **T389 deleted the old generic joined `IoPanel`
+    entirely** (component, its `workItemIoRows` store function, and the
+    `GET /workflow-runs/:id/io` endpoint) — `StageIoPanel` is no longer an
+    alternative to anything, it's the only mechanism. Renders one block per DAG
+    member with two independent, un-paired lists (its predecessor(s)' ledger rows
+    this run as Inputs, its own ledger rows this run as Outputs — the lists are
+    never forced into a 1:1 join, so a genuine many-to-one or one-to-many stage
+    shows every row honestly, not just a representative one), backed by
+    `GET /workflow-runs/:id/stage-io` → `stageIoLists` in `src/db/store.ts`. Every
+    new workflow gets this same honest, un-paired treatment automatically; there
+    is no per-workflow opt-in to make.
   - **`<IgnoredSection>`** (`dashboard/app/components/IgnoredSection.tsx`, T390) —
     the "Ignored (N)" panel used by `TvRecsManager`/`MovieRecsManager`/
     `MovieGapsManager`/`MissingSeasonsManager` on `workflows/[name]/page.tsx`. Owns
