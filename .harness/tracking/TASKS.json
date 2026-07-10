@@ -12723,7 +12723,7 @@
     {
       "id": "T475",
       "title": "Build periodic audit workflow surfacing dashboard overrides stable 2+ weeks as candidates for code fold-back",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
