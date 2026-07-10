@@ -5,14 +5,12 @@ import Link from 'next/link';
 import { api } from '../lib/api';
 import { Pill } from '../components/Pill';
 
-const CONFIRM_PHRASE = 'DELETE ALL OUTPUT';
 const DEFAULT_RUN_ALL_LIMIT = 3;
 
 type ResetAllResult = Awaited<ReturnType<typeof api.resetAllWorkflowsOutput>>;
 type RunAllResult = Awaited<ReturnType<typeof api.runAllWorkflows>>;
 
 export default function AdminPage() {
-  const [confirmText, setConfirmText] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ResetAllResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -23,17 +21,13 @@ export default function AdminPage() {
   const [runAllResult, setRunAllResult] = useState<RunAllResult | null>(null);
   const [runAllErr, setRunAllErr] = useState<string | null>(null);
 
-  const canDelete = confirmText === CONFIRM_PHRASE;
-
   async function deleteAllOutput() {
-    if (!canDelete) return;
     setBusy(true);
     setResult(null);
     setErr(null);
     try {
       const r = await api.resetAllWorkflowsOutput();
       setResult(r);
-      setConfirmText('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -187,25 +181,11 @@ export default function AdminPage() {
           re-processes everything from scratch on its next run.
         </p>
 
-        <label htmlFor="admin-confirm-input" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>
-          Type <code className="mono">{CONFIRM_PHRASE}</code> to confirm:
-        </label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            id="admin-confirm-input"
-            className="mono"
-            type="text"
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            placeholder={CONFIRM_PHRASE}
-            disabled={busy}
-            style={{ flex: '1 1 260px', minWidth: 0 }}
-          />
           <button
             className="btn btn-danger"
             onClick={deleteAllOutput}
-            disabled={!canDelete || busy}
-            title={canDelete ? undefined : `Type "${CONFIRM_PHRASE}" exactly to enable this button`}
+            disabled={busy}
           >
             {busy ? 'Deleting…' : 'Delete all workflow output'}
           </button>

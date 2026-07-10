@@ -1007,18 +1007,6 @@ export const PAGES = [
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
   {
-    // T323: the Admin page's fleet-wide delete requires typing an exact confirmation
-    // phrase before the destructive button enables — confirms both the disabled and
-    // the enabled/dangerous states are visually distinct.
-    name: 'admin-confirm-typed',
-    path: '/admin',
-    waitFor: ['#admin-confirm-input'],
-    actions: async (page) => {
-      await page.fill('#admin-confirm-input', 'DELETE ALL OUTPUT');
-      await page.waitForTimeout(200);
-    },
-  },
-  {
     // T397: the Admin page's fleet-wide "Run all workflows" action reveals an inline
     // confirm panel (Confirm/Cancel) before dispatching — confirms it's visibly
     // distinct from the collapsed button state.
