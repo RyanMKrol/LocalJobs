@@ -90,6 +90,7 @@ const CATEGORY_GROUPS = [
   { key: 'cli-tool', label: 'CLI tools' },
   { key: 'website-scrape', label: 'Website scrapes' },
   { key: 'api', label: 'APIs' },
+  { key: 'local', label: 'Local' },
   { key: 'uncategorized', label: 'Uncategorized' },
 ] as const;
 
