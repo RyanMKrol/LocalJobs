@@ -13895,6 +13895,280 @@
         "workType": "docs",
         "risk": []
       }
+    },
+    {
+      "id": "T518",
+      "title": "Decide which Claude-using jobs can drop to a cheaper model/effort",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": "needs-human",
+      "tags": [
+        "claude",
+        "cost",
+        "model-selection",
+        "needs-human"
+      ],
+      "scope": [],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T518.md"
+    },
+    {
+      "id": "T519",
+      "title": "plex-space-saver: alert on a significant library size DROP (shrink guard)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex",
+        "plex-space-saver",
+        "alert"
+      ],
+      "scope": [
+        "src/workflows/plex-space-saver/stages/scan.ts",
+        "src/workflows/plex-space-saver/config.ts",
+        "src/workflows/plex-space-saver/lib.ts",
+        "src/workflows/plex-space-saver/types.ts",
+        "src/workflows/plex-space-saver/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T519.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T520",
+      "title": "Fold /admin-cache into /admin (one admin page)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "admin"
+      ],
+      "scope": [
+        "dashboard/app/admin/page.tsx",
+        "dashboard/app/admin-cache/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T520.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T521",
+      "title": "Show certified medal badge on the Overview page",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard"
+      ],
+      "scope": [
+        "dashboard/app/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T521.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T522",
+      "title": "Show usage for no-limit services on Integrations page",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "services"
+      ],
+      "scope": [
+        "dashboard/app/integrations/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T522.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T523",
+      "title": "Optimistic 'Started…' Run button state",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard"
+      ],
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T523.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T524",
+      "title": "Fix B08: an escaped exception permanently wedges a workflow",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "core",
+        "bugfix",
+        "reliability"
+      ],
+      "scope": [
+        "src/core/workflow-executor.ts",
+        "src/core/dag.ts",
+        "src/core/workflow-executor.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T524.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "bugfix",
+        "risk": [
+          "touches-executor"
+        ]
+      }
+    },
+    {
+      "id": "T525",
+      "title": "Fix B09: crash-proof the daemon (cron/global-handler/stream throws)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "core",
+        "bugfix",
+        "reliability"
+      ],
+      "scope": [
+        "src/core/scheduler.ts",
+        "src/daemon.ts",
+        "src/core/executor.ts",
+        "src/core/scheduler.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T525.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "bugfix",
+        "risk": [
+          "touches-executor"
+        ]
+      }
+    },
+    {
+      "id": "T526",
+      "title": "Fix B01: reset-output walks data/ trees (silent no-op + stale-code exec)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "api",
+        "bugfix",
+        "reset-output"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T526.md",
+      "facets": {
+        "layer": "api",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T527",
+      "title": "Fix B11: tv-recs-notify marks recs notified on failed push",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "tv-recs",
+        "bugfix",
+        "notify"
+      ],
+      "scope": [
+        "src/workflows/tv-recs/stages/tv-recs-notify.ts",
+        "src/workflows/tv-recs/stages/tv-recs-notify.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T527.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T528",
+      "title": "Fix B12: stocks breach alert ledger marked pre-send, push result ignored",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "stocks-sync",
+        "bugfix",
+        "notify"
+      ],
+      "scope": [
+        "src/workflows/stocks-sync/stages/stocks-watch.ts",
+        "src/workflows/stocks-sync/stages/stocks-notify.ts",
+        "src/workflows/stocks-sync/stages/stocks-watch.test.ts",
+        "src/workflows/stocks-sync/stages/stocks-notify.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T528.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
     }
   ]
 }
