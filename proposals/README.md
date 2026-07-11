@@ -32,7 +32,8 @@ plugin's home repo.
 ## Recommended order
 
 **Now (correctness, silent-loss, safety):**
-B08 (P0 wedge) → B09 → B01 → B11 → B12 → B03 → B02 → B15 → B16 → B13 (systemic) → B14 → D01
+B03 → B02 → B15 → B16 → B13 (systemic) → B14 → D01
+_(B08, B09, B01, B11, B12 captured to the harness ideas inbox — removed from this queue.)_
 
 **Next (high value):**
 B19+R04 (one refactor kills the env-bug class) → B07 → B05/B06/B04 → B17 → B20 → B22 → T02 →
@@ -49,18 +50,13 @@ F03 (the flagship) → F12 → F11 → F15 → F16 → F07 (gate on T470) → F0
 
 | ID | Title | Type | Priority | Effort |
 |----|-------|------|----------|--------|
-| B01 | reset-output walks `data/` trees — imports cloned code, silently skips real files | bug | P1 | S |
 | B02 | CSRF + DNS rebinding through the loopback-trust mutation guard | bug | P1 | S |
 | B03 | Admin "Delete all output" / "Run all" have no confirmation | bug | P1 | S |
 | B04 | `limit`/`after`/`windowHours` unvalidated: NaN→500, negative→full dump | bug | P2 | S |
 | B05 | `resolveBulkScope` silently escalates unknown scope to `all` | bug | P2 | S |
 | B06 | `readBody` maps malformed JSON to `{}` → destructive defaults; no size cap | bug | P2 | S |
 | B07 | Service-limits endpoint: absent field ⇒ NULL ⇒ paid caps silently removed | bug | P2 | S |
-| B08 | Escaped exception wedges a workflow: stuck `running`, uncancellable | bug | **P0** | M |
-| B09 | Crash-proof the daemon: cron rejections, global handlers, stream-handler throws | bug | P1 | S |
 | B10 | Timeout/cancel kills only the direct child — Chrome/claude/git orphaned | bug | P2 | S |
-| B11 | tv-recs-notify marks recs notified even when the push fails | bug | P1 | S |
-| B12 | stocks breach alerts: ledger marked pre-send; push result ignored | bug | P1 | S |
 | B13 | Systemic: T416 retrofit (6 loops) + attempts-never-increment dead zone (5 jobs) | bug | P2 | M |
 | B14 | hevy-sync marks synced before persisting — permanent silent data loss window | bug | P2 | S |
 | B15 | plex-language-apply undo log not crash-safe + broken detail.path | bug | P2 | S |
