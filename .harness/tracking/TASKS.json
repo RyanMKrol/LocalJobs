@@ -13391,6 +13391,300 @@
           "cross-cutting"
         ]
       }
+    },
+    {
+      "id": "T500",
+      "title": "Cache tmdb reads via callService cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "tmdb"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": [
+          "cross-cutting"
+        ]
+      },
+      "scope": [
+        "src/services/tmdb.service.ts",
+        "src/workflows/plex-language-fix/lib.ts",
+        "src/workflows/tv-recs/stages/tv-rec-merge.ts",
+        "src/workflows/missing-tv-seasons/stages/season-check.ts",
+        "src/workflows/movies/stages/franchise-gaps.ts",
+        "src/workflows/movies/stages/merge.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T500.md"
+    },
+    {
+      "id": "T501",
+      "title": "Cache openfigi ISIN->ticker resolutions via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "openfigi"
+      ],
+      "facets": {
+        "layer": "service",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/openfigi.service.ts",
+        "src/services/trading212.service.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T501.md"
+    },
+    {
+      "id": "T502",
+      "title": "Cache trading212-instruments lookups via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "trading212-instruments"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/trading212-instruments.service.ts",
+        "src/workflows/stock-digest/stages/stock-portfolio-snapshot.ts",
+        "src/workflows/stocks-sync/stages/stocks-resolve-names.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T502.md"
+    },
+    {
+      "id": "T503",
+      "title": "Cache finnhub company-profile lookups via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "finnhub"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/finnhub.service.ts",
+        "src/workflows/stock-digest/stages/stock-sector-lookup.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T503.md"
+    },
+    {
+      "id": "T504",
+      "title": "Cache google-places Place Details via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "google-places"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/google-places.service.ts",
+        "src/workflows/places/stages/enrich.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T504.md"
+    },
+    {
+      "id": "T505",
+      "title": "Cache gemini per-place summaries via versioned cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "gemini"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/gemini.service.ts",
+        "src/workflows/places/stages/llm-enrich.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T505.md"
+    },
+    {
+      "id": "T506",
+      "title": "Cache github repo-catalog reads via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "github"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/github.service.ts",
+        "src/workflows/projects-sync/stages/"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T506.md"
+    },
+    {
+      "id": "T507",
+      "title": "Cache lastfm top-albums/top-tracks reads via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "lastfm"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/lastfm.service.ts",
+        "src/workflows/listening-digest/stages/listening-digest.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T507.md"
+    },
+    {
+      "id": "T508",
+      "title": "Cache hevy workout-ingestion reads via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "hevy"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/hevy.service.ts",
+        "src/workflows/workouts-sync/stages/hevy-sync.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T508.md"
+    },
+    {
+      "id": "T509",
+      "title": "Cache trading212 portfolio fetch via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "trading212"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/trading212.service.ts",
+        "src/workflows/stock-digest/stages/stock-portfolio-fetch.ts",
+        "src/workflows/stocks-sync/stages/stocks-fetch.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T509.md"
+    },
+    {
+      "id": "T510",
+      "title": "Cache dynamodb scan reads via cacheKey (22h TTL)",
+      "status": "pending",
+      "dependsOn": [
+        "T479"
+      ],
+      "gate": null,
+      "tags": [
+        "caching",
+        "dynamodb"
+      ],
+      "facets": {
+        "layer": "job",
+        "workType": "config",
+        "risk": []
+      },
+      "scope": [
+        "src/services/dynamodb.service.ts",
+        "src/workflows/perfumes/lib.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T510.md"
     }
   ]
 }
