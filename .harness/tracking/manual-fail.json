@@ -58,5 +58,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T499 — re-attempt adds a git-hygiene guardrail; root cause was a pre-push guard trip (sensitive path staged), not a spec defect, so no code landed",
     "at": "2026-07-10T11:43:31Z"
+  },
+  "T499": {
+    "failed": true,
+    "reason": "review-failed: superseded by T511-T517 — atomised the 21-file migration into 6 per-workflow slices + a verification gate to fix the twice-repeated pre-push git-hygiene guard trip (T464/T474/T499 all blocked at rung 0 before any code landed)",
+    "at": "2026-07-11T22:20:03Z"
   }
 }
