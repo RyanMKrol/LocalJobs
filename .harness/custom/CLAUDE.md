@@ -32,6 +32,36 @@ retired). Unlike the template default (a *committed* inbox), this project keeps 
 **gitignored** — raw ideas may reference private jobs, so they stay local (migrated from the pre-1.31.0
 `tracking/IDEAS.md`, same privacy convention, 2026-07-07).
 
+## Scoping a new or restructured workflow — design the I/O ledger shape up front
+
+**Required when a task defines a NEW workflow or RESTRUCTURES an existing workflow's DAG** (adds,
+removes, or reshapes stages) — for anyone scoping it, human or the
+`implementation-harness-add-to-backlog` / `implementation-harness-convert-ideas` skills. Before the
+task's spec is finalized, settle and record — **per new or changed stage** — these two things, so a
+fresh builder implements the stage's ledger writes correctly the first time instead of guessing (and
+so an illegible key/`detail` isn't discovered later via a shipped-workflow dashboard screenshot):
+
+1. **The `work_items` ledger item KEY + its granularity** — the exact stable id each row is keyed by,
+   and at what grain (per-show vs per-episode, per-collection vs per-film). Granularity isn't
+   cosmetic: too-coarse or too-fine a key can silently reintroduce a per-item external-API-call
+   inefficiency or break run-limit root selection later — decide it deliberately, per root
+   `CLAUDE.md`'s idempotency / per-item work-ledger conventions and its run→work-item lineage /
+   `rootKey` rules.
+2. **The stage's success `detail` blob fields** — exactly what keys each stage's
+   `markWorkItem(..., 'success', ...)` `detail` carries, per root `CLAUDE.md`'s rule *"Every stage's
+   success `detail` must describe what THAT STAGE produced"* (2026-07) and the T110 `detail.markdown`
+   convention: does the stage write a file (→ `detail.markdown`, or `detail.path` + `detail.format`
+   for non-markdown) or discover/compute a value (→ the value's own keys)? Name the keys.
+
+**Capture both as an explicit section of the task's spec MD** (`.harness/tasks/TNNN.md`), alongside
+`## Do` / `## Done when` — e.g. a `## Ledger & I/O shape` section listing each new/changed stage's
+key + grain + `detail` keys.
+
+Cross-reference the root `CLAUDE.md` rules above by name rather than restating them. Do **not** add a
+requirement to choose between the generic `IoPanel` and `StageIoPanel`: per root `CLAUDE.md`'s T386
+note, `StageIoPanel` is the default Inputs & Outputs panel for every workflow's run page and the old
+`IoPanel` is dead code — there's no per-workflow panel choice to make.
+
 ## Bumping the base model (preserve calibration — migrate the ledger in lockstep)
 
 When a new model ships and you switch the harness to it, the difficulty calibration in
