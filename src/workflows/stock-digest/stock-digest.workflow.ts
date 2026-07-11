@@ -55,9 +55,10 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * /workflow-runs/:id/stage-io` → `stageIoLists` in `src/db/store.ts`): per stage,
  * TWO independent, un-paired lists — its direct predecessor(s)' ledger rows this
  * run as "Inputs", its own ledger rows this run as "Outputs". A genuine 3-ticker
- * fan-out shows as 3 rows, not 1. Gated to this workflow only
- * (`run?.workflow_name === 'stock-digest'` in `workflow-runs/[id]/page.tsx`) —
- * every other workflow keeps the generic joined `IoPanel`.
+ * fan-out shows as 3 rows, not 1. This was originally gated to `stock-digest`
+ * only, but T386 made `StageIoPanel` the default Inputs & Outputs panel for EVERY
+ * workflow's run page, and T389 deleted the old generic joined `IoPanel` entirely
+ * — so `StageIoPanel` is now the only panel, no longer an alternative to anything.
  */
 const workflow: WorkflowDefinition = {
   name: 'stock-digest',
