@@ -10743,7 +10743,7 @@
     {
       "id": "T405",
       "title": "Human review: confirm IoPanel/workItemIoRows retirement (T389) is correct and complete",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T389"
       ],
@@ -12209,7 +12209,7 @@
     {
       "id": "T459",
       "title": "Require an Input/Output-shape design step when scoping a new or restructured workflow",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -12479,7 +12479,7 @@
     {
       "id": "T467",
       "title": "Decide the missing-movies split design (name, schedule, category, snapshot duplication, folder layout, ledger continuity)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -12578,7 +12578,7 @@
     {
       "id": "T470",
       "title": "Evaluate whether the framework should gain a cross-workflow job-sharing mechanism",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": "needs-human",
       "tags": [
@@ -12875,7 +12875,7 @@
     {
       "id": "T479",
       "title": "Decide: which other services should adopt response caching (cacheKey), and with what TTL",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T476"
       ],
@@ -13345,7 +13345,7 @@
     {
       "id": "T499",
       "title": "Migrate every direct Plex call site (6 workflows) onto callService('plex', ...) — code + docs together (re-attempt of T474)",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
