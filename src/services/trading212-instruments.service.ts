@@ -17,6 +17,7 @@ const service: ServiceDefinition = {
   minIntervalMs: Number(process.env.TRADING212_INSTRUMENTS_MIN_INTERVAL_MS ?? 50_000),
   dailyCap: Number(process.env.TRADING212_INSTRUMENTS_DAILY_CAP ?? 20),
   monthlyCap: Number(process.env.TRADING212_INSTRUMENTS_MONTHLY_CAP ?? 200),
+  cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
     'Documented in Trading212\'s OpenAPI spec (https://docs.trading212.com/api): the ' +

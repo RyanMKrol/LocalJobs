@@ -83,7 +83,7 @@ export async function runStockPortfolioSnapshot(
   const readRawPortfolioFn = opts.readRawPortfolio ?? readRawPortfolio;
   const fetchInstrumentsMetadataFn =
     opts.fetchInstrumentsMetadata ??
-    ((keyId, secret) => callService('trading212-instruments', () => fetchInstrumentsMetadata(keyId, secret)));
+    ((keyId, secret) => callService('trading212-instruments', () => fetchInstrumentsMetadata(keyId, secret), { cacheKey: 't212-instruments:all' }));
   const resolveOpenFigiTickersFn =
     opts.resolveOpenFigiTickers ??
     ((isins) => resolveOpenFigiTickersBatched(isins, process.env.OPENFIGI_API_KEY));
