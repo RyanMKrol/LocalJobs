@@ -13971,7 +13971,7 @@
     {
       "id": "T521",
       "title": "Show certified medal badge on the Overview page",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
