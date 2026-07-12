@@ -13836,7 +13836,7 @@
     {
       "id": "T516",
       "title": "Migrate plex-space-saver Plex scan reads onto callService('plex') (code + test + CLAUDE.md)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
