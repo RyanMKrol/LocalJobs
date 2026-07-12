@@ -13532,7 +13532,7 @@
     {
       "id": "T505",
       "title": "Cache gemini per-place summaries via versioned cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
