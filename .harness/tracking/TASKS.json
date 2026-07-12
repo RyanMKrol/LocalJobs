@@ -13395,7 +13395,7 @@
     {
       "id": "T500",
       "title": "Cache tmdb reads via callService cacheKey (22h TTL)",
-      "status": "blocked",
+      "status": "pending",
       "dependsOn": [
         "T479"
       ],
@@ -13689,7 +13689,7 @@
     {
       "id": "T511",
       "title": "Migrate plex-language-fix onto callService('plex') — lib.ts reads + apply.ts mutations (code + test + CLAUDE.md)",
-      "status": "blocked",
+      "status": "pending",
       "dependsOn": [],
       "gate": null,
       "tags": [

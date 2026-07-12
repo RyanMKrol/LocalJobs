@@ -182,3 +182,25 @@ dated bullet when you defer something new.
   backoff capped at the new **`RL_EXP_MAX` (1h)** (decoupled from `RL_BACKOFF_MAX`=5h, which still caps
   a parsed wait since a real reset can be hours out). **Lesson:** a helper that toggles global `set -e`
   must be called with `|| rc=$?`, never `; rc=$?` — the latter is a latent errexit landmine.
+- **2026-07-12 — FIXED: an over-broad `custom/sensitive-paths.txt` pattern silently blocked every task
+  touching the `plex-language-fix` WORKFLOW (guard false positive).** *Symptom:* the pre-push guard
+  tripped at rung 0 / attempt 0 with "sensitive path staged" — no code landed — on **every** task whose
+  scope included `src/workflows/plex-language-fix/`: T464, T474, T499 (all → `failed`) and T500, T511
+  (→ `blocked`). *Root cause:* the custom pattern `(^|/)plex-language-fix/` was meant to protect a
+  personal scratch folder at the repo ROOT (`plex-language-fix/`, also gitignored), but `(^|/)` =
+  "start-of-path **OR** a slash", so against the repo-relative paths `guard_clean` diffs, it ALSO matched
+  `src/workflows/plex-language-fix/lib.ts` (via the `/` before it) — the legitimate tracked workflow.
+  *Compounding miss:* `/implementation-harness-review-failed` misdiagnosed T499 as a "broad `git add`"
+  and atomised it into T511–T517 — but T511 (the atomised slice) blocked **identically**, which is what
+  finally proved the guard, not diff-size, was the cause. *Fix:* anchor the pattern to the repo root —
+  `(^|/)plex-language-fix/` → `^plex-language-fix/`. The root scratch stays protected (that anchor + it's
+  gitignored); the workflow's own `data/` subfolder stays blocked by the base guard's `(^|/)data/`.
+  *Recovery:* reset T500/T511 `blocked`→`pending` and neutralised their `failed:blocked` worklog markers
+  (so `task_blocked()`'s fallback grep re-eligibilises them); T464/T474/T499 left `failed` (superseded by
+  T511–T517, which now build fine). *Known residue:* the 5 environmental false-block rows in
+  `ledgers/outcomes.jsonl`/`failures.jsonl` slightly skew the `job/{refactor,config,migration}`
+  calibration cells (they read as difficulty failures but were a config bug); left in place (append-only
+  ledgers dilute them as the reopened + sibling tasks succeed) — clean via `/implementation-harness-loop-recover`
+  if precise calibration matters. *Lesson:* when adding a `sensitive-paths.txt` pattern, run
+  `.harness/scripts/loop.sh --guard-selftest <a-legit-file-sharing-the-name>` to confirm it isn't a false
+  positive — the tool exists for exactly this, and would have shown `BLOCK` on `src/workflows/plex-language-fix/lib.ts`.
