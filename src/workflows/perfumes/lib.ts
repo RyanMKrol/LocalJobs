@@ -15,7 +15,7 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  *  `id` is used as-is as the new canonical perfume id (a deliberate
  *  idempotency-key change; see T401's spec for why no migration is needed). */
 export async function loadPerfumes(): Promise<PerfumeInput[]> {
-  const items = await callService('dynamodb', () => dynamoScan(perfumesConfig.perfumeRatingsTable));
+  const items = await callService('dynamodb', () => dynamoScan(perfumesConfig.perfumeRatingsTable), { cacheKey: `dynamodb:scan:${perfumesConfig.perfumeRatingsTable}` });
   const perfumes: PerfumeInput[] = [];
   for (const item of items) {
     const {
