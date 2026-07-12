@@ -1,5 +1,6 @@
 import type { JobContext } from '../../../core/types.js';
 import { markWorkItem } from '../../../db/store.js';
+import { callService } from '../../../core/services.js';
 import { plexGet } from '../../../core/plex-client.js';
 import { plexSpaceSaverConfig } from '../config.js';
 import { buildBreakdown, buildMovieRows, buildShowRows, ensureDirs, writeJsonFile } from '../lib.js';
@@ -48,17 +49,23 @@ export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<voi
   ctx.log(`plex-space-saver-scan starting — movie section ${movieSection}, TV section ${tvSection}`);
 
   ctx.progress(10, 'fetching movies');
-  const moviesResp = await plexGet<PlexAllResponse<PlexMovieMeta>>(`/library/sections/${movieSection}/all`);
+  const moviesResp = await callService('plex', () =>
+    plexGet<PlexAllResponse<PlexMovieMeta>>(`/library/sections/${movieSection}/all`),
+  );
   const movies = moviesResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${movies.length} movie(s) from section ${movieSection}.`);
 
   ctx.progress(35, 'fetching shows');
-  const showsResp = await plexGet<PlexAllResponse<PlexShowMeta>>(`/library/sections/${tvSection}/all`);
+  const showsResp = await callService('plex', () =>
+    plexGet<PlexAllResponse<PlexShowMeta>>(`/library/sections/${tvSection}/all`),
+  );
   const shows = showsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${shows.length} show(s) from section ${tvSection}.`);
 
   ctx.progress(55, 'fetching episodes');
-  const epsResp = await plexGet<PlexAllResponse<PlexEpisodeMeta>>(`/library/sections/${tvSection}/all?type=4`);
+  const epsResp = await callService('plex', () =>
+    plexGet<PlexAllResponse<PlexEpisodeMeta>>(`/library/sections/${tvSection}/all?type=4`),
+  );
   const episodes = epsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${episodes.length} episode(s) (flat read, type=4).`);
 

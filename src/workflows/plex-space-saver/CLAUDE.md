@@ -6,7 +6,8 @@ A single-stage, report-only audit of where Plex library disk space is going — 
 Reuses the shared Plex client (`src/core/plex-client.ts`'s `resolvePlexHost`/`plexGet` — DHCP
 self-heal) and the existing Plex env (`PLEX_HOST`/`PLEX_API_TOKEN`/optional `PLEX_MACHINE_ID`), plus
 the SAME `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION` env vars the `movies`/`missing-tv-seasons` workflows
-already read (no new env vars).
+already read (no new env vars). Plex reads are metered via the shared `plex` service (`callService('plex', ...)`),
+enforcing rate-limit + quota consistency across all Plex-touching workflows.
 
 Size is obtained via the API — each Plex `Media.Part` carries a `size` in bytes — never a filesystem
 walk.
