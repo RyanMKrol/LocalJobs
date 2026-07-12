@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '../lib/api';
 import { Pill } from '../components/Pill';
@@ -9,6 +9,7 @@ const DEFAULT_RUN_ALL_LIMIT = 3;
 
 type ResetAllResult = Awaited<ReturnType<typeof api.resetAllWorkflowsOutput>>;
 type RunAllResult = Awaited<ReturnType<typeof api.runAllWorkflows>>;
+type CacheCounts = Awaited<ReturnType<typeof api.serviceCacheCounts>>['counts'];
 
 export default function AdminPage() {
   const [busy, setBusy] = useState(false);
@@ -19,6 +20,46 @@ export default function AdminPage() {
   const [runAllBusy, setRunAllBusy] = useState(false);
   const [runAllResult, setRunAllResult] = useState<RunAllResult | null>(null);
   const [runAllErr, setRunAllErr] = useState<string | null>(null);
+
+  const [cacheCounts, setCacheCounts] = useState<CacheCounts | null>(null);
+  const [cacheLoadErr, setCacheLoadErr] = useState<string | null>(null);
+  const [cacheBusy, setCacheBusy] = useState(false);
+  const [cacheClearedMsg, setCacheClearedMsg] = useState<string | null>(null);
+  const [cacheErr, setCacheErr] = useState<string | null>(null);
+
+  const loadCacheCounts = useCallback(async () => {
+    try {
+      const r = await api.serviceCacheCounts();
+      setCacheCounts(r.counts);
+      setCacheLoadErr(null);
+    } catch (e) {
+      setCacheLoadErr(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCacheCounts();
+  }, [loadCacheCounts]);
+
+  const cacheTotal = cacheCounts?.reduce((sum, c) => sum + c.count, 0) ?? 0;
+
+  async function clearAllCache() {
+    if (!window.confirm('Clear ALL cached service responses? Services will re-fetch fresh data on their next call.')) {
+      return;
+    }
+    setCacheBusy(true);
+    setCacheErr(null);
+    setCacheClearedMsg(null);
+    try {
+      const r = await api.clearServiceCache();
+      setCacheClearedMsg(`Cleared ${r.cleared} cached response(s).`);
+      await loadCacheCounts();
+    } catch (e) {
+      setCacheErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCacheBusy(false);
+    }
+  }
 
   async function deleteAllOutput() {
     setBusy(true);
@@ -132,6 +173,41 @@ export default function AdminPage() {
         )}
       </div>
 
+      <h2>Cached responses</h2>
+      <div className="panel" style={{ padding: 18 }}>
+        <p className="sub" style={{ marginTop: 0 }}>
+          Cached service responses (T451) — a short-lived, per-service TTL cache used to avoid
+          redundant paid/rate-limited API calls. Clearing it forces every service's next call to be
+          a real, fresh fetch.
+        </p>
+        {cacheLoadErr && <p style={{ fontSize: 12, color: 'var(--red)' }}>{cacheLoadErr}</p>}
+        {!cacheLoadErr && cacheCounts && cacheCounts.length === 0 && (
+          <p className="muted" style={{ fontSize: 13 }}>No cached responses — the cache is empty.</p>
+        )}
+        {!cacheLoadErr && cacheCounts && cacheCounts.length > 0 && (
+          <table>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Cached rows</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cacheCounts.map((c) => (
+                <tr key={c.service_name}>
+                  <td>{c.service_name}</td>
+                  <td>{c.count}</td>
+                </tr>
+              ))}
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>{cacheTotal}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
+
       <h2>Danger zone</h2>
       <div className="panel" style={{ borderLeft: '3px solid var(--red)', padding: 18 }}>
         <strong>Delete all workflow output</strong>
@@ -201,6 +277,21 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="panel" style={{ borderLeft: '3px solid var(--red)', padding: 18, marginTop: 16 }}>
+        <strong>Clear all cached responses</strong>
+        <p className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>
+          Deletes every row in the <code>service_cache</code> table, across all services. This is
+          separate from the <strong>Delete all workflow output</strong> action above — that action
+          never touches this cache, and this action never touches work-item ledgers, run history, or
+          output files.
+        </p>
+        <button className="btn btn-danger" onClick={clearAllCache} disabled={cacheBusy}>
+          {cacheBusy ? 'Clearing…' : 'Clear all cached responses'}
+        </button>
+        {cacheErr && <p style={{ fontSize: 12, color: 'var(--red)', marginTop: 10 }}>{cacheErr}</p>}
+        {cacheClearedMsg && <p style={{ fontSize: 13, color: 'var(--green)', marginTop: 10 }}>{cacheClearedMsg}</p>}
       </div>
     </>
   );

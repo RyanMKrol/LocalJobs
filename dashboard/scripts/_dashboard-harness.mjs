@@ -1036,7 +1036,6 @@ export const PAGES = [
   { name: 'services',                path: '/integrations' },
   { name: 'logs',                    path: '/logs' },
   { name: 'admin',                   path: '/admin' },
-  { name: 'admin-cache',              path: '/admin-cache' },
 ];
 
 // ── Interaction flows ─────────────────────────────────────────────────────────
