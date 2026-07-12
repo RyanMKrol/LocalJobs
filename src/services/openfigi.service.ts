@@ -20,6 +20,7 @@ const service: ServiceDefinition = {
   ratePerMinute: Number(process.env.OPENFIGI_RATE_PER_MIN ?? 20),
   dailyCap: Number(process.env.OPENFIGI_DAILY_CAP ?? 2_000),
   monthlyCap: Number(process.env.OPENFIGI_MONTHLY_CAP ?? 20_000),
+  cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
     'Documented in OpenFIGI\'s own API docs (https://www.openfigi.com/api/documentation): 25 ' +

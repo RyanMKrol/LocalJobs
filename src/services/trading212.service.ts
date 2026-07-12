@@ -210,17 +210,23 @@ export async function resolveTickers(
 }
 
 /**
- * Batches ISINs into OpenFIGI mapping requests respecting its per-request job-count
- * limit, routed through the shared `openfigi` service quota (`callService`) — the
- * same global rate/spend gating regardless of which workflow calls this.
+ * Resolves each ISIN individually via the OpenFIGI service, with each ISIN
+ * cached separately for 22 hours so the same ISIN resolved multiple times
+ * (across different workflows or requests) is served from cache. Batches ISINs
+ * internally to respect per-request job-count limits. Routed through the shared
+ * `openfigi` service quota (`callService`) — the same global rate/spend gating
+ * regardless of which workflow calls this.
  */
 export async function resolveOpenFigiTickersBatched(isins: string[], apiKey?: string): Promise<(string | null)[]> {
-  const batchSize = apiKey ? OPENFIGI_BATCH_SIZE_WITH_KEY : OPENFIGI_BATCH_SIZE_NO_KEY;
   const results: (string | null)[] = [];
-  for (let i = 0; i < isins.length; i += batchSize) {
-    const batch = isins.slice(i, i + batchSize);
-    const batchResult = await callService('openfigi', () => fetchOpenFigiTickers(batch, apiKey));
-    results.push(...batchResult);
+  const tickerByIsin = new Map<string, string | null>();
+
+  for (const isin of isins) {
+    const ticker = await callService('openfigi', () => fetchOpenFigiTickers([isin], apiKey), {
+      cacheKey: `openfigi:isin:${isin}`,
+    });
+    tickerByIsin.set(isin, ticker[0] ?? null);
   }
-  return results;
+
+  return isins.map((isin) => tickerByIsin.get(isin) ?? null);
 }
