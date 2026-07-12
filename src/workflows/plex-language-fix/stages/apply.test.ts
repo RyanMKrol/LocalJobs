@@ -7,6 +7,7 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { AppliedLog } from '../types.js';
@@ -77,6 +78,18 @@ test('a "change" entry with a valid proposed audio streamId is applied and recor
   assert.equal(log.entries[0].afterSubtitle?.streamId, 20);
   console.log('  ✓ a change entry is applied and recorded success, with before/after in the log');
 });
+
+// ── callService('plex', ...) wrapper — pass-through when service unregistered ──
+{
+  let fnCalled = false;
+  const result = await callService('plex', async () => {
+    fnCalled = true;
+    return { data: 'test' };
+  });
+  assert.ok(fnCalled, 'callService passes through when plex service is unregistered in tests');
+  assert.equal(result.data, 'test', 'result is returned unchanged');
+  console.log('  ✓ callService(\'plex\', ...) pass-through wrapper works (unregistered service in test)');
+}
 
 test('an entry with a missing proposedAudio.streamId is skipped — not applied, not marked failed', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'plex-language-apply-'));

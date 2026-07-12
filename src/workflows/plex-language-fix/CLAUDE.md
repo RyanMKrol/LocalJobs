@@ -116,8 +116,9 @@ highest channel count, then higher-quality codec, then lowest stream index).
 Like the other five Plex-touching workflows (`missing-tv-seasons`, `movie-recommendations`,
 `plex-space-saver`, `tv-recommendations`, `plex-profiles`), this workflow reuses the shared,
 self-contained `src/core/plex-client.ts` (`plexGet`/`tmdbGet`, DHCP-self-heal LAN scan) rather than
-duplicating connectivity — see that file for the mechanism. TMDB lookups route through the shared
-rate-limited `tmdb` service (`callService('tmdb', ...)`, same as `missing-tv-seasons`).
+duplicating connectivity — see that file for the mechanism. Plex connectivity is metered via the shared
+`plex` service (`callService('plex', ...)`). TMDB lookups route through the shared rate-limited `tmdb`
+service (`callService('tmdb', ...)`, same as `missing-tv-seasons`).
 
 ## Sections scanned
 

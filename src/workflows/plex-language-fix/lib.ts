@@ -37,28 +37,36 @@ interface PlexListResponse<T> {
 }
 
 export async function fetchSections(): Promise<PlexSection[]> {
-  const res = await plexGet<{ MediaContainer: { Directory?: PlexSection[] } }>('/library/sections');
+  const res = await callService('plex', () =>
+    plexGet<{ MediaContainer: { Directory?: PlexSection[] } }>('/library/sections'),
+  );
   return (res.MediaContainer.Directory ?? []).filter((s) => s.type === 'movie' || s.type === 'show');
 }
 
 export async function fetchSectionItems(sectionKey: string, type: string): Promise<{ ratingKey: string; title: string }[]> {
   const plexType = type === 'movie' ? 1 : 2;
-  const res = await plexGet<PlexListResponse<{ ratingKey: string; title: string }>>(
-    `/library/sections/${sectionKey}/all?type=${plexType}`,
+  const res = await callService('plex', () =>
+    plexGet<PlexListResponse<{ ratingKey: string; title: string }>>(
+      `/library/sections/${sectionKey}/all?type=${plexType}`,
+    ),
   );
   return res.MediaContainer.Metadata ?? [];
 }
 
 export async function fetchItemDetail(ratingKey: string) {
-  const res = await plexGet<PlexListResponse<import('./types.js').PlexMetadataItem>>(`/library/metadata/${ratingKey}`);
+  const res = await callService('plex', () =>
+    plexGet<PlexListResponse<import('./types.js').PlexMetadataItem>>(`/library/metadata/${ratingKey}`),
+  );
   return res.MediaContainer.Metadata?.[0];
 }
 
 export async function fetchAllLeaves(
   showRatingKey: string,
 ): Promise<{ ratingKey: string; title: string; index?: number; parentIndex?: number }[]> {
-  const res = await plexGet<PlexListResponse<{ ratingKey: string; title: string; index?: number; parentIndex?: number }>>(
-    `/library/metadata/${showRatingKey}/allLeaves`,
+  const res = await callService('plex', () =>
+    plexGet<PlexListResponse<{ ratingKey: string; title: string; index?: number; parentIndex?: number }>>(
+      `/library/metadata/${showRatingKey}/allLeaves`,
+    ),
   );
   return res.MediaContainer.Metadata ?? [];
 }

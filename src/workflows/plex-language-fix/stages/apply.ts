@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs';
 
+import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { plexPutStreams, triggerButlerBackup } from '../../../core/plex-client.js';
@@ -63,7 +64,7 @@ export async function runApply(ctx: JobContext, opts: { appliedLogPrefix?: strin
   let butlerBackup: { ok: boolean; error?: string } = { ok: false, error: 'no changes to apply — backup not triggered' };
   if (qualifying.length > 0) {
     ctx.log('info: triggering Plex Butler backup before applying any change (safety net)…');
-    butlerBackup = await triggerBackup();
+    butlerBackup = await callService('plex', () => triggerBackup());
     if (butlerBackup.ok) {
       ctx.log('✓ Butler backup triggered');
     } else {
@@ -83,7 +84,7 @@ export async function runApply(ctx: JobContext, opts: { appliedLogPrefix?: strin
     const afterSubtitle = toAppliedState(evalDetail.proposedSubtitle);
 
     try {
-      await putStreams(discover.partId, afterAudio!.streamId, afterSubtitle?.streamId ?? null);
+      await callService('plex', () => putStreams(discover.partId, afterAudio!.streamId, afterSubtitle?.streamId ?? null));
       applied++;
       entries.push({
         partId: discover.partId,
