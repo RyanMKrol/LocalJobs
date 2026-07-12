@@ -108,7 +108,7 @@ work** that doesn't fit serverless or a web request.
 
 ### Shipped example workflows — one folder, one `CLAUDE.md`, each
 
-The repo ships 17 worked-example workflows under `src/workflows/`. Each workflow's full
+The repo ships 16 worked-example workflows under `src/workflows/`. Each workflow's full
 current-state documentation — DAG stages, file paths, ledger conventions, credentials, schedule,
 and any non-obvious invariant worth protecting — lives in its OWN `CLAUDE.md` inside its folder
 (auto-loaded by Claude Code when working in that directory, same mechanism as this file and
@@ -120,8 +120,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **places** | `src/workflows/places/` | Google Saved Places enrichment: CSVs → resolve CIDs → Google Places API → Gemini LLM summaries → markdown profiles |
 | **perfumes** | `src/workflows/perfumes/` | Fragrantica profile builder: find URL → headless-Chrome fetch → parse → Claude CLI profile write |
 | **missing-tv-seasons** | `src/workflows/missing-tv-seasons/` | Plex TV new-seasons audit: snapshot → check TMDB for complete missing seasons → weekly digest |
-| **missing-movies** | `src/workflows/missing-movies/` | Weekly Plex movie franchise-gap audit (TMDB Collections): own Plex snapshot → detect released-not-owned collection parts → weekly digest. Split out of movie-recommendations (T468) |
-| **movie-recommendations** | `src/workflows/movies/` | Monthly Plex movie recommender: snapshot → an 8-branch Claude recommender fan-out → TMDB-verify/dedupe/balance → monthly digest. Recs-only since the franchise-gap audit split into missing-movies (T468) |
+| **movie-recommendations** | `src/workflows/movies/` | Monthly Plex movie audit: franchise gaps (TMDB Collections) + an 8-branch Claude recommender fan-out → one merged digest |
 | **tv-recommendations** | `src/workflows/tv-recs/` | Monthly Plex TV show recommender: snapshot → 8 Claude branches → merge/verify/dedupe → digest |
 | **workouts-sync** | `src/workflows/workouts-sync/` | Monthly Hevy workout ingestion + a 6-month progress report (Claude-narrated) |
 | **listening-digest** | `src/workflows/listening-digest/` | Monthly Last.fm top-albums/top-tracks digest — writes both a current-month AND a trailing-3-month markdown digest per run |
@@ -135,7 +134,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **plex-profiles** | `src/workflows/plex-profiles/` | Weekly: writes one markdown profile per Plex title (movie + TV show) — summary, cast, per-source ratings, technical detail, file size — sourced purely from the Plex API, no LLM (phase 2, an optional Claude-narrated layer, is a deferred future task) |
 | **overrides-audit** | `src/workflows/overrides-audit/` | Weekly, report-only audit of dashboard `_overridden` flags (service limits, workflow schedule/concurrency/notify, job timeout) that have been live 2+ weeks or are unknown-age — a reminder to fold a stable override into its manifest/service-definition code default; never auto-patches anything |
 
-Seven workflows (`missing-tv-seasons`, `missing-movies`, `tv-recommendations`, `movie-recommendations`,
+Six workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
 `plex-space-saver`, `plex-language-fix`, `plex-profiles`) share one Plex/TMDB connectivity client,
 `src/core/plex-client.ts` — see that file, or any of the six workflows' own `CLAUDE.md`, for the
 DHCP-self-heal mechanism.
@@ -179,7 +178,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   every ready stage (deps all succeeded) up to a concurrency cap; `runWorkflow`
   passes the **effective** maxConcurrency (see T169 below) where the default is
   **4** (raised from 1). So a DAG with independent same-wave stages — e.g. the
-  `movie-recommendations` 8 recommender branches all hanging off `movie-snapshot`
+  `movie-recommendations` `franchise-gaps` + 8 recommender branches all hanging off `movie-snapshot`
   — runs them concurrently (up to 4) once their shared dependency finishes, instead
   of one-after-another. Strictly-linear workflows (places, perfumes, the TV
   `missing-tv-seasons` workflow) are unaffected: only ever one stage is ready at a time. A workflow
@@ -295,7 +294,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout) with item counts + stuck heads-up: ntfy push + macOS notification. `notifyWorkflow` is called once per workflow run at completion (aggregate). `notifyStage` is exported but no longer called by the executor (T189) |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
-| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan, plus the mutating `plexPutStreams`/`triggerButlerBackup` used by `plex-language-apply`) — used by all 7 Plex-touching workflows (`missing-tv-seasons`, `missing-movies`, `tv-recommendations`, `movie-recommendations`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`), owned by none of them |
+| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan, plus the mutating `plexPutStreams`/`triggerButlerBackup` used by `plex-language-apply`) — used by all 6 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`), owned by none of them |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | ALL queries live here — add new ones here, not inline |
@@ -303,7 +302,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
 | `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/docs/LIMITATIONS.md`.) |
-| `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `missing-movies/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
+| `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
 | `src/workflows/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/workflows/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the workflow-folder root |
 | `src/api/server.ts` | Node `http` API (no framework). Add routes here |
@@ -389,7 +388,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/workflows/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `missing-movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`, `plex-profiles/`, and `overrides-audit/` subfolder workflows as
+> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`, `plex-profiles/`, and `overrides-audit/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
@@ -502,8 +501,8 @@ job MAY colocate a service it owns).
     section shows a "View" button per item that fetches `GET /api/workflows/:name/output?job=&key=`
     (same guard as the per-run endpoint: `safeOutputMarkdown`, confined to `data/out/` tree)
     and opens the content in a markdown popover.
-  - **Audit-style workflows** (movie-recommendations, missing-movies, missing-tv-seasons): these
-    already have dedicated, richer output managers (`MovieRecsManager`, `MovieGapsManager`,
+  - **Audit-style workflows** (movie-recommendations, missing-tv-seasons): these already have
+    dedicated, richer output managers (`MovieRecsManager`, `MovieGapsManager`,
     `MissingSeasonsManager`) on the detail page. They are EXCLUDED from the generic section
     (the `WORKFLOWS_WITH_SPECIFIC_MANAGERS` set in `page.tsx`). New dedicated managers should
     be added to that set; standard build workflows use the generic section automatically.
@@ -680,7 +679,7 @@ doubt, log it.
   endpoint: `syncWorkflow` always refreshes it from the manifest's `category` field
   on every sync (same as `description`), so there is nothing for the owner to
   override. Controlled values in use: `second-brain` (places, perfumes),
-  `recommendations` (movie-recommendations, missing-movies, tv-recommendations,
+  `recommendations` (movie-recommendations, tv-recommendations,
   missing-tv-seasons), and `regular-maintenance` (workouts-sync, listening-digest,
   projects-sync, claude-warmer, stocks-sync). A manifest with no `category` set
   defaults to `'uncategorized'`. The `category` column is added by `schema.sql`
@@ -869,7 +868,7 @@ doubt, log it.
     (DB note: the legacy `dismissed` status is migrated to `ignored` on startup
     in `src/db/index.ts`.)
   - **Ignore-to-suppress a SURFACED (non-failed) item (T145).** The audit-style
-    workflows (`missing-tv-seasons`/`missing-movies`/`movie-recommendations`) whose ledger tracks "have I notified this?" rather
+    workflows (`missing-tv-seasons`/`movie-recommendations`) whose ledger tracks "have I notified this?" rather
     than work-done need to ignore a still-VALID surfaced item (a franchise film the
     owner owns some-but-not-all of and deliberately doesn't want) — NOT a `failed`
     one. `ignoreSurfacedItem(jobName, itemKey)` in `store.ts` EXTENDS ignore to this
@@ -878,14 +877,10 @@ doubt, log it.
     whereas `ignoreWorkItem` requires a `failed` row. The notify stage then excludes
     ignored keys from BOTH the report (`ignoredItemKeys(jobName)`) AND notifications
     (`isWorkItemDone` already treats `ignored` as done, so it's never re-notified).
-    Wired for movies via `POST /api/movie-gaps/:tmdbId/ignore` + a "Recommendations & gaps"
-    management section (T152 folded it in from the old dedicated top-level `/movie-gaps` page) —
-    still rendered on the **movie-recommendations workflow detail page**
-    (`/workflows/movie-recommendations`) as of T468, even though the underlying `franchise-gaps`/
-    `movie-gaps-notify` jobs now belong to the sibling `missing-movies` workflow: moving
-    `MovieGapsManager` to `missing-movies`'s own detail page needs `dashboard/` in scope, which was
-    out of scope for the T468 backend split — tracked as a follow-up. Still MANUAL-ONLY (nothing
-    auto-ignores). Reuse this shape for
+    Wired for movies via `POST /api/movie-gaps/:tmdbId/ignore` + a "Recommendations &
+    gaps" management section on the **movie-recommendations workflow detail page** (`/workflows/movie-recommendations`,
+    gated to render only for that workflow — T152 folded it in from the old dedicated
+    top-level `/movie-gaps` page); still MANUAL-ONLY (nothing auto-ignores). Reuse this shape for
     any future periodic-audit workflow that needs the owner to permanently silence a
     factual-but-unwanted finding. The movie-recommendations **recommendation layer** (T146) reuses
     it verbatim for recs: `ignoreSurfacedItem('movie-recs', <tmdbId>)` excludes a rec
@@ -1097,8 +1092,8 @@ doubt, log it.
   on the connecting edge between the specific producer and consumer nodes it guards (T204). The
   graph layout uses topological columns (each node's column = max(parent columns) + 1) with dagre
   computing the vertical ordering — every edge reflects the actual `dependsOn` relationship, so
-  there are no false wave-barrier implications (e.g. two independent same-wave stages hanging off
-  one shared dependency have no implied ordering between them). EVERY mark (passed/failed/pending alike) links
+  there are no false wave-barrier implications (e.g. `franchise-gaps` and `rec-merge` in
+  movie-recommendations have no implied ordering). EVERY mark (passed/failed/pending alike) links
   directly to that gate's dedicated detail page
   (`/workflow-runs/<id>/gates/<producer>/<key>`), which shows what the gate
   validates (key + description, producer→consumer), its outcome, and links to the
