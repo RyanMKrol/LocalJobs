@@ -13610,7 +13610,7 @@
     {
       "id": "T508",
       "title": "Cache hevy workout-ingestion reads via cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
