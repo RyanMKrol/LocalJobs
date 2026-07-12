@@ -87,7 +87,7 @@ export async function runStockSectorLookup(
   const portfolioPath = opts.portfolioPath ?? portfolioJsonPath;
   const outPath = opts.outPath ?? sectorsJsonPath;
   const apiKey = opts.apiKey ?? process.env.FINNHUB_API_KEY ?? '';
-  const fetchProfile = opts.fetchProfile ?? ((ticker, key) => callService('finnhub', () => fetchFinnhubProfile(ticker, key)));
+  const fetchProfile = opts.fetchProfile ?? ((ticker, key) => callService('finnhub', () => fetchFinnhubProfile(ticker, key), { cacheKey: `finnhub:profile:${ticker}` }));
   const now = opts.now ?? new Date();
   // The lineage root: the SAME key stock-portfolio-snapshot's one collapsed row
   // uses, so every per-ticker row this stage marks joins back to it in the

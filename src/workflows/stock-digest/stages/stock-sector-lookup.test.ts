@@ -299,3 +299,4 @@ describe('readPortfolio', () => {
     assert.deepEqual(readPortfolio('/nonexistent/portfolio.json'), []);
   });
 });
+
