@@ -14,6 +14,7 @@ import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 import type { JobContext } from '../../../core/types.js';
 import { _resetClient } from '../../../services/dynamodb.service.js';
+import { clearServiceCache } from '../../../db/store.js';
 import { perfumesConfig } from '../config.js';
 import { runFindUrl } from './find-url.js';
 
@@ -40,6 +41,9 @@ describe('find-url — seeds from PerfumeRatings.fragranticaUrl, skipping Claude
   });
 
   it('seeded item is recorded success with detail.seeded=true and never calls Claude', async () => {
+    // loadPerfumes now caches the scan by table name (T510) — clear it so this
+    // test's mock response isn't shadowed by a prior test's cache.
+    clearServiceCache('dynamodb');
     _resetClient(
       makeMockClient([
         {
@@ -61,6 +65,7 @@ describe('find-url — seeds from PerfumeRatings.fragranticaUrl, skipping Claude
 
   it('an item with no fragranticaUrl falls through to the (dry-run) search path', async () => {
     perfumesConfig.urlsFile = join(tmpDir, 'fragrantica-urls-2.json');
+    clearServiceCache('dynamodb');
     _resetClient(
       makeMockClient([{ id: 't401-unseeded__brand__edt', title: 'Unseeded', designer: 'Brand', type: 'EDT' }]),
     );

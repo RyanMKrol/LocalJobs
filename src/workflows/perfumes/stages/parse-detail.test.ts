@@ -13,7 +13,7 @@ import { describe, it, after } from 'node:test';
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 import type { JobContext } from '../../../core/types.js';
-import { getWorkItem } from '../../../db/store.js';
+import { clearServiceCache, getWorkItem } from '../../../db/store.js';
 import { _resetClient } from '../../../services/dynamodb.service.js';
 import { perfumesConfig } from '../config.js';
 import { PARSE_JOB, runParse } from './parse.js';
@@ -54,6 +54,9 @@ describe('parse — success detail describes what it produced (T407)', () => {
   it('records path/format/accordsCount/notesCount/rating in the ledger detail', async () => {
     const id = 't407-parse-detail__brand__edp';
     writeFileSync(join(perfumesConfig.pagesDir, `${id}.txt`), 'captured page text for the fixture perfume');
+    // loadPerfumes now caches the scan by table name (T510) — clear it so this
+    // test's mock response isn't shadowed by another test file's cache.
+    clearServiceCache('dynamodb');
     _resetClient(
       makeMockClient([{ id, title: 'Fixture Perfume', designer: 'Brand', type: 'EDP' }]),
     );

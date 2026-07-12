@@ -4,10 +4,11 @@
 // _resetClient (no live AWS call); callService('dynamodb', ...) runs ungated
 // in this test process since no *.service.ts registry sync has run.
 import assert from 'node:assert/strict';
-import { describe, it, after } from 'node:test';
+import { describe, it, after, beforeEach } from 'node:test';
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 import { _resetClient } from '../../services/dynamodb.service.js';
+import { clearServiceCache } from '../../db/store.js';
 import { loadPerfumes } from './lib.js';
 
 function makeMockClient(items: Record<string, unknown>[]): DynamoDBDocumentClient {
@@ -19,6 +20,12 @@ function makeMockClient(items: Record<string, unknown>[]): DynamoDBDocumentClien
 }
 
 describe('loadPerfumes — reads live from PerfumeRatings (T401)', () => {
+  beforeEach(() => {
+    // loadPerfumes now caches the scan by table name (T510) — clear it before
+    // each test so a fresh mock response isn't shadowed by a prior test's cache.
+    clearServiceCache('dynamodb');
+  });
+
   after(() => {
     _resetClient();
   });

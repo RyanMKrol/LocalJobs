@@ -3,6 +3,8 @@ import { describe, it, before, after } from 'node:test';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 import service, { _resetClient, dynamoBatchWrite, dynamoScan } from './dynamodb.service.js';
+import { callService, registerService } from '../core/services.js';
+import { syncService } from '../db/store.js';
 
 // ---------------------------------------------------------------------------
 // Minimal stub that records calls and returns preset responses.
@@ -114,5 +116,51 @@ describe('dynamodb service — unit (mocked AWS client)', () => {
       expressionAttributeValues: { ':pk': 'a' },
     });
     assert.equal(rows.length, 2);
+  });
+
+  it('service definition sets a 22-hour cacheTtlMs', () => {
+    assert.equal(service.cacheTtlMs, 79_200_000);
+    assert.equal(service.category, 'api');
+  });
+
+  it('a repeated scan of the same table within 22h is served from service_cache, not a second live call', async () => {
+    const testDef = { ...service, name: 'dynamodb-cache-test', ratePerMinute: 0 };
+    registerService(testDef);
+    syncService(testDef);
+
+    let calls = 0;
+
+    const firstScan = await callService(
+      'dynamodb-cache-test',
+      async () => {
+        calls++;
+        return [{ id: 'p1' }];
+      },
+      { cacheKey: 'dynamodb:scan:PerfumeRatings' },
+    );
+
+    const secondScan = await callService(
+      'dynamodb-cache-test',
+      async () => {
+        calls++;
+        return [{ id: 'p2' }];
+      },
+      { cacheKey: 'dynamodb:scan:PerfumeRatings' },
+    );
+
+    assert.equal(calls, 1, 'the live scan fn should be invoked once — the second call must be a cache hit');
+    assert.deepEqual(secondScan, firstScan);
+
+    const otherTableScan = await callService(
+      'dynamodb-cache-test',
+      async () => {
+        calls++;
+        return [{ id: 'q1' }];
+      },
+      { cacheKey: 'dynamodb:scan:OtherTable' },
+    );
+
+    assert.equal(calls, 2, 'a different cache key (different table) should result in a second live call');
+    assert.deepEqual(otherTableScan, [{ id: 'q1' }]);
   });
 });
