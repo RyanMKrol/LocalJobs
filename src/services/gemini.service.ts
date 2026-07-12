@@ -18,6 +18,7 @@ const service: ServiceDefinition = {
   ratePerMinute: Number(process.env.GEMINI_RATE_PER_MIN ?? 10),
   dailyCap,
   monthlyCap,
+  cacheTtlMs: 79_200_000,
   paid: true,
   rateLimitSource:
     'Google\'s published Gemini API rate limits/quotas (verify current tier RPM at ' +

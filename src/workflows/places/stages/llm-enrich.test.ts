@@ -114,3 +114,8 @@ await test('runLlmEnrich resolves normally (no throw) when the gemini service qu
     await runLlmEnrich(fakeCtx()); // must not throw/reject
   });
 });
+
+await test('gemini service is configured with 22-hour cacheTtlMs (T505)', async () => {
+  const { default: geminiService } = await import('../../../services/gemini.service.js');
+  assert.equal(geminiService.cacheTtlMs, 79_200_000, 'gemini service must have cacheTtlMs = 79_200_000 (22 hours)');
+});

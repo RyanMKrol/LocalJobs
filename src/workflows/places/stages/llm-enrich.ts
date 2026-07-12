@@ -122,7 +122,7 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
       // enforced across all jobs); dry-run skips it.
       // callService meters the billable Gemini call against the shared 'gemini'
       // service (the single source of quota); dry-run bypasses it.
-      const result = ai ? await callService('gemini', () => researchPlace(ai, place)) : dryRunResult(place);
+      const result = ai ? await callService('gemini', () => researchPlace(ai, place), { cacheKey: `gemini:place:${place.placeId}:v1` }) : dryRunResult(place);
       store[place.placeId] = { placeId: place.placeId, cid: place.cid, name, result, at: new Date().toISOString() };
       const mdPath = writeMarkdown(place, name, result, placesMeta[place.cid]);
       markWorkItem(JOB_NAME, place.placeId, 'success', { attempts, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name, markdown: mdPath } });
@@ -194,6 +194,7 @@ async function researchPlace(ai: GoogleGenAI, place: EnrichedPlace): Promise<Llm
 }
 
 export function buildPrompt(place: EnrichedPlace): string {
+  // If you change this prompt, bump the vN tag in the gemini cacheKey above (line ~125) so the cache invalidates.
   const d = (place.data ?? {}) as Record<string, any>;
   const name = (d.displayName as any)?.text ?? '(unknown)';
   const address = d.formattedAddress ?? '';
