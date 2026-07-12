@@ -9,6 +9,7 @@ const service: ServiceDefinition = {
   category: 'api',
   description: 'Last.fm API — monthly top-albums/top-tracks listening digest.',
   ratePerMinute: Number(process.env.LASTFM_RATE_PER_MIN ?? 30),
+  cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
     'Last.fm\'s API docs (https://www.last.fm/api) don\'t publish a hard rate limit; the stated ' +

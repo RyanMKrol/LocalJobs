@@ -184,12 +184,12 @@ export async function runListeningDigest(
   );
 
   ctx.log('info: fetching top albums from Last.fm…');
-  const albumsData = await callService('lastfm', () => fetchTopAlbums(listeningDigestConfig.period));
+  const albumsData = await callService('lastfm', () => fetchTopAlbums(listeningDigestConfig.period), { cacheKey: `lastfm:top-albums:${listeningDigestConfig.period}` });
   const albums = toArray(albumsData.topalbums?.album);
   ctx.log(`info: fetched ${albums.length} top album(s)`);
 
   ctx.log('info: fetching top tracks from Last.fm…');
-  const tracksData = await callService('lastfm', () => fetchTopTracks(listeningDigestConfig.period));
+  const tracksData = await callService('lastfm', () => fetchTopTracks(listeningDigestConfig.period), { cacheKey: `lastfm:top-tracks:${listeningDigestConfig.period}` });
   const tracks = toArray(tracksData.toptracks?.track);
   ctx.log(`info: fetched ${tracks.length} top track(s)`);
 
@@ -237,12 +237,12 @@ export async function runListeningDigest(
   );
 
   ctx.log('info: fetching trailing top albums from Last.fm…');
-  const trailingAlbumsData = await callService('lastfm', () => fetchTopAlbums(trailingPeriod));
+  const trailingAlbumsData = await callService('lastfm', () => fetchTopAlbums(trailingPeriod), { cacheKey: `lastfm:top-albums:${trailingPeriod}` });
   const trailingAlbums = toArray(trailingAlbumsData.topalbums?.album);
   ctx.log(`info: fetched ${trailingAlbums.length} trailing top album(s)`);
 
   ctx.log('info: fetching trailing top tracks from Last.fm…');
-  const trailingTracksData = await callService('lastfm', () => fetchTopTracks(trailingPeriod));
+  const trailingTracksData = await callService('lastfm', () => fetchTopTracks(trailingPeriod), { cacheKey: `lastfm:top-tracks:${trailingPeriod}` });
   const trailingTracks = toArray(trailingTracksData.toptracks?.track);
   ctx.log(`info: fetched ${trailingTracks.length} trailing top track(s)`);
 

@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { isWorkItemDone, workflowTerminalItems } from '../../../db/store.js';
+import { isWorkItemDone, workflowTerminalItems, clearServiceCache } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runListeningDigest,
@@ -190,6 +190,7 @@ describe('runListeningDigest — normal behaviour', () => {
     process.env.LAST_FM_API_KEY = 'test-key';
     process.env.LAST_FM_USERNAME = 'testuser';
     outDir = mkdtempSync(join(tmpdir(), 'listening-digest-test-'));
+    clearServiceCache('lastfm');
   });
 
   it('writes a markdown digest and marks the month done in the ledger', async () => {
@@ -228,6 +229,7 @@ describe('runListeningDigest — normal behaviour', () => {
       now,
       outDir,
     });
+    clearServiceCache('lastfm');
     await runListeningDigest(fakeCtx(), {
       fetchTopAlbums: albumsFetcher([album('Second Run Album', 'Artist', 9)]),
       fetchTopTracks: tracksFetcher([]),
