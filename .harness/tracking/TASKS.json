@@ -14169,6 +14169,1465 @@
         "workType": "bugfix",
         "risk": []
       }
+    },
+    {
+      "id": "T529",
+      "title": "Split src/db/store.ts (2,152 lines) into per-domain files behind a barrel re-export",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "R03"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store/",
+        "src/db/store/*.ts",
+        "src/db/store.test.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T529.md",
+      "facets": {
+        "layer": "db",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T530",
+      "title": "Replace server.ts if/else router with a declarative route table + exact-length matcher",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "R03"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/",
+        "src/api/routes/",
+        "src/api/server.test.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T530.md",
+      "facets": {
+        "layer": "api",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T531",
+      "title": "Unify the 4 copy-pasted ignore/unignore audit endpoint families via a config-driven loop",
+      "status": "pending",
+      "dependsOn": [
+        "T530"
+      ],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "R06"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/",
+        "src/api/routes/",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T531.md",
+      "facets": {
+        "layer": "api",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T532",
+      "title": "Q02.1: constant-time auth-token compare in authoriseMutation",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "quality",
+        "Q02",
+        "security"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T532.md",
+      "facets": {
+        "layer": "api",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T533",
+      "title": "Q02.2: escape LIKE wildcards in the global-logs q filter",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "quality",
+        "Q02",
+        "bugfix"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store/",
+        "src/db/store.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T533.md",
+      "facets": {
+        "layer": "db",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T534",
+      "title": "Q02.3: GET /api route listing (self-describing API) on top of the route table",
+      "status": "pending",
+      "dependsOn": [
+        "T530"
+      ],
+      "gate": null,
+      "tags": [
+        "quality",
+        "Q02"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/",
+        "src/api/routes/",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T534.md",
+      "facets": {
+        "layer": "api",
+        "workType": "endpoint",
+        "risk": []
+      }
+    },
+    {
+      "id": "T535",
+      "title": "Q02.4: drop the duplicate getWorkflow call in GET /api/workflows/:name",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "quality",
+        "Q02"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T535.md",
+      "facets": {
+        "layer": "api",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T536",
+      "title": "Q02.5: slice upstream error bodies in trading212 thrown errors (+ sweep services)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "quality",
+        "Q02",
+        "security"
+      ],
+      "scope": [
+        "src/services/trading212.service.ts",
+        "src/services/",
+        "src/services/*.service.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T536.md",
+      "facets": {
+        "layer": "service",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T537",
+      "title": "Typecheck + test scripts/, and fix the three test-runner defects",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "testing",
+        "test-infra",
+        "ci"
+      ],
+      "scope": [
+        "tsconfig.json",
+        "scripts/run-tests.ts",
+        "package.json"
+      ],
+      "design": "scripts/*.ts is currently invisible to both tsc and the test runner: tsconfig `include` is only [\"src/**/*.ts\"] (tsconfig.json:15) and run-tests.ts walks only 'src' (scripts/run-tests.ts:30). So `npx tsc --noEmit` never typechecks the 7 scripts/*.ts files — including plex-language-undo.ts, the safety-net revert tool for the one workflow that mutates the owner's Plex server — and scripts/plex-language-undo.test.ts is a dead test (passes when run manually, never discovered by `npm test`). Fix: (a) tsconfig include becomes [\"src/**/*.ts\",\"scripts/**/*.ts\"] (keep the existing exclude of node_modules/dashboard/src-data); (b) run-tests.ts walks [...walk('src'), ...walk('scripts')] (scripts already use the NodeNext import idiom; the undo test passes today, so low-risk). The run-tests.ts walk() change here is the BASE that CI-TEST-02 (dashboard suites) builds on — do this first. THREE runner defects to also fix in run-tests.ts (defect analysis in idea T02): (1) verdict ordering — the runner prints its synchronous '✓ all tests passed' banner BEFORE node:test's describe/it drain (~10+ files use node:test, which runs after the serial imports resolve), so the last banner can misreport even though the exit code is correct; move the final PASS/FAIL verdict into a process.on('beforeExit') hook (or run each file as a child process, see (2)) so it lands after the drain. (2) no timeout anywhere — one hanging it() or top-level await hangs npm test/CI until the 6h Actions kill; add a per-file wall-clock timeout. The idea's preferred shape is running each test file as a child process with a per-file timeout (also buys isolation — today 174 files share one process + one scratch DB — and parallelism), but a simpler per-file timeout that keeps the single-process model is acceptable if child-process isolation proves too invasive for this unit. (3) scratch-DB collision — the npm `test` script hardcodes `rm -f /tmp/lj-test.db*; LOCALJOBS_DB=/tmp/lj-test.db …` (package.json:15), so two concurrent `npm test` runs (a manual run alongside the harness loop's DoD check — a real scenario documented in CLAUDE.md) share and mutually delete each other's live DB; drop LOCALJOBS_DB (and the rm) from the npm script and let config.ts's isTestEnv/resolveDbPath mint the per-PID scratch path it already unit-tests (or use mktemp -d). Keep the suite's current green state as the regression bar. NOTE the shared scratch-DB fix interacts with any child-process isolation from defect (2) — each worker still needs its own per-PID scratch DB.",
+      "verify": "`npx tsc --noEmit` typechecks scripts/*.ts (deliberately breaking plex-language-undo.ts's imports fails tsc). `npm test` discovers and runs scripts/plex-language-undo.test.ts. A deliberately-failing node:test file makes the runner's LAST printed line the failure verdict. A deliberately-hanging test file fails within the per-file timeout, not the CI kill. Two concurrent `npm test` invocations both pass (no shared-DB deletion). All existing tests stay green.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T537.md",
+      "facets": {
+        "layer": "harness",
+        "work-type": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T538",
+      "title": "Run the three dashboard test suites (wire component suites into npm test + CI, keep nav-check local-only)",
+      "status": "pending",
+      "dependsOn": [
+        "T537"
+      ],
+      "gate": null,
+      "tags": [
+        "testing",
+        "test-infra",
+        "ci",
+        "dashboard"
+      ],
+      "scope": [
+        ".github/workflows/ci.yml",
+        "README.md",
+        "dashboard/app/**",
+        "dashboard/package.json",
+        "scripts/run-tests.ts"
+      ],
+      "design": "Three real dashboard test files exist and nothing invokes them: `npm test` walks only src/, CI runs only `npm ci` + `next build` for the dashboard, and dashboard/package.json has no test script. dashboard/app/components/OutputRenderer.test.ts and dashboard/app/components/StageIoLists.test.ts are PURE node:test suites (need react-dom/server, no browser) — verified: OutputRenderer.test.ts imports `node:test`/`react-dom/server`/`renderOutputBody`, StageIoLists.test.ts imports `node:test` + `detailHints`/`humanizeDetailKey` and wraps in an async main() because dashboard/ has no `type:module`. dashboard/scripts/nav-check.test.ts needs Playwright (imports `playwright` + the `_dashboard-harness.mjs` hermetic harness) → must stay local-only alongside mobile/visual-check, NOT in CI. Fix: (1) add a `test` script to dashboard/package.json running the two pure component suites (e.g. via `tsx --test`), and wire it into root `npm test` (either extend run-tests.ts to also walk dashboard/app for *.test.ts — building on CI-TEST-01's already-extended walk — OR call the dashboard test script from the root flow) AND add a CI step after the dashboard build that runs it. Pick ONE mechanism (root-walk vs dashboard-script) and keep it consistent; note the dashboard has no `type:module`, so the src/ single-process `import()` model may not apply cleanly — the async-main() shape the existing suites use runs fine under `tsx --test`. (2) nav-check.test.ts stays local-only; document the local-only vs CI split where mobile-check/visual-check are already documented (CLAUDE.md file map / README). (3) Adding the missing pure-helper tests (cronToEnglish, resolveMode, backFrom in ui.tsx; fmtDuration/fmtRelative in ui.tsx; parseFrontmatter in MarkdownModal.tsx) is OPTIONAL — include only if the owner confirms in scope (pending-questions #16); otherwise leave to a follow-up. CI time increase is negligible (pure Node tests).",
+      "verify": "Breaking the OUTPUT_RENDERERS dispatch or detailHints makes `npm test` AND CI go red. The two pure suites execute in `npm test` and in CI (after the dashboard build step). nav-check.test.ts is NOT run in CI. The local-only/CI split is documented. `npm --prefix dashboard run build` still passes.",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T538.md",
+      "facets": {
+        "layer": "harness",
+        "work-type": "config",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T539",
+      "title": "Pin the Node major across all three environments (engines + .nvmrc)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "ci",
+        "ops",
+        "config"
+      ],
+      "scope": [
+        "package.json",
+        "dashboard/package.json",
+        ".nvmrc"
+      ],
+      "design": "Node is pinned only in CI (setup-node node-version: 22, ci.yml:22). Local happens to match and the launchd plists bake a node path at install time — three environments can silently diverge. This is the SHARED Node-pinning deliverable that both the CI-hardening task (CI-TEST-04) and the launchd-installer task (CI-TEST-05) reference. Add `\"engines\": { \"node\": \">=22 <23\" }` to BOTH package.json and dashboard/package.json, and create a repo-root `.nvmrc` containing `22`. Keep the CI setup-node value (22) consistent with the pin. Note: `engines` is advisory by default under npm (npm only warns, not refuses, unless engine-strict is set) — that matches the idea's 'warns/refuses per engines' acceptance; do not add engine-strict enforcement unless the owner asks.",
+      "verify": "`.nvmrc` exists at repo root with `22`. Both package.json and dashboard/package.json declare `engines.node` matching the CI Node major. `npm install` under a Node major outside the range warns per engines. `npm test`, `npx tsc --noEmit`, and `npm --prefix dashboard run build` still pass (no behavior change).",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T539.md",
+      "facets": {
+        "layer": "harness",
+        "work-type": "config",
+        "risk": []
+      }
+    },
+    {
+      "id": "T540",
+      "title": "CI hardening: dashboard npm cache path + npm audit for both roots",
+      "status": "pending",
+      "dependsOn": [
+        "T539"
+      ],
+      "gate": null,
+      "tags": [
+        "ci",
+        "ops"
+      ],
+      "scope": [
+        ".github/workflows/ci.yml"
+      ],
+      "design": "CI correctly runs the documented DoD (tsc --noEmit, npm test, dashboard npm ci + build, with concurrency-cancel). Two remaining gaps: (1) setup-node's `cache: npm` keys on the ROOT lockfile only (ci.yml:20-23), so the dashboard's `npm --prefix dashboard ci` re-downloads its entire tree every run — fix with `cache-dependency-path: ['package-lock.json', 'dashboard/package-lock.json']` on the setup-node step. (2) No npm audit anywhere — for a LAN-exposed always-on web server, staying current matters; add an `npm audit --omit=dev --audit-level=high` step for BOTH package roots (root and dashboard). Whether that step BLOCKS CI (fails the build) or merely WARNS/annotates is an explicit OWNER decision — see pending-questions (topic:other); do NOT default silently. Implement per the owner's answer: blocking = let the audit step's non-zero exit fail the job; non-blocking = append `|| true` (or a continue-on-error step) so it surfaces in the log without failing. This unit depends on CI-TEST-03 so the setup-node Node pin and the cache-path change land coherently on the same step. If both dashboard/package-lock.json referenced by the cache path and the audit assume a dashboard lockfile exists, confirm dashboard/package-lock.json is committed (it must be for `npm ci` to work today).",
+      "verify": "The CI dashboard-install step hits the npm cache on unchanged lockfiles (cache-dependency-path lists both lockfiles). An `npm audit --omit=dev --audit-level=high` step runs for both roots and behaves per the owner's blocking-vs-warn decision. CI stays green on the current clean tree (assuming no current high advisory, or non-blocking mode).",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T540.md",
+      "facets": {
+        "layer": "harness",
+        "work-type": "config",
+        "risk": []
+      }
+    },
+    {
+      "id": "T541",
+      "title": "launchd installer hygiene: resolve node at run time, drop baked plist path, fix stale 3001 comment",
+      "status": "pending",
+      "dependsOn": [
+        "T539"
+      ],
+      "gate": null,
+      "tags": [
+        "ops",
+        "launchd",
+        "installer"
+      ],
+      "scope": [
+        "scripts/install-launchd.sh",
+        "scripts/install-dashboard-launchd.sh",
+        "scripts/start-daemon.sh"
+      ],
+      "design": "The launchd installers freeze the nvm-versioned node path into the plist at install time via `NODE_BIN_DIR=\"$(dirname \"$(command -v node)\")\"` (install-launchd.sh:8,31-36; install-dashboard-launchd.sh:9,30-39). After `nvm install <newer>` the daemon silently keeps running old Node; after uninstalling that version the daemon DIES at boot with a PATH error visible only in daemon.err.log. Fix: resolve the node bin dir at RUN time inside start-daemon.sh (which already owns PATH injection at start-daemon.sh:9-12) instead of baking it into the plist — the plist then only needs the wrapper path. Apply the same run-time-resolution shape to the dashboard agent (whose plist directly invokes `$NODE_BIN_DIR/npm` at install-dashboard-launchd.sh:30 — route it through a wrapper or otherwise resolve node at run time so no frozen path is baked in). Practical run-time resolution: source nvm (or read .nvmrc — CI-TEST-03 lands it) and/or probe common nvm/homebrew node locations, falling back to PATH. Pair with the Node pin (CI-TEST-03, dependsOn) so all three environments agree on the Node major. Also FIX the stale header comment in install-dashboard-launchd.sh:2-3 (`http://localhost:3001` → 4788; the final echo at line 58 is already correct). Optional modernization: move `launchctl load/unload` (install-launchd.sh:57-58, install-dashboard-launchd.sh:56-57) to `bootstrap/bootout gui/$(id -u)` for better error messages — IN vs OUT of scope is an open owner question; default to leaving load/unload unless the owner says otherwise. Acceptance is manual-only on the Mini (installer scripts have no test harness): install → verify plist contents no longer bake a node path → switch nvm default → `launchctl kickstart -k` → /api/health responds; removing the old nvm version does not kill the daemon at boot; installers re-run cleanly over an existing install.",
+      "verify": "Manual on the Mini (no test harness): after `nvm install <new>` + `launchctl kickstart -k`, the daemon picks up the new Node WITHOUT re-running the installer; removing the old nvm version does not kill the daemon at boot; both installers re-run cleanly over an existing install; the generated plists no longer contain a frozen nvm node path. The install-dashboard-launchd.sh header comment reads 4788, not 3001.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T541.md",
+      "facets": {
+        "layer": "harness",
+        "work-type": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T542",
+      "title": "Extract the four dashboard managers out of workflows/[name]/page.tsx + add a useAction hook",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "refactor",
+        "R05"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/ui.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": "The four manager components (TvRecsManager, MovieRecsManager, MovieGapsManager, MissingSeasonsManager) currently live inline in dashboard/app/workflows/[name]/page.tsx (1,143 lines — 4x the next-largest page). This unit does the low-risk MOVE + the shared hook, deferring the generic parameterization to R05-b. (1) Add a useAction hook to dashboard/app/ui.tsx (or a new dashboard/app/components/useAction.ts) that owns the setBusy(true) -> setErr(null) -> await fn -> refetch -> catch(setErr) -> finally(setBusy(false)) block duplicated 14x across the four managers (see e.g. page.tsx:85-96 ignore(), :98-109 unignore(), :111-122 unignoreAll()). The hook must also CLEAR its busy timer / guard against setState-after-unmount (this is exactly Q05 item 7's concern — see unit Q05-timers, which builds on it). (2) Move each of the four manager functions into its own file under dashboard/app/components/ (e.g. TvRecsManager.tsx, MovieRecsManager.tsx, MovieGapsManager.tsx, MissingSeasonsManager.tsx), re-exported/imported by page.tsx — no behaviour change, pixel-equivalent rendering. Keep groupByCollection/groupByShow helpers with their managers. This alone drops page.tsx toward ~360 lines.",
+      "verify": "Run npx tsc --noEmit, npm --prefix dashboard run build, node dashboard/scripts/mobile-check.mjs, then node dashboard/scripts/visual-check.mjs and LOOK at the screenshots for the missing-movies, movie-recommendations, tv-recommendations, and missing-tv-seasons workflow detail pages — confirm all four managers render pixel-equivalent to before. Update _dashboard-harness.mjs in the SAME change if the page surface / fixtures shift.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T542.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T543",
+      "title": "Collapse the four managers into a generic RecsManager + GroupedManager",
+      "status": "pending",
+      "dependsOn": [
+        "T542"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "refactor",
+        "R05"
+      ],
+      "scope": [
+        "dashboard/app/components/",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": "Building on R05-a's extracted files: TvRecsManager and MovieRecsManager are ~95% identical (167 lines each) — differences are only the API method names (tvRecs/ignoreTvRec/unignoreTvRec/unignoreTvRecBulk vs the movie equivalents), the TMDB URL segment (/tv/ vs /movie/), the noun (show vs film), and the heading. Collapse them into ONE generic RecsManager<T> parameterized by { heading, noun, tmdbPath: 'tv'|'movie', fetch, ignore, unignore, unignoreBulk }. Similarly MovieGapsManager (~205) and MissingSeasonsManager (~204) share the grouped-table shape (group header + Ignore-all/Un-ignore-all + per-item buttons + IgnoredSection, ~80% column overlap) — collapse into ONE generic GroupedManager<T> parameterized by { groupBy, itemKey, columns, and the group's ignore/unignore/ignore-bulk API fns }. All four call-sites become thin config objects. Reuse the existing SortTh, IgnoredSection, Pill, and useAction (from R05-a). Must be pixel-equivalent.",
+      "verify": "npx tsc --noEmit, npm --prefix dashboard run build, node dashboard/scripts/mobile-check.mjs, node dashboard/scripts/visual-check.mjs — LOOK at the four workflow detail pages' screenshots and confirm pixel-equivalence with the pre-R05 rendering. There should be exactly ONE implementation of the recs-manager shape and ONE of the grouped-gaps shape after this. Update _dashboard-harness.mjs in the same change if needed.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T543.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T544",
+      "title": "Clear the setTimeout(setBusy(false)) after unmount on the run + cancel buttons",
+      "status": "pending",
+      "dependsOn": [
+        "T542"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "bugfix",
+        "Q05"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/ui.tsx"
+      ],
+      "design": "Q05 item 7. Two setTimeout(() => setBusy(false), 1200) calls fire after unmount: workflows/[name]/page.tsx:953 (runWorkflow) and workflow-runs/[id]/page.tsx:60 (cancelWorkflowRun), causing a React setState-after-unmount warning. Fix by clearing the timer on unmount OR routing these through the R05-a useAction hook (which owns the busy timer and guards against setState-after-unmount). Prefer reusing useAction now that it exists — hence dependsOn R05-a.",
+      "verify": "npx tsc --noEmit, npm --prefix dashboard run build. Confirm no setState-after-unmount warning path remains (the timer is cleared or the guarded hook owns it). visual-check the workflow detail + workflow-run pages to confirm the Run/Cancel buttons still show their transient 'Started…' / busy state.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T544.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T545",
+      "title": "Memoize groupByCollection so it isn't recomputed 3x per render",
+      "status": "pending",
+      "dependsOn": [
+        "T542"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "bugfix",
+        "Q05"
+      ],
+      "scope": [
+        "dashboard/app/components/",
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": "Q05 item 8. groupByCollection(active) is called 3x per render in the MovieGapsManager (page.tsx:503, :504, :516) plus groupByCollection(ignored) at :579. Memoize the active grouping once (useMemo keyed on the active list) so it's computed a single time. After R05-a the manager lives in its own component file (and after R05-b it may be the generic GroupedManager) — hence dependsOn R05-a so this edits the moved code, not the soon-to-move inline copy.",
+      "verify": "npx tsc --noEmit, npm --prefix dashboard run build, node dashboard/scripts/mobile-check.mjs, node dashboard/scripts/visual-check.mjs — LOOK at the missing-movies detail page screenshot and confirm the grouped franchise-gaps table renders identically.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T545.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T546",
+      "title": "Make the dashboard's clickable-span editors and sort headers keyboard-accessible",
+      "status": "pending",
+      "dependsOn": [
+        "T542"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "a11y",
+        "Q03"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/jobs/[name]/page.tsx",
+        "dashboard/app/components/SortTh.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": "Q03. Keyboard-inaccessible controls: (1) the three <span className=\"schedule-edit-link\" onClick>Edit</span> editors — schedule (workflows/[name]/page.tsx:1011) + concurrency (:1057) on the workflow detail page, and timeout (jobs/[name]/page.tsx:98) on the job page — have no tabIndex/role/key handler, so they're unreachable by keyboard. Replace with <button className=\"btn-link\">Edit</button> (the .btn-link class already exists in globals.css ~141). (2) SortTh.tsx:12 uses <th onClick> with no button semantics — wrap the label in a <button> (or add role=button + tabIndex + Enter/Space handler) and add aria-sort on the <th>. (3) The .toggle spans (page.tsx:1017 enabled, :1063 notify, :1069 certified) use a readOnly checkbox that mis-announces state — give them role=\"switch\" + aria-checked. Reuse the CronBadge pattern (ui.tsx:246-258) for role/tabIndex/key handling. Appearance must be UNCHANGED. dependsOn R05-a because the workflow-detail Edit-span markup sits in the same heavily-churned page.tsx — sequence to avoid a merge conflict; SortTh + the job-page timeout edit are independent of R05 but authored together as the single a11y unit.",
+      "verify": "npx tsc --noEmit, npm --prefix dashboard run build, node dashboard/scripts/mobile-check.mjs, node dashboard/scripts/visual-check.mjs — LOOK at the workflow-detail, job-detail, and a recs-manager (sortable-header) screenshot and confirm appearance is UNCHANGED. Tab-reachability + Enter/Space activation + aria-sort/aria-checked correctness verified by inspecting the markup. If a keyboard FLOWS entry is added to _dashboard-harness.mjs (per the DoD answer), keep that file in scope.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T546.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "component",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T547",
+      "title": "Add a sequence token + visibility poll-pause to usePoll (out-of-order + hidden-tab)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "bugfix",
+        "Q04"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/ui.test.ts"
+      ],
+      "design": "Q04 items 1 + 4. usePoll (ui.tsx:282-310): an interval tick and a manual refetch(), or a slow prior tick when latency > interval (plausible on the 1s run page), can resolve out of order and the OLDER response wins setData. Add a sequence token: const seq = ++seqRef.current captured before the await; apply setData/setError only if seq is still current (seqRef.current === seq). Also add intervalMs to the effect deps array (currently only `deps` is passed) so a dynamic interval would actually re-apply — latent today but correct. Pure hook logic — NOT a visible surface change, so leave visualVerify unset. usePoll is exported from ui.tsx, so a pure hook test can drive it: assert that when a newer tick resolves before an older one, the older response never overwrites setData.",
+      "verify": "npx tsc --noEmit, npm test (the new pure hook test for the sequence token — older response after newer never overwrites), npm --prefix dashboard run build.",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T547.md",
+      "visualVerify": false,
+      "facets": {
+        "layer": "dashboard-logic",
+        "work-type": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T548",
+      "title": "Show the daemon-down message on the five detail pages instead of a blank skeleton",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "bugfix",
+        "Q04"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/jobs/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx",
+        "dashboard/app/workflows/[name]/gates/[producer]/[key]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": "Q04 item 2. Five detail pages destructure only `data` from usePoll and discard `error`, so when the daemon is down they render permanently-empty skeletons with no message — while every LIST page (workflows/page.tsx:60, integrations:152, logs:102) correctly shows '⚠ Cannot reach the daemon API ({error}).'. Fix: destructure `error` on the five detail pages — workflows/[name] (usePoll at :852), workflow-runs/[id] (:52, and the second poll at :64), jobs/[name] (:13-15, three polls), and both gate pages — and render the SAME message + class the list pages use. Reuse the existing markup/class, don't invent new copy. This DOES change what renders (a visible surface), so set visualVerify true and extend the _dashboard-harness.mjs fixtures to return failures for these routes so visual-check captures the daemon-down state.",
+      "verify": "npx tsc --noEmit, npm --prefix dashboard run build, node dashboard/scripts/mobile-check.mjs. Extend _dashboard-harness.mjs fixtures to make the five detail routes fail, then node dashboard/scripts/visual-check.mjs and LOOK at each of the five detail-page screenshots — confirm each shows the 'Cannot reach the daemon API' message rather than a blank skeleton.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T548.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "work-type": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T549",
+      "title": "Add an hours tier to fmtDuration and NaN/skew guards to fmtRelative",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "bugfix",
+        "Q05"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/ui.test.ts"
+      ],
+      "design": "Q05 items 1 + 2. (1) fmtDuration (ui.tsx:64-71) has no hours tier — a 2h5m run renders '125m 12s'; the monthly recommender workflows plausibly exceed an hour. Add an 'Xh Ym' tier above 60 minutes. (2) fmtRelative (ui.tsx:80-91) lacks the already-ISO guard that fmtTime (:73-78) has ('…Z' + 'Z' -> NaN -> 'NaNs ago' if ever fed an ISO string) and shows '-2s ago' under clock skew. Make the pair consistent (reuse fmtTime's includes('Z')||includes('T') guard) and clamp negative diffs to 'just now'. Both are pure functions — add unit tests.",
+      "verify": "npx tsc --noEmit, npm test (new unit tests: fmtDuration renders 'Xh Ym' past an hour; fmtRelative on an ISO string doesn't produce NaN and clamps a negative diff to 'just now'), npm --prefix dashboard run build.",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T549.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T550",
+      "title": "Replace bare pill/badge spans with <Pill>/<StatusBadge> and widen StatusBadge's status type",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "bugfix",
+        "Q05"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/admin/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/components/StageIoLists.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx"
+      ],
+      "design": "Q05 items 3 + 4 (item 5 is already done — Workflow.category exists at api.ts:237 — do NOT touch it). (3) A bare <span className={`pill …`}> at admin/page.tsx:190 violates T268; line 117 of the same file already uses <Pill> for the identical status. Replace :190 with <Pill>. (4) Bare badge spans instead of <StatusBadge> at workflows/[name]/page.tsx:1089, workflows/page.tsx:120, and components/StageIoLists.tsx:143 — root cause: StatusBadge is typed { status: RunStatus } (ui.tsx:44) but workflow statuses include 'partial', forcing casts (`status as RunStatus` at workflow-runs/[id]/page.tsx:89, and both gate pages :153/:172) and bare spans. Widen the StatusBadge prop to RunStatus | WorkflowRunStatus (the STATUS_EMOJI/label maps already cover 'partial'), adopt <StatusBadge> at the three bare-span sites, and remove the `as RunStatus` casts. Then a grep for bare pill/badge spans must come back clean.",
+      "verify": "npx tsc --noEmit (must be green with the widened type and the casts removed), npm --prefix dashboard run build, node dashboard/scripts/mobile-check.mjs, node dashboard/scripts/visual-check.mjs. Run grep for `className={\\`badge` / `className=\"pill` across dashboard/app and confirm no bare instances remain. LOOK at the admin, workflow-detail, workflows-list, and stage-io screenshots to confirm the badges/pills render identically.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T550.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T551",
+      "title": "Uniformly encode path names + extract postWithServerError + in-modal error state",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "bugfix",
+        "Q05"
+      ],
+      "scope": [
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/components/StageIoLists.tsx",
+        "dashboard/app/components/WorkflowOutputSection.tsx"
+      ],
+      "design": "Q05 items 6 + 9 + 10. (6) Inconsistent path encoding in api.ts: most endpoints encodeURIComponent the name, but job() (:440), jobRuns() (:441), stuck(job) (:445), ignored(job) (:447), workflow() (:509), runWorkflow() (:539), toggleWorkflow() (:540) interpolate the raw name/job — safe with slug names today but inconsistent. encodeURIComponent everywhere. (9) Five bespoke fetch functions (updateWorkflowSchedule :544, updateWorkflowConcurrency :557, updateWorkflowNotify :569, updateWorkflowCertified :581, updateJobTimeout :595) re-implement post() + server-error-body parsing — extract one postWithServerError<T>(path, body) helper that does the fetch + `if (!res.ok) throw new Error(data.error || status)` and have all five call it. (10) Modal fetch failures silently close the modal — StageIoLists.tsx:184 and :234 both do `.catch(() => setModal(null))`, and WorkflowOutputSection.tsx (~61-63) similarly — so clicking View flashes and vanishes with no explanation. Render an in-modal error state instead (keep the modal open, show the error message).",
+      "verify": "npx tsc --noEmit, npm --prefix dashboard run build, node dashboard/scripts/mobile-check.mjs, node dashboard/scripts/visual-check.mjs. Confirm the five updateWorkflow*/updateJobTimeout fns share one helper (no duplicated fetch+error-parse blocks) and every api.ts path interpolation is encoded. LOOK at the stage-io / output-section modal screenshots and, if a failing-fetch FLOWS state is added, confirm the modal shows an error rather than vanishing.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T551.md",
+      "facets": {
+        "layer": "dashboard-logic",
+        "work-type": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T552",
+      "title": "Q01: fix stale schema.sql column-value comments + replace cached column arrays with a fresh hasColumn() helper (latent T098 crash-loop)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "quality",
+        "Q01",
+        "touches-schema"
+      ],
+      "scope": [
+        "src/db/index.ts",
+        "src/db/schema.sql",
+        "src/db/migrate-existing-db.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T552.md",
+      "facets": {
+        "layer": "db",
+        "workType": "bugfix",
+        "risk": [
+          "touches-schema"
+        ]
+      }
+    },
+    {
+      "id": "T553",
+      "title": "R08 item 1: remove the dead standalone-job execution path (runJob, notifyRun, notifyStage, RunStatus 'queued')",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dead-code",
+        "refactor",
+        "R08"
+      ],
+      "scope": [
+        "src/core/executor.ts",
+        "src/core/notifier.ts",
+        "src/core/types.ts",
+        "dashboard/app/ui.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/workflow-runs/[id]/page.tsx"
+      ],
+      "design": "T070 removed all standalone (non-workflow) job runs; the machinery that served them was left behind. Confirmed dead 2026-07-12: src/core/executor.ts:73 exports runJob() with zero real call sites (the only grep hit besides its definition is the self-clone under projects-sync/data/repos). notifyRun (notifier.ts:69) is called ONLY from runJob (executor.ts:78). notifyStage (notifier.ts:112) is exported-but-uncalled since T189 — CLAUDE.md already admits this and its own executor no longer calls it. RunStatus (types.ts:2) includes 'queued', which nothing ever WRITES (createRun inserts 'running'); its only readers are defensive filters/labels in the dashboard: ui.tsx:14/36 (label + emoji), workflow-runs/[id]/page.tsx:81 (a `!== 'queued'` completed-stage filter) and :91 (a `badge queued` span — verify whether that span is the run-limit badge that reuses the class or genuinely a status render before removing), and the api.ts:10 RunStatus union. TERMINAL_RUN_STATUSES in store.ts already EXCLUDES 'queued' correctly (queued was never terminal), so that set needs no change beyond the type. Also reword runJobForWorkflow's overlap skip reason: the current text 'a standalone run of this job is already active' is wrong (standalone runs don't exist) — the real trigger is another workflow's member run of a shared job. Note: the api.ts RunStatus union and the src/core/types.ts RunStatus are two separate declarations (daemon vs dashboard) — remove 'queued' from BOTH.",
+      "verify": "npx tsc --noEmit && npm test && npm --prefix dashboard run build; then grep -rn \"runJob\\b|notifyRun|notifyStage|'queued'|\\\"queued\\\"\" src/ dashboard/app/ --include=*.ts --include=*.tsx (excluding src/workflows/projects-sync/data/repos and runJobForWorkflow) returns NO matches. Confirm no test asserted notifyStage is exported (workflow-executor.test.ts references it only in comments/assertions that it is NOT called — keep those tests green).",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T553.md",
+      "facets": {
+        "layer": "framework",
+        "work-type": "refactor",
+        "risk": [
+          "touches-executor"
+        ]
+      }
+    },
+    {
+      "id": "T554",
+      "title": "R08 item 2: delete the orphaned read-only DB-browser / canned-queries layer in store.ts (+ its tests)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dead-code",
+        "refactor",
+        "R08"
+      ],
+      "scope": [
+        "src/db/store.ts",
+        "src/db/store.test.ts"
+      ],
+      "design": "DEFAULT PATH IS DELETE — but this is a delete-vs-restore decision relayed as a topic:'other' question (item 2); if the owner says restore the /api/db endpoints instead, this unit is redirected, not built as-is. The layer (src/db/store.ts ~2004-2152, under the '── Read-only DB browser (dashboard) ──' section comment) exposes listDbTables/isKnownTable/browseTable + the TablePage type, plus CANNED_QUERIES/CannedQueryDef/CannedQueryMeta/CannedQueryResult/listCannedQueries/runCannedQuery. Its /api/db/* endpoints and the /db dashboard page were deliberately removed in T230; the layer stayed. Confirmed 2026-07-12: the ONLY consumers are its own tests in src/db/store.test.ts (~lines 6, 840-933 — the browseTable and canned-query test blocks). Delete the store.ts section AND those test blocks together. OVERLAP NOTE (do not hard-depend): R03 is a separate cluster that splits store.ts into modules; deleting ~150 lines here first simply shrinks what R03 has to move. If R03 lands first the line numbers shift — re-grep by symbol name, not line number, at build time.",
+      "verify": "npx tsc --noEmit && npm test; then grep -rn 'listDbTables|isKnownTable|browseTable|CANNED_QUERIES|listCannedQueries|runCannedQuery|TablePage|CannedQuery' src/ dashboard/ --include=*.ts --include=*.tsx (excluding projects-sync/data/repos) returns NO matches. npm test must stay green with the deleted test blocks removed (not skipped).",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T554.md",
+      "facets": {
+        "layer": "db",
+        "work-type": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T555",
+      "title": "R08 item 3: delete unimported MarkdownModal.tsx, port renderFmValue into OutputRenderer, fix CLAUDE.md",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dead-code",
+        "refactor",
+        "docs",
+        "R08"
+      ],
+      "scope": [
+        "dashboard/app/components/MarkdownModal.tsx",
+        "dashboard/app/components/OutputRenderer.tsx",
+        "dashboard/app/components/OutputRenderer.test.ts",
+        "CLAUDE.md"
+      ],
+      "design": "Confirmed 2026-07-12: dashboard/app/components/MarkdownModal.tsx (96 lines) has ZERO importers across dashboard/app — the only grep hits for MarkdownModal are its own definition + three CLAUDE.md lines that WRONGLY document it as a live component extracted in T382 and used by workflow-runs/[id]/page.tsx. So this is both a dead file AND a doc-accuracy bug. The file carries a richer frontmatter renderer (renderFmValue/isFmEmpty, MarkdownModal.tsx:26-42) than the live OutputRenderer.MarkdownOutputBody copy: renderFmValue highlights empty/null values as a `md-fm-null` 'null' placeholder and joins JSON-array values into comma-separated text, whereas OutputRenderer.tsx's MarkdownOutputBody (lines 31-53) renders each frontmatter value as raw text via `<dd className=\"md-fm-val\">{v}</dd>`. Porting renderFmValue is a small behavior win extracted FROM a deletion. The existing OutputRenderer.test.ts (self-running, `npx tsx --test dashboard/app/components/OutputRenderer.test.ts`, already covers json/text/fallback dispatch) is where the new assertion goes. This is a ui-layer change → visual verification auto-covered; visualVerify left unset.",
+      "verify": "npx tsc --noEmit && npm --prefix dashboard run build && npx tsx --test dashboard/app/components/OutputRenderer.test.ts; then grep -rn 'MarkdownModal|renderFmValue|isFmEmpty' dashboard/ CLAUDE.md (excluding projects-sync/data/repos) shows renderFmValue/isFmEmpty ONLY inside OutputRenderer.tsx (+ its test) and MarkdownModal appears NOWHERE. Run node dashboard/scripts/visual-check.mjs after build and LOOK at the output-popover screenshots to confirm frontmatter still renders (null highlighting visible).",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T555.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T556",
+      "title": "R08 item 4: prune backlog-era dead CSS + unused Pill kinds; fold duplicate :root / @media blocks",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dead-code",
+        "style",
+        "R08"
+      ],
+      "scope": [
+        "dashboard/app/globals.css",
+        "dashboard/app/components/Pill.tsx"
+      ],
+      "design": "The backlog/review UI moved to the standalone harness dashboard (:4791), leaving CSS behind. Confirmed 2026-07-12: zero markup users (grep over dashboard/app/**.tsx, excluding globals.css itself) for .section-heading-summary, .caret-style-*, .dep-id-link, .task-row-highlight, .done-row, .task-expand-body, .review-toggle, .review-filter-bar, and the legacy hand-rolled DAG classes .dag-inner/.dag-col (unused since the React Flow migration). Pill kinds: globals.css declares .pill.reviewed/.unreviewed/.buildable/.dep-waiting/.human/.blocked/.in-progress alongside the live ones (.paid/.free/.done/.on/.off/.certified/.info + .failed). Prune Pill.tsx's kind catalog AND the matching globals.css rules to only kinds actually rendered — VERIFY each candidate kind's real usage in dashboard/app/**.tsx before removing (e.g. .failed, .done, .certified ARE used; .blocked/.reviewed/.unreviewed/.buildable/.dep-waiting/.human/.in-progress are backlog-era — but confirm per-kind, don't trust this list blindly). Also: :root is declared twice (globals.css:1 and :700, the first mostly shadowed) and there are two separate @media (max-width:640px) blocks (:617 and :812) against the documented 'responsive rules in one place' convention — fold each duplicate into one. ui-layer → visualVerify auto-covered, left unset.",
+      "verify": "npx tsc --noEmit && npm --prefix dashboard run build; then for each removed class/kind, grep -rn '<class>' dashboard/app --include=*.tsx (excluding globals.css) returns zero. globals.css has exactly ONE :root rule and ONE @media (max-width:640px) block. Run node dashboard/scripts/mobile-check.mjs (green) AND node dashboard/scripts/visual-check.mjs after build, and LOOK at screenshots across pages to confirm nothing visually regressed from the :root/@media fold.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T556.md",
+      "facets": {
+        "layer": "ui",
+        "work-type": "style",
+        "risk": []
+      }
+    },
+    {
+      "id": "T557",
+      "title": "R08 item 5: remove the never-read fs.service.timeoutMs knob",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dead-code",
+        "refactor",
+        "R08"
+      ],
+      "scope": [
+        "src/services/fs.service.ts"
+      ],
+      "design": "DEFAULT PATH IS DELETE — relayed as a topic:'other' question (item 5); if the owner wants the wedged-mount case guarded instead, this unit is redirected to wrap the consumer in a Promise.race timer (which would then also scope src/workflows/places/stages/resolve.ts). Confirmed 2026-07-12: src/services/fs.service.ts:26 sets timeoutMs: 5_000 with a justifying comment. But ServiceDefinition.timeoutMs is ONLY honored when a client reads effectiveServiceTimeoutMs('<name>', ...) — grep shows the only readers are plex-client.ts ('plex') and claude.ts ('claude-cli'); there is NO 'fs' reader. The sole fs consumer, src/workflows/places/stages/resolve.ts:28, calls callService('fs', ...) with no timer. So the field is a lying knob (dashboard-editable, does nothing). Default: delete the timeoutMs field + its comment from fs.service.ts. This does NOT touch effectiveServiceTimeoutMs or other services.",
+      "verify": "npx tsc --noEmit && npm test; then grep -n 'timeoutMs' src/services/fs.service.ts returns nothing. Confirm effectiveServiceTimeoutMs still compiles and its 'plex'/'claude-cli' readers are untouched.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T557.md",
+      "facets": {
+        "layer": "service",
+        "work-type": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T558",
+      "title": "R08 item 6: delete the dead create-dynamo-tables script; annotate dynamodb.service unreachable code + throw loudly on missing secret",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dead-code",
+        "refactor",
+        "R08"
+      ],
+      "scope": [
+        "scripts/create-dynamo-tables.mjs",
+        "src/services/dynamodb.service.ts"
+      ],
+      "design": "DEFAULT PATH IS DELETE the script — relayed as a topic:'other' question (item 6); if the owner wants it re-scoped to only PerfumeRatings instead, this unit is redirected. Confirmed 2026-07-12: scripts/create-dynamo-tables.mjs provisions Listens/Projects DynamoDB tables (env LISTENS_TABLE/PROJECTS_TABLE, defaults 'Listens'/'Projects') for pipelines that were deleted; grep finds those table names referenced ONLY in this script (cleanup-listens-spotify.ts exists precisely to purge remnants). Every DynamoDB WRITE helper in dynamodb.service.ts is policy-neutered — dynamoPut (:74), and the other write helpers at :137/:149/:154 — throwing immediately. The ONLY live DynamoDB use is the perfumes READ of PerfumeRatings, which this script does not create. Regardless of the script decision, two dynamodb.service.ts fixes apply: (a) mark the deliberate unreachable code AFTER each throw with an explicit comment (so a reader/linter knows it's intentional), and (b) in the client-construction credentials block (~40-46), the current `secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? ''` silently falls back to '' when the id is set but the secret is missing → a confusing signature error later; instead throw loudly (clear message: id set, secret missing) at construction.",
+      "verify": "npx tsc --noEmit && npm test; then confirm scripts/create-dynamo-tables.mjs no longer exists (or is re-scoped per the owner's answer), grep -rn 'Listens|Projects' scripts/ --include=*.mjs (excluding projects-sync) shows the dead script gone. Confirm the perfumes PerfumeRatings READ path still compiles/works. dynamodb.service.ts: the credentials block throws when id set & secret unset (add/keep a unit-level guard check if practical without live AWS).",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T558.md",
+      "facets": {
+        "layer": "service",
+        "work-type": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T559",
+      "title": "Fix movies rec-merge: add searchFailed counter + throw (backport tv-recs B13 divergence) before the shared-pipeline extraction",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor-prep",
+        "bugfix",
+        "recommender"
+      ],
+      "scope": [
+        "src/workflows/movies/stages/merge.ts",
+        "src/workflows/movies/stages/merge.test.ts",
+        "src/workflows/movies/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T559.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T560",
+      "title": "Align recs-history schema on the movies shape ({tmdbId,title,year,at}) across movies + tv-recs, before the shared-pipeline extraction",
+      "status": "pending",
+      "dependsOn": [
+        "T559"
+      ],
+      "gate": null,
+      "tags": [
+        "refactor-prep",
+        "recommender",
+        "schema-align"
+      ],
+      "scope": [
+        "src/workflows/tv-recs/stages/tv-recs-notify.ts",
+        "src/workflows/tv-recs/stages/tv-recs-notify.test.ts",
+        "src/workflows/tv-recs/types.ts",
+        "src/workflows/tv-recs/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T560.md",
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T561",
+      "title": "Extract a shared recommender pipeline (src/core/recommender/) and re-wire movies + tv-recs onto it, deleting ~1,100 duplicated lines",
+      "status": "pending",
+      "dependsOn": [
+        "T559",
+        "T560",
+        "T527"
+      ],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "recommender",
+        "framework",
+        "large"
+      ],
+      "scope": [
+        "src/core/recommender/types.ts",
+        "src/core/recommender/pure.ts",
+        "src/core/recommender/branch.ts",
+        "src/core/recommender/merge.ts",
+        "src/core/recommender/notify.ts",
+        "src/core/recommender/pure.test.ts",
+        "src/core/recommender/merge.test.ts",
+        "src/core/recommender/notify.test.ts",
+        "src/workflows/movies/recs.ts",
+        "src/workflows/movies/branches.ts",
+        "src/workflows/movies/stages/branches.ts",
+        "src/workflows/movies/stages/recommend.ts",
+        "src/workflows/movies/stages/merge.ts",
+        "src/workflows/movies/stages/notify.ts",
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/movies/lib.ts",
+        "src/workflows/movies/types.ts",
+        "src/workflows/movies/config.ts",
+        "src/workflows/movies/CLAUDE.md",
+        "src/workflows/tv-recs/recs.ts",
+        "src/workflows/tv-recs/stages/branches.ts",
+        "src/workflows/tv-recs/stages/recommend.ts",
+        "src/workflows/tv-recs/stages/tv-rec-merge.ts",
+        "src/workflows/tv-recs/stages/tv-recs-notify.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts",
+        "src/workflows/tv-recs/lib.ts",
+        "src/workflows/tv-recs/types.ts",
+        "src/workflows/tv-recs/config.ts",
+        "src/workflows/tv-recs/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T561.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T562",
+      "title": "Dedup weekKey (and dayKey/monthKey) into a shared src/core/dates.ts with ISO-week boundary unit tests",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "dedup",
+        "dates"
+      ],
+      "scope": [
+        "src/core/dates.ts",
+        "src/core/dates.test.ts",
+        "src/workflows/stock-digest/lib.ts",
+        "src/workflows/stock-digest/CLAUDE.md",
+        "src/workflows/plex-space-saver/stages/scan.ts",
+        "src/workflows/overrides-audit/stages/scan.ts",
+        "src/workflows/overrides-audit/stages/scan.test.ts",
+        "src/workflows/stocks-sync/stages/stocks-snapshot.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T562.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T563",
+      "title": "Dedup the JSON file helpers (readJsonFile / writeJsonFile / ensureDirs) into a shared core module, after the recommender extraction removes two copies",
+      "status": "pending",
+      "dependsOn": [
+        "T561"
+      ],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "dedup",
+        "fsjson"
+      ],
+      "scope": [
+        "src/core/fsjson.ts",
+        "src/core/fsjson.test.ts",
+        "src/workflows/perfumes/lib.ts",
+        "src/workflows/plex-space-saver/stages/scan.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T563.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T564",
+      "title": "Dedup the tolerant readPortfolio into one definition shared by the stocks stages",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "dedup",
+        "stocks"
+      ],
+      "scope": [
+        "src/workflows/stock-digest/lib.ts",
+        "src/workflows/stock-digest/stages/stock-sector-lookup.ts",
+        "src/workflows/stock-digest/stages/stock-digest-build.ts",
+        "src/workflows/stocks-sync/stages/stocks-watch.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T564.md",
+      "facets": {
+        "layer": "job",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T565",
+      "title": "Dedup PlexAllResponse<T> + TMDB-GUID extraction into src/core/plex-client.ts (sequenced after the in-flight Plex-service migration)",
+      "status": "pending",
+      "dependsOn": [
+        "T517",
+        "T561"
+      ],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "dedup",
+        "plex"
+      ],
+      "scope": [
+        "src/core/plex-client.ts",
+        "src/core/plex-client.test.ts",
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/movies/movies.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts",
+        "src/workflows/missing-tv-seasons/stages/snapshot.ts",
+        "src/workflows/missing-tv-seasons/plex.ts",
+        "src/workflows/missing-movies/stages/snapshot.ts",
+        "src/workflows/plex-profiles/stages/build.ts",
+        "src/workflows/plex-space-saver/stages/scan.ts",
+        "src/workflows/plex-language-fix/lib.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T565.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T566",
+      "title": "Unify Claude-CLI spawn/parse: shared spawnClaudeCli primitive + migrate projects-sync onto claudeTimeoutMs()",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "services",
+        "claude-cli",
+        "R02"
+      ],
+      "scope": [
+        "src/services/claude.ts",
+        "src/services/claude.test.ts",
+        "src/workflows/projects-sync/claude-repo.ts",
+        "src/workflows/projects-sync/stages/project-summarize.ts",
+        "src/workflows/projects-sync/stages/project-summarize.test.ts",
+        "src/workflows/projects-sync/CLAUDE.md"
+      ],
+      "design": "Extract the ~70-line spawn/parse body duplicated across src/services/claude.ts (spawnClaude) and src/workflows/projects-sync/claude-repo.ts (spawnClaudeWithRepoAccess) into ONE internal primitive spawnClaudeCli(prompt, args, opts:{bin,timeoutMs,cwd}) in src/services/claude.ts. runClaude keeps its public signature and passes buildClaudeArgs(model,effort) + cwd=tmpdir(). Add runClaudeWithRepoAccess(prompt,model,repoDir,effort) to src/services/claude.ts (moving buildRepoAccessArgs + REPO_ACCESS_ALLOWED_TOOLS across from claude-repo.ts) passing cwd=repoDir. BOTH resolve their timeout via the existing claudeTimeoutMs() (src/services/claude.ts:39, verified present -- reads effectiveServiceTimeoutMs('claude-cli', default) so a dashboard edit governs it). This fixes claude-repo.ts:19's current module-load read of LOCALJOBS_CLAUDE_TIMEOUT_MS, which bypasses the editable value. Move unfenceMarkdown (currently only in perfumes/claude.ts) into src/services/claude.ts as an exported helper for R02b to consume. Update projects-sync/stages/project-summarize.ts to import runClaudeWithRepoAccess from '../../../services/claude.js' instead of '../claude-repo.js'; either delete claude-repo.ts or leave it as a thin re-export -- prefer deletion + update project-summarize.test.ts's import of buildRepoAccessArgs/REPO_ACCESS_ALLOWED_TOOLS to point at services/claude.js. Keep all calls gated through callService('claude-cli', ...) exactly as today (no meter change). Update projects-sync/CLAUDE.md's note about the separate claude-repo.ts invocation shape to reflect it now living in the shared services/claude.ts.",
+      "verify": "npx tsc --noEmit; npm test (claude.test.ts + project-summarize.test.ts green); grep -rn 'spawn(.*claude' src/ | grep -v 'data/repos' shows the only spawn(...claudeBin...) call is inside src/services/claude.ts; a new test in claude.test.ts asserts timeout resolution precedence (service effective override -> LOCALJOBS_CLAUDE_TIMEOUT_MS env fallback -> 300000 default).",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T566.md",
+      "facets": {
+        "layer": "service",
+        "work-type": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T567",
+      "title": "Migrate perfumes onto the shared Claude helper; delete perfumes/claude.ts",
+      "status": "pending",
+      "dependsOn": [
+        "T566"
+      ],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "job",
+        "perfumes",
+        "claude-cli",
+        "R02"
+      ],
+      "scope": [
+        "src/workflows/perfumes/claude.ts",
+        "src/workflows/perfumes/stages/find-url.ts",
+        "src/workflows/perfumes/stages/parse.ts",
+        "src/workflows/perfumes/stages/build.ts",
+        "src/workflows/perfumes/CLAUDE.md",
+        "src/services/claude.ts"
+      ],
+      "design": "Delete src/workflows/perfumes/claude.ts (the third spawn/parse copy) and repoint its three callers (find-url.ts, parse.ts, build.ts) onto the shared src/services/claude.ts. Mapping: perfumes' runClaude(prompt,model) -> shared runClaude(prompt,model) (the shared one also accepts an optional effort arg perfumes doesn't need -- fine); perfumes' extractJson -> shared extractJsonObject (identical body); perfumes' unfenceMarkdown -> the copy moved into src/services/claude.ts by R02a. The behavioral change to VERIFY carefully: perfumes currently reads perfumesConfig.claudeTimeoutMs (PERFUMES_CLAUDE_TIMEOUT_MS, default 300000) and perfumesConfig.claudeBin (PERFUMES_CLAUDE_BIN); the shared helper reads claudeTimeoutMs() (dashboard-editable claude-cli timeout) and LOCALJOBS_CLAUDE_BIN. After migration perfumes builds are governed by the dashboard-editable timeout -- this is the DESIRED fix (the idea explicitly calls out that the dashboard edit should affect perfumes builds), but confirm the CLAUDE.md follow-up note (perfumes has its OWN Claude helper) is removed and PERFUMES_CLAUDE_TIMEOUT_MS/PERFUMES_CLAUDE_BIN handling is decided (either dropped, or kept as a documented more-specific fallback -- default to the editable service value per the R02 idea). Meter parity: perfumes already gates through callService('claude-cli', ...) via its own copy; the shared runClaude does the same, so call COUNTS must not double or drop -- verify each of find-url/parse/build still makes exactly one callService('claude-cli') per item as before.",
+      "verify": "npx tsc --noEmit; npm test (perfumes stage tests + claude.test.ts green); grep -rn 'spawn(.*claude' src/workflows | grep -v 'data/repos' returns nothing; grep confirms src/workflows/perfumes/claude.ts is deleted and its importers now import from ../../../services/claude.js; perfumes/build + parse outputs unchanged for the existing fixture inputs (their existing tests stay green).",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T567.md",
+      "facets": {
+        "layer": "job",
+        "work-type": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T568",
+      "title": "Add defineService() + envInt() to src/services/lib.ts (validated env reads, monthly/30 sentinel, required rateLimitSource)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "feature",
+        "services",
+        "env-validation",
+        "R04",
+        "B19"
+      ],
+      "scope": [
+        "src/services/lib.ts",
+        "src/services/lib.test.ts",
+        "src/core/types.ts"
+      ],
+      "design": "Add two helpers to src/services/lib.ts. (1) envInt(varName: string, fallback: number): number -- reads process.env[varName], and if set, parses it strictly (reject empty string, non-finite, NaN, and negative values) THROWING an Error whose message NAMES the offending var (e.g. `env var VERCEL_MONTHLY_CAP is not a valid non-negative integer: \"2,000\"`) so a poisoned env fails LOUD at module load; when unset, returns fallback. This is the services-side implementation of the separate B19 proposal (unvalidated Number(process.env...) reads) -- bundled here per the R04 idea. (2) defineService(d): ServiceDefinition -- a declarative factory taking { name; category; description; paid; rateLimitSource (REQUIRED -- so a missing one, e.g. vercel's today, is a TYPE error); envPrefix?; ratePerMinute?; dailyCap?: number|'monthly/30'; monthlyCap?; minIntervalMs?; maxJitterMs?; timeoutMs?; cacheTtlMs? } and returning a ServiceDefinition. It resolves each numeric field through envInt using the envPrefix convention (e.g. envPrefix:'FINNHUB' -> FINNHUB_RATE_PER_MIN / FINNHUB_DAILY_CAP / FINNHUB_MONTHLY_CAP / FINNHUB_MIN_INTERVAL_MS / FINNHUB_MAX_JITTER_MS / FINNHUB_TIMEOUT_MS / FINNHUB_CACHE_TTL_MS) but MUST allow a service to keep its existing bespoke env var names (e.g. gemini's PLACES_LLM_MONTHLY_CAP, fragrantica's PERFUMES_FETCH_DELAY_MS) so effective limits are byte-identical to today -- support passing an explicit resolved number OR an explicit envVarName override per field. The dailyCap:'monthly/30' sentinel resolves to dailyFromMonthly(resolvedMonthlyCap) (with envInt applied to the daily override env var first, matching today's `?? dailyFromMonthly(monthlyCap)` pattern). Design defineService so it can also express the plex service shape in flight (T511-T517) -- i.e. don't hardcode assumptions that break minIntervalMs-only or timeoutMs-only services. Do NOT migrate any service in this unit -- only add + unit-test the helper. types.ts is in scope ONLY if defineService needs a small exported input-type addition; the ServiceDefinition interface itself is unchanged.",
+      "verify": "npx tsc --noEmit; npm test with a new src/services/lib.test.ts asserting: (a) envInt returns fallback when unset, parses a valid int when set, and THROWS naming the var on empty-string / '2,000' / NaN / negative; (b) defineService produces a ServiceDefinition with the right resolved numeric fields via envPrefix and via bespoke-env-name overrides; (c) the 'monthly/30' dailyCap sentinel resolves to dailyFromMonthly(monthlyCap); (d) omitting rateLimitSource is a compile error (documented in the test file as a // @ts-expect-error case).",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T568.md",
+      "facets": {
+        "layer": "service",
+        "work-type": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T569",
+      "title": "Migrate all 16 *.service.ts onto defineService; fix vercel rateLimitSource; snapshot + poisoned-env tests; update src/services/CLAUDE.md",
+      "status": "pending",
+      "dependsOn": [
+        "T568"
+      ],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "services",
+        "env-validation",
+        "R04",
+        "B19"
+      ],
+      "scope": [
+        "src/services/claude-cli.service.ts",
+        "src/services/dynamodb.service.ts",
+        "src/services/finnhub.service.ts",
+        "src/services/fragrantica.service.ts",
+        "src/services/fs.service.ts",
+        "src/services/gemini.service.ts",
+        "src/services/github.service.ts",
+        "src/services/google-places.service.ts",
+        "src/services/hevy.service.ts",
+        "src/services/lastfm.service.ts",
+        "src/services/openfigi.service.ts",
+        "src/services/plex.service.ts",
+        "src/services/tmdb.service.ts",
+        "src/services/trading212-instruments.service.ts",
+        "src/services/trading212.service.ts",
+        "src/services/vercel.service.ts",
+        "src/services/lib.ts",
+        "src/services/effective-limits-snapshot.test.ts",
+        "src/services/CLAUDE.md"
+      ],
+      "design": "Migrate every one of the 16 src/services/*.service.ts definitions to use defineService() from R04a, so each shrinks to a declarative block (~10 lines) while staying one-file-per-service (auto-discovery + the per-service doc comment above each definition are UNCHANGED). Preserve each service's exact current env-var names and defaults so effective limits are byte-identical (gemini PLACES_LLM_*, fragrantica PERFUMES_FETCH_*, finnhub FINNHUB_*, vercel VERCEL_*, trading212-instruments TRADING212_INSTRUMENTS_MIN_INTERVAL_MS, etc.) -- use the bespoke-env-name override support from R04a. FIX vercel.service.ts: it is the ONLY definition missing rateLimitSource (defineService makes it required, so this becomes mandatory -- write an honest source string: no public deploy-rate docs, conservative day/month caps to catch a scheduling bug). Because paid services (gemini, google-places) derive daily from monthly, use the 'monthly/30' sentinel there and verify caps.test.ts (which asserts dailyCap === floor(monthly/30)) stays green. IMPORTANT scope note on the client-helper convention: the colocated helper bodies in trading212.service.ts (~233 lines), dynamodb.service.ts (~180), openfigi.service.ts (~79) are NOT part of the numeric-definition boilerplate -- whether to EXTRACT them into sibling files depends on the owner's answer to the pending client-helper-convention question. DEFAULT (if unanswered / answer is document-only): do NOT move the colocated client code -- only convert the ServiceDefinition object at the bottom of each of those files to defineService, leaving the fetch/normalize functions in place, and document split-file as the go-forward standard for NEW services in src/services/CLAUDE.md. Only if the owner explicitly chose full extraction do those helper bodies move to sibling files (that would widen scope -- flag it). Add src/services/effective-limits-snapshot.test.ts: import each service (or iterate the registry), compute effectiveLimits/effective fields per service, and assert they equal a frozen before-migration snapshot (ratePerMinute/dailyCap/monthlyCap/minIntervalMs/maxJitterMs/timeoutMs/cacheTtlMs per service) so the migration provably preserves behavior; ALSO add a test that a poisoned env (e.g. set VERCEL_MONTHLY_CAP='2,000' then re-import vercel.service.ts) throws at load with a message naming the var. Update src/services/CLAUDE.md to document defineService (the new authoring path for a service) and the chosen client-helper convention.",
+      "verify": "npx tsc --noEmit; npm test -- caps.test.ts, fs.service.test.ts, all per-service *.service.test.ts, the new effective-limits-snapshot.test.ts, and the poisoned-env test all green; a manual diff/snapshot confirms every service's effective ratePerMinute/dailyCap/monthlyCap/minIntervalMs/maxJitterMs/timeoutMs/cacheTtlMs is IDENTICAL before vs after; vercel.service.ts now has a non-empty rateLimitSource; grep confirms no residual bare Number(process.env...) numeric-cap read remains in any migrated *.service.ts (all go through envInt via defineService).",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T569.md",
+      "facets": {
+        "layer": "service",
+        "work-type": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T570",
+      "title": "github-sync: filter first-stage ledger marking by ctx.rootAllowed (T094 fix)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "projects-sync",
+        "convention",
+        "T094"
+      ],
+      "scope": [
+        "src/workflows/projects-sync/stages/github-sync.ts",
+        "src/workflows/projects-sync/stages/github-sync.test.ts"
+      ],
+      "design": "The only T094 first-stage-rule violation found in a full lineage audit. On a LIMITED manual run of projects-sync, github-sync's marking loop (github-sync.ts ~189-204) records EVERY catalog entry to the work_items ledger, ignoring the run's selected roots, so the ledger + IO panel reflect the full repo set instead of the selected subset. Mirror places-ingest: filter the marked entries by ctx.rootAllowed(entry.repoId) while STILL writing the full catalog file (data/out/projects.json stays complete — only the ledger is scoped). The catalog write (writeCatalogFn(entries) ~180) and the entries.length===0 early-return are unchanged; only the marking loop over `entries` gains the rootAllowed filter.",
+      "verify": "Add a unit test: with ctx.rootAllowed returning true only for a subset of repoIds (simulating a limited run), assert markWorkItem is called only for the allowed repoIds, while the catalog file still contains all entries. Existing github-sync.test.ts green; npx tsc --noEmit; npm test.",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T570.md",
+      "facets": {
+        "layer": "job",
+        "work-type": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T571",
+      "title": "movies + tv-recs: record work_items in snapshot/branch/merge so StageIoPanel isn't empty",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "movies",
+        "tv-recs",
+        "convention",
+        "visibility"
+      ],
+      "scope": [
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/movies/stages/recommend.ts",
+        "src/workflows/movies/stages/merge.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts",
+        "src/workflows/tv-recs/stages/recommend.ts",
+        "src/workflows/tv-recs/stages/tv-rec-merge.ts",
+        "src/workflows/movies/stages/snapshot.test.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.test.ts",
+        "src/workflows/movies/CLAUDE.md",
+        "src/workflows/tv-recs/CLAUDE.md"
+      ],
+      "design": "movies (movie-recommendations) and tv-recs (tv-recommendations) record NO work_items in their snapshot, per-branch recommender, and merge stages — only their notify stage uses the ledger (as a 'have I recommended/ignored this?' log). Result: the workflow-run page's StageIoPanel renders empty for 10 of the 11 stages in each workflow. missing-tv-seasons stages 1-2 were retrofitted for exactly this visibility. Fix: add ONE combined ledger row per run per stage (the stocks/stock-digest day/week-key pattern, keyed by a stable per-run key such as the run's ISO date/month), so the panel shows something meaningful: snapshot -> detail {name, movies:N (or shows:N), path, format:'json'}; each recommender branch -> detail {name, suggestions:n, path} keyed per branch; merge -> detail {name, balanced:n, path, format:'json'}. Reference the artifact file each stage writes (snapshot.json / recs/<branch>.json / recommendations.json) via detail.path + detail.format per the T262/'every stage's detail describes what it produced' convention. Do NOT change these workflows' notify-stage ledger semantics or their non-limitable/live-discovery idempotency model — this is purely additive visibility. COORDINATION NOTE (not a hard dep): idea R01 proposes extracting a shared recommender pipeline for movies+tv-recs; if R01 lands first, add these rows inside the shared pipeline instead of per-copy. The work_items addition is valid either way, so this unit does NOT dependsOn R01.",
+      "verify": "Extend snapshot.test.ts / tv-snapshot.test.ts to assert the snapshot stage records exactly one combined work_items row with the expected detail shape (name + count + path + format). Run a movies + tv-recs run (or the stages under test) and confirm ledger rows land. UI: build the dashboard, run node dashboard/scripts/visual-check.mjs, and LOOK at the movie-recommendations / tv-recommendations workflow-RUN page screenshots — confirm the StageIoPanel now shows Input/Output rows for snapshot/branch/merge instead of being empty. Existing tests green; npx tsc --noEmit; npm test; npm --prefix dashboard run build.",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T571.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "job",
+        "work-type": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T572",
+      "title": "Treat Claude rate-limit as a soft pause/break, not a hard failure (3 jobs)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "claude",
+        "rate-limit",
+        "convention",
+        "bugfix"
+      ],
+      "scope": [
+        "src/workflows/workouts-sync/stages/workouts-progress.ts",
+        "src/workflows/stock-digest/stages/stock-digest-build.ts",
+        "src/workflows/projects-sync/stages/project-summarize.ts",
+        "src/workflows/workouts-sync/stages/workouts-progress.test.ts",
+        "src/workflows/stock-digest/stages/stock-digest-build.test.ts",
+        "src/workflows/projects-sync/stages/project-summarize.test.ts"
+      ],
+      "design": "In three jobs, `if (!result.ok) throw` collapses a Claude `result.rateLimited === true` outcome into a generic failure. Consequence: the job burns its maxRetries against a usage limit that won't clear in minutes, and project-summarize keeps hammering every remaining repo after the first rate-limited one. The claude helper (src/services/claude.ts) already exposes result.rateLimited; perfumes/movies/tv-recs already treat it as a soft pause (see movies/stages/recommend.ts ~155: warn + skip, run continues). Fix each: BEFORE the generic throw, check result.rateLimited. For the SINGLE-ARTIFACT stages (workouts-progress.ts ~247-249, stock-digest-build.ts ~271-273): log a warn ('Claude rate/usage limit hit — pausing, will retry next run') and soft-return (leave the item un-done so a later run resumes) instead of throwing. For project-summarize.ts (a per-repo loop, ~244-246): on rateLimited, break the loop (stop processing remaining repos this run) rather than throwing/continuing — leaving unprocessed repos for the next run. Non-rate-limit failures (result.ok false but rateLimited false) keep their existing throw/failed behaviour. In project-summarize, be careful not to trip the T416 'fail run if any item failed' rule for a rateLimited break: a rate-limit pause is a soft-stop (like a quota skip), NOT a per-item 'failed', so it must not mark the current repo 'failed' and must not push the run into the failed tally.",
+      "verify": "Add a unit test per job: inject a claude runner returning { ok:false, rateLimited:true }; assert the single-artifact stages soft-return (no throw, no 'failed' ledger row, item left un-done) and project-summarize breaks the loop (remaining repos untouched, no run-level failure thrown for the rate-limit alone). Keep a companion assertion that a non-rate-limit { ok:false, rateLimited:false } still fails as before. Existing tests green; npx tsc --noEmit; npm test.",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T572.md",
+      "facets": {
+        "layer": "job",
+        "work-type": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T573",
+      "title": "Logging hygiene sweep: drop baked-in info:/warn: prefixes, pass real level; name stocks-watch ledger rows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "stocks-sync",
+        "stock-digest",
+        "logging",
+        "convention"
+      ],
+      "scope": [
+        "src/workflows/stocks-sync/stages/stocks-fetch.ts",
+        "src/workflows/stocks-sync/stages/stocks-resolve-names.ts",
+        "src/workflows/stocks-sync/stages/stocks-snapshot.ts",
+        "src/workflows/stocks-sync/stages/stocks-watch.ts",
+        "src/workflows/stocks-sync/stages/stocks-notify.ts",
+        "src/workflows/stock-digest/stages/stock-portfolio-fetch.ts",
+        "src/workflows/stock-digest/stages/stock-portfolio-snapshot.ts",
+        "src/workflows/stock-digest/stages/stock-sector-lookup.ts",
+        "src/workflows/stock-digest/stages/stock-digest-build.ts",
+        "src/workflows/stocks-sync/stages/stocks-watch.test.ts"
+      ],
+      "design": "Two related log/detail hygiene fixes in the T415-era stocks + stock-digest workflows. (A) Log-prefix noise: 'info:'/'warn:' text is baked into ctx.log message strings across these stages, and in at least two cases the message says 'warn:' while being logged at the DEFAULT (info) level with no matching level arg — stocks-resolve-names.ts:82 ('warn: could not resolve company name...') and stock-portfolio-snapshot.ts:106 ('warn: ticker resolution failed...') both log warn-prefixed text at info level, so the dashboard won't colour them. Sweep every stage in both workflows: DROP the literal 'info:'/'warn:'/'error:' prefixes from message strings, and instead pass the real level arg to ctx.log ('warn'/'error') where the message intends a non-info level (info is the default, so info lines just drop the prefix). (B) stocks-watch nameless ledger rows: the per-run position-check markWorkItem (stocks-watch.ts ~136-138) records detail { gainPct, breaching } with NO name/ticker — the only nameless ledger rows in the repo, so the IO panel renders them blank-labeled. Add the ticker/name (e.g. detail { name: label, ticker: position.ticker, account, gainPct, breaching }), matching the shape the fresh-breach reset row a few lines up already uses. Both are pure hygiene — no behaviour change, no schema change.",
+      "verify": "grep the two workflows' stage files to confirm no remaining baked-in 'info:'/'warn:'/'error:' prefix in a ctx.log string, and that every intended-warn/error line passes the level arg. Extend stocks-watch.test.ts to assert the per-run check ledger row's detail carries a ticker/name (no longer blank-labeled). Existing tests green; npx tsc --noEmit; npm test.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T573.md",
+      "facets": {
+        "layer": "job",
+        "work-type": "logging",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T574",
+      "title": "plex-language-fix: real evaluate->apply gate before the only externally-mutating stage",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "plex-language-fix",
+        "gate",
+        "convention",
+        "safety"
+      ],
+      "scope": [
+        "src/workflows/plex-language-fix/contracts.ts",
+        "src/workflows/plex-language-fix/lib.test.ts",
+        "src/workflows/plex-language-fix/CLAUDE.md"
+      ],
+      "design": "plex-language-fix's three gate contracts (contracts.ts ~37/54/71) all return ok:true unconditionally — a sanctioned trivial minimum, BUT this DAG ends in the repo's ONLY externally-mutating stage (apply.ts PUTs audio/subtitle track selection to Plex). The evaluate->apply gate (plexLanguageEvaluateContract) can cheaply assert something real, catching evaluate-logic drift BEFORE mutation: 'every evaluate work_items row with detail.status === \"change\" has a numeric proposedAudio.streamId AND a non-null currentAudio' — exactly the malformation apply.ts (~53-56) currently skips silently at runtime (`!discover || typeof evalDetail.proposedAudio?.streamId !== 'number'`). ~15 lines, high leverage. Read the evaluate rows read-only via stages/ledger.ts's ledgerSuccessRows (already used by apply.ts) — never a paid/remote call, keeping the contract check() cheap + side-effect-free per the gate-page-safety rule. Keep the check()'s per-expectation checks[]/sample shape via the existing fromChecks helper so the gate detail page still renders; an all-'skip' or empty ledger passes trivially (no 'change' rows to violate). On violation, list the offending itemKey(s) in the checks[].actual/sample so the gate page names exactly which evaluate row is malformed. RELATES to pending Plex-migration task T511 (migrating plex-language-fix onto callService('plex')) — note only, do NOT hard-depend; this gate is on the evaluate ledger shape, orthogonal to how apply reaches Plex. The other two contracts (discover, resolve) stay trivial — only the evaluate->apply boundary gets the real assertion.",
+      "verify": "Add a unit test (lib.test.ts or a contracts-focused test) that seeds the plex-language-evaluate ledger in a scratch DB with (a) a valid 'change' row (numeric proposedAudio.streamId + currentAudio present) -> gate ok, and (b) a malformed 'change' row (missing/non-numeric proposedAudio.streamId, OR null currentAudio) -> gate returns ok:false with the offending itemKey in the violation. Confirm an empty ledger / all-'skip' ledger passes. Run the gate-coverage test to confirm the boundary still has a matching gate. Existing tests green; npx tsc --noEmit; npm test.",
+      "expectsTest": true,
+      "spec": ".harness/tasks/T574.md",
+      "facets": {
+        "layer": "job",
+        "work-type": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T575",
+      "title": "stocks-watch: make the 30% breach threshold env-overridable (STOCKS_WATCH_BREACH_PCT)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "stocks-sync",
+        "config",
+        "convention"
+      ],
+      "scope": [
+        "src/workflows/stocks-sync/stages/stocks-watch.ts",
+        "src/workflows/stocks-sync/config.ts",
+        "src/workflows/stocks-sync/stages/stocks-watch.test.ts",
+        ".env.example",
+        "src/workflows/stocks-sync/CLAUDE.md",
+        "README.md"
+      ],
+      "design": "BREACH_THRESHOLD_PCT is a hardcoded const 30 in stocks-watch.ts:12 — the only non-env-overridable tuning knob of its kind in the stocks workflows (every comparable service limit / cap is env-overridable). Add a STOCKS_WATCH_BREACH_PCT env var: read it (parseFloat/Number, default 30, ignore invalid/non-positive -> fall back to 30) so BREACH_THRESHOLD_PCT is env-seeded rather than a frozen literal. Prefer seeding it via the workflow's config.ts (stocksSyncConfig) to match the repo's 'config reads its own limits from env' convention, or read it directly in stocks-watch.ts if that's simpler given the current structure — either is fine as long as it's env-overridable with a 30 default. Add the var to .env.example (with a placeholder + one-line comment) and document it in stocks-sync/CLAUDE.md + README.md's stocks-sync section (both currently state '30%'/'≥30%' as if fixed). No behaviour change at the default.",
+      "verify": "Add a unit test asserting the threshold is read from STOCKS_WATCH_BREACH_PCT (e.g. set it to 50, assert a 40%-gain position is NOT breaching but a 60% one is; unset -> defaults to 30). Confirm .env.example, CLAUDE.md, README all reference the new var. Existing tests green; npx tsc --noEmit; npm test.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T575.md",
+      "facets": {
+        "layer": "job",
+        "work-type": "config",
+        "risk": []
+      }
+    },
+    {
+      "id": "T576",
+      "title": "listening-digest: refactor the two near-identical passes into a runPass() loop",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "listening-digest",
+        "refactor",
+        "convention"
+      ],
+      "scope": [
+        "src/workflows/listening-digest/stages/listening-digest.ts",
+        "src/workflows/listening-digest/stages/listening-digest.test.ts"
+      ],
+      "design": "runListeningDigest (listening-digest.ts ~160-285) inlines two near-identical ~60-line passes: a 1-month pass and a trailing-3-month pass, each doing fetch-albums -> fetch-tracks -> filter -> render -> write file -> markWorkItem, differing only in (period, ledger key, label). Refactor the duplicated body into a single runPass(ctx, { period, key, label, outDir, username, fetchTopAlbums, fetchTopTracks, now }) helper called twice, so the two passes share one code path. Preserve exact current behaviour: same output filenames (listening-digest-<key>.md and listening-digest-<key>-3month.md), same ledger keys (<YYYY-MM> and <YYYY-MM>-3month under job 'lastfm-digest'), same detail shapes (name + markdown path), same cacheKeys on the callService('lastfm', ...) calls, same log lines' content, and the same ctx.progress steps (50 after the first pass, 100 after both). Keep monthKey/monthLabel/toArray/filterRealAlbums/renderDigestMarkdown/the fetcher factories as-is; only the two inline pass bodies collapse into runPass. This pairs with idea B28's month-label fix but lands independently (do NOT depend on B28).",
+      "verify": "Existing listening-digest.test.ts must stay green unchanged (it already exercises the pipeline) — the refactor is behaviour-preserving. Optionally add a test asserting both passes still write their two files + two ledger rows with the expected keys. Confirm the output filenames, ledger keys, cacheKeys, and progress steps are byte-identical to before. npx tsc --noEmit; npm test.",
+      "expectsTest": false,
+      "spec": ".harness/tasks/T576.md",
+      "facets": {
+        "layer": "job",
+        "work-type": "refactor",
+        "risk": []
+      }
     }
   ]
 }
