@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 
-import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { clearServiceCache, getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import {
@@ -93,6 +93,8 @@ describe('runHevySync — local history accumulation', () => {
     process.env.HEVY_API_KEY = 'test-key';
     scratchDir = mkdtempSync(join(tmpdir(), 'workouts-history-'));
     historyPath = join(scratchDir, 'workouts-history.json');
+    // Clear service cache before each test to prevent cross-test cache interference
+    clearServiceCache('hevy');
   });
 
   afterEach(() => {
@@ -138,6 +140,10 @@ describe('runHevySync — local history accumulation', () => {
     const fetchPage = singlePageFetcher([makeWorkout(id, 2)]);
 
     await runHevySync(fakeCtx(), { fetchPage, historyPath });
+
+    // Clear cache between runs to bypass the cache and verify idempotency works correctly
+    clearServiceCache('hevy');
+
     await runHevySync(fakeCtx(), { fetchPage, historyPath });
 
     const history = readWorkoutsHistory(historyPath);
@@ -152,6 +158,9 @@ describe('runHevySync — local history accumulation', () => {
       fetchPage: singlePageFetcher([makeWorkout(id1)]),
       historyPath,
     });
+
+    // Clear cache before second run to simulate a fresh API call with updated data
+    clearServiceCache('hevy');
 
     await runHevySync(fakeCtx(), {
       fetchPage: singlePageFetcher([makeWorkout(id1), makeWorkout(id2)]),
