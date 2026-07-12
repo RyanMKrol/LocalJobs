@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { missingMoviesConfig } from '../missing-movies/config.js';
 
 // Resources live alongside the job itself (src/workflows/movies/data), never in a
 // far-off top-level folder. Paths are resolved relative to this file.
@@ -7,20 +8,31 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dataDir = resolve(here, 'data');
 
 /**
- * Connectivity + paths for the Plex movie franchise-gap audit. Plex/TMDB
- * connectivity itself lives in the shared `src/core/plex-client.ts` (used by
- * every Plex-touching workflow — same Plex server, same TMDB account) — only
- * the movie SECTION and the data paths are movie-specific. Tokens/host come
- * from the gitignored `.env`; only the env var NAMES are published (see
- * `.env.example`). Library data lives in the gitignored `data/` folder.
+ * Connectivity + paths for the movie-recommendations workflow (taste-based
+ * recommendations only — the franchise-gap audit lives in the sibling
+ * `missing-movies` workflow, T468). Plex/TMDB connectivity itself lives in the
+ * shared `src/core/plex-client.ts` (used by every Plex-touching workflow — same
+ * Plex server, same TMDB account) — only the movie SECTION and the data paths
+ * are movie-specific. Tokens/host come from the gitignored `.env`; only the env
+ * var NAMES are published (see `.env.example`). Library data lives in the
+ * gitignored `data/` folder.
  */
 export const moviesConfig = {
   dataDir,
   outDir: resolve(dataDir, 'out'),
   snapshotOut: resolve(dataDir, 'out', 'snapshot.json'),
   tasteOut: resolve(dataDir, 'out', 'taste-profile.json'),
-  gapsOut: resolve(dataDir, 'out', 'franchise-gaps.json'),
   reportDir: resolve(dataDir, 'out', 'reports'),
+  /**
+   * T468 compat re-export: `franchise-gaps.json` is now written by the
+   * sibling `missing-movies` workflow's `franchise-gaps` job, not this one —
+   * this alias just points `src/api/server.ts`'s existing
+   * `moviesConfig.gapsOut` read (its `GET /api/movie-gaps` endpoint) at the
+   * REAL current location, since `src/api/server.ts` was out of scope for the
+   * T468 build task. A future task with `src/api/server.ts` in scope should
+   * read `missingMoviesConfig.gapsOut` directly there and delete this alias.
+   */
+  gapsOut: missingMoviesConfig.gapsOut,
 
   // ── Recommendation layer (T146) ──
   /** Per-branch raw-suggestion files live here (one JSON per branch). */
