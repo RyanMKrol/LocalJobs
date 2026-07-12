@@ -118,7 +118,7 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
     // enforced across all jobs). A hit service quota is a graceful stop.
     let res: FetchResult;
     try {
-      res = await callService('google-places', () => fetchPlaceDetails(placeId));
+      res = await callService('google-places', () => fetchPlaceDetails(placeId), { cacheKey: `google-places:details:${placeId}` });
     } catch (e) {
       if (e instanceof QuotaExceededError) {
         stopReason = `google-places ${e.window} service cap reached (${e.used}/${e.cap})`;

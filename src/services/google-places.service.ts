@@ -17,6 +17,7 @@ const service: ServiceDefinition = {
   ratePerMinute: Number(process.env.PLACES_RATE_PER_MIN ?? 30),
   dailyCap,
   monthlyCap,
+  cacheTtlMs: 79_200_000,
   paid: true,
   rateLimitSource:
     'Google Places API pricing/quota docs ' +
