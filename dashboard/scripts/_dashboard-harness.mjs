@@ -314,15 +314,17 @@ const missingSeasons = {
   ],
 };
 
-// T332: the real movie-recommendations 9-node fan-out (movie-snapshot → 8 rec-* branches +
-// franchise-gaps → rec-merge → movie-gaps-notify — see src/workflows/movies/movies.workflow.ts).
+// T332: the real movie-recommendations 10-node fan-out (movie-snapshot → 8 rec-* branches →
+// rec-merge → movie-recs-notify — see src/workflows/movies/movies.workflow.ts). The
+// deterministic franchise-gap audit (franchise-gaps → movie-gaps-notify) moved to the separate
+// `missing-movies` workflow (T468/T469) — this fixture models the RECS-ONLY DAG post-split, so
+// it no longer includes those two jobs (see the `missingMoviesMembers` fixture below for those).
 // Modeled as a RUN-scoped view (statusByJob + gates populated, mirroring a completed run) so
-// visual-check can actually reproduce/confirm the run-view-only rec-auteur/franchise-gaps
+// visual-check can actually reproduce/confirm the run-view-only rec-auteur
 // spacing bug (T332), which never showed up under the generic 3-node `workflowRun`/`gates`
 // fixture the `workflow-run` PAGES entry uses.
 const movieRecsMembers = [
   { job_name: 'movie-snapshot', depends_on: [] },
-  { job_name: 'franchise-gaps', depends_on: ['movie-snapshot'] },
   { job_name: 'rec-random-1', depends_on: ['movie-snapshot'] },
   { job_name: 'rec-random-2', depends_on: ['movie-snapshot'] },
   { job_name: 'rec-random-3', depends_on: ['movie-snapshot'] },
@@ -335,20 +337,19 @@ const movieRecsMembers = [
     job_name: 'rec-merge',
     depends_on: ['rec-random-1', 'rec-random-2', 'rec-random-3', 'rec-auteur', 'rec-canon', 'rec-thin-genre', 'rec-older-era', 'rec-world-cinema'],
   },
-  { job_name: 'movie-gaps-notify', depends_on: ['franchise-gaps', 'rec-merge'] },
+  { job_name: 'movie-recs-notify', depends_on: ['rec-merge'] },
 ];
 const movieRecsWorkflowRun = workflowRun({ id: 'movie-recs-run', workflow_name: 'movie-recommendations' });
 const movieRecsStatusByJob = Object.fromEntries(movieRecsMembers.map((m) => [m.job_name, 'success']));
 const movieRecsRunIdByJob = Object.fromEntries(movieRecsMembers.map((m) => [m.job_name, 'movie-recs-run']));
 // One passed gate per movie-snapshot → wave-1 node edge (the movieSnapshotContract gate every
-// franchise-gaps AND rec-* branch consumes), plus the rec-merge/notify boundaries.
+// rec-* branch consumes), plus the rec-merge/notify boundary.
 const movieRecsGates = [
   ...movieRecsMembers.filter((m) => m.depends_on.includes('movie-snapshot')).map((m) => ({
     key: 'snapshot.json', producer: 'movie-snapshot', consumer: m.job_name, state: 'passed',
     description: 'produces — snapshot.json is a non-empty per-movie library snapshot · consumes — every branch reads the same snapshot',
   })),
-  { key: 'gaps.json', producer: 'franchise-gaps', consumer: 'movie-gaps-notify', state: 'passed', description: 'produces — franchise gap candidates · consumes — the notify stage reads them' },
-  { key: 'recommendations.json', producer: 'rec-merge', consumer: 'movie-gaps-notify', state: 'passed', description: 'produces — merged, TMDB-verified recommendations · consumes — the notify stage reads them' },
+  { key: 'recommendations.json', producer: 'rec-merge', consumer: 'movie-recs-notify', state: 'passed', description: 'produces — merged, TMDB-verified recommendations · consumes — the notify stage reads them' },
 ];
 const movieRecsRunJobs = movieRecsMembers.map((m, i) => run({
   id: `movie-recs-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'movie-recs-run',
@@ -372,6 +373,8 @@ const movieRecBranchOutput = {
   'rec-older-era': { jobName: 'rec-older-era', itemKey: '107', status: 'success', detail: { name: 'The Third Man', lens: 'older-era' } },
   'rec-world-cinema': { jobName: 'rec-world-cinema', itemKey: '106', status: 'success', detail: { name: 'City of God', lens: 'world-cinema' } },
 };
+// franchiseGapsOutput/movieGapsNotifyOutput belong to the SEPARATE `missing-movies` workflow
+// (T468/T469) — see the missingMoviesStageIo fixtures below, which reuse these two.
 const franchiseGapsOutput = {
   jobName: 'franchise-gaps', itemKey: '600', status: 'success', detail: { name: 'The Bourne Supremacy' },
 };
@@ -381,11 +384,14 @@ const recMergeOutput = {
 };
 const movieGapsNotifyOutput = {
   jobName: 'movie-gaps-notify', itemKey: '2026-06', status: 'success',
-  detail: { name: 'Movie recs + gaps digest — June 2026' },
+  detail: { name: 'Movie franchise gaps digest — June 2026' },
+};
+const movieRecsNotifyOutput = {
+  jobName: 'movie-recs-notify', itemKey: '2026-06', status: 'success',
+  detail: { name: 'Movie recommendations digest — June 2026' },
 };
 const movieRecsStageIo = {
   'movie-snapshot': { inputs: [], outputs: [movieSnapshotOutput], predecessorJobs: [], job: 'movie-snapshot' },
-  'franchise-gaps': { inputs: [movieSnapshotOutput], outputs: [franchiseGapsOutput], predecessorJobs: ['movie-snapshot'], job: 'franchise-gaps' },
   ...Object.fromEntries(
     Object.keys(movieRecBranchOutput).map((branch) => [
       branch,
@@ -398,18 +404,18 @@ const movieRecsStageIo = {
     predecessorJobs: Object.keys(movieRecBranchOutput),
     job: 'rec-merge',
   },
-  'movie-gaps-notify': {
-    inputs: [franchiseGapsOutput, recMergeOutput],
-    outputs: [movieGapsNotifyOutput],
-    predecessorJobs: ['franchise-gaps', 'rec-merge'],
-    job: 'movie-gaps-notify',
+  'movie-recs-notify': {
+    inputs: [recMergeOutput],
+    outputs: [movieRecsNotifyOutput],
+    predecessorJobs: ['rec-merge'],
+    job: 'movie-recs-notify',
   },
 };
 const movieRecsStageIoOverall = {
   inputs: [movieSnapshotOutput],
-  outputs: [movieGapsNotifyOutput],
+  outputs: [movieRecsNotifyOutput],
   predecessorJobs: ['movie-snapshot'],
-  outputJobs: ['movie-gaps-notify'],
+  outputJobs: ['movie-recs-notify'],
   job: '__overall__',
 };
 

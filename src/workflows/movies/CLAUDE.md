@@ -142,10 +142,11 @@ since the last one. Also (re)writes a monthly `recommendations.md` report.
 
 ## Cross-workflow compat shim (T468)
 
-`src/api/server.ts` (out of T468's scope; T469 is queued to relocate its dashboard-facing concerns)
-imports `NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey` from `'../workflows/movies/stages/notify.js'` and
-`moviesConfig.gapsOut` from `'../workflows/movies/config.js'` — paths that predate the split. Rather
-than touch `server.ts`:
+`src/api/server.ts` (out of T468's scope; T469 only relocated the DASHBOARD-side manager component
+— `MovieGapsManager` now renders on `missing-movies`'s own detail page instead of unconditionally
+here — it did not touch `server.ts`'s routes) imports `NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey` from
+`'../workflows/movies/stages/notify.js'` and `moviesConfig.gapsOut` from `'../workflows/movies/config.js'`
+— paths that predate the split. Rather than touch `server.ts`:
 - `src/workflows/movies/stages/notify.ts` (this recs-only notify stage) re-exports
   `NOTIFY_JOB`/`gapKey` from `missing-movies`'s `stages/notify.js` — the source of truth moved
   there, but the import path `server.ts` already uses keeps resolving unchanged.
