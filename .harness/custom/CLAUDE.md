@@ -197,10 +197,11 @@ dated bullet when you defer something new.
   gitignored); the workflow's own `data/` subfolder stays blocked by the base guard's `(^|/)data/`.
   *Recovery:* reset T500/T511 `blocked`→`pending` and neutralised their `failed:blocked` worklog markers
   (so `task_blocked()`'s fallback grep re-eligibilises them); T464/T474/T499 left `failed` (superseded by
-  T511–T517, which now build fine). *Known residue:* the 5 environmental false-block rows in
-  `ledgers/outcomes.jsonl`/`failures.jsonl` slightly skew the `job/{refactor,config,migration}`
-  calibration cells (they read as difficulty failures but were a config bug); left in place (append-only
-  ledgers dilute them as the reopened + sibling tasks succeed) — clean via `/implementation-harness-loop-recover`
-  if precise calibration matters. *Lesson:* when adding a `sensitive-paths.txt` pattern, run
+  T511–T517, which now build fine). *Ledger cleanup:* removed the 4 `guard-tripped` false-block rows
+  (T474/T499/T500/T511) from `ledgers/outcomes.jsonl` + `failures.jsonl` so the config bug doesn't read
+  as difficulty in the `job/{refactor,config,migration}` calibration cells. **T464 was NOT the guard** —
+  its block was a genuine scope-too-narrow problem (`kind:"agent-blocked"`, "required CLAUDE.md doc
+  updates not in scope"), a real signal, so its rows were KEPT. *Lesson:* when adding a
+  `sensitive-paths.txt` pattern, run
   `.harness/scripts/loop.sh --guard-selftest <a-legit-file-sharing-the-name>` to confirm it isn't a false
   positive — the tool exists for exactly this, and would have shown `BLOCK` on `src/workflows/plex-language-fix/lib.ts`.
