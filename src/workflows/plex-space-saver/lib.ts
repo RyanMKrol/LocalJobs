@@ -1,10 +1,11 @@
 // Pure Plex-parsing/formatting helpers (no I/O) — unit-tested in plex-space-saver.test.ts.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { plexSpaceSaverConfig } from './config.js';
 import type {
   PlexEpisodeMeta,
   PlexMovieMeta,
   PlexShowMeta,
+  SizeBaselineFile,
   SizeBreakdownFile,
   SizeBreakdownItem,
 } from './types.js';
@@ -15,6 +16,46 @@ export function ensureDirs(): void {
 
 export function writeJsonFile(path: string, data: unknown): void {
   writeFileSync(path, JSON.stringify(data, null, 2));
+}
+
+/** Read the persisted prior-run baseline, or `null` if this is the first run. */
+export function readBaseline(path: string): SizeBaselineFile | null {
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as SizeBaselineFile;
+    if (typeof parsed?.totalBytes !== 'number' || typeof parsed?.at !== 'string') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist this run's total as the new baseline for the NEXT run to diff against. */
+export function writeBaseline(path: string, totalBytes: number, at: string): void {
+  writeJsonFile(path, { totalBytes, at } satisfies SizeBaselineFile);
+}
+
+/** The outcome of diffing this run's total against the prior baseline. */
+export interface DropCheck {
+  /** Whether a prior baseline existed to diff against (false on the first-ever run). */
+  hasPrior: boolean;
+  /** `prior.totalBytes - current.totalBytes` (positive = shrink). Only meaningful when `hasPrior`. */
+  dropBytes: number;
+  /** Whether the drop exceeds the configured threshold — the library alert-worthy. */
+  exceeds: boolean;
+}
+
+/**
+ * Diff this run's total against the prior baseline (if any) and decide whether the
+ * shrink exceeds the absolute-GB threshold (T519 owner decision — GB, not a
+ * percentage). No prior baseline, or `current >= prior` (stable/growing), never
+ * exceeds.
+ */
+export function checkDrop(prior: SizeBaselineFile | null, currentTotalBytes: number, thresholdGb: number): DropCheck {
+  if (!prior) return { hasPrior: false, dropBytes: 0, exceeds: false };
+  const dropBytes = prior.totalBytes - currentTotalBytes;
+  const thresholdBytes = thresholdGb * 1024 ** 3;
+  return { hasPrior: true, dropBytes, exceeds: dropBytes > thresholdBytes };
 }
 
 /** Sum every `Media[].Part[].size` on one item — a movie or an episode. */

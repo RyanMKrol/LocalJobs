@@ -40,6 +40,13 @@ export interface SizeBreakdownItem {
   human: string;
 }
 
+/** The persisted prior-run baseline used to detect a run-over-run size drop. */
+export interface SizeBaselineFile {
+  totalBytes: number;
+  /** ISO timestamp of the run this baseline was recorded from. */
+  at: string;
+}
+
 /** The workflow's output artifact — the biggest-first size breakdown. */
 export interface SizeBreakdownFile {
   generatedAt: string;

@@ -2,9 +2,10 @@
 // fixtures exercise: per-part byte summation, human-readable formatting, one-row-per-movie,
 // one-row-per-show (summed across every episode/season), and biggest-first sorting.
 import assert from 'node:assert/strict';
-import { buildBreakdown, buildMovieRows, buildShowRows, formatBytes, itemBytes } from './lib.js';
-import { weekKey } from './stages/scan.js';
-import type { PlexEpisodeMeta, PlexMovieMeta, PlexShowMeta } from './types.js';
+import { checkDrop, buildBreakdown, buildMovieRows, buildShowRows, formatBytes, itemBytes } from './lib.js';
+import { SHRINK_ALERT_JOB, weekKey } from './stages/scan.js';
+import { isWorkItemDone, markWorkItem } from '../../db/store.js';
+import type { PlexEpisodeMeta, PlexMovieMeta, PlexShowMeta, SizeBaselineFile } from './types.js';
 
 // ── itemBytes sums every Media[].Part[].size ──
 assert.equal(itemBytes({ Media: [{ Part: [{ size: 100 }, { size: 50 }] }, { Part: [{ size: 25 }] }] }), 175);
@@ -62,5 +63,63 @@ console.log('  ✓ buildBreakdown combines movie+show rows, sorted biggest-first
 // ── weekKey — ISO week, matches stock-digest's convention ──
 assert.equal(weekKey(new Date('2026-07-03T00:00:00Z')), '2026-W27');
 console.log('  ✓ weekKey computes the ISO-8601 week key');
+
+// ── checkDrop: shrink-guard threshold logic (T519, absolute GB, not percentage) ──
+const GB = 1024 ** 3;
+const priorBaseline: SizeBaselineFile = { totalBytes: 1000 * GB, at: '2026-07-05T06:00:00.000Z' };
+
+// prior 1000 GB / current 800 GB (a 200 GB drop) → exceeds a 1 GB threshold
+const bigDrop = checkDrop(priorBaseline, 800 * GB, 1);
+assert.equal(bigDrop.hasPrior, true);
+assert.equal(bigDrop.dropBytes, 200 * GB);
+assert.equal(bigDrop.exceeds, true, 'a 200 GB drop exceeds a 1 GB threshold');
+
+// prior 1000 GB / current 999.5 GB (a 0.5 GB drop) → under a 1 GB threshold
+const smallDrop = checkDrop(priorBaseline, 999.5 * GB, 1);
+assert.equal(smallDrop.exceeds, false, 'a 0.5 GB drop does not exceed a 1 GB threshold');
+
+// current >= prior (stable or growing) → never exceeds
+const stable = checkDrop(priorBaseline, 1000 * GB, 1);
+assert.equal(stable.dropBytes, 0);
+assert.equal(stable.exceeds, false, 'a stable library never exceeds');
+const growing = checkDrop(priorBaseline, 1200 * GB, 1);
+assert.ok(growing.dropBytes < 0);
+assert.equal(growing.exceeds, false, 'a growing library never exceeds');
+
+// no prior baseline (first run) → never exceeds, hasPrior is false
+const firstRun = checkDrop(null, 800 * GB, 1);
+assert.equal(firstRun.hasPrior, false);
+assert.equal(firstRun.exceeds, false, 'first run (no baseline) never alerts');
+console.log('  ✓ checkDrop: absolute-GB shrink threshold logic');
+
+// ── shrink-guard notify-once ledger: same already-alerted baseline is not re-sent ──
+{
+  let pushCalls = 0;
+  const fakePush = async () => {
+    pushCalls += 1;
+    return { ok: true };
+  };
+
+  const alertKey = priorBaseline.at;
+  // Simulate scan.ts's decision: drop exceeds threshold, ledger not yet marked → alert + mark.
+  assert.equal(isWorkItemDone(SHRINK_ALERT_JOB, alertKey, 1), false, 'not yet alerted for this baseline');
+  const drop1 = checkDrop(priorBaseline, 800 * GB, 1);
+  assert.equal(drop1.exceeds, true);
+  if (drop1.exceeds && !isWorkItemDone(SHRINK_ALERT_JOB, alertKey, 1)) {
+    await fakePush();
+    markWorkItem(SHRINK_ALERT_JOB, alertKey, 'success', { detail: { name: `Shrink alert — ${alertKey}` } });
+  }
+  assert.equal(pushCalls, 1, 'first run against this baseline sends exactly one alert');
+
+  // A second run against the SAME already-alerted baseline must not re-send.
+  assert.equal(isWorkItemDone(SHRINK_ALERT_JOB, alertKey, 1), true, 'ledger now marks this baseline as alerted');
+  const drop2 = checkDrop(priorBaseline, 800 * GB, 1);
+  assert.equal(drop2.exceeds, true);
+  if (drop2.exceeds && !isWorkItemDone(SHRINK_ALERT_JOB, alertKey, 1)) {
+    await fakePush();
+  }
+  assert.equal(pushCalls, 1, 'notify-once guard: re-run against the same baseline does not re-send');
+  console.log('  ✓ shrink-guard notify-once ledger suppresses a re-send for the same baseline');
+}
 
 console.log('  ✓ plex-space-saver pure-logic tests passed');

@@ -19,9 +19,22 @@ export const plexSpaceSaverConfig = {
   dataDir,
   outDir: resolve(dataDir, 'out'),
   breakdownOut: resolve(dataDir, 'out', 'size-breakdown.json'),
+  /**
+   * Persisted prior-run baseline (total library bytes + timestamp), diffed each
+   * run to detect a silent shrink. Written at the end of every successful scan.
+   */
+  baselineOut: resolve(dataDir, 'out', 'size-baseline.json'),
 
   /** The movie library section to scan. Default 4 (the owner's "Movies", same as `movies`). */
   movieSection: process.env.PLEX_MOVIE_SECTION ?? '4',
   /** The TV library section to scan. Default 5 (the owner's "TV shows", same as `missing-tv-seasons`). */
   tvSection: process.env.PLEX_TV_SECTION ?? plexConfig.tvSection,
+
+  /**
+   * Shrink-guard alert threshold in GB (owner decision, T519): the library should
+   * essentially NEVER shrink, so alert on ANY run-over-run drop beyond a small
+   * buffer absorbing trivial metadata/transcode fluctuation. Absolute GB, NOT a
+   * percentage. Env-overridable, default 1 GB.
+   */
+  dropThresholdGb: Number(process.env.PLEX_SIZE_DROP_GB ?? '1'),
 };

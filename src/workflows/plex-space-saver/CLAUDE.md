@@ -29,3 +29,26 @@ structured JSON breakdown, served through `safeOutputFile`; the dashboard's gene
 `WorkflowOutputSection` renders it via its raw-content fallback with no dedicated viewer needed.
 (`detail.markdown` is also set, to the same path, purely so the output list query's "View" button
 still surfaces — the fetch endpoint itself dispatches on `detail.format`/`detail.path` regardless.)
+
+**Shrink guard (T519) — a safety net against silent library data loss.** After computing this run's
+total on-disk size, the scan diffs it against the PRIOR run's persisted baseline
+(`data/out/size-baseline.json`, `{ totalBytes, at }`, written/read via `lib.ts`'s
+`readBaseline`/`writeBaseline`) and fires exactly ONE critical push (`core/notifier`'s `push`, urgent
+priority + `rotating_light,warning` tags) if the library shrank by more than `PLEX_SIZE_DROP_GB`
+(env-overridable, default **1 GB**). This is deliberately an **absolute GB threshold, not a
+percentage** — the library should essentially never shrink, so even a small absolute drop beyond a
+buffer absorbing trivial metadata/transcode fluctuation is worth flagging. The drop math itself is the
+pure, unit-tested `checkDrop` in `lib.ts`.
+
+- **First run (no baseline yet):** seeds the baseline, sends no alert.
+- **Stable or growing library** (`current >= prior`, or a drop under the threshold): sends nothing.
+- **Drop exceeds the threshold:** sends the alert once, guarded against re-sending for the SAME
+  already-alerted baseline via the notify-once `work_items` ledger (job name
+  `plex-space-saver-shrink-alert`, keyed by the baseline's `at` timestamp — mirrors
+  `missing-tv-seasons/stages/notify.ts`'s "have I already notified this?" pattern). A later run that
+  diffs against a NEW (post-alert) baseline can alert again if it also drops.
+- The baseline is written at the END of every successful scan, alert or not, so the NEXT run always
+  has a fresh prior total to diff against. The size breakdown report itself is unaffected — the drop
+  check is additive, never a replacement.
+- Plex reads for this workflow are never opted into the `plex` service's response caching (it declares
+  no `cacheKey`/TTL) — every run reads live totals, which the shrink guard depends on.
