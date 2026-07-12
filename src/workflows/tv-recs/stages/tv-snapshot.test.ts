@@ -1,6 +1,7 @@
 // Pure TV-show snapshot + taste-profile tests — synthetic Plex fixtures, no live
 // Plex, no live TMDB, scratch DB only. Mirrors movies.test.ts in structure.
 import assert from 'node:assert/strict';
+import { callService } from '../../../core/services.js';
 import {
   buildOwnedSet,
   buildShowSnapshots,
@@ -109,3 +110,17 @@ assert.equal(dupProfile.genres['Thriller'], 1);
 console.log('  ✓ genre tallies accumulate correctly across shows');
 
 console.log('  ✓ tv-snapshot pure-helper tests passed');
+
+// ── callService('plex', ...) wrapper — pass-through when service unregistered ──
+{
+  let fnCalled = false;
+  const result = await callService('plex', async () => {
+    fnCalled = true;
+    return { data: 'test' };
+  });
+  assert.ok(fnCalled, 'callService passes through when plex service is unregistered in tests');
+  assert.equal(result.data, 'test', 'result is returned unchanged');
+  console.log('  ✓ callService(\'plex\', ...) pass-through wrapper works (unregistered service in test)');
+}
+
+console.log('  ✓ tv-snapshot callService tests passed');

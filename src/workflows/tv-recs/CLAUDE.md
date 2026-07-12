@@ -58,4 +58,4 @@ the recommended show's tmdb id.
   `stages/tv-recs-notify.ts`.
 - Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (shared with every other Plex/TMDB
   workflow via `src/core/plex-client.ts`) — no tv-recs-specific credential.
-- Services used: `tmdb` (via the shared client) and `claude-cli` (via `runClaude`).
+- Services used: `plex` and `tmdb` (via the shared client) and `claude-cli` (via `runClaude`).

@@ -1,4 +1,5 @@
 import type { JobContext } from '../../../core/types.js';
+import { callService } from '../../../core/services.js';
 import { plexGet } from '../../../core/plex-client.js';
 import { tvRecsConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
@@ -24,8 +25,10 @@ export async function runTvSnapshot(ctx: JobContext): Promise<void> {
   ctx.log(`        ${tvRecsConfig.tasteOut}`);
 
   ctx.progress(10, 'fetching TV shows from Plex');
-  const resp = await plexGet<PlexAllResponse<PlexShowMeta>>(
-    `/library/sections/${section}/all?includeGuids=1`,
+  const resp = await callService('plex', () =>
+    plexGet<PlexAllResponse<PlexShowMeta>>(
+      `/library/sections/${section}/all?includeGuids=1`,
+    ),
   );
   const meta = resp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${meta.length} shows from section ${section}.`);
