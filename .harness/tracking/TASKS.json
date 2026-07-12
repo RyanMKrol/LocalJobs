@@ -13558,7 +13558,7 @@
     {
       "id": "T506",
       "title": "Cache github repo-catalog reads via cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
