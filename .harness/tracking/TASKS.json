@@ -13945,7 +13945,7 @@
     {
       "id": "T520",
       "title": "Fold /admin-cache into /admin (one admin page)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
