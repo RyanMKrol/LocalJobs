@@ -13506,7 +13506,7 @@
     {
       "id": "T504",
       "title": "Cache google-places Place Details via cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
