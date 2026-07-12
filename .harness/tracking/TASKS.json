@@ -13749,7 +13749,7 @@
     {
       "id": "T513",
       "title": "Migrate missing-tv-seasons Plex snapshot reads onto callService('plex') (code + test + CLAUDE.md)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
