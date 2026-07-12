@@ -13480,7 +13480,7 @@
     {
       "id": "T503",
       "title": "Cache finnhub company-profile lookups via cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
