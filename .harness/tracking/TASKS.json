@@ -13689,7 +13689,7 @@
     {
       "id": "T511",
       "title": "Migrate plex-language-fix onto callService('plex') — lib.ts reads + apply.ts mutations (code + test + CLAUDE.md)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
