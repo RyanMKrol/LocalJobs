@@ -13,7 +13,9 @@ write a per-title profile covering summary/cast/ratings/technical detail for eve
 Reuses the shared Plex client (`src/core/plex-client.ts`'s `resolvePlexHost`/`plexGet` — DHCP
 self-heal) and the existing Plex env (`PLEX_HOST`/`PLEX_API_TOKEN`/optional `PLEX_MACHINE_ID`),
 plus the SAME `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION` env vars the `movies`/`missing-tv-seasons`/
-`plex-space-saver` workflows already read (no new connectivity config).
+`plex-space-saver` workflows already read (no new connectivity config). All Plex reads are metered
+via the shared `plex` service (`callService('plex', ...)`), coordinating rate-limit + quota across
+all Plex-touching workflows.
 
 - `GET /library/sections/<id>/all` (list): `ratingKey`, `slug`, `title`, `updatedAt` — used only to
   discover the current key set + decide whether a title needs rebuilding (cheap; no detail fields).

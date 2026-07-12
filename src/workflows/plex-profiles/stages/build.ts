@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { plexGet } from '../../../core/plex-client.js';
+import { callService } from '../../../core/services.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { plexProfilesConfig } from '../config.js';
@@ -40,9 +41,9 @@ export function showKey(ratingKey: string | number | undefined): string {
  */
 export async function resolveInputKeys(): Promise<string[]> {
   const { movieSection, tvSection } = plexProfilesConfig;
-  const moviesResp = await plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${movieSection}/all`);
+  const moviesResp = await callService('plex', () => plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${movieSection}/all`));
   const movies = moviesResp?.MediaContainer?.Metadata ?? [];
-  const showsResp = await plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${tvSection}/all`);
+  const showsResp = await callService('plex', () => plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${tvSection}/all`));
   const shows = showsResp?.MediaContainer?.Metadata ?? [];
   return [
     ...movies.map((m) => movieKey(m.ratingKey)),
@@ -87,17 +88,17 @@ export async function runBuild(ctx: JobContext): Promise<void> {
   ctx.log(`plex-profiles-build starting — movie section ${movieSection}, TV section ${tvSection}, run limit ${runLimit || 'unlimited'}`);
 
   ctx.progress(5, 'fetching movies');
-  const moviesResp = await plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${movieSection}/all`);
+  const moviesResp = await callService('plex', () => plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${movieSection}/all`));
   const movies = moviesResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${movies.length} movie(s) from section ${movieSection}.`);
 
   ctx.progress(15, 'fetching shows');
-  const showsResp = await plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${tvSection}/all`);
+  const showsResp = await callService('plex', () => plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${tvSection}/all`));
   const shows = showsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${shows.length} show(s) from section ${tvSection}.`);
 
   ctx.progress(25, 'fetching episodes for show byte totals');
-  const epsResp = await plexGet<PlexAllResponse<PlexEpisodeMeta>>(`/library/sections/${tvSection}/all?type=4`);
+  const epsResp = await callService('plex', () => plexGet<PlexAllResponse<PlexEpisodeMeta>>(`/library/sections/${tvSection}/all?type=4`));
   const episodes = epsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${episodes.length} episode(s) (flat read, type=4) for show byte totals.`);
 
@@ -152,9 +153,9 @@ export async function runBuild(ctx: JobContext): Promise<void> {
     const c = todo[i];
     try {
       ctx.log(`Building ${c.key} (${i + 1}/${total}) — fetching detail for ratingKey ${c.ratingKey}...`);
-      const detailResp = await plexGet<PlexMetadataResponse<PlexMovieDetail | PlexShowDetail>>(
+      const detailResp = await callService('plex', () => plexGet<PlexMetadataResponse<PlexMovieDetail | PlexShowDetail>>(
         `/library/metadata/${c.ratingKey}`,
-      );
+      ));
       const detail = detailResp?.MediaContainer?.Metadata?.[0];
       if (!detail) {
         throw new Error(`no detail metadata returned for ratingKey ${c.ratingKey}`);
