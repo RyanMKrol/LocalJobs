@@ -8,7 +8,13 @@ import { Pill } from '../components/Pill';
 import { CategoryTable } from '../components/CategoryTable';
 
 function Bar({ used, cap }: { used: number; cap: number | null }) {
-  if (cap == null) return <span className="muted">no limit</span>;
+  if (cap == null) {
+    return (
+      <div className="mono" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+        {used} <span className="muted">no limit</span>
+      </div>
+    );
+  }
   const pct = Math.min(100, (used / cap) * 100);
   const cls = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
   return (
