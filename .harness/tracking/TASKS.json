@@ -13427,7 +13427,7 @@
     {
       "id": "T501",
       "title": "Cache openfigi ISIN->ticker resolutions via cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
