@@ -39,6 +39,7 @@ const WORKFLOWS_WITH_SPECIFIC_MANAGERS = new Set([
   'movie-recommendations',
   'missing-tv-seasons',
   'tv-recommendations',
+  'missing-movies',
 ]);
 
 /** Group gaps by collection name, sorted by name; films sorted by year then title. */
@@ -1100,6 +1101,11 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
         <>
           <h2>Output</h2>
           <MovieRecsManager />
+        </>
+      )}
+      {name === 'missing-movies' && (
+        <>
+          <h2>Output</h2>
           <MovieGapsManager />
         </>
       )}

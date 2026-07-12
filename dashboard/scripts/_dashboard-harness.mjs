@@ -677,6 +677,32 @@ const tvRecommendationsStageIoOverall = {
   predecessorJobs: ['tv-snapshot'], outputJobs: ['tv-recs-notify'], job: '__overall__',
 };
 
+// missing-movies — the gaps-only workflow (after T468 split movie-recommendations into recs-only + gaps-only).
+// Simple linear: movie-snapshot -> franchise-gaps -> movie-gaps-notify (T469).
+const missingMoviesMembers = [
+  { job_name: 'movie-snapshot', depends_on: [] },
+  { job_name: 'franchise-gaps', depends_on: ['movie-snapshot'] },
+  { job_name: 'movie-gaps-notify', depends_on: ['franchise-gaps'] },
+];
+const missingMoviesWorkflowRun = workflowRun({ id: 'missing-movies-run', workflow_name: 'missing-movies' });
+const missingMoviesRunJobs = missingMoviesMembers.map((m, i) => run({
+  id: `missing-movies-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'missing-movies-run',
+}));
+// T469: missing-movies StageIoPanel fixtures — linear 3-stage DAG (movie-snapshot -> franchise-gaps -> movie-gaps-notify).
+// Reuses franchise gaps data from the movie-recommendations fixtures above.
+const missingMoviesStageIo = {
+  'movie-snapshot': { inputs: [], outputs: [movieSnapshotOutput], predecessorJobs: [], job: 'movie-snapshot' },
+  'franchise-gaps': { inputs: [movieSnapshotOutput], outputs: [franchiseGapsOutput], predecessorJobs: ['movie-snapshot'], job: 'franchise-gaps' },
+  'movie-gaps-notify': { inputs: [franchiseGapsOutput], outputs: [movieGapsNotifyOutput], predecessorJobs: ['franchise-gaps'], job: 'movie-gaps-notify' },
+};
+const missingMoviesStageIoOverall = {
+  inputs: [movieSnapshotOutput],
+  outputs: [movieGapsNotifyOutput],
+  predecessorJobs: ['movie-snapshot'],
+  outputJobs: ['movie-gaps-notify'],
+  job: '__overall__',
+};
+
 // perfumes — find-url -> fetch -> parse -> build (linear, 4 stages).
 const perfumesMembers = [
   { job_name: 'perfumes-find-url', depends_on: [] },
@@ -718,6 +744,7 @@ export function fixtureFor(pathname, searchParams) {
     workflow(),
     workflow({ name: 'perfumes', enabled: 0, effective_notify_enabled: false, certified: 0 }),
     workflow({ name: 'movie-recommendations', category: 'recommendations', stuck: 0 }),
+    workflow({ name: 'missing-movies', category: 'recommendations', stuck: 0 }),
     workflow({ name: 'workouts-sync', category: 'regular-maintenance', stuck: 0 }),
     workflow({ name: 'legacy-job', category: 'uncategorized', stuck: 0 }),
   ] };
@@ -736,6 +763,12 @@ export function fixtureFor(pathname, searchParams) {
     return movieRecsStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/movie-recs-run') return { run: movieRecsWorkflowRun, jobs: movieRecsRunJobs, logs, gates: movieRecsGates };
+  if (pathname === '/api/workflow-runs/missing-movies-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return missingMoviesStageIoOverall;
+    const job = searchParams?.get('job');
+    return missingMoviesStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/missing-movies-run') return { run: missingMoviesWorkflowRun, jobs: missingMoviesRunJobs, logs, gates: [] };
   if (pathname === '/api/workflow-runs/stocks/stage-io') {
     if (searchParams?.get('overall') === 'true') return stocksStageIoOverall;
     const job = searchParams?.get('job');
@@ -841,6 +874,9 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/movie-recommendations') {
     return { workflow: workflow({ name: 'movie-recommendations', category: 'recommendations', jobs: movieRecsMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/missing-movies') {
+    return { workflow: workflow({ name: 'missing-movies', category: 'recommendations', jobs: missingMoviesMembers, gates: [] }) };
   }
   if (pathname === '/api/workflows/stocks-sync') {
     return { workflow: workflow({ name: 'stocks-sync', category: 'regular-maintenance', jobs: stocksMembers, gates: [] }) };
@@ -966,11 +1002,13 @@ export const PAGES = [
   { name: 'workflows',               path: '/workflows' },
   { name: 'workflow',                path: '/workflows/places',               waitFor: ['.rf-dag-node'] },
   { name: 'workflow-movie-recs',     path: '/workflows/movie-recommendations', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-missing-movies', path: '/workflows/missing-movies',        waitFor: ['.rf-dag-node'] },
   { name: 'workflow-empty-output',   path: '/workflows/workouts-sync',         waitFor: ['.rf-dag-node'] },
   { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
   { name: 'workflow-missing-tv-seasons', path: '/workflows/missing-tv-seasons', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-movie-recs', path: '/workflow-runs/movie-recs-run',   waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-missing-movies', path: '/workflow-runs/missing-movies-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-skipped',    path: '/workflow-runs/skipped',          waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-stocks-io',  path: '/workflow-runs/stocks',           waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-stock-digest', path: '/workflow-runs/stock-digest-run', waitFor: ['.rf-dag-node'] },
