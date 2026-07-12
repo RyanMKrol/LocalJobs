@@ -13,6 +13,7 @@ const service: ServiceDefinition = {
   ratePerMinute: Number(process.env.HEVY_RATE_PER_MIN ?? 20),
   dailyCap: Number(process.env.HEVY_DAILY_CAP ?? 500),
   monthlyCap: Number(process.env.HEVY_MONTHLY_CAP ?? 5_000),
+  cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
     'No published rate-limit documentation found for the Hevy API. ratePerMinute=20 / ' +

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runHevySync,
@@ -243,5 +244,36 @@ describe('runHevySync — local history accumulation', () => {
     const raw = readFileSync(historyPath, 'utf8');
     const parsed = JSON.parse(raw);
     assert.equal(parsed[0].exercises[0].sets[0].weight_kg, 60);
+  });
+
+  it('a repeated fetch of the same page within 22h is served from service_cache', async () => {
+    // Verify that when callService is called twice with the same cacheKey
+    // for the hevy service within the cache TTL (22 hours), the second call
+    // returns the cached result without invoking the fetcher again.
+    let callCount = 0;
+    const fetchFn = async (): Promise<HevyWorkoutsPage> => {
+      callCount++;
+      return {
+        page: 1,
+        page_count: 1,
+        workouts: [makeWorkout(uid())],
+      };
+    };
+
+    // First call with a cacheKey — should call the fetcher
+    callCount = 0;
+    const result1 = await callService('hevy', fetchFn, {
+      cacheKey: 'hevy:workouts:test-page-1',
+    });
+    assert.equal(callCount, 1, 'fetcher called once on first callService');
+    const result1Id = result1.workouts[0].id;
+
+    // Second call with the same cacheKey — should return cached result without calling fetcher
+    callCount = 0;
+    const result2 = await callService('hevy', fetchFn, {
+      cacheKey: 'hevy:workouts:test-page-1',
+    });
+    assert.equal(callCount, 0, 'fetcher not called on second callService (cache hit)');
+    assert.equal(result2.workouts[0].id, result1Id, 'cached result matches first result');
   });
 });

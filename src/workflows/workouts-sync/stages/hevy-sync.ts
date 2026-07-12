@@ -121,7 +121,9 @@ export async function runHevySync(
 
   // First page (needed to learn page_count).
   do {
-    const data = await callService('hevy', () => fetchPage(page, PAGE_SIZE));
+    const data = await callService('hevy', () => fetchPage(page, PAGE_SIZE), {
+      cacheKey: `hevy:workouts:${page}`,
+    });
     pageCount = data.page_count;
     allWorkouts.push(...data.workouts);
     ctx.log(`info: fetched page ${page}/${pageCount} (${data.workouts.length} workouts)`);
