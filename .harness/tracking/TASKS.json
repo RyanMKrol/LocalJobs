@@ -13636,7 +13636,7 @@
     {
       "id": "T509",
       "title": "Cache trading212 portfolio fetch via cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
