@@ -12545,7 +12545,7 @@
     {
       "id": "T469",
       "title": "Split the movie dashboard managers onto their own workflow detail pages (MovieGapsManager → missing-movies, MovieRecsManager stays on movie-recommendations)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T468"
       ],

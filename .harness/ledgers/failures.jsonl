@@ -82,3 +82,9 @@
 {"id":"T468","ts":"2026-07-12T01:57:16Z","kind":"ci-red","rung":0,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"job","workType":"migration","risk":["cross-cutting"]},"detail":"CI checks failed on the pushed commit"}
 {"id":"T468","ts":"2026-07-12T02:12:17Z","kind":"ci-red","rung":1,"attempt":0,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"job","workType":"migration","risk":["cross-cutting"]},"detail":"CI checks failed on the pushed commit"}
 {"id":"T468","ts":"2026-07-12T02:34:40Z","kind":"ci-red","rung":1,"attempt":1,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"job","workType":"migration","risk":["cross-cutting"]},"detail":"CI checks failed on the pushed commit"}
+{"id":"T469","ts":"2026-07-12T03:31:04Z","kind":"empty-diff","rung":0,"attempt":0,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
+{"id":"T469","ts":"2026-07-12T03:36:27Z","kind":"empty-diff","rung":0,"attempt":1,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
+{"id":"T469","ts":"2026-07-12T03:37:54Z","kind":"empty-diff","rung":1,"attempt":0,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
+{"id":"T469","ts":"2026-07-12T03:48:17Z","kind":"empty-diff","rung":1,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
+{"id":"T469","ts":"2026-07-12T04:08:30Z","kind":"empty-diff","rung":2,"attempt":0,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
+{"id":"T469","ts":"2026-07-12T04:17:24Z","kind":"empty-diff","rung":2,"attempt":1,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
