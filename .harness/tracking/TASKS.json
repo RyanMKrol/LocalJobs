@@ -13453,7 +13453,7 @@
     {
       "id": "T502",
       "title": "Cache trading212-instruments lookups via cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
