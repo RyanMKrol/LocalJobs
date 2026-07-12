@@ -205,3 +205,19 @@ dated bullet when you defer something new.
   `sensitive-paths.txt` pattern, run
   `.harness/scripts/loop.sh --guard-selftest <a-legit-file-sharing-the-name>` to confirm it isn't a false
   positive — the tool exists for exactly this, and would have shown `BLOCK` on `src/workflows/plex-language-fix/lib.ts`.
+- **2026-07-12 — a file-MOVING task silently stale-scoped a pending task authored before it (T468 split →
+  T500 block).** *Symptom:* immediately after the guard fix above, the loop blocked **T500** ("Cache tmdb
+  reads") with "scope lists `src/workflows/movies/stages/franchise-gaps.ts` which does not exist". *Root
+  cause:* the movie-workflow split (T468) had since MOVED `franchise-gaps.ts` from `movies/` →
+  `missing-movies/`, and T500 (authored in the earlier caching batch, before the split landed) still listed
+  the old path in its `scope` + spec. The agent correctly refused to build against a non-existent file —
+  but only discovered it at build time. This is a GENERAL hazard: **any task that moves/renames/restructures
+  files invalidates the `scope` of every pending task that references the moved paths**, and nothing
+  re-scans for it automatically (`check-task-scope.sh` lints spec-prose-vs-scope, not file EXISTENCE).
+  *Fix:* corrected T500's `scope` + `tasks/T500.md` to the new `missing-movies/stages/franchise-gaps.ts`
+  path and reopened it; cleaned its environmental scope-block ledger rows (not a difficulty signal).
+  *Lesson / follow-up:* after building a move/rename/restructure task, sweep pending tasks for now-missing
+  scope paths — e.g. `jq -r '.tasks[]|select(.status=="pending" and .gate==null)|.id as $i|.scope[]?|select(endswith(".test.ts")|not)|"\($i) \(.)"' TASKS.json | while read i p; do [ -e "$p" ] || echo "STALE $i $p"; done`
+  (test files are exempt — they may not exist yet). *Also this run:* manually killing the loop mid-build
+  had orphaned **T512** (built + CI-green at 8a49797 but never `mark_done` — the known 2026-06-26 orphan
+  pathology); reconciled it to `done` after confirming the work + CI landed.

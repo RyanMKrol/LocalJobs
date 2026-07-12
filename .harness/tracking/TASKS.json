@@ -13395,7 +13395,7 @@
     {
       "id": "T500",
       "title": "Cache tmdb reads via callService cacheKey (22h TTL)",
-      "status": "blocked",
+      "status": "pending",
       "dependsOn": [
         "T479"
       ],
@@ -13416,7 +13416,7 @@
         "src/workflows/plex-language-fix/lib.ts",
         "src/workflows/tv-recs/stages/tv-rec-merge.ts",
         "src/workflows/missing-tv-seasons/stages/season-check.ts",
-        "src/workflows/movies/stages/franchise-gaps.ts",
+        "src/workflows/missing-movies/stages/franchise-gaps.ts",
         "src/workflows/movies/stages/merge.ts"
       ],
       "design": null,
@@ -13720,7 +13720,7 @@
     {
       "id": "T512",
       "title": "Migrate tv-recs Plex snapshot read onto callService('plex') (code + test + CLAUDE.md)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
