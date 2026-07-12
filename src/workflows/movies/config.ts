@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { missingMoviesConfig } from '../missing-movies/config.js';
 
 // Resources live alongside the job itself (src/workflows/movies/data), never in a
 // far-off top-level folder. Paths are resolved relative to this file.
@@ -7,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dataDir = resolve(here, 'data');
 
 /**
- * Connectivity + paths for the Plex movie franchise-gap audit. Plex/TMDB
+ * Connectivity + paths for the movie RECOMMENDATION layer. Plex/TMDB
  * connectivity itself lives in the shared `src/core/plex-client.ts` (used by
  * every Plex-touching workflow — same Plex server, same TMDB account) — only
  * the movie SECTION and the data paths are movie-specific. Tokens/host come
@@ -19,7 +20,14 @@ export const moviesConfig = {
   outDir: resolve(dataDir, 'out'),
   snapshotOut: resolve(dataDir, 'out', 'snapshot.json'),
   tasteOut: resolve(dataDir, 'out', 'taste-profile.json'),
-  gapsOut: resolve(dataDir, 'out', 'franchise-gaps.json'),
+  /**
+   * COMPAT SHIM (T468): the franchise-gap audit — and its franchise-gaps.json
+   * output — moved to the separate `missing-movies` workflow. `src/api/server.ts`
+   * (out of this task's scope) still reads `moviesConfig.gapsOut` directly for the
+   * `/api/movie-gaps` endpoints; aliasing it to the new location keeps that code
+   * resolving without touching it. T469 (already queued) finishes the relocation.
+   */
+  gapsOut: missingMoviesConfig.gapsOut,
   reportDir: resolve(dataDir, 'out', 'reports'),
 
   // ── Recommendation layer (T146) ──
