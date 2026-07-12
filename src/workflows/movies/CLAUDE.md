@@ -59,6 +59,8 @@ imported, so the two workflows have zero cross-workflow dependency and run on in
 schedules. This stage is the ONLY one that still builds `taste-profile.json` (the gap audit never
 needed it — see `missing-movies`'s own `CLAUDE.md`).
 
+The Plex read is metered via the shared `plex` service (`callService('plex', ...)`), coordinating rate limits and quotas across all Plex-touching workflows.
+
 ## Stage 2 — 8 recommender branches (subjective)
 
 Each branch (`rec-random-1/2/3`, `rec-auteur`, `rec-canon`, `rec-thin-genre`, `rec-older-era`,

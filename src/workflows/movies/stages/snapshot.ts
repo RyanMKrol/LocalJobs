@@ -1,4 +1,5 @@
 import type { JobContext } from '../../../core/types.js';
+import { callService } from '../../../core/services.js';
 import { plexGet } from '../../../core/plex-client.js';
 import { moviesConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
@@ -22,8 +23,10 @@ export async function runSnapshot(ctx: JobContext): Promise<void> {
   ctx.log(`movie-snapshot starting — Plex section ${section} @ ${moviesConfig.host || '(PLEX_HOST unset)'}`);
 
   ctx.progress(10, 'fetching movies');
-  const resp = await plexGet<PlexAllResponse<PlexMovieMeta>>(
-    `/library/sections/${section}/all?includeGuids=1`,
+  const resp = await callService('plex', () =>
+    plexGet<PlexAllResponse<PlexMovieMeta>>(
+      `/library/sections/${section}/all?includeGuids=1`,
+    ),
   );
   const meta = resp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${meta.length} movies from section ${section}.`);
