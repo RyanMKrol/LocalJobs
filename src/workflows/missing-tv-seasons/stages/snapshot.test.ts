@@ -1,14 +1,21 @@
 // Stage 1 ledger tests — hermetic (scratch DB only, no live Plex). `runSnapshot`
-// itself is not exercised here (it drives `plexGet`, which resolves the Plex host
-// over the network — untestable hermetically, matching every other Plex-touching
-// workflow's snapshot stage in this repo, none of which unit-test that wrapper).
-// Instead this covers the actual NEW behaviour this task added: `recordSnapshotLedger`,
+// itself is not exercised here (it drives `plexGet` wrapped in `callService('plex', ...)`,
+// which resolves the Plex host over the network — untestable hermetically, matching every
+// other Plex-touching workflow's snapshot stage in this repo, none of which unit-test that
+// wrapper). Instead this covers the actual NEW behaviour this task added: `recordSnapshotLedger`,
 // the per-show work_items ledger recording extracted out of `runSnapshot` so it can be
 // tested directly against synthetic show snapshots.
 import assert from 'node:assert/strict';
-import { getWorkItem } from '../../../db/store.js';
+import { getWorkItem, syncService } from '../../../db/store.js';
+import { registerService } from '../../../core/services.js';
 import { recordSnapshotLedger, snapshotItemKey } from './snapshot.js';
 import type { PlexShow } from '../types.js';
+
+// `callService('plex', ...)` only enforces quota if 'plex' is registered in the
+// in-process service registry — normally done by loading the daemon's registry,
+// which this standalone test never does. Register it here so the wrap passes through.
+registerService({ name: 'plex' });
+syncService({ name: 'plex' });
 
 function show(overrides: Partial<PlexShow> = {}): PlexShow {
   return {

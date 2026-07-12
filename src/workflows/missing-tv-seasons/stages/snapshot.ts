@@ -1,4 +1,5 @@
 import type { JobContext } from '../../../core/types.js';
+import { callService } from '../../../core/services.js';
 import { plexGet } from '../../../core/plex-client.js';
 import { markWorkItem } from '../../../db/store.js';
 import { plexConfig } from '../config.js';
@@ -45,15 +46,19 @@ export async function runSnapshot(ctx: JobContext): Promise<void> {
   ctx.log(`plex-tv-snapshot starting — Plex section ${section} @ ${plexConfig.host || '(PLEX_HOST unset)'}`);
 
   ctx.progress(5, 'fetching shows');
-  const showsResp = await plexGet<PlexAllResponse<PlexShowMeta>>(
-    `/library/sections/${section}/all?includeGuids=1`,
+  const showsResp = await callService('plex', () =>
+    plexGet<PlexAllResponse<PlexShowMeta>>(
+      `/library/sections/${section}/all?includeGuids=1`,
+    ),
   );
   const showsMeta = showsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${showsMeta.length} shows from section ${section}.`);
 
   ctx.progress(40, 'fetching episodes');
-  const epsResp = await plexGet<PlexAllResponse<PlexEpisodeMeta>>(
-    `/library/sections/${section}/all?type=4`,
+  const epsResp = await callService('plex', () =>
+    plexGet<PlexAllResponse<PlexEpisodeMeta>>(
+      `/library/sections/${section}/all?type=4`,
+    ),
   );
   const epsMeta = epsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${epsMeta.length} episodes (flat read, type=4).`);

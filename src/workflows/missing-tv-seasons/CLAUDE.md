@@ -81,6 +81,10 @@ per-probe timeout, concurrency, and an overall wall-clock cap) until it finds on
 discovered host so it can be pinned in `.env` next time. Throws a clear "set PLEX_HOST" error if
 nothing answers.
 
+**Plex reads are metered via the shared `plex` service.** Stage 1 (`plex-tv-snapshot`) wraps both
+`plexGet` calls (the shows listing and the flat episode listing) in `callService('plex', ...)` to
+coordinate rate limits and quotas across all Plex-touching workflows via the shared service meter.
+
 ## Files
 
 - `config.ts` — data paths (`snapshotOut`/`missingOut`/`reportDir`) plus `PLEX_TV_SECTION`
