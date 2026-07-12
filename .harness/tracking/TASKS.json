@@ -13917,7 +13917,7 @@
     {
       "id": "T519",
       "title": "plex-space-saver: alert on a significant library size DROP (shrink guard)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
