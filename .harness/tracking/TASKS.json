@@ -14431,10 +14431,10 @@
       "spec": ".harness/tasks/T537.md",
       "facets": {
         "layer": "harness",
-        "work-type": "bugfix",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "bugfix"
       }
     },
     {
@@ -14464,10 +14464,10 @@
       "spec": ".harness/tasks/T538.md",
       "facets": {
         "layer": "harness",
-        "work-type": "config",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "config"
       }
     },
     {
@@ -14492,8 +14492,8 @@
       "spec": ".harness/tasks/T539.md",
       "facets": {
         "layer": "harness",
-        "work-type": "config",
-        "risk": []
+        "risk": [],
+        "workType": "config"
       }
     },
     {
@@ -14517,8 +14517,8 @@
       "spec": ".harness/tasks/T540.md",
       "facets": {
         "layer": "harness",
-        "work-type": "config",
-        "risk": []
+        "risk": [],
+        "workType": "config"
       }
     },
     {
@@ -14545,8 +14545,8 @@
       "spec": ".harness/tasks/T541.md",
       "facets": {
         "layer": "harness",
-        "work-type": "bugfix",
-        "risk": []
+        "risk": [],
+        "workType": "bugfix"
       }
     },
     {
@@ -14572,10 +14572,10 @@
       "spec": ".harness/tasks/T542.md",
       "facets": {
         "layer": "ui",
-        "work-type": "refactor",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "refactor"
       }
     },
     {
@@ -14602,10 +14602,10 @@
       "spec": ".harness/tasks/T543.md",
       "facets": {
         "layer": "ui",
-        "work-type": "refactor",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "refactor"
       }
     },
     {
@@ -14632,8 +14632,8 @@
       "spec": ".harness/tasks/T544.md",
       "facets": {
         "layer": "ui",
-        "work-type": "bugfix",
-        "risk": []
+        "risk": [],
+        "workType": "bugfix"
       }
     },
     {
@@ -14659,8 +14659,8 @@
       "spec": ".harness/tasks/T545.md",
       "facets": {
         "layer": "ui",
-        "work-type": "bugfix",
-        "risk": []
+        "risk": [],
+        "workType": "bugfix"
       }
     },
     {
@@ -14688,10 +14688,10 @@
       "spec": ".harness/tasks/T546.md",
       "facets": {
         "layer": "ui",
-        "work-type": "component",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "component"
       }
     },
     {
@@ -14716,8 +14716,8 @@
       "visualVerify": false,
       "facets": {
         "layer": "dashboard-logic",
-        "work-type": "bugfix",
-        "risk": []
+        "risk": [],
+        "workType": "bugfix"
       }
     },
     {
@@ -14746,10 +14746,10 @@
       "visualVerify": true,
       "facets": {
         "layer": "ui",
-        "work-type": "bugfix",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "bugfix"
       }
     },
     {
@@ -14773,8 +14773,8 @@
       "spec": ".harness/tasks/T549.md",
       "facets": {
         "layer": "ui",
-        "work-type": "bugfix",
-        "risk": []
+        "risk": [],
+        "workType": "bugfix"
       }
     },
     {
@@ -14803,10 +14803,10 @@
       "spec": ".harness/tasks/T550.md",
       "facets": {
         "layer": "ui",
-        "work-type": "bugfix",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "bugfix"
       }
     },
     {
@@ -14831,10 +14831,10 @@
       "spec": ".harness/tasks/T551.md",
       "facets": {
         "layer": "dashboard-logic",
-        "work-type": "bugfix",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "bugfix"
       }
     },
     {
@@ -14893,10 +14893,10 @@
       "spec": ".harness/tasks/T553.md",
       "facets": {
         "layer": "framework",
-        "work-type": "refactor",
         "risk": [
           "touches-executor"
-        ]
+        ],
+        "workType": "refactor"
       }
     },
     {
@@ -14920,8 +14920,8 @@
       "spec": ".harness/tasks/T554.md",
       "facets": {
         "layer": "db",
-        "work-type": "refactor",
-        "risk": []
+        "risk": [],
+        "workType": "refactor"
       }
     },
     {
@@ -14948,8 +14948,8 @@
       "spec": ".harness/tasks/T555.md",
       "facets": {
         "layer": "ui",
-        "work-type": "component",
-        "risk": []
+        "risk": [],
+        "workType": "component"
       }
     },
     {
@@ -14973,8 +14973,8 @@
       "spec": ".harness/tasks/T556.md",
       "facets": {
         "layer": "ui",
-        "work-type": "style",
-        "risk": []
+        "risk": [],
+        "workType": "style"
       }
     },
     {
@@ -14997,8 +14997,8 @@
       "spec": ".harness/tasks/T557.md",
       "facets": {
         "layer": "service",
-        "work-type": "refactor",
-        "risk": []
+        "risk": [],
+        "workType": "refactor"
       }
     },
     {
@@ -15022,8 +15022,8 @@
       "spec": ".harness/tasks/T558.md",
       "facets": {
         "layer": "service",
-        "work-type": "refactor",
-        "risk": []
+        "risk": [],
+        "workType": "refactor"
       }
     },
     {
@@ -15294,10 +15294,10 @@
       "spec": ".harness/tasks/T566.md",
       "facets": {
         "layer": "service",
-        "work-type": "refactor",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "refactor"
       }
     },
     {
@@ -15329,10 +15329,10 @@
       "spec": ".harness/tasks/T567.md",
       "facets": {
         "layer": "job",
-        "work-type": "refactor",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "refactor"
       }
     },
     {
@@ -15359,10 +15359,10 @@
       "spec": ".harness/tasks/T568.md",
       "facets": {
         "layer": "service",
-        "work-type": "feature",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "feature"
       }
     },
     {
@@ -15407,10 +15407,10 @@
       "spec": ".harness/tasks/T569.md",
       "facets": {
         "layer": "service",
-        "work-type": "refactor",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "refactor"
       }
     },
     {
@@ -15435,8 +15435,8 @@
       "spec": ".harness/tasks/T570.md",
       "facets": {
         "layer": "job",
-        "work-type": "bugfix",
-        "risk": []
+        "risk": [],
+        "workType": "bugfix"
       }
     },
     {
@@ -15471,10 +15471,10 @@
       "visualVerify": true,
       "facets": {
         "layer": "job",
-        "work-type": "bugfix",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "bugfix"
       }
     },
     {
@@ -15504,8 +15504,8 @@
       "spec": ".harness/tasks/T572.md",
       "facets": {
         "layer": "job",
-        "work-type": "bugfix",
-        "risk": []
+        "risk": [],
+        "workType": "bugfix"
       }
     },
     {
@@ -15539,10 +15539,10 @@
       "spec": ".harness/tasks/T573.md",
       "facets": {
         "layer": "job",
-        "work-type": "logging",
         "risk": [
           "cross-cutting"
-        ]
+        ],
+        "workType": "logging"
       }
     },
     {
@@ -15569,8 +15569,8 @@
       "spec": ".harness/tasks/T574.md",
       "facets": {
         "layer": "job",
-        "work-type": "bugfix",
-        "risk": []
+        "risk": [],
+        "workType": "bugfix"
       }
     },
     {
@@ -15599,8 +15599,8 @@
       "spec": ".harness/tasks/T575.md",
       "facets": {
         "layer": "job",
-        "work-type": "config",
-        "risk": []
+        "risk": [],
+        "workType": "config"
       }
     },
     {
@@ -15625,8 +15625,8 @@
       "spec": ".harness/tasks/T576.md",
       "facets": {
         "layer": "job",
-        "work-type": "refactor",
-        "risk": []
+        "risk": [],
+        "workType": "refactor"
       }
     }
   ]
