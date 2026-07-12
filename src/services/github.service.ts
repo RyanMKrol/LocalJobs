@@ -16,6 +16,7 @@ const service: ServiceDefinition = {
   ratePerMinute: Number(process.env.GITHUB_RATE_PER_MIN ?? 30),
   dailyCap: Number(process.env.GITHUB_DAILY_CAP ?? 200),
   monthlyCap: Number(process.env.GITHUB_MONTHLY_CAP ?? 3_000),
+  cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
     'Documented in GitHub\'s REST API docs ' +

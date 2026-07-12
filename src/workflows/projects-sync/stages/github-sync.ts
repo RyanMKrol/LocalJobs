@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
+import type { CallServiceOpts } from '../../../core/services.js';
 import { markWorkItem, workItemCounts } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { projectsSyncConfig } from '../config.js';
@@ -54,7 +55,7 @@ export type ReposFetcher = (username: string, token: string) => Promise<GitHubRe
 /** Injectable so tests can spy on how many times a service-gated call is made,
  *  without depending on the real cross-process SQLite meter. Defaults to the
  *  real `callService`. */
-export type ServiceCaller = <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+export type ServiceCaller = <T>(name: string, fn: () => Promise<T>, opts?: CallServiceOpts) => Promise<T>;
 
 export async function fetchAllRepos(
   username: string,
@@ -77,14 +78,15 @@ export async function fetchAllRepos(
     const url = `${GITHUB_API}/users/${username}/repos?per_page=${perPage}&page=${page}&sort=pushed&direction=desc`;
     // Gate EACH page fetch through the shared `github` service — a multi-page
     // catalog must reserve one rate/quota slot per request, not one for the
-    // whole paginated fetch.
+    // whole paginated fetch. Cache the read keyed by endpoint + page so repeated
+    // fetches within 22 hours are served from cache.
     const repos = await callServiceFn('github', async () => {
       const res = await fetch(url, { headers });
       if (!res.ok) {
         throw new Error(`GitHub API error ${res.status}: ${await res.text()}`);
       }
       return (await res.json()) as GitHubRepo[];
-    });
+    }, { cacheKey: `github:repos:${username}:page:${page}` });
     all.push(...repos);
     if (repos.length < perPage) break;
     page++;

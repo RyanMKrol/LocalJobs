@@ -198,6 +198,40 @@ describe('fetchAllRepos', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('passes a stable cacheKey to callServiceFn keyed by endpoint + page for read caching', async () => {
+    const perPage = 100;
+    const pages = [
+      Array.from({ length: perPage }, () => makeRepo({ id: uid() })),
+      Array.from({ length: 7 }, () => makeRepo({ id: uid() })), // short final page
+    ];
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      const match = /[?&]page=(\d+)/.exec(String(url));
+      const page = match ? Number(match[1]) : 1;
+      const body = pages[page - 1] ?? [];
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => '',
+      } as unknown as Response;
+    }) as typeof fetch;
+
+    const cacheKeys: (string | undefined)[] = [];
+    try {
+      await fetchAllRepos('testuser', 'token', async (name, fn, opts) => {
+        cacheKeys.push(opts?.cacheKey);
+        return fn();
+      });
+
+      assert.equal(cacheKeys.length, 2);
+      assert.equal(cacheKeys[0], 'github:repos:testuser:page:1');
+      assert.equal(cacheKeys[1], 'github:repos:testuser:page:2');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
