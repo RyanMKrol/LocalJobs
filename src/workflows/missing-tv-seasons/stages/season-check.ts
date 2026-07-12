@@ -68,7 +68,9 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
     }
 
     try {
-      const detail = await callService('tmdb', () => tmdbGet<TmdbSeriesDetail>(`/tv/${show.tmdbId}`));
+      const detail = await callService('tmdb', () => tmdbGet<TmdbSeriesDetail>(`/tv/${show.tmdbId}`), {
+        cacheKey: `tmdb:/tv/${show.tmdbId}`,
+      });
       tmdbCalls++;
       const seasons = detail.seasons ?? [];
       const aired = highestAiredSeason(seasons, now);
@@ -76,7 +78,11 @@ export async function runSeasonCheck(ctx: JobContext): Promise<void> {
 
       const seasonEpisodes = new Map<number, TmdbEpisode[]>();
       for (const n of cands) {
-        const sdata = await callService('tmdb', () => tmdbGet<TmdbSeasonDetail>(`/tv/${show.tmdbId}/season/${n}`));
+        const sdata = await callService(
+          'tmdb',
+          () => tmdbGet<TmdbSeasonDetail>(`/tv/${show.tmdbId}/season/${n}`),
+          { cacheKey: `tmdb:/tv/${show.tmdbId}/season/${n}` },
+        );
         tmdbCalls++;
         seasonEpisodes.set(n, sdata.episodes ?? []);
       }

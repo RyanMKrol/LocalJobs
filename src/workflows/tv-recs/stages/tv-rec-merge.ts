@@ -62,12 +62,16 @@ function genreNameFromIds(ids: number[] | undefined): string {
 }
 
 const defaultSearchTv: SearchTvFn = (title, year) =>
-  callService('tmdb', async () => {
-    const params = new URLSearchParams({ query: title, include_adult: 'false' });
-    if (year != null) params.set('first_air_date_year', String(year));
-    const resp = await tmdbGet<TmdbTvSearchResponse>(`/search/tv?${params.toString()}`);
-    return resp.results?.[0] ?? null;
-  });
+  callService(
+    'tmdb',
+    async () => {
+      const params = new URLSearchParams({ query: title, include_adult: 'false' });
+      if (year != null) params.set('first_air_date_year', String(year));
+      const resp = await tmdbGet<TmdbTvSearchResponse>(`/search/tv?${params.toString()}`);
+      return resp.results?.[0] ?? null;
+    },
+    { cacheKey: `tmdb:search:tv:${title}${year != null ? `:${year}` : ''}` },
+  );
 
 export interface MergeOpts {
   searchTv?: SearchTvFn;

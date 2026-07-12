@@ -84,8 +84,13 @@ export interface TmdbLanguageDetail {
 /** Look up a show/movie's TMDB language detail, routed through the shared rate-limited tmdb service. */
 export async function lookupLanguageDetail(tmdbId: number, type: 'show' | 'movie'): Promise<TmdbLanguageDetail> {
   const path = type === 'show' ? `/tv/${tmdbId}` : `/movie/${tmdbId}`;
-  const detail = await callService('tmdb', () =>
-    tmdbGet<{ original_language?: string; spoken_languages?: { iso_639_1: string; english_name: string }[] }>(path),
+  const detail = await callService(
+    'tmdb',
+    () =>
+      tmdbGet<{ original_language?: string; spoken_languages?: { iso_639_1: string; english_name: string }[] }>(
+        path,
+      ),
+    { cacheKey: `tmdb:${path}` },
   );
   return {
     originalLanguage: detail.original_language,

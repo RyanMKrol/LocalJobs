@@ -10,6 +10,7 @@ const service: ServiceDefinition = {
   category: 'api',
   description: 'The Movie DB API (free). Season/episode metadata for the Plex new-seasons audit.',
   ratePerMinute: Number(process.env.TMDB_RATE_PER_MIN ?? 600),
+  cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
     'TMDB does not publish a hard rate limit today. ratePerMinute=600 (~10/s) is our own ' +

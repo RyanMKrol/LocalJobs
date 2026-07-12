@@ -58,12 +58,16 @@ async function runBounded<T>(items: T[], limit: number, fn: (item: T) => Promise
 }
 
 const defaultSearchMovie: SearchMovieFn = (title, year) =>
-  callService('tmdb', async () => {
-    const params = new URLSearchParams({ query: title, include_adult: 'false' });
-    if (year != null) params.set('year', String(year));
-    const resp = await tmdbGet<TmdbSearchResponse>(`/search/movie?${params.toString()}`);
-    return resp.results?.[0] ?? null;
-  });
+  callService(
+    'tmdb',
+    async () => {
+      const params = new URLSearchParams({ query: title, include_adult: 'false' });
+      if (year != null) params.set('year', String(year));
+      const resp = await tmdbGet<TmdbSearchResponse>(`/search/movie?${params.toString()}`);
+      return resp.results?.[0] ?? null;
+    },
+    { cacheKey: `tmdb:search:movie:${title}${year != null ? `:${year}` : ''}` },
+  );
 
 export interface MergeOpts {
   searchMovie?: SearchMovieFn;

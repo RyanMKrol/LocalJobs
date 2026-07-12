@@ -32,9 +32,11 @@ export interface FranchiseGapsOpts {
 }
 
 const defaultMovieFetch: MovieFetch = (id) =>
-  callService('tmdb', () => tmdbGet<TmdbMovieDetail>(`/movie/${id}`));
+  callService('tmdb', () => tmdbGet<TmdbMovieDetail>(`/movie/${id}`), { cacheKey: `tmdb:/movie/${id}` });
 const defaultCollectionFetch: CollectionFetch = (id) =>
-  callService('tmdb', () => tmdbGet<TmdbCollectionDetail>(`/collection/${id}`));
+  callService('tmdb', () => tmdbGet<TmdbCollectionDetail>(`/collection/${id}`), {
+    cacheKey: `tmdb:/collection/${id}`,
+  });
 
 /**
  * Stage 2 — the DETERMINISTIC franchise-gap detector via the TMDB Collections
