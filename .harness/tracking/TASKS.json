@@ -13778,7 +13778,7 @@
     {
       "id": "T514",
       "title": "Migrate plex-profiles Plex reads onto callService('plex') (code + test + CLAUDE.md)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
