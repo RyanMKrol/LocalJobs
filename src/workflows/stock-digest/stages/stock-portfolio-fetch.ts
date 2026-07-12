@@ -45,9 +45,8 @@ export async function runStockPortfolioFetch(
   const isaApiSecretKey = process.env.TRADING212_ISA_API_SECRET_KEY ?? '';
   const hasIsaCreds = Boolean(isaApiKeyId && isaApiSecretKey);
 
-  const fetchPortfolioFn =
-    opts.fetchPortfolio ??
-    ((keyId, secret) => callService('trading212', () => fetchPortfolio(keyId, secret)));
+  const baseFetchFn = opts.fetchPortfolio ?? fetchPortfolio;
+  const useCache = !opts.fetchPortfolio;
   const writeRawPortfolioFn = opts.writeRawPortfolio ?? writeRawPortfolio;
   const now = opts.now ?? new Date();
   const key = weekKey(now);
@@ -55,13 +54,17 @@ export async function runStockPortfolioFetch(
 
   ctx.log('info: stock-portfolio-fetch starting — fetching stock-digest\'s own snapshot from Trading212 (read-only)');
 
-  const rawInvestPositions = await fetchPortfolioFn(apiKeyId, apiSecretKey);
+  const rawInvestPositions = await callService('trading212', () => baseFetchFn(apiKeyId, apiSecretKey), {
+    cacheKey: useCache ? 't212:portfolio:invest' : undefined,
+  });
   ctx.log(`info: fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
   let positions = rawInvestPositions.map((p) => normalizePosition(p, 'invest'));
 
   let isaCount = 0;
   if (hasIsaCreds) {
-    const rawIsaPositions = await fetchPortfolioFn(isaApiKeyId, isaApiSecretKey);
+    const rawIsaPositions = await callService('trading212', () => baseFetchFn(isaApiKeyId, isaApiSecretKey), {
+      cacheKey: useCache ? 't212:portfolio:isa' : undefined,
+    });
     isaCount = rawIsaPositions.length;
     ctx.log(`info: fetched ${isaCount} open position(s) from Trading212 ISA account`);
     positions = positions.concat(rawIsaPositions.map((p) => normalizePosition(p, 'isa')));

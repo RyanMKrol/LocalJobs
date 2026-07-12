@@ -22,6 +22,7 @@ const service: ServiceDefinition = {
   ratePerMinute: Number(process.env.TRADING212_RATE_PER_MIN ?? 10),
   dailyCap: Number(process.env.TRADING212_DAILY_CAP ?? 100),
   monthlyCap: Number(process.env.TRADING212_MONTHLY_CAP ?? 1_000),
+  cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
     'Trading212\'s public API docs (https://docs.trading212.com/api) don\'t state an explicit ' +

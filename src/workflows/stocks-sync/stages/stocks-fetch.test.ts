@@ -12,6 +12,7 @@ import {
   type NormalizedPosition,
   type Trading212Position,
 } from '../../../services/trading212.service.js';
+import { callService } from '../../../core/services.js';
 import { dayKey } from './stocks-snapshot.js';
 import { runStocksFetch, type RawPositionsWriter } from './stocks-fetch.js';
 
@@ -248,5 +249,31 @@ describe('runStocksFetch', () => {
     const row = getWorkItem(JOB, dayKey(now));
     const detail = JSON.parse(row!.detail!);
     assert.equal(detail.totalFetched, 2);
+  });
+
+  it('a repeated portfolio fetch for the same account within 22h is served from service_cache', async () => {
+    let calls = 0;
+    const testPos = makePosition({ ticker: `CACHE_${Date.now()}_EQ` });
+
+    // First call: should hit the real function and cache the result
+    const first = await callService('trading212', async () => {
+      calls++;
+      return [testPos];
+    }, { cacheKey: 't212:portfolio:invest' });
+
+    assert.equal(calls, 1);
+    assert.equal(first.length, 1);
+    assert.equal(first[0].ticker, testPos.ticker);
+
+    // Second call with same cacheKey: should be served from cache without invoking the function again
+    const second = await callService('trading212', async () => {
+      calls++;
+      return [testPos];
+    }, { cacheKey: 't212:portfolio:invest' });
+
+    assert.equal(calls, 1, 'function was not re-invoked (cache hit)');
+    assert.equal(second.length, 1);
+    assert.equal(second[0].ticker, testPos.ticker);
+    assert.deepEqual(first, second, 'cached result matches original');
   });
 });
