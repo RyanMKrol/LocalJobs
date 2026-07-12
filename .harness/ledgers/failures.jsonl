@@ -88,3 +88,4 @@
 {"id":"T469","ts":"2026-07-12T03:48:17Z","kind":"empty-diff","rung":1,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
 {"id":"T469","ts":"2026-07-12T04:08:30Z","kind":"empty-diff","rung":2,"attempt":0,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
 {"id":"T469","ts":"2026-07-12T04:17:24Z","kind":"empty-diff","rung":2,"attempt":1,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"ui","workType":"refactor","risk":[]},"detail":""}
+{"id":"T500","ts":"2026-07-12T05:02:02Z","kind":"guard-tripped","rung":0,"attempt":0,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"job","workType":"config","risk":["cross-cutting"]},"detail":""}
