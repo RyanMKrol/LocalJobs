@@ -13663,7 +13663,7 @@
     {
       "id": "T510",
       "title": "Cache dynamodb scan reads via cacheKey (22h TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T479"
       ],
