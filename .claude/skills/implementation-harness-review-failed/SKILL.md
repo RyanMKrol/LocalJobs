@@ -131,7 +131,7 @@ NOT have `AskUserQuestion`, and never touches `tracking/TASKS.json`, `tasks/`, `
 > - **Already resolved** — the investigation found this is PROVABLY fixed/stale/non-issue: a framework bug
 >   since patched upstream, a later task or manual commit that already touched the same scope and fixed
 >   it, a failure mode that no longer reproduces. This is a FACTUAL finding, not a judgment call. Write
->   `.harness/.pending-tasks/<SLUG>.json` with `{ "units": [], "ideaBullets": [], "report": "<why nothing
+>   `.harness/.pending-tasks/<SLUG>.json` with `{ "units": [], "report": "<why nothing
 >   further is needed>" }`. **No question needed** — the coordinator closes the original out automatically
 >   in Stage 3, citing your report as the reason.
 > - **Follow-up authored** — go to step 4 to shape it. You do NOT have `AskUserQuestion` — you relay
@@ -144,7 +144,7 @@ NOT have `AskUserQuestion`, and never touches `tracking/TASKS.json`, `tasks/`, `
 >   isn't worth building: it was already deprioritized, the underlying ask is stale/no longer wanted, or a
 >   proper fix's cost isn't justified relative to its value. Unlike "already resolved," this ABANDONS
 >   something the backlog once wanted — that IS a judgment call, so it must be confirmed, not closed
->   silently. Write `.harness/.pending-tasks/<SLUG>.json` with the same `{ "units": [], "ideaBullets": [],
+>   silently. Write `.harness/.pending-tasks/<SLUG>.json` with the same `{ "units": [],
 >   "report": "<why you think it's not worth pursuing>" }` shape as "already resolved" (your `report` text
 >   is what distinguishes them for the coordinator), AND relay a confirm-first question per step 4c below.
 >
@@ -275,12 +275,21 @@ rounds**, regenerate and redeploy to the SAME file path each round — the owner
 whole sweep instead of chasing a new link every round. Zero pending questions → skip this entirely,
 nothing to relay.
 
-**Summarize before asking**: emit a short markdown recap — one line per review: its `ideaSummary` (and
-the `<TNNN>` it concerns) — plus the artifact URL from above ("Full drafted context: `<url>` — keep this
-open while answering below") — then make ONE `AskUserQuestion` batching **every** question from **every**
-file (each may carry several — a definition-of-done confirmation, a `close-without-followup`
-confirmation, plus other build-changing decisions), each with a `<TNNN>`-naming header/label. Fold each
-answer back to its `(slug, question)`:
+**Summarize before asking, but don't rely on it**: emit a short markdown recap — one line per review: its
+`ideaSummary` (and the `<TNNN>` it concerns) — plus the artifact URL from above ("Full drafted context:
+`<url>` — keep this open while answering below") — so the owner has the full list up front. This recap is a
+courtesy overview, **not** the question's only source of context: every individual question also opens with
+its own one-sentence, self-contained restatement naming its `<TNNN>` **in the question text itself** (not
+only in a header/label), because the recap can scroll out of view long before a later question is answered.
+
+**Batch in groups of ≤4 — `AskUserQuestion` hard-caps a single call at 4 questions.** Gather every question
+from every `.pending-questions/<slug>.json` (each may carry several — a definition-of-done confirmation, a
+`close-without-followup` confirmation, plus other build-changing decisions), then split into calls of at
+most 4. Keep one review's own questions together within the same call where possible (don't split a task's
+DoD confirmation from its other question across two calls). More than 4 questions total means multiple
+sequential `AskUserQuestion` calls — that's expected, not an error; never try to cram everything into "one"
+call. Give each question a `<TNNN>`-naming header/label too (still useful as a quick visual scan, just not
+load-bearing on its own anymore). Fold each answer back to its `(slug, question)`:
 for a `definition-of-done` answer, update that follow-up's `.pending-tasks/<slug>.json` `specDoneWhen` if
 the owner adjusted it (resume the agent via `SendMessage`, or edit the file yourself), else leave the
 draft; for a `close-without-followup` answer, either leave the `{ "units": [] }` draft as-is (owner

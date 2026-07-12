@@ -218,6 +218,14 @@ CASES
 [ "${1:-}" = "--guard-selftest" ] && { guard_selftest "${2:-}"; exit $?; }
 
 [ -f "$BACKLOG" ] || { log "no .harness/tracking/TASKS.json — nothing to build"; exit 3; }
+# A backlog that exists but won't parse (truncated/corrupt) or is empty must ALSO fail CLOSED
+# (exit 3), never read as "backlog complete" (exit 0): select_task swallows jq errors, so a corrupt
+# backlog would otherwise select nothing → the loop logs "backlog complete" and supervise idles the
+# whole token-refresh window on it. (jq empty exits 0 on empty/zero input, so guard emptiness too.)
+if ! { [ -s "$BACKLOG" ] && jq empty "$BACKLOG" 2>/dev/null; }; then
+  log "FATAL: $BACKLOG is empty or not valid JSON — refusing to run (a corrupt backlog must never read as 'backlog complete'). Fix the backlog, then restart."
+  exit 3
+fi
 
 # --- TASKS.json helpers (read from the local backlog file) ------------------
 tj()           { jq "$@" "$BACKLOG" 2>/dev/null; }
@@ -755,26 +763,41 @@ run_claude() {
   local out="$WORKLOG/.claude-out.${phase}"          # reassembled plain text — unchanged meaning
   local rc
   local -a eff=(); [ -n "$effort" ] && eff=(--effort "$effort")   # some models (e.g. Haiku) have no effort param — omit the flag entirely
-  # Echo the EXACT prompt handed to Claude (build or audit), wrapped in a heavy banner, so a human
-  # watching the console can read what the agent was actually asked. To stderr (never into claude's
-  # stdin/stdout pipeline below). PRINT_PROMPT=0 in harness.env silences it.
+  # The FULL prompt handed to Claude (build or audit) goes to a PER-PHASE FILE under worklog/, NOT the
+  # console: the prompts are huge and used to bury the cycle boundaries in the terminal, making it hard to
+  # see where each iteration starts/ends. The console now gets only a concise boundary banner (which
+  # task/phase/tier is starting + where to read the prompt). The prompt file is gitignored scratch (like
+  # .claude-out.*), viewable any time. Neither write ever touches claude's stdin/stdout pipeline below.
+  local _ph _meta _bar='================================================================================'
+  _ph="$(printf '%s' "$phase" | tr '[:lower:]' '[:upper:]')"
+  # Build banners show the escalation position (rung/attempt — WHY this tier); the audit runs at the fixed
+  # AUDITOR tier, not a ladder rung, so rung/attempt is meaningless there and omitted.
+  _meta="($model${effort:+ / $effort})"
+  [ "$phase" = build ] && _meta="$_meta  ·  rung ${cur_rung:-0} · attempt $(( ${cur_attempts:-0} + 1 ))"
+  # FULL prompt → per-phase worklog file (always written; this replaces the old console dump).
+  local _pfile="$WORKLOG/.claude-prompt.${phase}"
+  { printf '%s\n=====  %s PROMPT  —  task %s  %s\n%s\n%s\n' \
+      "$_bar" "$_ph" "${cur_task:-?}" "$_meta" "$_bar" "$pr"; } > "$_pfile" 2>/dev/null || true
+  # CONCISE cycle-boundary banner → console (PRINT_PROMPT=0 silences it). No prompt body; points at the file.
   if [ "${PRINT_PROMPT:-1}" = 1 ]; then
-    local _ph _meta _bar='================================================================================'
-    _ph="$(printf '%s' "$phase" | tr '[:lower:]' '[:upper:]')"
-    # Repeat the model/effort on BOTH the opening and END lines so a human scrolling the console
-    # doesn't have to jump back up past the prompt to see which tier ran. Build banners also show the
-    # escalation position (rung/attempt — WHY this tier); the audit runs at the fixed AUDITOR tier,
-    # not a ladder rung, so rung/attempt is meaningless there and omitted.
-    _meta="($model${effort:+ / $effort})"
-    [ "$phase" = build ] && _meta="$_meta  ·  rung ${cur_rung:-0} · attempt $(( ${cur_attempts:-0} + 1 ))"
-    { printf '\n%s\n=====  %s PROMPT  —  task %s  %s\n%s\n%s\n%s\n=====  END %s PROMPT  —  task %s  %s\n%s\n\n' \
-        "$_bar" "$_ph" "${cur_task:-?}" "$_meta" "$_bar" "$pr" "$_bar" "$_ph" "${cur_task:-?}" "$_meta" "$_bar"; } >&2
+    { printf '\n%s\n=====  %s  —  task %s  %s\n=====  full prompt → %s\n%s\n\n' \
+        "$_bar" "$_ph" "${cur_task:-?}" "$_meta" "$_pfile" "$_bar"; } >&2
   fi
   set +e
   # `${arr[@]+"${arr[@]}"}` (guard, NOT a bare "${arr[@]}") — on bash < 4.4 (macOS ships 3.2) expanding a
   # declared-but-EMPTY array under `set -u` throws `unbound variable` and crashes run_claude BEFORE claude
   # runs. That's exactly the effort-less cold-start floor (Haiku), so a fresh install crash-loops on task 1.
-  ( cd "$ROOT" && "$CLAUDE_BIN" -p "$pr" --model "$model" ${eff[@]+"${eff[@]}"} \
+  # PUSH BLOCK (in-place only) — the builder/auditor works DIRECTLY on `main` and must NOT push; the
+  # loop is the sole pusher (P5). We scope git's pre-push hook to THIS agent subprocess via GIT_CONFIG_*
+  # env — NOT a persistent `core.hooksPath`, which would disable the repo's own husky/pre-commit hooks
+  # for the loop and humans too. HARNESS_AGENT=1 is what .harness/scripts/pre-push checks; the loop's
+  # own pushes and human pushes never carry it, so they're never blocked. (The WORKTREE variant omits
+  # this on purpose — there the builder MUST push its isolated branch.) chmod keeps the hook executable
+  # even if an install/copy dropped the bit (git silently ignores a non-executable hook = no enforcement).
+  chmod +x "$ROOT/.harness/scripts/pre-push" 2>/dev/null || true
+  ( cd "$ROOT" \
+      && HARNESS_AGENT=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$ROOT/.harness/scripts" \
+         "$CLAUDE_BIN" -p "$pr" --model "$model" ${eff[@]+"${eff[@]}"} \
       --output-format stream-json --include-partial-messages --verbose ${FLAGS[@]+"${FLAGS[@]}"} ) 2>&1 \
     | tee "$raw" \
     | jq -Rrj 'fromjson? | select(.type=="stream_event" and .event.delta.type? == "text_delta") | .event.delta.text' \
@@ -794,7 +817,11 @@ prompt() {
   printf 'You are the autonomous builder for THIS repo. Build EXACTLY ONE task: %s, then stop.\n' "$tid"
   cat <<'EOF'
 You work DIRECTLY on the `main` branch in the primary checkout — NO worktree, NO new branches.
-Do NOT create/switch branches. Do NOT push. Do NOT merge. The loop pushes + gates on CI after you finish.
+Do NOT create/switch branches. Do NOT merge. **NEVER push** — no `git push`, no flags, not ever, even if
+your global/personal git guidance says to always push after committing (that rule does NOT apply here). The
+loop is the SOLE pusher: it runs your checks, pushes, and gates CI after you finish — a push from you is
+BLOCKED by a git hook and bypasses that gate. `HARNESS_AGENT` is the loop's private env marker: never set,
+unset, or pass it to any command. Your CI is LOCAL (step 2) — run it yourself; you never push to see CI.
 You run head-less and unattended. Obey CLAUDE.md, .harness/tracking/TASKS.json, and .harness/docs/HARNESS.md exactly.
 
 1. ORIENT. Read CLAUDE.md (conventions) and README.md (the current implemented state), then find this task:
@@ -806,8 +833,8 @@ You run head-less and unattended. Obey CLAUDE.md, .harness/tracking/TASKS.json, 
    work) — build this task FRESH from the spec alone. Stay within the task's `scope` — the exact
    allowed-files list + the HARD-GATE rule are shown under "SCOPE" at the end of this prompt.
 
-2. DEFINITION OF DONE (.harness/docs/HARNESS.md §6 — all must hold before you report `done`):
-   a. Run the project's full verification suite exactly as defined in CLAUDE.md / .harness/docs/HARNESS.md §6
+2. DEFINITION OF DONE (.harness/docs/HARNESS.md §5 — all must hold before you report `done`):
+   a. Run the project's full verification suite exactly as defined in CLAUDE.md / .harness/docs/HARNESS.md §5
       (format, lint, tests, build). These MIRROR CI — run them locally first; every check must pass.
       Add tests for new behaviour.
    b. Run the task's integration / end-to-end checks when their preconditions are met. A check that
@@ -827,9 +854,12 @@ You run head-less and unattended. Obey CLAUDE.md, .harness/tracking/TASKS.json, 
    missing doc. Do NOT edit .harness/tracking/TASKS.json — the loop owns task status. Write your notes to
    .harness/worklog/<TASK>.md (always allowed; a dated entry: what you did, checks run, what remains).
 
-5. COMMIT `<TASK>: <summary>` (do NOT push), staging your intended files explicitly. Your commit
-   MUST include `.harness/worklog/<TASK>.md` — stage it alongside your code. A task is not complete if its
-   worklog isn't committed.
+5. COMMIT — produce EXACTLY ONE commit for the whole task, `<TASK>: <summary>` (do NOT push), staging your
+   intended files explicitly. If you iterate — add a test, fix a failing check after running the DoD — fold
+   it into that SAME commit with `git commit --amend`; NEVER stack a second commit. The loop integrates your
+   one commit and, if CI is red, rolls it back with a single `git revert HEAD` — that clean rollback only
+   works if the whole task is ONE commit. Your commit MUST include `.harness/worklog/<TASK>.md` — stage it
+   alongside your code. A task is not complete if its worklog isn't committed.
 
 6. As your FINAL action, OVERWRITE .harness/worklog/.result with exactly ONE line:
      done <TASK>                     # built + committed (NOT pushed) — loop pushes + gates CI
@@ -1308,6 +1338,22 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
       if ! audit_gate "$task"; then
         log "AUDIT FAILED for $task — discarding the commit (never pushed) + soft retry."
         cold_reset; record_failure "$task" "audit-fail"; bump "$task"; board; continue
+      fi
+      # SINGLE-COMMIT INVARIANT — collapse the agent's commit(s) into exactly ONE before pushing, so a
+      # red-CI revert stays a single `git revert HEAD` ("every task is one commit"). The prompt asks the
+      # builder for one commit (amend to iterate), but a cheap model may stack several; the loop guarantees
+      # it mechanically here. --no-verify: the tree already passed structural + audit — this is a pure
+      # history collapse that must neither re-run hooks nor alter the tree.
+      _sq_n="$(git -C "$ROOT" rev-list --count "origin/$MAIN_BRANCH..HEAD" 2>/dev/null || echo 0)"
+      if [ "${_sq_n:-0}" -gt 1 ]; then
+        _sq_subj="$(git -C "$ROOT" log --reverse --format='%s' "origin/$MAIN_BRANCH..HEAD" 2>/dev/null | head -1)"
+        _sq_body="$(git -C "$ROOT" log --reverse --format='%B' "origin/$MAIN_BRANCH..HEAD" 2>/dev/null)"
+        if git -C "$ROOT" reset --soft "origin/$MAIN_BRANCH" 2>/dev/null \
+           && git -C "$ROOT" commit -q --no-verify -m "${_sq_subj:-$task: build}" -m "$_sq_body"; then
+          log "squashed $_sq_n commits into one for $task (clean single-commit revert on red CI)"
+        else
+          log "WARN: squash failed for $task — pushing $_sq_n commits as-is; a red-CI revert may be partial."
+        fi
       fi
       heartbeat integrating
       if ! throttled_push "$ROOT" origin "HEAD:$MAIN_BRANCH"; then
