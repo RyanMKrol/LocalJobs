@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from './lib/api';
 import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
 import { RunButton } from './components/RunButton';
+import { Pill } from './components/Pill';
 
 type Filter = 'running' | 'success' | 'failed' | 'cancelled' | 'stuck' | 'ignored' | null;
 
@@ -179,6 +180,7 @@ export default function Overview() {
         {visibleWorkflows.map((p) => (
           <div key={p.name} className="panel" style={{ padding: 16 }}>
             <Link href={`/workflows/${p.name}`}><strong>{p.name}</strong></Link>
+            {p.certified ? <Pill kind="certified" title="Certified" style={{ marginLeft: 6 }}>🏅</Pill> : null}
             {p.last_run && (
               <div style={{ marginTop: 4 }}>
                 <Link href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}>
