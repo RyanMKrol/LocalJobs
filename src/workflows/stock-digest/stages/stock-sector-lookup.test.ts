@@ -294,6 +294,33 @@ describe('runStockSectorLookup', () => {
   });
 });
 
+describe('cache verification — finnhub profile lookups (T503)', () => {
+  it('caches repeated profile lookups of the same ticker within the TTL (22h)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-sector-cache-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'CACHED1' })]));
+    const outPath = join(dir, 'sectors.json');
+
+    let callCount = 0;
+    const fetchProfile: ProfileFetcher = async () => {
+      callCount++;
+      return { finnhubIndustry: 'Technology' };
+    };
+
+    // First run: ticker is looked up (callCount = 1)
+    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
+    assert.equal(callCount, 1, 'first run should call fetchProfile');
+
+    // Second run with same ticker: should be skipped via the work_items ledger (callCount unchanged)
+    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
+    assert.equal(callCount, 1, 'second run should not call fetchProfile (work item already done)');
+
+    // Verify sectors.json was written correctly both times
+    const written = JSON.parse(readFileSync(outPath, 'utf8'));
+    assert.deepEqual(written, { CACHED1: 'Technology' });
+  });
+});
+
 describe('readPortfolio', () => {
   it('returns an empty array when the file does not exist', () => {
     assert.deepEqual(readPortfolio('/nonexistent/portfolio.json'), []);
