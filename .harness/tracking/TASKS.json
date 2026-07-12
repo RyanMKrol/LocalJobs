@@ -13993,7 +13993,7 @@
     {
       "id": "T522",
       "title": "Show usage for no-limit services on Integrations page",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
