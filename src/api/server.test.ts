@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { jobs, workflows } from '../workflows/registry.js';
@@ -1208,7 +1208,12 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   const gapsPath = moviesConfig.gapsOut;
   const hadFile = existsSync(gapsPath);
   const backup = hadFile ? readFileSync(gapsPath, 'utf8') : null;
-  mkdirSync(moviesConfig.outDir, { recursive: true });
+  // T468: `moviesConfig.gapsOut` is now an alias into the separate `missing-movies`
+  // workflow's own data dir, NOT `moviesConfig.outDir` — mkdir the gaps file's OWN
+  // parent, not the (now unrelated) movies outDir, or this throws ENOENT on a
+  // fresh checkout with no data/ dirs at all (CI never has them; a dev box can
+  // mask this if an earlier run already created the directory).
+  mkdirSync(dirname(gapsPath), { recursive: true });
   writeFileSync(gapsPath, JSON.stringify({
     generatedAt: '2026-06-01T00:00:00Z',
     collectionsChecked: 2,
