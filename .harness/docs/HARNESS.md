@@ -249,10 +249,12 @@ supervise.sh (heartbeat)
                              off origin/main — every attempt is COLD (no resume of partial work).
          3. WORK  (claude):  one `claude -p` (policy-chosen model/effort) IN that worktree: build
                              the task FRESH from its spec in scope, pass the Definition of Done
-                             (§5), update docs in lockstep, commit, push the branch. No merge.
-         4. GATE  (shell):   watch the branch's CI (`gh run watch`); on green run the structural
-                             checks + the sampled blocking audit. all pass → fast-forward main via
-                             push (never checks main out), tear down. any fail → tear down → COLD retry.
+                             (§5), update docs in lockstep, commit ONE commit on `tNNN`. Do NOT
+                             push, do NOT merge — the loop is the sole pusher.
+         4. GATE  (shell):   run structural checks + LOCAL_DOD locally FIRST; on pass push `tNNN`
+                             and watch its CI (`gh run watch`); on green run the sampled blocking
+                             audit. all pass → fast-forward main via push (never checks main out),
+                             tear down. any fail → tear down → COLD retry.
          5. RECORD (shell):  refresh the status board; loop.
 ```
 
@@ -293,14 +295,18 @@ A task is **done** only when **all** of the following hold. The loop will **not*
    and **observe** it behaves: it starts, does its job, no panics/errors, output reads sanely.
    Record the observation in `worklog/TNNN.md`. The bar is the behaviour the task names — not
    a higher one a quiet environment can't demonstrate.
-4. **Remote CI is green.** Push the branch; the loop **watches the branch's GitHub Actions
-   run** (`gh run watch`, the workflow named by `CI_WORKFLOW`) and merges **only on success**.
-   A red run is a `failed:soft` → the model inspects `gh run view --log-failed`, fixes, repeats.
+4. **Remote CI is green.** The **loop** pushes the branch (only after the local gate in item 5
+   passes — the builder never pushes) and **watches its GitHub Actions run** (`gh run watch`, the
+   workflow named by `CI_WORKFLOW`), merging **only on success**. A red run is a `failed:soft` → the
+   loop tears the branch/worktree down for a fresh COLD retry (never a resume of the prior attempt).
 5. **Structural + audit gate** *(see `designs/audit-verification.md`)*. Before marking done the loop
    also enforces **structural checks** (the diff touches the task's `scope`; if `expectsTest: true`, a
    test file changed — both the `scope` and the `expectsTest` requirement are injected into the build
-   prompt, so the builder is *told* each up front, not just judged on it after) and — when the task is
-   **sampled** (per-cell audit decay) — a **blocking audit**
+   prompt, so the builder is *told* each up front, not just judged on it after; and, when the diff
+   touches `.github/workflows/*.yml`, a local **`actionlint`** run — `LINT_WORKFLOW_FILES`,
+   `ACTIONLINT_VERSION` — that catches workflow YAML which is valid YAML but invalid per GitHub Actions'
+   own schema, before the push; best-effort, backed by the independent `lint-workflows.yml` CI job) and —
+   when the task is **sampled** (per-cell audit decay) — a **blocking audit**
    by a fresh stronger agent (`max(opus-medium, builder tier)`) verifying the diff against the spec's
    `## Done when`, which must return PASS. A structural/audit FAIL is a `failed:soft` → cold retry /
    escalate. Each outcome is logged to `outcomes.jsonl` tagged `audited`/`ci-only`.

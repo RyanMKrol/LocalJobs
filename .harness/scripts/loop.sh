@@ -228,7 +228,10 @@ if ! { [ -s "$BACKLOG" ] && jq empty "$BACKLOG" 2>/dev/null; }; then
 fi
 
 # --- TASKS.json helpers (read from the local backlog file) ------------------
-tj()           { jq "$@" "$BACKLOG" 2>/dev/null; }
+# tj — query TASKS.json. Normally reads the local $BACKLOG. When DRY_TASKS is set (the DRY_RUN preview,
+# see below), it queries THAT in-memory JSON instead, so the preview selects against the SAME overlay-
+# reconciled view the real run builds — without reconcile_overlays' write.
+tj()           { if [ -n "${DRY_TASKS:-}" ]; then jq "$@" <<<"$DRY_TASKS" 2>/dev/null; else jq "$@" "$BACKLOG" 2>/dev/null; fi; }
 all_tasks()    { tj -r '.tasks[].id'; }
 task_done()    { tj -e --arg id "$1" '.tasks[]|select(.id==$id)|.status=="done"' >/dev/null; }
 deps_for()     { tj -r --arg id "$1" '.tasks[]|select(.id==$id)|.dependsOn[]?' | tr '\n' ' '; }
@@ -390,22 +393,30 @@ mark_done() {
 # (mark-failed.sh). Run at the top of every iteration so an owner action taken mid-run (from a
 # separate process on this same checkout) takes effect promptly. The loop remains the SOLE writer
 # of TASKS.json — the overlay files themselves are read-only inputs here, never written.
-reconcile_overlays() {
-  local hd md tmp="$BACKLOG.tmp" new
-  [ -f "$HUMAN_DONE" ] || echo '{}' >"$HUMAN_DONE"
-  [ -f "$MANUAL_FAIL" ] || echo '{}' >"$MANUAL_FAIL"
-  hd="$(cat "$HUMAN_DONE" 2>/dev/null || echo '{}')"
-  md="$(cat "$MANUAL_FAIL" 2>/dev/null || echo '{}')"
-  # human-done promotes ONLY a needs-human task (the overlay is authored only for those; the gate
-  # guard stops a stray entry marking an ordinary task done without ever building it). manual-fail
-  # overturns ANY not-yet-failed task (usually a "done" false success, but an owner may pre-fail a
-  # task they know is wrong) — task_failed() then keeps it terminal in select_task.
-  new="$(jq -c --argjson hd "$hd" --argjson md "$md" '
+# overlay_apply <tasks-json> — PURE transform: echo TASKS.json with owner-overlay verdicts applied
+# in-memory (human-done "done" for a needs-human task; manual-fail "failed" for any not-yet-failed
+# task). NO writes, NO git. Shared by reconcile_overlays (which then persists) and the DRY_RUN preview
+# (which must NOT persist). human-done promotes ONLY a needs-human task (the overlay is authored only for
+# those; the gate guard stops a stray entry marking an ordinary task done unbuilt). manual-fail overturns
+# ANY not-yet-failed task — task_failed() then keeps it terminal in select_task.
+overlay_apply() {
+  local tasks="$1" hd md
+  [ -n "$tasks" ] || return 1
+  hd="$(cat "$HUMAN_DONE" 2>/dev/null)"; [ -n "$hd" ] || hd='{}'
+  md="$(cat "$MANUAL_FAIL" 2>/dev/null)"; [ -n "$md" ] || md='{}'
+  jq -c --argjson hd "$hd" --argjson md "$md" '
     .tasks |= map(
       if (.status != "failed") and ($md[.id].failed == true) then .status = "failed"
       elif (.gate == "needs-human") and (.status != "done") and ($hd[.id].done == true) then .status = "done"
       else . end
-    )' "$BACKLOG" 2>/dev/null)"
+    )' <<<"$tasks" 2>/dev/null
+}
+
+reconcile_overlays() {
+  local tmp="$BACKLOG.tmp" new
+  [ -f "$HUMAN_DONE" ] || echo '{}' >"$HUMAN_DONE"
+  [ -f "$MANUAL_FAIL" ] || echo '{}' >"$MANUAL_FAIL"
+  new="$(overlay_apply "$(cat "$BACKLOG" 2>/dev/null)")"
   [ -n "$new" ] || return 0
   [ "$new" = "$(jq -c '.' "$BACKLOG" 2>/dev/null)" ] && return 0
   printf '%s\n' "$new" | jq '.' >"$tmp" && mv "$tmp" "$BACKLOG" || { rm -f "$tmp"; return 0; }
@@ -611,38 +622,76 @@ select_task() {
 }
 
 # --- GitHub CI gate (watches the workflow run for the current main HEAD) -----
+# ci_find_run <branch-or-empty> <sha> — echo the databaseId of the CI run for <sha>, matching the
+# workflow by NAME ($CI_WORKFLOW) first, then falling back to its FILE PATH. GitHub reports a run's
+# workflowName as ".github/workflows/…" (the raw path) instead of the resolved `name:` when the workflow
+# file itself can't be parsed — so a path-shaped workflowName is the signature of a MALFORMED workflow
+# (a valid-YAML-but-invalid-schema CI file). Without this fallback the exact-name match finds nothing and
+# the caller sits out the full CI_TIMEOUT then calls it "indeterminate". Sets CI_NAME_UNRESOLVED=1 when
+# the fallback matched (caller warns + treats as red), else 0. (Shared with ci_status_now / the idle guard.)
+CI_NAME_UNRESOLVED=0
+ci_find_run() {
+  local br="$1" sha="$2" id; local -a ba=(); [ -n "$br" ] && ba=(--branch "$br")
+  CI_NAME_UNRESOLVED=0
+  id="$(gh run list ${ba[@]+"${ba[@]}"} --limit 20 --json databaseId,headSha,workflowName \
+          --jq ".[] | select(.headSha==\"$sha\" and .workflowName==\"$CI_WORKFLOW\") | .databaseId" 2>/dev/null | head -1 || true)"
+  if [ -z "$id" ]; then
+    id="$(gh run list ${ba[@]+"${ba[@]}"} --limit 20 --json databaseId,headSha,workflowName \
+            --jq ".[] | select(.headSha==\"$sha\" and (.workflowName|startswith(\".github/workflows/\"))) | .databaseId" 2>/dev/null | head -1 || true)"
+    [ -n "$id" ] && CI_NAME_UNRESOLVED=1
+  fi
+  printf '%s' "$id"
+}
+
+# ci_conclusion <runid> — 0 green | 1 red | 2 indeterminate, from the run's SETTLED conclusion. Only a
+# real failure is RED; cancelled/skipped/stale/neutral is indeterminate (never revert good work over a
+# concurrency-cancel).
+ci_conclusion() {
+  local concl; concl="$(gh run view "$1" --json status,conclusion --jq '.status + "/" + (.conclusion // "")' 2>/dev/null || true)"
+  case "$concl" in
+    completed/success) return 0 ;;
+    completed/failure|completed/timed_out|completed/startup_failure|completed/action_required) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+# ci_status_now <branch-or-empty> <sha> — POINT-IN-TIME CI status for <sha> (NO waiting): 0 green | 1 red
+# | 2 indeterminate/no-run. Used by the idle-reconcile guard so a task is never marked done while its
+# main-HEAD CI is red or was never confirmed.
+ci_status_now() {
+  command -v gh >/dev/null 2>&1 || return 2
+  local id; id="$(ci_find_run "$1" "$2")"
+  [ -n "$id" ] || return 2
+  [ "${CI_NAME_UNRESOLVED:-0}" = 1 ] && return 1
+  ci_conclusion "$id"
+}
+
 wait_ci_green() {   # 0=green 1=red 2=indeterminate
   local sha runid="" waited=0
   command -v gh >/dev/null 2>&1 || { log "gh not installed — cannot gate CI"; return 2; }
   sha="$(git -C "$ROOT" rev-parse HEAD)"
   log "waiting for CI ($CI_WORKFLOW) on ${sha}…"
   while [ "$waited" -lt "$CI_TIMEOUT" ]; do
-    runid="$(gh run list --limit 20 --json databaseId,headSha,workflowName \
-               --jq ".[] | select(.headSha==\"$sha\" and .workflowName==\"$CI_WORKFLOW\") | .databaseId" \
-               2>/dev/null | head -1 || true)"
+    runid="$(ci_find_run "" "$sha")"
     [ -n "$runid" ] && break
     sleep "$WAIT_SECONDS"; waited=$((waited + WAIT_SECONDS))
   done
   [ -n "$runid" ] || { log "no '$CI_WORKFLOW' run appeared for $sha within ${CI_TIMEOUT}s"; return 2; }
-  # `gh run watch --exit-status`'s bare exit CONFLATES a genuine CI failure with a watch hiccup and a
-  # run that got CANCELLED by a newer push (concurrency cancel-in-progress). So watch to settle, then
-  # read the run's ACTUAL conclusion and classify on THAT — only a real failure is RED. A
-  # cancelled/skipped/stale/neutral result returns 2 (NOT red) so the caller never reverts good work
-  # over a concurrency-cancel.
+  # A run GitHub reported by FILE PATH (name unresolved) is the signature of a malformed workflow file —
+  # treat as RED immediately (never wait it out or merge over it) with a loud, actionable warning.
+  if [ "${CI_NAME_UNRESOLVED:-0}" = 1 ]; then
+    log "⚠ CI RED (run $runid): GitHub could NOT resolve the workflow's name (reported it by file path) for $sha — the .github/workflows file is almost certainly MALFORMED. Run: gh run view $runid --log-failed"
+    return 1
+  fi
+  # `gh run watch --exit-status`'s bare exit CONFLATES a genuine CI failure with a watch hiccup and a run
+  # CANCELLED by a newer push (concurrency cancel-in-progress). Watch to settle, then classify via ci_conclusion.
   gh run watch "$runid" --exit-status >/dev/null 2>&1 || true
-  local latest concl
-  latest="$(gh run list --limit 20 --json databaseId,headSha,workflowName \
-              --jq ".[] | select(.headSha==\"$sha\" and .workflowName==\"$CI_WORKFLOW\") | .databaseId" \
-              2>/dev/null | head -1 || true)"
-  [ -n "$latest" ] && runid="$latest"
-  concl="$(gh run view "$runid" --json status,conclusion --jq '.status + "/" + (.conclusion // "")' 2>/dev/null || true)"
-  case "$concl" in
-    completed/success)
-      log "CI GREEN (run $runid)"; return 0 ;;
-    completed/failure|completed/timed_out|completed/startup_failure|completed/action_required)
-      log "CI RED (run $runid, $concl) — gh run view $runid --log-failed"; return 1 ;;
-    *)
-      log "CI INDETERMINATE (run $runid, conclusion='${concl:-unknown}') — NOT treating as red (likely concurrency-cancelled/skipped, not a real failure)"; return 2 ;;
+  local latest; latest="$(ci_find_run "" "$sha")"; [ -n "$latest" ] && runid="$latest"
+  ci_conclusion "$runid"; local st=$?
+  case "$st" in
+    0) log "CI GREEN (run $runid)"; return 0 ;;
+    1) log "CI RED (run $runid) — gh run view $runid --log-failed"; return 1 ;;
+    *) log "CI INDETERMINATE (run $runid) — NOT treating as red (likely concurrency-cancelled/skipped, not a real failure)"; return 2 ;;
   esac
 }
 
@@ -845,7 +894,11 @@ You run head-less and unattended. Obey CLAUDE.md, .harness/tracking/TASKS.json, 
 2. DEFINITION OF DONE (.harness/docs/HARNESS.md §5 — all must hold before you report `done`):
    a. Run the project's full verification suite exactly as defined in CLAUDE.md / .harness/docs/HARNESS.md §5
       (format, lint, tests, build). These MIRROR CI — run them locally first; every check must pass.
-      Add tests for new behaviour.
+      Add tests for new behaviour. Run every check to COMPLETION and read its real exit status: for a SLOW
+      check (a multi-minute build/test), request an extended tool timeout or run it in the background and
+      POLL to completion — never fire it under a default-timeout blocking call and assume it passed. A check
+      that times out, is still running, or whose result you did not OBSERVE is NOT a pass — that is
+      `failed:soft` (retryable), never `done`.
    b. Run the task's integration / end-to-end checks when their preconditions are met. A check that
       needs credentials, funds, or external resources you don't have: never silently skip a required
       one and call it "passed" — record failed:blocked if the task's core needs it.
@@ -870,7 +923,9 @@ You run head-less and unattended. Obey CLAUDE.md, .harness/tracking/TASKS.json, 
    works if the whole task is ONE commit. Your commit MUST include `.harness/worklog/<TASK>.md` — stage it
    alongside your code. A task is not complete if its worklog isn't committed.
 
-6. As your FINAL action, OVERWRITE .harness/worklog/.result with exactly ONE line:
+6. As your FINAL action, OVERWRITE .harness/worklog/.result with exactly ONE line. Report `done` ONLY when
+   every Definition-of-Done check has FINISHED and PASSED — never while a check is still running or its
+   outcome is unknown (that is `failed:soft`):
      done <TASK>                     # built + committed (NOT pushed) — loop pushes + gates CI
      failed:soft <TASK> <reason>     # transient / partial — retry is worthwhile
      failed:blocked <TASK> <reason>  # needs-human / unmet prereq — do NOT retry
@@ -1048,6 +1103,30 @@ CHANGED
   if [ "$want_test" = "true" ] && ! printf '%s\n' "$changed" | grep -qiE '(\.test\.|\.spec\.|_test\.|(^|/)test_|(^|/)tests?/)'; then
     STRUCT_FAIL_KIND="test-missing"; log "structural: $id has expectsTest=true but no test file changed — fail"; return 1
   fi
+  # GitHub Actions workflow validation (see ensure-actionlint.sh) — a change to .github/workflows/*.yml
+  # can be perfectly valid YAML yet REJECTED by GitHub's own schema (e.g. a flow-sequence where a scalar
+  # is required), which kills the whole run at parse time — something LOCAL_DOD (the project's own
+  # typecheck/test/build) can't catch. actionlint validates the schema LOCALLY, before the push. Fires
+  # ONLY when the diff touches a workflow file (the common task pays nothing). Best-effort: if the linter
+  # can't be fetched (offline / rate-limited) WARN + SKIP rather than block — the scaffolded
+  # lint-workflows.yml CI job is the authoritative catch. LINT_WORKFLOW_FILES=0 disables it.
+  if [ "${LINT_WORKFLOW_FILES:-1}" != 0 ]; then
+    local wf al allog
+    wf="$(printf '%s\n' "$changed" | grep -E '^\.github/workflows/.+\.(yml|yaml)$' | while IFS= read -r f; do [ -f "$ROOT/$f" ] && printf '%s\n' "$f"; done)"
+    if [ -n "$wf" ]; then
+      if al="$("$ROOT/.harness/scripts/ensure-actionlint.sh" "$ROOT" 2>/dev/null)" && [ -x "$al" ]; then
+        allog="$WORKLOG/.actionlint.log"
+        if ! ( cd "$ROOT" && printf '%s\n' "$wf" | xargs "$al" ) >"$allog" 2>&1; then
+          STRUCT_FAIL_KIND="workflow-lint"; STRUCT_FAIL_DETAIL="$(tail -n 20 "$allog" 2>/dev/null | tr '\n' '⏎')"
+          log "structural: $id — actionlint REJECTED a .github/workflows change (invalid GitHub Actions schema) — fail (last lines:)"; tail -n 20 "$allog" 2>/dev/null | sed 's/^/    /' >&2
+          return 1
+        fi
+        log "structural: actionlint OK on changed workflow file(s)"
+      else
+        log "structural: WARN — actionlint unavailable (couldn't fetch); SKIPPING local workflow-YAML validation for $id. The lint-workflows.yml CI job still gates it; set LINT_WORKFLOW_FILES=0 to silence."
+      fi
+    fi
+  fi
   if [ -n "$LOCAL_DOD" ]; then
     log "structural: running LOCAL_DOD → $LOCAL_DOD"
     # Capture output so a LOCAL_DOD failure gives a "why" (the last lines go into the failure ledger
@@ -1149,6 +1228,10 @@ audit_gate() {
 # --- Dry run ----------------------------------------------------------------
 if [ "${DRY_RUN:-0}" = "1" ]; then
   git -C "$ROOT" fetch origin --quiet 2>/dev/null || true
+  # Match the real run's POST-reconcile view (an owner's human-done/manual-fail overlay takes effect on
+  # the next real iteration) WITHOUT reconcile_overlays' write/commit/push — apply the overlays in
+  # memory only, so a just-marked-done needs-human task's dependents show as eligible here too.
+  DRY_TASKS="$(overlay_apply "$(cat "$BACKLOG" 2>/dev/null)" || true)"
   sel="$(select_task || true)"
   [ -n "$sel" ] && echo "DRY-RUN → would build: $sel" \
                 || echo "DRY-RUN → nothing eligible (backlog done or all gate/human-blocked)"
@@ -1418,9 +1501,21 @@ for ((i = 1; i <= MAX_ITERS; i++)); do
         block_task "$task" "repeated idle: work appears on main but status never persisted to done — needs a human to mark it done or fix the divergence"
         idle_task=""; idle_count=0
       else
-        log "agent reports idle on $task — Done-when already met on $MAIN_BRANCH; reconciling status=done and continuing."
-        mark_done "$task"
-        heartbeat_clear; cur_task=""; cur_attempts=0; cur_rung=0; cur_base=0; cur_explored=0
+        # GUARD: "work already on main" is NOT proof CI verified it — a prior wait_ci_green that couldn't
+        # find a run (e.g. a malformed workflow file GitHub reported by path, not name) can leave a commit
+        # on main, unmarked and un-reverted; the next cold attempt then reads it as idle. Re-check the
+        # ACTUAL CI status for main HEAD (point-in-time, no wait) before flipping status=done.
+        idle_sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+        idle_ci=2; if [ -n "$idle_sha" ]; then idle_ci=0; ci_status_now "" "$idle_sha" || idle_ci=$?; fi
+        if [ "$idle_ci" = 1 ]; then
+          log "idle on $task but CI for $MAIN_BRANCH HEAD ($idle_sha) is RED — refusing to mark done; BLOCKING for a human (a prior revert-on-red didn't happen, or the workflow file is broken)."
+          block_task "$task" "idle-but-ci-red: work is on main but its CI is failing — needs a human (check the latest CI run / the .github/workflows file)"
+          idle_task=""; idle_count=0
+        else
+          log "agent reports idle on $task — Done-when already met on $MAIN_BRANCH ($([ "$idle_ci" = 0 ] && echo 'CI green' || echo 'CI status unconfirmed — proceeding as before')); reconciling status=done and continuing."
+          mark_done "$task"
+          heartbeat_clear; cur_task=""; cur_attempts=0; cur_rung=0; cur_base=0; cur_explored=0
+        fi
       fi
       ;;
     *)              log "unrecognized result '$status' — backing off"; sleep "$WAIT_SECONDS" ;;
