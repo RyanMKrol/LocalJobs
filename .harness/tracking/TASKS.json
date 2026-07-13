@@ -14146,7 +14146,7 @@
     {
       "id": "T528",
       "title": "Fix B12: stocks breach alert ledger marked pre-send, push result ignored",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
