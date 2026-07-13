@@ -1400,6 +1400,72 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
         assert.deepEqual(data.recommendations, []);
       });
     });
+
+    await test('POST /api/movie-recs/ignore-bulk ignores multiple recs (T531)', async () => {
+      const IDS_TO_IGNORE = [10550001, 10550002];
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/movie-recs/ignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: IDS_TO_IGNORE }),
+        });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; ignored: number };
+        assert.equal(body.ok, true);
+        assert.equal(body.ignored, 2);
+
+        const keys = ignoredKeys(RECS_JOB);
+        for (const id of IDS_TO_IGNORE) {
+          assert.ok(keys.has(recKey(id)), `rec ${id} is in ignored set`);
+        }
+      });
+    });
+
+    await test('POST /api/movie-recs/ignore-bulk rejects non-array or invalid ids (400)', async () => {
+      await withServer({}, async (base) => {
+        const res1 = await fetch(`${base}/api/movie-recs/ignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: 'not-an-array' }),
+        });
+        assert.equal(res1.status, 400);
+
+        const res2 = await fetch(`${base}/api/movie-recs/ignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: [1, -1, 3] }),
+        });
+        assert.equal(res2.status, 400);
+      });
+    });
+
+    await test('POST /api/movie-recs/unignore-bulk reverses a bulk ignore (T531)', async () => {
+      const IDS_TO_RESTORE = [10550003, 10550004];
+      await withServer({}, async (base) => {
+        // First ignore them
+        await fetch(`${base}/api/movie-recs/ignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: IDS_TO_RESTORE }),
+        });
+
+        // Then unignore
+        const res = await fetch(`${base}/api/movie-recs/unignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: IDS_TO_RESTORE }),
+        });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; unignored: number };
+        assert.equal(body.ok, true);
+        assert.equal(body.unignored, 2);
+
+        const keys = ignoredKeys(RECS_JOB);
+        for (const id of IDS_TO_RESTORE) {
+          assert.equal(keys.has(recKey(id)), false, `rec ${id} is no longer ignored`);
+        }
+      });
+    });
   } finally {
     if (backup !== null) writeFileSync(recsPath, backup);
     else rmSync(recsPath, { force: true });
@@ -1477,6 +1543,72 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
         };
         assert.equal(data.generatedAt, null);
         assert.deepEqual(data.recommendations, []);
+      });
+    });
+
+    await test('POST /api/tv-recs/ignore-bulk ignores multiple TV recs (T531)', async () => {
+      const IDS_TO_IGNORE = [10650001, 10650002];
+      await withServer({}, async (base) => {
+        const res = await fetch(`${base}/api/tv-recs/ignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: IDS_TO_IGNORE }),
+        });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; ignored: number };
+        assert.equal(body.ok, true);
+        assert.equal(body.ignored, 2);
+
+        const keys = ignoredKeys(TV_RECS_JOB);
+        for (const id of IDS_TO_IGNORE) {
+          assert.ok(keys.has(tvRecKey(id)), `TV rec ${id} is in ignored set`);
+        }
+      });
+    });
+
+    await test('POST /api/tv-recs/ignore-bulk rejects non-array or invalid ids (400)', async () => {
+      await withServer({}, async (base) => {
+        const res1 = await fetch(`${base}/api/tv-recs/ignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: 'not-an-array' }),
+        });
+        assert.equal(res1.status, 400);
+
+        const res2 = await fetch(`${base}/api/tv-recs/ignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: [1, 0, 3] }),
+        });
+        assert.equal(res2.status, 400);
+      });
+    });
+
+    await test('POST /api/tv-recs/unignore-bulk reverses a bulk ignore (T531)', async () => {
+      const IDS_TO_RESTORE = [10650003, 10650004];
+      await withServer({}, async (base) => {
+        // First ignore them
+        await fetch(`${base}/api/tv-recs/ignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: IDS_TO_RESTORE }),
+        });
+
+        // Then unignore
+        const res = await fetch(`${base}/api/tv-recs/unignore-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tmdbIds: IDS_TO_RESTORE }),
+        });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; unignored: number };
+        assert.equal(body.ok, true);
+        assert.equal(body.unignored, 2);
+
+        const keys = ignoredKeys(TV_RECS_JOB);
+        for (const id of IDS_TO_RESTORE) {
+          assert.equal(keys.has(tvRecKey(id)), false, `TV rec ${id} is no longer ignored`);
+        }
       });
     });
   } finally {

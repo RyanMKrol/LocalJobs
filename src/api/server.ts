@@ -453,6 +453,62 @@ export function matchRoute(
   return null;
 }
 
+/**
+ * Validate a bulk audit-family request body containing season pairs (T531).
+ * Ensures `items` is an array of { tmdbId, season } objects with positive integers.
+ * Returns the validated items or null if validation fails.
+ */
+function validateSeasonPairs(items: unknown): { tmdbId: number; season: number }[] | null {
+  if (
+    !Array.isArray(items) ||
+    items.some(
+      (it) =>
+        typeof it !== 'object' ||
+        it === null ||
+        !Number.isInteger((it as Record<string, unknown>).tmdbId) ||
+        ((it as Record<string, unknown>).tmdbId as number) <= 0 ||
+        !Number.isInteger((it as Record<string, unknown>).season) ||
+        ((it as Record<string, unknown>).season as number) <= 0,
+    )
+  ) {
+    return null;
+  }
+  return items as { tmdbId: number; season: number }[];
+}
+
+/**
+ * Audit endpoint families (movie-gaps, movie-recs, tv-recs, missing-seasons) configuration (T531).
+ * Each family exposes four verbs: ignore, unignore, ignore-bulk, unignore-bulk.
+ */
+interface AuditFamily {
+  base: string; // e.g. 'movie-gaps'
+  job: string; // job name
+  keyFromParams: (params: Record<string, string>) => string; // closure to build the ledger key
+}
+
+const AUDIT_FAMILIES: AuditFamily[] = [
+  {
+    base: 'movie-gaps',
+    job: MOVIE_GAPS_JOB,
+    keyFromParams: (p) => gapKey(Number(p.tmdbId)),
+  },
+  {
+    base: 'movie-recs',
+    job: RECS_JOB,
+    keyFromParams: (p) => recKey(Number(p.tmdbId)),
+  },
+  {
+    base: 'tv-recs',
+    job: TV_RECS_JOB,
+    keyFromParams: (p) => tvRecKey(Number(p.tmdbId)),
+  },
+  {
+    base: 'missing-seasons',
+    job: PLEX_SEASONS_JOB,
+    keyFromParams: (p) => pairKey(Number(p.tmdbId), Number(p.season)),
+  },
+];
+
 const routes: Route[] = [
   // GET /api/health
   {
@@ -606,11 +662,13 @@ const routes: Route[] = [
     },
   },
 
-  // GET /api/movie-gaps — the current franchise gaps (read from the movies
-  // workflow's franchise-gaps.json), each overlaid with its ledger status:
-  // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
-  // file + DB only — never a paid/remote call. Returns an empty list (not an
-  // error) when the audit hasn't run yet.
+  // ── Audit endpoint families (movie-gaps, movie-recs, tv-recs, missing-seasons) ──
+  // All four audit families expose identical verb sets (ignore, unignore, ignore-bulk,
+  // unignore-bulk). GET endpoints and single-item endpoints are per-family; bulk verbs
+  // are registered from the shared AUDIT_FAMILIES config loop below.
+
+  // GET /api/movie-gaps, GET /api/movie-recs, GET /api/tv-recs, GET /api/missing-seasons
+  // and their per-item :id/ignore and :id/unignore endpoints:
   {
     method: 'GET',
     pattern: '/api/movie-gaps',
@@ -639,11 +697,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/movie-gaps/:tmdbId/ignore — owner manually IGNORES a surfaced
-  // franchise gap so it leaves BOTH future reports AND notifications and never
-  // resurfaces (even though the film is still un-owned). Manual only; guarded by
-  // the global loopback/token mutation check above. Idempotent (re-ignoring is a
-  // no-op upsert).
   {
     method: 'POST',
     pattern: '/api/movie-gaps/:tmdbId/ignore',
@@ -657,9 +710,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/movie-gaps/:tmdbId/unignore — reverse a manual ignore: deletes the
-  // ignored ledger row (mirrors unstickWorkItem's delete-and-refresh pattern), so
-  // the gap is treated as brand-new and can resurface/re-notify on a future run.
   {
     method: 'POST',
     pattern: '/api/movie-gaps/:tmdbId/unignore',
@@ -673,49 +723,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/movie-gaps/ignore-bulk { tmdbIds: number[] } — bulk-ignore a set
-  // of franchise gap items (e.g. all items in a collection). Only the exact
-  // tmdbIds supplied are ignored; no collection-level flag is persisted so a new
-  // gap appearing later for the same collection will surface fresh. Guarded by
-  // the global loopback/token mutation check. Idempotent.
-  {
-    method: 'POST',
-    pattern: '/api/movie-gaps/ignore-bulk',
-    handler: async ({ res, req }) => {
-      const body: { tmdbIds?: unknown } = await readBody(req).catch(() => ({}));
-      const ids = body.tmdbIds;
-      if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
-        return json(res, 400, { error: 'tmdbIds must be an array of positive integers' });
-      }
-      const keys = (ids as number[]).map((id) => gapKey(id));
-      const ignored = ignoreSurfacedItems(MOVIE_GAPS_JOB, keys);
-      return json(res, 200, { ok: true, ignored });
-    },
-  },
-
-  // POST /api/movie-gaps/unignore-bulk { tmdbIds: number[] } — reverse a bulk
-  // ignore: deletes the ignored ledger rows so those gaps are treated as
-  // brand-new and can resurface/re-notify on a future run.
-  {
-    method: 'POST',
-    pattern: '/api/movie-gaps/unignore-bulk',
-    handler: async ({ res, req }) => {
-      const body: { tmdbIds?: unknown } = await readBody(req).catch(() => ({}));
-      const ids = body.tmdbIds;
-      if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
-        return json(res, 400, { error: 'tmdbIds must be an array of positive integers' });
-      }
-      const keys = (ids as number[]).map((id) => gapKey(id));
-      const unignored = unignoreSurfacedItems(MOVIE_GAPS_JOB, keys);
-      return json(res, 200, { ok: true, unignored });
-    },
-  },
-
-  // GET /api/movie-recs — the current recommendations (read from the movies
-  // workflow's recommendations.json), each overlaid with its ledger status:
-  // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
-  // file + DB only — never a paid/remote call. Returns an empty list (not an
-  // error) when the workflow hasn't produced recommendations yet.
   {
     method: 'GET',
     pattern: '/api/movie-recs',
@@ -743,9 +750,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/movie-recs/:tmdbId/ignore — owner manually IGNORES a recommendation
-  // so it leaves future reports AND notifications and never resurfaces. Manual only;
-  // guarded by the global loopback/token mutation check above. Idempotent.
   {
     method: 'POST',
     pattern: '/api/movie-recs/:tmdbId/ignore',
@@ -767,9 +771,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/movie-recs/:tmdbId/unignore — reverse a manual ignore: deletes the
-  // ignored ledger row so the recommendation is treated as brand-new and can
-  // resurface/re-notify on a future run.
   {
     method: 'POST',
     pattern: '/api/movie-recs/:tmdbId/unignore',
@@ -783,29 +784,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/movie-recs/unignore-bulk { tmdbIds: number[] } — reverse a bulk
-  // ignore: deletes the ignored ledger rows so those recommendations are treated
-  // as brand-new and can resurface/re-notify on a future run. Idempotent.
-  {
-    method: 'POST',
-    pattern: '/api/movie-recs/unignore-bulk',
-    handler: async ({ res, req }) => {
-      const body: { tmdbIds?: unknown } = await readBody(req).catch(() => ({}));
-      const ids = body.tmdbIds;
-      if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
-        return json(res, 400, { error: 'tmdbIds must be an array of positive integers' });
-      }
-      const keys = (ids as number[]).map((id) => recKey(id));
-      const unignored = unignoreSurfacedItems(RECS_JOB, keys);
-      return json(res, 200, { ok: true, unignored });
-    },
-  },
-
-  // GET /api/tv-recs — the current TV recommendations (read from the tv-recs
-  // workflow's recommendations.json), each overlaid with its ledger status:
-  // `notified` (already digested) and `ignored` (owner-suppressed). Read-only,
-  // file + DB only — never a paid/remote call. Returns an empty list (not an
-  // error) when the workflow hasn't produced recommendations yet.
   {
     method: 'GET',
     pattern: '/api/tv-recs',
@@ -833,9 +811,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/tv-recs/:tmdbId/ignore — owner manually IGNORES a TV recommendation
-  // so it leaves future reports AND notifications and never resurfaces. Manual only;
-  // guarded by the global loopback/token mutation check above. Idempotent.
   {
     method: 'POST',
     pattern: '/api/tv-recs/:tmdbId/ignore',
@@ -857,9 +832,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/tv-recs/:tmdbId/unignore — reverse a manual ignore: deletes the
-  // ignored ledger row so the recommendation is treated as brand-new and can
-  // resurface/re-notify on a future run.
   {
     method: 'POST',
     pattern: '/api/tv-recs/:tmdbId/unignore',
@@ -873,27 +845,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/tv-recs/unignore-bulk { tmdbIds: number[] } — reverse a bulk
-  // ignore: deletes the ignored ledger rows so those recommendations are treated
-  // as brand-new and can resurface/re-notify on a future run. Idempotent.
-  {
-    method: 'POST',
-    pattern: '/api/tv-recs/unignore-bulk',
-    handler: async ({ res, req }) => {
-      const body: { tmdbIds?: unknown } = await readBody(req).catch(() => ({}));
-      const ids = body.tmdbIds;
-      if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
-        return json(res, 400, { error: 'tmdbIds must be an array of positive integers' });
-      }
-      const keys = (ids as number[]).map((id) => tvRecKey(id));
-      const unignored = unignoreSurfacedItems(TV_RECS_JOB, keys);
-      return json(res, 200, { ok: true, unignored });
-    },
-  },
-
-  // GET /api/missing-seasons — the currently-detected complete-missing TV seasons
-  // (read from missing-seasons.json), each overlaid with its notified/ignored state
-  // from the plex-seasons-notify ledger. Read-only, file + DB only.
   {
     method: 'GET',
     pattern: '/api/missing-seasons',
@@ -923,8 +874,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/missing-seasons/:tmdbId/:season/ignore — suppress a season gap from
-  // future reports + notifications. Guarded by the global loopback/token mutation check.
   {
     method: 'POST',
     pattern: '/api/missing-seasons/:tmdbId/:season/ignore',
@@ -939,9 +888,6 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/missing-seasons/:tmdbId/:season/unignore — reverse a manual ignore:
-  // deletes the ignored ledger row so the season gap is treated as brand-new and
-  // can resurface/re-notify on a future run.
   {
     method: 'POST',
     pattern: '/api/missing-seasons/:tmdbId/:season/unignore',
@@ -956,65 +902,59 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/missing-seasons/ignore-bulk { items: { tmdbId, season }[] } —
-  // bulk-ignore a set of season gaps (e.g. all seasons for a show). Only the
-  // exact items supplied are ignored; a new season appearing in a later run for
-  // the same show will surface fresh. Guarded by the global loopback/token
-  // mutation check. Idempotent.
-  {
-    method: 'POST',
-    pattern: '/api/missing-seasons/ignore-bulk',
-    handler: async ({ res, req }) => {
-      const body: { items?: unknown } = await readBody(req).catch(() => ({}));
-      const items = body.items;
-      if (
-        !Array.isArray(items) ||
-        items.some(
-          (it) =>
-            typeof it !== 'object' ||
-            it === null ||
-            !Number.isInteger((it as Record<string, unknown>).tmdbId) ||
-            ((it as Record<string, unknown>).tmdbId as number) <= 0 ||
-            !Number.isInteger((it as Record<string, unknown>).season) ||
-            ((it as Record<string, unknown>).season as number) <= 0,
-        )
-      ) {
-        return json(res, 400, { error: 'items must be an array of { tmdbId, season } objects with positive integers' });
-      }
-      const keys = (items as { tmdbId: number; season: number }[]).map((it) => pairKey(it.tmdbId, it.season));
-      const ignored = ignoreSurfacedItems(PLEX_SEASONS_JOB, keys);
-      return json(res, 200, { ok: true, ignored });
+  // ── Bulk audit endpoints (T531) — ignore/unignore in bulk for all four families ──
+  // POST /api/movie-gaps/ignore-bulk, POST /api/movie-gaps/unignore-bulk,
+  // POST /api/movie-recs/ignore-bulk, POST /api/movie-recs/unignore-bulk,
+  // POST /api/tv-recs/ignore-bulk, POST /api/tv-recs/unignore-bulk,
+  // POST /api/missing-seasons/ignore-bulk, POST /api/missing-seasons/unignore-bulk
+  ...AUDIT_FAMILIES.flatMap((family) => [
+    {
+      method: 'POST',
+      pattern: `/api/${family.base}/ignore-bulk`,
+      handler: async (ctx: RouteCtx) => {
+        const body: { tmdbIds?: unknown; items?: unknown } = await readBody(ctx.req).catch(() => ({}));
+        let keys: string[];
+        if (family.base === 'missing-seasons') {
+          const items = validateSeasonPairs(body.items);
+          if (!items) {
+            return json(ctx.res, 400, { error: 'items must be an array of { tmdbId, season } objects with positive integers' });
+          }
+          keys = items.map((it) => family.keyFromParams({ tmdbId: String(it.tmdbId), season: String(it.season) }));
+        } else {
+          const ids = body.tmdbIds;
+          if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+            return json(ctx.res, 400, { error: 'tmdbIds must be an array of positive integers' });
+          }
+          keys = (ids as number[]).map((id) => family.keyFromParams({ tmdbId: String(id) }));
+        }
+        const ignored = ignoreSurfacedItems(family.job, keys);
+        return json(ctx.res, 200, { ok: true, ignored });
+      },
     },
-  },
-
-  // POST /api/missing-seasons/unignore-bulk { items: { tmdbId, season }[] } —
-  // reverse a bulk ignore: deletes the ignored ledger rows so those season gaps
-  // are treated as brand-new and can resurface/re-notify on a future run.
-  {
-    method: 'POST',
-    pattern: '/api/missing-seasons/unignore-bulk',
-    handler: async ({ res, req }) => {
-      const body: { items?: unknown } = await readBody(req).catch(() => ({}));
-      const items = body.items;
-      if (
-        !Array.isArray(items) ||
-        items.some(
-          (it) =>
-            typeof it !== 'object' ||
-            it === null ||
-            !Number.isInteger((it as Record<string, unknown>).tmdbId) ||
-            ((it as Record<string, unknown>).tmdbId as number) <= 0 ||
-            !Number.isInteger((it as Record<string, unknown>).season) ||
-            ((it as Record<string, unknown>).season as number) <= 0,
-        )
-      ) {
-        return json(res, 400, { error: 'items must be an array of { tmdbId, season } objects with positive integers' });
-      }
-      const keys = (items as { tmdbId: number; season: number }[]).map((it) => pairKey(it.tmdbId, it.season));
-      const unignored = unignoreSurfacedItems(PLEX_SEASONS_JOB, keys);
-      return json(res, 200, { ok: true, unignored });
+    {
+      method: 'POST',
+      pattern: `/api/${family.base}/unignore-bulk`,
+      handler: async (ctx: RouteCtx) => {
+        const body: { tmdbIds?: unknown; items?: unknown } = await readBody(ctx.req).catch(() => ({}));
+        let keys: string[];
+        if (family.base === 'missing-seasons') {
+          const items = validateSeasonPairs(body.items);
+          if (!items) {
+            return json(ctx.res, 400, { error: 'items must be an array of { tmdbId, season } objects with positive integers' });
+          }
+          keys = items.map((it) => family.keyFromParams({ tmdbId: String(it.tmdbId), season: String(it.season) }));
+        } else {
+          const ids = body.tmdbIds;
+          if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+            return json(ctx.res, 400, { error: 'tmdbIds must be an array of positive integers' });
+          }
+          keys = (ids as number[]).map((id) => family.keyFromParams({ tmdbId: String(id) }));
+        }
+        const unignored = unignoreSurfacedItems(family.job, keys);
+        return json(ctx.res, 200, { ok: true, unignored });
+      },
     },
-  },
+  ]),
 
   // GET /api/jobs  (each flagged with its workflow, if it's a member)
   {
