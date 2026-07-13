@@ -127,3 +127,34 @@ console.log('  ✓ listGlobalLogs pagination is correct across a same-second tie
   assert.ok(logs.length <= 3, 'store respects the limit passed in');
 }
 console.log('  ✓ listGlobalLogs respects the given limit');
+
+// ── LIKE wildcard escaping: %/_/\ are treated as literals, not wildcards ──
+{
+  const runD = createRun('t311-job-a', 'manual');
+  const wfRunD = createWorkflowRun('t311-wf-a', 'manual');
+
+  // Insert logs with literal wildcard characters
+  insertRunLog(runD, '2099-01-05 11:00:00', 'info', 'discount 100% off');
+  insertRunLog(runD, '2099-01-05 11:00:01', 'info', 'regular discount 50');
+  insertRunLog(runD, '2099-01-05 11:00:02', 'info', 'file_name.txt here');
+  insertRunLog(runD, '2099-01-05 11:00:03', 'info', 'filename.txt');
+  insertWorkflowLog(wfRunD, '2099-01-05 11:00:04', 'info', 'backslash \\ escaped');
+  insertWorkflowLog(wfRunD, '2099-01-05 11:00:05', 'info', 'backslash escaped');
+
+  // Searching for literal '%' should match only the row with '%'
+  const { logs: percentLogs } = listGlobalLogs({ q: '100%', windowHours: 100000, limit: 50 });
+  assert.ok(percentLogs.some((l) => l.message === 'discount 100% off'), 'finds literal %');
+  assert.ok(!percentLogs.some((l) => l.message === 'regular discount 50'), 'does not match % as wildcard');
+
+  // Searching for literal '_' should match only rows with '_'
+  const { logs: underscoreLogs } = listGlobalLogs({ q: 'file_name', windowHours: 100000, limit: 50 });
+  assert.ok(underscoreLogs.some((l) => l.message === 'file_name.txt here'), 'finds literal _');
+  assert.ok(!underscoreLogs.some((l) => l.message === 'filename.txt'), 'does not match _ as wildcard');
+
+  // Searching for literal '%' should not match everything
+  const { logs: allLogs } = listGlobalLogs({ windowHours: 100000, limit: 50 });
+  const percentWildcardLogs = listGlobalLogs({ q: '%', windowHours: 100000, limit: 50 });
+  assert.ok(percentWildcardLogs.logs.length < allLogs.length, 'searching for % does not match everything');
+  assert.ok(percentWildcardLogs.logs.some((l) => l.message === 'discount 100% off'), 'searching for % finds the literal % row');
+}
+console.log('  ✓ listGlobalLogs LIKE wildcard escaping: %/_/\\ treated as literals, not wildcards');

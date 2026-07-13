@@ -3,6 +3,10 @@ import { db } from '../index.js';
 import type { LogLevel, RunRow, RunStatus, RunTrigger } from '../../core/types.js';
 import { rollUpWorkflowProgress } from './workflows.js';
 
+function escapeLike(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
 // ---- runs ----
 
 export function createRun(
@@ -193,8 +197,8 @@ export function listGlobalLogs(filter: GlobalLogFilter): { logs: GlobalLogLine[]
       params.push(...levels);
     }
     if (filter.q) {
-      conds.push('LOWER(rl.message) LIKE ?');
-      params.push(`%${filter.q.toLowerCase()}%`);
+      conds.push("LOWER(rl.message) LIKE ? ESCAPE '\\'");
+      params.push(`%${escapeLike(filter.q.toLowerCase())}%`);
     }
     if (cursor) {
       // rows strictly after the cursor in (ts DESC, source ASC, id DESC) order
@@ -244,8 +248,8 @@ export function listGlobalLogs(filter: GlobalLogFilter): { logs: GlobalLogLine[]
       params.push(...levels);
     }
     if (filter.q) {
-      conds.push('LOWER(wrl.message) LIKE ?');
-      params.push(`%${filter.q.toLowerCase()}%`);
+      conds.push("LOWER(wrl.message) LIKE ? ESCAPE '\\'");
+      params.push(`%${escapeLike(filter.q.toLowerCase())}%`);
     }
     if (cursor) {
       conds.push(
