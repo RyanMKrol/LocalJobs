@@ -518,3 +518,22 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   own copy of the spawn logic — refactoring perfumes onto the shared helper was out of scope, so
   the spawn code is briefly duplicated. *Impact:* small; additive follow-up, does not
   affect correctness. *Revisit:* migrate perfumes onto `src/services/claude.ts`.
+
+- **Escalation ladder shrunk 5→3 rungs (2026-07-13).** *What:* the global tier ladder
+  (`.harness/config/facets.json` `.tiers.ladder`) went from
+  `[haiku/null, sonnet-5/low, sonnet-5/medium, sonnet-5/high, opus-4-8/high]` to
+  `[haiku/null, sonnet-5/medium, opus-4-8/medium]` — removed sonnet-5 low + high, kept
+  sonnet-5 medium, and lowered the top Opus rung high→medium. *Why:* fail faster / waste fewer
+  build+audit cycles — with `MAX_ATTEMPTS=2`/rung a task now caps at 6 attempts before blocking
+  (was 10), and there's no cheap sonnet-low warm-up rung. *Impact:* (1) coarser escalation — a
+  task jumps sonnet-medium straight to opus-medium with no sonnet-high step between, and every
+  non-Haiku task now starts at sonnet-medium (pricier per attempt than the old sonnet-low). (2)
+  Calibration was preserved by a band-collapse ledger migration (all sonnet-5 low/high history
+  folded into sonnet-medium, opus-high into opus-medium — verified 0/334 outcomes rows dropped
+  under the new ladder vs 308 pre-migration), so no cell cold-starts; but cells once calibrated
+  to sonnet-low now start at sonnet-medium (slightly over-provisioned) and cells that needed
+  sonnet-high now under-provision at sonnet-medium and escalate to opus-medium. *Revisit:* if
+  tasks that used to pass cheaply at sonnet-low routinely waste an opus-medium escalation (watch
+  the ledgers' finalEffort distribution drifting toward opus), consider reintroducing a cheaper
+  sonnet rung or a sonnet-high step — `implementation-harness-update-ladder` does the insert +
+  calibration migration.
