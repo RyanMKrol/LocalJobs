@@ -14205,7 +14205,7 @@
     {
       "id": "T530",
       "title": "Replace server.ts if/else router with a declarative route table + exact-length matcher",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
