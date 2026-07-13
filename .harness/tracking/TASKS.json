@@ -14499,7 +14499,7 @@
     {
       "id": "T540",
       "title": "CI hardening: dashboard npm cache path + npm audit for both roots",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T539"
       ],
