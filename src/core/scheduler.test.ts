@@ -11,7 +11,14 @@
 // (observable via the scheduler's own console.log) — nothing is spawned.
 import { workflows } from '../workflows/registry.js';
 import { createWorkflowRun, listWorkflowRunsForWorkflow, setWorkflowEnabled, syncWorkflow } from '../db/store.js';
-import { nextWorkflowRun, rescheduleWorkflow, startScheduler, stopScheduler } from './scheduler.js';
+import {
+  _setRunWorkflowForTest,
+  _triggerWorkflowCronForTest,
+  nextWorkflowRun,
+  rescheduleWorkflow,
+  startScheduler,
+  stopScheduler,
+} from './scheduler.js';
 import type { WorkflowDefinition } from './types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -78,6 +85,30 @@ try {
   ok('disabled workflow created no run rows', listWorkflowRunsForWorkflow(OFF.name).length === 0);
   ok('enabled workflow spawned nothing (only the pre-seeded running row exists)', listWorkflowRunsForWorkflow(ON.name).length === 1);
   ok('cron stopped: nextWorkflowRun null after stopScheduler', nextWorkflowRun(ON.name) === null);
+
+  // T525: a rejecting runWorkflow must be caught by the cron callback, not escape
+  // as an unhandledRejection. Re-register a fresh cron (the one above was just
+  // stopped) and swap in a rejecting fake runWorkflow via the test seam.
+  startScheduler();
+  const origError = console.error;
+  const erroredCaptured: string[] = [];
+  console.error = (...a: unknown[]) => { erroredCaptured.push(a.map(String).join(' ')); };
+  _setRunWorkflowForTest(async () => { throw new Error('boom — simulated runWorkflow rejection'); });
+  let threw = false;
+  try {
+    const triggered = await _triggerWorkflowCronForTest(ON.name);
+    ok('cron for the rejecting fire was registered and triggered', triggered);
+  } catch {
+    threw = true;
+  } finally {
+    _setRunWorkflowForTest(null);
+    console.error = origError;
+  }
+  ok('a rejecting runWorkflow does NOT escape the cron callback (resolves, does not throw)', !threw);
+  ok('the rejection is logged loudly via console.error', erroredCaptured.some((l) => l.includes(ON.name) && l.includes('boom')), erroredCaptured.join('\n'));
+  // The OTHER workflow's cron is unaffected by ON's failed fire.
+  ok('a different workflow is still registered/unaffected after another workflow\'s fire failed', nextWorkflowRun(OFF.name) !== null);
+  stopScheduler();
 } finally {
   console.log = origLog;
   stopScheduler();

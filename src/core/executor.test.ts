@@ -45,6 +45,14 @@ if (name.startsWith('timeout')) {
 } else if (name.startsWith('fail')) {
   emit({ type: 'log', level: 'error', message: 'boom' });
   done({ type: 'result', status: 'failed', error: 'planned failure' }, 1);
+} else if (name.startsWith('badlog')) {
+  // An object message can't be bound by better-sqlite3 (only string/number/bigint/
+  // buffer/null) — addLog throws synchronously. This simulates a store failure
+  // (e.g. SQLITE_BUSY) inside the rl.on('line') handler (T525): it must drop only
+  // this one line, not crash the run.
+  emit({ type: 'log', message: { nested: 'not bindable' } });
+  emit({ type: 'log', message: 'a fine line right after the bad one' });
+  done({ type: 'result', status: 'success' }, 0);
 } else {
   emit({ type: 'log', message: 'hello from fake child' });
   emit({ type: 'progress', pct: 50, message: 'halfway' });
@@ -160,6 +168,27 @@ try {
     assert.equal(res.reason, 'already running');
     // only the manual running row exists — no spawn/attempt happened
     assert.equal(listRunsForJob('overlap-exec').length, 1);
+  });
+
+  await test('a throwing addLog inside the line handler drops only that one line (T525)', async () => {
+    const d = def('badlog-exec');
+    syncJob(d);
+    const origError = console.error;
+    const captured: string[] = [];
+    console.error = (...a: unknown[]) => { captured.push(a.map(String).join(' ')); };
+    let runId: string | null;
+    let status: string;
+    try {
+      ({ runId, status } = await runJobForWorkflow(d, PL));
+    } finally {
+      console.error = origError;
+    }
+    // The unbindable log line is dropped without throwing — the run still completes
+    // normally, and the very next line is still recorded.
+    assert.equal(status, 'success');
+    const msgs = getLogs(runId!).map((l) => l.message);
+    assert.ok(msgs.includes('a fine line right after the bad one'), 'the line after the bad one was still recorded');
+    assert.ok(captured.some((l) => l.includes('failed to record')), `expected a fallback console.error, got: ${captured.join('\n')}`);
   });
 
   await test('overlap guard (workflow member): a busy job records a skipped member run', async () => {

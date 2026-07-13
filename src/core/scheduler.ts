@@ -7,6 +7,18 @@ import type { WorkflowDefinition } from './types.js';
 const workflowCrons = new Map<string, Cron>();
 
 /**
+ * Test-only seam (T525): lets a unit test simulate `runWorkflow` REJECTING
+ * (e.g. a bug that throws before its own internal try/catch settles the run)
+ * without needing to spawn a real workflow run. Mirrors the pattern used by
+ * `workflow-executor.ts`'s `_setOnSettleThrowHookForTest` / `notifier.ts`'s
+ * `_setFetchForTest`. Always `null` outside tests.
+ */
+let runWorkflowFnForTest: typeof runWorkflow | null = null;
+export function _setRunWorkflowForTest(fn: typeof runWorkflow | null): void {
+  runWorkflowFnForTest = fn;
+}
+
+/**
  * Register cron triggers for scheduled workflows. There are NO standalone jobs:
  * every job belongs to a workflow (a single job is a one-stage workflow), and the
  * workflow is the only thing that owns a schedule — it drives its member jobs.
@@ -34,10 +46,17 @@ function effectiveSchedule(def: WorkflowDefinition): string | null {
 
 function scheduleWorkflow(def: WorkflowDefinition, schedule: string): void {
   const cron = new Cron(schedule, { name: `workflow:${def.name}` }, async () => {
-    const row = getWorkflow(def.name);
-    if (!row || row.enabled === 0) return; // respect user toggle
-    const result = await runWorkflow(def, 'schedule');
-    if (result.skipped) console.log(`[scheduler] workflow ${def.name} skipped: ${result.reason}`);
+    // croner's default catch:false lets a rejecting callback surface as an
+    // unhandledRejection — catch + log loudly so one workflow's fire failure
+    // can never take down the scheduler / daemon (T525).
+    try {
+      const row = getWorkflow(def.name);
+      if (!row || row.enabled === 0) return; // respect user toggle
+      const result = await (runWorkflowFnForTest ?? runWorkflow)(def, 'schedule');
+      if (result.skipped) console.log(`[scheduler] workflow ${def.name} skipped: ${result.reason}`);
+    } catch (err) {
+      console.error(`[scheduler] workflow ${def.name} fire failed:`, err);
+    }
   });
   workflowCrons.set(def.name, cron);
   console.log(`[scheduler] workflow ${def.name} scheduled (${schedule}); next: ${cron.nextRun()?.toISOString() ?? 'n/a'}`);
@@ -69,6 +88,19 @@ export function rescheduleWorkflow(name: string, schedule: string | null): void 
 /** Next scheduled fire time for a workflow, if any. */
 export function nextWorkflowRun(name: string): string | null {
   return workflowCrons.get(name)?.nextRun()?.toISOString() ?? null;
+}
+
+/**
+ * Test-only seam (T525): manually fire a registered workflow's cron callback
+ * right now (croner's own `.trigger()`), so a test can assert the callback's
+ * try/catch behaviour without waiting on a real schedule. Returns false if the
+ * workflow has no registered cron.
+ */
+export async function _triggerWorkflowCronForTest(name: string): Promise<boolean> {
+  const cron = workflowCrons.get(name);
+  if (!cron) return false;
+  await cron.trigger();
+  return true;
 }
 
 export function stopScheduler(): void {

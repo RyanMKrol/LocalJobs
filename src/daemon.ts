@@ -36,6 +36,20 @@ function main(): void {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
+  // Last-resort global guards (T525). An unhandledRejection is usually a
+  // localized async fault (a stray promise somewhere) — log and CONTINUE so
+  // one bad promise doesn't kill the whole daemon. An uncaughtException means
+  // a synchronous throw escaped all handling, leaving the process in a
+  // possibly-corrupt state — log and EXIT(1) so launchd restarts a clean
+  // daemon rather than limping on in an unknown state.
+  process.on('unhandledRejection', (reason) => {
+    console.error('[daemon] unhandled rejection:', reason, (reason as Error)?.stack ?? '');
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[daemon] uncaught exception — exiting:', err, err?.stack ?? '');
+    process.exit(1);
+  });
+
   console.log('[daemon] up');
 }
 

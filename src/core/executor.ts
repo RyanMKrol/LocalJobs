@@ -168,24 +168,43 @@ function executeAttempt(
         addLog(runId, trimmed); // non-JSON stdout still gets logged
         return;
       }
-      switch (event.type) {
-        case 'log':
-          addLog(runId, event.message, event.level);
-          break;
-        case 'progress':
-          setProgress(runId, event.pct, event.message);
-          break;
-        case 'result':
-          resultStatus = event.status;
-          resultError = event.status === 'failed' ? event.error : null;
-          break;
+      try {
+        switch (event.type) {
+          case 'log':
+            addLog(runId, event.message, event.level);
+            break;
+          case 'progress':
+            setProgress(runId, event.pct, event.message);
+            break;
+          case 'result':
+            resultStatus = event.status;
+            resultError = event.status === 'failed' ? event.error : null;
+            break;
+        }
+      } catch (err) {
+        // A synchronous store throw (e.g. SQLITE_BUSY) must drop at most this
+        // one line, not crash the daemon (T525).
+        try {
+          console.error(`[executor] run ${runId}: failed to record line event:`, err);
+        } catch {
+          // even the fallback log must never throw out of this handler
+        }
       }
     });
 
     // Anything on stderr is captured as an error log line.
     const errRl = createInterface({ input: child.stderr });
     errRl.on('line', (line) => {
-      if (line.trim()) addLog(runId, line, 'error');
+      if (!line.trim()) return;
+      try {
+        addLog(runId, line, 'error');
+      } catch (err) {
+        try {
+          console.error(`[executor] run ${runId}: failed to record stderr line:`, err);
+        } catch {
+          // even the fallback log must never throw out of this handler
+        }
+      }
     });
 
     child.on('error', (err) => {
