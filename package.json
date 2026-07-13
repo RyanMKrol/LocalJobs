@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Local job orchestrator + dashboard for the Mac Mini",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "daemon": "tsx src/daemon.ts",
     "dev": "tsx watch src/daemon.ts",

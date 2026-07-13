@@ -2,6 +2,9 @@
   "name": "local-jobs-dashboard",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "dev": "next dev -p 4788",
     "build": "next build",
