@@ -14325,7 +14325,7 @@
     {
       "id": "T534",
       "title": "Q02.3: GET /api route listing (self-describing API) on top of the route table",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T530"
       ],
