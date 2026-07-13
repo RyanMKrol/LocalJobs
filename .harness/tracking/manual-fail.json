@@ -63,5 +63,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T511-T517 — atomised the 21-file migration into 6 per-workflow slices + a verification gate to fix the twice-repeated pre-push git-hygiene guard trip (T464/T474/T499 all blocked at rung 0 before any code landed)",
     "at": "2026-07-11T22:20:03Z"
+  },
+  "T517": {
+    "failed": true,
+    "reason": "review-failed: superseded by T578 (re-attempt) + T577 (the missing 7th missing-movies Plex migration) — T517 correctly blocked because the migration chain covered 6 of 7 Plex-touching workflows; missing-movies snapshot still had a bare plexGet call",
+    "at": "2026-07-13T10:56:08Z"
   }
 }
