@@ -14383,7 +14383,7 @@
     {
       "id": "T536",
       "title": "Q02.5: slice upstream error bodies in trading212 thrown errors (+ sweep services)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
