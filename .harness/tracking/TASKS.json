@@ -14412,7 +14412,7 @@
     {
       "id": "T537",
       "title": "Typecheck + test scripts/, and fix the three test-runner defects",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
