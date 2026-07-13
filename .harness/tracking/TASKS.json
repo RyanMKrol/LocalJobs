@@ -14039,7 +14039,7 @@
     {
       "id": "T524",
       "title": "Fix B08: an escaped exception permanently wedges a workflow",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
