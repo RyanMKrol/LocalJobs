@@ -1117,7 +1117,7 @@ const routes: Route[] = [
       // `effectiveWorkflowConcurrency` maps 0→Infinity for the executor; we keep 0 here so
       // the dashboard can detect and display "Unlimited" without serialising Infinity (NaN in JSON).
       const rawEff = wfDef
-        ? (getWorkflow(p.name)?.max_concurrency ?? wfDef.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY)
+        ? (p.max_concurrency ?? wfDef.maxConcurrency ?? DEFAULT_WORKFLOW_CONCURRENCY)
         : (p.max_concurrency ?? DEFAULT_WORKFLOW_CONCURRENCY);
       const effective_max_concurrency = rawEff;
       // Effective notify-enabled (T285): the user override / synced manifest value /
