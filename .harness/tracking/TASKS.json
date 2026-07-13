@@ -12797,7 +12797,7 @@
       "status": "pending",
       "dependsOn": [
         "T476",
-        "T517"
+        "T578"
       ],
       "gate": null,
       "tags": [
@@ -13048,7 +13048,7 @@
       "title": "Fix plex-language-fix's discoverInputKeys() self-referential ledger read with a live Plex library walk",
       "status": "pending",
       "dependsOn": [
-        "T517"
+        "T578"
       ],
       "gate": null,
       "tags": [
@@ -13112,7 +13112,7 @@
         "T484",
         "T485",
         "T486",
-        "T517"
+        "T578"
       ],
       "gate": null,
       "tags": [
@@ -15234,8 +15234,8 @@
       "title": "Dedup PlexAllResponse<T> + TMDB-GUID extraction into src/core/plex-client.ts (sequenced after the in-flight Plex-service migration)",
       "status": "pending",
       "dependsOn": [
-        "T517",
-        "T561"
+        "T561",
+        "T578"
       ],
       "gate": null,
       "tags": [
@@ -15627,6 +15627,70 @@
         "layer": "job",
         "risk": [],
         "workType": "refactor"
+      }
+    },
+    {
+      "id": "T577",
+      "title": "Migrate missing-movies Plex snapshot read onto callService('plex') (code + test + CLAUDE.md) — the 7th Plex-touching workflow the migration chain missed",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "job"
+      ],
+      "scope": [
+        "src/workflows/missing-movies/stages/snapshot.ts",
+        "src/workflows/missing-movies/stages/snapshot.test.ts",
+        "src/workflows/missing-movies/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T577.md",
+      "facets": {
+        "layer": "job",
+        "workType": "migration",
+        "risk": []
+      }
+    },
+    {
+      "id": "T578",
+      "title": "Re-attempt T517: document the plex-service migration in root CLAUDE.md + verify NO bare Plex call sites remain repo-wide (now covering all 7 workflows)",
+      "status": "pending",
+      "dependsOn": [
+        "T511",
+        "T512",
+        "T513",
+        "T514",
+        "T515",
+        "T516",
+        "T577"
+      ],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "docs"
+      ],
+      "scope": [
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T578.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": []
       }
     }
   ]
