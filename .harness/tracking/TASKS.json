@@ -14067,7 +14067,7 @@
     {
       "id": "T525",
       "title": "Fix B09: crash-proof the daemon (cron/global-handler/stream throws)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
