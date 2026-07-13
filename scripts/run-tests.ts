@@ -69,7 +69,16 @@ function runFile(file: string): Promise<FileResult> {
   });
 }
 
-const files = [...walk(join(root, 'src')), ...walk(join(root, 'scripts'))].sort();
+// Also walk dashboard/app for its PURE (no-browser) node:test suites — e.g.
+// OutputRenderer.test.ts, StageIoLists.test.ts, ui.test.ts, MarkdownModal.test.ts.
+// dashboard/scripts (nav-check.test.ts + the mobile/visual-check scripts) is
+// deliberately NOT walked — those need Playwright/a running dashboard and stay
+// local-only, never part of `npm test`/CI.
+const files = [
+  ...walk(join(root, 'src')),
+  ...walk(join(root, 'scripts')),
+  ...walk(join(root, 'dashboard', 'app')),
+].sort();
 console.log(`Running ${files.length} test file(s)…\n`);
 
 let failed = false;

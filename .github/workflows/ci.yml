@@ -25,14 +25,17 @@ jobs:
       - name: Install (root)
         run: npm ci
 
+      - name: Install (dashboard)
+        run: npm --prefix dashboard ci
+
       - name: Typecheck
         run: npx tsc --noEmit
 
       - name: Test
         run: npm test
 
-      - name: Install (dashboard)
-        run: npm --prefix dashboard ci
-
       - name: Build dashboard
         run: npm --prefix dashboard run build
+
+      - name: Test dashboard
+        run: npm --prefix dashboard test

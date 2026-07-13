@@ -91,6 +91,21 @@ npm install
 npm run dev               # dashboard on http://localhost:4788
 ```
 
+## Testing
+
+`npm test` (root) runs every `*.test.ts` under `src/`, `scripts/`, AND
+`dashboard/app/` — including two pure, no-browser dashboard suites
+(`dashboard/app/components/OutputRenderer.test.ts`,
+`dashboard/app/components/StageIoLists.test.ts`) plus the pure-helper suites
+(`dashboard/app/ui.test.ts`, `dashboard/app/components/MarkdownModal.test.ts`).
+These also run as their own `npm --prefix dashboard test` script and as a CI
+step after the dashboard build. `dashboard/scripts/mobile-check.mjs` and
+`dashboard/scripts/visual-check.mjs` (hermetic phone-viewport/screenshot
+checks) and `dashboard/scripts/nav-check.test.ts` (a Playwright client-side-nav
+check) are the exception: all three drive a real headless browser, so they stay
+**local-only** — run them by hand after a dashboard UI change, but they are
+never part of `npm test` or CI.
+
 ## Triggering jobs
 
 **Workflows own everything schedule-related.** Every job belongs to a workflow;
