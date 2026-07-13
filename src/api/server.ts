@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, statSync }
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, isAbsolute, join as joinPath, relative as relativePath, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
@@ -310,7 +311,19 @@ export function authoriseMutation(args: {
   const supplied = Array.isArray(header) ? header[0] : header;
   const auth = args.headers['authorization'];
   const bearer = (Array.isArray(auth) ? auth[0] : auth ?? '').replace(/^Bearer\s+/i, '');
-  return supplied === args.token || bearer === args.token;
+
+  // Timing-safe comparison with length-guard
+  const compareToken = (presented: string | undefined): boolean => {
+    if (!presented) return false;
+    if (Buffer.byteLength(presented) !== Buffer.byteLength(args.token)) return false;
+    try {
+      return timingSafeEqual(Buffer.from(presented), Buffer.from(args.token));
+    } catch {
+      return false;
+    }
+  };
+
+  return compareToken(supplied) || compareToken(bearer);
 }
 
 async function readBody(req: IncomingMessage): Promise<any> {
