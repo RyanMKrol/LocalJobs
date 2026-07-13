@@ -120,7 +120,8 @@ export async function fetchPortfolio(apiKeyId: string, apiSecretKey: string): Pr
     headers: { Authorization: `Basic ${basicAuth}` },
   });
   if (!res.ok) {
-    throw new Error(`Trading212 API error ${res.status}: ${await res.text()}`);
+    const body = (await res.text()).slice(0, 300);
+    throw new Error(`Trading212 API error ${res.status}: ${body}`);
   }
   return (await res.json()) as Trading212Position[];
 }
@@ -146,7 +147,8 @@ export async function fetchInstrumentsMetadata(
     headers: { Authorization: `Basic ${basicAuth}` },
   });
   if (!res.ok) {
-    throw new Error(`Trading212 API error ${res.status}: ${await res.text()}`);
+    const body = (await res.text()).slice(0, 300);
+    throw new Error(`Trading212 API error ${res.status}: ${body}`);
   }
   return (await res.json()) as Trading212Instrument[];
 }
