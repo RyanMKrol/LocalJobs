@@ -13865,7 +13865,7 @@
     {
       "id": "T517",
       "title": "Document the plex-service migration in root CLAUDE.md + verify no bare Plex call sites remain repo-wide",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [
         "T511",
         "T512",
