@@ -25,9 +25,21 @@ export default function Workflows() {
   const workflows = (data?.workflows ?? []) as WorkflowWithCategory[];
   const [openWorkflow, setOpenWorkflow] = useState<string | null>(null);
   const [popoverItems, setPopoverItems] = useState<StuckItem[]>([]);
+  const [busyWorkflows, setBusyWorkflows] = useState<Set<string>>(new Set());
 
   async function run(name: string) {
-    try { await api.runWorkflow(name); } catch { /* next poll reflects reality */ }
+    setBusyWorkflows((prev) => new Set(prev).add(name));
+    try {
+      await api.runWorkflow(name);
+    } catch {
+      /* next poll reflects reality */
+    } finally {
+      setBusyWorkflows((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+    }
   }
 
   async function openStuck(workflowName: string) {
@@ -124,6 +136,7 @@ export default function Workflows() {
                 <td>
                   <RunButton
                     isRunning={p.last_run?.status === 'running'}
+                    busy={busyWorkflows.has(p.name)}
                     onClick={() => run(p.name)}
                     label="▶ Run"
                   />

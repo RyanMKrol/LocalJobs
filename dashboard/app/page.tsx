@@ -22,6 +22,7 @@ export default function Overview() {
 
   const [activeFilter, setActiveFilter] = useState<Filter>(null);
   const [stuckPopoverOpen, setStuckPopoverOpen] = useState(false);
+  const [busyWorkflows, setBusyWorkflows] = useState<Set<string>>(new Set());
 
   function toggleFilter(f: Filter) {
     setActiveFilter((prev) => (prev === f ? null : f));
@@ -35,7 +36,18 @@ export default function Overview() {
     try { await api.ignore(job, key); } catch { /* next poll reflects reality */ }
   }
   async function runWorkflow(name: string) {
-    try { await api.runWorkflow(name); } catch { /* next poll reflects reality */ }
+    setBusyWorkflows((prev) => new Set(prev).add(name));
+    try {
+      await api.runWorkflow(name);
+    } catch {
+      /* next poll reflects reality */
+    } finally {
+      setBusyWorkflows((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+    }
   }
 
   // Counts reflect WORKFLOW runs (the unit of work on this page), matching the
@@ -195,7 +207,13 @@ export default function Overview() {
             </div>
             {p.last_run?.status === 'running' && <ProgressBar pct={p.last_run.progress} />}
             <div style={{ marginTop: 10 }}>
-              <RunButton variant="secondary" isRunning={false} label="▶ Run" onClick={() => runWorkflow(p.name)} />
+              <RunButton
+                variant="secondary"
+                isRunning={p.last_run?.status === 'running'}
+                busy={busyWorkflows.has(p.name)}
+                label="▶ Run"
+                onClick={() => runWorkflow(p.name)}
+              />
             </div>
           </div>
         ))}
