@@ -14356,7 +14356,7 @@
     {
       "id": "T535",
       "title": "Q02.4: drop the duplicate getWorkflow call in GET /api/workflows/:name",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
