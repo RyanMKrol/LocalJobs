@@ -21,6 +21,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: ['package-lock.json', 'dashboard/package-lock.json']
 
       - name: Install (root)
         run: npm ci
@@ -39,3 +40,9 @@ jobs:
 
       - name: Test dashboard
         run: npm --prefix dashboard test
+
+      - name: Audit root dependencies
+        run: npm audit --omit=dev --audit-level=high || true
+
+      - name: Audit dashboard dependencies
+        run: npm --prefix dashboard audit --omit=dev --audit-level=high || true
