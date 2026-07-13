@@ -1896,4 +1896,54 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   });
 }
 
+// ── T526: findWorkflowDataOut / deleteDataOutContents must never descend into a
+// `data/` tree (e.g. projects-sync's cloned-repo copies), and must never let a
+// name-matching clone with no data/out shadow the real workflow's data/out.
+// Uses a synthetic fixture rooted under the REAL WORKFLOWS_ROOT (findWorkflowDataOut
+// hardcodes that root at module-load time, so it can't be redirected) — always
+// cleaned up in a finally, and named uniquely so it can never collide with a real
+// tracked workflow folder.
+{
+  const WORKFLOWS_ROOT_FOR_TEST = fileURLToPath(new URL('../workflows', import.meta.url));
+  const wfName = `t526-real-wf-${Date.now()}`;
+  const realDir = join(WORKFLOWS_ROOT_FOR_TEST, '__t526-fixture__');
+  const realOutDir = join(realDir, 'data', 'out');
+  const cloneDir = join(realDir, 'data', 'repos', 'Cloned', '__t526-fixture__');
+  const marker = join(realDir, 'clone-was-imported.marker');
+
+  await test('findWorkflowDataOut skips data/ trees and resolves the real data/out, not a shadowing clone', async () => {
+    rmSync(realDir, { recursive: true, force: true });
+    try {
+      mkdirSync(realOutDir, { recursive: true });
+      writeFileSync(join(realDir, 'real.workflow.ts'), `export default { name: ${JSON.stringify(wfName)} };\n`);
+      writeFileSync(join(realOutDir, 'output.txt'), 'real output');
+
+      // A cloned copy of the SAME workflow name, nested under a `data/` folder
+      // (mirrors projects-sync's repo clones), with NO data/out of its own.
+      // Its import has a side effect (writes `marker`) so we can prove it was
+      // never imported at all.
+      mkdirSync(cloneDir, { recursive: true });
+      writeFileSync(
+        join(cloneDir, 'shadow.workflow.ts'),
+        `import { writeFileSync } from 'node:fs';\n` +
+          `writeFileSync(${JSON.stringify(marker)}, 'imported');\n` +
+          `export default { name: ${JSON.stringify(wfName)} };\n`,
+      );
+
+      const { findWorkflowDataOut: findIt, deleteDataOutContents: deleteIt } =
+        (await import('./server.js')) as typeof import('./server.js');
+
+      const found = await findIt(wfName);
+      assert.equal(found, realOutDir, 'must resolve the real data/out, not null and not the clone');
+      assert.equal(existsSync(marker), false, 'the clone under data/ must never be imported');
+
+      const filesRemoved = deleteIt(found as string);
+      assert.ok(filesRemoved > 0, 'must actually delete the real data/out contents, not silently no-op (the false-success bug)');
+      assert.equal(existsSync(join(realOutDir, 'output.txt')), false, 'the real output file was removed');
+    } finally {
+      rmSync(realDir, { recursive: true, force: true });
+    }
+  });
+}
+
 console.log(`\n  ${passed} assertions passed`);

@@ -111,9 +111,10 @@ export async function findWorkflowDataOut(workflowName: string): Promise<string 
     const out: string[] = [];
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const full = joinPath(dir, entry.name);
-        if (entry.isDirectory()) out.push(...walkForWfFiles(full));
-        else if (isWfFile(entry.name)) out.push(full);
+        if (entry.isDirectory()) {
+          if (entry.name === 'data') continue; // never scan generated/data trees for code
+          out.push(...walkForWfFiles(joinPath(dir, entry.name)));
+        } else if (isWfFile(entry.name)) out.push(joinPath(dir, entry.name));
       }
     } catch { /* skip unreadable dirs */ }
     return out;
@@ -124,8 +125,8 @@ export async function findWorkflowDataOut(workflowName: string): Promise<string 
       if (mod.default?.name === workflowName) {
         const candidate = joinPath(dirname(file), 'data', 'out');
         // Validate the candidate is within WORKFLOWS_ROOT (it always should be, but be explicit).
-        if (!isWithin(WORKFLOWS_ROOT, resolvePath(candidate))) return null;
-        return existsSync(candidate) ? candidate : null;
+        if (!isWithin(WORKFLOWS_ROOT, resolvePath(candidate))) continue;
+        if (existsSync(candidate)) return candidate;
       }
     } catch { /* skip import errors */ }
   }
@@ -140,7 +141,7 @@ export async function findWorkflowDataOut(workflowName: string): Promise<string 
  */
 export function deleteDataOutContents(outDir: string): number {
   if (!isWithin(WORKFLOWS_ROOT, resolvePath(outDir))) return 0; // safety: must stay within workflows tree
-  if (!outDir.includes(`${sep}data${sep}out`)) return 0;   // safety: must be a data/out dir
+  if (!(outDir.endsWith(`${sep}data${sep}out`) || outDir.includes(`${sep}data${sep}out${sep}`))) return 0;   // safety: must be a genuine data/out dir
   let removed = 0;
   try {
     for (const entry of readdirSync(outDir)) {
