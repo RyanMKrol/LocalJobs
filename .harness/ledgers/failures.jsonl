@@ -123,3 +123,13 @@
 {"id":"T537","ts":"2026-07-13T11:32:41Z","kind":"audit-fail","rung":0,"attempt":0,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"harness","risk":["cross-cutting"],"workType":"bugfix"},"detail":""}
 {"id":"T540","ts":"2026-07-13T13:52:17Z","kind":"ci-indeterminate","rung":0,"attempt":0,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"harness","risk":[],"workType":"config"},"detail":"CI produced no definitive result (cancelled/skipped/no-run)"}
 {"id":"T540","ts":"2026-07-13T13:55:36Z","kind":"empty-diff","rung":0,"attempt":1,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"harness","risk":[],"workType":"config"},"detail":""}
+{"id":"T541","ts":"2026-07-13T14:00:35Z","kind":"scope-creep","rung":0,"attempt":0,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":"scripts/start-dashboard.sh"}
+{"id":"T541","ts":"2026-07-13T14:05:26Z","kind":"scope-creep","rung":0,"attempt":1,"model":"claude-haiku-4-5","effort":"","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":"scripts/start-dashboard.sh"}
+{"id":"T541","ts":"2026-07-13T14:31:40Z","kind":"ci-indeterminate","rung":1,"attempt":0,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":"CI produced no definitive result (cancelled/skipped/no-run)"}
+{"id":"T541","ts":"2026-07-13T14:32:58Z","kind":"empty-diff","rung":1,"attempt":1,"model":"claude-sonnet-5","effort":"low","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":""}
+{"id":"T541","ts":"2026-07-13T14:35:14Z","kind":"empty-diff","rung":2,"attempt":0,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":""}
+{"id":"T541","ts":"2026-07-13T14:37:27Z","kind":"empty-diff","rung":2,"attempt":1,"model":"claude-sonnet-5","effort":"medium","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":""}
+{"id":"T541","ts":"2026-07-13T14:40:13Z","kind":"empty-diff","rung":3,"attempt":0,"model":"claude-sonnet-5","effort":"high","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":""}
+{"id":"T541","ts":"2026-07-13T17:27:41Z","kind":"empty-diff","rung":3,"attempt":1,"model":"claude-sonnet-5","effort":"high","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":""}
+{"id":"T541","ts":"2026-07-13T17:31:49Z","kind":"empty-diff","rung":4,"attempt":0,"model":"claude-opus-4-8","effort":"high","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":""}
+{"id":"T541","ts":"2026-07-13T17:36:12Z","kind":"empty-diff","rung":4,"attempt":1,"model":"claude-opus-4-8","effort":"high","facets":{"layer":"harness","risk":[],"workType":"bugfix"},"detail":""}
