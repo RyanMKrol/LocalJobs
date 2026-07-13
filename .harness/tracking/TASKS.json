@@ -14121,7 +14121,7 @@
     {
       "id": "T527",
       "title": "Fix B11: tv-recs-notify marks recs notified on failed push",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
