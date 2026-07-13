@@ -14173,7 +14173,7 @@
     {
       "id": "T529",
       "title": "Split src/db/store.ts (2,152 lines) into per-domain files behind a barrel re-export",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
