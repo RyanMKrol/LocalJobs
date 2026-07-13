@@ -131,19 +131,11 @@
       },
       {
         "model": "claude-sonnet-5",
-        "effort": "low"
-      },
-      {
-        "model": "claude-sonnet-5",
         "effort": "medium"
       },
       {
-        "model": "claude-sonnet-5",
-        "effort": "high"
-      },
-      {
         "model": "claude-opus-4-8",
-        "effort": "high"
+        "effort": "medium"
       }
     ]
   }
