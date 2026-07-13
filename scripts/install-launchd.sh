@@ -5,7 +5,6 @@ set -euo pipefail
 
 LABEL="com.ryankrol.localjobs"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NODE_BIN_DIR="$(dirname "$(command -v node)")"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST="$PLIST_DIR/$LABEL.plist"
 LOG_DIR="$PROJECT_DIR/data"
@@ -29,10 +28,8 @@ cat > "$PLIST" <<EOF
 
   <key>EnvironmentVariables</key>
   <dict>
-    <key>NODE_BIN_DIR</key>
-    <string>$NODE_BIN_DIR</string>
     <key>PATH</key>
-    <string>$NODE_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
   <key>WorkingDirectory</key>
