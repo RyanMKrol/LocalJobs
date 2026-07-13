@@ -2,8 +2,10 @@ import { readFileSync } from 'fs';
 
 import { push } from '../../../core/notifier.js';
 import type { JobContext } from '../../../core/types.js';
+import { markWorkItem } from '../../../db/store.js';
+import { positionKey } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
-import type { BreachLine } from './stocks-watch.js';
+import { WATCH_JOB, type BreachLine } from './stocks-watch.js';
 
 export type PushFn = typeof push;
 
@@ -59,6 +61,24 @@ export async function runStocksNotify(
 
   const digest = buildDigest(freshBreaches);
   ctx.log(`info: sending ONE push for ${freshBreaches.length} fresh breach(es): ${digest.title}`);
-  await pushFn(digest.title, digest.body, { job: 'stocks-notify' });
-  ctx.log('info: stocks-notify complete — notification sent');
+  const res = await pushFn(digest.title, digest.body, { job: 'stocks-notify' });
+  ctx.log(res.ok ? 'stocks-notify complete — notification sent' : `stocks-notify — push FAILED: ${res.error}`, res.ok ? 'info' : 'error');
+  if (!res.ok) {
+    throw new Error(`Breach push failed — ${res.error}`);
+  }
+
+  for (const b of freshBreaches) {
+    const notifiedKey = `${positionKey(b.account, b.ticker)}::notified`;
+    const label = b.account === 'isa' ? `${b.ticker} (ISA)` : b.ticker;
+    markWorkItem(WATCH_JOB, notifiedKey, 'success', {
+      detail: {
+        name: `${label} — notified breach`,
+        ticker: b.ticker,
+        account: b.account,
+        gainPct: b.gain,
+        averageBuyPrice: b.averageBuyPrice,
+        currentPrice: b.currentPrice,
+      },
+    });
+  }
 }

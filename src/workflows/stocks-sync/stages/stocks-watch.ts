@@ -28,20 +28,6 @@ export interface BreachLine {
   currentPrice: number;
 }
 
-export function formatBreachLine(b: BreachLine): string {
-  const sign = b.gain >= 0 ? '+' : '';
-  const label = b.account === 'isa' ? `${b.ticker} (ISA)` : b.ticker;
-  return `${label} ${sign}${b.gain.toFixed(0)}% since last buy ($${b.averageBuyPrice.toFixed(2)} → $${b.currentPrice.toFixed(2)})`;
-}
-
-export function buildDigest(breaches: BreachLine[]): { title: string; body: string } {
-  const title = breaches.length === 1
-    ? '📈 1 position up 30%+ since your buy price'
-    : `📈 ${breaches.length} positions up 30%+ since your buy price`;
-  const body = breaches.map(formatBreachLine).join('\n');
-  return { title, body };
-}
-
 export function readPortfolio(path: string): NormalizedPosition[] {
   try {
     const raw = readFileSync(path, 'utf-8');
@@ -107,16 +93,6 @@ export async function runStocksWatch(
           gain,
           averageBuyPrice: position.averageBuyPrice,
           currentPrice: position.currentPrice,
-        });
-        markWorkItem(WATCH_JOB, notifiedKey, 'success', {
-          detail: {
-            name: `${label} — notified breach`,
-            ticker: position.ticker,
-            account: position.account,
-            gainPct: gain,
-            averageBuyPrice: position.averageBuyPrice,
-            currentPrice: position.currentPrice,
-          },
         });
       }
     } else if (alreadyNotified) {

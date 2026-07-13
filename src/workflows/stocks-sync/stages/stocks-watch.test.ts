@@ -8,9 +8,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { JobContext } from '../../../core/types.js';
-import { getWorkItem, hasJobAdvancedAnyItem } from '../../../db/store.js';
-import { positionKey, type NormalizedPosition } from '../../../services/trading212.service.js';
+import { getWorkItem, hasJobAdvancedAnyItem, markWorkItem } from '../../../db/store.js';
+import { positionKey, type NormalizedPosition, type Trading212Account } from '../../../services/trading212.service.js';
 import { runStocksWatch, WATCH_JOB } from './stocks-watch.js';
+
+// Since T528, stocks-watch no longer marks the ::notified episode row itself —
+// that's stocks-notify's job, after a verified-ok push. These tests exercise
+// stocks-watch in isolation, so they simulate "stocks-notify already ran
+// successfully for this breach" by marking the row directly, mirroring what
+// stocks-notify.ts does on a verified push.
+function simulateNotified(account: Trading212Account, ticker: string) {
+  markWorkItem(WATCH_JOB, `${positionKey(account, ticker)}::notified`, 'success', {
+    detail: { name: `${ticker} — notified breach (simulated)`, ticker, account },
+  });
+}
 
 function fakeCtx(): JobContext {
   return {
@@ -67,6 +78,8 @@ function pos(
 }
 
 // (b) a fresh breach is recorded in fresh-breaches.json for stocks-notify to consume.
+// T528: stocks-watch itself must NOT write the ::notified episode row anymore —
+// that only happens in stocks-notify, after a verified-ok push.
 {
   writePortfolio([pos(MSFT, 100, 135)]); // +35%
   await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
@@ -75,15 +88,17 @@ function pos(
   assert.equal(breaches[0].ticker, MSFT);
 
   const notifiedRow = getWorkItem(WATCH_JOB, `${positionKey('invest', MSFT)}::notified`);
-  assert.ok(notifiedRow?.detail, 'the ::notified ledger row must record a detail blob describing the breach');
-  const detail = JSON.parse(notifiedRow!.detail!);
-  assert.equal(typeof detail.gainPct, 'number');
-  assert.equal(detail.ticker, MSFT);
-  console.log('  ✓ fresh breach is written to fresh-breaches.json, with detail recorded on the ::notified row');
+  assert.equal(
+    notifiedRow,
+    undefined,
+    'stocks-watch must not mark the ::notified episode row itself — only stocks-notify does, after a verified push',
+  );
+  console.log('  ✓ fresh breach is written to fresh-breaches.json; ::notified row is NOT written by stocks-watch');
 }
 
 // (c) staying above threshold (already notified) does not re-appear in fresh-breaches.json.
 {
+  simulateNotified('invest', MSFT); // stocks-notify already delivered this breach
   writePortfolio([pos(MSFT, 100, 140)]); // still well above 30%, already notified
   await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
   assert.deepEqual(readFreshBreaches(), [], 'a sustained breach is not re-reported as fresh');
@@ -125,6 +140,7 @@ function pos(
   assert.equal(breaches.length, 1, 'only the Invest leg breaches; the ISA leg does not');
   assert.equal(breaches[0].ticker, SHARED);
   assert.equal(breaches[0].account, 'invest');
+  simulateNotified('invest', SHARED); // stocks-notify already delivered the Invest leg's breach
 
   // Now the ISA leg also breaches — it must be reported as its OWN fresh
   // breach, not suppressed by the Invest leg already being notified.

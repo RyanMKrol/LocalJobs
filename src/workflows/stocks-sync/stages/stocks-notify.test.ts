@@ -3,13 +3,13 @@
 // nothing (a correct noop, unlike the check stage). Also proves the full
 // idempotency chain holds ACROSS the two split stages.
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { JobContext } from '../../../core/types.js';
-import { hasJobAdvancedAnyItem } from '../../../db/store.js';
-import type { NormalizedPosition } from '../../../services/trading212.service.js';
+import { getWorkItem, hasJobAdvancedAnyItem } from '../../../db/store.js';
+import { positionKey, type NormalizedPosition } from '../../../services/trading212.service.js';
 import { runStocksWatch } from './stocks-watch.js';
 import { runStocksNotify } from './stocks-notify.js';
 
@@ -34,6 +34,11 @@ function capturingPush() {
     return { ok: true };
   }) as unknown as typeof import('../../../core/notifier.js').push;
   return { sent, push };
+}
+
+function failingPush(error = 'ntfy HTTP 500') {
+  const push = (async () => ({ ok: false, error })) as unknown as typeof import('../../../core/notifier.js').push;
+  return push;
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'stocks-notify-'));
@@ -129,6 +134,56 @@ function pos(ticker: string, avg: number, current: number): NormalizedPosition {
   assert.match(sent[0].body, /MSFT/);
   assert.match(sent[0].body, /TSLA/);
   console.log('  ✓ multiple simultaneous fresh breaches send exactly one combined push');
+}
+
+// (d) T528 — a FAILED push must throw AND must NOT mark the ::notified episode
+// row, so the position re-alerts on the next run instead of being silently lost.
+{
+  const FAIL = 'T528FAIL';
+  writePortfolio([pos(FAIL, 100, 140)]); // +40%, fresh breach
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+
+  await assert.rejects(
+    () => runStocksNotify(fakeCtx(), { push: failingPush(), freshBreachesPath }),
+    /Breach push failed/,
+    'a failed push must throw',
+  );
+
+  const notifiedRow = getWorkItem('stocks-watch', `${positionKey('invest', FAIL)}::notified`);
+  assert.equal(notifiedRow, undefined, 'a failed push must not mark the ::notified episode row');
+  console.log('  ✓ failed push throws and leaves no ::notified episode row');
+}
+
+// (e) T528 — an OK push marks the ::notified episode row exactly once, and a
+// second pipeline run (watch + notify) with that row already present does not
+// re-add the position to fresh-breaches or send a duplicate alert.
+{
+  const OK = 'T528OK';
+  writePortfolio([pos(OK, 100, 140)]); // +40%, fresh breach
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+
+  {
+    const { sent, push } = capturingPush();
+    await runStocksNotify(fakeCtx(), { push, freshBreachesPath });
+    assert.equal(sent.length, 1, 'an ok push sends exactly one notification');
+  }
+
+  const notifiedRow = getWorkItem('stocks-watch', `${positionKey('invest', OK)}::notified`);
+  assert.ok(notifiedRow, 'an ok push marks the ::notified episode row');
+  assert.equal(notifiedRow!.status, 'success');
+
+  // Second full pipeline run: still above threshold, already notified.
+  writePortfolio([pos(OK, 100, 145)]);
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  const breaches = JSON.parse(readFileSync(freshBreachesPath, 'utf-8')) as Array<{ ticker: string }>;
+  assert.equal(breaches.length, 0, 'an already-notified position is not re-added to fresh-breaches');
+
+  {
+    const { sent, push } = capturingPush();
+    await runStocksNotify(fakeCtx(), { push, freshBreachesPath });
+    assert.equal(sent.length, 0, 'no duplicate alert is sent on the second run');
+  }
+  console.log('  ✓ ok push marks ::notified exactly once; a second run sends no duplicate alert');
 }
 
 console.log('  ✓ stocks-notify tests passed');
