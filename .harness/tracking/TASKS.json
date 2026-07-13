@@ -14440,7 +14440,7 @@
     {
       "id": "T538",
       "title": "Run the three dashboard test suites (wire component suites into npm test + CI, keep nav-check local-only)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T537"
       ],
