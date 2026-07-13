@@ -91,6 +91,7 @@ export async function runTvRecsNotify(ctx: JobContext, opts: NotifyOpts = {}): P
   ctx.log(`Digest: ${digest.title} — ${digest.body}`);
   const res = await pushFn(digest.title, digest.body, { job: 'tv-recs', tags: 'television', priority: 'default' });
   ctx.log(res.ok ? `digest push sent — ${digest.title}` : `digest push FAILED (${res.error})`, res.ok ? 'info' : 'error');
+  if (!res.ok) throw new Error(`Digest push failed — ${res.error}`);
 
   // Mark each notified rec in the ledger so it's never re-notified.
   for (const r of newRecs) {

@@ -142,4 +142,24 @@ const backlog: Recommendation[] = [
   console.log('  ✓ ignoring a previously-notified rec removes it from the report');
 }
 
+// Run 6 — a FAILED digest push must throw BEFORE marking the ledger or appending
+// history, so a later run re-sends instead of silently losing the recs.
+{
+  const REC_FAIL = 8880005;
+  const failingPush = (async () => ({ ok: false, error: 'ntfy unreachable' })) as unknown as
+    typeof import('../../../core/notifier.js').push;
+  const grown = [...backlog, rec(REC_FAIL, 'Failed Push Show', 'Comedy')];
+  writeRecs(grown);
+  const historyBefore = readFileSync(historyFile, 'utf8');
+  await assert.rejects(
+    runTvRecsNotify(fakeCtx(), { push: failingPush, now: NOW, recsFile, historyFile, reportDir }),
+    /Digest push failed — ntfy unreachable/,
+    'a failed digest push throws',
+  );
+  assert.equal(isWorkItemDone(RECS_JOB, recKey(REC_FAIL), 1), false, 'unnotified rec NOT marked done after a failed push');
+  const historyAfter = readFileSync(historyFile, 'utf8');
+  assert.equal(historyAfter, historyBefore, 'recs-history.json unchanged after a failed push');
+  console.log('  ✓ a failed digest push throws before marking the ledger or appending history');
+}
+
 console.log('  ✓ tv-recs-notify dedup/digest/ignore tests passed');
