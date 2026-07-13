@@ -12,7 +12,7 @@
     "harness:dashboard": "HARNESS_DASHBOARD_PORT=4792 node .harness/dashboard/server.js",
     "harness:start": "bash .harness/scripts/supervise.sh",
     "typecheck": "tsc --noEmit",
-    "test": "rm -f /tmp/lj-test.db* 2>/dev/null; LOCALJOBS_DB=/tmp/lj-test.db tsx scripts/run-tests.ts"
+    "test": "tsx scripts/run-tests.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.840.0",

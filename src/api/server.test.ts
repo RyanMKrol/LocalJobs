@@ -2053,9 +2053,12 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
 {
   const WORKFLOWS_ROOT_FOR_TEST = fileURLToPath(new URL('../workflows', import.meta.url));
   const wfName = `t526-real-wf-${Date.now()}`;
-  const realDir = join(WORKFLOWS_ROOT_FOR_TEST, '__t526-fixture__');
+  // Suffixed with the PID so two concurrent `npm test` processes (each in its own
+  // process since T537) never race on the same real on-disk fixture path.
+  const fixtureName = `__t526-fixture-${process.pid}__`;
+  const realDir = join(WORKFLOWS_ROOT_FOR_TEST, fixtureName);
   const realOutDir = join(realDir, 'data', 'out');
-  const cloneDir = join(realDir, 'data', 'repos', 'Cloned', '__t526-fixture__');
+  const cloneDir = join(realDir, 'data', 'repos', 'Cloned', fixtureName);
   const marker = join(realDir, 'clone-was-imported.marker');
 
   await test('findWorkflowDataOut skips data/ trees and resolves the real data/out, not a shadowing clone', async () => {

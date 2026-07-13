@@ -12,9 +12,15 @@ import {
   type NormalizedPosition,
   type Trading212Position,
 } from '../../../services/trading212.service.js';
-import { callService } from '../../../core/services.js';
+import { callService, registerService } from '../../../core/services.js';
 import { dayKey } from './stocks-snapshot.js';
 import { runStocksFetch, type RawPositionsWriter } from './stocks-fetch.js';
+
+// Register the real service def in isolation — in the daemon this happens via the
+// registry scanning src/services/*.service.ts; a standalone test process never runs
+// the registry, so without this the cache-key test below would see callService's
+// `getServiceDef` miss and skip gating/caching entirely (fn() invoked every time).
+registerService({ name: 'trading212', category: 'api', cacheTtlMs: 79_200_000 });
 
 function fakeCtx(): JobContext {
   return {

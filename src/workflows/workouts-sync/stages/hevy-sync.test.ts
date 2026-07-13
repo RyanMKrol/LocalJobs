@@ -9,8 +9,14 @@ import { join } from 'node:path';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 
 import { clearServiceCache, getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import { callService } from '../../../core/services.js';
+import { callService, registerService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
+
+// Register the real service def in isolation — in the daemon this happens via the
+// registry scanning src/services/*.service.ts; a standalone test process never runs
+// the registry, so without this the cache-key test below would see callService's
+// `getServiceDef` miss and skip gating/caching entirely (fetcher invoked every time).
+registerService({ name: 'hevy', category: 'api', cacheTtlMs: 79_200_000 });
 import {
   runHevySync,
   readWorkoutsHistory,
