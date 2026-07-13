@@ -14473,7 +14473,7 @@
     {
       "id": "T539",
       "title": "Pin the Node major across all three environments (engines + .nvmrc)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
