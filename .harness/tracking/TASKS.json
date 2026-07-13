@@ -14268,7 +14268,7 @@
     {
       "id": "T532",
       "title": "Q02.1: constant-time auth-token compare in authoriseMutation",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
