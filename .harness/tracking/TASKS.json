@@ -14016,7 +14016,7 @@
     {
       "id": "T523",
       "title": "Optimistic 'Started…' Run button state",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
