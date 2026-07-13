@@ -14296,7 +14296,7 @@
     {
       "id": "T533",
       "title": "Q02.2: escape LIKE wildcards in the global-logs q filter",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
