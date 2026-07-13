@@ -279,6 +279,25 @@ await atest('executeDag: a failed job skips its dependents (cascade), siblings s
   assert.ok(!ran.includes('c')); // c never actually executed
 });
 
+await atest('executeDag: a rejecting runOne settles that node failed (not a poison pill) — siblings still run, dependents cascade-skip, executeDag resolves', async () => {
+  const dag = buildDag([
+    { job: 'a' }, { job: 'b', dependsOn: ['a'] }, { job: 'c', dependsOn: ['b'] }, { job: 'd', dependsOn: ['a'] },
+  ]);
+  const ran: string[] = [];
+  const res = await executeDag(dag, {
+    runOne: async (j) => {
+      ran.push(j);
+      if (j === 'b') throw new Error('boom — simulated unexpected throw');
+      return 'success';
+    },
+  });
+  assert.equal(res.get('a'), 'success');
+  assert.equal(res.get('b'), 'failed'); // the throw is treated as a settle('failed'), not a rejection
+  assert.equal(res.get('c'), 'skipped'); // depends on the failed b
+  assert.equal(res.get('d'), 'success'); // independent of b, still ran
+  assert.ok(!ran.includes('c'));
+});
+
 await atest('executeDag: independent branches overlap up to concurrency', async () => {
   const dag = buildDag([
     { job: 'a' }, { job: 'b', dependsOn: ['a'] }, { job: 'c', dependsOn: ['a'] }, { job: 'd', dependsOn: ['b', 'c'] },

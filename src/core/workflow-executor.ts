@@ -134,6 +134,17 @@ export interface WorkflowRunResult {
 const activeWorkflowRuns = new Map<string, AbortController>();
 
 /**
+ * Test-only seam (T524): lets a unit test simulate an exception escaping
+ * `onSettle` (e.g. a SQLITE_BUSY thrown by `rollUpWorkflowProgress` under real
+ * DB contention) WITHOUT corrupting the scratch DB itself. Mirrors the pattern
+ * `notifier.ts` uses for `_setFetchForTest`. Always `null` outside tests.
+ */
+let onSettleThrowHookForTest: (() => void) | null = null;
+export function _setOnSettleThrowHookForTest(hook: (() => void) | null): void {
+  onSettleThrowHookForTest = hook;
+}
+
+/**
  * Per-workflow start guard (T105): the NAMES of workflows that have a run either
  * actively executing OR mid-start (claimed but whose DB row isn't written yet).
  * This is the in-process half of the atomic "one active run per workflow" check —
@@ -297,7 +308,12 @@ async function runWorkflowInner(
   const controller = new AbortController();
   activeWorkflowRuns.set(workflowRunId, controller);
   const log = (m: string, level: LogLevel = 'info') => addWorkflowLog(workflowRunId, m, level);
+  // Set once finishWorkflowRun has been called on ANY path (normal or the
+  // catch-all below), so a throw that escapes AFTER the normal finalisation
+  // already ran can't double-finish the run.
+  let finished = false;
 
+  try {
   log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
   if (emptySelectionWarning) log(emptySelectionWarning, 'warn');
 
@@ -320,7 +336,6 @@ async function runWorkflowInner(
   const noopJobs = new Set<string>();
 
   let lastStatuses = new Map<string, RunStatus>();
-  try {
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
     if (def.repeatUntilStable) log(`──── cycle ${cycle}/${maxCycles} ────`);
     let settled = 0;
@@ -370,6 +385,11 @@ async function runWorkflowInner(
       onSettle: async (job, s) => {
         settled++;
         const label = noopJobs.has(job) ? 'skipped (noop)' : s;
+        // Test-only seam (mirrors notifier.ts's _setFetchForTest): lets a test
+        // simulate onSettle's DB write throwing (e.g. a SQLITE_BUSY from
+        // rollUpWorkflowProgress under real contention) without corrupting the
+        // scratch DB itself. No-op (null) in production.
+        onSettleThrowHookForTest?.();
         rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} ${label})`);
         if (!noopJobs.has(job)) {
           log(`${s === 'success' ? '✓' : '✗'} ${job} → ${s}`, s === 'success' ? 'info' : 'warn');
@@ -416,9 +436,6 @@ async function runWorkflowInner(
       await sleep(def.cycleSleepMs ?? 0);
     }
   }
-  } finally {
-    activeWorkflowRuns.delete(workflowRunId);
-  }
 
   // A cancelled run is recorded 'cancelled' regardless of the members' tally —
   // the abort is the authoritative outcome (in-flight members were killed and
@@ -440,6 +457,7 @@ async function runWorkflowInner(
     : statuses.every((s) => s === 'success') ? 'success'
     : statuses.some((s) => s === 'success') ? 'partial'
     : 'failed';
+  finished = true;
   finishWorkflowRun(workflowRunId, status);
   log(status === 'cancelled' ? `Workflow "${def.name}" cancelled` : `Workflow "${def.name}" finished: ${status}`);
   // notifyWorkflow accepts WorkflowRunStatus; a 'skipped' (noop) run is
@@ -454,4 +472,24 @@ async function runWorkflowInner(
     log(`Notifications disabled for workflow "${def.name}" — skipping push notification`);
   }
   return { workflowRunId };
+  } catch (err) {
+    // Any exception escaping the run body (e.g. a SQLITE_BUSY thrown by
+    // rollUpWorkflowProgress in onSettle, or a rejecting runOne bubbling out of
+    // executeDag) would otherwise leave the workflow_runs row wedged at
+    // status='running' forever — blocking future manual runs (409), skipping
+    // scheduled fires, and requiring a daemon restart to recover. Abort any
+    // in-flight member (hard-killed via the existing SIGTERM→SIGKILL path) and
+    // fail the run explicitly so the workflow is immediately re-runnable — the
+    // error is logged loudly to the run, not swallowed silently.
+    controller.abort();
+    const message = err instanceof Error ? err.message : String(err);
+    log(`Workflow "${def.name}" run failed with an unhandled error: ${message}`, 'error');
+    if (!finished) {
+      finished = true;
+      finishWorkflowRun(workflowRunId, 'failed');
+    }
+    return { workflowRunId };
+  } finally {
+    activeWorkflowRuns.delete(workflowRunId);
+  }
 }

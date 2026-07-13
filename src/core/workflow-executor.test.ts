@@ -15,7 +15,7 @@ import {
   lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,
   rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, getWorkflow,
 } from '../db/store.js';
-import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress, effectiveWorkflowConcurrency, effectiveWorkflowNotifyEnabled, UNLIMITED_CONCURRENCY_SENTINEL } from './workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress, effectiveWorkflowConcurrency, effectiveWorkflowNotifyEnabled, UNLIMITED_CONCURRENCY_SENTINEL, _setOnSettleThrowHookForTest } from './workflow-executor.js';
 import { _setFetchForTest, _resetFetchForTest } from './notifier.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 
@@ -704,6 +704,80 @@ try {
     syncWorkflow(def);
     const { workflowRunId } = await runWorkflow(def, 'manual');
     assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success', 'non-limitable workflow still success (T258 guard)');
+  });
+
+  await test('T524: an exception escaping onSettle (simulated SQLITE_BUSY) still ends the run failed — not wedged at running — and the workflow can start fresh immediately', async () => {
+    const def: WorkflowDefinition = { name: 't524-throw-wf', jobs: [{ job: 'pp-a' }] };
+    syncWorkflow(def);
+
+    let hookCalls = 0;
+    _setOnSettleThrowHookForTest(() => {
+      hookCalls++;
+      throw new Error('simulated SQLITE_BUSY: database is locked');
+    });
+    try {
+      // Must NOT reject — runWorkflowInner catches the escape and returns normally.
+      const result = await runWorkflow(def, 'manual');
+      assert.ok(result.workflowRunId, 'runWorkflow resolved with a run id, did not reject');
+
+      const row = getWorkflowRun(result.workflowRunId!);
+      assert.equal(row?.status, 'failed', 'the wedge is avoided — run ends failed, not stuck at running');
+      assert.ok(row?.finished_at, 'finished_at was stamped — finishWorkflowRun ran');
+      assert.equal(hookCalls, 1, 'the throwing hook fired exactly once — finishWorkflowRun only had one escape to react to');
+
+      const logText = getWorkflowLogs(result.workflowRunId!).map((l) => l.message).join('\n');
+      assert.match(logText, /unhandled error.*simulated SQLITE_BUSY/, `escape not logged loudly: ${logText}`);
+      // Logged exactly once — no double-finish / double-log on the catch path.
+      assert.equal((logText.match(/unhandled error/g) ?? []).length, 1, 'catch-all logged exactly once');
+
+      // Registry cleaned up and the run is no longer considered active — a fresh
+      // run of the SAME workflow can start immediately, no daemon restart needed.
+      assert.equal(isWorkflowRunActive(result.workflowRunId!), false, 'activeWorkflowRuns entry removed');
+      assert.equal(workflowRunInProgress('t524-throw-wf'), false, 'workflow no longer considered in-progress');
+    } finally {
+      _setOnSettleThrowHookForTest(null);
+    }
+
+    // Prove it in practice: run again (hook disarmed) — must NOT be skipped as
+    // "already running".
+    const second = await runWorkflow(def, 'manual');
+    assert.equal((second as { skipped?: boolean }).skipped, undefined, 'second run was not skipped as already-running');
+    assert.equal(getWorkflowRun(second.workflowRunId!)?.status, 'success', 'the follow-up run completes normally');
+  });
+
+  await test('T524: onSettle throwing for one member aborts the workflow — an in-flight SIBLING member is hard-killed, not left hanging', async () => {
+    const def: WorkflowDefinition = {
+      name: 't524-abort-sibling-wf',
+      jobs: [{ job: 'pp-a' }, { job: 'timeout-cancel-pp' }],
+    };
+    syncWorkflow(def);
+
+    let armed = true;
+    _setOnSettleThrowHookForTest(() => {
+      // Fire once (for whichever member settles first — pp-a, the fast one) then
+      // disarm, so the hung sibling's eventual (post-kill) settle doesn't also
+      // throw and leave an orphaned rejection.
+      if (!armed) return;
+      armed = false;
+      throw new Error('simulated SQLITE_BUSY: database is locked');
+    });
+    try {
+      const result = await runWorkflow(def, 'manual');
+      assert.equal(getWorkflowRun(result.workflowRunId!)?.status, 'failed', 'run ends failed, not wedged');
+
+      // The hung sibling must have been hard-killed by the aborted controller —
+      // it settles 'cancelled' rather than being left running forever.
+      const deadline = Date.now() + 5000;
+      let killed: { status: string } | undefined;
+      while (Date.now() < deadline) {
+        killed = listRunsForWorkflowRun(result.workflowRunId!).find((r) => r.job_name === 'timeout-cancel-pp');
+        if (killed && killed.status !== 'running') break;
+        await new Promise((res) => setTimeout(res, 25));
+      }
+      assert.equal(killed?.status, 'cancelled', 'the in-flight sibling was hard-killed via the aborted signal');
+    } finally {
+      _setOnSettleThrowHookForTest(null);
+    }
   });
 
 } finally {

@@ -263,6 +263,15 @@ export async function executeDag(dag: Dag, hooks: DagExecHooks): Promise<Map<str
         hooks.onStart?.(job);
         const p = hooks
           .runOne(job)
+          // A rejecting runOne (an unexpected throw, not a resolved 'failed') must
+          // not poison the whole executeDag promise — that would stop every other
+          // independent stage from running and reject the caller outright. Treat
+          // it identically to a resolved 'failed': map the rejection to 'failed'
+          // BEFORE settle() so its dependents cascade-skip and executeDag resolves
+          // normally. Scoped to runOne only — a genuine error from settle()/onSettle
+          // itself (e.g. a DB write failure) is left to propagate, as defence in
+          // depth the caller (runWorkflowInner) handles.
+          .catch((): RunStatus => 'failed')
           .then((s) => settle(job, s, false))
           .finally(() => inflight.delete(job));
         inflight.set(job, p);
