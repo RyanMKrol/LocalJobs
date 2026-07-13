@@ -114,6 +114,21 @@ await test('CORS: a disallowed Origin gets NO Access-Control-Allow-Origin', asyn
   });
 });
 
+await test('GET /api returns the live route table with { method, pattern } entries', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { routes: { method: string; pattern: string }[] };
+    assert.ok(Array.isArray(body.routes));
+    assert.ok(body.routes.length > 0);
+    for (const r of body.routes) {
+      assert.equal(typeof r.method, 'string');
+      assert.equal(typeof r.pattern, 'string');
+    }
+    assert.ok(body.routes.some((r) => r.method === 'GET' && r.pattern === '/api/workflows/:name'));
+  });
+});
+
 // ── integration: mutation guard ──
 await test('mutation guard: a remote POST with no token is rejected 401', async () => {
   await withServer({ isLoopback: () => false }, async (base) => {

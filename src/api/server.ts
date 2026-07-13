@@ -523,6 +523,17 @@ const AUDIT_FAMILIES: AuditFamily[] = [
 ];
 
 const routes: Route[] = [
+  // GET /api — self-describing route table
+  {
+    method: 'GET',
+    pattern: '/api',
+    handler: ({ res }) => {
+      return json(res, 200, {
+        routes: routes.map((r) => ({ method: r.method, pattern: r.pattern })),
+      });
+    },
+  },
+
   // GET /api/health
   {
     method: 'GET',
