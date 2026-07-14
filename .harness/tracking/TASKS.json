@@ -14955,7 +14955,7 @@
     {
       "id": "T556",
       "title": "R08 item 4: prune backlog-era dead CSS + unused Pill kinds; fold duplicate :root / @media blocks",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
