@@ -14927,7 +14927,7 @@
     {
       "id": "T555",
       "title": "R08 item 3: delete unimported MarkdownModal.tsx, port renderFmValue into OutputRenderer, fix CLAUDE.md",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [],
       "gate": null,
       "tags": [
