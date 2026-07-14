@@ -15055,7 +15055,7 @@
     {
       "id": "T560",
       "title": "Align recs-history schema on the movies shape ({tmdbId,title,year,at}) across movies + tv-recs, before the shared-pipeline extraction",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T559"
       ],
