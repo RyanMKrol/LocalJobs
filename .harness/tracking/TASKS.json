@@ -15303,7 +15303,7 @@
     {
       "id": "T567",
       "title": "Migrate perfumes onto the shared Claude helper; delete perfumes/claude.ts",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T566"
       ],
