@@ -14697,7 +14697,7 @@
     {
       "id": "T547",
       "title": "Add a sequence token + visibility poll-pause to usePoll (out-of-order + hidden-tab)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
