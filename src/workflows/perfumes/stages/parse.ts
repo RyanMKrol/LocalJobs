@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import { extractJson, runClaude } from '../claude.js';
+import { extractJsonObject, runClaude } from '../../../services/claude.js';
 import { perfumesConfig } from '../config.js';
 import { ensureDirs, label, loadPerfumes, reportItemProgress } from '../lib.js';
 import type { Accord, PerfumeInput, StageResult } from '../types.js';
@@ -37,7 +37,7 @@ export async function runParse(ctx: JobContext): Promise<StageResult> {
 
     try {
       if (!res.ok) throw new Error(res.error ?? 'claude error');
-      const data = extractJson(res.text);
+      const data = extractJsonObject(res.text);
       applyAccordPercents(data, p.id, ctx);
       applyNormalizedNotes(data, label(p), ctx);
       writeFileSync(join(perfumesConfig.fragranticaDir, `${p.id}.json`), JSON.stringify(data, null, 2));

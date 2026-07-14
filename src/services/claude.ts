@@ -6,16 +6,13 @@ import { callService, effectiveServiceTimeoutMs } from '../core/services.js';
  * Shared, self-contained Claude Code CLI helper (the `claude -p --output-format
  * json` worker — $0 under the user's plan). It lives in the top-level services
  * layer (sibling of `claude-cli.service.ts`) precisely because more than one
- * workflow drives Claude: the perfumes build stage and the movies recommendation
- * branches (T146). Like every service helper it is self-contained — it reads its
- * binary from env and its timeout from `claudeTimeoutMs()` (an env-seeded default,
- * dashboard-overridable via the `claude-cli` service's limits, T465), and imports
- * nothing from any workflow's config. Every call is gated through the shared
- * `claude-cli` service (metered, sequential, no rate cap).
- *
- * (Perfumes keeps its own `perfumes/claude.ts` for now — migrating it onto this
- * shared helper is a follow-up; it was out of scope for T146. See
- * `.harness/docs/LIMITATIONS.md`.)
+ * workflow drives Claude: all four perfumes stages (`find-url`/`parse`/`build`,
+ * T567) and the movies recommendation branches (T146). Like every service helper
+ * it is self-contained — it reads its binary from env and its timeout from
+ * `claudeTimeoutMs()` (an env-seeded default, dashboard-overridable via the
+ * `claude-cli` service's limits, T465), and imports nothing from any workflow's
+ * config. Every call is gated through the shared `claude-cli` service (metered,
+ * sequential, no rate cap).
  */
 export interface ClaudeResult {
   ok: boolean;
@@ -162,9 +159,8 @@ export function extractJsonObject(text: string): unknown {
 /**
  * Strip a wrapping ```markdown/``` fence from a model's raw text, if present
  * (Claude occasionally fences a requested-plain markdown reply despite being
- * told not to). Moved here from `perfumes/claude.ts` (T566) so `projects-sync`
- * — and the eventual perfumes migration onto this shared helper (R02b) — can
- * both consume the same implementation.
+ * told not to). Moved here from `perfumes/claude.ts` (T566), and now perfumes'
+ * `build` stage itself consumes this same implementation directly (T567).
  */
 export function unfenceMarkdown(text: string): string {
   const t = text.trim();

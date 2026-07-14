@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import { runClaude, unfenceMarkdown } from '../claude.js';
+import { runClaude, unfenceMarkdown } from '../../../services/claude.js';
 import { perfumesConfig } from '../config.js';
 import { ensureDirs, label, loadPerfumes, loadVoteCorpus, readJsonFile, reportItemProgress } from '../lib.js';
 import { normalizeNotes, notesEmpty } from './parse.js';

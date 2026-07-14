@@ -1,6 +1,6 @@
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import { runClaude } from '../claude.js';
+import { runClaude } from '../../../services/claude.js';
 import { perfumesConfig } from '../config.js';
 import { ensureDirs, label, loadPerfumes, readJsonFile, reportItemProgress, writeJsonFile } from '../lib.js';
 import type { PerfumeInput, StageResult } from '../types.js';

@@ -55,19 +55,23 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
   trusted profile.
 - `templatePath` — the in-project `profile.template.md` (override via `PERFUMES_TEMPLATE_PATH`).
 - Models: `modelFind`/`modelParse` default to a cheaper Sonnet tier, `modelBuild` defaults to Opus
-  (the richer research/writing step). `claudeTimeoutMs` = 5 min/call.
+  (the richer research/writing step). The per-call CLI timeout comes from the shared
+  `claude-cli` service (`claudeTimeoutMs()` in `src/services/claude.ts`, dashboard-editable),
+  not a perfumes-local setting.
 - `maxAttempts` (default 4), `runLimit` (0 = no per-stage cap), `dryRun` (skip real Claude calls,
   fabricate — for harness testing).
 
 ## Non-obvious invariants
 
-- **`perfumes` has its OWN Claude helper**, `src/workflows/perfumes/claude.ts` — a separate spawn
-  implementation from the shared `src/services/claude.ts`'s `runClaude` (used by `projects-sync` and
-  the movie/TV recommender branches). Migrating perfumes onto the shared helper is a known,
-  not-yet-done follow-up; both route through the same `claude-cli` service either way.
-  `find-url`/`parse`/`build` each call it per-item inside their loop (correct `callService` granularity).
-  Seeded perfumes with an already-known `fragranticaUrl` (from the DynamoDB row) skip the Claude call
-  in `find-url` entirely.
+- **`perfumes` uses the shared Claude helper (T567).** `find-url`/`parse`/`build` all import
+  `runClaude`/`extractJsonObject`/`unfenceMarkdown` from `src/services/claude.ts` — the same
+  spawn/timeout/parse implementation `projects-sync` and the movie/TV recommender branches use.
+  There is no perfumes-local Claude helper anymore. Each stage still calls `runClaude` per-item
+  inside its loop (correct `callService` granularity), and the perfumes-specific
+  `PERFUMES_CLAUDE_BIN`/`PERFUMES_CLAUDE_TIMEOUT_MS` env vars are no longer read — perfumes now
+  picks up the shared `LOCALJOBS_CLAUDE_BIN` and the dashboard-editable `claude-cli` service timeout
+  (`claudeTimeoutMs()`) like every other Claude caller. Seeded perfumes with an already-known
+  `fragranticaUrl` (from the DynamoDB row) skip the Claude call in `find-url` entirely.
 - **Same-key stages, no lineage args** — every stage keys by the same perfume `id` (`p.id`), so
   `root_key` propagates for free (`markWorkItem`'s rule 3: item is its own root); this is the
   canonical "no `rootKey`/`parentKey` needed" example referenced elsewhere in this repo.
