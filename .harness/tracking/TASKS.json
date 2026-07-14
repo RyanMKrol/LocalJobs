@@ -15368,7 +15368,7 @@
     {
       "id": "T569",
       "title": "Migrate all 16 *.service.ts onto defineService; fix vercel rateLimitSource; snapshot + poisoned-env tests; update src/services/CLAUDE.md",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T568"
       ],
