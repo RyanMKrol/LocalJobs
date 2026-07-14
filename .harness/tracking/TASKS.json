@@ -14723,7 +14723,7 @@
     {
       "id": "T548",
       "title": "Show the daemon-down message on the five detail pages instead of a blank skeleton",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
