@@ -9,7 +9,8 @@
 // async main() instead, mirroring the other dashboard test suites.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cronToEnglish, resolveMode, backFrom, fmtDuration, fmtRelative } from './ui.js';
+import { cronToEnglish, resolveMode, backFrom, fmtDuration, fmtRelative, createPollController } from './ui.js';
+import type { PollDocumentLike } from './ui.js';
 
 async function main() {
   await test('cronToEnglish: daily at HH:MM', () => {
@@ -105,6 +106,87 @@ async function main() {
   await test('fmtRelative: a timestamp an hour ago renders in hours', () => {
     const t = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
     assert.match(fmtRelative(t), /^\d+h ago$/);
+  });
+
+  await test('createPollController: discards a stale response that resolves after a newer one', async () => {
+    const deferreds: Array<(v: number) => void> = [];
+    let calls = 0;
+    const fn = () => new Promise<number>((resolve) => {
+      calls += 1;
+      deferreds.push(resolve);
+    });
+    const dataLog: number[] = [];
+    const controller = createPollController<number>({
+      fn,
+      intervalMs: 1_000_000,
+      setData: (d) => dataLog.push(d),
+      setError: () => {},
+      setIntervalFn: () => 0 as unknown as ReturnType<typeof setInterval>,
+      clearIntervalFn: () => {},
+    });
+
+    // The constructor already fired tick #1 (in flight). Force a second tick (in flight) via refetch.
+    controller.refetch();
+    assert.equal(calls, 2);
+
+    // Resolve the NEWER (2nd) call first.
+    deferreds[1](200);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(dataLog, [200]);
+
+    // Now resolve the OLDER (1st) call — it must be discarded, not overwrite the newer data.
+    deferreds[0](100);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(dataLog, [200]);
+
+    controller.stop();
+  });
+
+  await test('createPollController: pauses its interval while hidden and resumes+refetches on visible', async () => {
+    let calls = 0;
+    const fn = () => { calls += 1; return Promise.resolve(calls); };
+    let visibilityState: 'visible' | 'hidden' = 'visible';
+    let handler: (() => void) | null = null;
+    const fakeDoc: PollDocumentLike = {
+      get visibilityState() { return visibilityState; },
+      addEventListener: (_type, cb) => { handler = cb; },
+      removeEventListener: () => { handler = null; },
+    };
+    let intervalsStarted = 0;
+    let intervalsStopped = 0;
+    const dataLog: number[] = [];
+    const controller = createPollController<number>({
+      fn,
+      intervalMs: 1_000,
+      setData: (d) => dataLog.push(d),
+      setError: () => {},
+      doc: fakeDoc,
+      setIntervalFn: () => { intervalsStarted += 1; return 1 as unknown as ReturnType<typeof setInterval>; },
+      clearIntervalFn: () => { intervalsStopped += 1; },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(intervalsStarted, 1);
+    assert.deepEqual(dataLog, [1]);
+
+    // Tab goes hidden — the interval must stop.
+    visibilityState = 'hidden';
+    handler?.();
+    assert.equal(intervalsStopped, 1);
+    assert.equal(calls, 1, 'no fetch should happen while hidden');
+
+    // Tab becomes visible again — immediate refetch + interval restart.
+    visibilityState = 'visible';
+    handler?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(calls, 2);
+    assert.equal(intervalsStarted, 2);
+    assert.deepEqual(dataLog, [1, 2]);
+
+    controller.stop();
   });
 }
 

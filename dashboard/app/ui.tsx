@@ -278,33 +278,110 @@ export function CronBadge({ expr }: { expr: string }) {
   );
 }
 
-/** Poll an async function on an interval; returns latest data + error. */
+/** Minimal shape of `document` that {@link createPollController} needs — lets tests inject a fake. */
+export interface PollDocumentLike {
+  visibilityState: string;
+  addEventListener(type: 'visibilitychange', listener: () => void): void;
+  removeEventListener(type: 'visibilitychange', listener: () => void): void;
+}
+
+export interface PollController {
+  /** Stop the interval, detach the visibility listener, and discard any in-flight tick's result. */
+  stop(): void;
+  /** Fetch immediately, out of band from the interval (used for the manual "refresh" affordance). */
+  refetch(): void;
+}
+
+/**
+ * The non-React core of {@link usePoll}: owns the interval, the visibility pause/resume, and the
+ * out-of-order-response guard. Extracted so it's testable without mounting a React tree — `usePoll`
+ * is a thin wrapper that supplies `setData`/`setError` from `useState`.
+ */
+export function createPollController<T>(opts: {
+  fn: () => Promise<T>;
+  intervalMs: number;
+  setData: (d: T) => void;
+  setError: (e: string | null) => void;
+  doc?: PollDocumentLike;
+  setIntervalFn?: (handler: () => void, ms: number) => ReturnType<typeof setInterval>;
+  clearIntervalFn?: (id: ReturnType<typeof setInterval>) => void;
+}): PollController {
+  const { fn, intervalMs } = opts;
+  const doc = opts.doc ?? (typeof document !== 'undefined' ? document : undefined);
+  const setIntervalFn = opts.setIntervalFn ?? setInterval;
+  const clearIntervalFn = opts.clearIntervalFn ?? clearInterval;
+
+  let alive = true;
+  let seq = 0;
+  let id: ReturnType<typeof setInterval> | null = null;
+
+  const tick = async () => {
+    const mySeq = ++seq;
+    try {
+      const d = await fn();
+      if (alive && seq === mySeq) { opts.setData(d); opts.setError(null); }
+    } catch (e) {
+      if (alive && seq === mySeq) opts.setError(e instanceof Error ? e.message : 'error');
+    }
+  };
+
+  const start = () => { if (id === null) id = setIntervalFn(tick, intervalMs); };
+  const stop = () => { if (id !== null) { clearIntervalFn(id); id = null; } };
+
+  const onVisibility = () => {
+    if (!doc) return;
+    if (doc.visibilityState === 'hidden') {
+      stop();
+    } else {
+      stop();
+      tick();
+      start();
+    }
+  };
+
+  tick();
+  if (!doc || doc.visibilityState !== 'hidden') start();
+  doc?.addEventListener('visibilitychange', onVisibility);
+
+  return {
+    stop: () => {
+      alive = false;
+      stop();
+      doc?.removeEventListener('visibilitychange', onVisibility);
+    },
+    refetch: () => { tick(); },
+  };
+}
+
+/**
+ * Poll an async function on an interval; returns latest data + error. Discards a stale response
+ * that resolves after a more recent one (sequence-guarded), pauses the interval while the tab is
+ * hidden, and refetches immediately on becoming visible again.
+ */
 export function usePoll<T>(fn: () => Promise<T>, intervalMs: number, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fnRef = useRef(fn);
   fnRef.current = fn;
 
-  const tickRef = useRef<() => Promise<void>>(async () => {});
+  const controllerRef = useRef<PollController | null>(null);
 
   useEffect(() => {
-    let alive = true;
-    const tick = async () => {
-      try {
-        const d = await fnRef.current();
-        if (alive) { setData(d); setError(null); }
-      } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : 'error');
-      }
+    const controller = createPollController<T>({
+      fn: () => fnRef.current(),
+      intervalMs,
+      setData,
+      setError,
+    });
+    controllerRef.current = controller;
+    return () => {
+      controller.stop();
+      controllerRef.current = null;
     };
-    tickRef.current = tick;
-    tick();
-    const id = setInterval(tick, intervalMs);
-    return () => { alive = false; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [intervalMs, ...deps]);
 
-  const refetch = useCallback(() => tickRef.current(), []);
+  const refetch = useCallback(() => controllerRef.current?.refetch(), []);
 
   return { data, error, refetch };
 }
