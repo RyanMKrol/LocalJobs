@@ -15338,7 +15338,7 @@
     {
       "id": "T568",
       "title": "Add defineService() + envInt() to src/services/lib.ts (validated env reads, monthly/30 sentinel, required rateLimitSource)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
