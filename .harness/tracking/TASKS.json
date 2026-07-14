@@ -14871,7 +14871,7 @@
     {
       "id": "T553",
       "title": "R08 item 1: remove the dead standalone-job execution path (runJob, notifyRun, notifyStage, RunStatus 'queued')",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
