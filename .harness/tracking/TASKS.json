@@ -14780,7 +14780,7 @@
     {
       "id": "T550",
       "title": "Replace bare pill/badge spans with <Pill>/<StatusBadge> and widen StatusBadge's status type",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [],
       "gate": null,
       "tags": [
