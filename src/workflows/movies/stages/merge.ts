@@ -109,6 +109,7 @@ interface VerifyCounters {
   dropAlready: number;
   dropLowQuality: number;
   quotaHit: boolean;
+  searchFailed: number;
 }
 
 /** Read every branch's output file from the recs dir, pooling raw suggestions. */
@@ -166,6 +167,7 @@ async function verifyInto(
         counters.quotaHit = true;
         return;
       }
+      counters.searchFailed++;
       ctx.log(`  ✗ "${s.title}" — search failed: ${err instanceof Error ? err.message.split('\n')[0] : err}`, 'warn');
       continue;
     }
@@ -259,9 +261,11 @@ function buildDefaultTopUp(
  * (T162: ≥15 well-rated, un-owned, never-before-recommended, genre-balanced
  * picks), runs a BOUNDED top-up loop: re-prompt the branches for more, verify +
  * merge, repeat up to `topUpRounds` rounds or until the target is reached / no
- * new suggestions arrive. Writes data/out/recommendations.json. Resilient: per-
- * item search failures are skipped and a TMDB quota stops it gracefully — it
- * always writes a (possibly short) list and succeeds, so the notify stage runs.
+ * new suggestions arrive. Writes data/out/recommendations.json. Per-item search
+ * failures are skipped (continue to the next suggestion) and a TMDB quota stops
+ * verification gracefully — the list is still always written. But if ANY
+ * suggestion's TMDB search errored this run, the stage throws a summarizing
+ * Error after writing, failing the run so downstream retries pick it up.
  */
 export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<void> {
   ensureDirs();
@@ -302,6 +306,7 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
   const byTmdb = new Map<number, Recommendation>();
   const counters: VerifyCounters = {
     searches: 0, dropHallucinated: 0, dropOwned: 0, dropAlready: 0, dropLowQuality: 0, quotaHit: false,
+    searchFailed: 0,
   };
   // Every (loose) title key we've already considered — across the pool AND every
   // top-up round — so the top-up never re-asks for or re-verifies a known title.
@@ -388,4 +393,8 @@ export async function runMerge(ctx: JobContext, opts: MergeOpts = {}): Promise<v
   for (const r of balanced) ctx.log(`  • [${r.genre}] ${r.title}${r.year ? ` (${r.year})` : ''} — ${r.reason} (${r.lens})`);
   ctx.log(`Wrote ${recsOut}`);
   ctx.log('══════════════════════════════════════════════════');
+
+  if (counters.searchFailed > 0) {
+    throw new Error(`TMDB search failed for ${counters.searchFailed} suggestion(s) this run — see warn logs above for titles.`);
+  }
 }

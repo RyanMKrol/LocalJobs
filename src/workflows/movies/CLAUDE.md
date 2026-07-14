@@ -97,9 +97,12 @@ Pools every branch's raw suggestions (`src/workflows/movies/stages/merge.ts`), t
 survive, re-prompts all 8 branches in-memory for additional suggestions (excluding everything
 already collected/owned/considered this run, up to `MOVIES_RECS_TOPUP_CONCURRENCY` branches at once,
 default 4), re-verifies, re-merges, repeats until the target is reached or rounds are exhausted.
-Resilient by design: per-item search failures are skipped individually and a TMDB quota hit stops
-verification gracefully — the stage always writes a (possibly short) list and succeeds, so
-`movie-recs-notify` always runs. Writes `data/out/recommendations.json`; appends to
+Resilient per-item: a search failure is skipped individually (the rest of the batch keeps
+processing) and a TMDB quota hit stops verification gracefully — the stage always writes a
+(possibly short) list first. But if ANY suggestion's TMDB search errored this run, the stage then
+THROWS a summarizing error (`TMDB search failed for N suggestion(s) this run — see warn logs above
+for titles.`), failing the run so it's retried — mirroring `tv-recs`' `tv-rec-merge` stage. Writes
+`data/out/recommendations.json`; appends to
 `data/out/recs-history.json` (fed back into future branch prompts as "already suggested," bounded by
 `MOVIES_RECS_HISTORY_CONTEXT`, default 200 titles, and `MOVIES_RECS_RECENT_WINDOW`, default 40).
 

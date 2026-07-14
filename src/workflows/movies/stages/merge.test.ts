@@ -124,4 +124,47 @@ assert.equal(actionCount, 3, 'exactly the cap of Action survive (5 verified → 
 assert.ok(recs.some((r) => r.genre === 'Drama'), 'the lone Drama survives balancing');
 console.log('  ✓ merge balances the output per genre (cap enforced)');
 
+// ── T559: a per-suggestion TMDB search error must fail the run (after
+// processing the rest of the batch), mirroring tv-rec-merge's searchFailed.
+const errDir = mkdtempSync(join(tmpdir(), 'movies-merge-searchfail-'));
+const errRecsDir = join(errDir, 'recs');
+mkdirSync(errRecsDir, { recursive: true });
+const errSnapshotFile = join(errDir, 'snapshot.json');
+const errRecsOut = join(errDir, 'recommendations.json');
+writeFileSync(errSnapshotFile, JSON.stringify({ generatedAt: NOW.toISOString(), section: '4', movies: [] } as MovieSnapshotFile));
+
+const ERR_ID = 5200;
+const errBranch: BranchOutputFile = {
+  branchId: 'rec-random-1', lens: 'serendipity', generatedAt: NOW.toISOString(),
+  suggestions: [
+    sug('Flaky Search', 2020, 'serendipity'),   // search throws
+    sug('Good After Flaky', 2021, 'serendipity'), // must still be processed
+  ],
+};
+writeFileSync(join(errRecsDir, 'rec-random-1.json'), JSON.stringify(errBranch));
+
+const ERR_SEARCH: Record<string, TmdbSearchResult | null> = {
+  'Good After Flaky': result(ERR_ID, 'Good After Flaky', 2021, 28),
+};
+const searchMovieWithFailure: SearchMovieFn = async (title) => {
+  if (title === 'Flaky Search') throw new Error('network blip');
+  return title in ERR_SEARCH ? ERR_SEARCH[title] : null;
+};
+
+await assert.rejects(
+  () => runMerge(fakeCtx(), {
+    searchMovie: searchMovieWithFailure, snapshotFile: errSnapshotFile, recsDir: errRecsDir,
+    recsOut: errRecsOut, now: NOW, topUp: async () => [],
+  }),
+  /TMDB search failed for 1 suggestion\(s\) this run/,
+  'merge throws a summarizing error when a TMDB search errors',
+);
+const errOut = JSON.parse(readFileSync(errRecsOut, 'utf8')) as RecommendationsFile;
+assert.ok(errOut.recommendations.some((r) => r.tmdbId === ERR_ID), 'the rest of the batch is still processed and written despite the earlier search failure');
+console.log('  ✓ merge throws on a per-suggestion TMDB search failure, after processing the rest of the batch');
+
+// ── No failures → unchanged behavior: writes the list, does not throw ──
+await runMerge(fakeCtx(), { searchMovie, snapshotFile, recsDir, recsOut, now: NOW, topUp: async () => [] });
+console.log('  ✓ merge does not throw when all TMDB searches succeed');
+
 console.log('  ✓ movies merge verify/dedup/balance tests passed');
