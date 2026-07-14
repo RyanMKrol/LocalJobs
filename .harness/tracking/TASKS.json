@@ -15271,7 +15271,7 @@
     {
       "id": "T566",
       "title": "Unify Claude-CLI spawn/parse: shared spawnClaudeCli primitive + migrate projects-sync onto claudeTimeoutMs()",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
