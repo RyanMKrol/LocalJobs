@@ -1,45 +1,40 @@
 :root {
-  --bg: #0d1117;
-  --panel: #161b22;
-  --panel-2: #1c2330;
-  --border: #2a3340;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #58a6ff;
-  --green: #3fb950;
-  --red: #f85149;
-  --yellow: #d29922;
-  --grey: #6e7681;
+  /* SUNNY 8-BIT DARK THEME (T308) — amber arcade with warm charcoal background.
+     This is the dashboard's sole color scheme. --logs-* are the FIXED dark
+     terminal palette (never overridden by modes), so logs stay legible on bright modes. */
+  --bg: #1c1610;
+  --panel: #261e13;
+  --panel-2: #322818;
+  --border: #463722;
+  --text: #f0dcae;
+  --muted: #b39a6a;
+  --accent: #e8a020;
+  --green: #8ac43f;
+  --red: #e0593c;
+  --yellow: #e8c020;
+  --grey: #8a7a5a;
   --amber: #e8a020;
-
-  /* Fonts (T142). Default = the original system stack so the untouched look is
-     unchanged; the font switcher remaps these to a display+body pair. Pixel /
-     retro faces only ever map to --font-display (brand/headings), never to body
-     or mono — dense tables/logs stay readable. */
-  --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --mono: var(--font-mono);
-  /* Header weight (T154). 700 = the original bold heading look; the "thin header"
-     font variants drop this to ~400–500 so headings read crisp, not chunky. */
-  --heading-weight: 700;
-
-  /* Accents (T142). --on-accent = readable text colour on the accent fill;
-     --spark = the signature success flash colour. Themes override these. */
-  --on-accent: #0d1117;
-  --spark: var(--yellow);
-  --bg-texture: none;
+  --on-accent: #1c1610;
+  --spark: #ffc24d;
+  --bg-texture: repeating-linear-gradient(0deg, rgba(230,160,32,.06) 0 2px, transparent 2px 4px);
   --bg-texture-size: auto;
 
-  /* Stable blue for needs-human markers — NOT overridden by joyful themes so the
+  /* Stable blue for needs-human markers — NOT overridden by themes so the
      🔒 pill stays blue regardless of which --accent the active theme picks. */
   --human-blue: #58a6ff;
 
-  /* Primary-action Run button accent — matches --accent in the default theme so
-     the untouched look is unchanged; joyful themes override to --human-blue so
-     the button pops blue against green/amber page backgrounds. */
-  --run: var(--accent);
-  --on-run: var(--on-accent);
+  /* Primary-action Run button accent — the sunny theme uses human-blue for better
+     contrast against its amber/green palette. */
+  --run: var(--human-blue);
+  --on-run: #fff;
+
+  /* Fonts (T308: hardcoded to Baloo 2, no data-font attribute). */
+  --font-display: var(--font-baloo);
+  --font-body: var(--font-baloo);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mono: var(--font-mono);
+  /* Header weight (T308: Baloo 2 light weight 500 so headers read crisp). */
+  --heading-weight: 500;
 
   /* Logs are a FIXED dark terminal on every theme, with their own palette, so
      streaming logs stay legible on bright themes too (constraint: density). */
@@ -250,10 +245,6 @@ tbody tr:hover { background: var(--panel-2); }
 /* workflow DAG — true dependency edges drawn as SVG bezier curves per actual dependsOn */
 /* Outer wrapper: scrolls horizontally on desktop so wide graphs remain legible */
 .dag { overflow-x: auto; padding: 18px; }
-/* Inner flex container: columns (topological layers) flow left-to-right with space for edge curves */
-.dag-inner { display: flex; flex-direction: row; align-items: flex-start; gap: 44px; min-width: fit-content; position: relative; padding: 6px 0; }
-/* Each column holds all nodes at the same topological depth */
-.dag-col { display: flex; flex-direction: column; gap: 10px; }
 /* boxed card nodes with a left accent bar for status — NOT whole-card tinting */
 .dag-node { min-width: 156px; min-height: 58px; padding: 10px 12px 10px 14px; border-radius: 9px; background: var(--panel); border: 1px solid var(--border); border-left-width: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: border-color .15s, box-shadow .15s; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
 .dag-node-name { font-weight: 600; font-size: 13px; color: var(--text); }
@@ -300,21 +291,6 @@ a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent
 .dag-gate-lock--failed:hover { transform: scale(1.35); }
 .dag-gate-lock--passed { opacity: 0.45; }
 .dag-gate-lock--passed:hover { opacity: 0.85; }
-/* collapsible section heading (used on /backlog for all three sections) */
-/* ── Backlog section header: spin caret (T132, chosen in T127) ── */
-.section-heading-summary { font-size: 16px; margin: 0 0 12px -8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; list-style: none; user-select: none; display: flex; align-items: center; padding: 4px 8px; }
-.section-heading-summary::-webkit-details-marker { display: none; }
-details:has(> summary.section-heading-summary) { border-radius: 8px; transition: background 0.15s; padding-bottom: 6px; }
-details:has(> summary.section-heading-summary:hover) { background: rgba(255,255,255,.06); }
-details[open] .section-heading-summary { color: var(--text); }
-.section-heading-summary::before { content: '›'; display: inline-block; font-size: 22px; font-weight: 900; line-height: 1; opacity: 1; color: var(--accent); flex-shrink: 0; margin-right: 6px; transform: rotate(90deg); transition: transform 0.2s ease; }
-details:not([open]) .section-heading-summary::before { transform: rotate(0deg); }
-.caret-style-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.caret-style-btn { font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
-.caret-style-btn:hover { border-color: var(--accent); color: var(--text); }
-.caret-style-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.12); }
-
-
 /* service usage bars */
 .ubar { height: 7px; background: var(--panel-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); margin-top: 5px; max-width: 220px; }
 .ubar > span { display: block; height: 100%; background: var(--green); }
@@ -323,77 +299,9 @@ details:not([open]) .section-heading-summary::before { transform: rotate(0deg); 
 .pill { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; background: var(--panel-2); border:1px solid var(--border); color: var(--muted); }
 .pill.paid { color: var(--yellow); border-color: rgba(210,153,34,.4); }
 .pill.free { color: var(--green); border-color: rgba(80,200,120,.4); }
-.pill.done { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
-.pill.in-progress { color: var(--accent); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
-.pill.buildable { color: var(--amber); background: rgba(232,160,32,.12); border-color: rgba(232,160,32,.35); }
-.pill.dep-waiting { color: var(--muted); background: var(--panel-2); border-color: var(--border); font-size: 11px; }
-.pill.human { background: var(--human-blue); color: #fff; border-color: var(--human-blue); }
-/* Human-review flag (T124): a green "reviewed" vs a muted "not reviewed" pill. */
-.pill.reviewed { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
-.pill.unreviewed { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
-/* Manual-fail flag (manual-fail-signal): a red "failed" pill overriding the green done pill. */
-.pill.failed { color: var(--red); background: color-mix(in srgb,var(--red) 12%,transparent); border-color: color-mix(in srgb,var(--red) 35%,transparent); }
-/* T294: a still-pending task with prior loop build-attempt failures/blocks (.harness/failures.jsonl) — amber/warning, distinct from both the green buildable pill and the red terminal-failed pill. */
-.pill.blocked { color: var(--yellow); background: color-mix(in srgb,var(--yellow) 16%,transparent); border-color: color-mix(in srgb,var(--yellow) 45%,transparent); font-weight: 600; }
-/* Workflow enabled/disabled state pills. */
 .pill.on  { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.off { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
-/* T498: certified-workflow badge — green, matching .pill.on/.pill.done. */
 .pill.certified { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
-/* T315: full-contrast status pill — unlike the base .pill's --muted text, this uses --text so it stays legible in low-contrast theme/mode combos (e.g. sunny-8bit light). */
-.pill.info { color: var(--text); background: var(--panel-2); border-color: var(--border); }
-/* Clickable dependency id chip — inline button that looks like a mono link. */
-.dep-id-link {
-  display: inline;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  font-family: var(--font-mono, monospace);
-  font-size: inherit;
-  color: var(--accent);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-color: color-mix(in srgb,var(--accent) 50%,transparent);
-}
-.dep-id-link:hover { text-decoration-color: var(--accent); }
-/* Brief highlight flash when navigating to a dependency row. */
-@keyframes task-highlight-flash {
-  0%   { background: color-mix(in srgb,var(--accent) 25%,transparent); }
-  100% { background: transparent; }
-}
-.task-row-highlight { animation: task-highlight-flash 1.6s ease-out; border-radius: 4px; }
-/* Backlog task rows: separator between rows, but not below the last row (avoids a
-   double-border / extra-gap at the panel bottom that looks thicker than inter-row spacing). */
-.done-row { border-bottom: 1px solid var(--border); }
-.done-row.expanded { border-bottom: none; }
-/* The last CollapsibleRow's outer <div> is the last div child of .panel */
-.panel > div:last-child .done-row { border-bottom: none; }
-/* Expanded task detail card — contained card below the row with inner padding + rounded corners */
-.task-expand-body {
-  padding: 12px 16px 14px;
-  margin-bottom: 6px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-/* Done-row trailing cluster: three fixed columns (reviewed pill | done/failed pill | action button)
-   so every done row aligns regardless of which label variant is showing. */
-.done-status-cluster {
-  display: grid;
-  grid-template-columns: 90px 70px 82px;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.done-status-cluster .pill { text-align: center; }
-.done-status-cluster .review-toggle { width: 100%; text-align: center; }
-/* "Mark as reviewed" toggle on each done row + the Reviewed/Not-reviewed/All filter. */
-.review-toggle { font-size: 11px; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); cursor: pointer; }
-.review-toggle:hover { border-color: var(--accent); color: var(--text); }
-.review-filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 
 /* Long unbroken tokens (URLs, file paths, item keys) must not push the page wide. */
 .mono { overflow-wrap: anywhere; }
@@ -664,13 +572,13 @@ select:focus { border-color: var(--accent); }
   .db-modal-key { margin-top: 8px; }
   .db-modal-key:first-child { margin-top: 0; }
 
-  /* Done-row status cluster: shrink columns to fit phone width. */
-  .done-status-cluster { grid-template-columns: 82px 62px 76px; gap: 3px; }
-
   /* Gate flow: stack output → gate → input vertically; arrows point down. */
   .gate-flow { flex-direction: column; }
   .gate-card.gate-center { flex: 1 1 auto; }
   .gate-arrow { justify-content: center; transform: rotate(90deg); }
+
+  /* Light/dark toggle on mobile */
+  .theme-controls { margin-left: 0; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -696,20 +604,6 @@ select:focus { border-color: var(--accent); }
    the base :root palette and the light palette is a plain
    `[data-mode="light"]` override. */
 
-/* DARK (base) — dark warm/charcoal arcade with amber accent */
-:root {
-  --bg: #1c1610; --panel: #261e13; --panel-2: #322818; --border: #463722;
-  --text: #f0dcae; --muted: #b39a6a;
-  --accent: #e8a020; --green: #8ac43f; --red: #e0593c; --yellow: #e8c020; --grey: #8a7a5a; --amber: #e8a020;
-  --on-accent: #1c1610; --spark: #ffc24d;
-  --run: var(--human-blue); --on-run: #fff;
-  --bg-texture: repeating-linear-gradient(0deg, rgba(230,160,32,.06) 0 2px, transparent 2px 4px);
-  --bg-texture-size: auto;
-  /* Font hardcoded to Baloo 2 (T308) — no data-font attribute is written anymore. */
-  --font-display: var(--font-baloo);
-  --font-body: var(--font-baloo);
-  --heading-weight: 500;
-}
 /* LIGHT — amber/retro arcade + sparkles */
 [data-mode="light"] {
   --bg: #fff3d6; --panel: #fff9ec; --panel-2: #ffeec2; --border: #f0d49a;
@@ -808,7 +702,3 @@ tbody tr:hover {
   width: 32px; height: 32px; font-size: 16px; line-height: 1;
 }
 .theme-trigger:hover { border-color: var(--accent); }
-
-@media (max-width: 640px) {
-  .theme-controls { margin-left: 0; }
-}

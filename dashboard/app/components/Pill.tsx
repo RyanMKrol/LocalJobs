@@ -11,14 +11,8 @@ import type { CSSProperties } from 'react';
  *
  * Common kinds (matching existing CSS in globals.css):
  *   on / off          – workflow enabled toggle
- *   reviewed / unreviewed – backlog review state
- *   done              – task completed
- *   failed            – task failed
- *   buildable         – task is buildable
- *   human             – needs-human gate
- *   dep-waiting       – waiting on dependency
  *   paid / free       – service billing type
- *   info              – full-contrast status label (e.g. an external status string)
+ *   certified         – certified workflow badge
  */
 
 interface PillProps {
