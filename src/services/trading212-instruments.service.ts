@@ -1,4 +1,4 @@
-import type { ServiceDefinition } from '../core/types.js';
+import { defineService } from './lib.js';
 
 /**
  * Trading212's instruments-metadata endpoint (`fetchInstrumentsMetadata` in
@@ -8,15 +8,16 @@ import type { ServiceDefinition } from '../core/types.js';
  * budget) so this fixed spacing is enforced mechanically, not just by a code
  * comment telling callers to call it at most once per stage run.
  */
-const service: ServiceDefinition = {
+const service = defineService({
   name: 'trading212-instruments',
   category: 'api',
   description:
     'Trading212 instruments-metadata endpoint (https://docs.trading212.com/api) — ' +
     'READ-ONLY lookup only, fixed-spaced per its 1-request-per-50-seconds limit.',
-  minIntervalMs: Number(process.env.TRADING212_INSTRUMENTS_MIN_INTERVAL_MS ?? 50_000),
-  dailyCap: Number(process.env.TRADING212_INSTRUMENTS_DAILY_CAP ?? 20),
-  monthlyCap: Number(process.env.TRADING212_INSTRUMENTS_MONTHLY_CAP ?? 200),
+  envPrefix: 'TRADING212_INSTRUMENTS',
+  minIntervalMs: { fallback: 50_000 },
+  dailyCap: { fallback: 20 },
+  monthlyCap: { fallback: 200 },
   cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
@@ -24,6 +25,6 @@ const service: ServiceDefinition = {
     'instruments-metadata endpoint is limited to 1 request per 50 seconds. minIntervalMs=50,000 ' +
     'mirrors that documented limit exactly; dailyCap/monthlyCap are our own defensive estimates on ' +
     'top.',
-};
+});
 
 export default service;

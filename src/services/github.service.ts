@@ -1,4 +1,4 @@
-import type { ServiceDefinition } from '../core/types.js';
+import { defineService } from './lib.js';
 
 /**
  * GitHub REST API — personal account repos fetch. Free API; authenticated
@@ -9,13 +9,14 @@ import type { ServiceDefinition } from '../core/types.js';
  * scope). Without a token requests are unauthenticated (60 req/hr) — fine for
  * occasional use but document the var so the owner knows to set it.
  */
-const service: ServiceDefinition = {
+const service = defineService({
   name: 'github',
   category: 'api',
   description: 'GitHub REST API — fetch user repos, rate-limited conservatively.',
-  ratePerMinute: Number(process.env.GITHUB_RATE_PER_MIN ?? 30),
-  dailyCap: Number(process.env.GITHUB_DAILY_CAP ?? 200),
-  monthlyCap: Number(process.env.GITHUB_MONTHLY_CAP ?? 3_000),
+  envPrefix: 'GITHUB',
+  ratePerMinute: { fallback: 30 },
+  dailyCap: { fallback: 200 },
+  monthlyCap: { fallback: 3_000 },
   cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
@@ -24,6 +25,6 @@ const service: ServiceDefinition = {
     '5,000 req/hr authenticated, 60 req/hr unauthenticated. ratePerMinute=30 / dailyCap=200 / ' +
     'monthlyCap=3,000 are well below that documented ceiling — conservative headroom, not a guess ' +
     'about the ceiling itself.',
-};
+});
 
 export default service;

@@ -8,8 +8,7 @@ import {
   DeleteCommand,
   BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
-import type { ServiceDefinition } from '../core/types.js';
-import { dailyFromMonthly } from './lib.js';
+import { defineService } from './lib.js';
 
 /**
  * AWS DynamoDB — free-tier-aware, metered shared client.
@@ -23,9 +22,6 @@ import { dailyFromMonthly } from './lib.js';
  *   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
  * Table names are also env-driven per pipeline.
  */
-
-const monthlyCap = Number(process.env.DYNAMODB_MONTHLY_CAP ?? 50_000);
-const dailyCap = Number(process.env.DYNAMODB_DAILY_CAP ?? dailyFromMonthly(monthlyCap));
 
 // Lazy-initialised client — only created when a helper is first called, so the
 // service file can be imported without live AWS credentials (e.g. in tests that
@@ -175,13 +171,14 @@ export async function dynamoBatchWrite(
   );
 }
 
-const service: ServiceDefinition = {
+const service = defineService({
   name: 'dynamodb',
   category: 'api',
   description: 'AWS DynamoDB — shared ingestion client (free-tier-aware).',
-  ratePerMinute: Number(process.env.DYNAMODB_RATE_PER_MIN ?? 30),
-  dailyCap,
-  monthlyCap,
+  envPrefix: 'DYNAMODB',
+  ratePerMinute: { fallback: 30 },
+  monthlyCap: { fallback: 50_000 },
+  dailyCap: { fallback: 'monthly/30' },
   paid: false,
   cacheTtlMs: 79_200_000,
   rateLimitSource:
@@ -189,6 +186,6 @@ const service: ServiceDefinition = {
     'comfortably covers the low ingestion volume here. ratePerMinute=30 / monthlyCap=50,000 are our ' +
     'own conservative estimates layered well under that free-tier ceiling, not a number AWS ' +
     'publishes as a hard per-minute limit.',
-};
+});
 
 export default service;

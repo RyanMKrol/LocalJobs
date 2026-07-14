@@ -1,4 +1,4 @@
-import type { ServiceDefinition } from '../core/types.js';
+import { defineService } from './lib.js';
 
 /** Fragrantica scraping — free, but Cloudflare blocks bursts. Governed by a
  *  FIXED min-interval (not a burst-y rate): the ~12s spacing we proved, plus
@@ -9,17 +9,17 @@ import type { ServiceDefinition } from '../core/types.js';
  *  This is the *pacing* half of the reputation-gate strategy; the *launch* half
  *  (persistent profile + real-Chrome channel) lives in `core/browser`. Both are
  *  needed: reputable cookies AND human-paced timing. */
-const service: ServiceDefinition = {
+const service = defineService({
   name: 'fragrantica',
   category: 'website-scrape',
   description: 'Fragrantica page fetches (headless). Free; fixed-spacing to dodge Cloudflare.',
-  minIntervalMs: Number(process.env.PERFUMES_FETCH_DELAY_MS ?? 12_000),
-  maxJitterMs: Number(process.env.PERFUMES_FETCH_JITTER_MS ?? 6000),
+  minIntervalMs: { env: 'PERFUMES_FETCH_DELAY_MS', fallback: 12_000 },
+  maxJitterMs: { env: 'PERFUMES_FETCH_JITTER_MS', fallback: 6000 },
   paid: false,
   rateLimitSource:
     'No public rate-limit docs — fragrantica.com is a scrape target, not an API. The ~12s ' +
     'min-interval + jitter was EMPIRICALLY TUNED during development by observing Cloudflare\'s ' +
     'blocking behavior — a guess validated by trial, not a documented number.',
-};
+});
 
 export default service;

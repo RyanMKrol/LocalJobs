@@ -1,4 +1,4 @@
-import type { ServiceDefinition } from '../core/types.js';
+import { defineService } from './lib.js';
 
 /**
  * OpenFIGI — https://www.openfigi.com/api/documentation — Bloomberg's free
@@ -11,15 +11,16 @@ import type { ServiceDefinition } from '../core/types.js';
  * conservatively below the no-key ceiling; `dailyCap`/`monthlyCap` are
  * defensive metering only (OpenFIGI is free either way).
  */
-const service: ServiceDefinition = {
+const service = defineService({
   name: 'openfigi',
   category: 'api',
   description:
     'OpenFIGI mapping API (https://www.openfigi.com/api/documentation) — read-only ISIN -> ticker ' +
     'symbol resolution.',
-  ratePerMinute: Number(process.env.OPENFIGI_RATE_PER_MIN ?? 20),
-  dailyCap: Number(process.env.OPENFIGI_DAILY_CAP ?? 2_000),
-  monthlyCap: Number(process.env.OPENFIGI_MONTHLY_CAP ?? 20_000),
+  envPrefix: 'OPENFIGI',
+  ratePerMinute: { fallback: 20 },
+  dailyCap: { fallback: 2_000 },
+  monthlyCap: { fallback: 20_000 },
   cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
@@ -27,7 +28,7 @@ const service: ServiceDefinition = {
     'requests/minute + 10 jobs/request without an API key, 25 requests/6s + 100 jobs/request with ' +
     'one. ratePerMinute=20 sits just under the documented no-key ceiling; dailyCap/monthlyCap are ' +
     'our own defensive estimates on top (OpenFIGI itself has no daily/monthly cap).',
-};
+});
 
 export default service;
 

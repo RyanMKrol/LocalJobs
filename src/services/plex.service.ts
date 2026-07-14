@@ -1,4 +1,4 @@
-import type { ServiceDefinition } from '../core/types.js';
+import { defineService } from './lib.js';
 
 /** Plex Media Server — the owner's own local LAN server, not a paid or
  *  rate-limited API. Shared by every Plex-touching workflow via
@@ -9,7 +9,7 @@ import type { ServiceDefinition } from '../core/types.js';
  *  metering + recording the call, which is exactly the visibility win wanted
  *  here — call-count metering and per-job consumer tracking on the
  *  Integrations page, matching every other shared external dependency. */
-const service: ServiceDefinition = {
+const service = defineService({
   name: 'plex',
   category: 'api',
   description:
@@ -29,6 +29,6 @@ const service: ServiceDefinition = {
   // acceptable, unlike TMDB's cheaper per-lookup calls which keep the 5-minute
   // global default.
   cacheTtlMs: 3 * 60 * 60 * 1000,
-};
+});
 
 export default service;

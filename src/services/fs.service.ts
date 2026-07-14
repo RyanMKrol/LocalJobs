@@ -1,4 +1,4 @@
-import type { ServiceDefinition } from '../core/types.js';
+import { defineService } from './lib.js';
 
 /** Local filesystem — the owner's own `data/raw/**` files, not a paid or
  *  rate-limited API. Provides call-count metering + per-job consumer tracking
@@ -11,7 +11,7 @@ import type { ServiceDefinition } from '../core/types.js';
  *  exists purely so a local-file-backed root's inputKeys() can be governed by
  *  the same callService contract as every real external dependency (T487/T488),
  *  with zero carve-outs for "this one just reads a file." */
-const service: ServiceDefinition = {
+const service = defineService({
   name: 'fs',
   category: 'local',
   description:
@@ -22,6 +22,6 @@ const service: ServiceDefinition = {
     'Local filesystem the owner controls — no external rate limit or quota applies; this ' +
     'service exists purely for call-count visibility and per-job consumer tracking on the ' +
     'Integrations page. Local file reads are near-instant.',
-};
+});
 
 export default service;

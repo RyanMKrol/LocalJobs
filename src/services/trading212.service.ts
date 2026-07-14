@@ -1,5 +1,6 @@
-import type { JobContext, ServiceDefinition } from '../core/types.js';
+import type { JobContext } from '../core/types.js';
 import { callService } from '../core/services.js';
+import { defineService } from './lib.js';
 import { fetchOpenFigiTickers } from './openfigi.service.js';
 
 /**
@@ -13,15 +14,16 @@ import { fetchOpenFigiTickers } from './openfigi.service.js';
  * their side). We poll infrequently (daily), so conservative limits are far below
  * any real ceiling.
  */
-const service: ServiceDefinition = {
+const service = defineService({
   name: 'trading212',
   category: 'api',
   description:
     'Trading212 Public API (https://docs.trading212.com/api) — READ-ONLY portfolio ' +
     'fetch only. No mutating requests are ever made.',
-  ratePerMinute: Number(process.env.TRADING212_RATE_PER_MIN ?? 10),
-  dailyCap: Number(process.env.TRADING212_DAILY_CAP ?? 100),
-  monthlyCap: Number(process.env.TRADING212_MONTHLY_CAP ?? 1_000),
+  envPrefix: 'TRADING212',
+  ratePerMinute: { fallback: 10 },
+  dailyCap: { fallback: 100 },
+  monthlyCap: { fallback: 1_000 },
   cacheTtlMs: 79_200_000,
   paid: false,
   rateLimitSource:
@@ -32,7 +34,7 @@ const service: ServiceDefinition = {
     'chosen because we only poll daily. (Contrast: the separate trading212-instruments service has ' +
     'a genuinely DOCUMENTED 1-request-per-50-seconds limit per Trading212\'s OpenAPI spec — the ' +
     '"documented" end of this spectrum.)',
-};
+});
 
 export default service;
 
