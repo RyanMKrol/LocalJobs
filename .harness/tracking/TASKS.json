@@ -14583,7 +14583,7 @@
       "title": "Collapse the four managers into a generic RecsManager + GroupedManager",
       "status": "pending",
       "dependsOn": [
-        "T542"
+        "T579"
       ],
       "gate": null,
       "tags": [
@@ -14613,7 +14613,7 @@
       "title": "Clear the setTimeout(setBusy(false)) after unmount on the run + cancel buttons",
       "status": "pending",
       "dependsOn": [
-        "T542"
+        "T579"
       ],
       "gate": null,
       "tags": [
@@ -14641,7 +14641,7 @@
       "title": "Memoize groupByCollection so it isn't recomputed 3x per render",
       "status": "pending",
       "dependsOn": [
-        "T542"
+        "T579"
       ],
       "gate": null,
       "tags": [
@@ -14668,7 +14668,7 @@
       "title": "Make the dashboard's clickable-span editors and sort headers keyboard-accessible",
       "status": "pending",
       "dependsOn": [
-        "T542"
+        "T579"
       ],
       "gate": null,
       "tags": [
@@ -15690,6 +15690,146 @@
       "facets": {
         "layer": "job",
         "workType": "docs",
+        "risk": []
+      }
+    },
+    {
+      "id": "T579",
+      "title": "Extract the four dashboard managers out of workflows/[name]/page.tsx + add a useAction hook",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "refactor",
+        "R05"
+      ],
+      "scope": [
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/components/",
+        "dashboard/app/ui.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "CLAUDE.md"
+      ],
+      "design": "The four manager components (TvRecsManager, MovieRecsManager, MovieGapsManager, MissingSeasonsManager) currently live inline in dashboard/app/workflows/[name]/page.tsx (1,144 lines — 4x the next-largest page). This unit does the low-risk MOVE + the shared hook, deferring the generic parameterization to T543. (1) Add a useAction hook to dashboard/app/ui.tsx (or a new dashboard/app/components/useAction.ts) that owns the setBusy(true) -> setErr(null) -> await fn -> refetch -> catch(setErr) -> finally(setBusy(false)) block duplicated ~14x across the four managers (see e.g. page.tsx:85-96 ignore(), :98-109 unignore(), :111-122 unignoreAll()). The hook must also guard against setState-after-unmount. (2) Move each of the four manager functions into its own file under dashboard/app/components/ (e.g. TvRecsManager.tsx, MovieRecsManager.tsx, MovieGapsManager.tsx, MissingSeasonsManager.tsx), re-exported/imported by page.tsx — no behaviour change, pixel-equivalent rendering. Keep groupByCollection/groupByShow helpers with their managers. This alone drops page.tsx toward ~360 lines. Document the new components in CLAUDE.md's T268 shared-component list — CLAUDE.md is now explicitly in this task's scope so this can actually be done in the same commit.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T579.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T580",
+      "title": "Replace bare pill/badge spans with <Pill>/<StatusBadge> and widen StatusBadge's status type (whole dashboard/app, including page.tsx)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "bugfix",
+        "Q05"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/page.tsx",
+        "dashboard/app/admin/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/components/StageIoLists.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs",
+        "grep -rn 'className=\"pill\\|className={`badge\\|className={`pill\\|className=\"badge' dashboard/app must return no bare status-span instances (StatusBadge's own definition in ui.tsx, the static non-status \"badge queued\"/\"badge\" spans, and Pill.tsx's doc comment are not violations)"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T580.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T581",
+      "title": "R08 item 2 (re-attempt): delete the orphaned read-only DB-browser / canned-queries layer, now in src/db/store/admin.ts (+ its tests)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dead-code",
+        "refactor",
+        "R08"
+      ],
+      "scope": [
+        "src/db/store/admin.ts",
+        "src/db/store.test.ts"
+      ],
+      "design": "DEFAULT PATH IS DELETE (same default as T554; the owner already confirmed this via the paired question on T554's original authoring — re-confirming here only because the target file moved). T554 blocked because R03/T529 (which landed on 2026-07-13, one day before T554 ran) split src/db/store.ts into src/db/store/*.ts by domain, moving this exact section into src/db/store/admin.ts (confirmed live at lines 264-412 as of 2026-07-14) — but T554's scope array still said src/db/store.ts, and src/db/store.ts is now just a barrel re-export (`export * from './store/<domain>.js'`), so the agent correctly refused to touch admin.ts as out-of-scope and blocked itself twice at rung 0 before giving up at rung 1. The dead code and its ONLY consumers (its own tests) are otherwise unchanged from T554's original description: in src/db/store/admin.ts, the '── Read-only DB browser (dashboard) ──' section (line ~264) through the end of the '── Canned (predefined) read-only queries ──' section (line ~412, end of file) — listDbTables, isKnownTable, the TablePage interface, browseTable, CannedQueryDef, CANNED_QUERIES, CannedQueryMeta, CannedQueryResult, listCannedQueries, runCannedQuery. In src/db/store.test.ts (NOT split by T529 — it stayed one file testing the barrel): the import at line ~6 (`browseTable, listDbTables, listCannedQueries, runCannedQuery`) and the two test blocks (the browseTable pagination/injection block ~lines 838-863, and the canned-query block ~lines 882-933). Confirmed 2026-07-14: no /api/db routes exist in src/api/server.ts (removed in T230, unchanged) and grep across src/ + dashboard/ for every symbol name (excluding the projects-sync self-clone) finds them ONLY in src/db/store/admin.ts and src/db/store.test.ts — still no other consumers.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "grep -rn 'listDbTables|isKnownTable|browseTable|CANNED_QUERIES|listCannedQueries|runCannedQuery|TablePage|CannedQuery' src/ dashboard/ --include=*.ts --include=*.tsx (excluding projects-sync/data/repos) returns NO matches"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T581.md",
+      "facets": {
+        "layer": "db",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T582",
+      "title": "Re-attempt T555: delete unimported MarkdownModal.tsx, port renderFmValue into OutputRenderer, fix CLAUDE.md + package.json test script",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dead-code",
+        "refactor",
+        "docs",
+        "R08"
+      ],
+      "scope": [
+        "dashboard/app/components/MarkdownModal.tsx",
+        "dashboard/app/components/MarkdownModal.test.ts",
+        "dashboard/app/components/OutputRenderer.tsx",
+        "dashboard/app/components/OutputRenderer.test.ts",
+        "dashboard/package.json",
+        "CLAUDE.md"
+      ],
+      "design": "T555 (blocked 2026-07-14) implemented this correctly in full and reverted at the last step: deleting dashboard/app/components/MarkdownModal.tsx and its companion MarkdownModal.test.ts (required by the task's own Done-when, and a test file that must go with its component) breaks dashboard/package.json's \"test\" script, which chains `../node_modules/.bin/tsx app/components/MarkdownModal.test.ts` as its last clause — the exact script CI runs (`npm --prefix dashboard test`, .github/workflows/ci.yml:44). T555's scope omitted dashboard/package.json, so the agent correctly refused to edit it out-of-scope and blocked rather than guess. This unit is the same task with dashboard/package.json (and the test file explicitly) added to scope so the fix can land in one change. Everything else about T555's design/rationale still applies verbatim: MarkdownModal.tsx (96 lines) has zero importers outside its own definition + CLAUDE.md's (wrong) documentation of it as live; it carries a richer frontmatter renderer (renderFmValue/isFmEmpty, MarkdownModal.tsx:26-42) than OutputRenderer.tsx's MarkdownOutputBody (renders raw {v} instead of highlighting null/joining arrays) — port it in as a small behavior win extracted from a deletion.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm --prefix dashboard run build",
+        "npm --prefix dashboard test",
+        "grep -rn 'MarkdownModal' dashboard/ CLAUDE.md --include='*.tsx' --include='*.ts' --include='*.md' --include='*.json' | grep -v 'data/repos'  # expect zero hits anywhere, including dashboard/package.json's test script",
+        "node dashboard/scripts/visual-check.mjs, then look at the output-popover screenshots to confirm frontmatter still renders (null highlighting + array-join visible, no regression)"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T582.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
         "risk": []
       }
     }
