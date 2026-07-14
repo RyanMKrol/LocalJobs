@@ -14552,7 +14552,7 @@
     {
       "id": "T542",
       "title": "Extract the four dashboard managers out of workflows/[name]/page.tsx + add a useAction hook",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
@@ -14780,7 +14780,7 @@
     {
       "id": "T550",
       "title": "Replace bare pill/badge spans with <Pill>/<StatusBadge> and widen StatusBadge's status type",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
@@ -14902,7 +14902,7 @@
     {
       "id": "T554",
       "title": "R08 item 2: delete the orphaned read-only DB-browser / canned-queries layer in store.ts (+ its tests)",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
@@ -14927,7 +14927,7 @@
     {
       "id": "T555",
       "title": "R08 item 3: delete unimported MarkdownModal.tsx, port renderFmValue into OutputRenderer, fix CLAUDE.md",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
