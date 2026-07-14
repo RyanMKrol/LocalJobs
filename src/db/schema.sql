@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE TABLE IF NOT EXISTS runs (
   id           TEXT PRIMARY KEY,
   job_name     TEXT NOT NULL,
-  status       TEXT NOT NULL,             -- queued | running | success | failed | timeout | cancelled
-  trigger      TEXT NOT NULL,             -- schedule | manual
+  status       TEXT NOT NULL,             -- queued | running | success | failed | timeout | cancelled | skipped
+  trigger      TEXT NOT NULL,             -- schedule | manual | workflow
   attempt      INTEGER NOT NULL DEFAULT 1,
   progress     INTEGER NOT NULL DEFAULT 0, -- 0..100
   progress_msg TEXT NOT NULL DEFAULT '',

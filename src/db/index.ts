@@ -7,6 +7,19 @@ import { config } from '../config.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Whether `table` currently has a column named `col` — re-read FRESH from SQLite
+ * on every call (never cached). Additive-column migration guards in `openDb()`
+ * must use this rather than a `PRAGMA table_info` snapshot taken earlier in the
+ * function: a cached snapshot goes stale the moment an intervening `ALTER TABLE`
+ * runs, so a later guard checking the same stale snapshot could re-issue an
+ * `ALTER TABLE ADD COLUMN` for a column added since the snapshot was taken and
+ * crash-loop the daemon at startup (the T098 failure mode).
+ */
+export function hasColumn(db: Database.Database, table: string, col: string): boolean {
+  return !!db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(table, col);
+}
+
+/**
  * Open (or create) the SQLite database and apply the schema + migrations.
  * WAL mode lets the daemon write while the dashboard reads concurrently.
  *
@@ -39,8 +52,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   db.exec('CREATE INDEX IF NOT EXISTS idx_runs_workflow ON runs(workflow_run_id)');
 
   // Additive migration: user-owned limit override flag on services (T018).
-  const svcCols = db.prepare('PRAGMA table_info(services)').all() as { name: string }[];
-  if (!svcCols.some((c) => c.name === 'limits_overridden')) {
+  if (!hasColumn(db, 'services', 'limits_overridden')) {
     db.exec('ALTER TABLE services ADD COLUMN limits_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
@@ -48,7 +60,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // workflows `category` migration below). No `_overridden` column — always refreshed
   // from the manifest on sync (see upsertServiceStmt). No index on this column, so no
   // bootstrap-index trap (T098).
-  if (!svcCols.some((c) => c.name === 'category')) {
+  if (!hasColumn(db, 'services', 'category')) {
     db.exec("ALTER TABLE services ADD COLUMN category TEXT NOT NULL DEFAULT ''");
   }
 
@@ -56,7 +68,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // (T449, mirrors the `category` migration above). No `_overridden` column — always
   // refreshed from the manifest on sync (see upsertServiceStmt). No index on this
   // column, so no bootstrap-index trap (T098).
-  if (!svcCols.some((c) => c.name === 'rate_limit_source')) {
+  if (!hasColumn(db, 'services', 'rate_limit_source')) {
     db.exec("ALTER TABLE services ADD COLUMN rate_limit_source TEXT NOT NULL DEFAULT ''");
   }
 
@@ -65,15 +77,14 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // service's limits" flag already covers rate/daily/monthly, and a timeout override is
   // the same concept, so no second overridden column is added. No index on this column,
   // so no bootstrap-index trap (T098).
-  if (!svcCols.some((c) => c.name === 'timeout_ms')) {
+  if (!hasColumn(db, 'services', 'timeout_ms')) {
     db.exec('ALTER TABLE services ADD COLUMN timeout_ms INTEGER');
   }
 
   // Additive migration: user-owned schedule override flag on workflows (T135).
   // Like `limits_overridden` on services, this lets a dashboard edit take ownership
   // of the cron `schedule` so a later code-sync preserves it (see upsertWorkflowStmt).
-  const wfCols = db.prepare('PRAGMA table_info(workflows)').all() as { name: string }[];
-  if (!wfCols.some((c) => c.name === 'schedule_overridden')) {
+  if (!hasColumn(db, 'workflows', 'schedule_overridden')) {
     db.exec('ALTER TABLE workflows ADD COLUMN schedule_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
@@ -82,10 +93,10 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // manifest on sync, a dashboard edit flips `max_concurrency_overridden` and a
   // later code-sync preserves the user's value (see upsertWorkflowStmt). No index
   // on these columns, so no bootstrap-index trap (T098).
-  if (!wfCols.some((c) => c.name === 'max_concurrency')) {
+  if (!hasColumn(db, 'workflows', 'max_concurrency')) {
     db.exec('ALTER TABLE workflows ADD COLUMN max_concurrency INTEGER');
   }
-  if (!wfCols.some((c) => c.name === 'max_concurrency_overridden')) {
+  if (!hasColumn(db, 'workflows', 'max_concurrency_overridden')) {
     db.exec('ALTER TABLE workflows ADD COLUMN max_concurrency_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
@@ -94,10 +105,10 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // true), a dashboard toggle flips `notify_enabled_overridden` and a later
   // code-sync preserves the user's value (see upsertWorkflowStmt). No index on
   // these columns, so no bootstrap-index trap (T098).
-  if (!wfCols.some((c) => c.name === 'notify_enabled')) {
+  if (!hasColumn(db, 'workflows', 'notify_enabled')) {
     db.exec('ALTER TABLE workflows ADD COLUMN notify_enabled INTEGER NOT NULL DEFAULT 1');
   }
-  if (!wfCols.some((c) => c.name === 'notify_enabled_overridden')) {
+  if (!hasColumn(db, 'workflows', 'notify_enabled_overridden')) {
     db.exec('ALTER TABLE workflows ADD COLUMN notify_enabled_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
@@ -105,7 +116,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // the overrides above, `category` has no `_overridden` column — it's always
   // refreshed from the manifest on sync (see upsertWorkflowStmt). No index on this
   // column, so no bootstrap-index trap (T098).
-  if (!wfCols.some((c) => c.name === 'category')) {
+  if (!hasColumn(db, 'workflows', 'category')) {
     db.exec("ALTER TABLE workflows ADD COLUMN category TEXT NOT NULL DEFAULT ''");
   }
 
@@ -114,8 +125,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // the manifest on sync, a dashboard edit flips `timeout_ms_overridden` and a
   // later code-sync preserves the user's value (see upsertJobStmt). No index on
   // this column, so no bootstrap-index trap (T098).
-  const jobCols = db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[];
-  if (!jobCols.some((c) => c.name === 'timeout_ms_overridden')) {
+  if (!hasColumn(db, 'jobs', 'timeout_ms_overridden')) {
     db.exec('ALTER TABLE jobs ADD COLUMN timeout_ms_overridden INTEGER NOT NULL DEFAULT 0');
   }
 
@@ -130,19 +140,19 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // "reset override to code default" action anywhere in the codebase today, so
   // there is nowhere that needs to clear these back to NULL yet — if one is ever
   // added, it should null out the matching `_overridden`/`_overridden_at` pair.
-  if (!svcCols.some((c) => c.name === 'limits_overridden_at')) {
+  if (!hasColumn(db, 'services', 'limits_overridden_at')) {
     db.exec('ALTER TABLE services ADD COLUMN limits_overridden_at TEXT');
   }
-  if (!wfCols.some((c) => c.name === 'schedule_overridden_at')) {
+  if (!hasColumn(db, 'workflows', 'schedule_overridden_at')) {
     db.exec('ALTER TABLE workflows ADD COLUMN schedule_overridden_at TEXT');
   }
-  if (!wfCols.some((c) => c.name === 'max_concurrency_overridden_at')) {
+  if (!hasColumn(db, 'workflows', 'max_concurrency_overridden_at')) {
     db.exec('ALTER TABLE workflows ADD COLUMN max_concurrency_overridden_at TEXT');
   }
-  if (!wfCols.some((c) => c.name === 'notify_enabled_overridden_at')) {
+  if (!hasColumn(db, 'workflows', 'notify_enabled_overridden_at')) {
     db.exec('ALTER TABLE workflows ADD COLUMN notify_enabled_overridden_at TEXT');
   }
-  if (!jobCols.some((c) => c.name === 'timeout_ms_overridden_at')) {
+  if (!hasColumn(db, 'jobs', 'timeout_ms_overridden_at')) {
     db.exec('ALTER TABLE jobs ADD COLUMN timeout_ms_overridden_at TEXT');
   }
 
@@ -150,7 +160,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
   // CLAUDE.md-T098). Unlike the overrides above, this has no code/manifest source
   // to reconcile against, so there is no `_overridden` companion column and no
   // index on it, so no bootstrap-index trap (T098).
-  if (!wfCols.some((c) => c.name === 'certified')) {
+  if (!hasColumn(db, 'workflows', 'certified')) {
     db.exec('ALTER TABLE workflows ADD COLUMN certified INTEGER NOT NULL DEFAULT 0');
   }
 

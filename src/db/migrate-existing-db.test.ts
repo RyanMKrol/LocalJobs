@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 import Database from 'better-sqlite3';
-import { openDb } from './index.js';
+import { openDb, hasColumn } from './index.js';
 
 let passed = 0;
 function test(name: string, fn: () => void): void {
@@ -351,6 +351,33 @@ test('idempotent: a SECOND openDb() against the now-migrated file is a clean no-
   assert.ok(
     (again.prepare('PRAGMA table_info(work_items)').all() as { name: string }[]).some((c) => c.name === 'root_key'),
   );
+
+  // T552 regression guard: hasColumn() must re-read column info FRESH on every call,
+  // never from a cached snapshot taken earlier — otherwise a second additive-column
+  // guard checking a stale snapshot could re-issue an ALTER TABLE for a column added
+  // since the snapshot was taken and throw (the T098 crash-loop failure mode).
+  test('hasColumn() stays fresh across an intervening ALTER TABLE (T552)', () => {
+    assert.equal(hasColumn(again, 'workflows', 'certified'), true, 'already-migrated column reads true');
+
+    again.exec('CREATE TABLE t552_throwaway (id INTEGER PRIMARY KEY)');
+    assert.equal(hasColumn(again, 't552_throwaway', 'extra'), false, 'not-yet-added column reads false');
+
+    again.exec('ALTER TABLE t552_throwaway ADD COLUMN extra TEXT');
+    assert.equal(
+      hasColumn(again, 't552_throwaway', 'extra'),
+      true,
+      'same hasColumn() call now sees the column, proving it re-reads fresh rather than using a stale cached snapshot',
+    );
+
+    // A hypothetical duplicate guard for the same column is now correctly a no-op,
+    // not a duplicate ALTER TABLE that would throw "duplicate column name".
+    assert.doesNotThrow(() => {
+      if (!hasColumn(again, 't552_throwaway', 'extra')) {
+        again.exec('ALTER TABLE t552_throwaway ADD COLUMN extra TEXT');
+      }
+    });
+  });
+
   again.close();
 });
 
