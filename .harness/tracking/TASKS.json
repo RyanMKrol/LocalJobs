@@ -15176,7 +15176,7 @@
     {
       "id": "T563",
       "title": "Dedup the JSON file helpers (readJsonFile / writeJsonFile / ensureDirs) into a shared core module, after the recommender extraction removes two copies",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [
         "T561"
       ],
