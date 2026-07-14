@@ -10,14 +10,7 @@ import {
   recordSkippedRun,
   setProgress,
 } from '../db/store.js';
-import { notifyRun } from './notifier.js';
 import type { JobDefinition, JobEvent, RunStatus, RunTrigger } from './types.js';
-
-export interface RunResult {
-  runId: string | null;
-  skipped?: boolean;
-  reason?: string;
-}
 
 /**
  * The attempt+retry loop, shared by the standalone and workflow paths. Creates a
@@ -67,24 +60,12 @@ async function runAttempts(
 }
 
 /**
- * Run a standalone job: overlap-guarded, retried, and notified on the final
- * outcome. Unchanged public behaviour.
- */
-export async function runJob(def: JobDefinition, trigger: RunTrigger): Promise<RunResult> {
-  if (hasActiveRun(def.name)) {
-    return { runId: null, skipped: true, reason: 'already running' };
-  }
-  const { runId, status } = await runAttempts(def, trigger, null);
-  if (runId) await notifyRun(def.name, runId, status);
-  return { runId };
-}
-
-/**
  * Run a job as a member of a workflow: its run row links to the workflow run and
  * the per-job notification is SUPPRESSED (the workflow sends stage notifications
- * instead). Returns the final status. If a standalone run of this job is already
- * active, it is recorded as 'skipped' (idempotency means the standalone run will
- * cover the work, and the next workflow run resumes anything outstanding).
+ * instead). Returns the final status. If a run of this job from ANOTHER workflow
+ * run is already active (`hasActiveRun` checks by job name only, not workflow run
+ * id), it is recorded as 'skipped' (idempotency means that other run will cover
+ * the work, and the next workflow run resumes anything outstanding).
  */
 export async function runJobForWorkflow(
   def: JobDefinition,
@@ -92,7 +73,7 @@ export async function runJobForWorkflow(
   signal?: AbortSignal,
 ): Promise<{ runId: string | null; status: RunStatus }> {
   if (hasActiveRun(def.name)) {
-    const runId = recordSkippedRun(def.name, workflowRunId, 'skipped: a standalone run of this job is already active');
+    const runId = recordSkippedRun(def.name, workflowRunId, 'skipped: another active run of this job is already in progress');
     return { runId, status: 'skipped' };
   }
   return runAttempts(def, 'workflow', workflowRunId, signal);

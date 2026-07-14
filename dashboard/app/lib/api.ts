@@ -7,7 +7,7 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
 export type RunStatus =
-  | 'queued' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped';
+  | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped';
 
 export type WorkflowRunStatus = 'running' | 'success' | 'partial' | 'failed' | 'cancelled';
 

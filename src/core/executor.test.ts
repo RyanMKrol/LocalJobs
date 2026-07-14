@@ -1,16 +1,16 @@
 // Unit tests for the executor's attempt loop: NDJSON event parsing, retries, and
 // timeout-kill. We point `config.runJobScript` at a FAKE child script (written to a
 // temp file) that emits canned NDJSON per scenario — so no real job runs and there
-// are zero external calls. We drive the engine via `runJobForWorkflow` (which shares
-// the same attempt/spawn machinery as `runJob` but does NOT notify), so these tests
-// never spawn `osascript`/ntfy. Runs against the scratch DB (LOCALJOBS_DB).
+// are zero external calls. We drive the engine via `runJobForWorkflow` (the sole
+// public entrypoint — there is no standalone-job path), so these tests never spawn
+// `osascript`/ntfy. Runs against the scratch DB (LOCALJOBS_DB).
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../config.js';
 import { createRun, getLogs, getRun, listRunsForJob, syncJob } from '../db/store.js';
-import { runJob, runJobForWorkflow } from './executor.js';
+import { runJobForWorkflow } from './executor.js';
 import type { JobDefinition } from './types.js';
 
 let passed = 0;
@@ -158,16 +158,15 @@ try {
     assert.equal(listRunsForJob('retry-precancel').length, 0);
   });
 
-  await test('overlap guard (runJob): an already-running job is skipped without spawning', async () => {
+  await test('overlap guard (runJobForWorkflow): an already-running job is skipped without spawning', async () => {
     const d = def('overlap-exec');
     syncJob(d);
     createRun('overlap-exec', 'manual'); // a perpetual 'running' row
-    const res = await runJob(d, 'manual');
-    assert.equal(res.skipped, true);
-    assert.equal(res.runId, null);
-    assert.equal(res.reason, 'already running');
-    // only the manual running row exists — no spawn/attempt happened
-    assert.equal(listRunsForJob('overlap-exec').length, 1);
+    const res = await runJobForWorkflow(d, PL);
+    assert.equal(res.status, 'skipped');
+    assert.ok(res.runId); // a skipped run row was recorded, linked to the workflow run
+    // the manual running row PLUS the recorded skipped row — no spawn/attempt happened
+    assert.equal(listRunsForJob('overlap-exec').length, 2);
   });
 
   await test('a throwing addLog inside the line handler drops only that one line (T525)', async () => {

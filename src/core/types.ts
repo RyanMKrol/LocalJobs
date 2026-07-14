@@ -1,5 +1,4 @@
 export type RunStatus =
-  | 'queued'
   | 'running'
   | 'success'
   | 'failed'

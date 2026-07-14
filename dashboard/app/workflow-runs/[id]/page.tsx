@@ -78,7 +78,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   const earlierAttempts = earlierAttemptsByStage(members);
 
   const totalStages = workflow?.jobs.length ?? latestRuns.length;
-  const completedStages = latestRuns.filter(r => r.status !== 'queued' && r.status !== 'running').length;
+  const completedStages = latestRuns.filter(r => r.status !== 'running').length;
 
   return (
     <>
