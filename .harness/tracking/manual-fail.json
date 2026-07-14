@@ -78,5 +78,10 @@
     "failed": true,
     "reason": "review-failed: no follow-up needed - blocked by unrelated harness CI-name-resolution bug (T540's invalid workflow YAML), not by T541's own code; code is on main, audit-verified PASS, and CI has since gone green on descendant commits",
     "at": "2026-07-14T00:17:34Z"
+  },
+  "T542": {
+    "failed": true,
+    "reason": "review-failed: superseded by T579 — same refactor, CLAUDE.md added to scope so the required T268 doc update can land; dependents T543-T546 rewired onto T579",
+    "at": "2026-07-14T09:44:09Z"
   }
 }
