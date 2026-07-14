@@ -15480,7 +15480,7 @@
     {
       "id": "T572",
       "title": "Treat Claude rate-limit as a soft pause/break, not a hard failure (3 jobs)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
