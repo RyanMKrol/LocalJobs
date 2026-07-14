@@ -14840,7 +14840,7 @@
     {
       "id": "T552",
       "title": "Q01: fix stale schema.sql column-value comments + replace cached column arrays with a fresh hasColumn() helper (latent T098 crash-loop)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
