@@ -89,6 +89,7 @@ the generic joined `IoPanel` this workflow was originally built to avoid is no l
 
 `config.ts` (`stockDigestConfig`, `reportPathFor`/`factsPathFor`/`sectorsJsonPath`/`portfolioJsonPath`/
 `rawPortfolioJsonPath`), `contracts.ts` (gate contracts for the 4 stage boundaries), `lib.ts`
-(`weekKey`). Credentials: `TRADING212_API_KEY_ID`/`_SECRET_KEY` (+ optional ISA pair),
+(`weekLabel`; re-exports `weekKey` from the shared `src/core/dates.ts`, the single definition also
+used by `plex-space-saver`/`overrides-audit`). Credentials: `TRADING212_API_KEY_ID`/`_SECRET_KEY` (+ optional ISA pair),
 `FINNHUB_API_KEY`. Model: `STOCK_DIGEST_CLAUDE_MODEL` (default a Sonnet 5 id) at effort
 `STOCK_DIGEST_CLAUDE_EFFORT` (default `medium`), via the shared `claude-cli` service.

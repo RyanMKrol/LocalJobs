@@ -1,16 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import type { JobContext } from '../../../core/types.js';
+import { dayKey } from '../../../core/dates.js';
 import { markWorkItem, workItemCounts } from '../../../db/store.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
 
 const JOB_NAME = 'stocks-snapshot';
 
-/** "2026-07-04" — the UTC calendar-day key, used as the single collapsed ledger key. */
-export function dayKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+export { dayKey };
 
 // ---------------------------------------------------------------------------
 // Markdown report (with price-difference column: absolute + percentage)

@@ -1,4 +1,5 @@
 import type { JobContext } from '../../../core/types.js';
+import { weekKey } from '../../../core/dates.js';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { callService } from '../../../core/services.js';
 import { plexGet } from '../../../core/plex-client.js';
@@ -29,15 +30,7 @@ interface PlexAllResponse<T> {
   MediaContainer?: { Metadata?: T[] };
 }
 
-/** "2026-W27" — the ISO-8601 week key, used as the ledger key. Mirrors stock-digest's weekKey. */
-export function weekKey(date: Date): string {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayNum = d.getUTCDay() || 7; // Mon=1..Sun=7
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-}
+export { weekKey };
 
 export interface ScanOpts {
   /** Override "now" (tests). Defaults to a fresh Date. */

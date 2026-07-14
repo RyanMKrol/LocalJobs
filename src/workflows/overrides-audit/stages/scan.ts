@@ -1,20 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import type { JobContext } from '../../../core/types.js';
+import { weekKey } from '../../../core/dates.js';
 import { listStaleOverrides, markWorkItem } from '../../../db/store.js';
 import { overridesAuditConfig } from '../config.js';
 import type { StaleOverrideReportRow, StaleOverridesReport } from '../types.js';
 
 export const JOB_NAME = 'overrides-audit-scan';
 
-/** "2026-W27" — the ISO-8601 week key, used as the ledger key. Mirrors plex-space-saver's weekKey. */
-export function weekKey(date: Date): string {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayNum = d.getUTCDay() || 7; // Mon=1..Sun=7
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-}
+export { weekKey };
 
 /** Render a millisecond age as a short human string, e.g. "23 day(s)". */
 export function formatAge(ageMs: number | null): string {
