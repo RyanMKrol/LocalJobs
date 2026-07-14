@@ -15084,7 +15084,7 @@
     {
       "id": "T561",
       "title": "Extract a shared recommender pipeline (src/core/recommender/) and re-wire movies + tv-recs onto it, deleting ~1,100 duplicated lines",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T559",
         "T560",
