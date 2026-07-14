@@ -85,6 +85,23 @@ scoped to "just the N newest files" instead of the whole library.
 "every row for a job" query), a deliberate, scope-driven exception to the "all SQL goes through
 store.ts" convention, confined to this one workflow-local file. Read-only, never a paid/remote call.
 
+## The evaluate → apply gate is a REAL pre-mutation check, not the trivial minimum (T574)
+
+`contracts.ts`'s three gates all read the ledger via `stages/ledger.ts`, but they are NOT uniformly
+trivial. `plexLanguageDiscoverContract`/`plexLanguageResolveContract` stay the sanctioned trivial
+"the ledger is readable" minimum (per `src/workflows/CLAUDE.md`'s gate rule) — there's no meaningful
+artifact shape to assert before those read-only stages. `plexLanguageEvaluateContract`, however, sits
+directly in front of `plex-language-apply` — the repo's ONLY externally-mutating stage — so it asserts
+something real: every `plex-language-evaluate` ledger row with `detail.status === 'change'` must carry
+a numeric `detail.proposedAudio.streamId` AND a non-null `detail.currentAudio`. This is exactly the
+malformation `apply.ts` currently checks for and silently skips at runtime (`!discover ||
+typeof evalDetail.proposedAudio?.streamId !== 'number'`, `stages/apply.ts` ~line 54) — the gate now
+catches an evaluate-logic drift LOUD, at the boundary, before any file reaches the mutating Plex call,
+instead of it quietly showing up as a "skipped as malformed" apply-run log line. An empty ledger, or
+one where every row is `'skip'`, passes trivially (nothing to apply). Covered by
+`lib.test.ts` (valid change/skip rows → pass; a `'change'` row missing `proposedAudio.streamId` or with
+a null `currentAudio` → fail, naming the offending `itemKey`).
+
 ## Fully unattended — no per-run manual sign-off, by explicit owner decision
 
 The owner does not want to review every run by hand; this runs on the workflow's weekly schedule with

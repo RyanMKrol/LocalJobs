@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { evaluatePart } from './lib.js';
+import { plexLanguageEvaluateContract } from './contracts.js';
+import { markWorkItem } from '../../db/store.js';
+import type { EvaluateDetail } from './types.js';
 import type { PlexPart } from './types.js';
 
 test('evaluatePart resolves a genuine channel-count tie to change/skip, never a 3rd status', () => {
@@ -59,4 +63,65 @@ test('evaluatePart reports skip when the current selection already matches (no c
 
   assert.equal(entry.status, 'skip');
   assert.equal(entry.proposedAudio?.streamId, 41);
+});
+
+test('plexLanguageEvaluateContract passes on an empty ledger', async () => {
+  // Nothing has been recorded for this job name in this run, so the gate has
+  // no "change" rows to violate — must not fail on the empty case.
+  const result = await plexLanguageEvaluateContract().check();
+  assert.equal(result.ok, true);
+});
+
+test('plexLanguageEvaluateContract passes when every row is a valid "change" or "skip"', async () => {
+  const validChange: EvaluateDetail = {
+    name: 'Valid Change Movie',
+    status: 'change',
+    currentAudio: { streamId: 1, label: 'English', isExplicit: true },
+    currentSubtitle: { streamId: null, label: 'None', isExplicit: false },
+    proposedAudio: { streamId: 2, label: 'Japanese', isExplicit: false },
+  };
+  const skipRow: EvaluateDetail = {
+    name: 'Skip Movie',
+    status: 'skip',
+    currentAudio: { streamId: 3, label: 'English', isExplicit: true },
+    currentSubtitle: { streamId: null, label: 'None', isExplicit: false },
+  };
+
+  markWorkItem('plex-language-evaluate', `T574-valid-change-${randomUUID()}`, 'success', { detail: validChange });
+  markWorkItem('plex-language-evaluate', `T574-skip-${randomUUID()}`, 'success', { detail: skipRow });
+
+  const result = await plexLanguageEvaluateContract().check();
+  assert.equal(result.ok, true);
+});
+
+test('plexLanguageEvaluateContract fails and names the offending itemKey when a "change" row is missing a numeric proposedAudio.streamId', async () => {
+  const badKey = `T574-bad-streamid-${randomUUID()}`;
+  const malformed: EvaluateDetail = {
+    name: 'Malformed Movie (no streamId)',
+    status: 'change',
+    currentAudio: { streamId: 1, label: 'English', isExplicit: true },
+    currentSubtitle: { streamId: null, label: 'None', isExplicit: false },
+    // proposedAudio deliberately omitted — mirrors apply.ts's runtime skip condition.
+  };
+  markWorkItem('plex-language-evaluate', badKey, 'success', { detail: malformed });
+
+  const result = await plexLanguageEvaluateContract().check();
+  assert.equal(result.ok, false);
+  assert.ok(result.violations?.some((v: string) => v.includes(badKey)));
+  assert.ok(result.checks?.some((c) => !c.ok && c.actual?.includes(badKey)));
+});
+
+test('plexLanguageEvaluateContract fails and names the offending itemKey when a "change" row has a null currentAudio', async () => {
+  const badKey = `T574-bad-currentaudio-${randomUUID()}`;
+  const malformed = {
+    name: 'Malformed Movie (no currentAudio)',
+    status: 'change',
+    currentAudio: null,
+    proposedAudio: { streamId: 5, label: 'Japanese', isExplicit: false },
+  } as unknown as EvaluateDetail;
+  markWorkItem('plex-language-evaluate', badKey, 'success', { detail: malformed });
+
+  const result = await plexLanguageEvaluateContract().check();
+  assert.equal(result.ok, false);
+  assert.ok(result.violations?.some((v: string) => v.includes(badKey)));
 });
