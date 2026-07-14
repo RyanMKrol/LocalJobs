@@ -67,7 +67,9 @@ export function fmtDuration(ms: number | null): string {
   const s = ms / 1000;
   if (s < 60) return `${s.toFixed(1)}s`;
   const m = Math.floor(s / 60);
-  return `${m}m ${Math.round(s % 60)}s`;
+  if (m < 60) return `${m}m ${Math.round(s % 60)}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 export function fmtTime(t: string | null): string {
@@ -79,8 +81,9 @@ export function fmtTime(t: string | null): string {
 
 export function fmtRelative(t: string | null): string {
   if (!t) return '—';
-  const d = new Date(t.replace(' ', 'T') + 'Z').getTime();
+  const d = new Date(t.includes('Z') || t.includes('T') ? t : t.replace(' ', 'T') + 'Z').getTime();
   const diff = Date.now() - d;
+  if (diff < 0) return 'just now';
   const s = Math.round(diff / 1000);
   if (s < 60) return `${s}s ago`;
   const m = Math.round(s / 60);

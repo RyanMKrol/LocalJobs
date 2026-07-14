@@ -94,6 +94,10 @@ async function main() {
     assert.equal(fmtDuration(90_000), '1m 30s');
   });
 
+  await test('fmtDuration: durations over an hour render as "Xh Ym"', () => {
+    assert.equal(fmtDuration(2 * 60 * 60 * 1000 + 5 * 60 * 1000 + 12_000), '2h 5m');
+  });
+
   await test('fmtRelative: null renders as an em dash', () => {
     assert.equal(fmtRelative(null), '—');
   });
@@ -106,6 +110,16 @@ async function main() {
   await test('fmtRelative: a timestamp an hour ago renders in hours', () => {
     const t = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
     assert.match(fmtRelative(t), /^\d+h ago$/);
+  });
+
+  await test('fmtRelative: an already-ISO (Z-suffixed) input parses without NaN', () => {
+    const t = new Date(Date.now() - 5_000).toISOString();
+    assert.match(fmtRelative(t), /^\d+s ago$/);
+  });
+
+  await test('fmtRelative: a future timestamp (clock skew) clamps to "just now"', () => {
+    const t = new Date(Date.now() + 2_000).toISOString();
+    assert.equal(fmtRelative(t), 'just now');
   });
 
   await test('createPollController: discards a stale response that resolves after a newer one', async () => {
