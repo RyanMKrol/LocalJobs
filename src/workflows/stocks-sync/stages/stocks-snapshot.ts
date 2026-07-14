@@ -81,21 +81,21 @@ export async function runStocksSnapshot(
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
   const now = opts.now ?? new Date();
 
-  ctx.log('info: stocks-snapshot starting — building the portfolio report from stocks-resolve-names output');
+  ctx.log('stocks-snapshot starting — building the portfolio report from stocks-resolve-names output');
 
   const positions = readNamedPositionsFn();
-  ctx.log(`info: read ${positions.length} named position(s) from stocks-resolve-names`);
+  ctx.log(`read ${positions.length} named position(s) from stocks-resolve-names`);
 
   const counts = workItemCounts(JOB_NAME);
-  ctx.log(`info: ledger: ${counts['success'] ?? 0} previously recorded`);
+  ctx.log(`ledger: ${counts['success'] ?? 0} previously recorded`);
 
   writePortfolioFn(positions);
   ctx.log(
-    `info: wrote ${positions.length} position(s) to data/out/portfolio.json and data/out/portfolio.md`,
+    `wrote ${positions.length} position(s) to data/out/portfolio.json and data/out/portfolio.md`,
   );
 
   if (positions.length === 0) {
-    ctx.log('info: no open positions to record — done');
+    ctx.log('no open positions to record — done');
     ctx.progress(100, 'no positions to record');
     return;
   }
@@ -105,7 +105,7 @@ export async function runStocksSnapshot(
     const { absolute, percent } = priceDiff(p);
     done++;
     ctx.log(
-      `info: [${done}/${positions.length}] [${p.account}] ${p.ticker}: qty ${p.quantity}, ` +
+      `[${done}/${positions.length}] [${p.account}] ${p.ticker}: qty ${p.quantity}, ` +
         `avg ${p.averageBuyPrice}, current ${p.currentPrice}, diff ${absolute.toFixed(2)} (${percent.toFixed(2)}%)`,
     );
     ctx.progress((done / positions.length) * 100, `${done}/${positions.length} processed`);
@@ -124,7 +124,7 @@ export async function runStocksSnapshot(
   });
 
   ctx.log(
-    `info: stocks-snapshot complete — recorded 1 combined ledger row (${key}) for ${positions.length} ` +
+    `stocks-snapshot complete — recorded 1 combined ledger row (${key}) for ${positions.length} ` +
       `position(s), total value ${totalValue.toFixed(2)}`,
   );
   ctx.progress(100, `${positions.length} position(s) recorded for ${key}`);

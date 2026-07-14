@@ -52,12 +52,12 @@ export async function runStockPortfolioFetch(
   const key = weekKey(now);
   const label = weekLabel(now);
 
-  ctx.log('info: stock-portfolio-fetch starting — fetching stock-digest\'s own snapshot from Trading212 (read-only)');
+  ctx.log('stock-portfolio-fetch starting — fetching stock-digest\'s own snapshot from Trading212 (read-only)');
 
   const rawInvestPositions = await callService('trading212', () => baseFetchFn(apiKeyId, apiSecretKey), {
     cacheKey: useCache ? 't212:portfolio:invest' : undefined,
   });
-  ctx.log(`info: fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
+  ctx.log(`fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
   let positions = rawInvestPositions.map((p) => normalizePosition(p, 'invest'));
 
   let isaCount = 0;
@@ -66,14 +66,14 @@ export async function runStockPortfolioFetch(
       cacheKey: useCache ? 't212:portfolio:isa' : undefined,
     });
     isaCount = rawIsaPositions.length;
-    ctx.log(`info: fetched ${isaCount} open position(s) from Trading212 ISA account`);
+    ctx.log(`fetched ${isaCount} open position(s) from Trading212 ISA account`);
     positions = positions.concat(rawIsaPositions.map((p) => normalizePosition(p, 'isa')));
   } else {
-    ctx.log('info: no ISA credentials configured (TRADING212_ISA_API_KEY_ID / _SECRET_KEY) — Invest account only');
+    ctx.log('no ISA credentials configured (TRADING212_ISA_API_KEY_ID / _SECRET_KEY) — Invest account only');
   }
 
   writeRawPortfolioFn(positions);
-  ctx.log(`info: wrote ${positions.length} raw position(s) to data/out/raw-portfolio.json`);
+  ctx.log(`wrote ${positions.length} raw position(s) to data/out/raw-portfolio.json`);
 
   const investCount = rawInvestPositions.length;
 
@@ -89,7 +89,7 @@ export async function runStockPortfolioFetch(
   });
 
   ctx.log(
-    `info: stock-portfolio-fetch complete — recorded 1 ledger row (${key}) for ${positions.length} ` +
+    `stock-portfolio-fetch complete — recorded 1 ledger row (${key}) for ${positions.length} ` +
       `fetched position(s) (${investCount} Invest, ${isaCount} ISA)`,
   );
   ctx.progress(100, `${positions.length} position(s) fetched for ${label}`);

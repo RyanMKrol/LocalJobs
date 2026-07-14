@@ -52,15 +52,15 @@ export async function runStocksNotify(
   const freshBreachesPath = opts.freshBreachesPath ?? stocksSyncConfig.freshBreachesJsonPath;
 
   const freshBreaches = readFreshBreaches(freshBreachesPath);
-  ctx.log(`info: stocks-notify starting — read ${freshBreaches.length} fresh breach(es) from ${freshBreachesPath}`);
+  ctx.log(`stocks-notify starting — read ${freshBreaches.length} fresh breach(es) from ${freshBreachesPath}`);
 
   if (freshBreaches.length === 0) {
-    ctx.log('info: stocks-notify complete — no fresh breaches, no notification sent');
+    ctx.log('stocks-notify complete — no fresh breaches, no notification sent');
     return;
   }
 
   const digest = buildDigest(freshBreaches);
-  ctx.log(`info: sending ONE push for ${freshBreaches.length} fresh breach(es): ${digest.title}`);
+  ctx.log(`sending ONE push for ${freshBreaches.length} fresh breach(es): ${digest.title}`);
   const res = await pushFn(digest.title, digest.body, { job: 'stocks-notify' });
   ctx.log(res.ok ? 'stocks-notify complete — notification sent' : `stocks-notify — push FAILED: ${res.error}`, res.ok ? 'info' : 'error');
   if (!res.ok) {

@@ -70,7 +70,7 @@ export async function runStockPortfolioSnapshot(
   const label = weekLabel(now);
 
   if (!ctx.rootAllowed(key)) {
-    ctx.log(`info: root ${key} not in this limited run's selection — skipping`);
+    ctx.log(`root ${key} not in this limited run's selection — skipping`);
     ctx.progress(100, 'skipped — not selected');
     return;
   }
@@ -89,38 +89,38 @@ export async function runStockPortfolioSnapshot(
     ((isins) => resolveOpenFigiTickersBatched(isins, process.env.OPENFIGI_API_KEY));
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
 
-  ctx.log('info: stock-portfolio-snapshot starting — resolving tickers from stock-portfolio-fetch\'s raw-portfolio.json');
+  ctx.log('stock-portfolio-snapshot starting — resolving tickers from stock-portfolio-fetch\'s raw-portfolio.json');
 
   let positions = readRawPortfolioFn();
-  ctx.log(`info: read ${positions.length} raw position(s) from stock-portfolio-fetch`);
+  ctx.log(`read ${positions.length} raw position(s) from stock-portfolio-fetch`);
 
   if (positions.length > 0) {
-    ctx.log('info: resolving ISIN + real-world ticker for each position via Trading212 instruments-metadata + OpenFIGI');
+    ctx.log('resolving ISIN + real-world ticker for each position via Trading212 instruments-metadata + OpenFIGI');
     try {
       const instruments = await fetchInstrumentsMetadataFn(apiKeyId, apiSecretKey);
-      ctx.log(`info: fetched ${instruments.length} instrument(s) from Trading212 instruments-metadata`);
+      ctx.log(`fetched ${instruments.length} instrument(s) from Trading212 instruments-metadata`);
       const isinByTicker = new Map(instruments.map((i) => [i.ticker, i.isin]));
       positions = await resolveTickers(ctx, positions, isinByTicker, resolveOpenFigiTickersFn);
       const resolvedCount = positions.filter((p) => p.resolvedTicker).length;
-      ctx.log(`info: resolved a real-world ticker for ${resolvedCount}/${positions.length} position(s)`);
+      ctx.log(`resolved a real-world ticker for ${resolvedCount}/${positions.length} position(s)`);
     } catch (err) {
-      ctx.log(`warn: ticker resolution failed — continuing without isin/resolvedTicker: ${(err as Error).message}`);
+      ctx.log(`ticker resolution failed — continuing without isin/resolvedTicker: ${(err as Error).message}`, 'warn');
     }
   }
 
   writePortfolioFn(positions);
-  ctx.log(`info: wrote ${positions.length} position(s) to data/out/portfolio.json`);
+  ctx.log(`wrote ${positions.length} position(s) to data/out/portfolio.json`);
 
   for (const p of positions) {
     ctx.log(
-      `info: [${p.account}] ${p.ticker}` +
+      `[${p.account}] ${p.ticker}` +
         `${p.resolvedTicker ? ` (resolved: ${p.resolvedTicker})` : ''}: qty ${p.quantity}, ` +
         `avg ${p.averageBuyPrice}, current ${p.currentPrice}`,
     );
   }
 
   if (positions.length === 0) {
-    ctx.log('info: no open positions to record — done');
+    ctx.log('no open positions to record — done');
     ctx.progress(100, 'no positions to record');
     return;
   }
@@ -140,7 +140,7 @@ export async function runStockPortfolioSnapshot(
 
   ctx.progress(100, `${positions.length} position(s) recorded for ${label}`);
   ctx.log(
-    `info: stock-portfolio-snapshot complete — recorded 1 combined ledger row (${key}) for ` +
+    `stock-portfolio-snapshot complete — recorded 1 combined ledger row (${key}) for ` +
       `${positions.length} position(s), total value ${totalValue.toFixed(2)}, ${resolvedCount} real-ticker resolved`,
   );
 }

@@ -51,14 +51,14 @@ export async function runStocksResolveNames(
   const writeNamedPositionsFn = opts.writeNamedPositions ?? writeNamedPositions;
   const now = opts.now ?? new Date();
 
-  ctx.log('info: stocks-resolve-names starting — resolving company names from Trading212 metadata');
+  ctx.log('stocks-resolve-names starting — resolving company names from Trading212 metadata');
 
   const positions = readRawPositionsFn();
-  ctx.log(`info: read ${positions.length} raw position(s) from stocks-fetch`);
+  ctx.log(`read ${positions.length} raw position(s) from stocks-fetch`);
 
   if (positions.length === 0) {
     writeNamedPositionsFn(positions);
-    ctx.log('info: no open positions to resolve — done');
+    ctx.log('no open positions to resolve — done');
     ctx.progress(100, 'no positions to resolve');
     return;
   }
@@ -73,23 +73,23 @@ export async function runStocksResolveNames(
     ((keyId, secret) => callService('trading212-instruments', () => fetchInstrumentsMetadata(keyId, secret), { cacheKey: 't212-instruments:all' }));
 
   const instruments = await fetchInstrumentsMetadataFn(apiKeyId, apiSecretKey);
-  ctx.log(`info: fetched ${instruments.length} instrument(s) from Trading212 instruments-metadata`);
+  ctx.log(`fetched ${instruments.length} instrument(s) from Trading212 instruments-metadata`);
   const nameByTicker = new Map(instruments.map((i) => [i.ticker, i.name]));
 
   const namedPositions = positions.map((p) => {
     const name = nameByTicker.get(p.ticker);
     if (!name) {
-      ctx.log(`warn: could not resolve company name for Trading212 ticker ${p.ticker}`);
+      ctx.log(`could not resolve company name for Trading212 ticker ${p.ticker}`, 'warn');
       return p;
     }
     return { ...p, name };
   });
 
   const resolvedCount = namedPositions.filter((p) => p.name).length;
-  ctx.log(`info: resolved a company name for ${resolvedCount}/${namedPositions.length} position(s)`);
+  ctx.log(`resolved a company name for ${resolvedCount}/${namedPositions.length} position(s)`);
 
   writeNamedPositionsFn(namedPositions);
-  ctx.log(`info: wrote ${namedPositions.length} named position(s) to data/out/named-positions.json`);
+  ctx.log(`wrote ${namedPositions.length} named position(s) to data/out/named-positions.json`);
 
   const key = dayKey(now);
   markWorkItem(JOB_NAME, key, 'success', {
@@ -103,7 +103,7 @@ export async function runStocksResolveNames(
   });
 
   ctx.log(
-    `info: stocks-resolve-names complete — recorded 1 ledger row (${key}) for ${namedPositions.length} ` +
+    `stocks-resolve-names complete — recorded 1 ledger row (${key}) for ${namedPositions.length} ` +
       `position(s), ${resolvedCount} name(s) resolved`,
   );
   ctx.progress(100, `${namedPositions.length} position(s) recorded for ${key}`);

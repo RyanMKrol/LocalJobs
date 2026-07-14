@@ -203,76 +203,78 @@ export async function runStockDigestBuild(
   const label = weekLabel(now);
   const claudeRunner = opts.claudeRunner ?? runClaude;
 
-  ctx.log(`info: stock-digest-build starting — week: ${key}, reading portfolio from ${portfolioPath}`);
+  ctx.log(`stock-digest-build starting — week: ${key}, reading portfolio from ${portfolioPath}`);
 
   const positions = readPortfolio(portfolioPath);
   if (positions.length === 0) {
     ctx.log(
-      `warn: no positions found at ${portfolioPath} — stock-portfolio-snapshot may not have run yet, or has zero holdings; skipping this run's digest`,
+      `no positions found at ${portfolioPath} — stock-portfolio-snapshot may not have run yet, or has zero holdings; skipping this run's digest`,
+      'warn',
     );
     ctx.progress(100, 'skipped — no portfolio data');
     return;
   }
 
-  ctx.log(`info: read ${positions.length} position(s) from ${portfolioPath}`);
+  ctx.log(`read ${positions.length} position(s) from ${portfolioPath}`);
 
   const sectors = readSectorMap(sectorsPath);
   const sectorCount = Object.values(sectors).filter(Boolean).length;
   if (sectorCount === 0) {
-    ctx.log(`warn: no resolved sectors found at ${sectorsPath} — digest will omit the diversification section`);
+    ctx.log(`no resolved sectors found at ${sectorsPath} — digest will omit the diversification section`, 'warn');
   } else {
-    ctx.log(`info: read ${sectorCount} resolved sector(s) from ${sectorsPath}`);
+    ctx.log(`read ${sectorCount} resolved sector(s) from ${sectorsPath}`);
   }
 
   const facts = buildFacts(positions, now, sectors);
-  ctx.log(`info: total portfolio value: ${facts.totalValue.toFixed(2)}`);
+  ctx.log(`total portfolio value: ${facts.totalValue.toFixed(2)}`);
   for (const h of facts.holdings) {
     ctx.log(
-      `info: [${h.account}] ${h.ticker}: qty ${h.quantity}, value ${h.currentValue.toFixed(2)}, ` +
+      `[${h.account}] ${h.ticker}: qty ${h.quantity}, value ${h.currentValue.toFixed(2)}, ` +
         `${h.portfolioSharePct.toFixed(1)}% of portfolio, gain ${h.gainPct.toFixed(1)}% since buy`,
     );
   }
   ctx.log(
-    `info: top winners: ${facts.winners.map((m) => `${m.ticker} ${m.gainPct.toFixed(1)}%`).join(', ') || 'none'}`,
+    `top winners: ${facts.winners.map((m) => `${m.ticker} ${m.gainPct.toFixed(1)}%`).join(', ') || 'none'}`,
   );
   ctx.log(
-    `info: top losers: ${facts.losers.map((m) => `${m.ticker} ${m.gainPct.toFixed(1)}%`).join(', ') || 'none'}`,
+    `top losers: ${facts.losers.map((m) => `${m.ticker} ${m.gainPct.toFixed(1)}%`).join(', ') || 'none'}`,
   );
   if (facts.sectorBreakdown.length > 0) {
     for (const s of facts.sectorBreakdown) {
-      ctx.log(`info: sector "${s.industry}": ${s.valuePct.toFixed(1)}% of portfolio`);
+      ctx.log(`sector "${s.industry}": ${s.valuePct.toFixed(1)}% of portfolio`);
     }
   } else {
-    ctx.log('info: sector breakdown empty — no tickers had a resolved industry; section omitted from digest');
+    ctx.log('sector breakdown empty — no tickers had a resolved industry; section omitted from digest');
   }
 
   mkdirSync(outDir, { recursive: true });
   const factsPath = factsPathFor(key, outDir);
   writeFileSync(factsPath, JSON.stringify(facts, null, 2), 'utf8');
-  ctx.log(`info: wrote raw facts JSON to ${factsPath}`);
+  ctx.log(`wrote raw facts JSON to ${factsPath}`);
 
   const prompt = buildDigestPrompt(facts);
-  ctx.log(`info: calling Claude (${claudeModel}, effort ${claudeEffort}) to narrate the digest…`);
+  ctx.log(`calling Claude (${claudeModel}, effort ${claudeEffort}) to narrate the digest…`);
   const result = await claudeRunner(prompt, claudeModel, claudeEffort);
   if (result.rateLimited) {
-    ctx.log('warn: Claude rate/usage limit hit — pausing this stage, will retry next run', 'warn');
+    ctx.log('Claude rate/usage limit hit — pausing this stage, will retry next run', 'warn');
     return;
   }
   if (!result.ok) {
     throw new Error(`Claude call failed: ${result.error ?? 'unknown error'}`);
   }
-  ctx.log('info: Claude narration received');
+  ctx.log('Claude narration received');
 
   const unknownTickers = findUnknownTickers(extractCandidateTickers(result.text), facts);
   if (unknownTickers.length > 0) {
     ctx.log(
-      `warn: narrated digest mentions ticker-like token(s) not found in facts.holdings: ${unknownTickers.join(', ')} — possible narration drift, verify manually`,
+      `narrated digest mentions ticker-like token(s) not found in facts.holdings: ${unknownTickers.join(', ')} — possible narration drift, verify manually`,
+      'warn',
     );
   }
 
   const mdPath = reportPathFor(key, outDir);
   writeFileSync(mdPath, result.text, 'utf8');
-  ctx.log(`info: wrote digest markdown to ${mdPath}`);
+  ctx.log(`wrote digest markdown to ${mdPath}`);
 
   markWorkItem(JOB_NAME, key, 'success', {
     // Explicit rootKey (== this stage's own item_key here) so the Input → Output
@@ -284,5 +286,5 @@ export async function runStockDigestBuild(
   });
 
   ctx.progress(100, `digest for ${label} written`);
-  ctx.log(`info: stock-digest-build complete — ${positions.length} position(s) narrated for ${label}`);
+  ctx.log(`stock-digest-build complete — ${positions.length} position(s) narrated for ${label}`);
 }

@@ -74,7 +74,14 @@ function pos(
     'stocks-watch must record ledger activity even when nothing breaches, so it is never misclassified as noop',
   );
   assert.deepEqual(readFreshBreaches(), [], 'no breaches writes an empty fresh-breaches.json');
+
+  const checkRow = getWorkItem(WATCH_JOB, positionKey('invest', MSFT));
+  const checkDetail = JSON.parse(checkRow?.detail ?? '{}');
+  assert.equal(checkDetail.name, '[invest] T300MSFT', 'per-run check ledger row detail carries a name label, not blank');
+  assert.equal(checkDetail.ticker, MSFT, 'per-run check ledger row detail carries the ticker');
+
   console.log('  ✓ no-breach run still advances ledger items (never misclassified as noop)');
+  console.log('  ✓ per-run check ledger row detail is labeled with name/ticker (not blank)');
 }
 
 // (b) a fresh breach is recorded in fresh-breaches.json for stocks-notify to consume.

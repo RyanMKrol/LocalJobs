@@ -49,12 +49,12 @@ export async function runStocksFetch(
   const writeRawPositionsFn = opts.writeRawPositions ?? writeRawPositions;
   const now = opts.now ?? new Date();
 
-  ctx.log('info: stocks-fetch starting — fetching open positions from Trading212 (read-only)');
+  ctx.log('stocks-fetch starting — fetching open positions from Trading212 (read-only)');
 
   const rawInvestPositions = await callService('trading212', () => baseFetchFn(apiKeyId, apiSecretKey), {
     cacheKey: useCache ? 't212:portfolio:invest' : undefined,
   });
-  ctx.log(`info: fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
+  ctx.log(`fetched ${rawInvestPositions.length} open position(s) from Trading212 Invest account`);
   let positions = rawInvestPositions.map((p) => normalizePosition(p, 'invest'));
 
   let isaCount = 0;
@@ -63,14 +63,14 @@ export async function runStocksFetch(
       cacheKey: useCache ? 't212:portfolio:isa' : undefined,
     });
     isaCount = rawIsaPositions.length;
-    ctx.log(`info: fetched ${isaCount} open position(s) from Trading212 ISA account`);
+    ctx.log(`fetched ${isaCount} open position(s) from Trading212 ISA account`);
     positions = positions.concat(rawIsaPositions.map((p) => normalizePosition(p, 'isa')));
   } else {
-    ctx.log('info: no ISA credentials configured (TRADING212_ISA_API_KEY_ID / _SECRET_KEY) — Invest account only');
+    ctx.log('no ISA credentials configured (TRADING212_ISA_API_KEY_ID / _SECRET_KEY) — Invest account only');
   }
 
   writeRawPositionsFn(positions);
-  ctx.log(`info: wrote ${positions.length} raw position(s) to data/out/raw-positions.json`);
+  ctx.log(`wrote ${positions.length} raw position(s) to data/out/raw-positions.json`);
 
   const key = dayKey(now);
   const investCount = rawInvestPositions.length;
@@ -87,7 +87,7 @@ export async function runStocksFetch(
   });
 
   ctx.log(
-    `info: stocks-fetch complete — recorded 1 ledger row (${key}) for ${positions.length} ` +
+    `stocks-fetch complete — recorded 1 ledger row (${key}) for ${positions.length} ` +
       `fetched position(s) (${investCount} Invest, ${isaCount} ISA)`,
   );
   ctx.progress(100, `${positions.length} position(s) fetched for ${key}`);

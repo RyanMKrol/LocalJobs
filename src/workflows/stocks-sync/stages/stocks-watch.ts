@@ -58,10 +58,10 @@ export async function runStocksWatch(
   const portfolioPath = opts.portfolioPath ?? stocksSyncConfig.portfolioJsonPath;
   const freshBreachesPath = opts.freshBreachesPath ?? stocksSyncConfig.freshBreachesJsonPath;
 
-  ctx.log('info: stocks-watch starting — checking positions for a 30%+ gain since average buy price');
+  ctx.log('stocks-watch starting — checking positions for a 30%+ gain since average buy price');
 
   const positions = readPortfolio(portfolioPath);
-  ctx.log(`info: read ${positions.length} position(s) from ${portfolioPath}`);
+  ctx.log(`read ${positions.length} position(s) from ${portfolioPath}`);
 
   const freshBreaches: BreachLine[] = [];
 
@@ -76,9 +76,9 @@ export async function runStocksWatch(
 
     if (gain >= BREACH_THRESHOLD_PCT) {
       if (alreadyNotified) {
-        ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — still above threshold, already notified, skipping`);
+        ctx.log(`${label}: gain ${gain.toFixed(1)}% — still above threshold, already notified, skipping`);
       } else {
-        ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — FRESH breach of ${BREACH_THRESHOLD_PCT}%`);
+        ctx.log(`${label}: gain ${gain.toFixed(1)}% — FRESH breach of ${BREACH_THRESHOLD_PCT}%`);
         freshBreaches.push({
           ticker: position.ticker,
           account: position.account,
@@ -88,7 +88,7 @@ export async function runStocksWatch(
         });
       }
     } else if (alreadyNotified) {
-      ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — dropped back below threshold, resetting ledger`);
+      ctx.log(`${label}: gain ${gain.toFixed(1)}% — dropped back below threshold, resetting ledger`);
       markWorkItem(WATCH_JOB, notifiedKey, 'skipped', {
         detail: {
           name: `${label} — reset (dropped below threshold)`,
@@ -98,16 +98,22 @@ export async function runStocksWatch(
         },
       });
     } else {
-      ctx.log(`info: ${label}: gain ${gain.toFixed(1)}% — below threshold`);
+      ctx.log(`${label}: gain ${gain.toFixed(1)}% — below threshold`);
     }
 
     markWorkItem(WATCH_JOB, key, 'success', {
-      detail: { gainPct: gain, breaching: gain >= BREACH_THRESHOLD_PCT },
+      detail: {
+        name: label,
+        ticker: position.ticker,
+        account: position.account,
+        gainPct: gain,
+        breaching: gain >= BREACH_THRESHOLD_PCT,
+      },
     });
 
     ctx.progress((processed / Math.max(positions.length, 1)) * 100, `${processed}/${positions.length} checked`);
   }
 
   writeFileSync(freshBreachesPath, JSON.stringify(freshBreaches, null, 2));
-  ctx.log(`info: stocks-watch complete — ${freshBreaches.length} fresh breach(es) written to ${freshBreachesPath}`);
+  ctx.log(`stocks-watch complete — ${freshBreaches.length} fresh breach(es) written to ${freshBreachesPath}`);
 }

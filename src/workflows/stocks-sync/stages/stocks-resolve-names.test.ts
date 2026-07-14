@@ -16,9 +16,12 @@ import {
   type RawPositionsReader,
 } from './stocks-resolve-names.js';
 
-function fakeCtx(logs?: string[]): JobContext {
+function fakeCtx(logs?: string[], levels?: Array<{ msg: string; level?: string }>): JobContext {
   return {
-    log: (msg) => logs?.push(msg),
+    log: (msg, level) => {
+      logs?.push(msg);
+      levels?.push({ msg, level });
+    },
     progress() {},
     selectedRoots: () => null,
     rootAllowed: () => true,
@@ -126,9 +129,10 @@ describe('runStocksResolveNames', () => {
     const pos = makeNormalized({ ticker: 'UNKNOWN_TICKER_EQ' });
     const { write, calls } = makeWriterSpy();
     const logs: string[] = [];
+    const levels: Array<{ msg: string; level?: string }> = [];
     const now = new Date('2026-07-13T10:00:00.000Z');
 
-    await runStocksResolveNames(fakeCtx(logs), {
+    await runStocksResolveNames(fakeCtx(logs, levels), {
       readRawPositions: stubRaw([pos]),
       fetchInstrumentsMetadata: async () => [makeInstrument({ ticker: 'OTHER_TICKER_EQ' })],
       writeNamedPositions: write,
@@ -137,8 +141,8 @@ describe('runStocksResolveNames', () => {
 
     assert.equal(calls[0][0].name, undefined);
     assert.ok(
-      logs.some((l) => l.startsWith('warn:') && l.includes('UNKNOWN_TICKER_EQ')),
-      'should log a warn naming the unresolved ticker',
+      levels.some((l) => l.level === 'warn' && l.msg.includes('UNKNOWN_TICKER_EQ')),
+      'should log at warn level naming the unresolved ticker',
     );
 
     const row = getWorkItem(JOB, dayKey(now));
