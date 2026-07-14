@@ -51,56 +51,16 @@ export interface TvTasteProfileFile {
   profile: TvTasteProfile;
 }
 
-/** One raw TV show suggestion from a recommender branch. */
-export interface RawSuggestion {
-  title: string;
-  year: number | null;
-  reason: string;
-  /** Which branch produced it. */
-  lens: string;
-}
-
-/** A recommender branch's output artifact (one file per branch). */
-export interface BranchOutputFile {
-  branchId: string;
-  lens: string;
-  generatedAt: string;
-  suggestions: RawSuggestion[];
-  /** Set when the branch was skipped/failed gracefully. */
-  error?: string;
-}
-
-/** One TMDB-verified TV recommendation (the merge stage's output unit). */
-export interface Recommendation {
-  tmdbId: number;
-  title: string;
-  year: number | null;
-  reason: string;
-  /** The branch lens(es) that surfaced it. */
-  lens: string;
-  /** Primary TMDB genre name (for balancing + display). */
-  genre: string;
-  /** TMDB vote_average (context only). */
-  tmdbRating: number | null;
-}
-
-/** Merge-stage artifact: the verified, deduped, balanced recommendation list. */
-export interface RecommendationsFile {
-  generatedAt: string;
-  pooled: number;
-  recommendations: Recommendation[];
-}
-
-/** Persisted cross-run history of past recommendations (for avoid-re-suggesting).
- *  Rows are aligned with `movies`' `RecsHistoryFile` shape ({ tmdbId, title, year, at })
- *  so a single shared notify pipeline can be extracted and future id-based dedup is
- *  possible. New rows always carry all four fields; `tmdbId`/`at` are optional ONLY so
- *  the parse stays tolerant of LEGACY 2-field {title,year} rows written before T560 —
- *  reading such a row must not crash (nothing downstream reads tmdbId/at; branch
- *  prompts consume title/year, which are unchanged). */
-export interface RecsHistoryFile {
-  recommended: Array<{ tmdbId?: number; title: string; year?: number | null; at?: string }>;
-}
+// ── Recommendation layer — the branch/merge/notify artifact shapes are generic
+// across domains and now live in the shared recommender pipeline (T561);
+// re-exported here so existing imports from './types.js' keep working. ──
+export type {
+  BranchOutputFile,
+  RawSuggestion,
+  Recommendation,
+  RecommendationsFile,
+  RecsHistoryFile,
+} from '../../core/recommender/types.js';
 
 // ── Minimal Plex response shapes (only the fields we read) ──
 

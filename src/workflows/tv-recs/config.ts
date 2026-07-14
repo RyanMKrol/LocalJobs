@@ -23,8 +23,8 @@ export const tvRecsConfig = {
   /** The TV library section to read. Default 5 (the owner's "TV Shows"). */
   tvSection: process.env.PLEX_TV_SECTION ?? '5',
 
-  /** The Claude model the recommender branches use. */
-  recsModel: process.env.TV_RECS_MODEL ?? 'claude-sonnet-4-6',
+  /** The Claude model the recommender branches use (aligned with movies, T561). */
+  recsModel: process.env.TV_RECS_MODEL ?? 'claude-sonnet-5',
   /** Owned-library sample size shown to each branch. */
   recsSampleSize: Number(process.env.TV_RECS_SAMPLE ?? 40),
   /** Suggestions asked from each branch (headroom before dedup/quality filter). */

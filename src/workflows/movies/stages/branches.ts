@@ -8,48 +8,35 @@
 // titles (not the full library) plus the full already-suggested history so it avoids
 // re-suggesting owned or previously-recommended films (no obscurity bias: missing
 // canonical films still surface; the deterministic merge filter stays authoritative).
+//
+// T561: the branch-runner mechanics (loading snapshot/taste/history, calling
+// Claude, parsing) moved to src/core/recommender/branch.ts. This file keeps only
+// the movie-specific lens PROMPT TEXT + the `moviesDomain` wiring object the
+// shared pipeline (branch/merge/notify) is parameterized over.
+import { callService } from '../../../core/services.js';
+import { tmdbGet } from '../../../core/plex-client.js';
 import {
   directorsOwnedAtLeast,
+  genreNameFromIds,
   primaryGenre,
+  RECS_JOB,
   stratifiedSample,
   thinGenres,
   topGenres,
 } from '../recs.js';
-import type { PlexMovie, TasteProfile } from '../types.js';
+import { moviesConfig } from '../config.js';
+import type { PlexMovie, TasteProfile, TmdbSearchResponse, TmdbSearchResult } from '../types.js';
+import type {
+  BranchContext as CoreBranchContext,
+  BranchSpec as CoreBranchSpec,
+  RecommenderDomain,
+  Recommendation,
+  TmdbSearchMatch,
+} from '../../../core/recommender/types.js';
 
 export type BranchKind = 'random' | 'targeted';
-
-export interface BranchContext {
-  profile: TasteProfile;
-  movies: PlexMovie[];
-  /** Recent recommendation titles to steer the model away from repeats (legacy window). */
-  recent: string[];
-  /** Owned-library sample size to show (stratified; used by random branches). */
-  sampleSize: number;
-  /** How many films to ask Claude for (T162 — larger ask gives headroom). */
-  ask: number;
-  /** Extra titles to exclude (T162 top-up: everything already collected this run). */
-  exclude?: string[];
-  /**
-   * Full already-recommended/ignored title list (T183): bounded to recsHistoryContext.
-   * When present, replaces `recent` as the "do not re-suggest" context (broader).
-   */
-  alreadySuggested?: string[];
-}
-
-export interface BranchSpec {
-  /** Job name (unique, stable DB key) AND the lens tag on its suggestions. */
-  id: string;
-  lens: string;
-  kind: BranchKind;
-  description: string;
-  /**
-   * Build the branch prompt, or return null to SKIP (e.g. auteur-completion when
-   * no director qualifies) — a skipped branch writes empty suggestions and the
-   * run continues.
-   */
-  build(ctx: BranchContext): string | null;
-}
+export type BranchContext = CoreBranchContext<PlexMovie, TasteProfile>;
+export type BranchSpec = CoreBranchSpec<PlexMovie, TasteProfile>;
 
 /**
  * The shared per-branch rules + JSON contract. The ASK count is parameterized
@@ -144,7 +131,7 @@ function randomBranch(n: number): BranchSpec {
     build(ctx) {
       // Random branches use the stratified sample (balanced across genres) for owned context —
       // they have no narrow lens to filter by, so a representative sample is appropriate.
-      const sample = stratifiedSample(ctx.movies, { keyFn: primaryGenre, target: ctx.sampleSize, seed: 1000 + n });
+      const sample = stratifiedSample(ctx.items, { keyFn: primaryGenre, target: ctx.sampleSize, seed: 1000 + n });
       return [
         `You are a film curator helping me discover new movies. Based on the taste shown by the films I own, recommend films I would enjoy that I do not already own. Lean towards serendipity and variety, not the obvious next pick.`,
         '',
@@ -167,7 +154,7 @@ const auteurBranch: BranchSpec = {
     if (!dirs.length) return null; // nothing to complete → skip gracefully
     const dirLines = dirs.map(([d, c]) => `- ${d} (I own ${c})`).join('\n');
     // Lens-targeted owned subset: films by those specific directors only.
-    const ownedByTheseDirs = ownedByDirectors(ctx.movies, dirs.map(([d]) => d), ctx.sampleSize);
+    const ownedByTheseDirs = ownedByDirectors(ctx.items, dirs.map(([d]) => d), ctx.sampleSize);
     return [
       'I collect certain directors heavily. Recommend acclaimed or notable films BY THESE DIRECTORS that I likely do not own yet — deepen my collection of auteurs I already love.',
       '',
@@ -190,10 +177,10 @@ const canonBranch: BranchSpec = {
     if (!tg.length) return null;
     const genreNames = tg.map(([g]) => g);
     const sampleLines = tg
-      .map(([g]) => `${g}: ${titlesInGenre(ctx.movies, g, 4).map((m) => m.title).join(', ')}`)
+      .map(([g]) => `${g}: ${titlesInGenre(ctx.items, g, 4).map((m) => m.title).join(', ')}`)
       .join('\n');
     // Lens-targeted owned subset: films in those top genres specifically.
-    const ownedInTopGenres = ownedInGenres(ctx.movies, genreNames, ctx.sampleSize);
+    const ownedInTopGenres = ownedInGenres(ctx.items, genreNames, ctx.sampleSize);
     return [
       `My strongest genres are: ${topGenresLine(ctx.profile, 5)}. Recommend CANONICAL, acclaimed, or landmark films IN THOSE GENRES that I appear to have missed — blind spots in my own strengths.`,
       '',
@@ -216,7 +203,7 @@ const thinGenreBranch: BranchSpec = {
     if (!thin.length) return null;
     const thinLine = thin.map(([g, c]) => `${g} (only ${c})`).join(', ');
     // Lens-targeted owned subset: the thin-genre films I already have (few, but show them).
-    const ownedInThinGenres = ownedInGenres(ctx.movies, thin.map(([g]) => g), ctx.sampleSize);
+    const ownedInThinGenres = ownedInGenres(ctx.items, thin.map(([g]) => g), ctx.sampleSize);
     return [
       `I own very few films in some genres: ${thinLine}. Recommend acclaimed films in THOSE thin genres to broaden my library — do NOT amplify my dominant genres.`,
       lensOwnedBlock('Films I already own in these thin genres', ownedInThinGenres),
@@ -239,7 +226,7 @@ const olderEraBranch: BranchSpec = {
       .map(([d, c]) => `${d}: ${c}`)
       .join(', ');
     // Lens-targeted owned subset: pre-1980 films I already own.
-    const ownedOlder = ownedPreYear(ctx.movies, 1980, ctx.sampleSize);
+    const ownedOlder = ownedPreYear(ctx.items, 1980, ctx.sampleSize);
     return [
       `My library skews modern. Here is my by-decade count: ${decades || '(unknown)'}. Recommend acclaimed PRE-1980 classics — foundational films from the eras I under-own (silent era through the 1970s).`,
       lensOwnedBlock('Pre-1980 films I already own', ownedOlder),
@@ -262,7 +249,7 @@ const worldCinemaBranch: BranchSpec = {
       .map(([c, n]) => `${c} (${n})`)
       .join(', ');
     // Lens-targeted owned subset: non-Anglophone films I already own.
-    const ownedForeign = ownedNonAnglophone(ctx.movies, ctx.sampleSize);
+    const ownedForeign = ownedNonAnglophone(ctx.items, ctx.sampleSize);
     return [
       `My library is dominated by these countries: ${countries || '(unknown)'} — mostly Anglophone. Recommend acclaimed NON-ENGLISH-LANGUAGE / world-cinema films I likely do not own, broadening beyond my Anglophone bias.`,
       lensOwnedBlock('Non-Anglophone films I already own', ownedForeign),
@@ -290,3 +277,59 @@ export function branchById(id: string): BranchSpec {
   if (!spec) throw new Error(`unknown recommender branch: ${id}`);
   return spec;
 }
+
+// ── Domain wiring: everything the shared pipeline needs to know about movies ──
+
+/** Map a raw TMDB `/search/movie` result onto the shared pipeline's normalized shape. */
+export function mapTmdbSearchResult(result: TmdbSearchResult | null, title: string, year: number | null): TmdbSearchMatch | null {
+  if (!result) return null;
+  return {
+    id: result.id,
+    title: result.title ?? title,
+    year: result.release_date ? Number(result.release_date.slice(0, 4)) || year : year,
+    vote_average: result.vote_average,
+    vote_count: result.vote_count,
+    genre_ids: result.genre_ids,
+  };
+}
+
+const defaultSearchMovie = (title: string, year: number | null): Promise<TmdbSearchMatch | null> =>
+  callService(
+    'tmdb',
+    async () => {
+      const params = new URLSearchParams({ query: title, include_adult: 'false' });
+      if (year != null) params.set('year', String(year));
+      const resp = await tmdbGet<TmdbSearchResponse>(`/search/movie?${params.toString()}`);
+      return mapTmdbSearchResult(resp.results?.[0] ?? null, title, year);
+    },
+    { cacheKey: `tmdb:search:movie:${title}${year != null ? `:${year}` : ''}` },
+  );
+
+/** Build the recs-only monthly digest push. */
+export function buildDigest(newRecs: Recommendation[]): { count: number; title: string; body: string } {
+  const r = newRecs.length;
+  const recNames = newRecs.map((x) => x.title).slice(0, 8);
+  const body = recNames.join(', ') + (newRecs.length > recNames.length ? `, +${newRecs.length - recNames.length} more` : '');
+  const title = `🍿 ${r} film recommendation${r === 1 ? '' : 's'}`;
+  return { count: r, title, body };
+}
+
+export const moviesDomain: RecommenderDomain<PlexMovie, TasteProfile> = {
+  recsJob: RECS_JOB,
+  snapshotStageName: 'movie-snapshot',
+  mergeStageName: 'rec-merge',
+  notifyStageName: 'movie-recs-notify',
+  config: moviesConfig,
+  branches: BRANCHES,
+  itemsOf: (snapshot) => (snapshot as { movies?: PlexMovie[] }).movies ?? [],
+  profileOf: (taste) => (taste as { profile: TasteProfile }).profile,
+  search: defaultSearchMovie,
+  genreName: genreNameFromIds,
+  tmdbUrl: (tmdbId) => `https://www.themoviedb.org/movie/${tmdbId}`,
+  buildDigest,
+  pushJob: 'movies',
+  pushTags: 'clapper',
+  reportFilename: 'recommendations.md',
+  reportHeading: '# Plex movie recommendations',
+  reportEmptyLine: '_No recommendations this month._',
+};

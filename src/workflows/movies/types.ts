@@ -73,54 +73,16 @@ export interface FranchiseGapsFile {
   collectionExamples?: Record<string, { title: string; year: number | null }>;
 }
 
-// ── Recommendation layer (T146) ──
-
-/** One raw film suggestion from a recommender branch's Claude call. */
-export interface RawSuggestion {
-  title: string;
-  year: number | null;
-  reason: string;
-  /** Which branch produced it (e.g. "auteur-completion", "world-cinema"). */
-  lens: string;
-}
-
-/** A recommender branch's output artifact (one file per branch). */
-export interface BranchOutputFile {
-  branchId: string;
-  lens: string;
-  generatedAt: string;
-  suggestions: RawSuggestion[];
-  /** Set when the branch was skipped/failed gracefully (junk LLM output, etc.). */
-  error?: string;
-}
-
-/** One TMDB-verified recommendation (the merge stage's output unit). */
-export interface Recommendation {
-  tmdbId: number;
-  title: string;
-  year: number | null;
-  reason: string;
-  /** The branch lens(es) that surfaced it (first wins; merged on dedup). */
-  lens: string;
-  /** Primary TMDB genre name (for balancing + display). */
-  genre: string;
-  /** TMDB vote_average (context only). */
-  tmdbRating: number | null;
-}
-
-/** Merge-stage artifact: the verified, deduped, balanced recommendation list. */
-export interface RecommendationsFile {
-  generatedAt: string;
-  /** How many raw suggestions the branches pooled. */
-  pooled: number;
-  recommendations: Recommendation[];
-}
-
-/** Append-only history of recommended films, fed back into branch prompts so
- *  successive months vary. Kept in the job's data/ folder (private). */
-export interface RecsHistoryFile {
-  recommended: { tmdbId: number; title: string; year: number | null; at: string }[];
-}
+// ── Recommendation layer (T146) — the branch/merge/notify artifact shapes are
+// generic across domains and now live in the shared recommender pipeline
+// (T561); re-exported here so existing imports from './types.js' keep working. ──
+export type {
+  BranchOutputFile,
+  RawSuggestion,
+  Recommendation,
+  RecommendationsFile,
+  RecsHistoryFile,
+} from '../../core/recommender/types.js';
 
 /** One TMDB `/search/movie` result (only the fields we read). */
 export interface TmdbSearchResult {

@@ -203,7 +203,7 @@ const backlog: Recommendation[] = [
   const historyBefore = readFileSync(historyFile, 'utf8');
   await assert.rejects(
     runTvRecsNotify(fakeCtx(), { push: failingPush, now: NOW, recsFile, historyFile, reportDir }),
-    /Digest push failed — ntfy unreachable/,
+    /digest push failed \(ntfy unreachable\)/,
     'a failed digest push throws',
   );
   assert.equal(isWorkItemDone(RECS_JOB, recKey(REC_FAIL), 1), false, 'unnotified rec NOT marked done after a failed push');

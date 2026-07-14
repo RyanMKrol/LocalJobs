@@ -304,7 +304,7 @@ const readBranch = (id: string): BranchOutputFile =>
 {
   const ctx: BranchContext = {
     profile: { totalMovies: 2, withTmdbId: 2, genres: { Action: 2 }, directors: {}, decades: {}, countries: {} },
-    movies: snap.movies,
+    items: snap.movies,
     recent: ['Recent Film (2020)'],
     sampleSize: 50,
     ask: 9,
@@ -344,7 +344,7 @@ const readBranch = (id: string): BranchOutputFile =>
   ];
   const ctx: BranchContext = {
     profile: fullProfile.profile,
-    movies: fullMovies,
+    items: fullMovies,
     recent: [],
     sampleSize: 10,
     ask: 5,

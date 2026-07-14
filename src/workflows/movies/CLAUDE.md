@@ -125,15 +125,45 @@ since the last one. Also (re)writes a monthly `recommendations.md` report.
 - (Franchise-gap ignore-to-suppress — `/api/movie-gaps/*` — moved with the audit to
   `missing-movies`; see that workflow's own `CLAUDE.md`.)
 
+## Shared recommender pipeline (T561)
+
+The recommender machinery (branch runner, merge verify/dedup/balance/top-up, notify
+digest/report/history) is **not owned by this folder** — it's generic across domains and lives in
+`src/core/recommender/` (`types.ts`, `pure.ts`, `branch.ts`, `merge.ts`, `notify.ts`), shared with
+`tv-recs` (its independent standalone TV recommender, `src/workflows/tv-recs/`). This folder keeps
+only what's genuinely movie-specific:
+
+- `stages/branches.ts` — the 8 branches' lens PROMPT TEXT (unchanged content) + the
+  `moviesDomain: RecommenderDomain<PlexMovie, TasteProfile>` wiring object (TMDB `/search/movie`
+  endpoint + field mapping, the TMDB movie-genre id table, digest emoji/wording, push
+  job/tags, report heading/filename). Every other workflow file that needs the shared pipeline
+  imports `moviesDomain` from here.
+- `recs.ts` — thin re-exports of the shared pure helpers (`src/core/recommender/pure.ts`) plus
+  `RECS_JOB`, `directorsOwnedAtLeast` (movies' wrapper over the shared `ownedAtLeast`), and the
+  TMDB movie-genre table (`genreNameFromIds`).
+- `stages/recommend.ts`, `stages/merge.ts`, `stages/notify.ts` — thin wrappers that call the
+  shared `runBranch`/`makeBranchJob`, `runMerge`, `runRecsNotify` with `moviesDomain` baked in,
+  preserving every existing exported name (`runBranch`, `makeBranchJob`, `runMerge`,
+  `SearchMovieFn`, `runNotify`, `buildDigest`, …) so the `*.job.ts` wrappers and existing tests
+  are unaffected.
+- `contracts.ts` (gate contracts) and `config.ts` (env var names + tuning defaults) stay
+  entirely per-workflow — the shared pipeline takes them as plain data (`domain.config`), never
+  reads `process.env` itself.
+
+This is a **pure structural extraction (T561)** — `tv-recs` used to duplicate ~1,100 lines of this
+same logic; both workflows now run the identical shared code with different `RecommenderDomain`
+wiring. Job names, ledger keys, and DAG shape are all unchanged.
+
 ## Files, credentials, config
 
 - `config.ts` (`moviesConfig`) — `data/out/` paths, the 10+ `MOVIES_RECS_*` tuning env vars,
   `PLEX_MOVIE_SECTION`. `gapsOut` is a **compat-shim alias** into `missing-movies`'s own config —
-  see "Cross-workflow compat shim" below.
+  see "Cross-workflow compat shim" below. `recsModel` defaults to `claude-sonnet-5` — aligned with
+  `tv-recs` (T561; `tv-recs` previously defaulted to an older Sonnet id).
 - `contracts.ts` — gate contracts for every remaining DAG edge (snapshot→each branch, each
   branch→merge, merge→notify). The franchise-gaps contract moved to `missing-movies/contracts.ts`.
-- `recs.ts` — shared pure helpers (`RECS_JOB`, `recKey`, `balanceByGenre`, `dedupeRawByTitleYear`,
-  `genreNameFromIds`, `mergeLens`) — used by both `merge.ts` and (mirrored) `tv-recs`.
+- `recs.ts` — movie-domain wiring over the shared pure helpers (see "Shared recommender pipeline"
+  above).
 - `movies.ts` — pure snapshot/collection-gap logic (`buildMovieSnapshots`, `buildOwnedSet`,
   `buildTasteProfile`, `collectionGaps`, `collectionOwnedExample`). **Still owned by this folder**
   even though `missing-movies`'s `franchise-gaps` stage imports `collectionGaps`/

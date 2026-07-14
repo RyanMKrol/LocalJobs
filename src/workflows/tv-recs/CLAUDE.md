@@ -56,11 +56,42 @@ recommendation/audit ledgers in this repo (movie franchise gaps, movie recs, TV 
 seasons); see root `CLAUDE.md`'s "Ignore-to-suppress" convention for the full mechanism. Ledger key is
 the recommended show's tmdb id.
 
+## Shared recommender pipeline (T561)
+
+The recommender machinery (branch runner, merge verify/dedup/balance/top-up, notify
+digest/report/history) is **not owned by this folder** — it's generic across domains and lives in
+`src/core/recommender/` (`types.ts`, `pure.ts`, `branch.ts`, `merge.ts`, `notify.ts`), shared with
+`movies` (`src/workflows/movies/`, the `movie-recommendations` workflow). This folder keeps only
+what's genuinely TV-specific:
+
+- `stages/branches.ts` — the 8 branches' lens PROMPT TEXT (unchanged content) + the
+  `tvDomain: RecommenderDomain<PlexShow, TvTasteProfile>` wiring object (TMDB `/search/tv`
+  endpoint + field mapping, the TMDB TV-genre id table, digest emoji/wording, push job/tags,
+  report heading/filename, and `extraNotifyDetail` — TV's ledger `detail` additionally carries a
+  `tmdbUrl`, which movies' does not).
+- `recs.ts` — thin re-exports of the shared pure helpers (`src/core/recommender/pure.ts`) plus
+  `RECS_JOB` and `creatorsOwnedAtLeast` (TV's wrapper over the shared `ownedAtLeast`, keyed by
+  `profile.roles` instead of movies' `profile.directors`).
+- `stages/recommend.ts`, `stages/tv-rec-merge.ts`, `stages/tv-recs-notify.ts` — thin wrappers
+  that call the shared `runBranch`/`makeBranchJob`, `runMerge`, `runRecsNotify` with `tvDomain`
+  baked in, preserving every existing exported name (`runBranch`, `makeBranchJob`,
+  `runTvRecMerge`, `SearchTvFn`, `runTvRecsNotify`, `buildDigest`, …) so the `*.job.ts` wrappers
+  and existing tests are unaffected.
+- `contracts.ts` (gate contracts) and `config.ts` (env var names + tuning defaults) stay
+  entirely per-workflow — the shared pipeline takes them as plain data (`domain.config`), never
+  reads `process.env` itself.
+
+This is a **pure structural extraction (T561)** — this workflow used to duplicate ~1,100 lines of
+`movies`' recommender logic verbatim; both workflows now run the identical shared code with
+different `RecommenderDomain` wiring. Job names, ledger keys, and DAG shape are all unchanged.
+`recsModel` now defaults to `claude-sonnet-5` (was `claude-sonnet-4-6`) — aligned with `movies`.
+
 ## Files, credentials, service
 
 - `config.ts` — `tvRecsConfig` (data paths + all `TV_RECS_*` tuning env vars above; `tvSection` and a
   `host` field kept only for a log line — Plex/TMDB connectivity itself lives in the shared client).
-- `recs.ts` — pure recommendation helpers (mirrors `movies/recs.ts`, adapted for TV shows).
+- `recs.ts` — TV-domain wiring over the shared pure helpers (see "Shared recommender pipeline"
+  above).
 - `stages/tv-snapshot.ts`, `stages/tv-rec-*.ts` (8 branches), `stages/tv-rec-merge.ts`,
   `stages/tv-recs-notify.ts`.
 - Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (shared with every other Plex/TMDB
