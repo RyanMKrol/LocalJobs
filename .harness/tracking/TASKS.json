@@ -15029,7 +15029,7 @@
     {
       "id": "T559",
       "title": "Fix movies rec-merge: add searchFailed counter + throw (backport tv-recs B13 divergence) before the shared-pipeline extraction",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
