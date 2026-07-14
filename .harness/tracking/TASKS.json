@@ -15143,7 +15143,7 @@
     {
       "id": "T562",
       "title": "Dedup weekKey (and dayKey/monthKey) into a shared src/core/dates.ts with ISO-week boundary unit tests",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
