@@ -59,6 +59,16 @@ imported, so the two workflows have zero cross-workflow dependency and run on in
 schedules. This stage is the ONLY one that still builds `taste-profile.json` (the gap audit never
 needed it — see `missing-movies`'s own `CLAUDE.md`).
 
+**Combined per-run visibility ledger row (T571).** `movie-snapshot`, each of the 8 recommender
+branches, and `rec-merge` each record ONE combined `work_items` row per run (keyed by the run's ISO
+date, so a same-day manual re-run upserts the same row), describing what that stage produced —
+snapshot: `{ name, movies, path: snapshot.json, format: 'json' }`; each branch: `{ name, suggestions,
+path: recs/<branch-id>.json }` (recorded under the branch's own job name); merge: `{ name, balanced,
+path: recommendations.json, format: 'json' }`. This is PURELY for the run page's Input/Output panel
+(`StageIoPanel`) — these stages still RE-SCAN/RE-COMPUTE FRESH every run (the row is not a work-done
+gate). The `movie-recs-notify` "have I recommended / has the owner ignored this?" ledger is separate
+and unchanged.
+
 The Plex read is metered via the shared `plex` service (`callService('plex', ...)`), coordinating rate limits and quotas across all Plex-touching workflows.
 
 ## Stage 2 — 8 recommender branches (subjective)

@@ -1,7 +1,14 @@
 // Pure TV-show snapshot + taste-profile tests — synthetic Plex fixtures, no live
 // Plex, no live TMDB, scratch DB only. Mirrors movies.test.ts in structure.
 import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import type { JobContext } from '../../../core/types.js';
 import { callService } from '../../../core/services.js';
+import { getWorkItem } from '../../../db/store.js';
+import { toStoredPath } from '../../../db/store/lib.js';
+import { dayKey } from '../../../core/dates.js';
+import { tvRecsConfig } from '../config.js';
+import { runTvSnapshot, TV_SNAPSHOT_JOB } from './tv-snapshot.js';
 import {
   buildOwnedSet,
   buildShowSnapshots,
@@ -124,3 +131,49 @@ console.log('  ✓ tv-snapshot pure-helper tests passed');
 }
 
 console.log('  ✓ tv-snapshot callService tests passed');
+
+// ── Combined per-run visibility ledger row (T571) ──
+function fakeCtx(): JobContext {
+  return {
+    log() {},
+    progress() {},
+    selectedRoots: () => null,
+    rootAllowed: () => true,
+  };
+}
+
+const LEDGER_SHOWS: PlexShowMeta[] = [
+  { title: 'The Wire', year: 2002, ratingKey: '1', childCount: 5, Guid: [{ id: 'tmdb://1438' }], Genre: [{ tag: 'Crime' }] },
+  { title: 'Breaking Bad', year: 2008, ratingKey: '2', childCount: 5, Guid: [{ id: 'tmdb://1396' }], Genre: [{ tag: 'Drama' }] },
+  { title: 'No GUID Show', year: 2015, ratingKey: '3', childCount: 2, Genre: [{ tag: 'Comedy' }] },
+];
+
+describe('tv-snapshot — combined per-run visibility ledger row (T571)', () => {
+  it('records exactly one success row keyed by ISO date, describing the snapshot', async () => {
+    const now = new Date('2026-07-14T09:00:00Z');
+    await runTvSnapshot(fakeCtx(), { fetchMeta: async () => LEDGER_SHOWS, now });
+
+    const row = getWorkItem(TV_SNAPSHOT_JOB, dayKey(now));
+    assert.ok(row, 'a work_items row was recorded for tv-snapshot');
+    assert.equal(row.status, 'success');
+
+    const detail = JSON.parse(row.detail ?? 'null') as {
+      name?: string; shows?: number; path?: string; format?: string;
+    };
+    assert.equal(detail.name, 'TV library snapshot');
+    assert.equal(detail.shows, LEDGER_SHOWS.length, 'shows count equals the fetched count');
+    assert.equal(detail.format, 'json');
+    // Path is normalized workflows-root-relative (T447), never a raw absolute path.
+    assert.equal(detail.path, toStoredPath(tvRecsConfig.snapshotOut));
+    assert.ok(!detail.path?.startsWith('/'), 'path is stored relative, not absolute');
+  });
+
+  it('upserts the same row on a same-day re-run (one row per run, not per show)', async () => {
+    const now = new Date('2026-07-14T18:00:00Z');
+    await runTvSnapshot(fakeCtx(), { fetchMeta: async () => LEDGER_SHOWS.slice(0, 1), now });
+    const row = getWorkItem(TV_SNAPSHOT_JOB, dayKey(now));
+    assert.ok(row);
+    const detail = JSON.parse(row.detail ?? 'null') as { shows?: number };
+    assert.equal(detail.shows, 1, 're-run overwrote the row with the fresh count');
+  });
+});

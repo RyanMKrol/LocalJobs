@@ -3,6 +3,8 @@
 // (`runBranch`, `makeBranchJob`, `parseSuggestions`, `allHistoryTitles`, …) so
 // every existing call site (the per-branch `*.job.ts` files, `tv-rec-merge.ts`)
 // keeps working unchanged.
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { JobContext, JobDefinition } from '../../../core/types.js';
 import {
   allHistoryTitles as coreAllHistoryTitles,
@@ -14,6 +16,9 @@ import {
   runBranch as coreRunBranch,
 } from '../../../core/recommender/branch.js';
 import type { BranchRunOpts, RunClaudeFn } from '../../../core/recommender/branch.js';
+import { dayKey } from '../../../core/dates.js';
+import { markWorkItem } from '../../../db/store.js';
+import { tvRecsConfig } from '../config.js';
 import { tvBranchSuggestionsContract, tvSnapshotContract } from '../contracts.js';
 import { ensureDirs } from '../lib.js';
 import { RECS_JOB } from '../recs.js';
@@ -56,6 +61,33 @@ export function ignoredSuggestionTitles(jobName: string = RECS_JOB): string[] {
 export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchRunOpts = {}): Promise<void> {
   ensureDirs();
   await coreRunBranch(ctx, tvDomain, spec, opts);
+  recordBranchLedgerRow(spec.id, opts);
+}
+
+/**
+ * Record ONE combined visibility row per run for this branch (T571) — keyed by
+ * the run's ISO date so a same-day manual re-run upserts the same row. The branch
+ * runs as its own DAG member (job name = branch id), so the run page's
+ * Input/Output panel shows the branch's suggestion count + its output file.
+ * Reads the count from the file the core runner just wrote (empty on any LLM
+ * trouble — a legitimate zero, still worth showing).
+ */
+function recordBranchLedgerRow(branchId: string, opts: BranchRunOpts): void {
+  const recsDir = opts.recsDir ?? tvRecsConfig.recsDir;
+  const now = opts.now ?? new Date();
+  const path = join(recsDir, `${branchId}.json`);
+  let suggestions = 0;
+  if (existsSync(path)) {
+    try {
+      const file = JSON.parse(readFileSync(path, 'utf8')) as { suggestions?: unknown[] };
+      if (Array.isArray(file.suggestions)) suggestions = file.suggestions.length;
+    } catch {
+      // Leave the count at 0 if the file is unreadable — the row still records the branch ran.
+    }
+  }
+  markWorkItem(branchId, dayKey(now), 'success', {
+    detail: { name: `${branchId} suggestions`, suggestions, path },
+  });
 }
 
 /**

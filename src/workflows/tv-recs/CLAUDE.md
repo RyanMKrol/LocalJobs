@@ -41,6 +41,15 @@ ledger (a show's tmdb id, once recorded, is never re-notified), drops owner-igno
 writes a markdown report to `data/out/reports/tv-recommendations.md`, and appends notified shows to
 the history file (the same history `tv-rec-merge` reads back for re-prompt context).
 
+**Combined per-run visibility ledger row (T571).** `tv-snapshot`, each of the 8 recommender branches,
+and `tv-rec-merge` each record ONE combined `work_items` row per run (keyed by the run's ISO date, so
+a same-day manual re-run upserts the same row), describing what that stage produced — snapshot:
+`{ name, shows, path: snapshot.json, format: 'json' }`; each branch: `{ name, suggestions,
+path: recs/<branch-id>.json }` (recorded under the branch's own job name); merge: `{ name, balanced,
+path: recommendations.json, format: 'json' }`. This is PURELY for the run page's Input/Output panel
+(`StageIoPanel`) — these stages still re-scan/re-compute fresh every run (the row is not a work-done
+gate). The `tv-recs-notify` announce-once ledger is separate and unchanged.
+
 **Recs-history row schema (T560).** Each appended history row is `{ tmdbId, title, year, at }` —
 aligned with `movies`' (`movie-recommendations`) `RecsHistoryFile` shape, so a single shared notify
 pipeline can be extracted and future id-based history dedup is possible. The parse stays tolerant of

@@ -359,19 +359,21 @@ const movieRecsRunJobs = movieRecsMembers.map((m, i) => run({
 // stage (movie-snapshot) with 8 sibling rec-* branches in the same wave, each producing its
 // OWN distinct output. Proves each branch's stage tab shows only ITS OWN inputs/outputs, not
 // every sibling branch's rows bleeding together (the failure mode this task guards against).
+// T571: snapshot / each branch / merge now record ONE combined visibility row per run,
+// keyed by the run's ISO date, describing the artifact each produced (count + path/format).
 const movieSnapshotOutput = {
-  jobName: 'movie-snapshot', itemKey: 'snapshot-2026-06', status: 'success',
-  detail: { name: 'Library snapshot — June 2026', movieCount: 812 },
+  jobName: 'movie-snapshot', itemKey: '2026-06-01', status: 'success',
+  detail: { name: 'Movie library snapshot', movies: 812, path: 'movies/data/out/snapshot.json', format: 'json' },
 };
 const movieRecBranchOutput = {
-  'rec-random-1': { jobName: 'rec-random-1', itemKey: '100', status: 'success', detail: { name: 'Inception', lens: 'random' } },
-  'rec-random-2': { jobName: 'rec-random-2', itemKey: '101', status: 'success', detail: { name: 'Arrival', lens: 'random' } },
-  'rec-random-3': { jobName: 'rec-random-3', itemKey: '103', status: 'success', detail: { name: 'Mad Max: Fury Road', lens: 'random' } },
-  'rec-auteur': { jobName: 'rec-auteur', itemKey: '104', status: 'success', detail: { name: 'The Grand Budapest Hotel', lens: 'auteur' } },
-  'rec-canon': { jobName: 'rec-canon', itemKey: '105', status: 'success', detail: { name: 'Spirited Away', lens: 'canon' } },
-  'rec-thin-genre': { jobName: 'rec-thin-genre', itemKey: '108', status: 'success', detail: { name: 'Whiplash', lens: 'thin-genre' } },
-  'rec-older-era': { jobName: 'rec-older-era', itemKey: '107', status: 'success', detail: { name: 'The Third Man', lens: 'older-era' } },
-  'rec-world-cinema': { jobName: 'rec-world-cinema', itemKey: '106', status: 'success', detail: { name: 'City of God', lens: 'world-cinema' } },
+  'rec-random-1': { jobName: 'rec-random-1', itemKey: '2026-06-01', status: 'success', detail: { name: 'rec-random-1 suggestions', suggestions: 9, path: 'movies/data/out/recs/rec-random-1.json' } },
+  'rec-random-2': { jobName: 'rec-random-2', itemKey: '2026-06-01', status: 'success', detail: { name: 'rec-random-2 suggestions', suggestions: 8, path: 'movies/data/out/recs/rec-random-2.json' } },
+  'rec-random-3': { jobName: 'rec-random-3', itemKey: '2026-06-01', status: 'success', detail: { name: 'rec-random-3 suggestions', suggestions: 9, path: 'movies/data/out/recs/rec-random-3.json' } },
+  'rec-auteur': { jobName: 'rec-auteur', itemKey: '2026-06-01', status: 'success', detail: { name: 'rec-auteur suggestions', suggestions: 7, path: 'movies/data/out/recs/rec-auteur.json' } },
+  'rec-canon': { jobName: 'rec-canon', itemKey: '2026-06-01', status: 'success', detail: { name: 'rec-canon suggestions', suggestions: 9, path: 'movies/data/out/recs/rec-canon.json' } },
+  'rec-thin-genre': { jobName: 'rec-thin-genre', itemKey: '2026-06-01', status: 'success', detail: { name: 'rec-thin-genre suggestions', suggestions: 6, path: 'movies/data/out/recs/rec-thin-genre.json' } },
+  'rec-older-era': { jobName: 'rec-older-era', itemKey: '2026-06-01', status: 'success', detail: { name: 'rec-older-era suggestions', suggestions: 8, path: 'movies/data/out/recs/rec-older-era.json' } },
+  'rec-world-cinema': { jobName: 'rec-world-cinema', itemKey: '2026-06-01', status: 'success', detail: { name: 'rec-world-cinema suggestions', suggestions: 9, path: 'movies/data/out/recs/rec-world-cinema.json' } },
 };
 // franchiseGapsOutput/movieGapsNotifyOutput belong to the SEPARATE `missing-movies` workflow
 // (T468/T469) — see the missingMoviesStageIo fixtures below, which reuse these two.
@@ -379,8 +381,8 @@ const franchiseGapsOutput = {
   jobName: 'franchise-gaps', itemKey: '600', status: 'success', detail: { name: 'The Bourne Supremacy' },
 };
 const recMergeOutput = {
-  jobName: 'rec-merge', itemKey: 'movie-recs-merged-2026-06', status: 'success',
-  detail: { name: 'Merged recommendations — June 2026', count: 15 },
+  jobName: 'rec-merge', itemKey: '2026-06-01', status: 'success',
+  detail: { name: 'Balanced recommendations', balanced: 15, path: 'movies/data/out/recommendations.json', format: 'json' },
 };
 const movieGapsNotifyOutput = {
   jobName: 'movie-gaps-notify', itemKey: '2026-06', status: 'success',
@@ -651,18 +653,20 @@ const tvRecommendationsWorkflowRun = workflowRun({ id: 'tv-recommendations-run',
 const tvRecommendationsRunJobs = tvRecommendationsMembers.map((m, i) => run({
   id: `tv-recommendations-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'tv-recommendations-run',
 }));
-const tvSnapshotOutput = { jobName: 'tv-snapshot', itemKey: 'snapshot-2026-06', status: 'success', detail: { name: 'TV library snapshot — June 2026', showCount: 214 } };
+// T571: snapshot / each branch / merge now record ONE combined visibility row per run,
+// keyed by the run's ISO date, describing the artifact each produced (count + path/format).
+const tvSnapshotOutput = { jobName: 'tv-snapshot', itemKey: '2026-06-01', status: 'success', detail: { name: 'TV library snapshot', shows: 214, path: 'tv-recs/data/out/snapshot.json', format: 'json' } };
 const tvRecBranchOutput = {
-  'tv-rec-random-1': { jobName: 'tv-rec-random-1', itemKey: '300', status: 'success', detail: { name: 'Severance', lens: 'random' } },
-  'tv-rec-random-2': { jobName: 'tv-rec-random-2', itemKey: '302', status: 'success', detail: { name: 'Dark', lens: 'random' } },
-  'tv-rec-random-3': { jobName: 'tv-rec-random-3', itemKey: '306', status: 'success', detail: { name: 'Money Heist', lens: 'random' } },
-  'tv-rec-creator': { jobName: 'tv-rec-creator', itemKey: '303', status: 'success', detail: { name: 'Fleabag', lens: 'creator' } },
-  'tv-rec-canon': { jobName: 'tv-rec-canon', itemKey: '307', status: 'success', detail: { name: 'The Wire', lens: 'canon' } },
-  'tv-rec-thin-genre': { jobName: 'tv-rec-thin-genre', itemKey: '308', status: 'success', detail: { name: 'Atlanta', lens: 'thin-genre' } },
-  'tv-rec-older-era': { jobName: 'tv-rec-older-era', itemKey: '312', status: 'success', detail: { name: 'Cheers', lens: 'older-era' } },
-  'tv-rec-world': { jobName: 'tv-rec-world', itemKey: '311', status: 'success', detail: { name: 'Babylon Berlin', lens: 'world-cinema' } },
+  'tv-rec-random-1': { jobName: 'tv-rec-random-1', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-random-1 suggestions', suggestions: 9, path: 'tv-recs/data/out/recs/tv-rec-random-1.json' } },
+  'tv-rec-random-2': { jobName: 'tv-rec-random-2', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-random-2 suggestions', suggestions: 8, path: 'tv-recs/data/out/recs/tv-rec-random-2.json' } },
+  'tv-rec-random-3': { jobName: 'tv-rec-random-3', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-random-3 suggestions', suggestions: 9, path: 'tv-recs/data/out/recs/tv-rec-random-3.json' } },
+  'tv-rec-creator': { jobName: 'tv-rec-creator', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-creator suggestions', suggestions: 7, path: 'tv-recs/data/out/recs/tv-rec-creator.json' } },
+  'tv-rec-canon': { jobName: 'tv-rec-canon', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-canon suggestions', suggestions: 9, path: 'tv-recs/data/out/recs/tv-rec-canon.json' } },
+  'tv-rec-thin-genre': { jobName: 'tv-rec-thin-genre', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-thin-genre suggestions', suggestions: 6, path: 'tv-recs/data/out/recs/tv-rec-thin-genre.json' } },
+  'tv-rec-older-era': { jobName: 'tv-rec-older-era', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-older-era suggestions', suggestions: 8, path: 'tv-recs/data/out/recs/tv-rec-older-era.json' } },
+  'tv-rec-world': { jobName: 'tv-rec-world', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-world suggestions', suggestions: 9, path: 'tv-recs/data/out/recs/tv-rec-world.json' } },
 };
-const tvRecMergeOutput = { jobName: 'tv-rec-merge', itemKey: 'tv-recs-merged-2026-06', status: 'success', detail: { name: 'Merged TV recommendations — June 2026', count: 12 } };
+const tvRecMergeOutput = { jobName: 'tv-rec-merge', itemKey: '2026-06-01', status: 'success', detail: { name: 'Balanced recommendations', balanced: 12, path: 'tv-recs/data/out/recommendations.json', format: 'json' } };
 const tvRecsNotifyOutput = { jobName: 'tv-recs-notify', itemKey: '2026-06', status: 'success', detail: { name: 'TV recs digest — June 2026' } };
 const tvRecommendationsStageIo = {
   'tv-snapshot': { inputs: [], outputs: [tvSnapshotOutput], predecessorJobs: [], job: 'tv-snapshot' },
