@@ -15548,7 +15548,7 @@
     {
       "id": "T574",
       "title": "plex-language-fix: real evaluate->apply gate before the only externally-mutating stage",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
