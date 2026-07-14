@@ -91,9 +91,15 @@ export interface RecommendationsFile {
   recommendations: Recommendation[];
 }
 
-/** Persisted cross-run history of past recommendations (for avoid-re-suggesting). */
+/** Persisted cross-run history of past recommendations (for avoid-re-suggesting).
+ *  Rows are aligned with `movies`' `RecsHistoryFile` shape ({ tmdbId, title, year, at })
+ *  so a single shared notify pipeline can be extracted and future id-based dedup is
+ *  possible. New rows always carry all four fields; `tmdbId`/`at` are optional ONLY so
+ *  the parse stays tolerant of LEGACY 2-field {title,year} rows written before T560 —
+ *  reading such a row must not crash (nothing downstream reads tmdbId/at; branch
+ *  prompts consume title/year, which are unchanged). */
 export interface RecsHistoryFile {
-  recommended: Array<{ title: string; year?: number | null }>;
+  recommended: Array<{ tmdbId?: number; title: string; year?: number | null; at?: string }>;
 }
 
 // ── Minimal Plex response shapes (only the fields we read) ──

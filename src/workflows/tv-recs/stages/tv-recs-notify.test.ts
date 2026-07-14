@@ -91,7 +91,57 @@ const backlog: Recommendation[] = [
   assert.match(md, /watch Severance/, 'reason shown in report');
   const hist = JSON.parse(readFileSync(historyFile, 'utf8')) as RecsHistoryFile;
   assert.equal(hist.recommended.length, 2, 'both recs appended to history');
-  console.log('  ✓ first run digests the whole backlog, marks the ledger, writes the report, appends history');
+  // T560: history rows are aligned with movies' { tmdbId, title, year, at } shape.
+  const sevRow = hist.recommended.find((r) => r.title === 'Severance');
+  assert.ok(sevRow, 'Severance row present in history');
+  assert.equal(sevRow.tmdbId, REC_A, 'appended history row carries tmdbId');
+  assert.equal(sevRow.year, 2010, 'appended history row carries year');
+  assert.equal(sevRow.at, NOW.toISOString(), 'appended history row carries an ISO `at` timestamp');
+  assert.deepEqual(
+    Object.keys(sevRow).sort(),
+    ['at', 'title', 'tmdbId', 'year'],
+    'appended row is exactly { tmdbId, title, year, at } — matching movies',
+  );
+  console.log('  ✓ first run digests the whole backlog, marks the ledger, writes the report, appends aligned history');
+}
+
+// T560 — a pre-existing LEGACY history file of old {title,year}-only rows must load
+// without error and be treated as valid (the corrupt/legacy-tolerant parse stays), then
+// new rows append in the aligned shape alongside the legacy ones.
+{
+  const legacyDir = mkdtempSync(join(tmpdir(), 'tv-recs-notify-legacy-'));
+  const legacyRecsFile = join(legacyDir, 'recommendations.json');
+  const legacyHistoryFile = join(legacyDir, 'history.json');
+  // Old-format history: only title + year, no tmdbId / at.
+  writeFileSync(
+    legacyHistoryFile,
+    JSON.stringify({ recommended: [{ title: 'Old Show', year: 1999 }, { title: 'Another Old', year: 2001 }] }),
+  );
+  const REC_LEGACY = 8880006;
+  const legacyFile: RecommendationsFile = {
+    generatedAt: NOW.toISOString(),
+    pooled: 1,
+    recommendations: [rec(REC_LEGACY, 'Brand New Show', 'Drama')],
+  };
+  writeFileSync(legacyRecsFile, JSON.stringify(legacyFile));
+  const sent: CapturedPush[] = [];
+  await assert.doesNotReject(
+    runTvRecsNotify(fakeCtx(), { push: capturePush(sent), now: NOW, recsFile: legacyRecsFile, historyFile: legacyHistoryFile, reportDir: legacyDir }),
+    'a legacy {title,year}-only history file loads without error',
+  );
+  const legacyHist = JSON.parse(readFileSync(legacyHistoryFile, 'utf8')) as RecsHistoryFile;
+  assert.equal(legacyHist.recommended.length, 3, 'legacy rows preserved + new row appended');
+  // Legacy rows survive untouched (no tmdbId/at fabricated).
+  const oldRow = legacyHist.recommended.find((r) => r.title === 'Old Show');
+  assert.ok(oldRow, 'legacy row still present');
+  assert.equal(oldRow.tmdbId, undefined, 'legacy row keeps its 2-field shape');
+  assert.equal(oldRow.at, undefined, 'legacy row keeps its 2-field shape');
+  // The newly appended row carries the aligned fields.
+  const newRow = legacyHist.recommended.find((r) => r.title === 'Brand New Show');
+  assert.ok(newRow, 'new row appended to legacy history');
+  assert.equal(newRow.tmdbId, REC_LEGACY, 'new row carries tmdbId');
+  assert.equal(newRow.at, NOW.toISOString(), 'new row carries at');
+  console.log('  ✓ a legacy 2-field history file loads without error; new rows append in the aligned shape');
 }
 
 // Run 2 — same backlog, nothing new → NO push.

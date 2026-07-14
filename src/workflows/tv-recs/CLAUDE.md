@@ -41,6 +41,13 @@ ledger (a show's tmdb id, once recorded, is never re-notified), drops owner-igno
 writes a markdown report to `data/out/reports/tv-recommendations.md`, and appends notified shows to
 the history file (the same history `tv-rec-merge` reads back for re-prompt context).
 
+**Recs-history row schema (T560).** Each appended history row is `{ tmdbId, title, year, at }` —
+aligned with `movies`' (`movie-recommendations`) `RecsHistoryFile` shape, so a single shared notify
+pipeline can be extracted and future id-based history dedup is possible. The parse stays tolerant of
+LEGACY 2-field `{ title, year }` rows written before T560 (they load without error and are left
+untouched — no `tmdbId`/`at` is fabricated); the re-prompt context only consumes `title`/`year`, so
+old rows keep working.
+
 ## Ignore / un-ignore
 
 A recommended show can be permanently dismissed from the dashboard (ignore) and reversed later

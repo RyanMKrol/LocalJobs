@@ -170,7 +170,7 @@ function appendHistory(historyFile: string, newRecs: Recommendation[], now: Date
     } catch { /* corrupt history → start fresh */ }
   }
   for (const r of newRecs) {
-    hist.recommended.push({ title: r.title, year: r.year });
+    hist.recommended.push({ tmdbId: r.tmdbId, title: r.title, year: r.year, at: now.toISOString() });
   }
   writeFileSync(historyFile, JSON.stringify(hist, null, 2));
 }
