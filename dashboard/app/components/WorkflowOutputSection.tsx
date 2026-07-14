@@ -6,10 +6,11 @@ import { renderOutputBody } from './OutputRenderer';
 import { usePoll } from '../ui';
 
 function OutputModal(
-  { title, result, loading, onClose }: {
+  { title, result, loading, error, onClose }: {
     title: string;
     result: WorkflowRunOutput | null;
     loading?: boolean;
+    error?: string | null;
     onClose: () => void;
   },
 ) {
@@ -28,8 +29,9 @@ function OutputModal(
         </div>
         <div className="db-modal-body">
           {loading && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
-          {!loading && result && result.found && renderOutputBody(result)}
-          {!loading && result && !result.found && (
+          {!loading && error && <p className="error" style={{ margin: 0 }}>Failed to load output: {error}</p>}
+          {!loading && !error && result && result.found && renderOutputBody(result)}
+          {!loading && !error && result && !result.found && (
             <p className="muted" style={{ margin: 0 }}>No output content found.</p>
           )}
         </div>
@@ -46,7 +48,7 @@ function OutputModal(
  */
 export function WorkflowOutputSection({ workflowName }: { workflowName: string }) {
   const { data, error } = usePoll(() => api.workflowOutputItems(workflowName), 10_000, [workflowName]);
-  const [modal, setModal] = useState<{ item: WorkflowOutputItem; result: WorkflowRunOutput | null } | null>(null);
+  const [modal, setModal] = useState<{ item: WorkflowOutputItem; result: WorkflowRunOutput | null; error?: string } | null>(null);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
 
   const items = data?.items ?? [];
@@ -58,8 +60,8 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
     try {
       const result = await api.workflowOutput(workflowName, item.jobName, item.itemKey);
       setModal({ item, result });
-    } catch {
-      setModal(null);
+    } catch (err) {
+      setModal({ item, result: null, error: err instanceof Error ? err.message : String(err) });
     } finally {
       setLoadingKey(null);
     }
@@ -132,7 +134,8 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
         <OutputModal
           title={modal.item.name ?? modal.item.itemKey}
           result={modal.result}
-          loading={modal.result === null}
+          loading={modal.result === null && !modal.error}
+          error={modal.error}
           onClose={() => setModal(null)}
         />
       )}

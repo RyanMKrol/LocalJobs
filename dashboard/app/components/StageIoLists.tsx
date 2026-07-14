@@ -10,15 +10,19 @@ const OVERALL_TAB = '__overall__';
 
 type ModalState =
   | { loading: true; title: string }
-  | { loading: false; title: string; result: WorkflowRunOutput };
+  | { loading: false; title: string; result: WorkflowRunOutput }
+  | { loading: false; title: string; error: string };
 
 /** The workflow-run output modal, rendered via the shared format-keyed
  *  dispatch (`OutputRenderer`) so a `json`/`text` artifact renders through its
- *  real renderer instead of being force-fed through the markdown viewer. */
-function StageIoModal({ title, loading, result, onClose }: {
+ *  real renderer instead of being force-fed through the markdown viewer. On a
+ *  fetch failure the modal STAYS OPEN and shows the error inline, rather than
+ *  silently closing (which used to make a View click flash and vanish). */
+function StageIoModal({ title, loading, result, error, onClose }: {
   title: string;
   loading: boolean;
   result?: WorkflowRunOutput;
+  error?: string;
   onClose: () => void;
 }) {
   return (
@@ -30,8 +34,9 @@ function StageIoModal({ title, loading, result, onClose }: {
         </div>
         <div className="db-modal-body">
           {loading && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
-          {!loading && result && result.found && renderOutputBody(result)}
-          {!loading && result && !result.found && (
+          {!loading && error && <p className="error" style={{ margin: 0 }}>Failed to load output: {error}</p>}
+          {!loading && !error && result && result.found && renderOutputBody(result)}
+          {!loading && !error && result && !result.found && (
             <p className="muted" style={{ margin: 0 }}>No output content found.</p>
           )}
         </div>
@@ -181,7 +186,7 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
       setModal({ loading: true, title });
       resultPromise
         .then((result) => setModal({ loading: false, title, result }))
-        .catch(() => setModal(null));
+        .catch((err) => setModal({ loading: false, title, error: err instanceof Error ? err.message : String(err) }));
     },
     [],
   );
@@ -211,7 +216,8 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
         <StageIoModal
           title={modal.title}
           loading={modal.loading}
-          result={!modal.loading ? modal.result : undefined}
+          result={!modal.loading && 'result' in modal ? modal.result : undefined}
+          error={!modal.loading && 'error' in modal ? modal.error : undefined}
           onClose={() => setModal(null)}
         />
       )}
@@ -231,7 +237,7 @@ function StageIoOverallBlock({ runId }: { runId: string }) {
       setModal({ loading: true, title });
       resultPromise
         .then((result) => setModal({ loading: false, title, result }))
-        .catch(() => setModal(null));
+        .catch((err) => setModal({ loading: false, title, error: err instanceof Error ? err.message : String(err) }));
     },
     [],
   );
@@ -261,7 +267,8 @@ function StageIoOverallBlock({ runId }: { runId: string }) {
         <StageIoModal
           title={modal.title}
           loading={modal.loading}
-          result={!modal.loading ? modal.result : undefined}
+          result={!modal.loading && 'result' in modal ? modal.result : undefined}
+          error={!modal.loading && 'error' in modal ? modal.error : undefined}
           onClose={() => setModal(null)}
         />
       )}

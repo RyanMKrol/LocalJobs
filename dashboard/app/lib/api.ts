@@ -435,16 +435,31 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Like `post`, but surfaces the server's JSON `{ error }` body (a 400 validation
+ *  message) as the thrown Error instead of a generic status-text message — used
+ *  by the workflow/job settings editors (schedule, concurrency, notify, certified,
+ *  timeout) so the page can show the server's real validation reason inline. */
+async function postWithServerError<T extends Record<string, unknown>>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+  return data;
+}
+
 export const api = {
   jobs: () => get<{ jobs: Job[] }>('/api/jobs'),
-  job: (name: string) => get<{ job: Job }>(`/api/jobs/${name}`),
-  jobRuns: (name: string) => get<{ runs: Run[] }>(`/api/jobs/${name}/runs`),
+  job: (name: string) => get<{ job: Job }>(`/api/jobs/${encodeURIComponent(name)}`),
+  jobRuns: (name: string) => get<{ runs: Run[] }>(`/api/jobs/${encodeURIComponent(name)}/runs`),
   recentRuns: (limit = 50) => get<{ runs: Run[] }>(`/api/runs?limit=${limit}`),
   run: (id: string, after = 0) => get<{ run: Run; logs: LogLine[] }>(`/api/runs/${id}?after=${after}`),
   // No runNow/toggle for a job (T070): you run + enable a WORKFLOW, never a job.
-  stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${job}` : ''}`),
+  stuck: (job?: string) => get<{ stuck: StuckItem[] }>(`/api/stuck${job ? `?job=${encodeURIComponent(job)}` : ''}`),
   stuckForWorkflow: (workflow: string) => get<{ stuck: StuckItem[] }>(`/api/stuck?workflow=${encodeURIComponent(workflow)}`),
-  ignored: (job?: string) => get<{ ignored: StuckItem[] }>(`/api/ignored${job ? `?job=${job}` : ''}`),
+  ignored: (job?: string) => get<{ ignored: StuckItem[] }>(`/api/ignored${job ? `?job=${encodeURIComponent(job)}` : ''}`),
   unstick: (job: string, key: string) => post<{ ok: boolean; unstuck: number }>(`/api/stuck/unstick`, { job, key }),
   ignore: (job: string, key: string) => post<{ ok: boolean; ignored: number }>(`/api/stuck/ignore`, { job, key }),
   unstickBulk: (scope?: BulkScope) => post<{ ok: boolean; unstuck: number }>('/api/stuck/unstick-bulk', scope ? scopeBody(scope) : {}),
@@ -506,7 +521,7 @@ export const api = {
 
   recentWorkflowRuns: (limit = 50) => get<{ runs: WorkflowRun[] }>(`/api/workflow-runs?limit=${limit}`),
   workflows: () => get<{ workflows: Workflow[] }>('/api/workflows'),
-  workflow: (name: string) => get<{ workflow: Workflow }>(`/api/workflows/${name}`),
+  workflow: (name: string) => get<{ workflow: Workflow }>(`/api/workflows/${encodeURIComponent(name)}`),
   workflowRun: (id: string, after = 0) =>
     get<{ run: WorkflowRun; jobs: Run[]; logs: LogLine[]; gates: GateStatus[] }>(
       `/api/workflow-runs/${id}?after=${after}`,
@@ -536,72 +551,47 @@ export const api = {
       `/api/workflows/${encodeURIComponent(name)}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,
     ),
   runWorkflow: (name: string, limit?: number) =>
-    post<{ ok: boolean; limit: number | null }>(`/api/workflows/${name}/run`, limit !== undefined ? { limit } : undefined),
-  toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${name}/toggle`, { enabled }),
+    post<{ ok: boolean; limit: number | null }>(`/api/workflows/${encodeURIComponent(name)}/run`, limit !== undefined ? { limit } : undefined),
+  toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${encodeURIComponent(name)}/toggle`, { enabled }),
   // Persist + live-apply a user override of a workflow's cron schedule (T135). An
   // empty string clears it to manual-only. Surfaces the server's 400 validation
   // error (its `error` body) as the thrown message so the page can show it inline.
-  updateWorkflowSchedule: async (name: string, schedule: string) => {
-    const res = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/schedule`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ schedule }),
-    });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; schedule?: string | null; next_run?: string | null };
-    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
-    return data as { ok: boolean; schedule: string | null; next_run: string | null };
-  },
+  updateWorkflowSchedule: (name: string, schedule: string) =>
+    postWithServerError<{ ok: boolean; schedule: string | null; next_run: string | null }>(
+      `/api/workflows/${encodeURIComponent(name)}/schedule`,
+      { schedule },
+    ),
   // Persist a user override of a workflow's bounded-parallelism cap (T169). Takes
   // effect on the NEXT run (no daemon restart). Surfaces the server's 400 validation
   // error as the thrown message so the page can show it inline.
-  updateWorkflowConcurrency: async (name: string, maxConcurrency: number) => {
-    const res = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/concurrency`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ maxConcurrency }),
-    });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; max_concurrency?: number };
-    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
-    return data as { ok: boolean; max_concurrency: number };
-  },
+  updateWorkflowConcurrency: (name: string, maxConcurrency: number) =>
+    postWithServerError<{ ok: boolean; max_concurrency: number }>(
+      `/api/workflows/${encodeURIComponent(name)}/concurrency`,
+      { maxConcurrency },
+    ),
   // Persist a user override of whether a workflow sends its run-end push
   // notification (T285). Takes effect on the NEXT run (no daemon restart).
-  updateWorkflowNotify: async (name: string, notifyEnabled: boolean) => {
-    const res = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/notify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notifyEnabled }),
-    });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; notify_enabled?: boolean };
-    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
-    return data as { ok: boolean; notify_enabled: boolean };
-  },
+  updateWorkflowNotify: (name: string, notifyEnabled: boolean) =>
+    postWithServerError<{ ok: boolean; notify_enabled: boolean }>(
+      `/api/workflows/${encodeURIComponent(name)}/notify`,
+      { notifyEnabled },
+    ),
   // Persist a plain user-set "certified" flag on a workflow (T497) — no
   // code/manifest source, so this is a toggle-only, purely informational setting.
-  updateWorkflowCertified: async (name: string, certified: boolean) => {
-    const res = await fetch(`${API_BASE}/api/workflows/${encodeURIComponent(name)}/certify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ certified }),
-    });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; certified?: boolean };
-    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
-    return data as { ok: boolean; certified: boolean };
-  },
+  updateWorkflowCertified: (name: string, certified: boolean) =>
+    postWithServerError<{ ok: boolean; certified: boolean }>(
+      `/api/workflows/${encodeURIComponent(name)}/certify`,
+      { certified },
+    ),
   // Persist a user override of a job's timeoutMs (T297) — mirrors
   // updateWorkflowSchedule/updateWorkflowConcurrency, but scoped to a job row.
   // The API stays in milliseconds; the caller converts from the seconds shown in
   // the UI. Surfaces the server's 400 validation error as the thrown message.
-  updateJobTimeout: async (name: string, timeoutMs: number) => {
-    const res = await fetch(`${API_BASE}/api/jobs/${encodeURIComponent(name)}/timeout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timeoutMs }),
-    });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; job?: { timeout_ms: number } };
-    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
-    return data as { ok: boolean; job: { timeout_ms: number } };
-  },
+  updateJobTimeout: (name: string, timeoutMs: number) =>
+    postWithServerError<{ ok: boolean; job: { timeout_ms: number } }>(
+      `/api/jobs/${encodeURIComponent(name)}/timeout`,
+      { timeoutMs },
+    ),
   cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
   // Clear all output data for a workflow (T203): work_items + runs/logs + data/out/*.
   // Preserves: input data (data/raw), chrome-profile, settings, definition tables.
