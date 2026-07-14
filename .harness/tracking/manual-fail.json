@@ -68,5 +68,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T578 (re-attempt) + T577 (the missing 7th missing-movies Plex migration) — T517 correctly blocked because the migration chain covered 6 of 7 Plex-touching workflows; missing-movies snapshot still had a bare plexGet call",
     "at": "2026-07-13T10:56:08Z"
+  },
+  "T540": {
+    "failed": true,
+    "reason": "False success: reconciled to done via the idle-reconcile bug (fixed upstream in harness 1.79.0) — the loop's wait_ci_green never found T540's CI run because the workflow file it introduced (invalid cache-dependency-path array syntax) broke GitHub's own YAML parsing, so GitHub reported the run under its file path instead of its name. CI was never actually confirmed green for this task's commit. The underlying YAML bug was separately hand-fixed in commit 939e2d0, and the harness itself now has an actionlint gate + CI-run-matching fix + idle-path CI re-check (all pulled into this project via the 1.79.0 and 1.81.1 harness upgrades) to prevent recurrence.",
+    "at": "2026-07-14T00:13:47Z"
   }
 }
