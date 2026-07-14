@@ -15511,7 +15511,7 @@
     {
       "id": "T573",
       "title": "Logging hygiene sweep: drop baked-in info:/warn: prefixes, pass real level; name stocks-watch ledger rows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
