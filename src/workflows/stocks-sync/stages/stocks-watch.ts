@@ -1,8 +1,9 @@
-import { readFileSync, writeFileSync } from 'fs';
+import { writeFileSync } from 'fs';
 
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { positionKey, type NormalizedPosition, type Trading212Account } from '../../../services/trading212.service.js';
+import { readPortfolio } from '../../stock-digest/lib.js';
 import { stocksSyncConfig } from '../config.js';
 
 /** The work_items key-space for the position-check + notified-episode ledgers. */
@@ -26,15 +27,6 @@ export interface BreachLine {
   gain: number;
   averageBuyPrice: number;
   currentPrice: number;
-}
-
-export function readPortfolio(path: string): NormalizedPosition[] {
-  try {
-    const raw = readFileSync(path, 'utf-8');
-    return JSON.parse(raw) as NormalizedPosition[];
-  } catch {
-    return [];
-  }
 }
 
 /**

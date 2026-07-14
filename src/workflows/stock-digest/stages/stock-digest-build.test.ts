@@ -17,14 +17,13 @@ import {
   portfolioSharePct,
   pickMovers,
   buildFacts,
-  readPortfolio,
   sectorBreakdown,
   extractCandidateTickers,
   findUnknownTickers,
   type ClaudeRunner,
 } from './stock-digest-build.js';
 import { factsPathFor } from '../config.js';
-import { weekKey, weekLabel } from '../lib.js';
+import { weekKey, weekLabel, readPortfolio } from '../lib.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
 
 function fakeCtx(): JobContext {

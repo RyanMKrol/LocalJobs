@@ -12,14 +12,13 @@ import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   runStockSectorLookup,
-  readPortfolio,
   readSectorMap,
   toFinnhubSymbol,
   fetchFinnhubProfile,
   type ProfileFetcher,
 } from './stock-sector-lookup.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
-import { weekKey } from '../lib.js';
+import { weekKey, readPortfolio } from '../lib.js';
 
 function fakeCtx(): JobContext {
   return {

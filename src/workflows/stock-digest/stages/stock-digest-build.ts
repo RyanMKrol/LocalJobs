@@ -1,11 +1,11 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 
 import { markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { runClaude } from '../../../services/claude.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
 import { stockDigestConfig, reportPathFor, factsPathFor, sectorsJsonPath, portfolioJsonPath } from '../config.js';
-import { weekKey, weekLabel } from '../lib.js';
+import { weekKey, weekLabel, readPortfolio } from '../lib.js';
 import { readSectorMap, type SectorMap } from './stock-sector-lookup.js';
 
 const JOB_NAME = 'stock-digest-build';
@@ -177,20 +177,6 @@ export function extractCandidateTickers(text: string): string[] {
 export function findUnknownTickers(candidates: string[], facts: StockDigestFacts): string[] {
   const knownTickers = new Set(facts.holdings.map((h) => h.ticker));
   return candidates.filter((c) => !knownTickers.has(c) && !KNOWN_NON_TICKER_TOKENS.has(c));
-}
-
-// ---------------------------------------------------------------------------
-// Portfolio read (mirrors stocks-watch's readPortfolio — tolerant of missing/empty file)
-// ---------------------------------------------------------------------------
-
-export function readPortfolio(path: string): NormalizedPosition[] {
-  try {
-    const raw = readFileSync(path, 'utf-8');
-    const parsed = JSON.parse(raw) as NormalizedPosition[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 // ---------------------------------------------------------------------------

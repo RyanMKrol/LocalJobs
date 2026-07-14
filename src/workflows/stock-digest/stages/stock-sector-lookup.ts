@@ -3,29 +3,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import type { NormalizedPosition } from '../../../services/trading212.service.js';
 import { portfolioJsonPath, sectorsJsonPath, stockDigestConfig } from '../config.js';
-import { weekKey } from '../lib.js';
+import { weekKey, readPortfolio } from '../lib.js';
 
 const JOB_NAME = 'stock-sector-lookup';
 const MAX_ATTEMPTS = 3;
 
 /** ticker -> Finnhub `finnhubIndustry` (or null if the lookup couldn't resolve one). */
 export type SectorMap = Record<string, string | null>;
-
-// ---------------------------------------------------------------------------
-// Portfolio read (mirrors stock-digest-build's readPortfolio — tolerant of missing/empty file)
-// ---------------------------------------------------------------------------
-
-export function readPortfolio(path: string): NormalizedPosition[] {
-  try {
-    const raw = readFileSync(path, 'utf-8');
-    const parsed = JSON.parse(raw) as NormalizedPosition[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 export function readSectorMap(path: string): SectorMap {
   try {
