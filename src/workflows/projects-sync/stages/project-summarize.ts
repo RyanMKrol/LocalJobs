@@ -43,7 +43,7 @@ const FALLBACK_TEMPLATE = [
   '',
 ].join('\n');
 
-import { runClaudeWithRepoAccess } from '../claude-repo.js';
+import { runClaudeWithRepoAccess } from '../../../services/claude.js';
 import { callService } from '../../../core/services.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';

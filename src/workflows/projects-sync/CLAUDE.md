@@ -27,14 +27,18 @@ repo-id list from that live response.
 ## Stage 2 — `project-summarize`
 
 Shallow-clones each cataloged repo into a gitignored `data/repos/<name>/` (pulling/resetting instead of
-re-cloning if already present), then calls Claude via a **different invocation shape from the shared
-`runClaude` helper**: `claude-repo.ts`'s `runClaudeWithRepoAccess` spawns the CLI with `cwd` set to the
-cloned repo directory and `--add-dir <repoDir> --allowedTools Read Glob Grep` — real, scoped,
+re-cloning if already present), then calls Claude via a **different invocation shape from the plain
+`runClaude` call**: `src/services/claude.ts`'s `runClaudeWithRepoAccess` spawns the CLI with `cwd` set
+to the cloned repo directory and `--add-dir <repoDir> --allowedTools Read Glob Grep` — real, scoped,
 **read-only** filesystem access (deliberately no `Bash`/`Write`/`Edit`), so Claude explores the actual
 checked-out project (package.json, source layout, README, other docs) itself rather than relying on a
-prompt-embedded README slice. Still routed through the same `claude-cli` service/quota meter as
-`runClaude` — only the CLI args/cwd differ; the shared `src/services/claude.ts`'s `runClaude` itself is
-unmodified and still used by `perfumes`/`movies`/`tv-recs`.
+prompt-embedded README slice. As of T566 this invocation shape lives directly in the shared
+`src/services/claude.ts` (moved out of a projects-sync-local `claude-repo.ts`), sharing the same
+`spawnClaudeCli` spawn/timeout/parse primitive `runClaude` uses — only the argv (`buildRepoAccessArgs`)
+and `cwd` differ. It reads the SAME per-call, dashboard-overridable `claudeTimeoutMs()` as `runClaude`
+(previously `claude-repo.ts` read `LOCALJOBS_CLAUDE_TIMEOUT_MS` once at module load, so a dashboard
+`claude-cli` timeout override never applied to repo summaries — now it does). Still routed through the
+same `claude-cli` service/quota meter as `runClaude`.
 
 The `git clone`/`git fetch`/`git reset` operations are also routed through `callService('github',
 ...)` (T424) — the same shared `github` service/budget as the REST API pagination above, rather than

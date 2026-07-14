@@ -10,7 +10,7 @@ import { describe, it, beforeEach } from 'node:test';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { runProjectSummarize, buildSummaryPrompt, cloneOrPullRepo } from './project-summarize.js';
-import { buildRepoAccessArgs, REPO_ACCESS_ALLOWED_TOOLS } from '../claude-repo.js';
+import { buildRepoAccessArgs, REPO_ACCESS_ALLOWED_TOOLS } from '../../../services/claude.js';
 import type { CatalogEntry } from './github-sync.js';
 
 function fakeCtx(): JobContext {
