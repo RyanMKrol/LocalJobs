@@ -93,5 +93,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T581 — same deletion, scope corrected to src/db/store/admin.ts (R03/T529 moved the target code the day before T554 ran)",
     "at": "2026-07-14T09:44:13Z"
+  },
+  "T555": {
+    "failed": true,
+    "reason": "review-failed: superseded by T582 — same task, dashboard/package.json added to scope so its test-script reference to the deleted file can be fixed in the same change",
+    "at": "2026-07-14T09:44:14Z"
   }
 }
