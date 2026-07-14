@@ -310,6 +310,28 @@ describe('runStockDigestBuild', () => {
     );
   });
 
+  it('soft-pauses without throwing when Claude is rate/usage-limited (T572) — no output written, no ledger mark', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stock-digest-'));
+    const portfolioPath = join(dir, 'portfolio.json');
+    writeFileSync(portfolioPath, JSON.stringify([pos()]));
+    const outDir = join(dir, 'out');
+    const now = new Date('2026-08-13T12:00:00Z'); // distinct week key, unaffected by other tests in this suite
+    const claudeRunner: ClaudeRunner = async () => ({
+      ok: false,
+      text: '',
+      rateLimited: true,
+      error: 'claude usage limit reached',
+    });
+    const { ctx, logs } = fakeCtxWithLogSpy();
+
+    await runStockDigestBuild(ctx, { portfolioPath, outDir, now, claudeRunner });
+
+    const key = weekKey(now);
+    assert.equal(existsSync(join(outDir, `stock-digest-${key}.md`)), false);
+    assert.equal(isWorkItemDone(JOB, key, 1), false);
+    assert.ok(logs.some((l) => l.includes('rate/usage limit')), 'expected a rate-limit warn log line');
+  });
+
   it('is idempotent per ISO week — a re-run the same week overwrites, not duplicates', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'stock-digest-'));
     const portfolioPath = join(dir, 'portfolio.json');

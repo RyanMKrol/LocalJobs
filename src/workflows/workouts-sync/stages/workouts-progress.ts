@@ -244,6 +244,10 @@ export async function runWorkoutsProgress(
 
   const prompt = buildClaudePrompt(data);
   const result = await runClaudeFn(prompt, CLAUDE_MODEL);
+  if (result.rateLimited) {
+    ctx.log('warn: Claude rate/usage limit hit — pausing this stage, will retry next run', 'warn');
+    return;
+  }
   if (!result.ok) {
     throw new Error(`Claude report generation failed: ${result.error ?? 'unknown error'}`);
   }

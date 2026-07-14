@@ -271,4 +271,28 @@ describe('runWorkoutsProgress — end-to-end with injected Claude', () => {
       /boom/,
     );
   });
+
+  it('soft-pauses without throwing when Claude is rate/usage-limited (T572) — no output written, no ledger mark', async () => {
+    seedHistory();
+    const rateLimitedNow = new Date('2026-08-15T12:00:00Z'); // distinct month key, unaffected by other tests in this suite
+    const logs: Array<[string, string | undefined]> = [];
+    const ctx = fakeCtx();
+    ctx.log = (message, level) => { logs.push([message, level]); };
+
+    await runWorkoutsProgress(ctx, {
+      historyPath,
+      outDir,
+      now: rateLimitedNow,
+      runClaudeFn: async () => ({ ok: false, text: '', rateLimited: true, error: 'usage limit reached' }),
+    });
+
+    assert.ok(!existsSync(join(outDir, 'workouts-progress.md')), 'no narrative report written on rate limit');
+    assert.ok(
+      !isWorkItemDone('workouts-progress', currentPeriod(rateLimitedNow).key, 3),
+      'item left un-done so a later run resumes it',
+    );
+    const warnLog = logs.find(([message]) => message.includes('rate/usage limit'));
+    assert.ok(warnLog, 'expected a rate-limit warn log line');
+    assert.equal(warnLog![1], 'warn');
+  });
 });

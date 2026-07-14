@@ -240,6 +240,50 @@ describe('project-summarize', () => {
     assert.equal(badRow!.status, 'failed');
   });
 
+  it('soft-breaks the repo loop when Claude is rate/usage-limited (T572) — remaining repos left for next run, current repo not marked failed', async () => {
+    const okEntry = makeEntry({ name: 'good-repo', fullName: 'user/good-repo' });
+    const limitedEntry = makeEntry({ name: 'limited-repo', fullName: 'user/limited-repo' });
+    const laterEntry = makeEntry({ name: 'later-repo', fullName: 'user/later-repo' });
+
+    const claudeCalls: string[] = [];
+    const writtenFiles: Array<[string, string]> = [];
+    const logs: Array<[string, string | undefined]> = [];
+    const ctx = fakeCtx();
+    ctx.log = (message, level) => { logs.push([message, level]); };
+
+    await runProjectSummarize(ctx, {
+      readCatalog: () => [okEntry, limitedEntry, laterEntry],
+      cloneOrPull: async () => {},
+      summarizeWithRepoAccess: async (_prompt, _model, repoDir) => {
+        claudeCalls.push(repoDir);
+        if (repoDir.includes('limited-repo')) {
+          return { ok: false, text: '', rateLimited: true, error: 'claude usage limit reached' };
+        }
+        return { ok: true, text: conformantSummary(okEntry) };
+      },
+      writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
+    });
+
+    // Only the first (ok) repo and the rate-limited repo were attempted — the loop
+    // broke before ever reaching later-repo.
+    assert.equal(claudeCalls.length, 2);
+    assert.ok(!claudeCalls.some((d) => d.includes('later-repo')), 'later-repo must not have been attempted');
+
+    const okRow = getWorkItem('project-summarize', okEntry.repoId);
+    assert.ok(okRow);
+    assert.equal(okRow!.status, 'success');
+
+    const limitedRow = getWorkItem('project-summarize', limitedEntry.repoId);
+    assert.equal(limitedRow, undefined, 'rate-limited repo must not be marked failed — left un-done for next run');
+
+    const laterRow = getWorkItem('project-summarize', laterEntry.repoId);
+    assert.equal(laterRow, undefined, 'un-attempted repo has no ledger row');
+
+    const warnLog = logs.find(([message]) => message.includes('rate/usage limit'));
+    assert.ok(warnLog, 'expected a rate-limit warn log line');
+    assert.equal(warnLog![1], 'warn');
+  });
+
   it('calls summarizeWithRepoAccess with the cloned repo dir as the target directory', async () => {
     const entry = makeEntry();
     let seenRepoDir: string | undefined;

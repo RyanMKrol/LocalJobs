@@ -99,7 +99,7 @@ export async function cloneOrPullRepo(
   });
 }
 
-export type ClaudeSummarizer = (prompt: string, model: string, repoDir: string, effort?: string) => Promise<{ ok: boolean; text: string; error?: string }>;
+export type ClaudeSummarizer = (prompt: string, model: string, repoDir: string, effort?: string) => Promise<{ ok: boolean; text: string; error?: string; rateLimited?: boolean }>;
 
 // ---------------------------------------------------------------------------
 // Prompt building — Claude has its own read-only filesystem access to the
@@ -241,6 +241,10 @@ export async function runProjectSummarize(
 
       const prompt = buildSummaryPrompt(entry);
       const result = await summarize(prompt, claudeModel, dest, claudeEffort);
+      if (result.rateLimited) {
+        ctx.log('warn: Claude rate/usage limit hit — pausing this stage, will retry next run', 'warn');
+        break;
+      }
       if (!result.ok) {
         throw new Error(`claude summarize failed: ${result.error ?? 'unknown error'}`);
       }

@@ -254,6 +254,10 @@ export async function runStockDigestBuild(
   const prompt = buildDigestPrompt(facts);
   ctx.log(`info: calling Claude (${claudeModel}, effort ${claudeEffort}) to narrate the digest…`);
   const result = await claudeRunner(prompt, claudeModel, claudeEffort);
+  if (result.rateLimited) {
+    ctx.log('warn: Claude rate/usage limit hit — pausing this stage, will retry next run', 'warn');
+    return;
+  }
   if (!result.ok) {
     throw new Error(`Claude call failed: ${result.error ?? 'unknown error'}`);
   }
