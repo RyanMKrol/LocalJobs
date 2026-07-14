@@ -14755,7 +14755,7 @@
     {
       "id": "T549",
       "title": "Add an hours tier to fmtDuration and NaN/skew guards to fmtRelative",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
