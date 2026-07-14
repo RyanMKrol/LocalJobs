@@ -186,8 +186,10 @@ export async function runGithubSync(
     return;
   }
 
+  const allowed = entries.filter((entry) => ctx.rootAllowed(entry.repoId));
+
   let done = 0;
-  for (const entry of entries) {
+  for (const entry of allowed) {
     markWorkItem(JOB_NAME, entry.repoId, 'success', {
       detail: {
         name: entry.fullName,
@@ -199,11 +201,11 @@ export async function runGithubSync(
       },
     });
     done++;
-    ctx.log(`info: recorded ${done}/${entries.length} — ${entry.fullName}`);
-    ctx.progress((done / entries.length) * 100, `${done}/${entries.length} recorded`);
+    ctx.log(`info: recorded ${done}/${allowed.length} — ${entry.fullName}`);
+    ctx.progress((done / allowed.length) * 100, `${done}/${allowed.length} recorded`);
   }
 
-  ctx.log(`info: projects-sync complete — recorded ${done} out of ${entries.length} repos`);
+  ctx.log(`info: projects-sync complete — recorded ${done} out of ${allowed.length} repos (${entries.length} in catalog)`);
 }
 
 /**

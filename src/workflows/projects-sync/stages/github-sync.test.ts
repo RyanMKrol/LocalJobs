@@ -399,4 +399,34 @@ describe('runGithubSync', () => {
     assert.ok(progressCalls.length >= 3, 'progress called at least once per repo');
     assert.equal(progressCalls[progressCalls.length - 1], 100, 'final progress is 100');
   });
+
+  it('on a limited run, only records ledger rows for rootAllowed repoIds while the catalog still lists every repo (T570)', async () => {
+    const repos = [makeRepo({ id: uid() }), makeRepo({ id: uid() }), makeRepo({ id: uid() })];
+    const allowedRepoId = String(repos[1].id);
+
+    const ctx: JobContext = {
+      log() {},
+      progress() {},
+      selectedRoots: () => new Set([allowedRepoId]),
+      rootAllowed: (key: string) => key === allowedRepoId,
+    };
+
+    const { write, calls } = makeCatalogWriterSpy();
+    await runGithubSync(ctx, {
+      fetchRepos: async () => repos,
+      writeCatalog: write,
+    });
+
+    assert.equal(calls.length, 1, 'catalog write still happens exactly once');
+    assert.equal(calls[0].length, 3, 'catalog file still lists every repo, regardless of the limit');
+
+    for (const repo of repos) {
+      const repoId = String(repo.id);
+      if (repoId === allowedRepoId) {
+        assert.ok(isWorkItemDone(JOB, repoId, 3), `allowed repo ${repoId} should be marked done`);
+      } else {
+        assert.equal(getWorkItem(JOB, repoId), undefined, `disallowed repo ${repoId} should not be in the ledger`);
+      }
+    }
+  });
 });
