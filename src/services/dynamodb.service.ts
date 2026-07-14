@@ -34,13 +34,24 @@ let _docClient: DynamoDBDocumentClient | null = null;
 
 function getClient(): DynamoDBDocumentClient {
   if (!_docClient) {
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+    // Throw loudly if access key id is set but secret is missing
+    if (accessKeyId && !secretAccessKey) {
+      throw new Error(
+        'AWS_ACCESS_KEY_ID is set but AWS_SECRET_ACCESS_KEY is missing. ' +
+          'Set both env vars or neither — a missing secret will cause confusing signature errors.',
+      );
+    }
+
     const raw = new DynamoDBClient({
       region: process.env.AWS_REGION ?? 'eu-west-1',
-      ...(process.env.AWS_ACCESS_KEY_ID
+      ...(accessKeyId && secretAccessKey
         ? {
             credentials: {
-              accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-              secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? '',
+              accessKeyId,
+              secretAccessKey,
             },
           }
         : {}),
@@ -78,6 +89,7 @@ export async function dynamoPut(
       '(see CLAUDE.md / src/services/CLAUDE.md). Explicit owner sign-off is required before ' +
       're-enabling this function.',
   );
+  // Intentionally unreachable — kept for when the policy gate is lifted.
 }
 
 export async function dynamoQuery(
@@ -139,6 +151,7 @@ export async function dynamoDelete(
       '(see CLAUDE.md / src/services/CLAUDE.md). Explicit owner sign-off is required before ' +
       're-enabling this function.',
   );
+  // Intentionally unreachable — kept for when the policy gate is lifted.
 }
 
 /** Batch-write up to 25 items (DynamoDB hard limit per batch). */
@@ -151,6 +164,7 @@ export async function dynamoBatchWrite(
       '(see CLAUDE.md / src/services/CLAUDE.md). Explicit owner sign-off is required before ' +
       're-enabling this function.',
   );
+  // Intentionally unreachable — kept for when the policy gate is lifted.
   if (items.length > 25) throw new Error('dynamoBatchWrite: max 25 items per batch');
   await getClient().send(
     new BatchWriteCommand({
