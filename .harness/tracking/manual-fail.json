@@ -88,5 +88,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T580 — same task, scope widened to include dashboard/app/page.tsx so the whole-tree grep-clean Done-when is actually achievable",
     "at": "2026-07-14T09:44:11Z"
+  },
+  "T554": {
+    "failed": true,
+    "reason": "review-failed: superseded by T581 — same deletion, scope corrected to src/db/store/admin.ts (R03/T529 moved the target code the day before T554 ran)",
+    "at": "2026-07-14T09:44:13Z"
   }
 }
