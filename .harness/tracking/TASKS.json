@@ -15442,7 +15442,7 @@
     {
       "id": "T571",
       "title": "movies + tv-recs: record work_items in snapshot/branch/merge so StageIoPanel isn't empty",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
