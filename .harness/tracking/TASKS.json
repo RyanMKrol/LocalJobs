@@ -15004,7 +15004,7 @@
     {
       "id": "T558",
       "title": "R08 item 6: delete the dead create-dynamo-tables script; annotate dynamodb.service unreachable code + throw loudly on missing secret",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
