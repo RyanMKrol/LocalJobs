@@ -14499,7 +14499,7 @@
     {
       "id": "T540",
       "title": "CI hardening: dashboard npm cache path + npm audit for both roots",
-      "status": "done",
+      "status": "failed",
       "dependsOn": [
         "T539"
       ],
@@ -14524,7 +14524,7 @@
     {
       "id": "T541",
       "title": "launchd installer hygiene: resolve node at run time, drop baked plist path, fix stale 3001 comment",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [
         "T539"
       ],
