@@ -15205,7 +15205,7 @@
     {
       "id": "T564",
       "title": "Dedup the tolerant readPortfolio into one definition shared by the stocks stages",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
