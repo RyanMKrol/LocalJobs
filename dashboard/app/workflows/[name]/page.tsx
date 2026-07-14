@@ -849,7 +849,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
   const { name } = use(params);
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState('');
-  const { data } = usePoll(() => api.workflow(name), 3000, [name]);
+  const { data, error } = usePoll(() => api.workflow(name), 3000, [name]);
   const p = data?.workflow;
   const runs = p?.runs ?? [];
 
@@ -959,6 +959,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
   return (
     <>
       <p className="muted"><Link href="/workflows">← Workflows</Link></p>
+      {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       <div className="row" style={{ gap: 20 }}>
         <h1 style={{ margin: 0 }}>{name}</h1>
         {p?.certified ? <Pill kind="certified">🏅 Certified</Pill> : null}

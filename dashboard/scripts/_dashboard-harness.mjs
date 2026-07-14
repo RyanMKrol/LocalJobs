@@ -1342,6 +1342,73 @@ export const FLOWS = [
       await page.waitForTimeout(300);
     },
   },
+  {
+    // T548: the five detail pages used to destructure only `data` from usePoll and
+    // discard `error`, leaving a permanently-blank skeleton when the daemon is down —
+    // unlike the list pages, which already show '⚠ Cannot reach the daemon API (…)'.
+    // Fails the workflow-detail fetch (GET /api/workflows/places) and confirms the
+    // same message now renders here too.
+    //
+    // Deliberately does NOT use page.route()+fulfill(status:500): that still runs the
+    // request through Chromium's real network stack, which logs a "Failed to load
+    // resource: the server responded with a status of 500" console error — and
+    // visual-check treats ANY console error as a hard failure, unrelated to whether the
+    // page itself rendered correctly. `failDaemonFetch` instead monkey-patches
+    // `window.fetch` in-page (via addInitScript, before the reload) to reject the ONE
+    // targeted path with a synthetic Response built via `new Response(...)` — a pure
+    // JS-level rejection with no real HTTP resource load, so nothing hits the Network
+    // domain and nothing is logged.
+    name: 'daemon-down-workflow-detail',
+    path: '/workflows/places',
+    actions: async (page) => {
+      await failDaemonFetch(page, '/api/workflows/places');
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('text=Cannot reach the daemon API', { state: 'visible', timeout: 5000 });
+    },
+  },
+  {
+    // T548: fails the workflow-run fetch (GET /api/workflow-runs/1) that backs both
+    // the run-detail page and its two dependent gate pages.
+    name: 'daemon-down-workflow-run-detail',
+    path: '/workflow-runs/1',
+    actions: async (page) => {
+      await failDaemonFetch(page, '/api/workflow-runs/1?');
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('text=Cannot reach the daemon API', { state: 'visible', timeout: 5000 });
+    },
+  },
+  {
+    // T548: fails the job-detail fetch (GET /api/jobs/places-enrich).
+    name: 'daemon-down-job-detail',
+    path: '/jobs/places-enrich',
+    actions: async (page) => {
+      await failDaemonFetch(page, '/api/jobs/places-enrich');
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('text=Cannot reach the daemon API', { state: 'visible', timeout: 5000 });
+    },
+  },
+  {
+    // T548: the run-scoped gate detail page reads the same workflow-run fetch as the
+    // run-detail page above; fail it here too on the gate route directly.
+    name: 'daemon-down-gate-run-scoped',
+    path: '/workflow-runs/1/gates/places-resolve/resolved.json',
+    actions: async (page) => {
+      await failDaemonFetch(page, '/api/workflow-runs/1?');
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('text=Cannot reach the daemon API', { state: 'visible', timeout: 5000 });
+    },
+  },
+  {
+    // T548: the definition-scoped gate detail page's own primary fetch
+    // (GET /api/workflows/places/gates/places-resolve/resolved.json).
+    name: 'daemon-down-gate-definition-scoped',
+    path: '/workflows/places/gates/places-resolve/resolved.json',
+    actions: async (page) => {
+      await failDaemonFetch(page, '/api/workflows/places/gates/places-resolve/resolved.json');
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('text=Cannot reach the daemon API', { state: 'visible', timeout: 5000 });
+    },
+  },
 ];
 
 // ── Harness helpers ─────────────────────────────────────────────────────────
@@ -1393,4 +1460,38 @@ export async function seedTheme(ctx, { mode } = {}) {
     },
     [mode],
   );
+}
+
+/**
+ * Make `window.fetch` reject the given path with a synthetic 500 Response, so a
+ * `usePoll`-driven page's `error` state populates the same way it would if the daemon
+ * API were actually unreachable. Used by the daemon-down FLOWS above (T548).
+ *
+ * Deliberately monkey-patches `fetch` in-page rather than using Playwright's
+ * `page.route()` + `route.fulfill({status: 500})`: a routed 500 still travels through
+ * Chromium's real network stack, which logs a "Failed to load resource: the server
+ * responded with a status of 500" console error — and visual-check.mjs treats ANY
+ * console error as a hard failure, which would make a deliberately-modeled failure
+ * state indistinguishable from a real bug. Building the failing `Response` purely in
+ * JS (via `new Response(...)`) never touches the network layer, so nothing is logged.
+ *
+ * `pathPrefix` matches by `startsWith` against the request URL's pathname+search, so
+ * pass a trailing `?` to match a path regardless of query-string value (e.g.
+ * `/api/workflow-runs/1?`) without also matching a longer sibling path
+ * (`/api/workflow-runs/1/stage-io`).
+ */
+export async function failDaemonFetch(page, pathPrefix) {
+  await page.addInitScript((prefix) => {
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes(prefix)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: 'daemon unreachable' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      return realFetch(input, init);
+    };
+  }, pathPrefix);
 }

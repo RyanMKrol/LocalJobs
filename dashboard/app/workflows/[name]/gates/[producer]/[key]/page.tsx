@@ -79,7 +79,7 @@ export default function StructuralGateDetail({
   const decodedProducer = decodeURIComponent(producer);
   const decodedKey = decodeURIComponent(key);
 
-  const { data } = usePoll(
+  const { data, error } = usePoll(
     () => api.workflowGate(name, decodedProducer, decodedKey),
     5000,
     [name, decodedProducer, decodedKey],
@@ -89,6 +89,7 @@ export default function StructuralGateDetail({
   return (
     <>
       <WorkflowRunBackLink workflowRunId={null} fallback={{ href: `/workflows/${name}`, label: name }} />
+      {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       <div className="row">
         <h1 style={{ margin: 0 }}>Validation gate</h1>
         <div className="spacer" />

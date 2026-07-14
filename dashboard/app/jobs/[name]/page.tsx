@@ -10,7 +10,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
   const { name } = use(params);
   const back = backFrom(useSearchParams().get('from'), { href: '/workflows', label: 'Workflows' });
 
-  const { data: jobData } = usePoll(() => api.job(name), 3000, [name]);
+  const { data: jobData, error } = usePoll(() => api.job(name), 3000, [name]);
   const { data: runsData } = usePoll(() => api.jobRuns(name), 2000, [name]);
   const { data: stuckData } = usePoll(() => api.stuck(name), 5000, [name]);
   const job = jobData?.job;
@@ -58,6 +58,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
   return (
     <>
       <p className="muted"><Link href={back.href}>← {back.label}</Link></p>
+      {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       <h1 style={{ margin: 0 }}>{name}</h1>
       <p className="sub">{job?.description}</p>
 

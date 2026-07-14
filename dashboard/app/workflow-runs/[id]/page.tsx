@@ -49,7 +49,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
       return next;
     });
   };
-  const { data } = usePoll(() => api.workflowRun(id), 2000, [id]);
+  const { data, error } = usePoll(() => api.workflowRun(id), 2000, [id]);
   const run = data?.run;
   const members = data?.jobs ?? [];
   const logs = data?.logs ?? [];
@@ -61,7 +61,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   }
 
   // Fetch the workflow definition (for the DAG edges) once we know its name.
-  const { data: pdata } = usePoll(
+  const { data: pdata, error: pError } = usePoll(
     () => api.workflow(run?.workflow_name ?? '__none__'),
     5000,
     [run?.workflow_name],
@@ -83,6 +83,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   return (
     <>
       <p className="muted"><Link href={run ? `/workflows/${run.workflow_name}` : '/workflows'}>← {run?.workflow_name ?? 'workflows'}</Link></p>
+      {(error || pError) && <p className="muted">⚠ Cannot reach the daemon API ({error || pError}).</p>}
       <div className="row">
         <h1 style={{ margin: 0 }}>Workflow run</h1>
         <div className="spacer" />

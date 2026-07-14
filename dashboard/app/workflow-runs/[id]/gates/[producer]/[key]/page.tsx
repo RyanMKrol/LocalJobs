@@ -119,7 +119,7 @@ export default function GateDetail({
   const decodedProducer = decodeURIComponent(producer);
   const decodedKey = decodeURIComponent(key);
 
-  const { data } = usePoll(() => api.workflowRun(id), 2000, [id]);
+  const { data, error } = usePoll(() => api.workflowRun(id), 2000, [id]);
   const { data: inspect } = usePoll(
     () => api.gateInspection(id, decodedProducer, decodedKey),
     2000,
@@ -147,6 +147,7 @@ export default function GateDetail({
         workflowName={run?.workflow_name}
         fallback={{ href: '/workflows', label: 'workflows' }}
       />
+      {error && <p className="muted">⚠ Cannot reach the daemon API ({error}).</p>}
       <div className="row">
         <h1 style={{ margin: 0 }}>Validation gate</h1>
         <div className="spacer" />
