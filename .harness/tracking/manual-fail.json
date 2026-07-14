@@ -83,5 +83,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T579 — same refactor, CLAUDE.md added to scope so the required T268 doc update can land; dependents T543-T546 rewired onto T579",
     "at": "2026-07-14T09:44:09Z"
+  },
+  "T550": {
+    "failed": true,
+    "reason": "review-failed: superseded by T580 — same task, scope widened to include dashboard/app/page.tsx so the whole-tree grep-clean Done-when is actually achievable",
+    "at": "2026-07-14T09:44:11Z"
   }
 }
