@@ -22,8 +22,6 @@ const service: ServiceDefinition = {
     'Local filesystem the owner controls — no external rate limit or quota applies; this ' +
     'service exists purely for call-count visibility and per-job consumer tracking on the ' +
     'Integrations page. Local file reads are near-instant.',
-  // Short timeout for local file reads — they should complete immediately.
-  timeoutMs: 5_000,
 };
 
 export default service;
