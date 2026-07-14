@@ -15416,7 +15416,7 @@
     {
       "id": "T570",
       "title": "github-sync: filter first-stage ledger marking by ctx.rootAllowed (T094 fix)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
