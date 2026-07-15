@@ -16012,6 +16012,36 @@
           "touches-executor"
         ]
       }
+    },
+    {
+      "id": "T588",
+      "title": "Dedup the JSON file helpers (readJsonFile / writeJsonFile / ensureDirs) into a shared core module (src/core/fsjson.ts)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "dedup",
+        "fsjson"
+      ],
+      "scope": [
+        "src/core/fsjson.ts",
+        "src/core/fsjson.test.ts",
+        "src/workflows/perfumes/lib.ts",
+        "src/workflows/movies/lib.ts",
+        "src/workflows/tv-recs/lib.ts",
+        "src/workflows/plex-space-saver/lib.ts",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T588.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "refactor",
+        "risk": []
+      }
     }
   ]
 }
