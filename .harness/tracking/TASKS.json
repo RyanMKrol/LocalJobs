@@ -15606,7 +15606,7 @@
     {
       "id": "T576",
       "title": "listening-digest: refactor the two near-identical passes into a runPass() loop",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
