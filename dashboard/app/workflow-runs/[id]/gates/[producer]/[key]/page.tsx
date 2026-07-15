@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { api } from '../../../../../lib/api';
 import type { ArtifactShape, ExpectationResult, GateResult } from '../../../../../lib/api';
 import { StatusBadge, WorkflowRunBackLink, usePoll } from '../../../../../ui';
-import type { RunStatus } from '../../../../../lib/api';
 
 /** Pair each declared expectation with its actual result (matched by label). */
 function pairExpectations(shape: ArtifactShape | null, result: GateResult | null) {
@@ -151,7 +150,7 @@ export default function GateDetail({
       <div className="row">
         <h1 style={{ margin: 0 }}>Validation gate</h1>
         <div className="spacer" />
-        {gate && <StatusBadge status={gate.state as RunStatus} />}
+        {gate && <StatusBadge status={gate.state} />}
       </div>
 
       {!gate && <p className="muted">Gate not found.</p>}
@@ -170,7 +169,7 @@ export default function GateDetail({
               <div className="gate-card gate-center">
                 <div className="gate-card-head">
                   <span className="gate-role">Gate</span>
-                  <StatusBadge status={gate.state as RunStatus} />
+                  <StatusBadge status={gate.state} />
                 </div>
                 <code className="code-block gate-format">{gate.key}</code>
                 <p className="muted">

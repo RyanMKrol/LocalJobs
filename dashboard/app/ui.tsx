@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { api } from './lib/api';
-import type { BulkScope, LogLine, RunStatus, StuckItem } from './lib/api';
+import type { BulkScope, LogLine, StuckItem } from './lib/api';
 
 const STATUS_LABELS: Record<string, string> = {
   success:   'Succeeded',
@@ -39,7 +39,7 @@ const STATUS_EMOJI: Record<string, string> = {
   pending:   '⏳',
 };
 
-export function StatusBadge({ status }: { status: RunStatus }) {
+export function StatusBadge({ status }: { status: string }) {
   const emoji = STATUS_EMOJI[status];
   return (
     <span className={`badge ${status}`}>

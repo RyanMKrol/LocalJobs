@@ -263,7 +263,7 @@ export default function AdminPage() {
                     <tr key={r.name}>
                       <td>{r.name}</td>
                       <td>
-                        <span className={`pill ${r.status === 'reset' ? 'on' : 'off'}`}>{r.status}</span>
+                        <Pill kind={r.status === 'reset' ? 'on' : 'off'}>{r.status}</Pill>
                       </td>
                       <td className="muted">
                         {r.status === 'reset'

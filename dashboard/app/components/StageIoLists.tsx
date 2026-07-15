@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { renderOutputBody } from './OutputRenderer';
 import { api } from '../lib/api';
 import type { StageIoItem, WorkflowMember, WorkflowRunOutput } from '../lib/api';
-import { usePoll } from '../ui';
+import { StatusBadge, usePoll } from '../ui';
 
 const OVERALL_TAB = '__overall__';
 
@@ -145,7 +145,7 @@ function StageIoItemRow(
           </div>
         )}
       </div>
-      <span className={`badge ${item.status}`}>{item.status}</span>
+      <StatusBadge status={item.status} />
     </li>
   );
 }

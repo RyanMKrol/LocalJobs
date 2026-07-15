@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { api } from '../lib/api';
 import type { StuckItem } from '../lib/api';
-import { CronBadge, StuckPopover, fmtRelative, fmtTime, statusLabel, usePoll } from '../ui';
+import { CronBadge, StatusBadge, StuckPopover, fmtRelative, fmtTime, usePoll } from '../ui';
 import type { Workflow } from '../lib/api';
 import { RunButton } from '../components/RunButton';
 import { Pill } from '../components/Pill';
@@ -129,7 +129,7 @@ export default function Workflows() {
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   {p.last_run
-                    ? <span className="last-run-cell"><Link href={`/workflow-runs/${p.last_run.id}`} className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</Link><span className="muted last-run-time">{fmtRelative(p.last_run.started_at)}</span></span>
+                    ? <span className="last-run-cell"><Link href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}><StatusBadge status={p.last_run.status} /></Link><span className="muted last-run-time">{fmtRelative(p.last_run.started_at)}</span></span>
                     : <span className="muted">never</span>}
                 </td>
                 <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>

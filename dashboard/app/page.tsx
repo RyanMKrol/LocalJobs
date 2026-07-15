@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { api } from './lib/api';
-import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtDuration, fmtRelative, statusLabel, usePoll } from './ui';
+import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtDuration, fmtRelative, usePoll } from './ui';
 import { RunButton } from './components/RunButton';
 import { Pill } from './components/Pill';
 
@@ -196,7 +196,7 @@ export default function Overview() {
             {p.last_run && (
               <div style={{ marginTop: 4 }}>
                 <Link href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}>
-                  <span className={`badge ${p.last_run.status}`}>{statusLabel(p.last_run.status)}</span>
+                  <StatusBadge status={p.last_run.status} />
                 </Link>
               </div>
             )}
@@ -272,7 +272,7 @@ export default function Overview() {
               {visibleWorkflowRuns.map((r) => (
                 <tr key={r.id}>
                   <td><Link href={`/workflows/${r.workflow_name}`}>{r.workflow_name}</Link></td>
-                  <td><span className={`badge ${r.status}`}>{statusLabel(r.status)}</span></td>
+                  <td><StatusBadge status={r.status} /></td>
                   <td className="muted">{r.trigger}</td>
                   <td className="muted">{fmtRelative(r.started_at)}</td>
                   <td className="mono">{fmtDuration(r.duration_ms)}</td>

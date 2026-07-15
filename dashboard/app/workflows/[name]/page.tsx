@@ -11,7 +11,7 @@ import { RunButton } from '../../components/RunButton';
 import { TvRecsManager } from '../../components/TvRecsManager';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api } from '../../lib/api';
-import { CronBadge, fmtDuration, fmtRelative, fmtTime, statusLabel, usePoll } from '../../ui';
+import { CronBadge, StatusBadge, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
 
 /** Workflow names that show the Missing seasons section. */
 const MISSING_SEASONS_WORKFLOWS = new Set(['missing-tv-seasons']);
@@ -293,7 +293,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
             {runs.length === 0 && <tr><td colSpan={5} className="muted">No runs yet.</td></tr>}
             {runs.map((r) => (
               <tr key={r.id}>
-                <td><span className={`badge ${r.status}`}>{statusLabel(r.status)}</span></td>
+                <td><StatusBadge status={r.status} /></td>
                 <td className="muted">{r.trigger}</td>
                 <td className="muted">{fmtRelative(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>
