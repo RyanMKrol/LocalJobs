@@ -16311,7 +16311,12 @@
       "design": null,
       "verify": [],
       "expectsTest": true,
-      "spec": ".harness/tasks/T598.md"
+      "spec": ".harness/tasks/T598.md",
+      "facets": {
+        "layer": "job",
+        "workType": "bugfix",
+        "risk": []
+      }
     },
     {
       "id": "T599",
