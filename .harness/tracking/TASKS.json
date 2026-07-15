@@ -16042,6 +16042,724 @@
         "workType": "refactor",
         "risk": []
       }
+    },
+    {
+      "id": "T589",
+      "title": "Add an absolute date+time formatter and swap it into every 'Started' timestamp column across the dashboard",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "timestamps",
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/ui.tsx",
+        "dashboard/app/page.tsx",
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/app/jobs/[name]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T589.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T590",
+      "title": "Surface the workflow run's actual absolute start time near the header on the workflow-run detail page",
+      "status": "pending",
+      "dependsOn": [
+        "T589"
+      ],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "timestamps",
+        "ui"
+      ],
+      "scope": [
+        "dashboard/app/workflow-runs/[id]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T590.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T591",
+      "title": "Skip certified workflows in the bulk reset-output-all admin action",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "admin",
+        "reset-output",
+        "certified"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/admin/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T591.md",
+      "facets": {
+        "layer": "api",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T592",
+      "title": "Fix DagFlow gate-padlock midpoint colliding with an intermediate node on a same-row skip-column edge",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dagflow",
+        "bugfix",
+        "gate-mark",
+        "rendering"
+      ],
+      "scope": [
+        "dashboard/app/components/DagFlow.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T592.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T593",
+      "title": "Align 'Ignore all' group-header button padding with per-item 'Ignore' button padding in GroupedManager",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "css",
+        "padding",
+        "grouped-manager"
+      ],
+      "scope": [
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T593.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      }
+    },
+    {
+      "id": "T594",
+      "title": "Always show the 'Ignore all' group-header button, even for single-item groups, in GroupedManager",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "component",
+        "grouped-manager",
+        "ux"
+      ],
+      "scope": [
+        "dashboard/app/components/GroupedManager.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T594.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T595",
+      "title": "Show a dispatch-driven 'Starting…' indicator for the pre-DB-row inputKeys() wait (no schema change)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "dashboard",
+        "workflow-executor"
+      ],
+      "scope": [
+        "src/core/workflow-executor.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts",
+        "dashboard/app/**"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test",
+        "npm --prefix dashboard run build"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T595.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": [
+          "touches-executor"
+        ]
+      }
+    },
+    {
+      "id": "T596",
+      "title": "Surface a fire-and-forget workflow-run failure from the API dispatch, not just daemon stdout",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "framework",
+        "api"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/core/workflow-executor.ts",
+        "src/core/workflow-executor.test.ts",
+        "src/db/store/workflows.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T596.md",
+      "facets": {
+        "layer": "api",
+        "workType": "bugfix",
+        "risk": [
+          "touches-executor"
+        ]
+      }
+    },
+    {
+      "id": "T597",
+      "title": "Add '/' separator to Services page 'no limit' usage display",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "integrations"
+      ],
+      "scope": [
+        "dashboard/app/integrations/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T597.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": []
+      }
+    },
+    {
+      "id": "T598",
+      "title": "Route plex-language-undo.ts's revert PUT through callService('plex', ...)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "plex",
+        "services",
+        "rate-limiting"
+      ],
+      "scope": [
+        "scripts/plex-language-undo.ts",
+        "scripts/plex-language-undo.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T598.md"
+    },
+    {
+      "id": "T599",
+      "title": "Fix branch.ts runBranch naming collision so recordBranchLedgerRow actually runs",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "recommender",
+        "work-items",
+        "bugfix"
+      ],
+      "scope": [
+        "src/core/recommender/branch.ts",
+        "src/workflows/movies/stages/recommend.ts",
+        "src/workflows/tv-recs/stages/recommend.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T599.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "bugfix",
+        "risk": [
+          "touches-executor"
+        ]
+      }
+    },
+    {
+      "id": "T600",
+      "title": "Extend branch ledger recording to one work_items row per suggested title",
+      "status": "pending",
+      "dependsOn": [
+        "T599"
+      ],
+      "gate": null,
+      "tags": [
+        "recommender",
+        "work-items",
+        "feature"
+      ],
+      "scope": [
+        "src/workflows/movies/stages/recommend.ts",
+        "src/workflows/tv-recs/stages/recommend.ts",
+        "src/core/recommender/branch.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T600.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T601",
+      "title": "Capture each recommender branch's stratified sample as its Inputs record",
+      "status": "pending",
+      "dependsOn": [
+        "T599"
+      ],
+      "gate": null,
+      "tags": [
+        "recommender",
+        "work-items",
+        "feature"
+      ],
+      "scope": [
+        "src/core/recommender/branch.ts",
+        "src/workflows/movies/stages/recommend.ts",
+        "src/workflows/tv-recs/stages/recommend.ts",
+        "src/db/store/workItems.ts",
+        "src/db/store.test.ts",
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T601.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T602",
+      "title": "Change rec-merge / tv-rec-merge output from a bulk marker to one row per final recommendation",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "recommender",
+        "work-items",
+        "feature"
+      ],
+      "scope": [
+        "src/core/recommender/merge.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T602.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T603",
+      "title": "Fix the movie-recs/tv-recs notify-stage ledger job-name mismatch by unifying with outputJob",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "recommender",
+        "work-items",
+        "bugfix"
+      ],
+      "scope": [
+        "src/core/recommender/notify.ts",
+        "src/api/server.ts",
+        "src/workflows/movies/recs.ts",
+        "src/workflows/tv-recs/recs.ts",
+        "src/workflows/movies/movies.workflow.ts",
+        "src/workflows/tv-recs/tv-recs.workflow.ts",
+        "src/db/store/workItems.ts",
+        "src/core/types.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T603.md",
+      "facets": {
+        "layer": "api",
+        "workType": "bugfix",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T604",
+      "title": "Fix stale franchise-gaps.md markdown pointer in movie-recs notify ledger rows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "recommender",
+        "work-items",
+        "bugfix"
+      ],
+      "scope": [
+        "src/core/recommender/notify.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T604.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T605",
+      "title": "Snapshot stages (movie-snapshot / tv-snapshot) record one work_items row per movie/show, not a single bulk marker",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "recommender",
+        "missing-movies",
+        "work-items",
+        "feature"
+      ],
+      "scope": [
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T605.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T606",
+      "title": "missing-movies' snapshot.ts and franchise-gaps.ts record per-item work_items ledger rows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "missing-movies",
+        "work-items",
+        "feature"
+      ],
+      "scope": [
+        "src/workflows/missing-movies/stages/snapshot.ts",
+        "src/workflows/missing-movies/stages/franchise-gaps.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T606.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T607",
+      "title": "Correct misleading 'this is the root stage' empty-inputs label when a predecessor genuinely has no ledger rows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "work-items",
+        "bugfix"
+      ],
+      "scope": [
+        "dashboard/app/components/StageIoLists.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T607.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T608",
+      "title": "Fix Run button flash-back by reusing the detail page's busy-timer pattern on the list + Overview pages",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "workflows"
+      ],
+      "scope": [
+        "dashboard/app/workflows/page.tsx",
+        "dashboard/app/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T608.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": []
+      }
+    },
+    {
+      "id": "T609",
+      "title": "Add listServiceCacheRows() store function for browsing service_cache rows",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "admin",
+        "service-cache"
+      ],
+      "scope": [
+        "src/db/store/services.ts",
+        "src/db/store.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T609.md",
+      "facets": {
+        "layer": "db",
+        "workType": "endpoint",
+        "risk": []
+      }
+    },
+    {
+      "id": "T610",
+      "title": "Add GET /api/cache/rows endpoint exposing service_cache row detail",
+      "status": "pending",
+      "dependsOn": [
+        "T609"
+      ],
+      "gate": null,
+      "tags": [
+        "admin",
+        "service-cache"
+      ],
+      "scope": [
+        "src/api/server.ts",
+        "src/api/server.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T610.md",
+      "facets": {
+        "layer": "api",
+        "workType": "endpoint",
+        "risk": []
+      }
+    },
+    {
+      "id": "T611",
+      "title": "Add cache row-browsing UI to the admin page's Cached responses panel",
+      "status": "pending",
+      "dependsOn": [
+        "T610"
+      ],
+      "gate": null,
+      "tags": [
+        "admin",
+        "service-cache"
+      ],
+      "scope": [
+        "dashboard/app/admin/page.tsx",
+        "dashboard/app/lib/api.ts",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T611.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T612",
+      "title": "Fix status pill (.badge) wrapping onto two internal lines",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "css",
+        "bugfix"
+      ],
+      "scope": [
+        "dashboard/app/globals.css"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T612.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "style",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T613",
+      "title": "Add idempotencyNote field to WorkflowDefinition, synced + exposed like category",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "workflows",
+        "schema"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "src/db/schema.sql",
+        "src/db/index.ts",
+        "src/db/store/workflows.ts",
+        "dashboard/app/workflows/[name]/page.tsx"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T613.md",
+      "visualVerify": true,
+      "facets": {
+        "layer": "db",
+        "workType": "feature",
+        "risk": [
+          "full-stack",
+          "touches-schema"
+        ]
+      }
+    },
+    {
+      "id": "T614",
+      "title": "Author idempotencyNote for all 17 workflow manifests",
+      "status": "pending",
+      "dependsOn": [
+        "T613"
+      ],
+      "gate": null,
+      "tags": [
+        "workflows",
+        "docs"
+      ],
+      "scope": [
+        "src/workflows/places/places.workflow.ts",
+        "src/workflows/perfumes/perfumes.workflow.ts",
+        "src/workflows/missing-tv-seasons/plex.workflow.ts",
+        "src/workflows/missing-movies/missing-movies.workflow.ts",
+        "src/workflows/movies/movies.workflow.ts",
+        "src/workflows/tv-recs/tv-recs.workflow.ts",
+        "src/workflows/workouts-sync/workouts-sync.workflow.ts",
+        "src/workflows/listening-digest/listening-digest.workflow.ts",
+        "src/workflows/projects-sync/projects-sync.workflow.ts",
+        "src/workflows/claude-warmer/claude-warmer.workflow.ts",
+        "src/workflows/stocks-sync/stocks-sync.workflow.ts",
+        "src/workflows/stock-digest/stock-digest.workflow.ts",
+        "src/workflows/vercel-daily-redeploy/vercel-daily-redeploy.workflow.ts",
+        "src/workflows/plex-space-saver/plex-space-saver.workflow.ts",
+        "src/workflows/plex-language-fix/plex-language-fix.workflow.ts",
+        "src/workflows/plex-profiles/plex-profiles.workflow.ts",
+        "src/workflows/overrides-audit/overrides-audit.workflow.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T614.md",
+      "facets": {
+        "layer": "job",
+        "workType": "docs",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
     }
   ]
 }
