@@ -103,5 +103,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T583 — scope named wrong impl files instead of .job.ts files, plus missed perfumes/CLAUDE.md",
     "at": "2026-07-15T14:52:50Z"
+  },
+  "T543": {
+    "failed": true,
+    "reason": "review-failed: superseded by T584 — fully built/verified but blocked on CLAUDE.md missing from scope",
+    "at": "2026-07-15T14:52:52Z"
   }
 }
