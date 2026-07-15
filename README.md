@@ -249,13 +249,15 @@ summaries below are a quick-reference index, not the source of truth.
   `account:ticker` via the work_items ledger. Stage 3
   (`stocks-watch`, depends on `stocks-snapshot`) checks EVERY position's gain since average buy
   price EVERY run and records it in the ledger unconditionally, then writes this run's fresh
-  30%+ breaches to `data/out/fresh-breaches.json` — the check always reports success when it
+  breaches (≥30% by default, env-overridable via `STOCKS_WATCH_BREACH_PCT`) to
+  `data/out/fresh-breaches.json` — the check always reports success when it
   ran (it can never legitimately show as skipped/noop). Stage 4 (`stocks-notify`, depends on
   `stocks-watch`) reads `fresh-breaches.json` and sends **one** push naming every freshly
   breaching position, or does nothing if the file is empty (a real, expected noop, unlike
-  stocks-watch). Notified once per breach episode (staying above 30% doesn't re-notify every
-  run); if a position later drops back below 30% its notified-flag resets, so a future
-  re-breach notifies again. Runs daily (schedule editable from the dashboard).
+  stocks-watch). Notified once per breach episode (staying above the threshold doesn't
+  re-notify every run); if a position later drops back below the threshold its notified-flag
+  resets, so a future re-breach notifies again. Runs daily (schedule editable from the
+  dashboard).
 - **stock-digest** — Weekly Claude-narrated markdown summary of current stock
   holdings, performance movers, and a sector/diversification breakdown, DISTINCT
   from `stocks-sync` (own folder, own workflow, own weekly schedule —

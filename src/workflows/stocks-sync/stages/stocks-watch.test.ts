@@ -159,4 +159,39 @@ function pos(
   console.log('  ✓ same ticker in both accounts tracked as distinct, non-colliding ledger entries');
 }
 
+// (g) T575 — the breach threshold reads from STOCKS_WATCH_BREACH_PCT (default
+// 30 when unset/invalid), and every breach computation follows it.
+{
+  const CUSTOM = 'T575CUSTOM';
+
+  // Default (env unset): a +20% gain does NOT breach the default 30% bar.
+  delete process.env.STOCKS_WATCH_BREACH_PCT;
+  writePortfolio([pos(CUSTOM, 100, 120)]); // +20%
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  assert.deepEqual(readFreshBreaches(), [], 'default threshold (30%) is not crossed by a +20% gain');
+
+  // Lower the threshold to 15% via env — the same +20% gain now breaches.
+  process.env.STOCKS_WATCH_BREACH_PCT = '15';
+  await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+  const breaches = readFreshBreaches();
+  assert.equal(breaches.length, 1, 'a lowered STOCKS_WATCH_BREACH_PCT is honoured by breach detection');
+  assert.equal(breaches[0].ticker, CUSTOM);
+  delete process.env.STOCKS_WATCH_BREACH_PCT;
+
+  console.log('  ✓ STOCKS_WATCH_BREACH_PCT overrides the breach threshold; defaults to 30 when unset');
+}
+
+// (h) an invalid/non-positive env value falls back to the default 30%.
+{
+  const INVALID = 'T575INVALID';
+  for (const bad of ['not-a-number', '0', '-10']) {
+    process.env.STOCKS_WATCH_BREACH_PCT = bad;
+    writePortfolio([pos(INVALID, 100, 120)]); // +20% — should NOT breach under the default 30%
+    await runStocksWatch(fakeCtx(), { portfolioPath, freshBreachesPath });
+    assert.deepEqual(readFreshBreaches(), [], `invalid STOCKS_WATCH_BREACH_PCT=${bad} falls back to the 30% default`);
+  }
+  delete process.env.STOCKS_WATCH_BREACH_PCT;
+  console.log('  ✓ invalid/non-positive STOCKS_WATCH_BREACH_PCT falls back to the 30% default');
+}
+
 console.log('  ✓ stocks-watch tests passed');

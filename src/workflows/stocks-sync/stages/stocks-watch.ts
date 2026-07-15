@@ -9,8 +9,14 @@ import { stocksSyncConfig } from '../config.js';
 /** The work_items key-space for the position-check + notified-episode ledgers. */
 export const WATCH_JOB = 'stocks-watch';
 
-/** A position rises 30% or more above its average buy price to count as a breach. */
-export const BREACH_THRESHOLD_PCT = 30;
+/**
+ * A position rises this % or more above its average buy price to count as a
+ * breach. Env-overridable via `STOCKS_WATCH_BREACH_PCT` (default 30) — see
+ * `stocksSyncConfig.breachThresholdPct`.
+ */
+export function BREACH_THRESHOLD_PCT(): number {
+  return stocksSyncConfig.breachThresholdPct();
+}
 
 export function gainPct(position: NormalizedPosition): number {
   if (position.averageBuyPrice === 0) return 0;
@@ -18,7 +24,7 @@ export function gainPct(position: NormalizedPosition): number {
 }
 
 export function isBreaching(position: NormalizedPosition): boolean {
-  return gainPct(position) >= BREACH_THRESHOLD_PCT;
+  return gainPct(position) >= BREACH_THRESHOLD_PCT();
 }
 
 export interface BreachLine {
@@ -57,8 +63,9 @@ export async function runStocksWatch(
 ): Promise<void> {
   const portfolioPath = opts.portfolioPath ?? stocksSyncConfig.portfolioJsonPath;
   const freshBreachesPath = opts.freshBreachesPath ?? stocksSyncConfig.freshBreachesJsonPath;
+  const breachThreshold = BREACH_THRESHOLD_PCT();
 
-  ctx.log('stocks-watch starting — checking positions for a 30%+ gain since average buy price');
+  ctx.log(`stocks-watch starting — checking positions for a ${breachThreshold}%+ gain since average buy price`);
 
   const positions = readPortfolio(portfolioPath);
   ctx.log(`read ${positions.length} position(s) from ${portfolioPath}`);
@@ -74,11 +81,11 @@ export async function runStocksWatch(
     const notifiedKey = `${key}::notified`;
     const alreadyNotified = isWorkItemDone(WATCH_JOB, notifiedKey, 1);
 
-    if (gain >= BREACH_THRESHOLD_PCT) {
+    if (gain >= breachThreshold) {
       if (alreadyNotified) {
         ctx.log(`${label}: gain ${gain.toFixed(1)}% — still above threshold, already notified, skipping`);
       } else {
-        ctx.log(`${label}: gain ${gain.toFixed(1)}% — FRESH breach of ${BREACH_THRESHOLD_PCT}%`);
+        ctx.log(`${label}: gain ${gain.toFixed(1)}% — FRESH breach of ${breachThreshold}%`);
         freshBreaches.push({
           ticker: position.ticker,
           account: position.account,
@@ -107,7 +114,7 @@ export async function runStocksWatch(
         ticker: position.ticker,
         account: position.account,
         gainPct: gain,
-        breaching: gain >= BREACH_THRESHOLD_PCT,
+        breaching: gain >= breachThreshold,
       },
     });
 

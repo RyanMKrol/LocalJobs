@@ -47,10 +47,12 @@ entirely when there's nothing to record). Declares no `inputKeys()` — not limi
 
 Reads the snapshot and, every run, computes every position's gain since average buy price and writes
 to the ledger **unconditionally** — so a quiet run with nothing breaching still shows real ledger
-activity, never a stale noop mislabel. A position is a **fresh** breach (≥30% and not already
-notified) tracked on a separate `<account:ticker>::notified` ledger key (distinct from the per-run
-check key) — set on a fresh breach, left untouched while staying above 30%, and reset when it drops
-back below (so a later re-crossing is fresh again). Fresh breaches this run go to
+activity, never a stale noop mislabel. The breach threshold is **env-overridable via
+`STOCKS_WATCH_BREACH_PCT`** (default 30, see `stocksSyncConfig.breachThresholdPct` in `config.ts` — an
+unset/invalid/non-positive value falls back to 30). A position is a **fresh** breach (≥ the threshold
+and not already notified) tracked on a separate `<account:ticker>::notified` ledger key (distinct from
+the per-run check key) — set on a fresh breach, left untouched while staying above the threshold, and
+reset when it drops back below (so a later re-crossing is fresh again). Fresh breaches this run go to
 `data/out/fresh-breaches.json`.
 
 ## Stage 5 — `stocks-notify`
