@@ -13106,7 +13106,7 @@
     {
       "id": "T487",
       "title": "Add inputKeysService field to JobDefinition + retrofit onto every job that declares inputKeys()",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [
         "T483",
         "T484",
