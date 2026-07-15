@@ -1313,6 +1313,25 @@ doubt, log it.
     `.ignored-section-heading`/`.ignored-section-subtitle` in `globals.css`) — props
     are `count`, `subtitle`, and `children` (each manager's own table, since the
     columns differ per manager).
+  - **`<TvRecsManager>`/`<MovieRecsManager>`/`<MovieGapsManager>`/`<MissingSeasonsManager>`**
+    (`dashboard/app/components/TvRecsManager.tsx`/`MovieRecsManager.tsx`/`MovieGapsManager.tsx`/
+    `MissingSeasonsManager.tsx`, T579) — the four workflow-specific output managers rendered by
+    `workflows/[name]/page.tsx` for `tv-recommendations`/`movie-recommendations`/`missing-movies`/
+    `missing-tv-seasons` respectively (see `WORKFLOWS_WITH_SPECIFIC_MANAGERS` in that file). Each
+    was previously inline in `page.tsx` (T542/T579 moved them out, dropping the page from 1,144 to
+    ~330 lines) — a pure extraction, no behaviour change. `groupByCollection`/`groupByShow` moved
+    with their respective managers (`MovieGapsManager.tsx`/`MissingSeasonsManager.tsx`); the shared
+    `RecSortCol`/`sortRecs` sort helper used by `TvRecsManager`/`MovieRecsManager` lives in
+    `dashboard/app/components/recSort.ts`.
+  - **`useAction`** (`dashboard/app/components/useAction.ts`, T579) — the hook the four managers
+    above use for every ignore/unignore/bulk-ignore handler, replacing the repeated `setBusy(key) ->
+    setErr(null) -> await fn() -> await refetch() -> catch(setErr) -> finally(setBusy(null))` block
+    (~14 near-identical copies before the extraction). `useAction<K>(refetch)` returns `{ busy, err,
+    run }`; call `run(key, fn)` where `key` is the row id being acted on (or the literal `true` for a
+    flat bulk action) — `busy` reflects the in-flight key (or `null`), so `disabled={busy === key}`
+    works unchanged at each call site. A manager with multiple independent busy dimensions (e.g.
+    `MovieGapsManager`'s per-item / per-collection / per-ignored-collection actions) uses one
+    `useAction` instance per dimension. Guards against `setState` after unmount via a mounted ref.
   When adding a new reusable element, add it to `dashboard/app/components/` (NOT
   inline in a page) and document it here. Do NOT introduce a new styling system —
   wrap the existing `globals.css` class idiom.
