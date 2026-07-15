@@ -113,5 +113,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T585 — scope named wrong file for plex-space-saver, plus stale premise that T561 removed 2 of 4 duplicate copies",
     "at": "2026-07-15T14:52:55Z"
+  },
+  "T565": {
+    "failed": true,
+    "reason": "review-failed: superseded by T586 — 4/4 attempts audit-failed on identical missing-CLAUDE.md scope gap",
+    "at": "2026-07-15T14:52:58Z"
   }
 }
