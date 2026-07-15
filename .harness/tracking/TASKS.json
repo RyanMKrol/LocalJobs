@@ -13046,7 +13046,7 @@
     {
       "id": "T485",
       "title": "Fix plex-language-fix's discoverInputKeys() self-referential ledger read with a live Plex library walk",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T578"
       ],
