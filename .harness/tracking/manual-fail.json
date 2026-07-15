@@ -118,5 +118,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T586 — 4/4 attempts audit-failed on identical missing-CLAUDE.md scope gap",
     "at": "2026-07-15T14:52:58Z"
+  },
+  "T585": {
+    "failed": true,
+    "reason": "review-failed: superseded by T588 — scope was missing CLAUDE.md, which the task's own spec required editing (second occurrence of this exact pattern on this task lineage)",
+    "at": "2026-07-15T22:39:38Z"
   }
 }
