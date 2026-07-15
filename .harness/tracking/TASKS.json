@@ -16016,7 +16016,7 @@
     {
       "id": "T588",
       "title": "Dedup the JSON file helpers (readJsonFile / writeJsonFile / ensureDirs) into a shared core module (src/core/fsjson.ts)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
