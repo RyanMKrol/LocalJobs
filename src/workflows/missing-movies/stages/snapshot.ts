@@ -1,4 +1,5 @@
 import type { JobContext } from '../../../core/types.js';
+import { callService } from '../../../core/services.js';
 import { plexGet } from '../../../core/plex-client.js';
 import { buildMovieSnapshots, buildOwnedSet } from '../../movies/movies.js';
 import type { MovieSnapshotFile, PlexMovieMeta } from '../../movies/types.js';
@@ -7,6 +8,11 @@ import { ensureDirs, writeJsonFile } from '../lib.js';
 
 interface PlexAllResponse<T> {
   MediaContainer?: { Metadata?: T[] };
+}
+
+export interface SnapshotOpts {
+  /** Injectable Plex fetch (tests). Defaults to the real callService('plex', plexGet). */
+  fetchMeta?: () => Promise<PlexMovieMeta[]>;
 }
 
 /**
@@ -19,17 +25,22 @@ interface PlexAllResponse<T> {
  * RE-SCANS FRESH every run (no skip-if-done) — the workflow's ledger lives only
  * in the notify stage.
  */
-export async function runSnapshot(ctx: JobContext): Promise<void> {
+export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Promise<void> {
   ensureDirs();
   const section = missingMoviesConfig.movieSection;
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   ctx.log(`plex-movie-snapshot starting — Plex section ${section} @ ${missingMoviesConfig.host || '(PLEX_HOST unset)'}`);
 
   ctx.progress(20, 'fetching movies');
-  const resp = await plexGet<PlexAllResponse<PlexMovieMeta>>(
-    `/library/sections/${section}/all?includeGuids=1`,
-  );
-  const meta = resp?.MediaContainer?.Metadata ?? [];
+  const fetchMeta = opts.fetchMeta ?? (async () => {
+    const resp = await callService('plex', () =>
+      plexGet<PlexAllResponse<PlexMovieMeta>>(
+        `/library/sections/${section}/all?includeGuids=1`,
+      ),
+    );
+    return resp?.MediaContainer?.Metadata ?? [];
+  });
+  const meta = await fetchMeta();
   ctx.log(`Fetched ${meta.length} movies from section ${section}.`);
 
   ctx.progress(70, 'building snapshot');

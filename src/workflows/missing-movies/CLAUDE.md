@@ -33,7 +33,9 @@ item is announced exactly once and an ignored item is suppressed forever.
 Reads Plex library section `PLEX_MOVIE_SECTION` (default `4`, the owner's "Movies") via the shared
 `plexGet` (`src/core/plex-client.ts`), matching each movie's `tmdb://` GUID (never guessed — a
 movie with no `tmdb://` GUID is flagged and excluded from franchise-gap checking, listed in the
-run's logs). Writes `data/out/snapshot.json` — every movie + its owned-set membership.
+run's logs). The Plex read is metered via the shared `plex` service (`callService('plex', ...)`),
+coordinating rate limits and quotas across all Plex-touching workflows (T577). Writes
+`data/out/snapshot.json` — every movie + its owned-set membership.
 
 **This is a DEDICATED snapshot, not shared with `movie-recommendations`'s `movie-snapshot`.** It is
 deliberately duplicated (not imported/reused) so the two workflows run on fully independent
