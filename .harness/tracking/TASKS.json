@@ -15576,7 +15576,7 @@
     {
       "id": "T575",
       "title": "stocks-watch: make the 30% breach threshold env-overridable (STOCKS_WATCH_BREACH_PCT)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
