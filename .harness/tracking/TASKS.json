@@ -15661,7 +15661,7 @@
     {
       "id": "T578",
       "title": "Re-attempt T517: document the plex-service migration in root CLAUDE.md + verify NO bare Plex call sites remain repo-wide (now covering all 7 workflows)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T511",
         "T512",
