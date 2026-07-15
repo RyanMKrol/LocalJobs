@@ -659,18 +659,37 @@ try {
   });
 
   await test('T201: unlimited workflow runs all independent stages without throttling', async () => {
-    const def: WorkflowDefinition = {
+    // Absolute ms is machine-dependent (see the T156 comment above), so — same
+    // pattern as T156 — we compare against a same-run serial baseline (the
+    // identical 4 stages forced to maxConcurrency:1) rather than asserting a
+    // fixed millisecond ceiling.
+    const time = async (def: WorkflowDefinition) => {
+      syncWorkflow(def);
+      const t0 = Date.now();
+      const { workflowRunId } = await runWorkflow(def, 'manual');
+      const elapsed = Date.now() - t0;
+      assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success');
+      return elapsed;
+    };
+
+    const unlimited = await time({
       name: 'unlim-run-test',
       jobs: [{ job: 'slow-a' }, { job: 'slow-b' }, { job: 'slow-c' }, { job: 'slow-d' }],
       maxConcurrency: 0,
-    };
-    syncWorkflow(def);
-    const t0 = Date.now();
-    const { workflowRunId } = await runWorkflow(def, 'manual');
-    const elapsed = Date.now() - t0;
-    assert.equal(getWorkflowRun(workflowRunId!)?.status, 'success');
-    // All four slow stages should have overlapped — elapsed should be well under 4×SLOW_MS.
-    assert.ok(elapsed < SLOW_MS * 3, `unlimited run with 4 slow stages should overlap, took ${elapsed}ms (expected < ${SLOW_MS * 3}ms)`);
+    });
+    const serial = await time({
+      name: 'unlim-run-test-serial',
+      jobs: [{ job: 'slow-a' }, { job: 'slow-b' }, { job: 'slow-c' }, { job: 'slow-d' }],
+      maxConcurrency: 1,
+    });
+
+    // All four slow stages should have overlapped under unlimited concurrency —
+    // measurably faster than the same 4 stages forced serial. Generous ratio to
+    // stay robust under CI/machine load.
+    assert.ok(
+      unlimited * 1.8 < serial,
+      `unlimited run (${unlimited}ms) should be far faster than serial (${serial}ms)`,
+    );
   });
 
   // T258: noop status — a limitable workflow where no stage advances any work items
