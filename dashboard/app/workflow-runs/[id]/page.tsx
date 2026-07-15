@@ -1,6 +1,6 @@
 'use client';
 
-import React, { use, useState } from 'react';
+import React, { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DagFlow } from '../../components/DagFlow';
 import { StageIoPanel } from '../../components/StageIoLists';
@@ -40,6 +40,8 @@ function earlierAttemptsByStage(members: Run[]): Map<string, Run[]> {
 export default function WorkflowRunDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [busy, setBusy] = useState(false);
+  const busyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (busyTimerRef.current) clearTimeout(busyTimerRef.current); }, []);
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
   const toggleExpanded = (jobName: string) => {
     setExpandedStages((prev) => {
@@ -57,7 +59,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
 
   async function cancel() {
     setBusy(true);
-    try { await api.cancelWorkflowRun(id); } catch { /* poll will reflect new status */ } finally { setTimeout(() => setBusy(false), 1200); }
+    try { await api.cancelWorkflowRun(id); } catch { /* poll will reflect new status */ } finally { busyTimerRef.current = setTimeout(() => setBusy(false), 1200); }
   }
 
   // Fetch the workflow definition (for the DAG edges) once we know its name.

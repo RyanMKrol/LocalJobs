@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DagFlow } from '../../components/DagFlow';
 import { MissingSeasonsManager } from '../../components/MissingSeasonsManager';
@@ -32,6 +32,8 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
   const { name } = use(params);
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState('');
+  const busyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (busyTimerRef.current) clearTimeout(busyTimerRef.current); }, []);
   const { data, error } = usePoll(() => api.workflow(name), 3000, [name]);
   const p = data?.workflow;
   const runs = p?.runs ?? [];
@@ -133,7 +135,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
 
   async function run() {
     setBusy(true);
-    try { await api.runWorkflow(name, limit ? Number(limit) : undefined); } finally { setTimeout(() => setBusy(false), 1200); }
+    try { await api.runWorkflow(name, limit ? Number(limit) : undefined); } finally { busyTimerRef.current = setTimeout(() => setBusy(false), 1200); }
   }
   async function toggle() { if (p) await api.toggleWorkflow(name, p.enabled === 0); }
   async function toggleNotify() { if (p) await api.updateWorkflowNotify(name, !p.effective_notify_enabled); }
