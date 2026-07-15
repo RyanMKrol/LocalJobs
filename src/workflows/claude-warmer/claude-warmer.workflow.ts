@@ -21,6 +21,9 @@ const workflow: WorkflowDefinition = {
     'Soft-fails gracefully if the upstream plan limit is reached.',
   schedule: '0 8,16 * * *',
   maxConcurrency: 1,
+  // A trivial twice-daily keep-alive ping isn't worth a push notification on every
+  // success — folded in from a long-standing dashboard override (overrides-audit).
+  notifyEnabled: false,
   jobs: [{ job: 'claude-warm' }],
 };
 
