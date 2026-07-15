@@ -15983,6 +15983,35 @@
           "cross-cutting"
         ]
       }
+    },
+    {
+      "id": "T587",
+      "title": "Fix flaky absolute wall-clock threshold in T201 concurrency test",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "test",
+        "flaky",
+        "concurrency"
+      ],
+      "scope": [
+        "src/core/workflow-executor.test.ts"
+      ],
+      "design": null,
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T587.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "bugfix",
+        "risk": [
+          "touches-executor"
+        ]
+      }
     }
   ]
 }
