@@ -83,10 +83,12 @@ TODO.md
 .harness/tracking/TASKS.json.tmp
 .harness/tracking/reviews.json.tmp*
 
-# --- Private scratch: plex-language-fix (personal library maintenance script, not a public example).
-# Deliberately kept at the repo ROOT, not under src/workflows/, while another session is actively
-# restructuring that directory — avoids collision with unrelated concurrent work. ---
-/plex-language-fix/
+# --- Private scratch: general home for personal, non-public exploration/scratch content kept at
+# the repo root (e.g. plex-language-fix/, a personal library-maintenance script that predates and
+# is unrelated to the tracked src/workflows/plex-language-fix/ workflow). Moved here from a
+# dedicated /plex-language-fix/ ignore rule on 2026-07-15 so future scratch content has one shared,
+# already-ignored/guarded home instead of a new .gitignore + sensitive-paths.txt entry each time. ---
+/.scratch/
 
 # >>> implementation-harness managed (auto-maintained — do not edit inside) >>>
 # Transient loop scratch (last-iteration verdict) + the generated status board.

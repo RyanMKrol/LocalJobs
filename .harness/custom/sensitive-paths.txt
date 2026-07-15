@@ -13,13 +13,14 @@
 # *.pem/*.key/*.p12, service-account*, credentials.json — these close remaining gaps from
 # this repo's own .gitignore/CLAUDE.md privacy rules):
 
-# plex-language-fix/ — a personal Plex library-maintenance scratch kept at the repo root
-# (deliberately outside src/workflows/). ANCHORED to the repo root with ^ so it does NOT also match
-# the legitimate tracked workflow at src/workflows/plex-language-fix/ (which the old (^|/) prefix
-# false-positived, tripping the pre-push guard on every task touching that workflow — see the
-# 2026-07-12 incident in .harness/custom/CLAUDE.md). The root scratch is also gitignored (belt-and-
-# braces), and the workflow's own data/ subfolder stays blocked by the base guard's (^|/)data/.
-^plex-language-fix/
+# .scratch/ — the general home for personal, non-public scratch content kept at the repo root
+# (e.g. .scratch/plex-language-fix/, a personal Plex library-maintenance script, moved here
+# 2026-07-15 from a dedicated ^plex-language-fix/ pattern — see that history in
+# .harness/custom/CLAUDE.md's 2026-07-12 incident entry). ANCHORED to the repo root with ^ so it
+# does NOT also match the legitimate tracked workflow at src/workflows/plex-language-fix/ (which
+# the old (^|/) prefix false-positived, tripping the pre-push guard on every task touching that
+# workflow). Also gitignored (belt-and-braces).
+^\.scratch/
 
 # Any gcp-*.json credential file, even one that doesn't literally contain "service-account"
 # or "credentials.json" (the base guard's substring matches for those).

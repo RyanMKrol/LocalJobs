@@ -221,3 +221,12 @@ dated bullet when you defer something new.
   (test files are exempt — they may not exist yet). *Also this run:* manually killing the loop mid-build
   had orphaned **T512** (built + CI-green at 8a49797 but never `mark_done` — the known 2026-06-26 orphan
   pathology); reconciled it to `done` after confirming the work + CI landed.
+- **2026-07-15 — housekeeping: the root-level `plex-language-fix/` personal scratch folder (protected by
+  the guard fix above) moved to `.scratch/plex-language-fix/`.** Not an incident — the owner asked to
+  generalize the ad-hoc root scratch folder into a reusable `.scratch/` home for future personal/
+  non-public content, instead of adding a new `.gitignore` + `sensitive-paths.txt` entry per folder.
+  Updated in lockstep: `.gitignore`'s `/plex-language-fix/` rule → `/.scratch/`; `custom/sensitive-paths.txt`'s
+  `^plex-language-fix/` pattern → `^\.scratch/` (still anchored to the repo root, so it still does NOT match
+  the legitimate tracked `src/workflows/plex-language-fix/` workflow — same reasoning as the 2026-07-12 fix
+  above, just re-pointed at the new path). If you're reading the 2026-07-12 entry above and looking for
+  `plex-language-fix/` at the repo root, it's now at `.scratch/plex-language-fix/`.
