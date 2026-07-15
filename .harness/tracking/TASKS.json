@@ -15771,7 +15771,7 @@
     {
       "id": "T581",
       "title": "R08 item 2 (re-attempt): delete the orphaned read-only DB-browser / canned-queries layer, now in src/db/store/admin.ts (+ its tests)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
