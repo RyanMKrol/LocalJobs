@@ -15800,7 +15800,7 @@
     {
       "id": "T582",
       "title": "Re-attempt T555: delete unimported MarkdownModal.tsx, port renderFmValue into OutputRenderer, fix CLAUDE.md + package.json test script",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
