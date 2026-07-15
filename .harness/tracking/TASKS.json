@@ -14581,7 +14581,7 @@
     {
       "id": "T543",
       "title": "Collapse the four managers into a generic RecsManager + GroupedManager",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [
         "T579"
       ],
