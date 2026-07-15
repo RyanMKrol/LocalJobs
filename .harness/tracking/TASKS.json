@@ -15914,7 +15914,7 @@
     {
       "id": "T585",
       "title": "Dedup the JSON file helpers (readJsonFile / writeJsonFile / ensureDirs) into a shared core module (src/core/fsjson.ts)",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [],
       "gate": null,
       "tags": [
