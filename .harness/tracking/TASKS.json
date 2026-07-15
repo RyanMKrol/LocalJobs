@@ -13150,7 +13150,7 @@
       "title": "Add mechanical test enforcing every inputKeys()-declaring job also names a valid inputKeysService",
       "status": "pending",
       "dependsOn": [
-        "T487"
+        "T583"
       ],
       "gate": null,
       "tags": [
@@ -15831,6 +15831,157 @@
         "layer": "ui",
         "workType": "component",
         "risk": []
+      }
+    },
+    {
+      "id": "T583",
+      "title": "Add inputKeysService field to JobDefinition + retrofit onto every job that declares inputKeys() (re-attempt of T487, corrected scope)",
+      "status": "pending",
+      "dependsOn": [
+        "T483",
+        "T484",
+        "T485",
+        "T486",
+        "T578"
+      ],
+      "gate": null,
+      "tags": [
+        "types",
+        "inputkeys",
+        "architecture"
+      ],
+      "scope": [
+        "src/core/types.ts",
+        "src/workflows/perfumes/stages/find-url.job.ts",
+        "src/workflows/places/stages/resolve.job.ts",
+        "src/workflows/plex-language-fix/stages/discover.job.ts",
+        "src/workflows/projects-sync/stages/github-sync.job.ts",
+        "src/workflows/plex-profiles/stages/build.job.ts",
+        "src/workflows/perfumes/CLAUDE.md",
+        "src/workflows/places/CLAUDE.md",
+        "src/workflows/plex-language-fix/CLAUDE.md",
+        "src/workflows/projects-sync/CLAUDE.md",
+        "src/workflows/plex-profiles/CLAUDE.md",
+        "src/workflows/CLAUDE.md"
+      ],
+      "design": "Add a new optional field to JobDefinition in src/core/types.ts, directly below the existing `inputKeys?(): string[] | Promise<string[]>;`: `inputKeysService?: string;` with a doc comment explaining it names the ServiceDefinition (by its `name`) that the job's inputKeys() call is routed through — proving it's a LIVE query against the true external source, never this workflow's own prior output — and that it's enforced by the (later) mechanical test (T488). Retrofit onto every job in the registry that currently declares inputKeys() — CONFIRMED this session, exactly 5, and the field goes on the JobDefinition object, which lives in the *.job.ts file, NOT any sibling non-.job.ts impl file of a similar name: (1) src/workflows/perfumes/stages/find-url.job.ts -> inputKeysService: 'dynamodb' (already live via loadPerfumes()'s callService('dynamodb', ...) — pure field addition, no behavior change); (2) src/workflows/places/stages/resolve.job.ts -> inputKeysService: 'fs' (now true after T484 — do NOT touch src/workflows/places/stages/resolve.ts, the impl file, unless the JobDefinition wiring genuinely requires it); (3) src/workflows/plex-language-fix/stages/discover.job.ts -> inputKeysService: 'plex' (now true after T485 + T474/T578); (4) src/workflows/projects-sync/stages/github-sync.job.ts -> inputKeysService: 'github' (now true after T486); (5) src/workflows/plex-profiles/stages/build.job.ts -> inputKeysService: 'plex' (true once T474/T578 landed — confirm at build time that resolveInputKeys() itself, not just runBuild(), is wrapped in callService('plex', ...); if not, this unit must add the callService('plex', ...) wrap to resolveInputKeys() itself as a small supplementary fix, since the inputKeysService claim must be truthful). ALL FIVE touched workflows' own CLAUDE.md (perfumes, places, plex-language-fix, projects-sync, plex-profiles) get a one-line note that its root stage's inputKeys() now declares inputKeysService alongside the existing description, plus the root src/workflows/CLAUDE.md documents the new field and its enforcement in the root-stage-ledger convention section. Do NOT touch the enforcing test (that is T488, a separate task) or make any further behavioral changes to inputKeys() itself here beyond the supplementary plex-profiles callService wrap noted above if needed.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm test"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T583.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": []
+      }
+    },
+    {
+      "id": "T584",
+      "title": "Collapse the four managers into a generic RecsManager + GroupedManager (re-attempt of T543)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "refactor",
+        "R05"
+      ],
+      "scope": [
+        "dashboard/app/components/",
+        "dashboard/app/workflows/[name]/page.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs",
+        "CLAUDE.md"
+      ],
+      "design": "Building on R05-a's extracted files: TvRecsManager and MovieRecsManager are ~95% identical (167 lines each) — differences are only the API method names (tvRecs/ignoreTvRec/unignoreTvRec/unignoreTvRecBulk vs the movie equivalents), the TMDB URL segment (/tv/ vs /movie/), the noun (show vs film), and the heading. Collapse them into ONE generic RecsManager<T> parameterized by { heading, noun, tmdbPath: 'tv'|'movie', fetch, ignore, unignore, unignoreBulk }. Similarly MovieGapsManager (~205) and MissingSeasonsManager (~204) share the grouped-table shape (group header + Ignore-all/Un-ignore-all + per-item buttons + IgnoredSection, ~80% column overlap) — collapse into ONE generic GroupedManager<T> parameterized by { groupBy, itemKey, columns, and the group's ignore/unignore/ignore-bulk API fns }. All four call-sites become thin config objects. Reuse the existing SortTh, IgnoredSection, Pill, and useAction (from R05-a). Must be pixel-equivalent. Also update CLAUDE.md's 'Shared dashboard UI components' section (the entries naming TvRecsManager.tsx/MovieRecsManager.tsx/MovieGapsManager.tsx/MissingSeasonsManager.tsx by file path, and the two other prose mentions of these four names elsewhere in the file) to describe the two new generic components instead — this is now explicitly in scope.",
+      "verify": [
+        "npx tsc --noEmit",
+        "npm --prefix dashboard run build",
+        "node dashboard/scripts/mobile-check.mjs",
+        "node dashboard/scripts/visual-check.mjs — LOOK at the four workflow detail pages' screenshots and confirm pixel-equivalence with the pre-R05 rendering"
+      ],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T584.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
+    },
+    {
+      "id": "T585",
+      "title": "Dedup the JSON file helpers (readJsonFile / writeJsonFile / ensureDirs) into a shared core module (src/core/fsjson.ts)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "dedup",
+        "fsjson"
+      ],
+      "scope": [
+        "src/core/fsjson.ts",
+        "src/core/fsjson.test.ts",
+        "src/workflows/perfumes/lib.ts",
+        "src/workflows/movies/lib.ts",
+        "src/workflows/tv-recs/lib.ts",
+        "src/workflows/plex-space-saver/lib.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T585.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "refactor",
+        "risk": []
+      }
+    },
+    {
+      "id": "T586",
+      "title": "Dedup PlexAllResponse<T> + TMDB-GUID extraction into src/core/plex-client.ts (re-attempt of T565, with doc paths in scope)",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "refactor",
+        "dedup",
+        "plex"
+      ],
+      "scope": [
+        "src/core/plex-client.ts",
+        "src/core/plex-client.test.ts",
+        "src/workflows/movies/stages/snapshot.ts",
+        "src/workflows/movies/movies.ts",
+        "src/workflows/tv-recs/stages/tv-snapshot.ts",
+        "src/workflows/missing-tv-seasons/stages/snapshot.ts",
+        "src/workflows/missing-tv-seasons/plex.ts",
+        "src/workflows/missing-movies/stages/snapshot.ts",
+        "src/workflows/plex-profiles/stages/build.ts",
+        "src/workflows/plex-space-saver/stages/scan.ts",
+        "src/workflows/plex-language-fix/lib.ts",
+        "CLAUDE.md",
+        "src/workflows/movies/CLAUDE.md",
+        "src/workflows/tv-recs/CLAUDE.md",
+        "src/workflows/missing-tv-seasons/CLAUDE.md",
+        "src/workflows/missing-movies/CLAUDE.md",
+        "src/workflows/plex-profiles/CLAUDE.md",
+        "src/workflows/plex-space-saver/CLAUDE.md",
+        "src/workflows/plex-language-fix/CLAUDE.md"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T586.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "refactor",
+        "risk": [
+          "cross-cutting"
+        ]
       }
     }
   ]
