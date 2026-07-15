@@ -108,5 +108,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T584 — fully built/verified but blocked on CLAUDE.md missing from scope",
     "at": "2026-07-15T14:52:52Z"
+  },
+  "T563": {
+    "failed": true,
+    "reason": "review-failed: superseded by T585 — scope named wrong file for plex-space-saver, plus stale premise that T561 removed 2 of 4 duplicate copies",
+    "at": "2026-07-15T14:52:55Z"
   }
 }
