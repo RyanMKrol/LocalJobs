@@ -15696,7 +15696,7 @@
     {
       "id": "T579",
       "title": "Extract the four dashboard managers out of workflows/[name]/page.tsx + add a useAction hook",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
