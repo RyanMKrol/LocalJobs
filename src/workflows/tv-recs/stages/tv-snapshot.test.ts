@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { JobContext } from '../../../core/types.js';
-import { callService } from '../../../core/services.js';
+import { callService, registerService } from '../../../core/services.js';
 import { getWorkItem } from '../../../db/store.js';
 import { toStoredPath } from '../../../db/store/lib.js';
 import { dayKey } from '../../../core/dates.js';
@@ -175,5 +175,25 @@ describe('tv-snapshot — combined per-run visibility ledger row (T571)', () => 
     assert.ok(row);
     const detail = JSON.parse(row.detail ?? 'null') as { shows?: number };
     assert.equal(detail.shows, 1, 're-run overwrote the row with the fresh count');
+  });
+});
+
+describe('tv-snapshot — Plex reads are cacheKey-deduped (T477)', () => {
+  it('a second run within the TTL does not re-invoke the underlying Plex GET', async () => {
+    registerService({ name: 'plex', category: 'api' });
+
+    const callsByPath = new Map<string, number>();
+    const plexFetch = async <T,>(path: string): Promise<T> => {
+      callsByPath.set(path, (callsByPath.get(path) ?? 0) + 1);
+      return { MediaContainer: { Metadata: LEDGER_SHOWS } } as T;
+    };
+
+    await runTvSnapshot(fakeCtx(), { plexFetch, now: new Date('2026-07-14T09:00:00Z') });
+    await runTvSnapshot(fakeCtx(), { plexFetch, now: new Date('2026-07-14T10:00:00Z') });
+
+    assert.equal(callsByPath.size, 1, 'exactly one distinct Plex path was requested');
+    for (const [path, count] of callsByPath) {
+      assert.equal(count, 1, `path "${path}" should be fetched only once across two runs within the cache TTL`);
+    }
   });
 });

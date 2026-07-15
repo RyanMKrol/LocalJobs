@@ -18,6 +18,14 @@ export const SNAPSHOT_JOB = 'movie-snapshot';
 export interface SnapshotOpts {
   /** Injectable Plex fetch (tests). Defaults to the real callService('plex', plexGet). */
   fetchMeta?: () => Promise<PlexMovieMeta[]>;
+  /**
+   * Injectable low-level Plex GET (tests) — swaps in for the real `plexGet` used
+   * by the DEFAULT `fetchMeta`, still routed through `callService('plex', ...)`
+   * so the 3-hour response-cache dedup (T477) can be exercised without a live
+   * Plex call. Ignored when `fetchMeta` is also given. Defaults to the real
+   * `plexGet`.
+   */
+  plexFetch?: <T>(path: string) => Promise<T>;
   /** Injectable clock (tests) — drives the per-run ledger key. */
   now?: Date;
 }
@@ -39,12 +47,12 @@ export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Pro
   ctx.log(`movie-snapshot starting — Plex section ${section} @ ${moviesConfig.host || '(PLEX_HOST unset)'}`);
 
   ctx.progress(10, 'fetching movies');
+  const doPlexGet = opts.plexFetch ?? plexGet;
   const fetchMeta = opts.fetchMeta ?? (async () => {
-    const resp = await callService('plex', () =>
-      plexGet<PlexAllResponse<PlexMovieMeta>>(
-        `/library/sections/${section}/all?includeGuids=1`,
-      ),
-    );
+    const path = `/library/sections/${section}/all?includeGuids=1`;
+    const resp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexMovieMeta>>(path), {
+      cacheKey: `plex:${path}`,
+    });
     return resp?.MediaContainer?.Metadata ?? [];
   });
   const meta = await fetchMeta();

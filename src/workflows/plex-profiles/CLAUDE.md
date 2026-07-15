@@ -29,6 +29,19 @@ all Plex-touching workflows.
   `Country`/`Director`/`Writer`/`Role` tag arrays, `Media[]`/`Part[]` (resolution/codec/container/
   file size/file path — movies only), and for shows `leafCount`/`childCount`/`originalTitle`.
 
+**Plex reads are response-cached for a 3-hour window (T477).** `runBuild`'s section listings
+(movies/shows/episodes) AND its per-title detail fetch each pass a `cacheKey` derived from the
+request path (`plex:<path>`) to `callService('plex', ..., { cacheKey })`, engaging the `plex`
+service's 3-hour cache TTL (T476) — a second read of the SAME Plex resource within that window
+(e.g. another Plex-touching workflow triggered back-to-back via the admin "Run all workflows"
+button) is served from cache instead of hitting Plex again. `runBuild` accepts an injectable
+`plexFetch` option (tests) that stands in for the real `plexGet`, still routed through
+`callService`, so the cache dedup itself is unit-tested without a live Plex call.
+**`resolveInputKeys()`'s own two section-listing calls deliberately stay UNCACHED** (no `cacheKey`
+passed) — it exists specifically to compute the CURRENT candidate root key set for a manual
+run-limit (T094), and a stale cached key list would misrepresent what the library currently
+contains; see its own doc comment in `build.ts`.
+
 ## Idempotency — `updatedAt` marker (mirrors projects-sync)
 
 `plex-profiles-build` (the only stage) keys each item `movie:<ratingKey>` / `show:<ratingKey>`.

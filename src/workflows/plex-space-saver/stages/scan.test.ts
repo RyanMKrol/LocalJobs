@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { JobContext, LogLevel } from '../../../core/types.js';
 import type { callService } from '../../../core/services.js';
+import { registerService } from '../../../core/services.js';
 import { runScan, weekKey, JOB_NAME } from './scan.js';
 
 function fakeCtx(): JobContext & { logs: Array<{ message: string; level?: LogLevel }> } {
@@ -87,5 +88,26 @@ describe('runScan', () => {
 describe('JOB_NAME constant', () => {
   it('exports the correct job name', () => {
     assert.equal(JOB_NAME, 'plex-space-saver-scan');
+  });
+});
+
+describe('runScan — Plex reads are cacheKey-deduped (T477)', () => {
+  it('a second run within the TTL does not re-invoke the underlying Plex GET', async () => {
+    registerService({ name: 'plex', category: 'api' });
+
+    const callsByPath = new Map<string, number>();
+    const plexFetch = async <T,>(path: string): Promise<T> => {
+      callsByPath.set(path, (callsByPath.get(path) ?? 0) + 1);
+      return { MediaContainer: { Metadata: [] } } as T;
+    };
+    const noopPush = async () => ({ ok: true });
+
+    await runScan(fakeCtx(), { now: new Date('2026-07-14T09:00:00Z'), plexFetch, push: noopPush });
+    await runScan(fakeCtx(), { now: new Date('2026-07-14T10:00:00Z'), plexFetch, push: noopPush });
+
+    assert.equal(callsByPath.size, 3, 'three distinct Plex paths were requested (movies/shows/episodes)');
+    for (const [path, count] of callsByPath) {
+      assert.equal(count, 1, `path "${path}" should be fetched only once across two runs within the cache TTL`);
+    }
   });
 });

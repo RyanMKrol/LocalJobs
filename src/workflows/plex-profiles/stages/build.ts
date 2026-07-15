@@ -25,6 +25,16 @@ interface WorkItemDetail {
   updatedAt?: number;
 }
 
+export interface BuildOpts {
+  /**
+   * Injectable low-level Plex GET (tests) — swaps in for the real `plexGet`,
+   * still routed through `callService('plex', ...)` so the 3-hour response-cache
+   * dedup (T477) can be exercised without a live Plex call. Defaults to the real
+   * `plexGet`.
+   */
+  plexFetch?: <T>(path: string) => Promise<T>;
+}
+
 export function movieKey(ratingKey: string | number | undefined): string {
   return `movie:${ratingKey ?? ''}`;
 }
@@ -80,25 +90,35 @@ function ensureDirs(): void {
  * optional Claude-narrated layer, is a deliberately separate future task; see
  * this workflow's CLAUDE.md).
  */
-export async function runBuild(ctx: JobContext): Promise<void> {
+export async function runBuild(ctx: JobContext, opts: BuildOpts = {}): Promise<void> {
   ensureDirs();
+  const doPlexGet = opts.plexFetch ?? plexGet;
   const { movieSection, tvSection, runLimit } = plexProfilesConfig;
 
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   ctx.log(`plex-profiles-build starting — movie section ${movieSection}, TV section ${tvSection}, run limit ${runLimit || 'unlimited'}`);
 
   ctx.progress(5, 'fetching movies');
-  const moviesResp = await callService('plex', () => plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${movieSection}/all`));
+  const moviesPath = `/library/sections/${movieSection}/all`;
+  const moviesResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexListItem>>(moviesPath), {
+    cacheKey: `plex:${moviesPath}`,
+  });
   const movies = moviesResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${movies.length} movie(s) from section ${movieSection}.`);
 
   ctx.progress(15, 'fetching shows');
-  const showsResp = await callService('plex', () => plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${tvSection}/all`));
+  const showsPath = `/library/sections/${tvSection}/all`;
+  const showsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexListItem>>(showsPath), {
+    cacheKey: `plex:${showsPath}`,
+  });
   const shows = showsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${shows.length} show(s) from section ${tvSection}.`);
 
   ctx.progress(25, 'fetching episodes for show byte totals');
-  const epsResp = await callService('plex', () => plexGet<PlexAllResponse<PlexEpisodeMeta>>(`/library/sections/${tvSection}/all?type=4`));
+  const epsPath = `/library/sections/${tvSection}/all?type=4`;
+  const epsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexEpisodeMeta>>(epsPath), {
+    cacheKey: `plex:${epsPath}`,
+  });
   const episodes = epsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${episodes.length} episode(s) (flat read, type=4) for show byte totals.`);
 
@@ -153,9 +173,10 @@ export async function runBuild(ctx: JobContext): Promise<void> {
     const c = todo[i];
     try {
       ctx.log(`Building ${c.key} (${i + 1}/${total}) — fetching detail for ratingKey ${c.ratingKey}...`);
-      const detailResp = await callService('plex', () => plexGet<PlexMetadataResponse<PlexMovieDetail | PlexShowDetail>>(
-        `/library/metadata/${c.ratingKey}`,
-      ));
+      const detailPath = `/library/metadata/${c.ratingKey}`;
+      const detailResp = await callService('plex', () => doPlexGet<PlexMetadataResponse<PlexMovieDetail | PlexShowDetail>>(detailPath), {
+        cacheKey: `plex:${detailPath}`,
+      });
       const detail = detailResp?.MediaContainer?.Metadata?.[0];
       if (!detail) {
         throw new Error(`no detail metadata returned for ratingKey ${c.ratingKey}`);

@@ -6,9 +6,10 @@
 // the per-show work_items ledger recording extracted out of `runSnapshot` so it can be
 // tested directly against synthetic show snapshots.
 import assert from 'node:assert/strict';
+import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, syncService } from '../../../db/store.js';
 import { registerService } from '../../../core/services.js';
-import { recordSnapshotLedger, snapshotItemKey } from './snapshot.js';
+import { recordSnapshotLedger, runSnapshot, snapshotItemKey } from './snapshot.js';
 import type { PlexShow } from '../types.js';
 
 // `callService('plex', ...)` only enforces quota if 'plex' is registered in the
@@ -53,6 +54,30 @@ console.log('  ✓ snapshotItemKey prefers tmdbId, falls back to ratingKey');
   assert.deepEqual(detail2, { name: 'No GUID Show', tmdbId: null, highestOwnedSeason: 2 });
 
   console.log('  ✓ recordSnapshotLedger records one success row per show, keyed + detailed correctly');
+}
+
+// ── T477: Plex reads pass a cacheKey and reuse the 3-hour service_cache ──
+{
+  registerService({ name: 'plex', category: 'api' });
+
+  function fakeCtx(): JobContext {
+    return { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
+  }
+
+  const callsByPath = new Map<string, number>();
+  const fakeFetchPlex = async <T,>(path: string): Promise<T> => {
+    callsByPath.set(path, (callsByPath.get(path) ?? 0) + 1);
+    return { MediaContainer: { Metadata: [] } } as T;
+  };
+
+  await runSnapshot(fakeCtx(), { fetchPlex: fakeFetchPlex });
+  await runSnapshot(fakeCtx(), { fetchPlex: fakeFetchPlex });
+
+  assert.equal(callsByPath.size, 2, 'two distinct Plex paths were requested (shows listing + episode listing)');
+  for (const [path, count] of callsByPath) {
+    assert.equal(count, 1, `path "${path}" should be fetched only once across two runs within the cache TTL`);
+  }
+  console.log('  ✓ plex-tv-snapshot Plex reads are cacheKey-deduped across runs (T477)');
 }
 
 console.log('  ✓ plex-tv-snapshot ledger tests passed');

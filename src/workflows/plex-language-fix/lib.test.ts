@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { evaluatePart } from './lib.js';
+import { evaluatePart, fetchAllLeaves, fetchItemDetail, fetchSectionItems, fetchSections } from './lib.js';
 import { plexLanguageEvaluateContract } from './contracts.js';
 import { markWorkItem } from '../../db/store.js';
+import { registerService } from '../../core/services.js';
 import type { EvaluateDetail } from './types.js';
 import type { PlexPart } from './types.js';
 
@@ -124,4 +125,54 @@ test('plexLanguageEvaluateContract fails and names the offending itemKey when a 
   const result = await plexLanguageEvaluateContract().check();
   assert.equal(result.ok, false);
   assert.ok(result.violations?.some((v: string) => v.includes(badKey)));
+});
+
+// ── T477: Plex reads pass a cacheKey and reuse the 3-hour service_cache ──
+registerService({ name: 'plex', category: 'api' });
+
+function fakePlexFetch(): { fn: <T>(path: string) => Promise<T>; callsByPath: Map<string, number> } {
+  const callsByPath = new Map<string, number>();
+  const fn = async <T,>(path: string): Promise<T> => {
+    callsByPath.set(path, (callsByPath.get(path) ?? 0) + 1);
+    return { MediaContainer: { Directory: [], Metadata: [] } } as T;
+  };
+  return { fn, callsByPath };
+}
+
+test('fetchSections dedups a second call sharing a cacheKey within the TTL', async () => {
+  const { fn, callsByPath } = fakePlexFetch();
+  await fetchSections(fn);
+  await fetchSections(fn);
+  assert.equal(callsByPath.size, 1);
+  assert.equal(callsByPath.get('/library/sections'), 1, 'the underlying Plex GET was invoked only once across two calls');
+});
+
+test('fetchSectionItems dedups a second call sharing a cacheKey within the TTL', async () => {
+  const { fn, callsByPath } = fakePlexFetch();
+  await fetchSectionItems('5', 'show', fn);
+  await fetchSectionItems('5', 'show', fn);
+  assert.equal(callsByPath.size, 1);
+  for (const count of callsByPath.values()) {
+    assert.equal(count, 1, 'the underlying Plex GET was invoked only once across two calls');
+  }
+});
+
+test('fetchItemDetail dedups a second call sharing a cacheKey within the TTL', async () => {
+  const { fn, callsByPath } = fakePlexFetch();
+  await fetchItemDetail('rk-1', fn);
+  await fetchItemDetail('rk-1', fn);
+  assert.equal(callsByPath.size, 1);
+  for (const count of callsByPath.values()) {
+    assert.equal(count, 1, 'the underlying Plex GET was invoked only once across two calls');
+  }
+});
+
+test('fetchAllLeaves dedups a second call sharing a cacheKey within the TTL', async () => {
+  const { fn, callsByPath } = fakePlexFetch();
+  await fetchAllLeaves('show-1', fn);
+  await fetchAllLeaves('show-1', fn);
+  assert.equal(callsByPath.size, 1);
+  for (const count of callsByPath.values()) {
+    assert.equal(count, 1, 'the underlying Plex GET was invoked only once across two calls');
+  }
 });

@@ -50,5 +50,15 @@ pure, unit-tested `checkDrop` in `lib.ts`.
 - The baseline is written at the END of every successful scan, alert or not, so the NEXT run always
   has a fresh prior total to diff against. The size breakdown report itself is unaffected — the drop
   check is additive, never a replacement.
-- Plex reads for this workflow are never opted into the `plex` service's response caching (it declares
-  no `cacheKey`/TTL) — every run reads live totals, which the shrink guard depends on.
+
+**Plex reads are response-cached for a 3-hour window (T477) — a deliberate change from the prior
+design.** All three `plexGet` calls (movies/shows/episodes section listings) now pass a `cacheKey`
+derived from the request path (`plex:<path>`) to `callService('plex', ..., { cacheKey })`, engaging
+the `plex` service's 3-hour cache TTL (T476), so a back-to-back Plex-touching workflow run (e.g. the
+admin "Run all workflows" button) reuses the response instead of re-hitting Plex. This workflow only
+runs weekly on its own schedule, far outside the TTL window, so the shrink guard's week-over-week
+comparison is unaffected in normal operation. The one accepted trade-off: a MANUAL re-run within 3
+hours of a prior run (this workflow's own, or another Plex-touching workflow's overlapping section
+read) will see the cached total rather than a fresh live read until the cache expires. `runScan`
+accepts an injectable `plexFetch` option (tests) that stands in for the real `plexGet`, still routed
+through `callService`, so the cache dedup itself is unit-tested without a live Plex call.

@@ -106,3 +106,12 @@ different `RecommenderDomain` wiring. Job names, ledger keys, and DAG shape are 
 - Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (shared with every other Plex/TMDB
   workflow via `src/core/plex-client.ts`) — no tv-recs-specific credential.
 - Services used: `plex` and `tmdb` (via the shared client) and `claude-cli` (via `runClaude`).
+
+**Plex reads are response-cached for a 3-hour window (T477).** `tv-snapshot`'s Plex fetch passes a
+`cacheKey` derived from the request path (`plex:<path>`) to `callService('plex', ..., { cacheKey })`,
+engaging the `plex` service's 3-hour cache TTL (T476) — a second read of the same TV section within
+that window (e.g. another Plex-touching workflow triggered back-to-back via the admin "Run all
+workflows" button) is served from cache instead of hitting Plex again. The stage's existing
+`fetchMeta` test seam still fully bypasses `callService`; a new `plexFetch` option stands in for the
+real `plexGet` used by the default `fetchMeta`, still routed through `callService`, so the cache
+dedup itself is unit-tested without a live Plex call.

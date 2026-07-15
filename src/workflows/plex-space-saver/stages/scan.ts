@@ -37,6 +37,13 @@ export interface ScanOpts {
   now?: Date;
   /** Override the shrink-guard alert push (tests). Defaults to the real `push`. */
   push?: PushFn;
+  /**
+   * Injectable low-level Plex GET (tests) — swaps in for the real `plexGet`,
+   * still routed through `callService('plex', ...)` so the 3-hour response-cache
+   * dedup (T477) can be exercised without a live Plex call. Defaults to the real
+   * `plexGet`.
+   */
+  plexFetch?: <T>(path: string) => Promise<T>;
 }
 
 /**
@@ -66,29 +73,33 @@ export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<voi
   ensureDirs();
   const now = opts.now ?? new Date();
   const pushFn = opts.push ?? push;
+  const doPlexGet = opts.plexFetch ?? plexGet;
   const { movieSection, tvSection } = plexSpaceSaverConfig;
 
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   ctx.log(`plex-space-saver-scan starting — movie section ${movieSection}, TV section ${tvSection}`);
 
   ctx.progress(10, 'fetching movies');
-  const moviesResp = await callService('plex', () =>
-    plexGet<PlexAllResponse<PlexMovieMeta>>(`/library/sections/${movieSection}/all`),
-  );
+  const moviesPath = `/library/sections/${movieSection}/all`;
+  const moviesResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexMovieMeta>>(moviesPath), {
+    cacheKey: `plex:${moviesPath}`,
+  });
   const movies = moviesResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${movies.length} movie(s) from section ${movieSection}.`);
 
   ctx.progress(35, 'fetching shows');
-  const showsResp = await callService('plex', () =>
-    plexGet<PlexAllResponse<PlexShowMeta>>(`/library/sections/${tvSection}/all`),
-  );
+  const showsPath = `/library/sections/${tvSection}/all`;
+  const showsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexShowMeta>>(showsPath), {
+    cacheKey: `plex:${showsPath}`,
+  });
   const shows = showsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${shows.length} show(s) from section ${tvSection}.`);
 
   ctx.progress(55, 'fetching episodes');
-  const epsResp = await callService('plex', () =>
-    plexGet<PlexAllResponse<PlexEpisodeMeta>>(`/library/sections/${tvSection}/all?type=4`),
-  );
+  const epsPath = `/library/sections/${tvSection}/all?type=4`;
+  const epsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexEpisodeMeta>>(epsPath), {
+    cacheKey: `plex:${epsPath}`,
+  });
   const episodes = epsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${episodes.length} episode(s) (flat read, type=4).`);
 

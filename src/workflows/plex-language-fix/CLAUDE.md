@@ -137,6 +137,19 @@ duplicating connectivity — see that file for the mechanism. Plex connectivity 
 `plex` service (`callService('plex', ...)`). TMDB lookups route through the shared rate-limited `tmdb`
 service (`callService('tmdb', ...)`, same as `missing-tv-seasons`).
 
+**Plex reads are response-cached for a 3-hour window (T477).** Every `lib.ts` Plex read helper
+(`fetchSections`, `fetchSectionItems`, `fetchItemDetail`, `fetchAllLeaves` — all four used only by the
+read-only `discover`/`evaluate` stages) passes a `cacheKey` derived from the request path
+(`plex:<path>`) to `callService('plex', ..., { cacheKey })`, engaging the `plex` service's 3-hour
+cache TTL (T476) — a second read of the SAME Plex resource within that window (e.g. another
+Plex-touching workflow triggered back-to-back via the admin "Run all workflows" button) is served
+from cache instead of hitting Plex again. This is separate from `resolve`'s own TMDB `cacheKey`
+dedup above, which caches the `tmdb` service's 5-minute default TTL, not `plex`'s. Each `lib.ts`
+Plex read helper takes an optional low-level `fetchPlex` override (defaulting to the real `plexGet`),
+still routed through `callService`, so the cache dedup itself is unit-tested (`lib.test.ts`) without a
+live Plex call. **`plex-language-apply`'s mutating `plexPutStreams`/`triggerButlerBackup` calls are
+NEVER cached** — a mutation must never be short-circuited by a stale cached response.
+
 ## Sections scanned
 
 The movie and TV sections reuse the SAME `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION` env vars every other

@@ -85,6 +85,15 @@ nothing answers.
 `plexGet` calls (the shows listing and the flat episode listing) in `callService('plex', ...)` to
 coordinate rate limits and quotas across all Plex-touching workflows via the shared service meter.
 
+**Plex reads are response-cached for a 3-hour window (T477).** Both calls pass a `cacheKey` derived
+from the request path (`plex:<path>`, e.g. `plex:/library/sections/5/all?includeGuids=1`) to
+`callService('plex', ..., { cacheKey })`, engaging the `plex` service's 3-hour cache TTL (T476). A
+second read of the SAME section within that window (e.g. another Plex-touching workflow triggered
+back-to-back via the admin "Run all workflows" button) is served from the cache instead of hitting
+Plex again. `runSnapshot` accepts an injectable `fetchPlex` option (tests) that stands in for the
+real `plexGet`, still routed through `callService`, so the cache dedup itself is unit-tested without
+a live Plex call.
+
 ## Files
 
 - `config.ts` — data paths (`snapshotOut`/`missingOut`/`reportDir`) plus `PLEX_TV_SECTION`

@@ -33,33 +33,42 @@ export function recordSnapshotLedger(shows: PlexShow[]): void {
   }
 }
 
+export interface SnapshotOpts {
+  /**
+   * Injectable low-level Plex GET (tests) — swaps in for the real `plexGet`,
+   * still routed through `callService('plex', ...)` so the 3-hour response-cache
+   * dedup (T477) can be exercised without a live Plex call. Defaults to the real
+   * `plexGet`.
+   */
+  fetchPlex?: <T>(path: string) => Promise<T>;
+}
+
 /**
  * Stage 1 — snapshot the Plex TV library by GUID. Reads the section's shows (with
  * GUIDs + ratingKey) and the flat episode list, computes each show's highest
  * owned regular season, and writes data/out/snapshot.json. RE-SCANS FRESH every
  * run (no skip-if-done) — the workflow's ledger lives only in the notify stage.
  */
-export async function runSnapshot(ctx: JobContext): Promise<void> {
+export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Promise<void> {
   ensureDirs();
+  const doPlexGet = opts.fetchPlex ?? plexGet;
   const section = plexConfig.tvSection;
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   ctx.log(`plex-tv-snapshot starting — Plex section ${section} @ ${plexConfig.host || '(PLEX_HOST unset)'}`);
 
   ctx.progress(5, 'fetching shows');
-  const showsResp = await callService('plex', () =>
-    plexGet<PlexAllResponse<PlexShowMeta>>(
-      `/library/sections/${section}/all?includeGuids=1`,
-    ),
-  );
+  const showsPath = `/library/sections/${section}/all?includeGuids=1`;
+  const showsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexShowMeta>>(showsPath), {
+    cacheKey: `plex:${showsPath}`,
+  });
   const showsMeta = showsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${showsMeta.length} shows from section ${section}.`);
 
   ctx.progress(40, 'fetching episodes');
-  const epsResp = await callService('plex', () =>
-    plexGet<PlexAllResponse<PlexEpisodeMeta>>(
-      `/library/sections/${section}/all?type=4`,
-    ),
-  );
+  const epsPath = `/library/sections/${section}/all?type=4`;
+  const epsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexEpisodeMeta>>(epsPath), {
+    cacheKey: `plex:${epsPath}`,
+  });
   const epsMeta = epsResp?.MediaContainer?.Metadata ?? [];
   ctx.log(`Fetched ${epsMeta.length} episodes (flat read, type=4).`);
 

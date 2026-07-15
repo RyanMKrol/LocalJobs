@@ -2,7 +2,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { callService } from '../../../core/services.js';
+import { callService, registerService } from '../../../core/services.js';
+import type { JobContext } from '../../../core/types.js';
+import { runBuild } from './build.js';
 
 // ── callService('plex', ...) wrapper — pass-through when service unregistered ──
 {
@@ -43,4 +45,34 @@ test('callService plex wrapper preserves return value and error handling', async
   assert.equal(callCount, 2, 'function was called twice total');
 
   console.log('  ✓ callService(\'plex\', ...) preserves return values and errors');
+});
+
+// ── T477: Plex reads pass a cacheKey and reuse the 3-hour service_cache ──
+function fakeCtx(): JobContext {
+  return { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
+}
+
+test('runBuild dedups a second call sharing a cacheKey within the TTL (section listings + per-title detail)', async () => {
+  registerService({ name: 'plex', category: 'api' });
+
+  const callsByPath = new Map<string, number>();
+  const plexFetch = async <T,>(path: string): Promise<T> => {
+    callsByPath.set(path, (callsByPath.get(path) ?? 0) + 1);
+    if (path.startsWith('/library/metadata/')) {
+      return { MediaContainer: { Metadata: [{ ratingKey: 'm477', title: 'Cache Test Movie', updatedAt: 1 }] } } as T;
+    }
+    if (path.includes('type=4')) {
+      return { MediaContainer: { Metadata: [] } } as T;
+    }
+    // Movie/show section listings — one movie candidate, no shows.
+    return { MediaContainer: { Metadata: path.includes(`sections/4`) ? [{ ratingKey: 'm477', title: 'Cache Test Movie', updatedAt: 1 }] : [] } } as T;
+  };
+
+  await runBuild(fakeCtx(), { plexFetch });
+  await runBuild(fakeCtx(), { plexFetch });
+
+  assert.equal(callsByPath.size, 4, 'four distinct Plex paths were requested (movies/shows/episodes listings + one detail fetch)');
+  for (const [path, count] of callsByPath) {
+    assert.equal(count, 1, `path "${path}" should be fetched only once across two runs within the cache TTL`);
+  }
 });

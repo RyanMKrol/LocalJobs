@@ -71,6 +71,15 @@ and unchanged.
 
 The Plex read is metered via the shared `plex` service (`callService('plex', ...)`), coordinating rate limits and quotas across all Plex-touching workflows.
 
+**Plex reads are response-cached for a 3-hour window (T477).** `movie-snapshot`'s Plex fetch passes a
+`cacheKey` derived from the request path (`plex:<path>`) to `callService('plex', ..., { cacheKey })`,
+engaging the `plex` service's 3-hour cache TTL (T476) — a second read of the same movie section
+within that window (e.g. another Plex-touching workflow triggered back-to-back via the admin "Run
+all workflows" button) is served from cache instead of hitting Plex again. The stage's existing
+`fetchMeta` test seam still fully bypasses `callService`; a new `plexFetch` option stands in for the
+real `plexGet` used by the default `fetchMeta`, still routed through `callService`, so the cache
+dedup itself is unit-tested without a live Plex call.
+
 ## Stage 2 — 8 recommender branches (subjective)
 
 Each branch (`rec-random-1/2/3`, `rec-auteur`, `rec-canon`, `rec-thin-genre`, `rec-older-era`,
