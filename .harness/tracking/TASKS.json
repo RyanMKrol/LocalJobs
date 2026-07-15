@@ -12794,7 +12794,7 @@
     {
       "id": "T477",
       "title": "Cache Plex reads via callService cacheKey (reuse the T451 service_cache mechanism, 3-hour TTL)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T476",
         "T578"
