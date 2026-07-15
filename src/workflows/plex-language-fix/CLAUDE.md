@@ -20,6 +20,19 @@ plex-language-discover → plex-language-resolve → plex-language-evaluate → 
   from the title's own Plex Guid, so this stage makes NO TMDB call. It always walks the whole library
   fresh (so a newly added file is found) but never re-marks a file already known — see "Idempotency"
   below for what that does and doesn't buy you.
+  **`discoverInputKeys()` (T485) does a LIVE Plex library walk, not a ledger read-back.** `discover.ts`
+  factors the section/item/leaf walk into a shared `walkLibraryFiles` helper — the SAME implementation
+  `runDiscover` itself uses (via hooks, so `runDiscover` keeps its verbose `ctx.log`/`ctx.progress`
+  narration while `discoverInputKeys` just needs the resulting key set) — routed through `lib.ts`'s
+  `fetchSections`/`fetchSectionItems`/`fetchItemDetail`/`fetchAllLeaves`, which already go through
+  `callService('plex', ...)` (T578). `discoverInputKeys` is therefore `async`, returning
+  `Promise<string[]>`, computed fresh on every call rather than by reading this job's own prior
+  `work_items` success rows. This replaces an earlier ledger-readback implementation
+  (`ledgerSuccessRows(JOB_NAME).map(...)`) that had a self-referential trap: after "Clear output data"
+  wipes this workflow's ledger, that version had nothing to read back and silently returned `[]`, so a
+  manually-limited run selected zero roots and no-op'd instead of re-discovering the library. Known,
+  accepted tradeoff: every manual limited-run request now pays the cost of a full/partial library crawl
+  just to compute candidate keys — correct versus silently no-opping on a reset ledger.
 - **`plex-language-resolve`** (read-only, `dependsOn: discover`) looks up each not-yet-resolved file's
   show/movie's true original language + candidate spoken languages via TMDB, routed through
   `callService('tmdb', () => lookupLanguageDetail(tmdbId, type), { cacheKey: 'tmdb-language:<type>:<tmdbId>'

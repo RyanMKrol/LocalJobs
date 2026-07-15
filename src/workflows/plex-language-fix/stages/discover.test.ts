@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { JobContext } from '../../../core/types.js';
+import { db } from '../../../db/index.js';
 import { getWorkItem } from '../../../db/store.js';
 import type { PlexMetadataItem, PlexSection } from '../types.js';
 import { plexLanguageFixConfig } from '../config.js';
@@ -89,7 +90,7 @@ test('runDiscover records one ledger row per file, keyed by itemRatingKey::partI
   // Scoped containment, not exact-equality: this repo's whole test suite shares one
   // scratch DB across every *.test.ts file, so the job's ledger can legitimately
   // carry rows from unrelated sibling tests by the time this assertion runs.
-  const known = new Set(discoverInputKeys());
+  const known = new Set(await discoverInputKeys(f));
   for (const key of [movieKey, ep1Key, ep2Key]) assert.ok(known.has(key), `expected ${key} to be discovered`);
   console.log('  ✓ runDiscover records one ledger row per file');
 });
@@ -97,11 +98,35 @@ test('runDiscover records one ledger row per file, keyed by itemRatingKey::partI
 test('a second run does not re-mark an already-known file (ledger row count unchanged)', async () => {
   const f = fakes();
   await runDiscover(fakeCtx(), f); // seeds the ledger again with the same fixture (idempotent upsert)
-  const before = discoverInputKeys().length;
+  const before = (await discoverInputKeys(f)).length;
 
   await runDiscover(fakeCtx(), f);
-  const after = discoverInputKeys().length;
+  const after = (await discoverInputKeys(f)).length;
 
   assert.equal(after, before, 'ledger key count must not grow on a re-run over the same fixture');
   console.log('  ✓ a second discover run over the same fixture does not grow the ledger');
+});
+
+test('discoverInputKeys returns the live candidate set from a Plex walk, not a ledger read-back — survives a reset ledger (T485)', async () => {
+  const f = fakes();
+  // Seed the ledger via a normal discover run, exactly like a prior week's run would.
+  await runDiscover(fakeCtx(), f);
+
+  const movieKey = fileKey('m1', 9001);
+  const ep1Key = fileKey('e1', 9101);
+  const ep2Key = fileKey('e2', 9102);
+  assert.equal(getWorkItem('plex-language-discover', movieKey)?.status, 'success');
+
+  // Simulate "Clear output data" wiping this job's own ledger rows — the exact trap
+  // the old ledgerSuccessRows(JOB_NAME)-based implementation fell into: reading its
+  // own now-empty ledger back would silently return [].
+  db.prepare(`DELETE FROM work_items WHERE job_name = 'plex-language-discover'`).run();
+  assert.equal(getWorkItem('plex-language-discover', movieKey), undefined, 'ledger row must actually be gone');
+
+  const keys = await discoverInputKeys(f);
+  const found = new Set(keys);
+  for (const key of [movieKey, ep1Key, ep2Key]) {
+    assert.ok(found.has(key), `expected ${key} from a live Plex walk despite an empty ledger`);
+  }
+  console.log('  ✓ discoverInputKeys re-discovers the full candidate set live after a ledger reset');
 });
