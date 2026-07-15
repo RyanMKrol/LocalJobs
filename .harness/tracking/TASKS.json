@@ -13106,7 +13106,7 @@
     {
       "id": "T487",
       "title": "Add inputKeysService field to JobDefinition + retrofit onto every job that declares inputKeys()",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [
         "T483",
         "T484",
@@ -14581,7 +14581,7 @@
     {
       "id": "T543",
       "title": "Collapse the four managers into a generic RecsManager + GroupedManager",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [
         "T579"
       ],
@@ -15176,7 +15176,7 @@
     {
       "id": "T563",
       "title": "Dedup the JSON file helpers (readJsonFile / writeJsonFile / ensureDirs) into a shared core module, after the recommender extraction removes two copies",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [
         "T561"
       ],
@@ -15232,7 +15232,7 @@
     {
       "id": "T565",
       "title": "Dedup PlexAllResponse<T> + TMDB-GUID extraction into src/core/plex-client.ts (sequenced after the in-flight Plex-service migration)",
-      "status": "blocked",
+      "status": "failed",
       "dependsOn": [
         "T561",
         "T578"
