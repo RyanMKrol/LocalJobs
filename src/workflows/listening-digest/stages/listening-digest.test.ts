@@ -128,7 +128,8 @@ describe('renderDigestMarkdown', () => {
     assert.match(md, /## Top Albums/);
     assert.match(md, /OK Computer \| Radiohead \| 42/);
     assert.match(md, /## Top Tracks/);
-    assert.match(md, /Airbag \| Radiohead \| OK Computer \| 10/);
+    assert.match(md, /Airbag \| Radiohead \| 10/);
+    assert.doesNotMatch(md.split('## Top Tracks')[1], /OK Computer/, 'Top Tracks table must not render an Album column');
   });
 
   it('renders a placeholder when there is no data', () => {
@@ -255,9 +256,14 @@ describe('runListeningDigest — normal behaviour', () => {
         '1month': [album('Recent Album', 'Artist A', 10)],
         '3month': [album('Quarterly Album', 'Artist B', 30)],
       }),
+      // Track playcounts kept well under the 0.7 single-track-dominated ratio (config.ts's
+      // singleTrackAlbumRatio) so both albums survive filterRealAlbums and this test's
+      // 'Recent Album'/'Quarterly Album' assertions exercise the Top Albums table (the only
+      // place an album name renders, now that Top Tracks has no Album column) rather than an
+      // incidental single-track-filter interaction.
       fetchTopTracks: periodAwareTracksFetcher({
-        '1month': [track('Recent Track', 'Artist A', 'Recent Album', 8)],
-        '3month': [track('Quarterly Track', 'Artist B', 'Quarterly Album', 25)],
+        '1month': [track('Recent Track', 'Artist A', 'Recent Album', 5)],
+        '3month': [track('Quarterly Track', 'Artist B', 'Quarterly Album', 15)],
       }),
       now,
       outDir,
@@ -313,8 +319,11 @@ describe('runListeningDigest — normal behaviour', () => {
   it('handles Last.fm returning a bare object instead of an array', async () => {
     const now = new Date('2026-10-01T00:00:00Z');
     const fetchTopAlbums: TopAlbumsFetcher = async () => ({
-      topalbums: { album: album('Solo Album', 'Artist', 3) },
+      topalbums: { album: album('Solo Album', 'Artist', 10) },
     });
+    // Track playcount kept well under the 0.7 single-track-dominated ratio so the album
+    // survives filterRealAlbums and 'Solo Album' is checked via the Top Albums table (the
+    // only place an album name renders, now that Top Tracks has no Album column).
     const fetchTopTracks: TopTracksFetcher = async () => ({
       toptracks: { track: track('Solo Track', 'Artist', 'Solo Album', 3) },
     });

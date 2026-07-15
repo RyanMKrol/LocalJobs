@@ -96,12 +96,14 @@ export function renderDigestMarkdown(opts: {
   if (opts.tracks.length === 0) {
     lines.push('_No track plays in this period._');
   } else {
-    lines.push('| # | Track | Artist | Album | Plays |');
-    lines.push('|---|---|---|---|---|');
+    // No Album column: Last.fm's user.getTopTracks response never includes album
+    // info (confirmed against the live API) — track.album is always undefined in
+    // practice, so a column for it was always empty. filterRealAlbums() above still
+    // reads track.album for its own (separately known-inert) purpose; unrelated here.
+    lines.push('| # | Track | Artist | Plays |');
+    lines.push('|---|---|---|---|');
     opts.tracks.forEach((track, i) => {
-      lines.push(
-        `| ${i + 1} | ${track.name} | ${track.artist.name} | ${track.album?.['#text'] ?? ''} | ${track.playcount} |`,
-      );
+      lines.push(`| ${i + 1} | ${track.name} | ${track.artist.name} | ${track.playcount} |`);
     });
   }
   lines.push('');
