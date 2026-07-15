@@ -15232,7 +15232,7 @@
     {
       "id": "T565",
       "title": "Dedup PlexAllResponse<T> + TMDB-GUID extraction into src/core/plex-client.ts (sequenced after the in-flight Plex-service migration)",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [
         "T561",
         "T578"
