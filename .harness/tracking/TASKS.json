@@ -14666,7 +14666,7 @@
     {
       "id": "T546",
       "title": "Make the dashboard's clickable-span editors and sort headers keyboard-accessible",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T579"
       ],
