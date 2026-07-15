@@ -15943,7 +15943,7 @@
     {
       "id": "T586",
       "title": "Dedup PlexAllResponse<T> + TMDB-GUID extraction into src/core/plex-client.ts (re-attempt of T565, with doc paths in scope)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
