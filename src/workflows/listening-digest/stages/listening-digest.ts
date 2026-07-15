@@ -157,6 +157,66 @@ export function makeTopTracksFetcher(apiKey: string, username: string): TopTrack
 // Core digest logic
 // ---------------------------------------------------------------------------
 
+async function runPass(
+  ctx: JobContext,
+  opts: {
+    period: string;
+    key: string;
+    label: string;
+    detailName: string;
+    outDir: string;
+    username: string;
+    fetchTopAlbums: TopAlbumsFetcher;
+    fetchTopTracks: TopTracksFetcher;
+    now: Date;
+  },
+): Promise<{ filteredAlbums: LastFmTopAlbum[]; tracks: LastFmTopTrack[] }> {
+  const { period, key, label, detailName, outDir, username, fetchTopAlbums, fetchTopTracks, now } = opts;
+
+  ctx.log(
+    `info: listening-digest starting — user: ${username}, period: ${period}, month: ${key}`,
+  );
+
+  ctx.log('info: fetching top albums from Last.fm…');
+  const albumsData = await callService('lastfm', () => fetchTopAlbums(period), { cacheKey: `lastfm:top-albums:${period}` });
+  const albums = toArray(albumsData.topalbums?.album);
+  ctx.log(`info: fetched ${albums.length} top album(s)`);
+
+  ctx.log('info: fetching top tracks from Last.fm…');
+  const tracksData = await callService('lastfm', () => fetchTopTracks(period), { cacheKey: `lastfm:top-tracks:${period}` });
+  const tracks = toArray(tracksData.toptracks?.track);
+  ctx.log(`info: fetched ${tracks.length} top track(s)`);
+
+  const filteredAlbums = filterRealAlbums(albums, tracks, listeningDigestConfig.singleTrackAlbumRatio);
+  ctx.log(
+    `info: kept ${filteredAlbums.length}/${albums.length} album(s) after filtering out single-track-dominated ` +
+      `albums (a track making up >= ${listeningDigestConfig.singleTrackAlbumRatio * 100}% of the album's plays)`,
+  );
+  for (const dropped of albums.filter((a) => !filteredAlbums.includes(a))) {
+    ctx.log(`info: dropped "${dropped.name}" by ${dropped.artist.name} — single-track-dominated`);
+  }
+
+  const markdown = renderDigestMarkdown({
+    username,
+    monthLabel: label,
+    generatedAtIso: now.toISOString(),
+    period,
+    albums: filteredAlbums,
+    tracks,
+  });
+
+  mkdirSync(outDir, { recursive: true });
+  const mdPath = resolve(outDir, `listening-digest-${key}.md`);
+  writeFileSync(mdPath, markdown, 'utf8');
+  ctx.log(`info: wrote digest markdown to ${mdPath}`);
+
+  markWorkItem(JOB_NAME, key, 'success', {
+    detail: { name: detailName, markdown: mdPath },
+  });
+
+  return { filteredAlbums, tracks };
+}
+
 export async function runListeningDigest(
   ctx: JobContext,
   opts: {
@@ -179,45 +239,16 @@ export async function runListeningDigest(
   const fetchTopAlbums = opts.fetchTopAlbums ?? makeTopAlbumsFetcher(apiKey, username);
   const fetchTopTracks = opts.fetchTopTracks ?? makeTopTracksFetcher(apiKey, username);
 
-  ctx.log(
-    `info: listening-digest starting — user: ${username}, period: ${listeningDigestConfig.period}, month: ${key}`,
-  );
-
-  ctx.log('info: fetching top albums from Last.fm…');
-  const albumsData = await callService('lastfm', () => fetchTopAlbums(listeningDigestConfig.period), { cacheKey: `lastfm:top-albums:${listeningDigestConfig.period}` });
-  const albums = toArray(albumsData.topalbums?.album);
-  ctx.log(`info: fetched ${albums.length} top album(s)`);
-
-  ctx.log('info: fetching top tracks from Last.fm…');
-  const tracksData = await callService('lastfm', () => fetchTopTracks(listeningDigestConfig.period), { cacheKey: `lastfm:top-tracks:${listeningDigestConfig.period}` });
-  const tracks = toArray(tracksData.toptracks?.track);
-  ctx.log(`info: fetched ${tracks.length} top track(s)`);
-
-  const filteredAlbums = filterRealAlbums(albums, tracks, listeningDigestConfig.singleTrackAlbumRatio);
-  ctx.log(
-    `info: kept ${filteredAlbums.length}/${albums.length} album(s) after filtering out single-track-dominated ` +
-      `albums (a track making up >= ${listeningDigestConfig.singleTrackAlbumRatio * 100}% of the album's plays)`,
-  );
-  for (const dropped of albums.filter((a) => !filteredAlbums.includes(a))) {
-    ctx.log(`info: dropped "${dropped.name}" by ${dropped.artist.name} — single-track-dominated`);
-  }
-
-  const markdown = renderDigestMarkdown({
-    username,
-    monthLabel: label,
-    generatedAtIso: now.toISOString(),
+  const { filteredAlbums, tracks } = await runPass(ctx, {
     period: listeningDigestConfig.period,
-    albums: filteredAlbums,
-    tracks,
-  });
-
-  mkdirSync(outDir, { recursive: true });
-  const mdPath = resolve(outDir, `listening-digest-${key}.md`);
-  writeFileSync(mdPath, markdown, 'utf8');
-  ctx.log(`info: wrote digest markdown to ${mdPath}`);
-
-  markWorkItem(JOB_NAME, key, 'success', {
-    detail: { name: `Listening digest — ${label}`, markdown: mdPath },
+    key,
+    label,
+    detailName: `Listening digest — ${label}`,
+    outDir,
+    username,
+    fetchTopAlbums,
+    fetchTopTracks,
+    now,
   });
 
   ctx.progress(
@@ -236,45 +267,16 @@ export async function runListeningDigest(
     `info: listening-digest starting trailing pass — user: ${username}, period: ${trailingPeriod}, key: ${trailingKey}`,
   );
 
-  ctx.log('info: fetching trailing top albums from Last.fm…');
-  const trailingAlbumsData = await callService('lastfm', () => fetchTopAlbums(trailingPeriod), { cacheKey: `lastfm:top-albums:${trailingPeriod}` });
-  const trailingAlbums = toArray(trailingAlbumsData.topalbums?.album);
-  ctx.log(`info: fetched ${trailingAlbums.length} trailing top album(s)`);
-
-  ctx.log('info: fetching trailing top tracks from Last.fm…');
-  const trailingTracksData = await callService('lastfm', () => fetchTopTracks(trailingPeriod), { cacheKey: `lastfm:top-tracks:${trailingPeriod}` });
-  const trailingTracks = toArray(trailingTracksData.toptracks?.track);
-  ctx.log(`info: fetched ${trailingTracks.length} trailing top track(s)`);
-
-  const filteredTrailingAlbums = filterRealAlbums(
-    trailingAlbums,
-    trailingTracks,
-    listeningDigestConfig.singleTrackAlbumRatio,
-  );
-  ctx.log(
-    `info: kept ${filteredTrailingAlbums.length}/${trailingAlbums.length} trailing album(s) after filtering out ` +
-      `single-track-dominated albums (a track making up >= ${listeningDigestConfig.singleTrackAlbumRatio * 100}% ` +
-      `of the album's plays)`,
-  );
-  for (const dropped of trailingAlbums.filter((a) => !filteredTrailingAlbums.includes(a))) {
-    ctx.log(`info: dropped trailing "${dropped.name}" by ${dropped.artist.name} — single-track-dominated`);
-  }
-
-  const trailingMarkdown = renderDigestMarkdown({
-    username,
-    monthLabel: trailingLabel,
-    generatedAtIso: now.toISOString(),
+  const { filteredAlbums: filteredTrailingAlbums, tracks: trailingTracks } = await runPass(ctx, {
     period: trailingPeriod,
-    albums: filteredTrailingAlbums,
-    tracks: trailingTracks,
-  });
-
-  const trailingMdPath = resolve(outDir, `listening-digest-${key}-3month.md`);
-  writeFileSync(trailingMdPath, trailingMarkdown, 'utf8');
-  ctx.log(`info: wrote trailing digest markdown to ${trailingMdPath}`);
-
-  markWorkItem(JOB_NAME, trailingKey, 'success', {
-    detail: { name: `Listening digest (trailing 3 months) — ${label}`, markdown: trailingMdPath },
+    key: trailingKey,
+    label: trailingLabel,
+    detailName: `Listening digest (trailing 3 months) — ${label}`,
+    outDir,
+    username,
+    fetchTopAlbums,
+    fetchTopTracks,
+    now,
   });
 
   ctx.progress(100, `digest for ${label} (both periods) written`);
