@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getWorkItem } from '../../db/store.js';
 import type { JobContext } from '../../core/types.js';
 import { callService } from '../../core/services.js';
+import { ensureDirs as coreEnsureDirs, readJsonFile, writeJsonFile } from '../../core/fsjson.js';
 import { dynamoScan } from '../../services/dynamodb.service.js';
 import { perfumesConfig } from './config.js';
 import type { PerfumeInput } from './types.js';
@@ -45,18 +46,10 @@ export async function loadPerfumes(): Promise<PerfumeInput[]> {
   return perfumes;
 }
 
-export function readJsonFile<T>(path: string, fallback: T): T {
-  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as T) : fallback;
-}
-
-export function writeJsonFile(path: string, data: unknown): void {
-  writeFileSync(path, JSON.stringify(data, null, 2));
-}
+export { readJsonFile, writeJsonFile };
 
 export function ensureDirs(): void {
-  for (const d of [perfumesConfig.outDir, perfumesConfig.pagesDir, perfumesConfig.pagesFailedDir, perfumesConfig.fragranticaDir, perfumesConfig.markdownDir]) {
-    mkdirSync(d, { recursive: true });
-  }
+  coreEnsureDirs(perfumesConfig.outDir, perfumesConfig.pagesDir, perfumesConfig.pagesFailedDir, perfumesConfig.fragranticaDir, perfumesConfig.markdownDir);
 }
 
 /** A perfume is "stuck" at a stage if it failed and is out of retries. */

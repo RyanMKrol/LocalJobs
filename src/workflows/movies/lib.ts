@@ -1,14 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { ensureDirs as coreEnsureDirs, readJsonFile, writeJsonFile } from '../../core/fsjson.js';
 import { moviesConfig } from './config.js';
 
 export function ensureDirs(): void {
-  for (const d of [moviesConfig.outDir, moviesConfig.reportDir, moviesConfig.recsDir]) mkdirSync(d, { recursive: true });
+  coreEnsureDirs(moviesConfig.outDir, moviesConfig.reportDir, moviesConfig.recsDir);
 }
 
-export function readJsonFile<T>(path: string, fallback: T): T {
-  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as T) : fallback;
-}
-
-export function writeJsonFile(path: string, data: unknown): void {
-  writeFileSync(path, JSON.stringify(data, null, 2));
-}
+export { readJsonFile, writeJsonFile };

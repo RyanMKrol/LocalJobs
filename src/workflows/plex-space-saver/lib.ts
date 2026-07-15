@@ -1,5 +1,6 @@
 // Pure Plex-parsing/formatting helpers (no I/O) — unit-tested in plex-space-saver.test.ts.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { ensureDirs as coreEnsureDirs, writeJsonFile } from '../../core/fsjson.js';
 import { plexSpaceSaverConfig } from './config.js';
 import type {
   PlexEpisodeMeta,
@@ -11,12 +12,10 @@ import type {
 } from './types.js';
 
 export function ensureDirs(): void {
-  mkdirSync(plexSpaceSaverConfig.outDir, { recursive: true });
+  coreEnsureDirs(plexSpaceSaverConfig.outDir);
 }
 
-export function writeJsonFile(path: string, data: unknown): void {
-  writeFileSync(path, JSON.stringify(data, null, 2));
-}
+export { writeJsonFile };
 
 /** Read the persisted prior-run baseline, or `null` if this is the first run. */
 export function readBaseline(path: string): SizeBaselineFile | null {
