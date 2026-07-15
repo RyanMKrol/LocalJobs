@@ -15880,7 +15880,7 @@
     {
       "id": "T584",
       "title": "Collapse the four managers into a generic RecsManager + GroupedManager (re-attempt of T543)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
