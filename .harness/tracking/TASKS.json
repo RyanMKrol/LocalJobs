@@ -15732,7 +15732,7 @@
     {
       "id": "T580",
       "title": "Replace bare pill/badge spans with <Pill>/<StatusBadge> and widen StatusBadge's status type (whole dashboard/app, including page.tsx)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
