@@ -504,8 +504,10 @@ job MAY colocate a service it owns).
     (same guard as the per-run endpoint: `safeOutputMarkdown`, confined to `data/out/` tree)
     and opens the content in a markdown popover.
   - **Audit-style workflows** (movie-recommendations, missing-tv-seasons): these already have
-    dedicated, richer output managers (`MovieRecsManager`, `MovieGapsManager`,
-    `MissingSeasonsManager`) on the detail page. They are EXCLUDED from the generic section
+    dedicated, richer output managers on the detail page — the generic `RecsManager`/
+    `GroupedManager` components (T584, see "Shared dashboard UI components" below) rendered via
+    per-workflow config objects (`MOVIE_RECS_CONFIG`, `TV_RECS_CONFIG`, `MOVIE_GAPS_CONFIG`,
+    `MISSING_SEASONS_CONFIG` in `page.tsx`). They are EXCLUDED from the generic section
     (the `WORKFLOWS_WITH_SPECIFIC_MANAGERS` set in `page.tsx`). New dedicated managers should
     be added to that set; standard build workflows use the generic section automatically.
   - **Adding a new workflow that produces output**: make the terminal stage call
@@ -917,8 +919,10 @@ doubt, log it.
     on success the item reappears in the active list on the next 5s poll.
   - **Bulk collection/show dismiss (T210).** Each grouped output section on the
     workflow detail page (`dashboard/app/workflows/[name]/page.tsx`) — movie franchise
-    gaps grouped by collection (`MovieGapsManager` / `groupByCollection`) and missing TV
-    seasons grouped by show (`MissingSeasonsManager` / `groupByShow`) — shows an
+    gaps grouped by collection (the generic `GroupedManager` rendered with
+    `MOVIE_GAPS_CONFIG`, whose `groupBy` is `groupByCollection`) and missing TV seasons
+    grouped by show (`GroupedManager` rendered with `MISSING_SEASONS_CONFIG`, `groupBy` =
+    `groupByShow`) — shows an
     **"✕ Ignore all"** button at each group header. After a confirm it ignores all
     currently-active items in that group via `ignoreSurfacedItems(jobName, itemKeys[])`
     in `src/db/store.ts` (a transactional batch of the per-item upsert). **CRITICAL
@@ -1303,31 +1307,55 @@ doubt, log it.
     new workflow gets this same honest, un-paired treatment automatically; there
     is no per-workflow opt-in to make.
   - **`<IgnoredSection>`** (`dashboard/app/components/IgnoredSection.tsx`, T390) —
-    the "Ignored (N)" panel used by `TvRecsManager`/`MovieRecsManager`/
-    `MovieGapsManager`/`MissingSeasonsManager` on `workflows/[name]/page.tsx`. Owns
-    only the panel chrome (padding + heading/subtitle spacing via `.ignored-section`/
-    `.ignored-section-heading`/`.ignored-section-subtitle` in `globals.css`) — props
-    are `count`, `subtitle`, and `children` (each manager's own table, since the
-    columns differ per manager).
-  - **`<TvRecsManager>`/`<MovieRecsManager>`/`<MovieGapsManager>`/`<MissingSeasonsManager>`**
-    (`dashboard/app/components/TvRecsManager.tsx`/`MovieRecsManager.tsx`/`MovieGapsManager.tsx`/
-    `MissingSeasonsManager.tsx`, T579) — the four workflow-specific output managers rendered by
-    `workflows/[name]/page.tsx` for `tv-recommendations`/`movie-recommendations`/`missing-movies`/
-    `missing-tv-seasons` respectively (see `WORKFLOWS_WITH_SPECIFIC_MANAGERS` in that file). Each
-    was previously inline in `page.tsx` (T542/T579 moved them out, dropping the page from 1,144 to
-    ~330 lines) — a pure extraction, no behaviour change. `groupByCollection`/`groupByShow` moved
-    with their respective managers (`MovieGapsManager.tsx`/`MissingSeasonsManager.tsx`); the shared
-    `RecSortCol`/`sortRecs` sort helper used by `TvRecsManager`/`MovieRecsManager` lives in
-    `dashboard/app/components/recSort.ts`.
-  - **`useAction`** (`dashboard/app/components/useAction.ts`, T579) — the hook the four managers
-    above use for every ignore/unignore/bulk-ignore handler, replacing the repeated `setBusy(key) ->
-    setErr(null) -> await fn() -> await refetch() -> catch(setErr) -> finally(setBusy(null))` block
-    (~14 near-identical copies before the extraction). `useAction<K>(refetch)` returns `{ busy, err,
-    run }`; call `run(key, fn)` where `key` is the row id being acted on (or the literal `true` for a
-    flat bulk action) — `busy` reflects the in-flight key (or `null`), so `disabled={busy === key}`
-    works unchanged at each call site. A manager with multiple independent busy dimensions (e.g.
-    `MovieGapsManager`'s per-item / per-collection / per-ignored-collection actions) uses one
-    `useAction` instance per dimension. Guards against `setState` after unmount via a mounted ref.
+    the "Ignored (N)" panel used by `RecsManager`/`GroupedManager` (below) on
+    `workflows/[name]/page.tsx`. Owns only the panel chrome (padding + heading/subtitle
+    spacing via `.ignored-section`/`.ignored-section-heading`/`.ignored-section-subtitle`
+    in `globals.css`) — props are `count`, `subtitle`, and `children` (each manager's own
+    table, since the columns differ per manager).
+  - **`<RecsManager<T>>`** (`dashboard/app/components/RecsManager.tsx`, T584) — the
+    generic per-title recommendation-list manager, replacing the former separate
+    `TvRecsManager`/`MovieRecsManager` (T579, ~95% duplicated: only the API method
+    names, the TMDB URL segment, the noun, and the heading differed). Parameterized
+    by a `RecsManagerConfig<T>` object — `{ heading, noun, tmdbPath, fetchData,
+    ignore, unignore, unignoreBulk }` — passed as the `config` prop; `page.tsx`
+    defines `MOVIE_RECS_CONFIG` (`movie-recommendations`) and `TV_RECS_CONFIG`
+    (`tv-recommendations`) as thin config objects and renders
+    `<RecsManager<MovieRec> config={MOVIE_RECS_CONFIG} />` /
+    `<RecsManager<TvRec> config={TV_RECS_CONFIG} />`. Reuses the shared
+    `RecSortCol`/`sortRecs` sort helper (`dashboard/app/components/recSort.ts`),
+    `<SortTh>`, `<IgnoredSection>`, and `useAction`.
+  - **`<GroupedManager<T, GK, D>>`** (`dashboard/app/components/GroupedManager.tsx`,
+    T584) — the generic grouped-list manager (a group header with an "Ignore all"/
+    "Un-ignore all" when the group has >1 item, followed by per-item rows), replacing
+    the former separate `MovieGapsManager`/`MissingSeasonsManager` (T579, ~80% column
+    overlap). Parameterized by a `GroupedManagerConfig<T, GK, D>` object — heading,
+    description, data-fetch/shape accessors, `groupBy`, `renderGroupLabel`,
+    `activeColumns`/`ignoredColumns`, `renderCells`, summary/empty-state text, and the
+    per-item/per-group ignore/unignore functions — passed as the `config` prop;
+    `page.tsx` defines `MOVIE_GAPS_CONFIG` (`missing-movies`, `groupBy` =
+    `groupByCollection`) and `MISSING_SEASONS_CONFIG` (`missing-tv-seasons`, `groupBy`
+    = `groupByShow`) and renders `<GroupedManager<MovieGap, string, MovieGaps>
+    config={MOVIE_GAPS_CONFIG} />` / `<GroupedManager<MissingSeason, number,
+    MissingSeasons> config={MISSING_SEASONS_CONFIG} />`. `groupByCollection`/
+    `groupByShow` live in `page.tsx` alongside their configs. Reuses `<IgnoredSection>`
+    and `useAction`.
+  - Both generic managers render for `tv-recommendations`/`movie-recommendations`/
+    `missing-movies`/`missing-tv-seasons` respectively (see
+    `WORKFLOWS_WITH_SPECIFIC_MANAGERS` in `page.tsx`) — a pure consolidation of the
+    four former dedicated components (T542/T579 first extracted them out of
+    `page.tsx`; T584 collapsed the two near-duplicate pairs into one implementation
+    each), no behaviour change and pixel-equivalent rendering.
+  - **`useAction`** (`dashboard/app/components/useAction.ts`, T579) — the hook
+    `RecsManager`/`GroupedManager` use for every ignore/unignore/bulk-ignore handler,
+    replacing the repeated `setBusy(key) -> setErr(null) -> await fn() -> await
+    refetch() -> catch(setErr) -> finally(setBusy(null))` block. `useAction<K>(refetch)`
+    returns `{ busy, err, run }`; call `run(key, fn)` where `key` is the row id being
+    acted on (or the literal `true` for a flat bulk action) — `busy` reflects the
+    in-flight key (or `null`), so `disabled={busy === key}` works unchanged at each
+    call site. A manager with multiple independent busy dimensions (e.g.
+    `GroupedManager`'s per-item / per-group / per-ignored-group actions) uses one
+    `useAction` instance per dimension. Guards against `setState` after unmount via a
+    mounted ref.
   When adding a new reusable element, add it to `dashboard/app/components/` (NOT
   inline in a page) and document it here. Do NOT introduce a new styling system —
   wrap the existing `globals.css` class idiom.

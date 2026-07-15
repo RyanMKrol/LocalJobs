@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * Owns the setBusy(key) -> setErr(null) -> await fn() -> await refetch() -> catch(setErr) ->
- * finally(setBusy(null)) block duplicated across the workflow output managers
- * (TvRecsManager/MovieRecsManager/MovieGapsManager/MissingSeasonsManager). A single hook instance
+ * finally(setBusy(null)) block used by the workflow output managers (RecsManager,
+ * GroupedManager). A single hook instance
  * tracks one busy dimension, keyed by `K` — pass a row id for a per-row action, or `true` for a
  * flat bulk action. Guards against setState after unmount.
  */

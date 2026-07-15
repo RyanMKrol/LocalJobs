@@ -3,22 +3,20 @@
 import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DagFlow } from '../../components/DagFlow';
-import { MissingSeasonsManager } from '../../components/MissingSeasonsManager';
-import { MovieGapsManager } from '../../components/MovieGapsManager';
-import { MovieRecsManager } from '../../components/MovieRecsManager';
+import { GroupedManager, type GroupedManagerConfig } from '../../components/GroupedManager';
 import { Pill } from '../../components/Pill';
+import { RecsManager, type RecsManagerConfig } from '../../components/RecsManager';
 import { RunButton } from '../../components/RunButton';
-import { TvRecsManager } from '../../components/TvRecsManager';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
-import { api } from '../../lib/api';
+import { api, type MissingSeason, type MissingSeasons, type MovieGap, type MovieGaps, type MovieRec, type MovieRecs, type TvRec, type TvRecs } from '../../lib/api';
 import { CronBadge, StatusBadge, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
 
 /** Workflow names that show the Missing seasons section. */
 const MISSING_SEASONS_WORKFLOWS = new Set(['missing-tv-seasons']);
 
 /**
- * Workflows that have a dedicated, workflow-specific output manager component
- * (MovieRecsManager, MovieGapsManager, MissingSeasonsManager). The generic
+ * Workflows that have a dedicated, workflow-specific output manager
+ * (a RecsManager or GroupedManager config below). The generic
  * WorkflowOutputSection is rendered for all OTHER workflows (T205).
  */
 const WORKFLOWS_WITH_SPECIFIC_MANAGERS = new Set([
@@ -27,6 +25,178 @@ const WORKFLOWS_WITH_SPECIFIC_MANAGERS = new Set([
   'tv-recommendations',
   'missing-movies',
 ]);
+
+/** Config for the movie-recommendations RecsManager (T584, replacing MovieRecsManager). */
+const MOVIE_RECS_CONFIG: RecsManagerConfig<MovieRec> = {
+  heading: { tag: 'h3', text: 'Recommendations' },
+  noun: 'film',
+  tmdbPath: 'movie',
+  fetchData: () => api.movieRecs(),
+  ignore: (tmdbId) => api.ignoreMovieRec(tmdbId),
+  unignore: (tmdbId) => api.unignoreMovieRec(tmdbId),
+  unignoreBulk: (tmdbIds) => api.unignoreMovieRecBulk(tmdbIds),
+};
+
+/** Config for the tv-recommendations RecsManager (T584, replacing TvRecsManager). */
+const TV_RECS_CONFIG: RecsManagerConfig<TvRec> = {
+  heading: { tag: 'h2', text: 'Output' },
+  noun: 'show',
+  tmdbPath: 'tv',
+  fetchData: () => api.tvRecs(),
+  ignore: (tmdbId) => api.ignoreTvRec(tmdbId),
+  unignore: (tmdbId) => api.unignoreTvRec(tmdbId),
+  unignoreBulk: (tmdbIds) => api.unignoreTvRecBulk(tmdbIds),
+};
+
+/** Group gaps by collection name, sorted by name; films sorted by year then title. */
+function groupByCollection(gaps: MovieGap[]): [string, MovieGap[]][] {
+  const map = new Map<string, MovieGap[]>();
+  for (const g of gaps) {
+    const arr = map.get(g.collectionName) ?? [];
+    arr.push(g);
+    map.set(g.collectionName, arr);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([name, films]) => [
+      name,
+      films.sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || a.title.localeCompare(b.title)),
+    ] as [string, MovieGap[]]);
+}
+
+/** Config for the missing-movies GroupedManager (T584, replacing MovieGapsManager). */
+const MOVIE_GAPS_CONFIG: GroupedManagerConfig<MovieGap, string, MovieGaps> = {
+  heading: { tag: 'h3', text: 'Franchise gaps' },
+  description: (
+    <>
+      Films you own <em>some but not all</em> of, detected via the TMDB Collections API. Every
+      factual gap is shown (no quality filter); the TMDB rating is context only. Ignore a gap to
+      suppress it from future reports and notifications.
+    </>
+  ),
+  fetchData: () => api.movieGaps(),
+  getGeneratedAt: (data) => data.generatedAt,
+  getItems: (data) => data.gaps,
+  isIgnored: (g) => g.ignored,
+  itemKey: (g) => String(g.tmdbId),
+  groupBy: groupByCollection,
+  renderGroupLabel: (cname, _films, data, ignoredSide) => {
+    const example = !ignoredSide ? data.collectionExamples?.[cname] : undefined;
+    return (
+      <>
+        {cname}
+        {example && (
+          <span className="muted" style={{ fontWeight: 400, marginLeft: 6, fontSize: 12 }}>
+            You own: {example.title}{example.year != null ? ` (${example.year})` : ''}
+          </span>
+        )}
+      </>
+    );
+  },
+  activeColumns: ['Film', 'Year', 'TMDB'],
+  ignoredColumns: ['Film', 'Year'],
+  renderCells: (g, ignoredSide) => (
+    <>
+      <td>
+        <a
+          href={`https://www.themoviedb.org/movie/${g.tmdbId}`}
+          target="_blank"
+          rel="noreferrer"
+          style={ignoredSide ? undefined : { color: 'var(--text)' }}
+        >
+          {g.title}
+        </a>
+        {!ignoredSide && g.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
+      </td>
+      <td>{g.year ?? '—'}</td>
+      {!ignoredSide && <td>{g.tmdbRating != null ? g.tmdbRating.toFixed(1) : '—'}</td>}
+    </>
+  ),
+  emptyBeforeGenerated: {
+    inPanel: true,
+    text: 'No audit has run yet. This workflow runs monthly (or run it manually) — the detected franchise gaps will appear here.',
+  },
+  summaryLine: (data, active, activeGroups, ignored) => (
+    <>
+      {active.length} active gap{active.length === 1 ? '' : 's'} across{' '}
+      {activeGroups.length} collection
+      {activeGroups.length === 1 ? '' : 's'} · {data.collectionsChecked} collections
+      checked{ignored.length ? ` · ${ignored.length} ignored` : ''}.
+    </>
+  ),
+  ignoredSubtitle: 'Suppressed by you — never reported or notified, even though you don\'t own them.',
+  ignoreItem: (g) => api.ignoreMovieGap(g.tmdbId),
+  unignoreItem: (g) => api.unignoreMovieGap(g.tmdbId),
+  ignoreGroup: (_cname, films) => api.ignoreMovieGapBulk(films.map((f) => f.tmdbId)),
+  unignoreGroup: (_cname, films) => api.unignoreMovieGapBulk(films.map((f) => f.tmdbId)),
+};
+
+/** Group missing-season rows by show (tmdbId), preserving input order. */
+function groupByShow(seasons: MissingSeason[]): [number, MissingSeason[]][] {
+  const map = new Map<number, MissingSeason[]>();
+  for (const s of seasons) {
+    const arr = map.get(s.tmdbId) ?? [];
+    arr.push(s);
+    map.set(s.tmdbId, arr);
+  }
+  return [...map.values()]
+    .sort((a, b) => a[0].title.localeCompare(b[0].title))
+    .map((items) => [items[0].tmdbId, items.sort((a, b) => a.season - b.season)] as [number, MissingSeason[]]);
+}
+
+/** Config for the missing-tv-seasons GroupedManager (T584, replacing MissingSeasonsManager). */
+const MISSING_SEASONS_CONFIG: GroupedManagerConfig<MissingSeason, number, MissingSeasons> = {
+  heading: { tag: 'h2', text: 'Output' },
+  description: (
+    <>
+      Seasons you don&apos;t own that are completely aired on TMDB, detected by comparing your
+      Plex library against TMDB. Ignore a season to suppress it from future reports and
+      notifications.
+    </>
+  ),
+  fetchData: () => api.missingSeasons(),
+  getGeneratedAt: (data) => data.generatedAt,
+  getItems: (data) => data.shows,
+  isIgnored: (s) => s.ignored,
+  itemKey: (s) => `${s.tmdbId}:${s.season}`,
+  groupBy: groupByShow,
+  renderGroupLabel: (_tmdbId, items) => {
+    const meta = items[0];
+    return (
+      <>
+        <a href={`https://www.themoviedb.org/tv/${meta.tmdbId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>
+          {meta.title}
+        </a>
+        {meta.year ? <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>({meta.year})</span> : null}
+      </>
+    );
+  },
+  activeColumns: ['Season'],
+  ignoredColumns: ['Season'],
+  renderCells: (s, ignoredSide) => (
+    <td>
+      Season {s.season}
+      {!ignoredSide && s.notified && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>notified</span>}
+    </td>
+  ),
+  emptyBeforeGenerated: {
+    inPanel: false,
+    text: 'No check has run yet. Run the workflow manually — the detected missing seasons will appear here.',
+  },
+  summaryLine: (_data, active, activeGroups, ignored) => (
+    <>
+      {active.length} active missing season{active.length === 1 ? '' : 's'} across{' '}
+      {activeGroups.length} show{activeGroups.length === 1 ? '' : 's'}
+      {ignored.length ? ` · ${ignored.length} ignored` : ''}.
+    </>
+  ),
+  noActiveMessage: 'No active missing seasons — all clear!',
+  ignoredSubtitle: 'Suppressed by you — never reported or notified again.',
+  ignoreItem: (s) => api.missingSeasonsIgnore(s.tmdbId, s.season),
+  unignoreItem: (s) => api.unignoreMissingSeason(s.tmdbId, s.season),
+  ignoreGroup: (_tmdbId, items) => api.missingSeasonsIgnoreBulk(items.map((s) => ({ tmdbId: s.tmdbId, season: s.season }))),
+  unignoreGroup: (_tmdbId, items) => api.missingSeasonsUnignoreBulk(items.map((s) => ({ tmdbId: s.tmdbId, season: s.season }))),
+};
 
 export default function WorkflowDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
@@ -307,17 +477,17 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       {name === 'movie-recommendations' && (
         <>
           <h2>Output</h2>
-          <MovieRecsManager />
+          <RecsManager<MovieRec> config={MOVIE_RECS_CONFIG} />
         </>
       )}
       {name === 'missing-movies' && (
         <>
           <h2>Output</h2>
-          <MovieGapsManager />
+          <GroupedManager<MovieGap, string, MovieGaps> config={MOVIE_GAPS_CONFIG} />
         </>
       )}
-      {MISSING_SEASONS_WORKFLOWS.has(name) && <MissingSeasonsManager />}
-      {name === 'tv-recommendations' && <TvRecsManager />}
+      {MISSING_SEASONS_WORKFLOWS.has(name) && <GroupedManager<MissingSeason, number, MissingSeasons> config={MISSING_SEASONS_CONFIG} />}
+      {name === 'tv-recommendations' && <RecsManager<TvRec> config={TV_RECS_CONFIG} />}
       {!WORKFLOWS_WITH_SPECIFIC_MANAGERS.has(name) && <WorkflowOutputSection workflowName={name} />}
 
       <h2>Danger zone</h2>
