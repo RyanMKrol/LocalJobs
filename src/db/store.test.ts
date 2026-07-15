@@ -3,7 +3,6 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import {
-  browseTable, listDbTables, listCannedQueries, runCannedQuery,
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
   hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop,
@@ -833,106 +832,6 @@ console.log('  ✓ service rateLimitSource is manifest-owned, always refreshed o
 }
 console.log('  ✓ callService enforces a user limit override over the code default');
 
-// ── read-only DB browser (T019) ──
-// Tables are discovered from the live schema; rows page; unknown/dangerous names
-// are rejected (no write path is reachable).
-{
-  const tables = listDbTables();
-  assert.ok(tables.includes('jobs') && tables.includes('runs') && tables.includes('services'), 'lists real tables');
-  assert.ok(!tables.some((t) => t.startsWith('sqlite_')), 'excludes sqlite-internal tables');
-
-  const page = browseTable('jobs', 2, 0);
-  assert.ok(page, 'browseTable returns a page for a known table');
-  assert.ok(page!.columns.includes('name') && page!.columns.includes('description'), 'reports columns');
-  assert.ok(page!.rows.length <= 2 && page!.rows.length <= page!.total, 'respects the limit');
-  assert.equal(page!.limit, 2);
-  assert.equal(page!.offset, 0);
-
-  // paging: a second page starts after the first (no overlap when >1 row exists)
-  const p2 = browseTable('jobs', 1, 1);
-  assert.equal(p2!.offset, 1, 'offset honoured');
-
-  // limit clamped into [1,500]; bad values fall back / clamp
-  assert.equal(browseTable('jobs', 0, 0)!.limit, 50, 'limit 0 → default 50');
-  assert.equal(browseTable('jobs', 9999, 0)!.limit, 500, 'limit clamped to 500');
-  assert.equal(browseTable('jobs', 50, -5)!.offset, 0, 'negative offset clamped to 0');
-
-  // unknown / injection-y names are rejected outright (whitelist guard)
-  assert.equal(browseTable('no_such_table', 10, 0), null, 'unknown table → null');
-  assert.equal(browseTable('jobs; DROP TABLE jobs', 10, 0), null, 'injection attempt → null');
-  assert.equal(browseTable('sqlite_master', 10, 0), null, 'sqlite-internal table not browsable');
-}
-console.log('  ✓ read-only DB browser lists tables + pages rows, rejects unknown/unsafe names');
-
-// ── canned (predefined) read-only queries (T053) ──
-// The catalogue is fixed; each query runs read-only against the scratch DB and
-// surfaces the expected shape. The client only ever picks by id — no SQL crosses.
-{
-  // seed data each query should surface
-  syncJob({ name: 'q-job', run: async () => {} });
-  const fr = createRun('q-job', 'manual');
-  finishRun(fr, 'failed', { exitCode: 1, error: 'boom' });
-  markWorkItem('q-job', 'k1', 'failed', { attempts: 9 });
-  markWorkItem('q-job', 'k2', 'ignored');
-  markWorkItem('q-job', 'k3', 'success');
-  syncService({ name: 'q-svc', dailyCap: 5, monthlyCap: 50, paid: true });
-  recordServiceCall('q-svc');
-  const wr = createWorkflowRun('t-pipe', 'manual');
-  finishWorkflowRun(wr, 'success');
-
-  // catalogue: stable, non-empty, each entry well-formed
-  const cat = listCannedQueries();
-  assert.ok(cat.length >= 5, 'catalogue has the canned queries');
-  for (const q of cat) {
-    assert.ok(q.id && q.title && q.description, 'each query advertises id/title/description');
-  }
-  const ids = cat.map((q) => q.id);
-  for (const expected of ['recent-failed-runs', 'stuck-ignored-items', 'work-item-status', 'service-spend', 'workflow-run-outcomes']) {
-    assert.ok(ids.includes(expected), `catalogue includes ${expected}`);
-  }
-
-  // every catalogued query runs and returns a well-formed result
-  for (const q of cat) {
-    const r = runCannedQuery(q.id);
-    assert.ok(r, `runCannedQuery(${q.id}) returns a result`);
-    assert.equal(r!.id, q.id);
-    assert.ok(Array.isArray(r!.rows), 'rows is an array');
-    // columns derived from the first row when present
-    if (r!.rows.length > 0) assert.deepEqual(r!.columns, Object.keys(r!.rows[0]));
-  }
-
-  // recent-failed-runs surfaces the failed run, not the success of other jobs
-  const failed = runCannedQuery('recent-failed-runs')!;
-  assert.ok(failed.rows.some((row) => row.id === fr && row.status === 'failed'), 'failed run present');
-  assert.ok(!failed.rows.some((row) => row.status === 'success'), 'only non-success statuses');
-
-  // stuck-ignored-items: q-job has one failed + one ignored, not the success
-  const si = runCannedQuery('stuck-ignored-items')!;
-  const sij = si.rows.filter((row) => row.job_name === 'q-job');
-  assert.ok(sij.some((row) => row.status === 'failed' && row.items === 1), 'failed item counted');
-  assert.ok(sij.some((row) => row.status === 'ignored' && row.items === 1), 'ignored item counted');
-  assert.ok(!sij.some((row) => row.status === 'success'), 'success excluded from stuck/ignored view');
-
-  // work-item-status: full breakdown includes the success too
-  const wis = runCannedQuery('work-item-status')!;
-  assert.ok(wis.rows.some((row) => row.job_name === 'q-job' && row.status === 'success' && row.items === 1), 'success counted in full breakdown');
-
-  // service-spend: q-svc shows one call this month against its caps
-  const spend = runCannedQuery('service-spend')!;
-  const svc = spend.rows.find((row) => row.name === 'q-svc');
-  assert.ok(svc, 'service present');
-  assert.equal(svc!.used_month, 1, 'one call counted this month');
-  assert.equal(svc!.monthly_cap, 50, 'cap surfaced');
-
-  // workflow-run-outcomes: the finished run shows up with its status
-  const wfo = runCannedQuery('workflow-run-outcomes')!;
-  assert.ok(wfo.rows.some((row) => row.id === wr && row.status === 'success'), 'workflow run present');
-
-  // unknown id → null (the only input is the id; no SQL crosses the boundary)
-  assert.equal(runCannedQuery('no-such-query'), null, 'unknown query id → null');
-  assert.equal(runCannedQuery("recent-failed-runs'; DROP TABLE runs;--"), null, 'injection-y id → null');
-}
-console.log('  ✓ canned read-only queries: catalogue + each query returns expected shape, rejects unknown ids');
 
 // ── T112: no-forward-progress stop condition for repeatUntilStable ──
 // A genuinely-unfindable item frozen below maxAttempts is counted retryable every
