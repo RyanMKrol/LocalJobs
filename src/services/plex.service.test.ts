@@ -8,7 +8,7 @@ describe('plex service — unit', () => {
     assert.equal(service.name, 'plex');
     assert.equal(service.category, 'api');
     assert.equal(service.paid, false);
-    assert.equal(service.ratePerMinute, undefined);
+    assert.equal(service.ratePerMinute, 300);
     assert.equal(service.dailyCap, undefined);
     assert.equal(service.monthlyCap, undefined);
     assert.equal(service.minIntervalMs, undefined);

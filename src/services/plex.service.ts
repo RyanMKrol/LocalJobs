@@ -1,25 +1,25 @@
 import { defineService } from './lib.js';
 
-/** Plex Media Server — the owner's own local LAN server, not a paid or
- *  rate-limited API. Shared by every Plex-touching workflow via
- *  ../core/plex-client.ts. Deliberately declares no ratePerMinute/dailyCap/
- *  monthlyCap/minIntervalMs/maxJitterMs: there is no meaningful rate limit or
- *  spend quota to model for a local server the owner controls. callService's
- *  existing "no limit configured" branch already falls through to just
- *  metering + recording the call, which is exactly the visibility win wanted
- *  here — call-count metering and per-job consumer tracking on the
- *  Integrations page, matching every other shared external dependency. */
+/** Plex Media Server — the owner's own local LAN server, not a paid API, but
+ *  paced at a conservative 300 req/min to protect the box under a full-library
+ *  crawl (folded in from a long-standing dashboard override — overrides-audit
+ *  flagged it as stale/unfolded; the owner confirmed the limit itself is
+ *  intentional and should become the code default). No dailyCap/monthlyCap/
+ *  minIntervalMs/maxJitterMs: there is no spend quota to model for a local
+ *  server the owner controls, just a rate ceiling. Shared by every
+ *  Plex-touching workflow via ../core/plex-client.ts. */
 const service = defineService({
   name: 'plex',
   category: 'api',
   description:
-    "The owner's local Plex Media Server (LAN-hosted, not a paid or rate-limited API). " +
+    "The owner's local Plex Media Server (LAN-hosted, not a paid or externally rate-limited API). " +
     'Backs library/media metadata reads for the Plex-touching workflows.',
   paid: false,
+  ratePerMinute: { env: 'PLEX_RATE_PER_MIN', fallback: 300 },
   rateLimitSource:
-    'Local LAN server the owner runs — no external rate limit or quota applies; this ' +
-    'service exists purely for call-count visibility and per-job consumer tracking on the ' +
-    'Integrations page.',
+    'Local LAN server the owner runs — no external rate limit or quota applies; the ' +
+    '300/min ceiling is our own conservative pacing choice to protect the box under a ' +
+    'full-library crawl, not a published vendor limit.',
   // Matches plex-client.ts's own PLEX_REQUEST_TIMEOUT_MS env-var default (T465) — kept
   // in sync so the code default is the same whether read via the env var or this
   // ServiceDefinition. Dashboard-editable via effectiveServiceTimeoutMs('plex', ...).

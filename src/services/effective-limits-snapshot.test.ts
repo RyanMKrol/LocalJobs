@@ -74,7 +74,7 @@ const SNAPSHOT: Record<string, EffectiveLimits> = {
   hevy: { ratePerMinute: 20, dailyCap: 500, monthlyCap: 5_000, cacheTtlMs: 79_200_000 },
   lastfm: { ratePerMinute: 30, cacheTtlMs: 79_200_000 },
   openfigi: { ratePerMinute: 20, dailyCap: 2_000, monthlyCap: 20_000, cacheTtlMs: 79_200_000 },
-  plex: { timeoutMs: 300_000, cacheTtlMs: 10_800_000 },
+  plex: { ratePerMinute: 300, timeoutMs: 300_000, cacheTtlMs: 10_800_000 },
   tmdb: { ratePerMinute: 600, cacheTtlMs: 79_200_000 },
   'trading212-instruments': { minIntervalMs: 50_000, dailyCap: 20, monthlyCap: 200, cacheTtlMs: 79_200_000 },
   trading212: { ratePerMinute: 10, dailyCap: 100, monthlyCap: 1_000, cacheTtlMs: 79_200_000 },
