@@ -9,8 +9,18 @@ export function SortTh<Col extends string>({ label, col, active, dir, onSort }: 
 }) {
   const isActive = col === active;
   return (
-    <th className={`sort-th${isActive ? ' sort-th-active' : ''}`} onClick={() => onSort(col)} title={`Sort by ${label}`}>
-      {label}{isActive ? (dir === 'asc' ? ' ▲' : ' ▼') : ''}
+    <th
+      className={`sort-th${isActive ? ' sort-th-active' : ''}`}
+      aria-sort={isActive ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        title={`Sort by ${label}`}
+        style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', cursor: 'pointer' }}
+      >
+        {label}{isActive ? (dir === 'asc' ? ' ▲' : ' ▼') : ''}
+      </button>
     </th>
   );
 }

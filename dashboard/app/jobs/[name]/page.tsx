@@ -96,7 +96,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
                 <span className="mono" style={{ whiteSpace: 'nowrap' }}>
                   {job?.timeout_ms ? `${Math.round(job.timeout_ms / 1000)}s` : 'none'}
                 </span>
-                <span className="schedule-edit-link" onClick={startEditTimeout}>Edit</span>
+                <button type="button" className="btn-link schedule-edit-link" onClick={startEditTimeout}>Edit</button>
               </span>
             )}
           </div>

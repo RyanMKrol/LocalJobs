@@ -194,14 +194,21 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
                 <span className="mono" style={{ whiteSpace: 'nowrap' }}>
                   {p?.schedule ? <CronBadge expr={p.schedule} /> : 'manual-only'}
                 </span>
-                <span className="schedule-edit-link" onClick={startEditSchedule}>Edit</span>
+                <button type="button" className="btn-link schedule-edit-link" onClick={startEditSchedule}>Edit</button>
               </span>
             )}
           </div>
           <div className="k">Enabled</div>
           <div>
-            <span className="toggle" onClick={toggle}>
-              <input type="checkbox" checked={!!p?.enabled} readOnly /> {p?.enabled ? 'enabled' : 'disabled'} (click to toggle)
+            <span
+              className="toggle"
+              role="switch"
+              tabIndex={0}
+              aria-checked={!!p?.enabled}
+              onClick={toggle}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+            >
+              <input type="checkbox" checked={!!p?.enabled} readOnly tabIndex={-1} /> {p?.enabled ? 'enabled' : 'disabled'} (click to toggle)
             </span>
           </div>
           <div className="k">Max concurrency</div>
@@ -240,20 +247,34 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
                   {p?.effective_max_concurrency === 0 ? 'Unlimited' : (p?.effective_max_concurrency ?? '—')}
                   {p?.max_concurrency_overridden ? '' : ' (default)'}
                 </span>
-                <span className="schedule-edit-link" onClick={startEditConc}>Edit</span>
+                <button type="button" className="btn-link schedule-edit-link" onClick={startEditConc}>Edit</button>
               </span>
             )}
           </div>
           <div className="k">Notifications</div>
           <div>
-            <span className="toggle" onClick={toggleNotify}>
-              <input type="checkbox" checked={!!p?.effective_notify_enabled} readOnly /> {p?.effective_notify_enabled ? 'notifications on' : 'notifications off'} (click to toggle)
+            <span
+              className="toggle"
+              role="switch"
+              tabIndex={0}
+              aria-checked={!!p?.effective_notify_enabled}
+              onClick={toggleNotify}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleNotify(); } }}
+            >
+              <input type="checkbox" checked={!!p?.effective_notify_enabled} readOnly tabIndex={-1} /> {p?.effective_notify_enabled ? 'notifications on' : 'notifications off'} (click to toggle)
             </span>
           </div>
           <div className="k">Certified</div>
           <div>
-            <span className="toggle" onClick={toggleCertified}>
-              <input type="checkbox" checked={!!p?.certified} readOnly /> {p?.certified ? 'certified ✓' : 'not certified'} (click to {p?.certified ? 'un-certify' : 'certify'})
+            <span
+              className="toggle"
+              role="switch"
+              tabIndex={0}
+              aria-checked={!!p?.certified}
+              onClick={toggleCertified}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCertified(); } }}
+            >
+              <input type="checkbox" checked={!!p?.certified} readOnly tabIndex={-1} /> {p?.certified ? 'certified ✓' : 'not certified'} (click to {p?.certified ? 'un-certify' : 'certify'})
             </span>
           </div>
           <div className="k">Next run</div><div className="muted">{p?.next_run ? fmtTime(p.next_run) : '—'}</div>
