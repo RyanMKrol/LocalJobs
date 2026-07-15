@@ -9,7 +9,7 @@
     "dev": "next dev -p 4788",
     "build": "next build",
     "start": "next start -p 4788",
-    "test": "../node_modules/.bin/tsx app/components/OutputRenderer.test.ts && ../node_modules/.bin/tsx app/components/StageIoLists.test.ts && ../node_modules/.bin/tsx app/ui.test.ts && ../node_modules/.bin/tsx app/components/MarkdownModal.test.ts"
+    "test": "../node_modules/.bin/tsx app/components/OutputRenderer.test.ts && ../node_modules/.bin/tsx app/components/StageIoLists.test.ts && ../node_modules/.bin/tsx app/ui.test.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

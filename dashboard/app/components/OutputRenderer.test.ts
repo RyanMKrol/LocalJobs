@@ -61,6 +61,15 @@ async function main() {
     const html = render(base({ content: '# Heading' }));
     assert.ok(html.includes('<h1'));
   });
+
+  await test('markdown format: frontmatter renders null placeholder for empty values and joins JSON arrays', () => {
+    const content = '---\nrating: null\ntags: ["a","b"]\n---\n# Heading';
+    const html = render(base({ format: 'markdown', content }));
+    assert.ok(html.includes('class="md-fm-null"'), 'empty/null frontmatter value should get the md-fm-null placeholder');
+    assert.ok(html.includes('>null<'), 'the placeholder text itself should read "null"');
+    assert.ok(html.includes('a, b'), 'a JSON-array frontmatter value should render as comma-separated text');
+    assert.ok(!html.includes('[&quot;a&quot;,&quot;b&quot;]'), 'the raw JSON array text should not be rendered verbatim');
+  });
 }
 
 main().catch((e) => { console.error(e); process.exitCode = 1; });

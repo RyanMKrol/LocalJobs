@@ -1280,16 +1280,12 @@ doubt, log it.
     workflow-definition-page Output section popover) and `StageIoPanel`/`StageIoLists.tsx`
     (the workflow-RUN-page Stage I/O popover) import from here — before T458 each surface had
     its OWN copy of this dispatch, and `StageIoLists.tsx` didn't consult `format` at all
-    (always forced content through `MarkdownModal`, collapsing e.g. a pretty-printed JSON
-    artifact into one unbroken paragraph). Add a new form's renderer HERE, once — never
-    re-duplicate a third copy of this dispatch table in a new component.
-  - **`<MarkdownModal>`** (`dashboard/app/components/MarkdownModal.tsx`, extracted
-    from `workflow-runs/[id]/page.tsx` in T382) — the full-markdown preview popover
-    (frontmatter parsed to a compact key-value header + `react-markdown` body,
-    XSS-safe). Also exports `parseFrontmatter`. This is the renderer `OutputRenderer`'s
-    `markdown` form delegates to conceptually (each keeps its own small
-    `MarkdownOutputBody`/`parseFrontmatter` copy since `MarkdownModal` is a full modal
-    wrapper, not just a body) — do not re-implement the popover chrome per component.
+    (always forced content through a full-preview popover component, collapsing e.g. a
+    pretty-printed JSON artifact into one unbroken paragraph). Add a new form's renderer HERE,
+    once — never re-duplicate a third copy of this dispatch table in a new component. Also owns
+    `parseFrontmatter` plus the frontmatter value helpers `isFmEmpty`/`renderFmValue` (highlights
+    an empty/null frontmatter value with `.md-fm-null` and joins a JSON-array value into
+    comma-separated text) — these live only here, not in a separate component (T582).
   - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`, T382 →
     T386 → T389 → T458) — the workflow-run page's ONLY Inputs & Outputs panel.
     Originally built for workflows with a genuine fan-out/fan-in shape a single

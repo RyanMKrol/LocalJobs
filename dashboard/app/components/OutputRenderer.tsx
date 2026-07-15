@@ -24,6 +24,25 @@ export function parseFrontmatter(content: string): { fields: [string, string][];
   return { fields, body };
 }
 
+/** Returns true if a raw frontmatter value string is effectively empty/null. */
+function isFmEmpty(v: string): boolean {
+  if (!v || v === 'null' || v === '~') return true;
+  try { const p = JSON.parse(v); return Array.isArray(p) && p.length === 0; } catch { return false; }
+}
+
+/** Render a raw frontmatter value: JSON arrays become comma-separated text; empty/null values
+ *  get a highlighted placeholder so missing data is visible rather than silently absent. */
+function renderFmValue(v: string): React.ReactNode {
+  if (isFmEmpty(v)) return <span className="md-fm-null">null</span>;
+  try {
+    const p = JSON.parse(v);
+    if (Array.isArray(p) && p.every((x) => x === null || typeof x !== 'object')) {
+      return p.join(', ');
+    }
+  } catch { /* not a JSON array — render as-is */ }
+  return v;
+}
+
 /**
  * Renders a markdown output artifact's body (T262/T282 'markdown' form — the
  * default/legacy form; unchanged behaviour from before the format dispatch).
@@ -42,7 +61,7 @@ function MarkdownOutputBody({ content, truncated }: { content: string; truncated
           {parsed.fields.map(([k, v]) => (
             <div key={k} className="md-fm-row">
               <dt className="md-fm-key">{k}</dt>
-              <dd className="md-fm-val">{v}</dd>
+              <dd className="md-fm-val">{renderFmValue(v)}</dd>
             </div>
           ))}
         </dl>
