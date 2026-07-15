@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import { api, type MovieGap } from '../lib/api';
 import { usePoll } from '../ui';
 import { IgnoredSection } from './IgnoredSection';
@@ -39,6 +39,8 @@ export function MovieGapsManager() {
   const all = data?.gaps ?? [];
   const active = all.filter((g) => !g.ignored);
   const ignored = all.filter((g) => g.ignored);
+  const activeGroups = useMemo(() => groupByCollection(active), [active]);
+  const ignoredGroups = useMemo(() => groupByCollection(ignored), [ignored]);
 
   const ignore = (g: MovieGap) => item.run(g.tmdbId, () => api.ignoreMovieGap(g.tmdbId));
   const unignore = (g: MovieGap) => item.run(g.tmdbId, () => api.unignoreMovieGap(g.tmdbId));
@@ -73,8 +75,8 @@ export function MovieGapsManager() {
       {data && data.generatedAt != null && (
         <p className="muted" style={{ fontSize: 13 }}>
           {active.length} active gap{active.length === 1 ? '' : 's'} across{' '}
-          {groupByCollection(active).length} collection
-          {groupByCollection(active).length === 1 ? '' : 's'} · {data.collectionsChecked} collections
+          {activeGroups.length} collection
+          {activeGroups.length === 1 ? '' : 's'} · {data.collectionsChecked} collections
           checked{ignored.length ? ` · ${ignored.length} ignored` : ''}.
         </p>
       )}
@@ -86,7 +88,7 @@ export function MovieGapsManager() {
               <tr><th>Film</th><th>Year</th><th>TMDB</th><th></th></tr>
             </thead>
             <tbody>
-              {groupByCollection(active).map(([cname, films]) => {
+              {activeGroups.map(([cname, films]) => {
                 const example = data?.collectionExamples?.[cname];
                 return (
                   <Fragment key={cname}>
@@ -149,7 +151,7 @@ export function MovieGapsManager() {
               <tr><th>Film</th><th>Year</th><th></th></tr>
             </thead>
             <tbody>
-              {groupByCollection(ignored).map(([cname, films]) => (
+              {ignoredGroups.map(([cname, films]) => (
                 <Fragment key={cname}>
                   <tr className="table-group-header">
                     <td colSpan={3}>
