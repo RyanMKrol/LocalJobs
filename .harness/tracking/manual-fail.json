@@ -98,5 +98,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T582 — same task, dashboard/package.json added to scope so its test-script reference to the deleted file can be fixed in the same change",
     "at": "2026-07-14T09:44:14Z"
+  },
+  "T487": {
+    "failed": true,
+    "reason": "review-failed: superseded by T583 — scope named wrong impl files instead of .job.ts files, plus missed perfumes/CLAUDE.md",
+    "at": "2026-07-15T14:52:50Z"
   }
 }
