@@ -13148,7 +13148,7 @@
     {
       "id": "T488",
       "title": "Add mechanical test enforcing every inputKeys()-declaring job also names a valid inputKeysService",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T583"
       ],
