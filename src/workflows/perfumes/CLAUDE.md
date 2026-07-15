@@ -8,9 +8,10 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
 
 ## DAG: find-url → fetch → parse → build
 
-- **`perfumes-find-url`** — root stage (`inputKeys()` = every perfume id from the DynamoDB scan). For
-  each perfume without an already-known `fragranticaUrl`, asks Claude (web search) to find its
-  Fragrantica page. Writes `data/out/fragrantica-urls.json` (gate: `fragrantica-urls`).
+- **`perfumes-find-url`** — root stage (`inputKeys()` = every perfume id from the DynamoDB scan,
+  routed through `inputKeysService: 'dynamodb'`). For each perfume without an already-known
+  `fragranticaUrl`, asks Claude (web search) to find its Fragrantica page. Writes
+  `data/out/fragrantica-urls.json` (gate: `fragrantica-urls`).
 - **`perfumes-fetch`** — for each resolved URL, launches a real (non-bundled) Chrome via the shared
   `launchPersistentBrowser` helper (`src/core/browser.ts`) against the framework's shared persistent
   profile (`data/chrome-profile/`, keeps Cloudflare clearance across runs), waits out any Cloudflare

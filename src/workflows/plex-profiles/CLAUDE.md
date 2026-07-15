@@ -51,10 +51,11 @@ unchanged marker skips the (expensive) detail fetch + rewrite entirely. This is 
 idiom `projects-sync/project-summarize.ts` uses with `pushedAt`, generalized to Plex's own
 `updatedAt` epoch-seconds field. A new key (no ledger row) or a moved `updatedAt` always rebuilds.
 
-`plex-profiles-build` declares `inputKeys()` (every current `movie:<ratingKey>`/`show:<ratingKey>`
-in the library) so a manual run can be limited (T094) — the owner's first run processes the whole
-library, a large backlog, so `PLEX_PROFILES_RUN_LIMIT` (default `0` = unlimited) caps how many
-titles are (re)built in a single run; the next scheduled/manual run resumes with whatever's left.
+`plex-profiles-build` declares `inputKeys()` with `inputKeysService: 'plex'` (every current
+`movie:<ratingKey>`/`show:<ratingKey>` in the library) so a manual run can be limited (T094) — the
+owner's first run processes the whole library, a large backlog, so `PLEX_PROFILES_RUN_LIMIT`
+(default `0` = unlimited) caps how many titles are (re)built in a single run; the next scheduled/manual
+run resumes with whatever's left.
 
 ## Markdown template
 

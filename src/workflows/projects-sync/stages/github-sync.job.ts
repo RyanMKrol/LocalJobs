@@ -15,6 +15,7 @@ const job: JobDefinition = {
     'existing repo and need to stay fresh for the downstream summarize stage.',
   timeoutMs: 120_000,
   maxRetries: 3,
+  inputKeysService: 'github',
   inputKeys: githubSyncInputKeys,
   produces: [projectsCatalogContract()],
   async run(ctx) {

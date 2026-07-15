@@ -17,6 +17,7 @@ const job: JobDefinition = {
   timeoutMs: 3_600_000,
   maxRetries: 3,
   produces: [plexLanguageDiscoverContract()],
+  inputKeysService: 'plex',
   inputKeys: discoverInputKeys,
   async run(ctx) {
     await runDiscover(ctx);

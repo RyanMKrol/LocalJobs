@@ -43,11 +43,11 @@ unlimited run reseeded the file, silently no-opping any limited manual run in
 the meantime. It now calls the shared `collectResolvableCids(savedDir)` helper
 (`src/workflows/places/parse.ts`) directly against `data/raw/Saved/`'s CSVs —
 the SAME true source `places-ingest` parses — routed through
-`callService('fs', …)` (the local-filesystem service, T483) so this read is
-metered like any other input-key source. `collectResolvableCids` and
-`listSavedCsvFiles` are the shared helpers both `places-ingest`'s `run()` and
-`resolveInputKeys()` call, so the two can never drift on which CSV rows count
-as a resolvable CID.
+`callService('fs', …)` (the local-filesystem service, T483, declared as
+`inputKeysService: 'fs'`) so this read is metered like any other input-key
+source. `collectResolvableCids` and `listSavedCsvFiles` are the shared helpers
+both `places-ingest`'s `run()` and `resolveInputKeys()` call, so the two can
+never drift on which CSV rows count as a resolvable CID.
 
 **`places-enrich`** fetches full Place Details (New) via the Google Places API
 using a wildcard field mask (`*` — the raw response is stored as-is, trimmed

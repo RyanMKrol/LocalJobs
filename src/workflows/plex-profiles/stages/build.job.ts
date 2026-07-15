@@ -18,6 +18,7 @@ const job: JobDefinition = {
     'a large first-run backlog does not blow the timeout — the next run resumes with whatever is left.',
   timeoutMs: 1_800_000,
   maxRetries: 3,
+  inputKeysService: 'plex',
   inputKeys: resolveInputKeys,
   async run(ctx) {
     await runBuild(ctx);

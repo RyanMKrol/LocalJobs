@@ -144,6 +144,17 @@ export interface JobDefinition {
    * run/schedule path ever calls this; pruning is never automatic.
    */
   inputKeys?(): string[] | Promise<string[]>;
+  /**
+   * Optional: names the ServiceDefinition (by its `name`) that the job's
+   * inputKeys() call is routed through, proving it queries the LIVE external
+   * source rather than this workflow's own prior output. When declared, the
+   * enforcement (T488) asserts that every call to inputKeys() truly goes through
+   * that service, never reads back this job's own prior `work_items` output,
+   * and handles the service's rate-limit/quota transparently (e.g. a
+   * QuotaExceededError soft-fail that defers to the next run). Omit if the job
+   * has no inputKeys() or if inputKeys() doesn't route through a service.
+   */
+  inputKeysService?: string;
   run(ctx: JobContext): Promise<void>;
 }
 

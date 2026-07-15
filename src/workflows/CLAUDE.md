@@ -66,3 +66,16 @@ a summarizing `Error` instead of returning normally, so the RUN itself is record
 and blocks downstream DAG dependents. No new framework mechanism needed — see the root
 `CLAUDE.md`'s "Job conventions" section for the full reasoning; this file only states the rule
 so it surfaces when working here.
+
+## ✅ A root-stage job with `inputKeys()` must declare `inputKeysService` (T583)
+
+Any job that declares `inputKeys()` to feed a manual run-limit must name the service its input keys
+query through via the `inputKeysService?: string` field on the `JobDefinition` — a claim that the job
+queries the LIVE external source (a Plex library scan, a GitHub API call, a DynamoDB table scan, a
+local filesystem walk), never reads back this job's own prior `work_items` output. When declared, the
+enforcing test (T488, a later task) asserts that every `inputKeys()` call truly routes through that
+service. Omit the field if the job has no `inputKeys()` or if the function doesn't route through a
+service. Worked examples: `perfumes/find-url.job.ts` (`inputKeysService: 'dynamodb'`), `places/resolve.job.ts`
+(`inputKeysService: 'fs'`), `plex-language-fix/discover.job.ts` (`inputKeysService: 'plex'`),
+`projects-sync/github-sync.job.ts` (`inputKeysService: 'github'`), `plex-profiles/build.job.ts`
+(`inputKeysService: 'plex'`).

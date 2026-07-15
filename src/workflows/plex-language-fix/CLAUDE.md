@@ -13,13 +13,13 @@ SHOULD be selected by default per file versus what's currently selected.
 plex-language-discover → plex-language-resolve → plex-language-evaluate → plex-language-apply
 ```
 
-- **`plex-language-discover`** (read-only, the DAG's ROOT — declares `inputKeys()`, so this workflow is
-  limitable for the first time) walks every configured Plex library section and records every file (a
-  movie, or a TV episode) on the `work_items` ledger, keyed `${itemRatingKey}::part${partId}`, with
-  `detail: { name, file, itemRatingKey, partId, type, tmdbId, seasonEpisode? }` — `tmdbId` is extracted
-  from the title's own Plex Guid, so this stage makes NO TMDB call. It always walks the whole library
-  fresh (so a newly added file is found) but never re-marks a file already known — see "Idempotency"
-  below for what that does and doesn't buy you.
+- **`plex-language-discover`** (read-only, the DAG's ROOT — declares `inputKeys()` with
+  `inputKeysService: 'plex'`, so this workflow is limitable for the first time) walks every configured
+  Plex library section and records every file (a movie, or a TV episode) on the `work_items` ledger,
+  keyed `${itemRatingKey}::part${partId}`, with `detail: { name, file, itemRatingKey, partId, type,
+  tmdbId, seasonEpisode? }` — `tmdbId` is extracted from the title's own Plex Guid, so this stage makes
+  NO TMDB call. It always walks the whole library fresh (so a newly added file is found) but never
+  re-marks a file already known — see "Idempotency" below for what that does and doesn't buy you.
   **`discoverInputKeys()` (T485) does a LIVE Plex library walk, not a ledger read-back.** `discover.ts`
   factors the section/item/leaf walk into a shared `walkLibraryFiles` helper — the SAME implementation
   `runDiscover` itself uses (via hooks, so `runDiscover` keeps its verbose `ctx.log`/`ctx.progress`

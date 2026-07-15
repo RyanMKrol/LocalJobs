@@ -22,6 +22,7 @@ const job: JobDefinition = {
   maxRetries: 3,
   consumes: [normalizedPlacesContract()],
   produces: [resolvedPlacesContract()],
+  inputKeysService: 'fs',
   // Root stage (T094): each saved-place CID is an originating input. A manual
   // run-limit selects the first N CIDs; downstream stages change the key to
   // place_id but inherit the cid as their root (see enrich/llm markWorkItem).
