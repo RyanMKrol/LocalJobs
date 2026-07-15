@@ -1,16 +1,11 @@
 import type { JobContext } from '../../../core/types.js';
-import { callService } from '../../../core/services.js';
-import { plexGet } from '../../../core/plex-client.js';
+import { fetchSectionMetadata } from '../../../core/plex-client.js';
 import { dayKey } from '../../../core/dates.js';
 import { markWorkItem } from '../../../db/store.js';
 import { tvRecsConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
 import { buildOwnedSet, buildShowSnapshots, buildTvTasteProfile } from '../tv-shows.js';
 import type { PlexShowMeta, TvSnapshotFile, TvTasteProfileFile } from '../types.js';
-
-interface PlexAllResponse<T> {
-  MediaContainer?: { Metadata?: T[] };
-}
 
 /** The DAG member (job) name this stage records its ledger row under. */
 export const TV_SNAPSHOT_JOB = 'tv-snapshot';
@@ -49,14 +44,8 @@ export async function runTvSnapshot(ctx: JobContext, opts: TvSnapshotOpts = {}):
   ctx.log(`        ${tvRecsConfig.tasteOut}`);
 
   ctx.progress(10, 'fetching TV shows from Plex');
-  const doPlexGet = opts.plexFetch ?? plexGet;
-  const fetchMeta = opts.fetchMeta ?? (async () => {
-    const path = `/library/sections/${section}/all?includeGuids=1`;
-    const resp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexShowMeta>>(path), {
-      cacheKey: `plex:${path}`,
-    });
-    return resp?.MediaContainer?.Metadata ?? [];
-  });
+  const fetchMeta = opts.fetchMeta ?? (() =>
+    fetchSectionMetadata<PlexShowMeta>(section, { query: '?includeGuids=1', fetch: opts.plexFetch }));
   const meta = await fetchMeta();
   ctx.log(`Fetched ${meta.length} shows from section ${section}.`);
 

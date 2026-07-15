@@ -117,9 +117,11 @@ be deleted.
 - `lib.ts` — `ensureDirs`/`readJsonFile`/`writeJsonFile` (this workflow's own `data/out/` tree).
 - Pure collection-gap detection logic lives in the shared `../movies/movies.js` (owned by
   `movie-recommendations`) — imported here, not duplicated.
-- Plex/TMDB connectivity: the shared `src/core/plex-client.ts` (`plexGet`/`tmdbGet`) — NOT owned by
-  this workflow, shared with `missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
-  `plex-space-saver`, `plex-language-fix`, `plex-profiles` — this is the 7th Plex-touching workflow
-  using it.
+- Plex/TMDB connectivity: the shared `src/core/plex-client.ts` (`plexGet`/`tmdbGet`, plus
+  `fetchSectionMetadata`/`extractTmdbId`/`PlexAllResponse<T>` — the section-listing wrapper, GUID
+  extraction, and `MediaContainer` response type this workflow's `plex-movie-snapshot` uses, T586)
+  — NOT owned by this workflow, shared with `missing-tv-seasons`, `tv-recommendations`,
+  `movie-recommendations`, `plex-space-saver`, `plex-language-fix`, `plex-profiles` — this is the
+  7th Plex-touching workflow using it.
 - Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (read by the shared client),
   `PLEX_MOVIE_SECTION` (shared with `movie-recommendations`).

@@ -2,8 +2,13 @@
 // default audit — no I/O beyond the shared plexGet/tmdbGet clients passed in by
 // the stage. Unit-tested in stages/scan.test.ts.
 import { callService } from '../../core/services.js';
-import { plexGet, tmdbGet } from '../../core/plex-client.js';
+import { extractTmdbId, plexGet, tmdbGet } from '../../core/plex-client.js';
 import type { FileEntry, PlexPart, PlexSection, PlexStream, StreamChoice } from './types.js';
+
+// GUID extraction is generic across every Plex-touching workflow — the shared
+// implementation lives in `src/core/plex-client.ts`; re-exported here so
+// existing importers of this module (discover.ts) keep working unchanged.
+export { extractTmdbId };
 
 /** Titles that mark an alternate/special-purpose track we never want as "the" default. */
 const STOPLIST = /commentary|description|descriptive|narration/i;
@@ -86,14 +91,6 @@ export async function fetchAllLeaves(
     { cacheKey: `plex:${path}` },
   );
   return res.MediaContainer.Metadata ?? [];
-}
-
-/** Extract a tmdb id from an item's Guid array, e.g. "tmdb://1429" -> 1429. */
-export function extractTmdbId(guids: { id: string }[] | undefined): number | undefined {
-  const hit = (guids ?? []).find((g) => g.id.startsWith('tmdb://'));
-  if (!hit) return undefined;
-  const n = Number(hit.id.slice('tmdb://'.length));
-  return Number.isFinite(n) ? n : undefined;
 }
 
 export interface TmdbLanguageDetail {

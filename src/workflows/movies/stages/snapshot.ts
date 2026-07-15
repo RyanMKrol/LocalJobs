@@ -1,16 +1,11 @@
 import type { JobContext } from '../../../core/types.js';
-import { callService } from '../../../core/services.js';
-import { plexGet } from '../../../core/plex-client.js';
+import { fetchSectionMetadata } from '../../../core/plex-client.js';
 import { dayKey } from '../../../core/dates.js';
 import { markWorkItem } from '../../../db/store.js';
 import { moviesConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
 import { buildMovieSnapshots, buildOwnedSet, buildTasteProfile } from '../movies.js';
 import type { MovieSnapshotFile, PlexMovieMeta, TasteProfileFile } from '../types.js';
-
-interface PlexAllResponse<T> {
-  MediaContainer?: { Metadata?: T[] };
-}
 
 /** The DAG member (job) name this stage records its ledger row under. */
 export const SNAPSHOT_JOB = 'movie-snapshot';
@@ -47,14 +42,8 @@ export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Pro
   ctx.log(`movie-snapshot starting — Plex section ${section} @ ${moviesConfig.host || '(PLEX_HOST unset)'}`);
 
   ctx.progress(10, 'fetching movies');
-  const doPlexGet = opts.plexFetch ?? plexGet;
-  const fetchMeta = opts.fetchMeta ?? (async () => {
-    const path = `/library/sections/${section}/all?includeGuids=1`;
-    const resp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexMovieMeta>>(path), {
-      cacheKey: `plex:${path}`,
-    });
-    return resp?.MediaContainer?.Metadata ?? [];
-  });
+  const fetchMeta = opts.fetchMeta ?? (() =>
+    fetchSectionMetadata<PlexMovieMeta>(section, { query: '?includeGuids=1', fetch: opts.plexFetch }));
   const meta = await fetchMeta();
   ctx.log(`Fetched ${meta.length} movies from section ${section}.`);
 

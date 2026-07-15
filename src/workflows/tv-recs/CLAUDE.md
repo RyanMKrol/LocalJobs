@@ -13,7 +13,8 @@ are discovered live from Plex each run.
 
 ## Stages
 
-**`tv-snapshot`** connects to Plex via the shared `src/core/plex-client.ts` (`plexGet`), reads the TV
+**`tv-snapshot`** connects to Plex via the shared `src/core/plex-client.ts` (`fetchSectionMetadata`,
+a thin wrapper over `plexGet` for the `/library/sections/<n>/all` pattern, T586), reads the TV
 library section (`PLEX_TV_SECTION`, default `5`), builds a per-show snapshot keyed by TMDB GUID, and
 computes a taste profile (genres/roles/decades/countries) from the owned library. Writes
 `data/out/snapshot.json` + `data/out/taste-profile.json`.

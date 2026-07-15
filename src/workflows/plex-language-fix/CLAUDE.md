@@ -148,7 +148,9 @@ Like the other five Plex-touching workflows (`missing-tv-seasons`, `movie-recomm
 self-contained `src/core/plex-client.ts` (`plexGet`/`tmdbGet`, DHCP-self-heal LAN scan) rather than
 duplicating connectivity — see that file for the mechanism. Plex connectivity is metered via the shared
 `plex` service (`callService('plex', ...)`). TMDB lookups route through the shared rate-limited `tmdb`
-service (`callService('tmdb', ...)`, same as `missing-tv-seasons`).
+service (`callService('tmdb', ...)`, same as `missing-tv-seasons`). `lib.ts`'s `extractTmdbId` (used by
+`discover.ts` to pull each title's tmdb id off its Plex Guid array) is a thin re-export of
+`src/core/plex-client.ts`'s shared `extractTmdbId` (T586), not a separate implementation.
 
 **Plex reads are response-cached for a 3-hour window (T477).** Every `lib.ts` Plex read helper
 (`fetchSections`, `fetchSectionItems`, `fetchItemDetail`, `fetchAllLeaves` — all four used only by the

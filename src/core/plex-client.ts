@@ -1,7 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import os from 'node:os';
-import { effectiveServiceTimeoutMs } from './services.js';
+import { callService, effectiveServiceTimeoutMs } from './services.js';
 
 /**
  * Shared Plex + TMDB connectivity helper — used by every Plex-touching workflow
@@ -383,6 +383,64 @@ export async function plexGet<T = unknown>(path: string): Promise<T> {
       reject(new Error(`Plex unreachable at ${host} — ${e instanceof Error ? e.message : e}. Check PLEX_HOST / that the server is awake.`)),
     );
   });
+}
+
+/**
+ * The JSON shape of a Plex `/library/sections/<n>/all` (or any other
+ * `MediaContainer`-wrapped listing) response — shared across every
+ * Plex-touching workflow instead of each one re-declaring an identical local
+ * `interface PlexAllResponse<T>`.
+ */
+export interface PlexAllResponse<T> {
+  MediaContainer?: { Metadata?: T[] };
+}
+
+/**
+ * Extract the TMDB id from a title's (movie or show) Plex GUID list. Plex
+ * carries one `tmdb://<id>` GUID per title (alongside imdb/tvdb). Matching is
+ * ALWAYS by this GUID, never by fuzzy title — that kills silent mismatches.
+ * Returns null when no tmdb GUID is present (never guessed).
+ */
+export function extractTmdbId(guids: { id?: string }[] | undefined): number | null {
+  if (!Array.isArray(guids)) return null;
+  for (const g of guids) {
+    const m = /^tmdb:\/\/(\d+)/.exec(g?.id ?? '');
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+export interface FetchSectionMetadataOpts {
+  /** Extra query string appended after the section path, e.g. `'?includeGuids=1'` or `'?type=4'`. */
+  query?: string;
+  /**
+   * The `callService('plex', ..., { cacheKey })` cache key (T477's 3-hour
+   * response cache). Defaults to `plex:<path>` (the convention every call site
+   * already used). Pass `null` to explicitly opt OUT of caching (e.g. an
+   * input-keys probe that must always read the library's current state).
+   */
+  cacheKey?: string | null;
+  /** Injectable low-level Plex GET (tests) — defaults to the real `plexGet`. */
+  fetch?: <T>(path: string) => Promise<T>;
+}
+
+/**
+ * Thin wrapper over `plexGet` for the common `/library/sections/<n>/all`
+ * listing pattern, routed through `callService('plex', ...)` like every other
+ * Plex read (T578). Returns the `Metadata` array directly (empty array when
+ * absent), matching the `resp?.MediaContainer?.Metadata ?? []` idiom every
+ * call site previously repeated inline.
+ */
+export async function fetchSectionMetadata<T>(
+  section: string | number,
+  opts: FetchSectionMetadataOpts = {},
+): Promise<T[]> {
+  const path = `/library/sections/${section}/all${opts.query ?? ''}`;
+  const doFetch = opts.fetch ?? plexGet;
+  const resp = await callService('plex', () => doFetch<PlexAllResponse<T>>(path), {
+    cacheKey: opts.cacheKey === null ? undefined : opts.cacheKey ?? `plex:${path}`,
+  });
+  return resp?.MediaContainer?.Metadata ?? [];
 }
 
 /**

@@ -188,8 +188,10 @@ wiring. Job names, ledger keys, and DAG shape are all unchanged.
   even though `missing-movies`'s `franchise-gaps` stage imports `collectionGaps`/
   `collectionOwnedExample`/`buildMovieSnapshots`/`buildOwnedSet` from here — the pure collection-gap
   math is identical for both workflows, so it isn't duplicated.
-- Plex/TMDB connectivity: the shared `src/core/plex-client.ts` (`plexGet`/`tmdbGet`) — NOT owned by
-  this workflow, shared with `missing-tv-seasons`, `tv-recommendations`, `missing-movies`,
+- Plex/TMDB connectivity: the shared `src/core/plex-client.ts` (`plexGet`/`tmdbGet`, plus
+  `fetchSectionMetadata`/`extractTmdbId`/`PlexAllResponse<T>` — the section-listing wrapper, GUID
+  extraction, and `MediaContainer` response type this stage's `movie-snapshot` uses, T586) — NOT
+  owned by this workflow, shared with `missing-tv-seasons`, `tv-recommendations`, `missing-movies`,
   `plex-space-saver`, `plex-language-fix`, `plex-profiles`.
 - Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (read by the shared client),
   `PLEX_MOVIE_SECTION` (shared with `missing-movies`).

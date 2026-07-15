@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { plexGet } from '../../../core/plex-client.js';
+import { fetchSectionMetadata, plexGet, type PlexAllResponse } from '../../../core/plex-client.js';
 import { callService } from '../../../core/services.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
@@ -10,14 +10,6 @@ import { buildMovieProfileMarkdown, buildShowProfileMarkdown, itemBytes, slugFil
 import type { PlexEpisodeMeta, PlexListItem, PlexMovieDetail, PlexShowDetail } from '../types.js';
 
 export const JOB_NAME = 'plex-profiles-build';
-
-interface PlexAllResponse<T> {
-  MediaContainer?: { Metadata?: T[] };
-}
-
-interface PlexMetadataResponse<T> {
-  MediaContainer?: { Metadata?: T[] };
-}
 
 interface WorkItemDetail {
   name?: string;
@@ -51,10 +43,8 @@ export function showKey(ratingKey: string | number | undefined): string {
  */
 export async function resolveInputKeys(): Promise<string[]> {
   const { movieSection, tvSection } = plexProfilesConfig;
-  const moviesResp = await callService('plex', () => plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${movieSection}/all`));
-  const movies = moviesResp?.MediaContainer?.Metadata ?? [];
-  const showsResp = await callService('plex', () => plexGet<PlexAllResponse<PlexListItem>>(`/library/sections/${tvSection}/all`));
-  const shows = showsResp?.MediaContainer?.Metadata ?? [];
+  const movies = await fetchSectionMetadata<PlexListItem>(movieSection, { cacheKey: null });
+  const shows = await fetchSectionMetadata<PlexListItem>(tvSection, { cacheKey: null });
   return [
     ...movies.map((m) => movieKey(m.ratingKey)),
     ...shows.map((s) => showKey(s.ratingKey)),
@@ -99,27 +89,15 @@ export async function runBuild(ctx: JobContext, opts: BuildOpts = {}): Promise<v
   ctx.log(`plex-profiles-build starting — movie section ${movieSection}, TV section ${tvSection}, run limit ${runLimit || 'unlimited'}`);
 
   ctx.progress(5, 'fetching movies');
-  const moviesPath = `/library/sections/${movieSection}/all`;
-  const moviesResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexListItem>>(moviesPath), {
-    cacheKey: `plex:${moviesPath}`,
-  });
-  const movies = moviesResp?.MediaContainer?.Metadata ?? [];
+  const movies = await fetchSectionMetadata<PlexListItem>(movieSection, { fetch: opts.plexFetch });
   ctx.log(`Fetched ${movies.length} movie(s) from section ${movieSection}.`);
 
   ctx.progress(15, 'fetching shows');
-  const showsPath = `/library/sections/${tvSection}/all`;
-  const showsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexListItem>>(showsPath), {
-    cacheKey: `plex:${showsPath}`,
-  });
-  const shows = showsResp?.MediaContainer?.Metadata ?? [];
+  const shows = await fetchSectionMetadata<PlexListItem>(tvSection, { fetch: opts.plexFetch });
   ctx.log(`Fetched ${shows.length} show(s) from section ${tvSection}.`);
 
   ctx.progress(25, 'fetching episodes for show byte totals');
-  const epsPath = `/library/sections/${tvSection}/all?type=4`;
-  const epsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexEpisodeMeta>>(epsPath), {
-    cacheKey: `plex:${epsPath}`,
-  });
-  const episodes = epsResp?.MediaContainer?.Metadata ?? [];
+  const episodes = await fetchSectionMetadata<PlexEpisodeMeta>(tvSection, { query: '?type=4', fetch: opts.plexFetch });
   ctx.log(`Fetched ${episodes.length} episode(s) (flat read, type=4) for show byte totals.`);
 
   const showBytes = new Map<string, number>();
@@ -174,7 +152,7 @@ export async function runBuild(ctx: JobContext, opts: BuildOpts = {}): Promise<v
     try {
       ctx.log(`Building ${c.key} (${i + 1}/${total}) — fetching detail for ratingKey ${c.ratingKey}...`);
       const detailPath = `/library/metadata/${c.ratingKey}`;
-      const detailResp = await callService('plex', () => doPlexGet<PlexMetadataResponse<PlexMovieDetail | PlexShowDetail>>(detailPath), {
+      const detailResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexMovieDetail | PlexShowDetail>>(detailPath), {
         cacheKey: `plex:${detailPath}`,
       });
       const detail = detailResp?.MediaContainer?.Metadata?.[0];

@@ -4,7 +4,9 @@ A single-stage, report-only audit of where Plex library disk space is going — 
 `missing-tv-seasons`, which audits missing seasons, not disk usage.
 
 Reuses the shared Plex client (`src/core/plex-client.ts`'s `resolvePlexHost`/`plexGet` — DHCP
-self-heal) and the existing Plex env (`PLEX_HOST`/`PLEX_API_TOKEN`/optional `PLEX_MACHINE_ID`), plus
+self-heal, plus `fetchSectionMetadata`/`PlexAllResponse<T>` — the shared section-listing wrapper +
+`MediaContainer` response type this stage's movie/show/episode listing fetches use, T586) and the
+existing Plex env (`PLEX_HOST`/`PLEX_API_TOKEN`/optional `PLEX_MACHINE_ID`), plus
 the SAME `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION` env vars the `movies`/`missing-tv-seasons` workflows
 already read (no new env vars). Plex reads are metered via the shared `plex` service (`callService('plex', ...)`),
 enforcing rate-limit + quota consistency across all Plex-touching workflows.

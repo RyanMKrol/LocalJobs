@@ -11,11 +11,15 @@ write a per-title profile covering summary/cast/ratings/technical detail for eve
 ## Confirmed Plex fields in use
 
 Reuses the shared Plex client (`src/core/plex-client.ts`'s `resolvePlexHost`/`plexGet` — DHCP
-self-heal) and the existing Plex env (`PLEX_HOST`/`PLEX_API_TOKEN`/optional `PLEX_MACHINE_ID`),
+self-heal, plus `fetchSectionMetadata`/`PlexAllResponse<T>` — the shared section-listing wrapper +
+`MediaContainer` response type this stage's movie/show/episode listing fetches use, T586) and the
+existing Plex env (`PLEX_HOST`/`PLEX_API_TOKEN`/optional `PLEX_MACHINE_ID`),
 plus the SAME `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION` env vars the `movies`/`missing-tv-seasons`/
 `plex-space-saver` workflows already read (no new connectivity config). All Plex reads are metered
 via the shared `plex` service (`callService('plex', ...)`), coordinating rate-limit + quota across
-all Plex-touching workflows.
+all Plex-touching workflows. The per-title detail fetch (`/library/metadata/<ratingKey>`) is NOT a
+section listing, so it still calls `plexGet` + `callService('plex', ...)` directly, reusing
+`PlexAllResponse<T>` for its response shape (identical to a section listing's).
 
 - `GET /library/sections/<id>/all` (list): `ratingKey`, `slug`, `title`, `updatedAt` — used only to
   discover the current key set + decide whether a title needs rebuilding (cheap; no detail fields).

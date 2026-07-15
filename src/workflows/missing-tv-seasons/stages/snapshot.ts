@@ -1,15 +1,10 @@
 import type { JobContext } from '../../../core/types.js';
-import { callService } from '../../../core/services.js';
-import { plexGet } from '../../../core/plex-client.js';
+import { fetchSectionMetadata } from '../../../core/plex-client.js';
 import { markWorkItem } from '../../../db/store.js';
 import { plexConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
 import { buildShowSnapshots } from '../plex.js';
 import type { PlexEpisodeMeta, PlexShow, PlexShowMeta, SnapshotFile } from '../types.js';
-
-interface PlexAllResponse<T> {
-  MediaContainer?: { Metadata?: T[] };
-}
 
 /** Ledger key for one show: prefer the resolved tmdbId, else fall back to the Plex ratingKey. */
 export function snapshotItemKey(show: Pick<PlexShow, 'tmdbId' | 'ratingKey'>): string {
@@ -51,25 +46,16 @@ export interface SnapshotOpts {
  */
 export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Promise<void> {
   ensureDirs();
-  const doPlexGet = opts.fetchPlex ?? plexGet;
   const section = plexConfig.tvSection;
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   ctx.log(`plex-tv-snapshot starting — Plex section ${section} @ ${plexConfig.host || '(PLEX_HOST unset)'}`);
 
   ctx.progress(5, 'fetching shows');
-  const showsPath = `/library/sections/${section}/all?includeGuids=1`;
-  const showsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexShowMeta>>(showsPath), {
-    cacheKey: `plex:${showsPath}`,
-  });
-  const showsMeta = showsResp?.MediaContainer?.Metadata ?? [];
+  const showsMeta = await fetchSectionMetadata<PlexShowMeta>(section, { query: '?includeGuids=1', fetch: opts.fetchPlex });
   ctx.log(`Fetched ${showsMeta.length} shows from section ${section}.`);
 
   ctx.progress(40, 'fetching episodes');
-  const epsPath = `/library/sections/${section}/all?type=4`;
-  const epsResp = await callService('plex', () => doPlexGet<PlexAllResponse<PlexEpisodeMeta>>(epsPath), {
-    cacheKey: `plex:${epsPath}`,
-  });
-  const epsMeta = epsResp?.MediaContainer?.Metadata ?? [];
+  const epsMeta = await fetchSectionMetadata<PlexEpisodeMeta>(section, { query: '?type=4', fetch: opts.fetchPlex });
   ctx.log(`Fetched ${epsMeta.length} episodes (flat read, type=4).`);
 
   ctx.progress(75, 'computing owned seasons');

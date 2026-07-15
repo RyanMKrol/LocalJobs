@@ -70,9 +70,12 @@ this workflow's dashboard detail page.
 
 ## Shared Plex/TMDB connectivity
 
-Plex + TMDB HTTP access (`plexGet`/`tmdbGet`/`resolvePlexHost`) lives in the top-level
-`src/core/plex-client.ts` — shared by all FOUR Plex-touching workflows (this one,
+Plex + TMDB HTTP access (`plexGet`/`tmdbGet`/`resolvePlexHost`, plus `fetchSectionMetadata`/
+`extractTmdbId`/`PlexAllResponse<T>` — the shared section-listing wrapper, GUID extraction, and
+`MediaContainer` response type this workflow's `plex-tv-snapshot` stage uses, T586) lives in the
+top-level `src/core/plex-client.ts` — shared by all FOUR Plex-touching workflows (this one,
 `tv-recommendations`, `movie-recommendations`, `plex-space-saver`), not owned by this workflow.
+`plex.ts`'s own `extractTmdbId` is a thin re-export of the core implementation, not a separate one.
 Notably it self-heals a changed DHCP IP: the owner's Plex server's IP changes on lease renewal, so a
 hardcoded `PLEX_HOST` used to break `plex-tv-snapshot`. `resolvePlexHost()` (cached once per daemon
 run) confirms the configured `PLEX_HOST` is a live Plex (and, if `PLEX_MACHINE_ID` is set, the RIGHT

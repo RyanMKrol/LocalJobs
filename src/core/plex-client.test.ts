@@ -1,6 +1,14 @@
 // Pure-logic tests for the shared Plex connectivity client — NO live Plex/TMDB.
 import assert from 'node:assert/strict';
-import { enumerateSubnetHosts, plexRequestTimeoutMs, resetPlexHostCacheForTests, resolvePlexHost, type PlexProbe } from './plex-client.js';
+import {
+  enumerateSubnetHosts,
+  extractTmdbId,
+  plexRequestTimeoutMs,
+  resetPlexHostCacheForTests,
+  resolvePlexHost,
+  type PlexAllResponse,
+  type PlexProbe,
+} from './plex-client.js';
 import { syncService, updateServiceLimits } from '../db/store.js';
 
 // ── resolvePlexHost: DHCP-resilient host resolution (injected probe, no network) ──
@@ -182,6 +190,39 @@ await (async () => {
   updateServiceLimits('plex', { rate_per_minute: null, daily_cap: null, monthly_cap: null, timeout_ms: null });
   assert.equal(plexRequestTimeoutMs(), before, 'clearing the override reverts to the code default');
   console.log('  ✓ plexRequestTimeoutMs: dashboard override wins over the env/code default');
+}
+
+// ── extractTmdbId: the single shared GUID-extraction implementation (T586) ──
+{
+  assert.equal(
+    extractTmdbId([{ id: 'imdb://tt0468569' }, { id: 'tmdb://155' }, { id: 'tvdb://16' }]),
+    155,
+    'a title with a tmdb:// GUID returns the numeric id',
+  );
+  assert.equal(
+    extractTmdbId([{ id: 'imdb://tt0468569' }, { id: 'tvdb://16' }]),
+    null,
+    'a title with no tmdb:// GUID returns null (never guessed)',
+  );
+  assert.equal(extractTmdbId(undefined), null, 'no GUID array at all → null');
+  assert.equal(extractTmdbId([]), null, 'an empty GUID array → null');
+  console.log('  ✓ extractTmdbId: present tmdb:// GUID → id, absent → null');
+}
+
+// ── PlexAllResponse<T> typing round-trip (T586) ──
+{
+  interface FakeTitle { title: string; ratingKey: string }
+  const populated: PlexAllResponse<FakeTitle> = {
+    MediaContainer: { Metadata: [{ title: 'Heat', ratingKey: '1' }] },
+  };
+  assert.equal(populated.MediaContainer?.Metadata?.[0]?.title, 'Heat');
+
+  const empty: PlexAllResponse<FakeTitle> = { MediaContainer: {} };
+  assert.deepEqual(empty.MediaContainer?.Metadata ?? [], []);
+
+  const missing: PlexAllResponse<FakeTitle> = {};
+  assert.deepEqual(missing.MediaContainer?.Metadata ?? [], []);
+  console.log('  ✓ PlexAllResponse<T> round-trips a populated/empty/missing MediaContainer shape');
 }
 
 console.log('  ✓ plex-client pure-logic tests passed');

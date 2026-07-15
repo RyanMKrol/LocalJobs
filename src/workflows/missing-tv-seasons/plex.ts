@@ -1,19 +1,12 @@
 // Pure Plex-parsing helpers (no I/O) — unit-tested in plex.test.ts.
-import type { PlexEpisodeMeta, PlexGuid, PlexShow, PlexShowMeta } from './types.js';
+import { extractTmdbId } from '../../core/plex-client.js';
+import type { PlexEpisodeMeta, PlexShow, PlexShowMeta } from './types.js';
 
-/**
- * Extract the TMDB id from a show's GUID list. Plex carries one `tmdb://<id>`
- * GUID per show (alongside imdb/tvdb). Matching is ALWAYS by this GUID, never by
- * fuzzy title — that kills silent mismatches. Returns null when no tmdb GUID.
- */
-export function extractTmdbId(guids: PlexGuid[] | undefined): number | null {
-  if (!Array.isArray(guids)) return null;
-  for (const g of guids) {
-    const m = /^tmdb:\/\/(\d+)/.exec(g?.id ?? '');
-    if (m) return Number(m[1]);
-  }
-  return null;
-}
+// GUID extraction is generic across every Plex-touching workflow — the shared
+// implementation lives in `src/core/plex-client.ts`; re-exported here so
+// existing importers of this module (movies.ts, tv-shows.ts, this file's own
+// tests) keep working unchanged.
+export { extractTmdbId };
 
 /**
  * Map each show's ratingKey → highest owned REGULAR season, derived from the flat
