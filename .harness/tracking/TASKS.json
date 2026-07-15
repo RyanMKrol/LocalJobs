@@ -14639,7 +14639,7 @@
     {
       "id": "T545",
       "title": "Memoize groupByCollection so it isn't recomputed 3x per render",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T579"
       ],
