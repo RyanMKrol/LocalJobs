@@ -15632,7 +15632,7 @@
     {
       "id": "T577",
       "title": "Migrate missing-movies Plex snapshot read onto callService('plex') (code + test + CLAUDE.md) — the 7th Plex-touching workflow the migration chain missed",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
