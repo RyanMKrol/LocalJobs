@@ -16378,7 +16378,7 @@
     {
       "id": "T601",
       "title": "Capture each recommender branch's stratified sample as its Inputs record",
-      "status": "pending",
+      "status": "blocked",
       "dependsOn": [
         "T599"
       ],
