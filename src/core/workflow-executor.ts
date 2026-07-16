@@ -169,6 +169,20 @@ export function workflowRunInProgress(name: string): boolean {
 }
 
 /**
+ * Whether the named workflow is CURRENTLY in the pre-DB-row "starting" window —
+ * claimed in `startingWorkflows` (T105) but not yet past `createWorkflowRun`
+ * (T595). A limited manual run whose root stage's `inputKeys()` is an expensive
+ * live crawl (e.g. plex-language-fix's `discoverInputKeys()`, ~15 minutes for a
+ * full Plex library walk) sits in this window for a long time with NO
+ * `workflow_runs` row yet to show — this flag lets the dashboard surface a
+ * transient "Starting…" indicator during that gap instead of showing nothing.
+ * Purely a read of the existing in-process claim; no schema/DB change.
+ */
+export function isWorkflowStarting(name: string): boolean {
+  return startingWorkflows.has(name);
+}
+
+/**
  * Cancel a running workflow run by aborting its execution: in-flight member
  * children are hard-killed and no further stages launch (see `runWorkflow` /
  * `executeDag`). Returns false if the id isn't an active run in this process

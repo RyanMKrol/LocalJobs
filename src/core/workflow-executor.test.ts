@@ -15,7 +15,7 @@ import {
   lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,
   rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, getWorkflow,
 } from '../db/store.js';
-import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, workflowRunInProgress, effectiveWorkflowConcurrency, effectiveWorkflowNotifyEnabled, UNLIMITED_CONCURRENCY_SENTINEL, _setOnSettleThrowHookForTest } from './workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, isWorkflowStarting, workflowRunInProgress, effectiveWorkflowConcurrency, effectiveWorkflowNotifyEnabled, UNLIMITED_CONCURRENCY_SENTINEL, _setOnSettleThrowHookForTest } from './workflow-executor.js';
 import { _setFetchForTest, _resetFetchForTest } from './notifier.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 
@@ -117,6 +117,27 @@ const limitMembers: JobDefinition[] = [
   { name: 't163-cons', run: async () => {} },
 ];
 for (const d of limitMembers) {
+  syncJob(d);
+  jobs.push(d);
+  pushed.push(d);
+}
+
+// T595 members: a root stage whose inputKeys() is slow (simulates a live crawl
+// like plex-language-fix's discoverInputKeys()) — used to prove isWorkflowStarting
+// is true during the pre-DB-row window and clears once the run settles.
+let t595ReleaseInputKeys: (() => void) | null = null;
+const t595Members: JobDefinition[] = [
+  {
+    name: 't595-slow-root',
+    inputKeys: () =>
+      new Promise<string[]>((resolve) => {
+        t595ReleaseInputKeys = () => resolve(['s1']);
+      }),
+    run: async () => {},
+  },
+  { name: 't595-cons', run: async () => {} },
+];
+for (const d of t595Members) {
   syncJob(d);
   jobs.push(d);
   pushed.push(d);
@@ -493,6 +514,41 @@ try {
     // Guard released once each run settled.
     assert.equal(workflowRunInProgress('guard-wf-a'), false, 'A guard released after settle');
     assert.equal(workflowRunInProgress('guard-wf-b'), false, 'B guard released after settle');
+  });
+
+  await test('T595: isWorkflowStarting is true during a slow limited-run inputKeys() wait (pre-DB-row window) and false once the run settles', async () => {
+    const def: WorkflowDefinition = {
+      name: 't595-wf',
+      jobs: [{ job: 't595-slow-root' }, { job: 't595-cons', dependsOn: ['t595-slow-root'] }],
+    };
+    syncWorkflow(def);
+
+    assert.equal(isWorkflowStarting('t595-wf'), false, 'not starting before the run is triggered');
+
+    // Start a LIMITED manual run (only a limit triggers the inputKeys() await
+    // before createWorkflowRun) but don't await it — its root stage's inputKeys()
+    // hangs until we release it below.
+    const runPromise = runWorkflow(def, 'manual', { limit: 1 });
+
+    // Poll until the claim registers, then assert: starting=true, workflowRunInProgress
+    // is also true (T105 guard unaffected), and crucially NO workflow_runs row exists
+    // yet — this is the exact gap T595 makes visible.
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !isWorkflowStarting('t595-wf')) {
+      await new Promise((res) => setTimeout(res, 10));
+    }
+    assert.equal(isWorkflowStarting('t595-wf'), true, 'starting flag set while inputKeys() is pending');
+    assert.equal(workflowRunInProgress('t595-wf'), true, 'T105 guard still reports in-progress (unchanged)');
+    assert.equal(lastWorkflowRunForWorkflow('t595-wf'), undefined, 'no workflow_runs row exists yet — the gap this task surfaces');
+
+    // Release the hanging inputKeys() so the run proceeds and settles.
+    assert.ok(t595ReleaseInputKeys, 'release hook was captured');
+    t595ReleaseInputKeys!();
+    const { workflowRunId } = await runPromise;
+
+    assert.ok(workflowRunId, 'run eventually produced a workflow_runs row');
+    assert.equal(isWorkflowStarting('t595-wf'), false, 'starting flag cleared once the run settled');
+    assert.equal(workflowRunInProgress('t595-wf'), false, 'T105 guard released after settle');
   });
 
   await test('parallelism (T156): independent stages run concurrently by DEFAULT; maxConcurrency:1 forces sequential; a dependent still waits', async () => {

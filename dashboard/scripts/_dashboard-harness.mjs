@@ -1154,6 +1154,43 @@ export const FLOWS = [
     },
   },
   {
+    // T595: the Workflows list page's transient "Starting…" indicator — shown while a
+    // limited manual run has claimed the workflow (startingWorkflows, in-process) but
+    // its workflow_runs row doesn't exist yet (a slow root-stage inputKeys() crawl, e.g.
+    // plex-language-fix's discoverInputKeys()). Overrides /api/workflows so the 'places'
+    // row carries `starting: true` for this capture.
+    name: 'workflows-list-starting',
+    path: '/workflows',
+    settleMs: 1200,
+    actions: async (page) => {
+      await page.route('**/api/workflows', async (route) => {
+        const body = JSON.stringify({ workflows: [
+          workflow({ name: 'claude-warmer', category: 'regular-maintenance', schedule: '*/30 * * * *', jobs: singleStageMembers, stuck: 0 }),
+          workflow({ starting: true }),
+          workflow({ name: 'perfumes', enabled: 0, effective_notify_enabled: false, certified: 0 }),
+        ] });
+        await route.fulfill({ status: 200, contentType: 'application/json', body });
+      });
+      await page.reload({ waitUntil: 'networkidle' });
+    },
+  },
+  {
+    // T595: the same "Starting…" indicator on the workflow DETAIL page's header + Run
+    // button, driven by /api/workflows/:name's `starting` field.
+    name: 'workflow-detail-starting',
+    path: '/workflows/places',
+    waitFor: ['.rf-dag-node'],
+    settleMs: 1200,
+    actions: async (page) => {
+      await page.route('**/api/workflows/places', async (route) => {
+        const body = JSON.stringify({ workflow: workflow({ starting: true }) });
+        await route.fulfill({ status: 200, contentType: 'application/json', body });
+      });
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('.rf-dag-node', { timeout: 5000 });
+    },
+  },
+  {
     // The service detail modal, opened by clicking a service name on the Services page.
     // Shows both the "Rate limit provenance" section and the "Consumers of …" list.
     // viewport: true — the modal backdrop covers only the viewport.

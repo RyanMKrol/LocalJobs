@@ -128,14 +128,16 @@ export default function Workflows() {
 
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  {p.last_run
+                  {p.starting
+                    ? <span className="last-run-cell"><Pill kind="starting">Starting…</Pill></span>
+                    : p.last_run
                     ? <span className="last-run-cell"><Link href={`/workflow-runs/${p.last_run.id}`} style={{ textDecoration: 'none' }}><StatusBadge status={p.last_run.status} /></Link><span className="muted last-run-time">{fmtAbsolute(p.last_run.started_at)}</span></span>
                     : <span className="muted">never</span>}
                 </td>
                 <td className="muted">{p.next_run ? fmtTime(p.next_run) : '—'}</td>
                 <td>
                   <RunButton
-                    isRunning={p.last_run?.status === 'running'}
+                    isRunning={p.starting || p.last_run?.status === 'running'}
                     busy={busyWorkflows.has(p.name)}
                     onClick={() => run(p.name)}
                     label="▶ Run"

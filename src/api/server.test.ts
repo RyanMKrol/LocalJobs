@@ -11,8 +11,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { jobs, workflows } from '../workflows/registry.js';
-import { createWorkflowRun, finishWorkflowRun, getJob, getWorkflow, markWorkItem, recordServiceConsumer, syncJob, syncWorkflow } from '../db/store.js';
+import { createWorkflowRun, finishWorkflowRun, getJob, getWorkflow, lastWorkflowRunForWorkflow, markWorkItem, recordServiceConsumer, syncJob, syncWorkflow } from '../db/store.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
+import { isWorkflowStarting } from '../core/workflow-executor.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,
@@ -503,6 +504,68 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
 
   { const i = jobs.indexOf(certifyJob); if (i >= 0) jobs.splice(i, 1); }
   { const i = workflows.indexOf(certifyWf); if (i >= 0) workflows.splice(i, 1); }
+}
+
+// ── T595: while a limited manual run is awaiting its root stage's inputKeys()
+// (the pre-DB-row window), both GET /api/workflows and GET /api/workflows/:name
+// surface `starting: true` — clearing back to false once the run row exists. ──
+{
+  let releaseInputKeys: (() => void) | null = null;
+  const startingJob: JobDefinition = {
+    name: 'starting-api-job',
+    inputKeys: () =>
+      new Promise<string[]>((resolve) => {
+        releaseInputKeys = () => resolve(['only-key']);
+      }),
+    run: async () => {},
+  };
+  syncJob(startingJob); jobs.push(startingJob);
+  const startingWf: WorkflowDefinition = { name: 'starting-api-wf', jobs: [{ job: 'starting-api-job' }] };
+  syncWorkflow(startingWf); workflows.push(startingWf);
+
+  await test('starting: POST /run with a limit sets starting:true on both GET payloads before the run row exists, then clears it', async () => {
+    await withServer({}, async (base) => {
+      assert.equal(isWorkflowStarting('starting-api-wf'), false, 'not starting before the run is triggered');
+
+      const runRes = await fetch(`${base}/api/workflows/starting-api-wf/run`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 1 }),
+      });
+      assert.equal(runRes.status, 202, 'run accepted immediately (fire-and-forget)');
+
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline && !isWorkflowStarting('starting-api-wf')) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      assert.equal(isWorkflowStarting('starting-api-wf'), true, 'claim registered while inputKeys() is pending');
+      assert.equal(lastWorkflowRunForWorkflow('starting-api-wf'), undefined, 'no workflow_runs row yet');
+
+      const get = await fetch(`${base}/api/workflows/starting-api-wf`);
+      const wf = ((await get.json()) as { workflow: { starting?: boolean } }).workflow;
+      assert.equal(wf.starting, true, 'detail payload surfaces starting:true during the pre-DB-row window');
+
+      const list = await fetch(`${base}/api/workflows`);
+      const body = (await list.json()) as { workflows: { name: string; starting?: boolean }[] };
+      const row = body.workflows.find((w) => w.name === 'starting-api-wf');
+      assert.equal(row?.starting, true, 'list payload surfaces starting:true during the pre-DB-row window');
+
+      // Release the hanging inputKeys() and let the run settle.
+      assert.ok(releaseInputKeys, 'release hook captured');
+      releaseInputKeys!();
+      const settleDeadline = Date.now() + 5000;
+      while (Date.now() < settleDeadline && isWorkflowStarting('starting-api-wf')) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      assert.equal(isWorkflowStarting('starting-api-wf'), false, 'starting clears once the run settles');
+      assert.ok(lastWorkflowRunForWorkflow('starting-api-wf'), 'a workflow_runs row now exists');
+
+      const get2 = await fetch(`${base}/api/workflows/starting-api-wf`);
+      const wf2 = ((await get2.json()) as { workflow: { starting?: boolean } }).workflow;
+      assert.equal(wf2.starting, false, 'detail payload falls back to normal (starting:false) after settle');
+    });
+  });
+
+  { const i = jobs.indexOf(startingJob); if (i >= 0) jobs.splice(i, 1); }
+  { const i = workflows.indexOf(startingWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
 // ── T291: GET /api/workflows (the list endpoint) must surface the EFFECTIVE

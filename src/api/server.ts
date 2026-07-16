@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
 import type { GateResult } from '../core/types.js';
-import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../core/workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, isWorkflowStarting, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../core/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import { Cron } from 'croner';
 import { getJobDefinition, getWorkflowDefinition } from '../workflows/registry.js';
@@ -1087,7 +1087,10 @@ const routes: Route[] = [
       const rows = listWorkflows().map((p) => {
         const wfDef = getWorkflowDefinition(p.name);
         const effective_notify_enabled = wfDef ? effectiveWorkflowNotifyEnabled(wfDef) : p.notify_enabled !== 0;
-        return { ...p, effective_notify_enabled, ...workflowView(p.name) };
+        // Pre-DB-row "starting" window (T595): true while a manual run's root-stage
+        // inputKeys() is still being awaited, before the workflow_runs row exists.
+        const starting = isWorkflowStarting(p.name);
+        return { ...p, effective_notify_enabled, starting, ...workflowView(p.name) };
       });
       return json(res, 200, { workflows: rows });
     },
@@ -1123,7 +1126,9 @@ const routes: Route[] = [
       // Effective notify-enabled (T285): the user override / synced manifest value /
       // default true — the same value runWorkflow gates the aggregate notification on.
       const effective_notify_enabled = wfDef ? effectiveWorkflowNotifyEnabled(wfDef) : p.notify_enabled !== 0;
-      return json(res, 200, { workflow: { ...p, effective_max_concurrency, effective_notify_enabled, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
+      // Pre-DB-row "starting" window (T595): see GET /api/workflows above.
+      const starting = isWorkflowStarting(p.name);
+      return json(res, 200, { workflow: { ...p, effective_max_concurrency, effective_notify_enabled, starting, ...workflowView(p.name), gates: gatesForWorkflow(p.name), runs: listWorkflowRunsForWorkflow(p.name, 20) } });
     },
   },
 

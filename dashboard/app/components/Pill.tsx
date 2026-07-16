@@ -13,6 +13,7 @@ import type { CSSProperties } from 'react';
  *   on / off          – workflow enabled toggle
  *   paid / free       – service billing type
  *   certified         – certified workflow badge
+ *   starting          – transient pre-run-row "Starting…" state (T595)
  */
 
 interface PillProps {

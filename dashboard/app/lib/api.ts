@@ -82,6 +82,10 @@ export interface Workflow {
   effective_notify_enabled?: boolean;
   /** Plain user-set "reviewed & settled" flag (T497) — no code/manifest source, toggle-only, purely informational. */
   certified?: number;
+  /** True while a manual run is claimed but its workflow_runs row doesn't exist yet — e.g. still
+   *  awaiting a slow root-stage inputKeys() crawl (T595). Purely transient; falls back to the
+   *  normal last_run display once the real run row appears on the next poll. */
+  starting?: boolean;
   created_at: string;
   last_run: WorkflowRun | null;
   next_run: string | null;

@@ -302,6 +302,7 @@ a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent
 .pill.on  { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
 .pill.off { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
 .pill.certified { color: var(--green); background: rgba(63,185,80,.12); border-color: rgba(63,185,80,.3); }
+.pill.starting { color: var(--accent); background: rgba(88,166,255,.12); border-color: rgba(88,166,255,.3); }
 
 /* Long unbroken tokens (URLs, file paths, item keys) must not push the page wide. */
 .mono { overflow-wrap: anywhere; }

@@ -318,6 +318,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
       <div className="row" style={{ gap: 20 }}>
         <h1 style={{ margin: 0 }}>{name}</h1>
         {p?.certified ? <Pill kind="certified">🏅 Certified</Pill> : null}
+        {p?.starting ? <Pill kind="starting" title="Run accepted — awaiting the root stage's input scan before the run row appears">Starting…</Pill> : null}
         <div className="spacer" />
         {p?.limitable && (
           <div className="run-limit-control">
@@ -334,7 +335,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
             />
           </div>
         )}
-        <RunButton isRunning={p?.last_run?.status === 'running'} busy={busy} onClick={run} />
+        <RunButton isRunning={p?.starting || p?.last_run?.status === 'running'} busy={busy} onClick={run} runningLabel={p?.starting ? 'Starting…' : 'Running…'} />
       </div>
       <p className="sub wf-desc">{p?.description}</p>
 
