@@ -8,6 +8,7 @@ import { type Gate, buildDag, classifyGates, deriveGates, shapesIdentical } from
 import type { GateResult } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, isWorkflowStarting, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../core/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
+import { getServiceDef } from '../core/services.js';
 import { Cron } from 'croner';
 import { getJobDefinition, getWorkflowDefinition } from '../workflows/registry.js';
 import { moviesConfig } from '../workflows/movies/config.js';
@@ -44,6 +45,7 @@ import {
   pruneOrphanedWorkItems,
   resetWorkflowOutput,
   serviceCacheCounts,
+  listServiceCacheRows,
   clearServiceCache,
   stageIoLists,
   workItemMarkdownPath,
@@ -1532,6 +1534,28 @@ const routes: Route[] = [
     pattern: '/api/cache',
     handler: ({ res }) => {
       return json(res, 200, { counts: serviceCacheCounts() });
+    },
+  },
+
+  // GET /api/cache/rows[?service=]
+  // Read-only: the actual service_cache row contents (T610), optionally scoped to
+  // one service. Each row's `live` is computed server-side by comparing `cached_at`
+  // (a full ISO string with trailing Z — written via `new Date().toISOString()` in
+  // setCachedServiceResponse, unlike SQLite `datetime('now')` columns elsewhere in
+  // this file, so no `+'Z'` parse workaround is needed here) against that row's
+  // service's resolved cacheTtlMs (ServiceDefinition.cacheTtlMs — a service with no
+  // configured TTL treats every row as live, since nothing would ever purge it).
+  {
+    method: 'GET',
+    pattern: '/api/cache/rows',
+    handler: ({ res, url }) => {
+      const serviceName = url.searchParams.get('service') ?? undefined;
+      const rows = listServiceCacheRows(serviceName).map((row) => {
+        const cacheTtlMs = getServiceDef(row.service_name)?.cacheTtlMs;
+        const live = cacheTtlMs == null || Date.now() - Date.parse(row.cached_at) < cacheTtlMs;
+        return { ...row, live };
+      });
+      return json(res, 200, { rows });
     },
   },
 

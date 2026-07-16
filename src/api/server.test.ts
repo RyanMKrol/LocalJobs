@@ -2252,6 +2252,68 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   });
 }
 
+// ── T610: GET /api/cache/rows — row detail with a computed `live` flag ──
+{
+  const { setCachedServiceResponse: t610SetCache } = await import('../db/store.js');
+  const { db: t610Db } = await import('../db/index.js');
+  const { registerService: t610RegisterService } = await import('../core/services.js');
+
+  // Service A has a 60s TTL — one fresh row (live) and one row backdated past it (stale).
+  t610RegisterService({ name: 't610-svc-a', category: 'api', cacheTtlMs: 60_000 });
+  t610SetCache('t610-svc-a', 'fresh', { a: 1 });
+  t610SetCache('t610-svc-a', 'stale', { a: 2 });
+  const staleAt = new Date(Date.now() - 5 * 60_000).toISOString();
+  t610Db.prepare('UPDATE service_cache SET cached_at = ? WHERE service_name = ? AND cache_key = ?')
+    .run(staleAt, 't610-svc-a', 'stale');
+
+  // Service B has no configured cacheTtlMs — its row is always live, however old.
+  t610RegisterService({ name: 't610-svc-b', category: 'api' });
+  t610SetCache('t610-svc-b', 'k1', { b: 1 });
+  const veryOldAt = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+  t610Db.prepare('UPDATE service_cache SET cached_at = ? WHERE service_name = ? AND cache_key = ?')
+    .run(veryOldAt, 't610-svc-b', 'k1');
+
+  await test('GET /api/cache/rows: returns every row across services with live computed per-row', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/cache/rows`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { rows: Array<{ service_name: string; cache_key: string; cached_at: string; response_json: string; live: boolean }> };
+
+      const fresh = body.rows.find((r) => r.service_name === 't610-svc-a' && r.cache_key === 'fresh');
+      const stale = body.rows.find((r) => r.service_name === 't610-svc-a' && r.cache_key === 'stale');
+      const noTtl = body.rows.find((r) => r.service_name === 't610-svc-b' && r.cache_key === 'k1');
+
+      assert.ok(fresh, 'fresh row present');
+      assert.ok(stale, 'stale row present');
+      assert.ok(noTtl, 'no-ttl row present');
+
+      for (const row of [fresh, stale, noTtl]) {
+        assert.equal(typeof row!.service_name, 'string');
+        assert.equal(typeof row!.cache_key, 'string');
+        assert.equal(typeof row!.cached_at, 'string');
+        assert.equal(typeof row!.response_json, 'string');
+        assert.equal(typeof row!.live, 'boolean');
+      }
+
+      assert.equal(fresh!.live, true, 'row within its service TTL is live');
+      assert.equal(stale!.live, false, 'row past its service TTL is not live');
+      assert.equal(noTtl!.live, true, 'a service with no configured cacheTtlMs treats every row as live');
+
+      assert.deepEqual(JSON.parse(fresh!.response_json), { a: 1 });
+    });
+  });
+
+  await test('GET /api/cache/rows?service=: scopes to just that service', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/cache/rows?service=t610-svc-a`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { rows: Array<{ service_name: string }> };
+      assert.ok(body.rows.length >= 2);
+      assert.ok(body.rows.every((r) => r.service_name === 't610-svc-a'), 'only rows for the requested service');
+    });
+  });
+}
+
 // ── T526: findWorkflowDataOut / deleteDataOutContents must never descend into a
 // `data/` tree (e.g. projects-sync's cloned-repo copies), and must never let a
 // name-matching clone with no data/out shadow the real workflow's data/out.
