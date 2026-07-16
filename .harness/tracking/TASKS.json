@@ -16642,7 +16642,7 @@
     {
       "id": "T611",
       "title": "Add cache row-browsing UI to the admin page's Cached responses panel",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T610"
       ],
