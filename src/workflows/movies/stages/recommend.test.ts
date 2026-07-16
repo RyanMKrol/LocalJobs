@@ -314,8 +314,9 @@ const readBranch = (id: string): BranchOutputFile =>
     exclude: ['RunExclude (2022)'],
   };
   const spec = branchById('rec-random-1');
-  const prompt = spec.build(ctx);
-  assert.ok(prompt != null);
+  const built = spec.build(ctx);
+  assert.ok(built != null);
+  const prompt = built.prompt;
   assert.ok(prompt.includes('History Film (2010)'), 'alreadySuggested title in avoid block');
   assert.ok(prompt.includes('Another History Film (2015)'), 'alreadySuggested title in avoid block');
   assert.ok(prompt.includes('RunExclude (2022)'), 'exclude (top-up) title in avoid block');
@@ -356,11 +357,11 @@ const readBranch = (id: string): BranchOutputFile =>
   let errored = false;
   for (const spec of BRANCHES) {
     try {
-      const prompt = spec.build(ctx);
-      // If build returns a prompt (not null), it must include the avoid block content
-      if (prompt != null) {
+      const built = spec.build(ctx);
+      // If build returns a result (not null), its prompt must include the avoid block content
+      if (built != null) {
         assert.ok(
-          prompt.includes('SuggestedFilm1') || prompt.includes('ExcludedThisRun') || prompt.includes('SuggestedFilm2'),
+          built.prompt.includes('SuggestedFilm1') || built.prompt.includes('ExcludedThisRun') || built.prompt.includes('SuggestedFilm2'),
           `${spec.id}: avoid block content present in prompt`,
         );
       }

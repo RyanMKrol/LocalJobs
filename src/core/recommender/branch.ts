@@ -34,8 +34,14 @@ export interface BranchRunOpts {
    * the hook that lets a domain (movies/tv-recs) record its own `work_items`
    * ledger row from the REAL job execution path (`makeBranchJob`'s `run(ctx)`),
    * not just from a direct call to a domain wrapper.
+   *
+   * `sampledItems` carries the branch's `build()`-reported EXACT owned-item
+   * selection (T615) whenever `build()` succeeded (every path except the
+   * skip-no-targets one, where `build()` returned null and nothing was ever
+   * selected) — a domain wrapper uses it to record `input-sample` ledger rows
+   * distinct from its per-suggestion output rows.
    */
-  onBranchWritten?: (branchId: string, opts: BranchRunOpts) => void;
+  onBranchWritten?: (branchId: string, opts: BranchRunOpts, sampledItems?: unknown[]) => void;
 }
 
 /** Parse a Claude branch reply into raw suggestions; throws on junk (no JSON). */
@@ -149,17 +155,18 @@ export async function runBranch<M, P>(
   const base: BranchOutputFile = { branchId: spec.id, lens: spec.lens, generatedAt: now.toISOString(), suggestions: [] };
 
   ctx.progress(30, 'building prompt');
-  const prompt = spec.build({
+  const built = spec.build({
     profile, items, recent, alreadySuggested,
     sampleSize: domain.config.recsSampleSize, ask: domain.config.recsPerBranchAsk,
   });
-  if (prompt == null) {
+  if (built == null) {
     ctx.log('Branch has nothing to target (e.g. no qualifying directors) — skipping gracefully.', 'warn');
     writeBranchFile(recsDir, { ...base, error: 'no targets for this branch' });
     opts.onBranchWritten?.(spec.id, opts);
     ctx.progress(100, 'skipped (no targets)');
     return;
   }
+  const { prompt, sampledItems } = built;
 
   ctx.progress(50, 'asking claude');
   ctx.log(`Calling Claude (${domain.config.recsModel}) for ~${domain.config.recsPerBranchAsk} recommendations…`);
@@ -168,7 +175,7 @@ export async function runBranch<M, P>(
     const why = res.rateLimited ? 'rate/usage limit' : (res.error ?? 'claude error');
     ctx.log(`Claude call failed (${why}) — skipping this branch (run continues).`, 'warn');
     writeBranchFile(recsDir, { ...base, error: why });
-    opts.onBranchWritten?.(spec.id, opts);
+    opts.onBranchWritten?.(spec.id, opts, sampledItems);
     ctx.progress(100, 'skipped (claude error)');
     return;
   }
@@ -180,14 +187,14 @@ export async function runBranch<M, P>(
     const msg = err instanceof Error ? err.message : String(err);
     ctx.log(`Could not parse Claude output as recommendations (${msg}) — skipping branch.`, 'warn');
     writeBranchFile(recsDir, { ...base, error: `unparseable: ${msg}` });
-    opts.onBranchWritten?.(spec.id, opts);
+    opts.onBranchWritten?.(spec.id, opts, sampledItems);
     ctx.progress(100, 'skipped (junk output)');
     return;
   }
 
   const path = writeBranchFile(recsDir, { ...base, suggestions });
   for (const s of suggestions) ctx.log(`  • ${s.title}${s.year ? ` (${s.year})` : ''} — ${s.reason}`);
-  opts.onBranchWritten?.(spec.id, opts);
+  opts.onBranchWritten?.(spec.id, opts, sampledItems);
   ctx.progress(100, `${suggestions.length} suggestion(s)`);
   ctx.log(`Wrote ${suggestions.length} suggestion(s) → ${path}`);
 }
@@ -204,9 +211,9 @@ export async function collectBranchSuggestions<M, P>(
   run: RunClaudeFn,
   model: string,
 ): Promise<RawSuggestion[]> {
-  const prompt = spec.build(ctx);
-  if (prompt == null) return [];
-  const res = await run(prompt, model);
+  const built = spec.build(ctx);
+  if (built == null) return [];
+  const res = await run(built.prompt, model);
   if (!res.ok) return [];
   try {
     return parseSuggestions(res.text, spec.lens);
@@ -224,7 +231,7 @@ export interface MakeBranchJobOpts {
    * module's OWN `runBranch`, not a domain wrapper's, so anything the domain does
    * only after calling ITS OWN `runBranch` never actually executes.
    */
-  onBranchWritten?: (branchId: string, opts: BranchRunOpts) => void;
+  onBranchWritten?: (branchId: string, opts: BranchRunOpts, sampledItems?: unknown[]) => void;
   /** Extra opts to thread into `runBranch` (test-only — e.g. an injected `runClaude` + fixture paths). */
   runOpts?: BranchRunOpts;
 }

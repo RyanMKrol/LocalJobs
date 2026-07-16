@@ -132,13 +132,14 @@ function randomBranch(n: number): BranchSpec {
       // Random branches use the stratified sample (balanced across genres) for owned context —
       // they have no narrow lens to filter by, so a representative sample is appropriate.
       const sample = stratifiedSample(ctx.items, { keyFn: primaryGenre, target: ctx.sampleSize, seed: 1000 + n });
-      return [
+      const prompt = [
         `You are a film curator helping me discover new movies. Based on the taste shown by the films I own, recommend films I would enjoy that I do not already own. Lean towards serendipity and variety, not the obvious next pick.`,
         '',
         `Films I already own (a balanced sample of my library — ${sample.length} titles):\n${fmtMovies(sample)}`,
         avoidBlock(ctx),
         rules(ctx.ask),
       ].join('\n');
+      return { prompt, sampledItems: sample };
     },
   };
 }
@@ -155,7 +156,7 @@ const auteurBranch: BranchSpec = {
     const dirLines = dirs.map(([d, c]) => `- ${d} (I own ${c})`).join('\n');
     // Lens-targeted owned subset: films by those specific directors only.
     const ownedByTheseDirs = ownedByDirectors(ctx.items, dirs.map(([d]) => d), ctx.sampleSize);
-    return [
+    const prompt = [
       'I collect certain directors heavily. Recommend acclaimed or notable films BY THESE DIRECTORS that I likely do not own yet — deepen my collection of auteurs I already love.',
       '',
       `Directors I own at least 3 films by:\n${dirLines}`,
@@ -163,6 +164,7 @@ const auteurBranch: BranchSpec = {
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedByTheseDirs };
   },
 };
 
@@ -181,7 +183,7 @@ const canonBranch: BranchSpec = {
       .join('\n');
     // Lens-targeted owned subset: films in those top genres specifically.
     const ownedInTopGenres = ownedInGenres(ctx.items, genreNames, ctx.sampleSize);
-    return [
+    const prompt = [
       `My strongest genres are: ${topGenresLine(ctx.profile, 5)}. Recommend CANONICAL, acclaimed, or landmark films IN THOSE GENRES that I appear to have missed — blind spots in my own strengths.`,
       '',
       `Sample of what I own in those genres:\n${sampleLines}`,
@@ -189,6 +191,7 @@ const canonBranch: BranchSpec = {
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedInTopGenres };
   },
 };
 
@@ -204,12 +207,13 @@ const thinGenreBranch: BranchSpec = {
     const thinLine = thin.map(([g, c]) => `${g} (only ${c})`).join(', ');
     // Lens-targeted owned subset: the thin-genre films I already have (few, but show them).
     const ownedInThinGenres = ownedInGenres(ctx.items, thin.map(([g]) => g), ctx.sampleSize);
-    return [
+    const prompt = [
       `I own very few films in some genres: ${thinLine}. Recommend acclaimed films in THOSE thin genres to broaden my library — do NOT amplify my dominant genres.`,
       lensOwnedBlock('Films I already own in these thin genres', ownedInThinGenres),
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedInThinGenres };
   },
 };
 
@@ -227,12 +231,13 @@ const olderEraBranch: BranchSpec = {
       .join(', ');
     // Lens-targeted owned subset: pre-1980 films I already own.
     const ownedOlder = ownedPreYear(ctx.items, 1980, ctx.sampleSize);
-    return [
+    const prompt = [
       `My library skews modern. Here is my by-decade count: ${decades || '(unknown)'}. Recommend acclaimed PRE-1980 classics — foundational films from the eras I under-own (silent era through the 1970s).`,
       lensOwnedBlock('Pre-1980 films I already own', ownedOlder),
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedOlder };
   },
 };
 
@@ -250,12 +255,13 @@ const worldCinemaBranch: BranchSpec = {
       .join(', ');
     // Lens-targeted owned subset: non-Anglophone films I already own.
     const ownedForeign = ownedNonAnglophone(ctx.items, ctx.sampleSize);
-    return [
+    const prompt = [
       `My library is dominated by these countries: ${countries || '(unknown)'} — mostly Anglophone. Recommend acclaimed NON-ENGLISH-LANGUAGE / world-cinema films I likely do not own, broadening beyond my Anglophone bias.`,
       lensOwnedBlock('Non-Anglophone films I already own', ownedForeign),
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedForeign };
   },
 };
 

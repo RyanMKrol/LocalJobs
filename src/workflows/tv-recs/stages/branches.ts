@@ -113,13 +113,14 @@ function randomBranch(n: number): BranchSpec {
       'TMDB-verify, dedupe against the other seven branches, and quality-filter.',
     build(ctx) {
       const sample = stratifiedSample(ctx.items, { keyFn: primaryGenre, target: ctx.sampleSize, seed: 1000 + n });
-      return [
+      const prompt = [
         `You are a TV curator helping me discover new shows. Based on the taste shown by the TV shows I own, recommend shows I would enjoy that I do not already own. Lean towards serendipity and variety, not the obvious next pick.`,
         '',
         `TV shows I already own (a balanced sample of my library — ${sample.length} titles):\n${fmtShows(sample)}`,
         avoidBlock(ctx),
         rules(ctx.ask),
       ].join('\n');
+      return { prompt, sampledItems: sample };
     },
   };
 }
@@ -142,7 +143,7 @@ const creatorBranch: BranchSpec = {
     if (!creators.length) return null;
     const creatorLines = creators.map(([c, n]) => `- ${c} (I own ${n})`).join('\n');
     const ownedByThese = ownedByCreators(ctx.items, creators.map(([c]) => c), ctx.sampleSize);
-    return [
+    const prompt = [
       'I follow certain TV creators/actors heavily. Recommend acclaimed or notable shows FEATURING THESE CREATORS that I likely do not own yet — deepen my collection of creators I already love.',
       '',
       `Creators I own at least 3 shows featuring:\n${creatorLines}`,
@@ -150,6 +151,7 @@ const creatorBranch: BranchSpec = {
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedByThese };
   },
 };
 
@@ -173,7 +175,7 @@ const canonBranch: BranchSpec = {
       .map(([g]) => `${g}: ${showsInGenre(ctx.items, g, 4).map((s) => s.title).join(', ')}`)
       .join('\n');
     const ownedInTopGenres = ownedInGenres(ctx.items, genreNames, ctx.sampleSize);
-    return [
+    const prompt = [
       `My strongest TV genres are: ${topGenresLine(ctx.profile, 5)}. Recommend CANONICAL, acclaimed, or landmark shows IN THOSE GENRES that I appear to have missed — blind spots in my own strengths.`,
       '',
       `Sample of what I own in those genres:\n${sampleLines}`,
@@ -181,6 +183,7 @@ const canonBranch: BranchSpec = {
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedInTopGenres };
   },
 };
 
@@ -201,12 +204,13 @@ const thinGenreBranch: BranchSpec = {
     if (!thin.length) return null;
     const thinLine = thin.map(([g, c]) => `${g} (only ${c})`).join(', ');
     const ownedInThinGenres = ownedInGenres(ctx.items, thin.map(([g]) => g), ctx.sampleSize);
-    return [
+    const prompt = [
       `I own very few TV shows in some genres: ${thinLine}. Recommend acclaimed shows in THOSE thin genres to broaden my library — do NOT amplify my dominant genres.`,
       lensOwnedBlock('Shows I already own in these thin genres', ownedInThinGenres),
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedInThinGenres };
   },
 };
 
@@ -229,12 +233,13 @@ const olderEraBranch: BranchSpec = {
       .map(([d, c]) => `${d}: ${c}`)
       .join(', ');
     const ownedOlder = ownedPreYear(ctx.items, 2000, ctx.sampleSize);
-    return [
+    const prompt = [
       `My library skews towards recent TV. Here is my by-decade count: ${decades || '(unknown)'}. Recommend acclaimed PRE-2000 classic TV shows — foundational series from the eras I under-own (the golden age of television and earlier).`,
       lensOwnedBlock('Pre-2000 shows I already own', ownedOlder),
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedOlder };
   },
 };
 
@@ -256,12 +261,13 @@ const worldTvBranch: BranchSpec = {
       .map(([c, n]) => `${c} (${n})`)
       .join(', ');
     const ownedForeign = ownedNonAnglophone(ctx.items, ctx.sampleSize);
-    return [
+    const prompt = [
       `My TV library is dominated by these countries: ${countries || '(unknown)'} — mostly Anglophone. Recommend acclaimed NON-ENGLISH-LANGUAGE / international TV shows I likely do not own, broadening beyond my Anglophone bias.`,
       lensOwnedBlock('Non-Anglophone shows I already own', ownedForeign),
       avoidBlock(ctx),
       rules(ctx.ask),
     ].join('\n');
+    return { prompt, sampledItems: ownedForeign };
   },
 };
 

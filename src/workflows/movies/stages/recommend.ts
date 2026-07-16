@@ -60,9 +60,9 @@ export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchR
   ensureDirs();
   await coreRunBranch(ctx, moviesDomain, spec, {
     ...opts,
-    onBranchWritten: (branchId, o) => {
-      recordBranchLedgerRow(branchId, o);
-      opts.onBranchWritten?.(branchId, o);
+    onBranchWritten: (branchId, o, sampledItems) => {
+      recordBranchLedgerRow(branchId, o, sampledItems);
+      opts.onBranchWritten?.(branchId, o, sampledItems);
     },
   });
 }
@@ -78,7 +78,7 @@ export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchR
  * On error/skip cases (no targets, Claude failure, unparseable output), records
  * zero rows rather than crashing — these are legitimate, resilient outcomes.
  */
-function recordBranchLedgerRow(branchId: string, opts: BranchRunOpts): void {
+function recordBranchLedgerRow(branchId: string, opts: BranchRunOpts, sampledItems?: unknown[]): void {
   const recsDir = opts.recsDir ?? moviesConfig.recsDir;
   const now = opts.now ?? new Date();
   const path = join(recsDir, `${branchId}.json`);
@@ -109,6 +109,41 @@ function recordBranchLedgerRow(branchId: string, opts: BranchRunOpts): void {
     }
   }
   // If the file doesn't exist or has no suggestions, zero rows are recorded
+  recordInputSampleRows(branchId, sampledItems, now);
+}
+
+/**
+ * Record the EXACT owned items (T615) `spec.build()` reported it put into this
+ * branch's prompt — one `work_items` row per item, keyed
+ * `<dayKey>::input::<index>` (a distinct keyspace from the `<dayKey>::<index>`
+ * per-suggestion output rows above, so the two never collide under the same
+ * job name) with `detail.kind: 'input-sample'` marking them as inputs, not
+ * outputs — `stageIoLists` (T615) routes rows with this marker to the branch's
+ * Inputs list rather than its Outputs. Recording the branch's OWN reported
+ * selection (rather than recomputing a fresh sample after the fact) is the
+ * whole point: it's what the branch ACTUALLY put in the Claude prompt, not a
+ * plausible-looking reconstruction. No-op when `sampledItems` is absent (the
+ * branch's `build()` returned null — nothing was ever selected).
+ */
+function recordInputSampleRows(branchId: string, sampledItems: unknown[] | undefined, now: Date): void {
+  if (!Array.isArray(sampledItems)) return;
+  for (let index = 0; index < sampledItems.length; index++) {
+    const raw = sampledItems[index];
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as { ratingKey?: unknown; title?: unknown; year?: unknown };
+    const title = typeof item.title === 'string' ? item.title.trim() : '';
+    if (!title) continue;
+    const id = typeof item.ratingKey === 'string' ? item.ratingKey : String(index);
+    const itemKey = `${dayKey(now)}::input::${index}`;
+    markWorkItem(branchId, itemKey, 'success', {
+      detail: {
+        kind: 'input-sample',
+        id,
+        title,
+        year: typeof item.year === 'number' ? item.year : null,
+      },
+    });
+  }
 }
 
 /**
@@ -141,7 +176,7 @@ export function makeBranchJob(id: string, runOpts?: BranchRunOpts): JobDefinitio
     consumes: [movieSnapshotContract()],
     produces: [branchSuggestionsContract(spec.id)],
   }, {
-    onBranchWritten: (branchId, opts) => recordBranchLedgerRow(branchId, opts),
+    onBranchWritten: (branchId, opts, sampledItems) => recordBranchLedgerRow(branchId, opts, sampledItems),
     runOpts,
   });
 }

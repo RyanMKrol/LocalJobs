@@ -1044,6 +1044,66 @@ console.log('  ✓ T139 run-scoped linkage: work_item_runs records which run adv
 }
 console.log('  ✓ stageIoLists: decoupled input/output lists show every row a stage recorded, no root_key collapsing');
 
+// ── T615: a job's own `detail.kind === 'input-sample'` rows are routed to
+// Inputs, NOT Outputs — a recommender branch job records both its own
+// per-suggestion output rows AND (separately) the exact owned items it put in
+// its Claude prompt, under the SAME job name; the branch's predecessor's rows
+// are NOT its true input, so the branch's own input-sample rows must surface
+// as an ADDITIONAL input source instead. ──
+{
+  syncJob({ name: 'sio-branch', run: async () => {} });
+  syncJob({ name: 'sio-snapshot', run: async () => {} });
+  syncWorkflow({
+    name: 'sio-input-sample-wf',
+    jobs: [
+      { job: 'sio-snapshot' },
+      { job: 'sio-branch', dependsOn: ['sio-snapshot'] },
+    ],
+  });
+  const runIS = createWorkflowRun('sio-input-sample-wf', 'manual');
+
+  // Predecessor's own row this run (the branch's snapshot dependency).
+  markWorkItem('sio-snapshot', 'snap-1', 'success', { workflowRunId: runIS, detail: { name: 'Snapshot' } });
+
+  // The branch's per-suggestion OUTPUT rows (T600 shape — no `kind`).
+  markWorkItem('sio-branch', '2026-07-16::0', 'success', { workflowRunId: runIS, detail: { title: 'Suggested Film A' } });
+  markWorkItem('sio-branch', '2026-07-16::1', 'success', { workflowRunId: runIS, detail: { title: 'Suggested Film B' } });
+
+  // The branch's own input-sample rows — the EXACT items it put in its prompt (T615).
+  markWorkItem('sio-branch', '2026-07-16::input::0', 'success', { workflowRunId: runIS, detail: { kind: 'input-sample', id: 'r1', title: 'Owned Film A' } });
+  markWorkItem('sio-branch', '2026-07-16::input::1', 'success', { workflowRunId: runIS, detail: { kind: 'input-sample', id: 'r2', title: 'Owned Film B' } });
+
+  const branchLists = stageIoLists(['sio-branch'], ['sio-snapshot'], runIS);
+
+  // Outputs: ONLY the 2 per-suggestion rows — input-sample rows excluded.
+  assert.equal(branchLists.outputs.length, 2, 'outputs excludes the branch\'s own input-sample rows');
+  assert.deepEqual(
+    branchLists.outputs.map((o) => o.itemKey).sort(),
+    ['2026-07-16::0', '2026-07-16::1'],
+    'outputs is exactly the 2 per-suggestion rows',
+  );
+  for (const o of branchLists.outputs) {
+    const detail = o.detail as { kind?: string } | null;
+    assert.notEqual(detail?.kind, 'input-sample', 'no input-sample row leaked into outputs');
+  }
+
+  // Inputs: the predecessor's 1 row PLUS the branch's own 2 input-sample rows (3 total).
+  assert.equal(branchLists.inputs.length, 3, 'inputs = predecessor rows + the branch\'s own input-sample rows');
+  assert.deepEqual(
+    branchLists.inputs.map((i) => i.itemKey).sort(),
+    ['2026-07-16::input::0', '2026-07-16::input::1', 'snap-1'],
+    'inputs includes both the predecessor row and the branch\'s self-recorded input-sample rows',
+  );
+  const inputSampleRows = branchLists.inputs.filter((i) => i.jobName === 'sio-branch');
+  assert.equal(inputSampleRows.length, 2, 'both input-sample rows attributed to the branch\'s own job name');
+  assert.deepEqual(
+    inputSampleRows.map((i) => (i.detail as { id?: string }).id).sort(),
+    ['r1', 'r2'],
+    'input-sample rows carry the exact recorded ids',
+  );
+}
+console.log('  ✓ stageIoLists: a job\'s own detail.kind="input-sample" rows surface as Inputs, never Outputs (T615)');
+
 // T210 — bulk-ignore resurface semantics: only the exact supplied keys are ignored;
 // a NEW key for the same logical "collection" surfaces fresh.
 {

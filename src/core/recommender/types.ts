@@ -78,6 +78,19 @@ export interface BranchContext<M, P> {
   alreadySuggested?: string[];
 }
 
+/**
+ * What a branch's `build()` reports alongside the prompt: the EXACT owned items
+ * (M) it selected and put into that prompt — the branch's real lens-filtered
+ * subset (targeted branches) or stratified sample (random branches), never a
+ * post-hoc reconstruction. Recorded verbatim as `input-sample` ledger rows so
+ * the run page's Inputs panel shows what a branch was ACTUALLY shown, not a
+ * recomputed guess (T615).
+ */
+export interface BranchBuildResult<M> {
+  prompt: string;
+  sampledItems: M[];
+}
+
 export interface BranchSpec<M, P> {
   /** Job name (unique, stable DB key) AND the lens tag on its suggestions. */
   id: string;
@@ -85,11 +98,12 @@ export interface BranchSpec<M, P> {
   kind: BranchKind;
   description: string;
   /**
-   * Build the branch prompt, or return null to SKIP (e.g. auteur-completion when
-   * no director qualifies) — a skipped branch writes empty suggestions and the
-   * run continues.
+   * Build the branch prompt plus the exact owned items it selected for that
+   * prompt, or return null to SKIP (e.g. auteur-completion when no director
+   * qualifies) — a skipped branch writes empty suggestions and the run
+   * continues.
    */
-  build(ctx: BranchContext<M, P>): string | null;
+  build(ctx: BranchContext<M, P>): BranchBuildResult<M> | null;
 }
 
 /** A single TMDB search match, normalized to the fields the merge pipeline needs (domain owns the raw endpoint/field mapping). */

@@ -282,6 +282,17 @@ function toStageIoItem(r: LedgerRow): StageIoItem {
  * whole parallel DAG wave (or a workflow's root/terminal wave) can be represented
  * on either side, not just a single stage (T383) — the single-job case (each array
  * with exactly one entry) behaves identically to before.
+ *
+ * **Self-recorded `input-sample` rows (T615).** A recommender branch job records,
+ * under its OWN job name, both its per-suggestion output rows AND (separately)
+ * `detail.kind === 'input-sample'` rows capturing the EXACT owned items its
+ * `build()` put into its Claude prompt — its predecessor's ledger rows (the full
+ * snapshot) are NOT that branch's true input, since the branch only used a
+ * lens-filtered subset of them. So for every job in `outputJobNames`, any row it
+ * recorded with `detail.kind === 'input-sample'` is routed into `inputs` instead
+ * of `outputs` — the same "alternate ledger source for a decoupled stage" idea
+ * `outputJob` already applies at the workflow level, generalized here to a
+ * single job's own two disjoint row kinds.
  */
 export function stageIoLists(
   outputJobNames: string[],
@@ -301,8 +312,19 @@ export function stageIoLists(
     `).all(workflowRunId, ...jobNames) as LedgerRow[];
   };
 
-  const outputs = queryJobRows(outputJobNames);
-  const inputs = queryJobRows(inputJobNames);
+  const isInputSample = (r: LedgerRow): boolean => {
+    if (!r.detail) return false;
+    try {
+      return (JSON.parse(r.detail) as { kind?: unknown } | null)?.kind === 'input-sample';
+    } catch {
+      return false;
+    }
+  };
+
+  const outputRows = queryJobRows(outputJobNames);
+  const outputs = outputRows.filter((r) => !isInputSample(r));
+  const selfInputSamples = outputRows.filter(isInputSample);
+  const inputs = [...queryJobRows(inputJobNames), ...selfInputSamples];
 
   return { inputs: inputs.map(toStageIoItem), outputs: outputs.map(toStageIoItem) };
 }
