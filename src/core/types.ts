@@ -230,6 +230,16 @@ export interface WorkflowDefinition {
    */
   category?: string;
   /**
+   * A short, plain-language sentence explaining HOW this workflow is idempotent
+   * (what it tracks, whether/how items get re-evaluated) — for the workflow
+   * detail page, so the owner can understand a workflow's idempotency model at
+   * a glance without reading its CLAUDE.md or source. Manifest-owned,
+   * code-synced on every sync — like `category` there is NO dashboard edit UI
+   * and NO `_overridden` column; a synced row's `idempotency_note` always
+   * tracks the manifest. Omit/empty to render nothing on the dashboard.
+   */
+  idempotencyNote?: string;
+  /**
    * Override which `work_items` job_name the unified Output section (T205) AND
    * the run-scoped Stage I/O panel (`GET /workflow-runs/:id/stage-io`, T603)
    * read from, for a workflow whose DAG terminal stage doesn't record its ledger

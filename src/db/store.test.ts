@@ -210,6 +210,35 @@ console.log('  ✓ setWorkflowCertified: toggle + survives code-sync untouched (
 }
 console.log('  ✓ category: manifest-owned, always refreshed from code, defaults to uncategorized (T292)');
 
+// ── manifest-owned idempotencyNote (T613): always tracks the manifest, no override ──
+{
+  syncWorkflow({ name: 't-idem-a', idempotencyNote: 'Tracks per-item completion via work_items.', jobs: [{ job: 't-a' }] });
+  syncWorkflow({ name: 't-idem-b', jobs: [{ job: 't-a' }] });
+
+  assert.equal(
+    getWorkflow('t-idem-a')?.idempotency_note,
+    'Tracks per-item completion via work_items.',
+    'idempotency_note matches manifest value',
+  );
+  assert.equal(getWorkflow('t-idem-b')?.idempotency_note, '', 'omitted idempotencyNote defaults to empty string');
+
+  const rows = listWorkflows();
+  assert.equal(
+    rows.find((r) => r.name === 't-idem-a')?.idempotency_note,
+    'Tracks per-item completion via work_items.',
+    'listWorkflows surfaces idempotency_note',
+  );
+
+  // re-sync with a DIFFERENT note updates the stored value (no preservation/override)
+  syncWorkflow({ name: 't-idem-a', idempotencyNote: 'Re-scans fully every run; notify-log dedup only.', jobs: [{ job: 't-a' }] });
+  assert.equal(
+    getWorkflow('t-idem-a')?.idempotency_note,
+    'Re-scans fully every run; notify-log dedup only.',
+    'idempotency_note always tracks the manifest across re-sync',
+  );
+}
+console.log('  ✓ idempotencyNote: manifest-owned, always refreshed from code, defaults to empty string (T613)');
+
 // workflow run + linked member runs + skip + logs
 const pr = createWorkflowRun('t-pipe', 'manual');
 assert.ok(hasActiveWorkflowRun('t-pipe'));

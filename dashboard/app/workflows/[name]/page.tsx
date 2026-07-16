@@ -8,8 +8,11 @@ import { Pill } from '../../components/Pill';
 import { RecsManager, type RecsManagerConfig } from '../../components/RecsManager';
 import { RunButton } from '../../components/RunButton';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
-import { api, type MissingSeason, type MissingSeasons, type MovieGap, type MovieGaps, type MovieRec, type MovieRecs, type TvRec, type TvRecs } from '../../lib/api';
+import { api, type MissingSeason, type MissingSeasons, type MovieGap, type MovieGaps, type MovieRec, type MovieRecs, type TvRec, type TvRecs, type Workflow } from '../../lib/api';
 import { CronBadge, StatusBadge, fmtAbsolute, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
+
+/** `idempotency_note` is a manifest-owned field (T613) surfaced by the API but not yet on the `Workflow` type. */
+type WorkflowWithIdempotencyNote = Workflow & { idempotency_note?: string };
 
 /** Workflow names that show the Missing seasons section. */
 const MISSING_SEASONS_WORKFLOWS = new Set(['missing-tv-seasons']);
@@ -205,7 +208,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (busyTimerRef.current) clearTimeout(busyTimerRef.current); }, []);
   const { data, error } = usePoll(() => api.workflow(name), 3000, [name]);
-  const p = data?.workflow;
+  const p = data?.workflow as WorkflowWithIdempotencyNote | undefined;
   const runs = p?.runs ?? [];
 
   // Reset (clear output data) state.
@@ -452,6 +455,8 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
           <div className="k">Stuck items</div><div style={{ color: p?.stuck ? 'var(--red)' : undefined }}>{p?.stuck ?? 0}</div>
         </div>
       </div>
+
+      {p?.idempotency_note ? <p className="sub">{p.idempotency_note}</p> : null}
 
       <h2>Graph</h2>
       <div className="panel dag-panel">{p && <DagFlow members={p.jobs} structuralGates={p.gates} workflowName={name} from={`/workflows/${name}`} />}</div>

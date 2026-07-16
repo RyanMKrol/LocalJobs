@@ -120,6 +120,14 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
     db.exec("ALTER TABLE workflows ADD COLUMN category TEXT NOT NULL DEFAULT ''");
   }
 
+  // Additive migration: manifest-owned idempotency-note label on workflows (T613).
+  // Same shape as `category` — no `_overridden` column, always refreshed from the
+  // manifest on sync (see upsertWorkflowStmt). No index on this column, so no
+  // bootstrap-index trap (T098).
+  if (!hasColumn(db, 'workflows', 'idempotency_note')) {
+    db.exec("ALTER TABLE workflows ADD COLUMN idempotency_note TEXT NOT NULL DEFAULT ''");
+  }
+
   // Additive migration: user-owned timeoutMs override on jobs (T297). Same shape
   // as the workflow schedule/maxConcurrency overrides: `timeout_ms` is seeded from
   // the manifest on sync, a dashboard edit flips `timeout_ms_overridden` and a

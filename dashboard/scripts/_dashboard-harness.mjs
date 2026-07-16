@@ -63,6 +63,7 @@ const stuckItem = (over) => ({
 const workflow = (over) => ({
   name: 'places', description: 'A worked-example workflow: ' + LONG, schedule: '0 3 * * *',
   category: 'second-brain',
+  idempotency_note: 'Tracks each resolved place_id in the work_items ledger (T613 synthetic fixture) — ' + LONG,
   enabled: 1, effective_notify_enabled: true, created_at: NOW, last_run: workflowRun(), next_run: NOW, jobs: members,
   stuck: 2, runs: [workflowRun(), workflowRun({ id: '2', status: 'partial' })],
   gates: structuralGates, certified: 1, ...over,
