@@ -254,6 +254,34 @@ export function serviceCacheCounts(): ServiceCacheCount[] {
   `).all() as ServiceCacheCount[];
 }
 
+export interface ServiceCacheRow {
+  service_name: string;
+  cache_key: string;
+  response_json: string;
+  cached_at: string;
+}
+
+/**
+ * List service_cache rows, optionally filtered by service name. Returns all rows
+ * ordered by cached_at DESC (most recently cached first). response_json is
+ * returned as a raw JSON string — the API/UI layer decides how to render it.
+ */
+export function listServiceCacheRows(serviceName?: string): ServiceCacheRow[] {
+  if (serviceName) {
+    return db.prepare(`
+      SELECT service_name, cache_key, response_json, cached_at
+      FROM service_cache
+      WHERE service_name = ?
+      ORDER BY cached_at DESC
+    `).all(serviceName) as ServiceCacheRow[];
+  }
+  return db.prepare(`
+    SELECT service_name, cache_key, response_json, cached_at
+    FROM service_cache
+    ORDER BY cached_at DESC
+  `).all() as ServiceCacheRow[];
+}
+
 /**
  * Delete rows from service_cache — all rows if `serviceName` is omitted, else
  * scoped to that one service. Returns the number of rows deleted. This is

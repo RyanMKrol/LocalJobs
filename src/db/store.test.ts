@@ -16,7 +16,7 @@ import {
   recordServiceConsumer, listServiceConsumers,
   deleteNullDetailSuccessItems,
   listStaleOverrides,
-  serviceCacheCounts, clearServiceCache, setCachedServiceResponse,
+  serviceCacheCounts, clearServiceCache, setCachedServiceResponse, listServiceCacheRows,
 } from './store.js';
 import { callService, QuotaExceededError, registerService } from '../core/services.js';
 import { db } from './index.js';
@@ -1370,3 +1370,51 @@ console.log('  ✓ T475: listStaleOverrides returns NULL-timestamped-or-older-th
   assert.equal(serviceCacheCounts().length, 0, 'service_cache is empty after clearing all');
 }
 console.log('  ✓ T478: serviceCacheCounts/clearServiceCache scope correctly and report accurate counts');
+
+{
+  // ── T609: listServiceCacheRows ──
+  db.prepare('DELETE FROM service_cache').run();
+
+  // Insert test rows directly via the DB with explicit timestamps to control order
+  // We control the timestamps directly to ensure DESC ordering is deterministic
+  const now = new Date();
+  const time1 = new Date(now.getTime() - 2000).toISOString(); // oldest
+  const time2 = new Date(now.getTime() - 1000).toISOString(); // middle
+  const time3 = new Date(now.getTime()).toISOString();       // newest
+
+  db.prepare('INSERT INTO service_cache (service_name, cache_key, response_json, cached_at) VALUES (?, ?, ?, ?)')
+    .run('svc-1', 'key-a', JSON.stringify({ data: 'alpha' }), time1);
+  db.prepare('INSERT INTO service_cache (service_name, cache_key, response_json, cached_at) VALUES (?, ?, ?, ?)')
+    .run('svc-1', 'key-b', JSON.stringify({ data: 'beta' }), time2);
+  db.prepare('INSERT INTO service_cache (service_name, cache_key, response_json, cached_at) VALUES (?, ?, ?, ?)')
+    .run('svc-2', 'key-x', JSON.stringify({ data: 'xray' }), time3);
+
+  // Test: listServiceCacheRows() with no args returns all rows ordered by cached_at DESC
+  const allRows = listServiceCacheRows();
+  assert.equal(allRows.length, 3, 'listServiceCacheRows() returns all rows');
+  assert.equal(allRows[0].service_name, 'svc-2', 'first row is most recently cached (DESC order)');
+  assert.equal(allRows[0].cache_key, 'key-x', 'first row has correct cache_key');
+  assert.equal(allRows[1].service_name, 'svc-1', 'second row is svc-1');
+  assert.equal(allRows[1].cache_key, 'key-b', 'second row is key-b (more recent than key-a)');
+  assert.equal(allRows[2].service_name, 'svc-1', 'third row is svc-1');
+  assert.equal(allRows[2].cache_key, 'key-a', 'third row is key-a (oldest)');
+
+  // Test: response_json is returned as raw string, not parsed
+  assert.equal(typeof allRows[0].response_json, 'string', 'response_json is a string');
+  assert.ok(allRows[0].response_json.includes('xray'), 'response_json contains the stored data as JSON');
+
+  // Test: listServiceCacheRows(serviceName) returns only that service's rows
+  const svc1Rows = listServiceCacheRows('svc-1');
+  assert.equal(svc1Rows.length, 2, 'filtered query returns only svc-1 rows');
+  assert.equal(svc1Rows[0].cache_key, 'key-b', 'svc-1 most recent is key-b');
+  assert.equal(svc1Rows[1].cache_key, 'key-a', 'svc-1 older is key-a');
+
+  const svc2Rows = listServiceCacheRows('svc-2');
+  assert.equal(svc2Rows.length, 1, 'filtered query returns only svc-2 rows (single row)');
+  assert.equal(svc2Rows[0].cache_key, 'key-x', 'svc-2 single row is key-x');
+
+  // Test: unknown service returns empty array
+  const unknownRows = listServiceCacheRows('unknown-service');
+  assert.equal(unknownRows.length, 0, 'unknown service returns empty array');
+}
+console.log('  ✓ T609: listServiceCacheRows lists cache rows ordered by cached_at DESC, filtered by service');
