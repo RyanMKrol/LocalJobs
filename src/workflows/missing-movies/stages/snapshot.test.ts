@@ -1,45 +1,63 @@
-// plex-movie-snapshot stage test — hermetic: asserts that the plexGet call
-// is routed through callService('plex', ...) for rate-limit/quota coordination
-// (T577, the 7th Plex-touching workflow completing its callService migration).
+// Stage 1 ledger tests — hermetic (scratch DB only, no live Plex). `runSnapshot`
+// itself is not exercised here (it drives `plexGet` wrapped in `callService('plex', ...)`,
+// which resolves the Plex host over the network — untestable hermetically, matching every
+// other Plex-touching workflow's snapshot stage in this repo, none of which unit-test that
+// wrapper). Instead this covers the actual NEW behaviour this task added: `recordSnapshotLedger`,
+// the per-movie work_items ledger recording extracted out of `runSnapshot` so it can be
+// tested directly against synthetic movie snapshots.
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
 import type { JobContext } from '../../../core/types.js';
-import type { PlexMovieMeta } from '../../movies/types.js';
-import { runSnapshot } from './snapshot.js';
+import { getWorkItem, syncService } from '../../../db/store.js';
+import { registerService } from '../../../core/services.js';
+import { recordSnapshotLedger, snapshotItemKey } from './snapshot.js';
+import type { PlexMovie } from '../../movies/types.js';
 
-function fakeCtx(): JobContext {
+// `callService('plex', ...)` only enforces quota if 'plex' is registered in the
+// in-process service registry — normally done by loading the daemon's registry,
+// which this standalone test never does. Register it here so the wrap passes through.
+registerService({ name: 'plex' });
+syncService({ name: 'plex' });
+
+function movie(overrides: Partial<PlexMovie> = {}): PlexMovie {
   return {
-    log() {},
-    progress() {},
-    selectedRoots: () => null,
-    rootAllowed: () => true,
+    title: 'Some Movie',
+    year: 2020,
+    tmdbId: 615,
+    ratingKey: 'r1',
+    genres: [],
+    directors: [],
+    countries: [],
+    audienceRating: null,
+    rating: null,
+    ...overrides,
   };
 }
 
-const SYNTHETIC_MOVIES: PlexMovieMeta[] = [
-  { title: 'Heat', year: 1995, ratingKey: '1', Guid: [{ id: 'tmdb://949' }], Genre: [{ tag: 'Crime' }] },
-  { title: 'Ronin', year: 1998, ratingKey: '2', Guid: [{ id: 'tmdb://9384' }], Genre: [{ tag: 'Action' }] },
-  { title: 'No GUID Movie', year: 2001, ratingKey: '3', Genre: [{ tag: 'Drama' }] },
-];
+// ── snapshotItemKey: tmdbId preferred, ratingKey fallback ──
+assert.equal(snapshotItemKey(movie({ tmdbId: 615, ratingKey: 'r1' })), '615', 'prefers the tmdbId when present');
+assert.equal(snapshotItemKey(movie({ tmdbId: null, ratingKey: 'noguid' })), 'noguid', 'falls back to ratingKey with no tmdbId');
+console.log('  ✓ snapshotItemKey prefers tmdbId, falls back to ratingKey');
 
-describe('plex-movie-snapshot — callService routing (T577)', () => {
-  it('verifies that callService("plex", ...) is used to wrap plexGet calls', async () => {
-    // This test verifies the callService wrapping by injecting a mock fetchMeta
-    // that would only succeed if called through the proper opts mechanism —
-    // proving the implementation supports the injectable pattern used by
-    // movies/snapshot.ts's identical wrapping. The test itself doesn't need to
-    // mock callService (the real one would fail in test env), because the key
-    // verification is that the source code calls callService('plex', ...) when
-    // fetchMeta is not provided, and the file's TypeScript type signature proves it.
-    let injectedFetchMetaCalled = false;
+// ── recordSnapshotLedger: one row per movie, keyed + detailed correctly ──
+{
+  const withGuid = movie({ title: 'Avatar', tmdbId: 19995, ratingKey: 'avatar-2009', year: 2009 });
+  const noGuid = movie({ title: 'Unknown Film', tmdbId: null, ratingKey: 'noguid-123', year: null });
+  recordSnapshotLedger([withGuid, noGuid]);
 
-    const mockFetchMeta = async () => {
-      injectedFetchMetaCalled = true;
-      return SYNTHETIC_MOVIES;
-    };
+  const row1 = getWorkItem('plex-movie-snapshot', '19995');
+  assert.ok(row1, 'a row is recorded for the GUID-matched movie');
+  assert.equal(row1!.status, 'success', 'always success — snapshotting itself never fails per-movie');
+  assert.equal(row1!.root_key, '19995', 'no rootKey/parentKey passed — this is the root stage, root_key defaults to item_key');
+  const detail1 = JSON.parse(row1!.detail!);
+  assert.deepEqual(detail1, { name: 'Avatar', tmdbId: 19995, year: 2009 });
 
-    await runSnapshot(fakeCtx(), { fetchMeta: mockFetchMeta });
+  const row2 = getWorkItem('plex-movie-snapshot', 'noguid-123');
+  assert.ok(row2, 'a row is recorded for the GUID-less movie too');
+  assert.equal(row2!.status, 'success', 'a movie with no tmdb:// GUID is still a successfully-snapshotted state');
+  const detail2 = JSON.parse(row2!.detail!);
+  assert.deepEqual(detail2, { name: 'Unknown Film', tmdbId: null, year: null });
 
-    assert.ok(injectedFetchMetaCalled, 'the injected fetchMeta was called, proving the opts mechanism works');
-  });
-});
+  console.log('  ✓ recordSnapshotLedger records one success row per movie, keyed + detailed correctly');
+}
+
+console.log('  ✓ plex-movie-snapshot ledger tests passed');

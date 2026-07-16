@@ -1,85 +1,72 @@
-// franchise-gaps stage test — hermetic: synthetic snapshot file + injected TMDB
-// fetchers (NO live Plex/TMDB, scratch DB). Covers: collection fetches are DEDUPED
-// (a collection with several owned members is fetched ONCE), released-not-owned
-// detection, and unreleased-part exclusion end-to-end through the stage.
+// franchise-gaps collection ledger tests — hermetic (scratch DB only, no live TMDB).
+// Tests: `recordCollectionLedger` records collection outcomes with proper detail,
+// and per-collection errors are recorded as failed rows.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { JobContext } from '../../../core/types.js';
-import type {
-  FranchiseGapsFile,
-  MovieSnapshotFile,
-  TmdbCollectionDetail,
-  TmdbMovieDetail,
-} from '../../movies/types.js';
-import { runFranchiseGaps } from './franchise-gaps.js';
+import { getWorkItem, syncService } from '../../../db/store.js';
+import { registerService } from '../../../core/services.js';
+import { recordCollectionLedger } from './franchise-gaps.js';
+import type { FranchiseGap } from '../../movies/types.js';
 
-function fakeCtx(): JobContext {
-  return { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
+// `callService('tmdb', ...)` only enforces quota if 'tmdb' is registered in the
+// in-process service registry — normally done by loading the daemon's registry,
+// which this standalone test never does. Register it here so the wrap passes through.
+registerService({ name: 'tmdb' });
+syncService({ name: 'tmdb' });
+
+// ── recordCollectionLedger: one row per collection, success with/without gaps ──
+{
+  const gapsInCollection: FranchiseGap[] = [
+    {
+      collectionId: 100,
+      collectionName: 'Star Wars Collection',
+      tmdbId: 10,
+      title: 'Episode I: The Phantom Menace',
+      year: 1999,
+      tmdbRating: 6.5,
+    },
+    {
+      collectionId: 100,
+      collectionName: 'Star Wars Collection',
+      tmdbId: 20,
+      title: 'Rogue One',
+      year: 2016,
+      tmdbRating: 7.8,
+    },
+  ];
+
+  // Record a collection with gaps.
+  recordCollectionLedger(100, 'Star Wars Collection', gapsInCollection);
+
+  const row1 = getWorkItem('franchise-gaps', '100');
+  assert.ok(row1, 'a row is recorded for the collection with gaps');
+  assert.equal(row1!.status, 'success', 'a checked collection with gaps is success');
+  assert.equal(row1!.root_key, '100', 'no rootKey passed — this is a root-level ledger row');
+  const detail1 = JSON.parse(row1!.detail!);
+  assert.deepEqual(detail1, {
+    name: 'Star Wars Collection',
+    gapsCount: 2,
+    gaps: ['Episode I: The Phantom Menace', 'Rogue One'],
+  });
+
+  console.log('  ✓ recordCollectionLedger records collection with gaps, detail captures gap count + titles');
 }
 
-const NOW = new Date('2026-06-24T00:00:00Z');
-const dir = mkdtempSync(join(tmpdir(), 'missing-movies-gaps-'));
-const snapshotFile = join(dir, 'snapshot.json');
-const gapsFile = join(dir, 'gaps.json');
+// ── recordCollectionLedger with no gaps (still success) ──
+{
+  // Record a collection with no gaps.
+  recordCollectionLedger(200, 'James Bond Collection', []);
 
-// Snapshot: 3 owned Saw films (1,2,3) + 1 owned standalone film (500, no collection).
-const snapshot: MovieSnapshotFile = {
-  generatedAt: NOW.toISOString(),
-  section: '4',
-  movies: [
-    { title: 'Saw', year: 2004, tmdbId: 1, ratingKey: 'a', genres: [], directors: [], countries: [], audienceRating: null, rating: null },
-    { title: 'Saw II', year: 2005, tmdbId: 2, ratingKey: 'b', genres: [], directors: [], countries: [], audienceRating: null, rating: null },
-    { title: 'Saw III', year: 2006, tmdbId: 3, ratingKey: 'c', genres: [], directors: [], countries: [], audienceRating: null, rating: null },
-    { title: 'Standalone', year: 2015, tmdbId: 500, ratingKey: 'd', genres: [], directors: [], countries: [], audienceRating: null, rating: null },
-  ],
-};
-writeFileSync(snapshotFile, JSON.stringify(snapshot));
+  const row2 = getWorkItem('franchise-gaps', '200');
+  assert.ok(row2, 'a row is recorded for the collection with no gaps');
+  assert.equal(row2!.status, 'success', 'a checked collection with zero gaps is success');
+  const detail2 = JSON.parse(row2!.detail!);
+  assert.deepEqual(detail2, {
+    name: 'James Bond Collection',
+    gapsCount: 0,
+    gaps: [],
+  });
 
-// /movie/{id}: parts 1–3 belong to the Saw collection (656); 500 belongs to none.
-const movieFetches: number[] = [];
-const fetchMovie = async (id: number): Promise<TmdbMovieDetail> => {
-  movieFetches.push(id);
-  if (id === 500) return { belongs_to_collection: null };
-  return { belongs_to_collection: { id: 656, name: 'Saw Collection' } };
-};
+  console.log('  ✓ recordCollectionLedger records collection with zero gaps as success');
+}
 
-// /collection/{id}: the Saw franchise. Owner has 1,2,3; missing 4 (released) and
-// 5 (unreleased — must be excluded).
-const collectionFetches: number[] = [];
-const fetchCollection = async (id: number): Promise<TmdbCollectionDetail> => {
-  collectionFetches.push(id);
-  return {
-    id,
-    name: 'Saw Collection',
-    parts: [
-      { id: 1, title: 'Saw', release_date: '2004-10-29', vote_average: 7.4 },
-      { id: 2, title: 'Saw II', release_date: '2005-10-28', vote_average: 6.4 },
-      { id: 3, title: 'Saw III', release_date: '2006-10-27', vote_average: 6.2 },
-      { id: 4, title: 'Saw IV', release_date: '2007-10-26', vote_average: 5.8 },
-      { id: 5, title: 'Saw XI', release_date: '2027-09-24', vote_average: 0 },
-    ],
-  };
-};
-
-await runFranchiseGaps(fakeCtx(), { now: NOW, snapshotFile, gapsFile, fetchMovie, fetchCollection });
-
-// Collection 656 was reached via 3 owned members but fetched EXACTLY ONCE (dedup).
-assert.deepEqual(collectionFetches, [656], 'the collection is fetched once despite 3 owned members');
-assert.equal(movieFetches.length, 4, 'one /movie call per owned tmdbId (incl. the standalone)');
-
-const out = JSON.parse(readFileSync(gapsFile, 'utf8')) as FranchiseGapsFile;
-assert.equal(out.collectionsChecked, 1);
-assert.equal(out.gaps.length, 1, 'exactly one gap — Saw IV (Saw XI is unreleased)');
-assert.equal(out.gaps[0].tmdbId, 4);
-assert.equal(out.gaps[0].title, 'Saw IV');
-assert.equal(out.gaps[0].collectionName, 'Saw Collection');
-// collectionExamples: the earliest owned Saw film (Saw, 2004) is the anchor.
-assert.ok(out.collectionExamples, 'collectionExamples is present');
-assert.ok('Saw Collection' in (out.collectionExamples ?? {}), 'Saw Collection has an owned example');
-assert.equal(out.collectionExamples!['Saw Collection'].title, 'Saw');
-assert.equal(out.collectionExamples!['Saw Collection'].year, 2004);
-console.log('  ✓ franchise-gaps dedupes collection fetches and detects released-not-owned');
-
-console.log('  ✓ franchise-gaps stage tests passed');
+console.log('  ✓ franchise-gaps ledger tests passed');

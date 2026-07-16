@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { QuotaExceededError, callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { tmdbGet } from '../../../core/plex-client.js';
+import { markWorkItem } from '../../../db/store.js';
 import { buildOwnedSet, collectionGaps, collectionOwnedExample } from '../../movies/movies.js';
 import type {
   FranchiseGap,
@@ -29,6 +30,26 @@ export interface FranchiseGapsOpts {
   fetchMovie?: MovieFetch;
   /** Override the /collection fetch (tests). Defaults to the rate-limited tmdb service. */
   fetchCollection?: CollectionFetch;
+}
+
+/**
+ * Record one work_items row per distinct collection checked in pass 2, describing
+ * the collection's outcome (gaps found or none). Extracted as its own function so
+ * it can be unit-tested without driving the full franchise-gaps logic.
+ */
+export function recordCollectionLedger(
+  collectionId: number,
+  collectionName: string,
+  gaps: FranchiseGap[],
+): void {
+  const gapTitles = gaps.map((g) => g.title);
+  markWorkItem('franchise-gaps', String(collectionId), 'success', {
+    detail: {
+      name: collectionName,
+      gapsCount: gapTitles.length,
+      gaps: gapTitles,
+    },
+  });
 }
 
 const defaultMovieFetch: MovieFetch = (id) =>
@@ -99,6 +120,7 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
   const gaps: FranchiseGap[] = [];
   const collectionExamples: Record<string, { title: string; year: number | null }> = {};
   const ids = [...collectionIds.keys()];
+  let collectionFailed = 0;
   if (!quotaHit) {
     ctx.log('Pass 2/2 — fetching each collection\'s parts (TMDB /collection/{id})…');
     for (let i = 0; i < ids.length; i++) {
@@ -108,12 +130,16 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
         const detail = await fetchCollection(cid);
         tmdbCalls++;
         const found = collectionGaps(detail, owned, now);
+        const collName = detail.name ?? collectionIds.get(cid) ?? `Collection ${cid}`;
+        // Record ledger row for this collection, whether or not gaps were found.
+        recordCollectionLedger(cid, collName, found);
         if (found.length) {
           gaps.push(...found);
           const example = collectionOwnedExample(detail, owned);
-          const collName = detail.name ?? collectionIds.get(cid) ?? `Collection ${cid}`;
           if (example) collectionExamples[collName] = example;
           ctx.log(`  ✓ "${collName}" — missing ${found.length}: ${found.map((g) => g.title).join(', ')}${example ? ` (you own: ${example.title}${example.year ? ` ${example.year}` : ''})` : ''}`);
+        } else {
+          ctx.log(`  ✓ "${collName}" — checked, no gaps`);
         }
       } catch (err) {
         if (err instanceof QuotaExceededError) {
@@ -122,6 +148,14 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
         }
         const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
         ctx.log(`  ✗ collection #${cid} — ${msg}`, 'warn');
+        // Record ledger row for this collection as failed.
+        markWorkItem('franchise-gaps', String(cid), 'failed', {
+          detail: {
+            name: collectionIds.get(cid) ?? `Collection ${cid}`,
+            error: msg,
+          },
+        });
+        collectionFailed++;
       }
     }
   }
@@ -144,11 +178,17 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
   ctx.log('');
   ctx.log('═══════════════ FRANCHISE-GAPS SUMMARY ═══════════════');
   ctx.log(`Owned movies with a tmdbId: ${withTmdb.length} · TMDB calls: ${tmdbCalls}.`);
-  ctx.log(`Distinct collections: ${collectionIds.size} · franchise gaps found: ${gaps.length}.`);
+  ctx.log(`Distinct collections checked: ${collectionIds.size} · franchise gaps found: ${gaps.length}.`);
+  if (collectionFailed > 0) ctx.log(`Collections with errors: ${collectionFailed}`, 'warn');
   for (const g of gaps.slice(0, 20)) {
     ctx.log(`  • ${g.collectionName}: ${g.title}${g.year ? ` (${g.year})` : ''} — TMDB ${g.tmdbRating ?? '—'}`);
   }
   if (gaps.length > 20) ctx.log(`  … and ${gaps.length - 20} more.`);
   ctx.log(`Wrote ${gapsFile}`);
   ctx.log('═════════════════════════════════════════════════════');
+
+  // Fail the run if any collection fetch errored (per T416 item-loop convention).
+  if (collectionFailed > 0) {
+    throw new Error(`${collectionFailed}/${collectionIds.size} collection(s) failed — see logs above`);
+  }
 }
