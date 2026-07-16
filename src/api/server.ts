@@ -1187,8 +1187,12 @@ const routes: Route[] = [
         return json(res, 200, { items: [] as OutputItem[], terminalJobs: [] as string[] });
       }
       const def = getWorkflowDefinition(name);
-      const outputJobs =
-        def?.outputJob && refs.some((r) => r.job === def.outputJob) ? [def.outputJob] : lastWave;
+      // T603: outputJob may name either an existing member job (stocks-sync-style,
+      // an earlier stage's ledger) OR a decoupled ledger job_name a member records
+      // its work_items under instead of its own DAG name (movie-recs/tv-recs-style)
+      // — either way just query it directly; a stale/misconfigured value yields an
+      // empty (harmless) result, same as any other job name with no ledger rows.
+      const outputJobs = def?.outputJob ? [def.outputJob] : lastWave;
       return json(res, 200, { items: workflowTerminalItems(outputJobs), terminalJobs: outputJobs });
     },
   },
@@ -1665,8 +1669,9 @@ const routes: Route[] = [
           return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], outputJobs: [], job: '__overall__' });
         }
         const def = getWorkflowDefinition(run.workflow_name);
-        const outputJobs =
-          def?.outputJob && refs.some((r) => r.job === def.outputJob) ? [def.outputJob] : lastWave;
+        // T603: outputJob may name a decoupled ledger job_name (not necessarily an
+        // actual DAG member — see the per-job branch below) — just use it directly.
+        const outputJobs = def?.outputJob ? [def.outputJob] : lastWave;
         const inputJobs = rootWave.filter((j) => !outputJobs.includes(j));
         const { inputs, outputs } = stageIoLists(outputJobs, inputJobs, run.id);
         return json(res, 200, { inputs, outputs, predecessorJobs: inputJobs, outputJobs, job: '__overall__' });
@@ -1677,12 +1682,24 @@ const routes: Route[] = [
         return json(res, 400, { error: `unknown job "${jobParam}" for this workflow` });
       }
       let predecessors: string[] = [];
+      let terminalWave: string[] = [];
       try {
-        predecessors = buildDag(refs).dependencies.get(jobParam) ?? [];
+        const dag = buildDag(refs);
+        predecessors = dag.dependencies.get(jobParam) ?? [];
+        terminalWave = dag.waves[dag.waves.length - 1] ?? [];
       } catch {
         return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], job: jobParam });
       }
-      const { inputs, outputs } = stageIoLists([jobParam], predecessors, run.id);
+      // T603: a DAG member's `outputJob` (T348) may record its ledger rows under a
+      // DIFFERENT job_name than its own DAG member name (e.g. movie-recs-notify's
+      // notify stage marks work_items as 'movie-recs', the decoupled recommender
+      // ledger keyspace) — querying stageIoLists with the literal member name would
+      // always come back empty. When this member is the workflow's outputJob-
+      // governed terminal stage, look its ledger rows up under `outputJob` instead.
+      const def = getWorkflowDefinition(run.workflow_name);
+      const ledgerJob =
+        def?.outputJob && terminalWave.includes(jobParam) ? def.outputJob : jobParam;
+      const { inputs, outputs } = stageIoLists([ledgerJob], predecessors, run.id);
       return json(res, 200, { inputs, outputs, predecessorJobs: predecessors, job: jobParam });
     },
   },

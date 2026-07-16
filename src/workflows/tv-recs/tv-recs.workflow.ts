@@ -18,6 +18,12 @@ const workflow: WorkflowDefinition = {
   description: 'Snapshots your Plex TV library by GUID, builds a taste profile (genres/roles/decades/countries), fans out 8 Claude recommender branches, TMDB-verifies + merges the picks, and pushes a monthly digest of TV show recommendations.',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,
+  // T603: tv-recs-notify records its "have I notified this?" ledger under the
+  // decoupled recommender keyspace 'tv-recs' (recs.ts's RECS_JOB), not its own
+  // DAG member name — outputJob (T348) points the Stage I/O lookup at the right
+  // ledger job_name so its own tab (and the workflow-run "Overall" tab) shows real
+  // notified-recommendation rows instead of an always-empty list.
+  outputJob: 'tv-recs',
   jobs: [
     { job: 'tv-snapshot' },
     { job: 'tv-rec-random-1', dependsOn: ['tv-snapshot'] },

@@ -230,12 +230,23 @@ export interface WorkflowDefinition {
    */
   category?: string;
   /**
-   * Override which member job's work_items ledger the unified Output section
-   * (T205) reads from, for workflows whose DAG terminal stage legitimately
-   * records NO per-item ledger rows (e.g. a pure notify-trigger stage like
-   * stocks-sync's `stocks-notify`). Must name an existing member job of this
-   * workflow. When unset (the common case), the Output section reads the
-   * DAG's terminal wave, exactly as before.
+   * Override which `work_items` job_name the unified Output section (T205) AND
+   * the run-scoped Stage I/O panel (`GET /workflow-runs/:id/stage-io`, T603)
+   * read from, for a workflow whose DAG terminal stage doesn't record its ledger
+   * rows under its own DAG member name. Two shapes in use:
+   *  - Names an EXISTING member job of this workflow (stocks-sync-style): the
+   *    true DAG terminal stage (e.g. `stocks-notify`) is a pure notify-trigger
+   *    with no ledger of its own, so both surfaces read an EARLIER stage's
+   *    ledger (`stocks-snapshot`) instead.
+   *  - Names a DECOUPLED ledger job_name that ISN'T a DAG member at all
+   *    (movie-recs/tv-recs-style, T603): the terminal notify stage (e.g.
+   *    `movie-recs-notify`) genuinely records its own "have I notified this?"
+   *    ledger, but under a shared cross-domain keyspace name (`movie-recs`)
+   *    rather than its own DAG member name — so a lookup by the literal member
+   *    name would always come back empty.
+   * When unset (the common case), both surfaces read the DAG's terminal wave
+   * (or, for a per-stage Stage I/O lookup, the requested stage's own name),
+   * exactly as before.
    */
   outputJob?: string;
   /** Re-run the whole pass in cycles until no retryable work remains. Default false. */

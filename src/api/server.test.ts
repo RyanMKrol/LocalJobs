@@ -1272,6 +1272,73 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   { const i = workflows.findIndex((x) => x.name === 't384-override-wf'); if (i >= 0) workflows.splice(i, 1); }
 }
 
+// ── T603: the movie-recs/tv-recs notify-stage ledger job-name mismatch. A DAG
+// member (e.g. movie-recs-notify) records its "have I notified this?" ledger
+// under a DECOUPLED job_name ('movie-recs') that is NOT itself a DAG member —
+// outputJob now governs the per-job Stage I/O lookup too, not just the
+// workflow-definition-level Output section, with no requirement that outputJob
+// name an actual member job. ──
+{
+  syncJob({ name: 't603-snapshot', run: async () => {} });
+  syncJob({ name: 't603-notify', run: async () => {} });
+  jobs.push({ name: 't603-snapshot', run: async () => {} }, { name: 't603-notify', run: async () => {} });
+  const t603Wf = {
+    name: 't603-recs-wf',
+    jobs: [{ job: 't603-snapshot' }, { job: 't603-notify', dependsOn: ['t603-snapshot'] }],
+    // The decoupled ledger keyspace 't603-recs' is NOT a DAG member of this
+    // workflow at all — mirrors movie-recs-notify marking work_items as 'movie-recs'.
+    outputJob: 't603-recs',
+  };
+  syncWorkflow(t603Wf);
+  workflows.push(t603Wf);
+
+  const t603Run = createWorkflowRun('t603-recs-wf', 'manual');
+  markWorkItem('t603-snapshot', 'lib-scan', 'success', { workflowRunId: t603Run });
+  // t603-notify (the real DAG member) never records anything under its own
+  // name — the notify stage marks the decoupled 't603-recs' keyspace instead.
+  markWorkItem('t603-recs', 'tmdb-42', 'success', { workflowRunId: t603Run, detail: { title: 'A Movie' } });
+
+  await test('GET /api/workflow-runs/:id/stage-io?job=<notify-member> — outputJob remaps the per-job lookup to the decoupled ledger job_name', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (
+        await fetch(`${base}/api/workflow-runs/${t603Run}/stage-io?job=t603-notify`)
+      ).json()) as {
+        inputs: { jobName: string; itemKey: string }[];
+        outputs: { jobName: string; itemKey: string; detail: { title?: string } | null }[];
+        predecessorJobs: string[];
+        job: string;
+      };
+      assert.equal(body.job, 't603-notify', 'job in the response is still the requested DAG member name');
+      assert.deepEqual(body.predecessorJobs, ['t603-snapshot']);
+      assert.equal(body.inputs.length, 1);
+      assert.equal(body.inputs[0].jobName, 't603-snapshot');
+      // The real assertion: outputs come from the outputJob-named ledger ('t603-recs'),
+      // NOT an empty result from querying the literal member name 't603-notify'.
+      assert.equal(body.outputs.length, 1, 'outputs must not be empty — this is the T603 bug');
+      assert.equal(body.outputs[0].jobName, 't603-recs');
+      assert.equal(body.outputs[0].itemKey, 'tmdb-42');
+      assert.equal(body.outputs[0].detail?.title, 'A Movie');
+    });
+  });
+
+  await test('GET /api/workflow-runs/:id/stage-io?job=<non-terminal member> — outputJob does NOT apply outside the terminal wave', async () => {
+    await withServer({}, async (base) => {
+      const body = (await (
+        await fetch(`${base}/api/workflow-runs/${t603Run}/stage-io?job=t603-snapshot`)
+      ).json()) as { outputs: { jobName: string; itemKey: string }[]; job: string };
+      assert.equal(body.job, 't603-snapshot');
+      assert.equal(body.outputs.length, 1);
+      assert.equal(body.outputs[0].jobName, 't603-snapshot', 'non-terminal member is unaffected by outputJob');
+    });
+  });
+
+  // Cleanup registry stubs.
+  for (const n of ['t603-snapshot', 't603-notify']) {
+    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
+  }
+  { const i = workflows.findIndex((x) => x.name === 't603-recs-wf'); if (i >= 0) workflows.splice(i, 1); }
+}
+
 // ── movie-gaps endpoints (T145): GET overlays ignored/notified; POST ignores ──
 {
   const { moviesConfig } = await import('../workflows/movies/config.js');

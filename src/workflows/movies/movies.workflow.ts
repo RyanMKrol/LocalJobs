@@ -38,6 +38,12 @@ const workflow: WorkflowDefinition = {
   description: 'Surfaces taste-based movie RECOMMENDATIONS from your Plex library: 8 Claude recommender branches (3 stratified-random + 5 targeted: auteur-completion, top-genre canon, thin-genre round-out, older-era classics, world cinema) over a stratified library sample, merged with code-side TMDB verification (real, un-owned, never re-recommended), cross-branch dedup, and per-genre balancing. Pushes a monthly recommendations digest. Dedupes per tmdb id so nothing repeats; the owner can ignore-to-suppress a recommendation. (The separate franchise-gap audit moved to the `missing-movies` workflow.)',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,
+  // T603: movie-recs-notify records its "have I notified this?" ledger under the
+  // decoupled recommender keyspace 'movie-recs' (recs.ts's RECS_JOB), not its own
+  // DAG member name — outputJob (T348) points the Stage I/O lookup at the right
+  // ledger job_name so its own tab (and the workflow-run "Overall" tab) shows real
+  // notified-recommendation rows instead of an always-empty list.
+  outputJob: 'movie-recs',
   jobs: [
     { job: 'movie-snapshot' },
     // 8 recommender branches fan out from the snapshot…
