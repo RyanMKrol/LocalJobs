@@ -16104,7 +16104,7 @@
     {
       "id": "T591",
       "title": "Skip certified workflows in the bulk reset-output-all admin action",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
