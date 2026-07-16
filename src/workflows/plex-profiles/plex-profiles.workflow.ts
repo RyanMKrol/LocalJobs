@@ -19,6 +19,7 @@ const workflow: WorkflowDefinition = {
   name: 'plex-profiles',
   category: 'second-brain',
   description: 'Scans your entire Plex library (movies + TV shows) and writes one markdown profile per title, sourced purely from Plex API data (cast, ratings, technical detail, file size) — no LLM. Weekly.',
+  idempotencyNote: 'Each movie and show is tracked individually and only rebuilt when Plex\'s own "last updated" marker for that title has changed since its last successful build — an unchanged title is skipped entirely, so re-runs are cheap and only touch what\'s actually changed.',
   schedule: '0 5 * * 6',
   jobs: [{ job: 'plex-profiles-build' }],
 };

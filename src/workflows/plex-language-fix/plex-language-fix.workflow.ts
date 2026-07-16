@@ -29,6 +29,7 @@ const workflow: WorkflowDefinition = {
     'Resolves each show/movie\'s true original language via TMDB and applies the correct default audio/' +
     'subtitle track selection per file via Plex\'s own API — fully unattended (a Plex Butler backup + a ' +
     'per-file undo log stand in for manual review). Each file is processed exactly once, ever. Weekly.',
+  idempotencyNote: 'Each individual file in your Plex library is tracked and processed through discovery, language lookup, evaluation, and (if needed) the actual audio/subtitle change exactly ONCE, ever — once a file has been evaluated or changed it is never automatically re-checked again, even if something about it changes later; a stuck or already-applied file must be manually reset from the dashboard to be reprocessed.',
   schedule: '0 4 * * 0',
   jobs: [
     { job: 'plex-language-discover' },

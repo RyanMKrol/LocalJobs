@@ -36,6 +36,7 @@ const workflow: WorkflowDefinition = {
   name: 'movie-recommendations',
   category: 'recommendations',
   description: 'Surfaces taste-based movie RECOMMENDATIONS from your Plex library: 8 Claude recommender branches (3 stratified-random + 5 targeted: auteur-completion, top-genre canon, thin-genre round-out, older-era classics, world cinema) over a stratified library sample, merged with code-side TMDB verification (real, un-owned, never re-recommended), cross-branch dedup, and per-genre balancing. Pushes a monthly recommendations digest. Dedupes per tmdb id so nothing repeats; the owner can ignore-to-suppress a recommendation. (The separate franchise-gap audit moved to the `missing-movies` workflow.)',
+  idempotencyNote: 'Your Plex library is re-scanned and every recommendation branch re-runs fresh each month; only the final notify step tracks which recommended films you\'ve already been told about or have dismissed, so a film is never recommended to you twice unless you un-dismiss it.',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,
   // T603: movie-recs-notify records its "have I notified this?" ledger under the

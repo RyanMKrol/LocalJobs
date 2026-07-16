@@ -26,6 +26,7 @@ const workflow: WorkflowDefinition = {
   description:
     'Paginate Hevy workout API and append newly-synced workouts to a local full-history JSON file, ' +
     'then compute a monthly per-exercise 6-month progress report (best set / volume / est. 1RM) via Claude.',
+  idempotencyNote: 'Each individual workout synced from Hevy is tracked by its own id and is never re-fetched once synced, so your workout history only ever grows; the monthly progress report is regenerated in place if you re-run it the same month.',
   schedule: '0 6 1 * *',
   maxConcurrency: 1,
   jobs: [

@@ -19,6 +19,7 @@ const workflow: WorkflowDefinition = {
   description:
     'Issue a minimal Claude CLI prompt at 08:00 and 16:00 daily to warm the 5-hour usage window. ' +
     'Soft-fails gracefully if the upstream plan limit is reached.',
+  idempotencyNote: 'There\'s no idempotency tracking here — this is a simple twice-daily ping with no per-item state, so every run just fires again regardless of what happened before.',
   schedule: '0 8,16 * * *',
   maxConcurrency: 1,
   // A trivial twice-daily keep-alive ping isn't worth a push notification on every

@@ -38,6 +38,7 @@ const workflow: WorkflowDefinition = {
   description:
     'Daily safety-net production deploy ("vercel --prod --yes") for ryankrol.co.uk, run directly ' +
     'via the Vercel CLI, independent of that repo\'s own deploy-task mechanism or Git integration state.',
+  idempotencyNote: 'There\'s no per-item tracking here — this is a simple fire-and-forget daily deploy trigger with no items to track, gated only by a daily/monthly deploy-count budget.',
   schedule: '0 23 * * *',
   maxConcurrency: 1,
   jobs: [{ job: 'vercel-redeploy' }],

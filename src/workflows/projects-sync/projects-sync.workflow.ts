@@ -22,6 +22,7 @@ const workflow: WorkflowDefinition = {
     'Fetch GitHub repos, filter forks/archived, sort by activity, write the filtered ' +
     'catalog to data/out/projects.json, then clone + Claude-summarize each repo into ' +
     'a one-project markdown report.',
+  idempotencyNote: 'Each GitHub repo is tracked individually and only re-summarized when it has new commits since its last summary (detected via GitHub\'s own last-pushed marker) — an unchanged repo is skipped entirely, so re-runs are cheap and only touch what\'s actually changed.',
   schedule: '0 5 * * 0',
   maxConcurrency: 1,
   jobs: [

@@ -67,6 +67,7 @@ const workflow: WorkflowDefinition = {
     'Weekly markdown digest of stock holdings, performance movers, and a sector/diversification ' +
     'breakdown, narrated by Claude from stock-digest\'s own Trading212 portfolio snapshot + Finnhub ' +
     'industry lookups, written to data/out/.',
+  idempotencyNote: 'There\'s no per-item tracking here — this workflow tracks only which calendar week\'s digest has been generated (plus which stock tickers already have a resolved industry, so those aren\'t re-looked-up), so re-running it the same week just regenerates that week\'s report in place.',
   schedule: '0 8 * * 1',
   maxConcurrency: 1,
   jobs: [

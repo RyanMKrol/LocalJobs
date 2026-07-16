@@ -16,6 +16,7 @@ const workflow: WorkflowDefinition = {
   name: 'tv-recommendations',
   category: 'recommendations',
   description: 'Snapshots your Plex TV library by GUID, builds a taste profile (genres/roles/decades/countries), fans out 8 Claude recommender branches, TMDB-verifies + merges the picks, and pushes a monthly digest of TV show recommendations.',
+  idempotencyNote: 'Your Plex library is re-scanned and every recommendation branch re-runs fresh each month; only the final notify step tracks which recommended shows you\'ve already been told about or have dismissed, so a show is never recommended to you twice unless you un-dismiss it.',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,
   // T603: tv-recs-notify records its "have I notified this?" ledger under the

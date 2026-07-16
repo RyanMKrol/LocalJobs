@@ -13,6 +13,7 @@ const workflow: WorkflowDefinition = {
   name: 'perfumes',
   category: 'second-brain',
   description: 'Builds a rich markdown profile for each perfume in your collection. Starting from a list of fragrance names, it discovers each one\'s Fragrantica page, fetches it via a headless real-Chrome browser (to pass Cloudflare clearance), parses out structured notes and accords from the saved HTML, then researches and writes the final profile using the Claude CLI — cycling until no retryable items remain.',
+  idempotencyNote: 'Each perfume in your collection is tracked individually through find-URL, fetch, parse, and profile-build — once a stage succeeds for a perfume it\'s never redone, so re-runs only advance perfumes that are new or still incomplete.',
   schedule: '0 2 * * *',
   maxConcurrency: 1,
   repeatUntilStable: true,

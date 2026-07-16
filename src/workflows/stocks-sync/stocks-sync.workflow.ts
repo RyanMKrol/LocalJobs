@@ -61,6 +61,7 @@ const workflow: WorkflowDefinition = {
     'Fetch the owner\'s Trading212 open equity positions (read-only), write a local ' +
     'portfolio.json + portfolio.md snapshot, and push a one-time alert when a position rises ' +
     '30%+ above its average buy price.',
+  idempotencyNote: 'This workflow re-checks your full portfolio fresh every run (nothing is skipped) and only tracks which price-breach alerts have already been sent, so you\'re never re-alerted about the same breach until it resets by dropping back below the threshold first.',
   schedule: '0 7 * * *',
   maxConcurrency: 1,
   outputJob: 'stocks-snapshot',

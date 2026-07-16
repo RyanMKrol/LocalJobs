@@ -18,6 +18,7 @@ const workflow: WorkflowDefinition = {
   name: 'missing-tv-seasons',
   category: 'recommendations',
   description: 'Audits your Plex TV library for newly-released COMPLETE seasons you don\'t own. It snapshots section 5 by GUID (each show + its highest owned regular season), checks TMDB by tmdb:// id for the highest aired regular season and which missing seasons are fully aired (ended/canceled shows included — revivals happen), then pushes ONE weekly digest of the newly-detected missing seasons. Deduped per (show, season) via the work-item ledger so each backlog season is announced exactly once; the first run is one big digest of the whole current backlog.',
+  idempotencyNote: 'This workflow re-scans your whole Plex TV library fresh every run and only tracks whether each detected missing season has already been included in a notification — so it won\'t re-alert you about the same missing season twice, but it doesn\'t skip re-checking anything.',
   schedule: '0 9 * * 1',
   maxConcurrency: 1,
   jobs: [

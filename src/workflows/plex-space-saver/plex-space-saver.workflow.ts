@@ -15,6 +15,7 @@ const workflow: WorkflowDefinition = {
   name: 'plex-space-saver',
   category: 'regular-maintenance',
   description: 'Scans your Plex movie + TV libraries via the API and reports a biggest-first disk-size breakdown (one row per movie, one row per TV show summing all episodes) — report only, never suggests deletions. Weekly.',
+  idempotencyNote: 'This workflow re-scans your whole Plex library fresh every run (nothing is skipped) and only tracks which calendar week\'s size-breakdown report has been generated, so re-running it the same week regenerates that week\'s report in place.',
   schedule: '0 6 * * 0',
   jobs: [{ job: 'plex-space-saver-scan' }],
 };
