@@ -16727,7 +16727,7 @@
     {
       "id": "T614",
       "title": "Author idempotencyNote for all 17 workflow manifests",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T613"
       ],
