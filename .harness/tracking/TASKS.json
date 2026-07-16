@@ -16412,7 +16412,7 @@
     {
       "id": "T602",
       "title": "Change rec-merge / tv-rec-merge output from a bulk marker to one row per final recommendation",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
