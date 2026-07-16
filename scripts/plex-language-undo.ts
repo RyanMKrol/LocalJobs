@@ -15,6 +15,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { callService } from '../src/core/services.js';
 import { plexPutStreams } from '../src/core/plex-client.js';
 import type { AppliedLog } from '../src/workflows/plex-language-fix/types.js';
 
@@ -40,7 +41,10 @@ export interface UndoResult {
 /**
  * Compute (and, if `apply`, execute) the revert for every 'applied' entry in a
  * log — swapping before/after so undo restores the pre-apply selection.
- * `put` is injectable so this is testable without a real Plex server.
+ * `put` is injectable so this is testable without a real Plex server; when no
+ * fake is injected the real Plex call is routed through the shared `plex`
+ * service (`callService`), giving it the same rate-limit/quota metering as
+ * every other Plex mutation in the repo.
  */
 export async function runUndo(
   log: AppliedLog,
@@ -70,7 +74,11 @@ export async function runUndo(
       continue;
     }
     try {
-      await put(entry.partId, revertAudio.streamId, revertSubtitle?.streamId ?? null);
+      if (opts.put) {
+        await put(entry.partId, revertAudio.streamId, revertSubtitle?.streamId ?? null);
+      } else {
+        await callService('plex', () => put(entry.partId, revertAudio.streamId, revertSubtitle?.streamId ?? null));
+      }
       say(`  ✓ "${entry.itemTitle}" (partId=${entry.partId}) — reverted audio → ${revertAudio.label}`);
       results.push({ partId: entry.partId, itemTitle: entry.itemTitle, outcome: 'reverted' });
     } catch (err) {

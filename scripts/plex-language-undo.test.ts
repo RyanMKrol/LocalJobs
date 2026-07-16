@@ -1,7 +1,9 @@
 // Tests for the manual plex-language-undo script's revert computation — never
 // touches the real Plex server (a fake `put` is injected).
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
+import { callService } from '../src/core/services.js';
 import type { AppliedLog } from '../src/workflows/plex-language-fix/types.js';
 import { runUndo } from './plex-language-undo.js';
 
@@ -78,6 +80,42 @@ const log: AppliedLog = {
   assert.equal(results[0].outcome, 'failed');
   assert.equal(results[0].error, 'Plex HTTP 503');
   console.log('  ✓ a put failure during --apply is recorded failed with the error captured');
+}
+
+// (d) source wiring: the real (non-injected) --apply call site routes the revert
+// through callService('plex', ...) — mirroring plex-language-fix/stages/apply.ts's
+// established metering pattern — while the injected-`put`-for-tests branch calls
+// `put` directly, never through callService, so every test above touches zero
+// real network / service_usage DB state.
+{
+  const src = readFileSync(new URL('./plex-language-undo.ts', import.meta.url), 'utf8');
+  const branch = src.match(/if \(opts\.put\) \{([\s\S]*?)\} else \{([\s\S]*?)\}/);
+  assert.ok(branch, 'runUndo must branch on opts.put around the real Plex revert call');
+  assert.doesNotMatch(
+    branch[1],
+    /callService/,
+    'the injected-put (test) branch must call put directly, bypassing callService',
+  );
+  assert.match(
+    branch[2],
+    /callService\(\s*'plex'/,
+    "the real (non-injected) path must route the revert through callService('plex', ...)",
+  );
+  console.log('  ✓ the real Plex revert call is routed through callService(\'plex\', ...); the injected test put bypasses it');
+}
+
+// (e) callService('plex', ...) is a transparent wrapper when the plex service is
+// unregistered in tests (mirrors apply.test.ts) — confirms wrapping the real call
+// in callService doesn't change its behavior or return value.
+{
+  let called = false;
+  const result = await callService('plex', async () => {
+    called = true;
+    return 'ok';
+  });
+  assert.equal(called, true, 'callService passes through when plex service is unregistered in tests');
+  assert.equal(result, 'ok', 'result is returned unchanged');
+  console.log('  ✓ callService(\'plex\', ...) pass-through wrapper works (unregistered service in test)');
 }
 
 console.log('  ✓ plex-language-undo tests passed');
