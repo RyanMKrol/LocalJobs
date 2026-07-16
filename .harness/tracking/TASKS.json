@@ -16322,7 +16322,7 @@
     {
       "id": "T599",
       "title": "Fix branch.ts runBranch naming collision so recordBranchLedgerRow actually runs",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
