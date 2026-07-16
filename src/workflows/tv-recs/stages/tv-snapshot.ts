@@ -1,14 +1,31 @@
 import type { JobContext } from '../../../core/types.js';
 import { fetchSectionMetadata } from '../../../core/plex-client.js';
-import { dayKey } from '../../../core/dates.js';
 import { markWorkItem } from '../../../db/store.js';
 import { tvRecsConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
 import { buildOwnedSet, buildShowSnapshots, buildTvTasteProfile } from '../tv-shows.js';
-import type { PlexShowMeta, TvSnapshotFile, TvTasteProfileFile } from '../types.js';
+import type { PlexShow, PlexShowMeta, TvSnapshotFile, TvTasteProfileFile } from '../types.js';
 
 /** The DAG member (job) name this stage records its ledger row under. */
 export const TV_SNAPSHOT_JOB = 'tv-snapshot';
+
+/** Ledger key for one show: prefer the resolved tmdbId, else fall back to the Plex ratingKey. */
+export function snapshotItemKey(show: Pick<PlexShow, 'tmdbId' | 'ratingKey'>): string {
+  return String(show.tmdbId ?? show.ratingKey);
+}
+
+/**
+ * Record one work_items row per show, for dashboard Input/Output visibility (not
+ * skip-if-done idempotency — this stage re-scans fresh every run regardless).
+ * Extracted as its own function so it can be unit-tested without touching Plex.
+ */
+export function recordSnapshotLedger(shows: PlexShow[]): void {
+  for (const s of shows) {
+    markWorkItem(TV_SNAPSHOT_JOB, snapshotItemKey(s), 'success', {
+      detail: { name: s.title, tmdbId: s.tmdbId, year: s.year },
+    });
+  }
+}
 
 export interface TvSnapshotOpts {
   /** Injectable Plex fetch (tests). Defaults to the real callService('plex', plexGet). */
@@ -30,9 +47,8 @@ export interface TvSnapshotOpts {
  * (with GUIDs + taste metadata), builds the owned tmdbId set, and writes
  * data/out/snapshot.json + data/out/taste-profile.json. RE-SCANS FRESH every run
  * (no skip-if-done) — the notify stage's "have I recommended this?" ledger is
- * unchanged. Records ONE combined visibility row per run (keyed by the run's ISO
- * date, so a same-day manual re-run upserts the same row) so the run page's
- * Input/Output panel shows what this stage produced (T571).
+ * unchanged. Records ONE visibility row per show (T605) so the run page's
+ * Input/Output panel shows every show this stage produced.
  */
 export async function runTvSnapshot(ctx: JobContext, opts: TvSnapshotOpts = {}): Promise<void> {
   ensureDirs();
@@ -93,13 +109,11 @@ export async function runTvSnapshot(ctx: JobContext, opts: TvSnapshotOpts = {}):
     ctx.progress(80 + Math.round((i / shows.length) * 18), `${i + 1}/${shows.length} shows logged`);
   }
 
-  // One combined visibility row per run (T571) — so the run page's Input/Output
-  // panel shows what this stage produced. Keyed by the run's ISO date; a same-day
-  // manual re-run upserts the same row. NOT a work-done ledger (this stage always
-  // re-scans fresh) — purely for dashboard visibility.
-  markWorkItem(TV_SNAPSHOT_JOB, dayKey(now), 'success', {
-    detail: { name: 'TV library snapshot', shows: shows.length, path: tvRecsConfig.snapshotOut, format: 'json' },
-  });
+  // One visibility row per show (T605, superseding T571's single combined row) —
+  // so the run page's Input/Output panel shows every show this stage produced.
+  // NOT a work-done ledger (this stage always re-scans fresh) — purely for
+  // dashboard visibility. Same-item re-runs (same day or otherwise) upsert in place.
+  recordSnapshotLedger(shows);
 
   ctx.progress(100, `${shows.length} shows snapshotted`);
   ctx.log(`Wrote ${tvRecsConfig.snapshotOut}`);
