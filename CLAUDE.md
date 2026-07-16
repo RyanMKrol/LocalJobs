@@ -1431,6 +1431,18 @@ doubt, log it.
 ## Ports & services
 - **API / daemon:** `http://127.0.0.1:4789`
 - **Dashboard:** `http://localhost:4788`
+- **Harness backlog dashboard:** `http://localhost:4791` (separate launchd agent).
+- **Dashboard test-harness ports (dedicated band `4796`–`4798`):** the hermetic
+  `next start` checks each bind their own port — `mobile-check` **4796**,
+  `nav-check` **4797**, `visual-check` **4798** (all env-overridable via
+  `MOBILE_CHECK_PORT` / `NAV_CHECK_PORT` / `VISUAL_CHECK_PORT`). This band is kept
+  **deliberately unique to local-jobs and off the shared `4799`** so a *second*
+  autonomous harness loop running on the same Mac can't collide on the `next start`
+  port. (The owner's `ryankrol.co.uk` loop's `visual-check` defaults to `4799`;
+  two loops sharing a port cause intermittent `next start` `EADDRINUSE` / launch
+  timeouts — a shared exclusive resource addressed by a non-unique name. When
+  adding another local loop, give it its own port band too, and audit **every**
+  surface that names a port, not just the loop's own gate.)
 - launchd agents: `com.ryankrol.localjobs` (daemon),
   `com.ryankrol.localjobs-dashboard` (dashboard). Install via
   `scripts/install-launchd.sh` and `scripts/install-dashboard-launchd.sh`.

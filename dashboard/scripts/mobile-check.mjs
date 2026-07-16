@@ -18,7 +18,11 @@
 import { chromium } from 'playwright';
 import { PAGES, waitForServer, startDashboard, routeApi } from './_dashboard-harness.mjs';
 
-const PORT = Number(process.env.MOBILE_CHECK_PORT ?? 4799);
+// Dedicated port from local-jobs' own test-harness band (4796–4798: mobile/nav/visual),
+// deliberately kept OFF the shared 4799 so a concurrent harness loop on the same Mac (e.g.
+// the ryankrol.co.uk loop, whose visual-check also defaults to 4799) can't collide on the
+// `next start` port. Override with MOBILE_CHECK_PORT if 4796 is ever taken.
+const PORT = Number(process.env.MOBILE_CHECK_PORT ?? 4796);
 const BASE = `http://localhost:${PORT}`;
 const VIEWPORT = { width: 402, height: 874 }; // iPhone-17-class logical width
 
