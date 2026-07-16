@@ -8,9 +8,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 
+import { dayKey } from '../../core/dates.js';
 import { QuotaExceededError, type callService } from '../../core/services.js';
 import type { JobContext, LogLevel } from '../../core/types.js';
+import { getWorkItem } from '../../db/store.js';
 import { runVercelRedeploy, type SpawnFn } from './vercel-redeploy.job.js';
+
+const JOB = 'vercel-redeploy';
 
 // Bypasses the real "vercel" service gate — used by tests that exercise the spawn/stream/
 // timeout behaviour and don't care about service gating. Without this, running the FULL
@@ -187,5 +191,114 @@ describe('runVercelRedeploy', () => {
       ctx.logs.some((l) => l.level === 'warn' && l.message.includes('quota exhausted')),
       'expected a warn log about the exhausted quota',
     );
+  });
+
+  // T618: one work_items ledger row per run, keyed by dayKey(now), covering all
+  // four outcome branches (deployed / skipped-missing-config / skipped-quota /
+  // failed) — the dashboard's Output panel reads this ledger.
+  describe('per-day work_items ledger (T618)', () => {
+    it('records a "success" row with outcome "deployed" and the deploy URL when the deploy succeeds', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'vercel-redeploy-'));
+      const ctx = fakeCtx();
+      const now = new Date('2026-07-17T23:00:00.000Z');
+      const spawnFn: SpawnFn = () =>
+        makeFakeChild({ stdout: 'Vercel CLI 54.20.0\nhttps://ryankrol-co-uk.vercel.app\n', exitCode: 0 });
+
+      await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn: bypassCallService, now });
+
+      const row = getWorkItem(JOB, dayKey(now));
+      assert.ok(row, 'ledger row should exist for this day key');
+      assert.equal(row!.status, 'success');
+      const detail = JSON.parse(row!.detail!);
+      assert.equal(detail.outcome, 'deployed');
+      assert.equal(detail.deployUrl, 'https://ryankrol-co-uk.vercel.app');
+      assert.equal(detail.format, 'json');
+      assert.ok(typeof detail.path === 'string' && detail.path.length > 0);
+    });
+
+    it('records a "success" row with outcome "skipped" and a missing-config reason when RYANKROL_CO_UK_PATH is unset', async () => {
+      const ctx = fakeCtx();
+      const now = new Date('2026-07-18T23:00:00.000Z');
+      const spawnFn: SpawnFn = () => makeFakeChild();
+
+      await runVercelRedeploy(ctx, { checkoutPath: undefined, spawnFn, now });
+
+      const row = getWorkItem(JOB, dayKey(now));
+      assert.ok(row, 'ledger row should exist even on a soft-skip');
+      assert.equal(row!.status, 'success');
+      const detail = JSON.parse(row!.detail!);
+      assert.equal(detail.outcome, 'skipped');
+      assert.ok(detail.reason.startsWith('missing-config'), `expected a missing-config reason, got: ${detail.reason}`);
+    });
+
+    it('records a "success" row with outcome "skipped" and a missing-config reason when the checkout path does not exist', async () => {
+      const ctx = fakeCtx();
+      const now = new Date('2026-07-19T23:00:00.000Z');
+      const spawnFn: SpawnFn = () => makeFakeChild();
+
+      await runVercelRedeploy(ctx, { checkoutPath: '/definitely/not/a/real/path/xyz', spawnFn, now });
+
+      const row = getWorkItem(JOB, dayKey(now));
+      assert.ok(row, 'ledger row should exist even on a soft-skip');
+      assert.equal(row!.status, 'success');
+      const detail = JSON.parse(row!.detail!);
+      assert.equal(detail.outcome, 'skipped');
+      assert.ok(detail.reason.startsWith('missing-config'), `expected a missing-config reason, got: ${detail.reason}`);
+    });
+
+    it('records a "success" row with outcome "skipped" and a quota-exhausted reason when the vercel service quota is exhausted', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'vercel-redeploy-'));
+      const ctx = fakeCtx();
+      const now = new Date('2026-07-20T23:00:00.000Z');
+      const spawnFn: SpawnFn = () => makeFakeChild({ exitCode: 0 });
+      const callServiceFn = (async () => {
+        throw new QuotaExceededError('vercel', 'daily', 3, 3);
+      }) as unknown as typeof callService;
+
+      await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn, now });
+
+      const row = getWorkItem(JOB, dayKey(now));
+      assert.ok(row, 'ledger row should exist even on a quota soft-skip');
+      assert.equal(row!.status, 'success');
+      const detail = JSON.parse(row!.detail!);
+      assert.equal(detail.outcome, 'skipped');
+      assert.ok(detail.reason.startsWith('quota-exhausted'), `expected a quota-exhausted reason, got: ${detail.reason}`);
+    });
+
+    it('records a "failed" row with outcome "failed" and the error reason in addition to the run failing, on a non-zero exit code', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'vercel-redeploy-'));
+      const ctx = fakeCtx();
+      const now = new Date('2026-07-21T23:00:00.000Z');
+      const spawnFn: SpawnFn = () => makeFakeChild({ stderr: 'Error: not authenticated\n', exitCode: 1 });
+
+      await assert.rejects(
+        () => runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn: bypassCallService, now }),
+        /exited with code 1/,
+      );
+
+      const row = getWorkItem(JOB, dayKey(now));
+      assert.ok(row, 'a failed ledger row should still be recorded');
+      assert.equal(row!.status, 'failed');
+      const detail = JSON.parse(row!.detail!);
+      assert.equal(detail.outcome, 'failed');
+      assert.ok(detail.reason.includes('exited with code 1'), `expected the failure reason to be recorded, got: ${detail.reason}`);
+    });
+
+    it('overwrites the same day\'s row rather than duplicating it on a same-day manual re-run', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'vercel-redeploy-'));
+      const ctx = fakeCtx();
+      const now = new Date('2026-07-22T10:00:00.000Z');
+
+      await runVercelRedeploy(ctx, { checkoutPath: undefined, now });
+      const first = getWorkItem(JOB, dayKey(now));
+      assert.equal(JSON.parse(first!.detail!).outcome, 'skipped');
+
+      const spawnFn: SpawnFn = () => makeFakeChild({ stdout: 'https://ryankrol-co-uk.vercel.app\n', exitCode: 0 });
+      await runVercelRedeploy(ctx, { checkoutPath: dir, spawnFn, callServiceFn: bypassCallService, now });
+
+      const second = getWorkItem(JOB, dayKey(now));
+      assert.equal(second!.created_at, first!.created_at, 'same (job_name, item_key) row should be upserted, not duplicated');
+      assert.equal(JSON.parse(second!.detail!).outcome, 'deployed');
+    });
   });
 });

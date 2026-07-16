@@ -1,13 +1,53 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+import { dayKey } from '../../core/dates.js';
 import { callService, QuotaExceededError } from '../../core/services.js';
 import type { JobContext, JobDefinition } from '../../core/types.js';
+import { markWorkItem } from '../../db/store.js';
 
 /** Injectable child-process spawn (real implementation runs the Vercel CLI; tests stub this). */
 export type SpawnFn = (cwd: string) => ChildProcess;
 
+const JOB_NAME = 'vercel-redeploy';
 const DEFAULT_TIMEOUT_MS = 600_000; // 10 min — a real build+deploy, not an HTTP call
+
+// Resources live alongside the job itself, never in a far-off top-level folder.
+const here = dirname(fileURLToPath(import.meta.url));
+const outDir = resolve(here, 'data', 'out');
+
+type Outcome = 'deployed' | 'skipped' | 'failed';
+
+/**
+ * Records this run's outcome as ONE per-day ledger row (T618) — a same-day
+ * manual re-run overwrites the row rather than duplicating it (dayKey ->
+ * unique job_name+item_key upsert). The row's `detail` is a file-backed JSON
+ * artifact under data/out/ (detail.format: 'json' + detail.path), following
+ * the overrides-audit/stocks-fetch convention, so the dashboard's Output
+ * panel has something concrete to preview.
+ */
+function recordOutcome(
+  key: string,
+  outcome: Outcome,
+  extra: { deployUrl?: string; reason?: string },
+  status: 'success' | 'failed',
+): void {
+  mkdirSync(outDir, { recursive: true });
+  const outPath = resolve(outDir, `vercel-redeploy-${key}.json`);
+  const body = { generatedAt: new Date().toISOString(), key, outcome, ...extra };
+  writeFileSync(outPath, JSON.stringify(body, null, 2));
+  markWorkItem(JOB_NAME, key, status, {
+    detail: {
+      name: `Redeploy ${outcome} — ${key}`,
+      outcome,
+      ...extra,
+      format: 'json',
+      path: outPath,
+    },
+  });
+}
 
 export function defaultSpawn(cwd: string): ChildProcess {
   return spawn('vercel', ['--prod', '--yes'], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -30,15 +70,25 @@ export async function runVercelRedeploy(
     spawnFn?: SpawnFn;
     timeoutMs?: number;
     callServiceFn?: typeof callService;
+    now?: Date;
   } = {},
 ): Promise<void> {
+  const now = opts.now ?? new Date();
+  const key = dayKey(now);
   const checkoutPath = opts.checkoutPath ?? process.env.RYANKROL_CO_UK_PATH;
   if (!checkoutPath) {
     ctx.log('RYANKROL_CO_UK_PATH not configured — skipping redeploy (see .env.example)', 'warn');
+    recordOutcome(key, 'skipped', { reason: 'missing-config: RYANKROL_CO_UK_PATH is not set' }, 'success');
     return;
   }
   if (!existsSync(checkoutPath)) {
     ctx.log(`RYANKROL_CO_UK_PATH (${checkoutPath}) does not exist on disk — skipping redeploy`, 'warn');
+    recordOutcome(
+      key,
+      'skipped',
+      { reason: `missing-config: checkout path ${checkoutPath} does not exist on disk` },
+      'success',
+    );
     return;
   }
 
@@ -51,19 +101,27 @@ export async function runVercelRedeploy(
       'working tree, independent of Git integration/auto-deploy state...',
   );
 
+  let deployUrl: string | undefined;
   try {
-    await callServiceFn('vercel', () => deployOnce(ctx, checkoutPath, spawnFn, timeoutMs));
+    deployUrl = await callServiceFn('vercel', () => deployOnce(ctx, checkoutPath, spawnFn, timeoutMs)) as
+      | string
+      | undefined;
   } catch (e) {
     if (e instanceof QuotaExceededError) {
       ctx.log(`vercel service quota exhausted — skipping today's redeploy (${e.message})`, 'warn');
+      recordOutcome(key, 'skipped', { reason: `quota-exhausted: ${e.message}` }, 'success');
       return;
     }
+    const reason = e instanceof Error ? e.message : String(e);
+    recordOutcome(key, 'failed', { reason }, 'failed');
     throw e;
   }
+
+  recordOutcome(key, 'deployed', { deployUrl }, 'success');
 }
 
-function deployOnce(ctx: JobContext, checkoutPath: string, spawnFn: SpawnFn, timeoutMs: number): Promise<void> {
-  return new Promise<void>((resolvePromise, reject) => {
+function deployOnce(ctx: JobContext, checkoutPath: string, spawnFn: SpawnFn, timeoutMs: number): Promise<string | undefined> {
+  return new Promise<string | undefined>((resolvePromise, reject) => {
     let child: ChildProcess;
     try {
       child = spawnFn(checkoutPath);
@@ -115,7 +173,7 @@ function deployOnce(ctx: JobContext, checkoutPath: string, spawnFn: SpawnFn, tim
       }
       const deployUrl = out.trim().split('\n').filter(Boolean).pop();
       ctx.log(`Deploy succeeded${deployUrl ? ` — ${deployUrl}` : ''}.`);
-      resolvePromise();
+      resolvePromise(deployUrl);
     });
   });
 }

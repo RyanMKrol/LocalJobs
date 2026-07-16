@@ -28,9 +28,20 @@ Runs its own internal timeout-and-kill (10 min) separate from the job's outer `t
 the spawned `vercel` subprocess is always killed cleanly before the executor would ever need to
 hard-kill the job process itself.
 
-No `work_items` ledger — pure fire-and-forget trigger, no items to track. `category:
-'regular-maintenance'`. Runs daily at 23:00 (`'0 23 * * *'`), deliberately late in the day, after a
-typical day's activity on `ryankrol.co.uk`.
+**One `work_items` ledger row per run, keyed by dayKey(now) (T618).** The Input side of the
+dashboard's Inputs & Outputs panel is deliberately empty — there is genuinely no input, just a
+single daily trigger — but the Output side now reflects the real per-day result:
+`runVercelRedeploy` calls `markWorkItem('vercel-redeploy', dayKey(now), ...)` exactly once per run,
+so a same-day manual re-run overwrites that day's row instead of duplicating it. `detail` carries an
+`outcome` discriminator (`'deployed' | 'skipped' | 'failed'`) plus the specifics: `deployUrl` on a
+successful deploy, or a `reason` string (`missing-config: ...` / `quota-exhausted: ...` / the deploy
+error message) on a skip or failure. The row is also a file-backed JSON artifact under
+`data/out/vercel-redeploy-<day>.json` (`detail.format: 'json'` + `detail.path`, the
+overrides-audit/stocks-fetch convention), so it's previewable via the standard Output panel. A
+deploy failure records a `'failed'` ledger row **in addition to** the run itself failing (the run
+still throws so the executor records a failed run — the ledger row is a second, queryable signal of
+the same failure). `category: 'regular-maintenance'`. Runs daily at 23:00 (`'0 23 * * *'`),
+deliberately late in the day, after a typical day's activity on `ryankrol.co.uk`.
 
 **Gated through `callService('vercel', ...)` (T426).** The deploy operation (spawn + await exit) is
 wrapped in `callService('vercel', ...)`, gated by `src/services/vercel.service.ts` — a `cli-tool`
