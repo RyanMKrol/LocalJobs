@@ -16208,7 +16208,7 @@
     {
       "id": "T595",
       "title": "Show a dispatch-driven 'Starting…' indicator for the pre-DB-row inputKeys() wait (no schema change)",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
