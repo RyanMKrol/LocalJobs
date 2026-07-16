@@ -393,6 +393,14 @@ export interface WorkflowOutputItem {
   name: string | null;
   /** True when the work item has a markdown artifact path in detail.markdown. */
   hasMarkdown: boolean;
+  /**
+   * True when the item has ANY viewable output artifact (T616) — a legacy
+   * `detail.markdown` path, or the newer T262 output form (`detail.format` +
+   * `detail.path`, e.g. a JSON artifact). Use this, not `hasMarkdown`, to decide
+   * whether to show a "View" button — the backend output endpoint already
+   * serves both forms.
+   */
+  viewable: boolean;
   updatedAt: string;
 }
 

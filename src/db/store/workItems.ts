@@ -374,12 +374,21 @@ export interface OutputItem {
   name: string | null;
   /** Whether a markdown artifact path is recorded in detail.markdown. */
   hasMarkdown: boolean;
+  /**
+   * Whether the item has ANY viewable output artifact recorded (T616) — either
+   * a legacy `detail.markdown` path, or the newer T262 output form
+   * (`detail.format` + `detail.path`). Format-agnostic signal the dashboard's
+   * Output section uses to decide whether to show a "View" button; the backend
+   * output endpoint (`resolveOutputForm`) already serves both forms, so this
+   * field just plumbs that viewability through to the client.
+   */
+  viewable: boolean;
   updatedAt: string;
 }
 
 /**
  * Return all success work_items for the given terminal-stage job names, with their
- * detail parsed into name + hasMarkdown fields. De-duped by (job_name, item_key)
+ * detail parsed into name + hasMarkdown/viewable fields. De-duped by (job_name, item_key)
  * by construction (the work_items ledger is keyed by that pair). Ordered newest first.
  * Used by GET /api/workflows/:name/output-items (T205).
  */
@@ -392,14 +401,18 @@ export function workflowTerminalItems(terminalJobNames: string[]): OutputItem[] 
   return rows.map((r) => {
     let name: string | null = null;
     let hasMarkdown = false;
+    let viewable = false;
     if (r.detail) {
       try {
         const d = JSON.parse(r.detail) as Record<string, unknown>;
         name = typeof d.name === 'string' && d.name ? d.name : null;
         hasMarkdown = typeof d.markdown === 'string' && !!d.markdown;
+        const hasFormatPath = typeof d.format === 'string' && !!d.format
+          && typeof d.path === 'string' && !!d.path;
+        viewable = hasMarkdown || hasFormatPath;
       } catch { /* ignore malformed detail */ }
     }
-    return { jobName: r.job_name, itemKey: r.item_key, name, hasMarkdown, updatedAt: r.updated_at };
+    return { jobName: r.job_name, itemKey: r.item_key, name, hasMarkdown, viewable, updatedAt: r.updated_at };
   });
 }
 

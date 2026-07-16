@@ -110,7 +110,7 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
                         <td className="muted mono" style={{ fontSize: 12 }}>{item.itemKey}</td>
                         <td className="muted" style={{ fontSize: 12 }}>{item.updatedAt}</td>
                         <td style={{ textAlign: 'right' }}>
-                          {item.hasMarkdown && (
+                          {item.viewable && (
                             <button
                               className="btn btn-sm"
                               onClick={() => openOutput(item)}

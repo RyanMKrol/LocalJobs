@@ -946,12 +946,12 @@ export function fixtureFor(pathname, searchParams) {
     if (pathname === '/api/workflows/places/output-items') {
       return {
         items: [
-          { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, name: 'A Resolved Place', hasMarkdown: true, updatedAt: NOW },
-          { jobName: 'places-enrich-with-llm', itemKey: 'place:second', name: null, hasMarkdown: false, updatedAt: NOW },
-          // T458: a JSON-format item (not backed by detail.markdown in real production
-          // semantics — `hasMarkdown: true` here is purely a fixture convenience so the
-          // synthetic "View" button renders, exercising the json OutputRenderer path).
-          { jobName: 'places-enrich-with-llm', itemKey: PLACES_JSON_ITEM_KEY, name: 'Enrichment summary (JSON)', hasMarkdown: true, updatedAt: NOW },
+          { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, name: 'A Resolved Place', hasMarkdown: true, viewable: true, updatedAt: NOW },
+          { jobName: 'places-enrich-with-llm', itemKey: 'place:second', name: null, hasMarkdown: false, viewable: false, updatedAt: NOW },
+          // T458/T616: a real T262 format+path (JSON) item — no detail.markdown, so
+          // `hasMarkdown: false`, but `viewable: true` since it carries detail.format +
+          // detail.path. Exercises the JSON "View" button + the json OutputRenderer path.
+          { jobName: 'places-enrich-with-llm', itemKey: PLACES_JSON_ITEM_KEY, name: 'Enrichment summary (JSON)', hasMarkdown: false, viewable: true, updatedAt: NOW },
         ],
         terminalJobs: ['places-enrich-with-llm'],
       };
