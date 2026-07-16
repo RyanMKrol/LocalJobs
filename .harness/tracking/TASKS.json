@@ -16669,7 +16669,7 @@
     {
       "id": "T612",
       "title": "Fix status pill (.badge) wrapping onto two internal lines",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
