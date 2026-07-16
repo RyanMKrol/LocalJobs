@@ -16184,7 +16184,7 @@
     {
       "id": "T594",
       "title": "Always show the 'Ignore all' group-header button, even for single-item groups, in GroupedManager",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
