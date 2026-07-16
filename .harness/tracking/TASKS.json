@@ -16519,7 +16519,7 @@
     {
       "id": "T606",
       "title": "missing-movies' snapshot.ts and franchise-gaps.ts record per-item work_items ledger rows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
