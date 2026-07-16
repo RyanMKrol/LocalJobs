@@ -16544,7 +16544,7 @@
     {
       "id": "T607",
       "title": "Correct misleading 'this is the root stage' empty-inputs label when a predecessor genuinely has no ledger rows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
