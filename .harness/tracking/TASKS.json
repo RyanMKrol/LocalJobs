@@ -16350,7 +16350,7 @@
     {
       "id": "T600",
       "title": "Extend branch ledger recording to one work_items row per suggested title",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T599"
       ],
