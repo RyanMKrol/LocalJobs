@@ -16770,7 +16770,7 @@
     {
       "id": "T615",
       "title": "Capture each recommender branch's ACTUAL prompt item-set as its Inputs record",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
