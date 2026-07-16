@@ -16804,7 +16804,7 @@
     {
       "id": "T616",
       "title": "Workflow Output section: show 'View' for non-markdown (JSON/path) outputs too",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
