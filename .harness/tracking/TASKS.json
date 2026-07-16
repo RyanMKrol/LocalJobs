@@ -16469,7 +16469,7 @@
     {
       "id": "T604",
       "title": "Fix stale franchise-gaps.md markdown pointer in movie-recs notify ledger rows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
