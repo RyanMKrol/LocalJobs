@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import type { ClaudeResult } from '../../../services/claude.js';
+import { dayKey } from '../../../core/dates.js';
 import {
   ANGLOPHONE_COUNTRIES,
   BRANCHES,
@@ -22,7 +23,8 @@ import {
 import type { BranchContext } from './branches.js';
 import { allHistoryTitles, ignoredSuggestionTitles, parseSuggestions, runBranch } from './recommend.js';
 import type { BranchOutputFile, MovieSnapshotFile, RecsHistoryFile, TasteProfileFile } from '../types.js';
-import { ignoreSurfacedItem, markWorkItem } from '../../../db/store.js';
+import { ignoreSurfacedItem, markWorkItem, getWorkItem } from '../../../db/store.js';
+import type { WorkItemRow } from '../../../db/store.js';
 import { RECS_JOB, recKey } from '../recs.js';
 
 function fakeCtx(): JobContext {
@@ -385,6 +387,118 @@ const readBranch = (id: string): BranchOutputFile =>
   assert.ok(titles.includes('Ignored No Year'), 'usable title with no year included, no trailing " ()"');
   assert.equal(titles.filter((t) => t.includes('Legacy Name')).length, 0, 'legacy name-only detail skipped, not crashed');
   console.log('  ✓ ignoredSuggestionTitles includes usable titles, skips legacy/no-detail rows');
+}
+
+// ── T600: recordBranchLedgerRow records ONE row per suggestion (not one per branch) ──
+{
+  const { makeBranchJob } = await import('./recommend.js');
+  const dirT600A = mkdtempSync(join(tmpdir(), 'movies-t600-'));
+  const snapshotT600A = join(dirT600A, 'snapshot.json');
+  const tasteT600A = join(dirT600A, 'taste.json');
+  const historyT600A = join(dirT600A, 'history.json');
+  const recsDirT600A = dirT600A;
+
+  const snapT600A: MovieSnapshotFile = {
+    generatedAt: NOW.toISOString(), section: '4',
+    movies: [
+      { title: 'The Matrix', year: 1999, tmdbId: 603, ratingKey: '1', genres: ['Action'], directors: ['Lana Wachowski'], countries: ['United States'], audienceRating: 8, rating: 8 },
+    ],
+  };
+  writeFileSync(snapshotT600A, JSON.stringify(snapT600A));
+
+  const tasteT600AProfile: TasteProfileFile = {
+    generatedAt: NOW.toISOString(),
+    profile: { totalMovies: 1, withTmdbId: 1, genres: { Action: 1 }, directors: {}, decades: { '1990s': 1 }, countries: { 'United States': 1 } },
+  };
+  writeFileSync(tasteT600A, JSON.stringify(tasteT600AProfile));
+  writeFileSync(historyT600A, JSON.stringify({ recommended: [] }));
+
+  // Job def with onBranchWritten that records ledger rows
+  const jobDef = makeBranchJob('rec-random-1', {
+    runClaude: ok('{"recommendations":[{"title":"Stalker","year":1979,"reason":"meditative sci-fi","lens":"serendipity"},{"title":"Solaris","year":1972,"reason":"philosophical","lens":"serendipity"},{"title":"Mirror","year":1975,"reason":"experimental","lens":"serendipity"}]}'),
+    snapshotFile: snapshotT600A,
+    tasteFile: tasteT600A,
+    historyFile: historyT600A,
+    recsDir: recsDirT600A,
+    now: NOW,
+  });
+
+  await jobDef.run(fakeCtx());
+
+  // Query the ledger for rows recorded by this branch — keys are dayKey::index
+  const dayKeyStr = dayKey(NOW);
+  const t600Rows: WorkItemRow[] = [];
+  for (let i = 0; i < 5; i++) {
+    const row = getWorkItem('rec-random-1', `${dayKeyStr}::${i}`);
+    if (row) t600Rows.push(row);
+  }
+
+  assert.equal(t600Rows.length, 3, '3 suggestions → 3 ledger rows');
+
+  for (let i = 0; i < t600Rows.length; i++) {
+    const row: WorkItemRow = t600Rows[i];
+    assert.equal(row.status, 'success');
+    const detail = JSON.parse(row.detail ?? 'null') as { title?: string; year?: number; reason?: string; lens?: string };
+    assert.ok(detail.title, `row ${i} has a title`);
+    assert.ok(typeof detail.year === 'number' || detail.year === null, `row ${i} has a valid year`);
+    assert.ok(typeof detail.reason === 'string', `row ${i} has a reason`);
+    assert.ok(typeof detail.lens === 'string', `row ${i} has a lens`);
+  }
+
+  const detail0 = JSON.parse(t600Rows[0].detail ?? 'null') as { title?: string; year?: number; reason?: string; lens?: string };
+  assert.equal(detail0.title, 'Stalker', 'first row detail contains title');
+  assert.equal(detail0.year, 1979, 'first row detail contains year');
+  assert.equal(detail0.reason, 'meditative sci-fi', 'first row detail contains reason');
+  assert.equal(detail0.lens, 'serendipity', 'first row detail contains lens');
+
+  const detail1 = JSON.parse(t600Rows[1].detail ?? 'null') as { title?: string };
+  assert.equal(detail1.title, 'Solaris', 'second row detail contains title');
+
+  const detail2 = JSON.parse(t600Rows[2].detail ?? 'null') as { title?: string };
+  assert.equal(detail2.title, 'Mirror', 'third row detail contains title');
+
+  console.log('  ✓ recordBranchLedgerRow records ONE row per suggestion with full detail fields (T600)');
+}
+
+// ── T600: zero suggestions → zero ledger rows (skip/error case) ──
+{
+  const dirT600Zero = mkdtempSync(join(tmpdir(), 'movies-t600-zero-'));
+  const snapshotT600Zero = join(dirT600Zero, 'snapshot.json');
+  const tasteT600Zero2 = join(dirT600Zero, 'taste.json');
+  const historyT600Zero = join(dirT600Zero, 'history.json');
+  const recsDirT600Zero = dirT600Zero;
+
+  const snapT600Zero: MovieSnapshotFile = {
+    generatedAt: NOW.toISOString(), section: '4',
+    movies: [{ title: 'M', year: 2000, tmdbId: 1, ratingKey: '1', genres: [], directors: [], countries: ['US'], audienceRating: 8, rating: 8 }],
+  };
+  writeFileSync(snapshotT600Zero, JSON.stringify(snapT600Zero));
+  writeFileSync(tasteT600Zero2, JSON.stringify({ generatedAt: NOW.toISOString(), profile: { totalMovies: 1, withTmdbId: 1, genres: {}, directors: {}, decades: {}, countries: {} } }));
+  writeFileSync(historyT600Zero, JSON.stringify({ recommended: [] }));
+
+  // Error case: Claude failure → zero suggestions
+  const { makeBranchJob } = await import('./recommend.js');
+  const jobDefZero = makeBranchJob('rec-random-2', {
+    runClaude: async () => ({ ok: false, text: '', rateLimited: true, error: 'usage limit' }),
+    snapshotFile: snapshotT600Zero,
+    tasteFile: tasteT600Zero2,
+    historyFile: historyT600Zero,
+    recsDir: recsDirT600Zero,
+    now: NOW,
+  });
+
+  await jobDefZero.run(fakeCtx());
+
+  const dayKeyStr = dayKey(NOW);
+  let foundAnyZeroRows = false;
+  for (let i = 0; i < 5; i++) {
+    if (getWorkItem('rec-random-2', `${dayKeyStr}::${i}`)) {
+      foundAnyZeroRows = true;
+      break;
+    }
+  }
+  assert.equal(foundAnyZeroRows, false, 'error/skip case records zero ledger rows, not a placeholder');
+  console.log('  ✓ recordBranchLedgerRow records zero rows on error/skip (not crash, not placeholder row)');
 }
 
 console.log('  ✓ movies branch-runner tests passed');

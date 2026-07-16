@@ -70,29 +70,47 @@ export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchR
 }
 
 /**
- * Record ONE combined visibility row per run for this branch (T571) — keyed by
- * the run's ISO date so a same-day manual re-run upserts the same row. The branch
- * runs as its own DAG member (job name = branch id), so the run page's
- * Input/Output panel shows the branch's suggestion count + its output file.
- * Reads the count from the file the core runner just wrote (empty on any LLM
- * trouble — a legitimate zero, still worth showing).
+ * Record ONE ledger row PER SUGGESTION for this branch (T600) — each row's key is
+ * a branch-local, stable id scoped by the run's ISO date (so a same-day manual
+ * re-run upserts the same set), and each row's detail carries the suggestion's
+ * own fields (title, year, reason, lens) per CLAUDE.md's "every stage's success
+ * detail must describe what THAT STAGE produced" convention.
+ * The branch runs as its own DAG member (job name = branch id), so the run page's
+ * Input/Output panel shows each suggestion as a separate row.
+ * On error/skip cases (no targets, Claude failure, unparseable output), records
+ * zero rows rather than crashing — these are legitimate, resilient outcomes.
  */
 function recordBranchLedgerRow(branchId: string, opts: BranchRunOpts): void {
   const recsDir = opts.recsDir ?? tvRecsConfig.recsDir;
   const now = opts.now ?? new Date();
   const path = join(recsDir, `${branchId}.json`);
-  let suggestions = 0;
   if (existsSync(path)) {
     try {
       const file = JSON.parse(readFileSync(path, 'utf8')) as { suggestions?: unknown[] };
-      if (Array.isArray(file.suggestions)) suggestions = file.suggestions.length;
+      if (Array.isArray(file.suggestions)) {
+        // Record ONE row per suggestion
+        for (let index = 0; index < file.suggestions.length; index++) {
+          const s = file.suggestions[index];
+          if (!s || typeof s !== 'object') continue;
+          const suggestion = s as { title?: unknown; year?: unknown; reason?: unknown; lens?: unknown };
+          const title = typeof suggestion.title === 'string' ? suggestion.title.trim() : '';
+          if (!title) continue; // Skip malformed suggestions
+          const itemKey = `${dayKey(now)}::${index}`;
+          markWorkItem(branchId, itemKey, 'success', {
+            detail: {
+              title,
+              year: typeof suggestion.year === 'number' ? suggestion.year : null,
+              reason: typeof suggestion.reason === 'string' ? suggestion.reason.trim() : '',
+              lens: typeof suggestion.lens === 'string' ? suggestion.lens : 'unknown',
+            },
+          });
+        }
+      }
     } catch {
-      // Leave the count at 0 if the file is unreadable — the row still records the branch ran.
+      // Leave zero rows if the file is unreadable — a legitimate skip outcome
     }
   }
-  markWorkItem(branchId, dayKey(now), 'success', {
-    detail: { name: `${branchId} suggestions`, suggestions, path },
-  });
+  // If the file doesn't exist or has no suggestions, zero rows are recorded
 }
 
 /**

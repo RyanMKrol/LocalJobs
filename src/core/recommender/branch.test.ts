@@ -1,17 +1,10 @@
-// T599: regression test for the `recordBranchLedgerRow` shadowing bug — every
-// real branch job (movies + tv-recs) reported status='success' on a run yet
-// wrote NO `work_items` row, because `coreMakeBranchJob`'s returned `run(ctx)`
-// called this module's OWN `runBranch`, never the domain wrapper's `runBranch`
-// (the only place that recorded the ledger row) — plain JS scoping, not a
-// framework bug. The fix threads an `onBranchWritten` hook through
-// `BranchRunOpts`/`makeBranchJob` so a domain's ledger write genuinely executes
-// from the REAL job execution path (`run(ctx)`), not just from a direct call to
-// the domain wrapper's exported `runBranch`.
-//
+// T599/T600: regression test for the `recordBranchLedgerRow` shadowing bug —
+// T599 fixed the hook so it actually fires from the REAL job execution path.
+// T600 changed it from one per-branch row to one per-suggestion row.
 // This drives `makeBranchJob(id, runOpts).run(ctx)` end-to-end (an injected
-// `runClaude` — no live Claude call) for BOTH movies and tv-recs, and asserts a
-// `work_items` row now exists for the branch's job name, keyed by `dayKey(now)`,
-// with the existing `{ name, suggestions, path }` detail shape.
+// `runClaude` — no live Claude call) for BOTH movies and tv-recs, and asserts
+// `work_items` rows now exist for the branch's job name, each keyed by
+// `dayKey::index` with per-suggestion detail (title, year, reason, lens).
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -53,19 +46,22 @@ const ok = (text: string) => async (): Promise<ClaudeResult> => ({ ok: true, tex
   writeFileSync(tasteFile, JSON.stringify(taste));
 
   const job = makeMovieBranchJob('rec-random-1', {
-    runClaude: ok('{"recommendations":[{"title":"Stalker","year":1979,"reason":"a meditative sci-fi"}]}'),
+    runClaude: ok('{"recommendations":[{"title":"Stalker","year":1979,"reason":"a meditative sci-fi","lens":"serendipity"}]}'),
     snapshotFile, tasteFile, historyFile, recsDir, now: NOW,
   });
   await job.run(fakeCtx());
 
-  const row = getWorkItem('rec-random-1', dayKey(NOW));
+  // T600: per-suggestion ledger rows, keyed by dayKey::index
+  const dayKeyStr = dayKey(NOW);
+  const row = getWorkItem('rec-random-1', `${dayKeyStr}::0`);
   assert.ok(row, 'a work_items row exists for rec-random-1 after a real job run(ctx)');
   assert.equal(row?.status, 'success');
-  const detail = row?.detail ? JSON.parse(row.detail) as { name?: string; suggestions?: number; path?: string } : null;
-  assert.equal(detail?.name, 'rec-random-1 suggestions');
-  assert.equal(detail?.suggestions, 1);
-  assert.ok(detail?.path, 'detail.path recorded');
-  console.log('  ✓ makeBranchJob("rec-random-1").run(ctx) records a work_items row (movies)');
+  const detail = row?.detail ? JSON.parse(row.detail) as { title?: string; year?: number; reason?: string; lens?: string } : null;
+  assert.equal(detail?.title, 'Stalker', 'detail.title recorded');
+  assert.equal(detail?.year, 1979, 'detail.year recorded');
+  assert.equal(detail?.reason, 'a meditative sci-fi', 'detail.reason recorded');
+  assert.equal(detail?.lens, 'serendipity', 'detail.lens recorded');
+  console.log('  ✓ makeBranchJob("rec-random-1").run(ctx) records per-suggestion work_items rows (movies, T600)');
 }
 
 // ── tv-recs: tv-rec-random-1 ──
@@ -90,19 +86,22 @@ const ok = (text: string) => async (): Promise<ClaudeResult> => ({ ok: true, tex
   writeFileSync(tasteFile, JSON.stringify(taste));
 
   const job = makeTvBranchJob('tv-rec-random-1', {
-    runClaude: ok('{"recommendations":[{"title":"Fargo","year":2014,"reason":"crime anthology"}]}'),
+    runClaude: ok('{"recommendations":[{"title":"Fargo","year":2014,"reason":"crime anthology","lens":"serendipity"}]}'),
     snapshotFile, tasteFile, historyFile, recsDir, now: NOW,
   });
   await job.run(fakeCtx());
 
-  const row = getWorkItem('tv-rec-random-1', dayKey(NOW));
+  // T600: per-suggestion ledger rows, keyed by dayKey::index
+  const dayKeyStr = dayKey(NOW);
+  const row = getWorkItem('tv-rec-random-1', `${dayKeyStr}::0`);
   assert.ok(row, 'a work_items row exists for tv-rec-random-1 after a real job run(ctx)');
   assert.equal(row?.status, 'success');
-  const detail = row?.detail ? JSON.parse(row.detail) as { name?: string; suggestions?: number; path?: string } : null;
-  assert.equal(detail?.name, 'tv-rec-random-1 suggestions');
-  assert.equal(detail?.suggestions, 1);
-  assert.ok(detail?.path, 'detail.path recorded');
-  console.log('  ✓ makeBranchJob("tv-rec-random-1").run(ctx) records a work_items row (tv-recs)');
+  const detail = row?.detail ? JSON.parse(row.detail) as { title?: string; year?: number; reason?: string; lens?: string } : null;
+  assert.equal(detail?.title, 'Fargo', 'detail.title recorded');
+  assert.equal(detail?.year, 2014, 'detail.year recorded');
+  assert.equal(detail?.reason, 'crime anthology', 'detail.reason recorded');
+  assert.equal(detail?.lens, 'serendipity', 'detail.lens recorded');
+  console.log('  ✓ makeBranchJob("tv-rec-random-1").run(ctx) records per-suggestion work_items rows (tv-recs, T600)');
 }
 
-console.log('  ✓ branch.ts onBranchWritten-hook regression tests passed');
+console.log('  ✓ branch.ts onBranchWritten-hook + per-suggestion-ledger tests passed');
