@@ -16695,7 +16695,7 @@
     {
       "id": "T613",
       "title": "Add idempotencyNote field to WorkflowDefinition, synced + exposed like category",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
