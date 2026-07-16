@@ -11,7 +11,7 @@ function Bar({ used, cap }: { used: number; cap: number | null }) {
   if (cap == null) {
     return (
       <div className="mono" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-        {used} <span className="muted">no limit</span>
+        {used} / <span className="muted">no limit</span>
       </div>
     );
   }
