@@ -16131,7 +16131,7 @@
     {
       "id": "T592",
       "title": "Fix DagFlow gate-padlock midpoint colliding with an intermediate node on a same-row skip-column edge",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
