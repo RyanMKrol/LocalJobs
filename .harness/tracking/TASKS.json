@@ -16834,7 +16834,7 @@
     {
       "id": "T617",
       "title": "Render plex-space-saver 'size-table' output as a per-title disk-usage bar chart",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
