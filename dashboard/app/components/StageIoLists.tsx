@@ -175,6 +175,16 @@ function StageIoColumn(
   );
 }
 
+/** The Inputs column's empty-state text (T607). A stage with NO predecessors at all is
+ *  the DAG's actual root — "root stage" is accurate. A stage WITH predecessors that simply
+ *  recorded zero ledger rows this run (e.g. its upstream stage found nothing to hand off)
+ *  is NOT the root — showing the root-stage text there is factually wrong. */
+export function inputsEmptyText(predecessorJobs: string[]): string {
+  return predecessorJobs.length === 0
+    ? 'No inputs — this is the root stage.'
+    : 'No inputs recorded this run.';
+}
+
 /** One workflow member's decoupled inputs/outputs — polls its own
  *  `GET /workflow-runs/:id/stage-io?job=` independently of the other members. */
 function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
@@ -201,7 +211,7 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
           title="Inputs"
           items={data.inputs}
           runId={runId}
-          emptyText="No inputs — this is the root stage."
+          emptyText={inputsEmptyText(data.predecessorJobs)}
           onOpen={openModal}
         />
         <StageIoColumn

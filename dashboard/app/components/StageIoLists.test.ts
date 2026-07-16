@@ -6,7 +6,7 @@
 //   npx tsx --test dashboard/app/components/StageIoLists.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detailHints, humanizeDetailKey } from './StageIoLists.js';
+import { detailHints, humanizeDetailKey, inputsEmptyText } from './StageIoLists.js';
 
 // dashboard/ has no "type": "module" in its package.json, so top-level await
 // resolves to esbuild's cjs output (unsupported) under `tsx --test` — wrap in
@@ -91,6 +91,15 @@ async function main() {
     assert.equal(humanizeDetailKey('placeId'), 'Place Id');
     assert.equal(humanizeDetailKey('resolved_count'), 'Resolved Count');
     assert.equal(humanizeDetailKey('totalPositions'), 'Total Positions');
+  });
+
+  await test('inputsEmptyText: no predecessors at all -> the root-stage message (T607)', () => {
+    assert.equal(inputsEmptyText([]), 'No inputs — this is the root stage.');
+  });
+
+  await test('inputsEmptyText: has predecessor(s) but they recorded no rows this run -> NOT the root-stage message (T607)', () => {
+    assert.equal(inputsEmptyText(['franchise-gaps']), 'No inputs recorded this run.');
+    assert.equal(inputsEmptyText(['movie-snapshot', 'stock-sector-lookup']), 'No inputs recorded this run.');
   });
 }
 

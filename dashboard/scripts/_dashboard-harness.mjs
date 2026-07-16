@@ -714,7 +714,10 @@ const missingMoviesRunJobs = missingMoviesMembers.map((m, i) => run({
 const missingMoviesStageIo = {
   'movie-snapshot': { inputs: [], outputs: [movieSnapshotOutput], predecessorJobs: [], job: 'movie-snapshot' },
   'franchise-gaps': { inputs: [movieSnapshotOutput], outputs: [franchiseGapsOutput], predecessorJobs: ['movie-snapshot'], job: 'franchise-gaps' },
-  'movie-gaps-notify': { inputs: [franchiseGapsOutput], outputs: [movieGapsNotifyOutput], predecessorJobs: ['franchise-gaps'], job: 'movie-gaps-notify' },
+  // T607: movie-gaps-notify has a real predecessor (franchise-gaps) but recorded NO input
+  // rows this run — reproduces the exact bug this task fixes (was showing "this is the root
+  // stage", which is wrong; it must show "No inputs recorded this run." instead).
+  'movie-gaps-notify': { inputs: [], outputs: [movieGapsNotifyOutput], predecessorJobs: ['franchise-gaps'], job: 'movie-gaps-notify' },
 };
 const missingMoviesStageIoOverall = {
   inputs: [movieSnapshotOutput],
@@ -1286,6 +1289,29 @@ export const FLOWS = [
     waitFor: ['.io-job-filter-bar'],
     actions: async (page) => {
       await page.click('.io-job-filter-chip:text-is("rec-canon")');
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    // T607: the DAG's genuine root stage (no predecessors at all, and it recorded no input
+    // rows this run either) must still show "No inputs — this is the root stage."
+    name: 'stage-io-root-stage-empty-inputs',
+    path: '/workflow-runs/missing-movies-run',
+    waitFor: ['.io-job-filter-bar'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:text-is("movie-snapshot")');
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    // T607: a NON-root stage (movie-gaps-notify, whose predecessor is franchise-gaps) that
+    // recorded zero input rows this run must show "No inputs recorded this run." — NOT the
+    // root-stage message, which was the bug this task fixes.
+    name: 'stage-io-non-root-empty-inputs',
+    path: '/workflow-runs/missing-movies-run',
+    waitFor: ['.io-job-filter-bar'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:text-is("movie-gaps-notify")');
       await page.waitForTimeout(400);
     },
   },
