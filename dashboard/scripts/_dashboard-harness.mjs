@@ -580,6 +580,17 @@ const plexLanguageFixMembers = [
   { job_name: 'plex-language-evaluate', depends_on: ['plex-language-discover', 'plex-language-resolve'] },
   { job_name: 'plex-language-apply', depends_on: ['plex-language-evaluate'] },
 ];
+// T592: real gate rows exercising the same-row 'skip-column' padlock-collision case —
+// plex-language-evaluate depends on BOTH its immediate predecessor (resolve) AND an earlier
+// ancestor (discover), so discover -> evaluate is a two-wave-gap edge that shares a row with
+// discover -> resolve -> evaluate. Without these, the workflow-run-plex-language-fix visual-check
+// screenshot never paints any padlocks and can't guard the DagFlow collision fix.
+const plexLanguageFixGates = [
+  { key: 'discovered-files.json', producer: 'plex-language-discover', consumer: 'plex-language-resolve', state: 'passed', description: 'produces — discovered files with GUIDs · consumes — resolve looks up each title\'s true original language' },
+  { key: 'discovered-files.json', producer: 'plex-language-discover', consumer: 'plex-language-evaluate', state: 'passed', description: 'produces — discovered files with GUIDs · consumes — evaluate cross-checks each file against its resolved language' },
+  { key: 'resolved-languages.json', producer: 'plex-language-resolve', consumer: 'plex-language-evaluate', state: 'passed', description: 'produces — resolved original languages per title · consumes — evaluate decides per-file audio/subtitle defaults' },
+  { key: 'evaluated-decisions.json', producer: 'plex-language-evaluate', consumer: 'plex-language-apply', state: 'passed', description: 'produces — per-file audio/subtitle decisions · consumes — apply pushes the decided defaults to Plex' },
+];
 const plexLanguageFixWorkflowRun = workflowRun({ id: 'plex-language-fix-run', workflow_name: 'plex-language-fix' });
 const plexLanguageFixRunJobs = plexLanguageFixMembers.map((m, i) => run({
   id: `plex-language-fix-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-language-fix-run',
@@ -837,7 +848,7 @@ export function fixtureFor(pathname, searchParams) {
     const job = searchParams?.get('job');
     return plexLanguageFixStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
-  if (pathname === '/api/workflow-runs/plex-language-fix-run') return { run: plexLanguageFixWorkflowRun, jobs: plexLanguageFixRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/plex-language-fix-run') return { run: plexLanguageFixWorkflowRun, jobs: plexLanguageFixRunJobs, logs, gates: plexLanguageFixGates };
   if (pathname === '/api/workflow-runs/plex-profiles-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return plexProfilesStageIoOverall;
     const job = searchParams?.get('job');
@@ -913,7 +924,7 @@ export function fixtureFor(pathname, searchParams) {
     return { workflow: workflow({ name: 'plex-space-saver', category: 'regular-maintenance', jobs: plexSpaceSaverMembers, gates: [] }) };
   }
   if (pathname === '/api/workflows/plex-language-fix') {
-    return { workflow: workflow({ name: 'plex-language-fix', category: 'regular-maintenance', jobs: plexLanguageFixMembers, gates: [] }) };
+    return { workflow: workflow({ name: 'plex-language-fix', category: 'regular-maintenance', jobs: plexLanguageFixMembers, gates: plexLanguageFixGates }) };
   }
   if (pathname === '/api/workflows/plex-profiles') {
     return { workflow: workflow({ name: 'plex-profiles', category: 'second-brain', jobs: plexProfilesMembers, gates: [] }) };

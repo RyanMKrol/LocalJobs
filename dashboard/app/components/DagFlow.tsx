@@ -67,6 +67,15 @@ interface GateEdgeData extends Record<string, unknown> {
   tooltipText?: string;
   isFailed?: boolean;
   isPassed?: boolean;
+  /**
+   * Vertical pixel offset applied on top of getBezierPath's computed label midpoint, for a
+   * same-row 'skip-column' edge (source/target share a Y but the wave-column gap is 2+) whose
+   * geometric midpoint would otherwise land inside an unrelated intervening node's footprint
+   * (e.g. discover -> evaluate crossing directly over the resolve node in a discover -> resolve
+   * -> evaluate chain). Undefined/0 for the common producer -> immediate-consumer case, which
+   * renders exactly as before.
+   */
+  labelOffsetY?: number;
 }
 
 // Full edge type needed for EdgeProps generic in React Flow v12
@@ -93,6 +102,7 @@ function GateEdge({
   const isFailed = !!data?.isFailed;
   const isPassed = !!data?.isPassed;
   const hasGate = !!gateState;
+  const labelOffsetY = data?.labelOffsetY ?? 0;
 
   const lockColor = isFailed ? 'var(--red)' : isPassed ? 'var(--green)' : 'var(--muted)';
   const lockFill = `color-mix(in srgb, ${lockColor} 18%, transparent)`;
@@ -133,7 +143,7 @@ function GateEdge({
             className="nodrag nopan"
             style={{
               position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY + labelOffsetY}px)`,
               pointerEvents: 'all',
               background: 'var(--panel-2)',
               borderRadius: 4,
@@ -279,6 +289,15 @@ function buildLayout(
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
+  // Node footprint (in the same coordinate space as colX/columnY) — used below to detect a
+  // same-row 'skip-column' edge whose geometric label midpoint would land inside an unrelated
+  // intervening node's box (T592).
+  const nodeBox = (job: string) => {
+    const left = colX(job);
+    const top = columnY.get(job) ?? 0;
+    return { left, right: left + NODE_W, top, bottom: top + NODE_H };
+  };
+
   // Stage nodes
   for (const m of members) {
     const y = (columnY.get(m.job_name) ?? 0) + NODE_H / 2; // re-derived Y, self-consistent within the wave column
@@ -309,8 +328,38 @@ function buildLayout(
         ? [gateData.key, gateData.description].filter(Boolean).join(' — ')
         : undefined;
 
+      // Skip-column collision check: a same-row edge (source/target node centers share a Y)
+      // whose wave-column gap is 2+ hops the label's geometric midpoint over any intervening
+      // wave column — if that midpoint falls inside another node's own footprint, the padlock
+      // would paint underneath that (opaque) node instead of on the connecting line. Detected
+      // generically off the real node boxes computed above, not any specific stage name.
+      let labelOffsetY: number | undefined;
+      const depWave = wave.get(dep) ?? 0;
+      const jobWave = wave.get(m.job_name) ?? 0;
+      if (jobWave - depWave >= 2) {
+        const depBox = nodeBox(dep);
+        const jobBox = nodeBox(m.job_name);
+        const sourceY = depBox.top + NODE_H / 2;
+        const targetY = jobBox.top + NODE_H / 2;
+        if (Math.abs(sourceY - targetY) < 1) {
+          const midX = (depBox.right + jobBox.left) / 2;
+          const midY = sourceY;
+          const collides = members.some((other) => {
+            if (other.job_name === dep || other.job_name === m.job_name) return false;
+            const box = nodeBox(other.job_name);
+            return midX >= box.left && midX <= box.right && midY >= box.top && midY <= box.bottom;
+          });
+          if (collides) {
+            // Bow the label off the row — downward if this is the topmost row (nothing above to
+            // clear into), upward otherwise. Only the label moves; the edge path is unchanged.
+            const isTopmostRow = sourceY <= NODE_H / 2 + 1;
+            labelOffsetY = isTopmostRow ? NODE_H / 2 + 16 : -(NODE_H / 2 + 16);
+          }
+        }
+      }
+
       const edgeData: GateEdgeData = gateData
-        ? { gateHref, gateState, tooltipText, isFailed, isPassed }
+        ? { gateHref, gateState, tooltipText, isFailed, isPassed, ...(labelOffsetY !== undefined ? { labelOffsetY } : {}) }
         : {};
 
       edges.push({
