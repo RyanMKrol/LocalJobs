@@ -17,6 +17,7 @@ import { getWorkItem, ignoreSurfacedItem, isWorkItemDone } from '../../../db/sto
 import type { JobContext } from '../../../core/types.js';
 import { buildDigest, runNotify } from './notify.js';
 import { RECS_JOB, recKey } from '../recs.js';
+import { moviesDomain } from './branches.js';
 import type { Recommendation, RecommendationsFile, RecsHistoryFile } from '../types.js';
 
 function fakeCtx(): JobContext {
@@ -143,6 +144,14 @@ const NOW = new Date('2026-06-24T00:00:00Z');
   assert.ok(!isWorkItemDone(RECS_JOB, recKey(FAIL_REC), 1), 'rec NOT marked notified after a failed push');
   assert.ok(!existsSync(failHistoryFile), 'history file not written after a failed push');
   console.log('  ✓ a failed digest push throws and leaves the ledger/history untouched (retry next run)');
+}
+
+// T604: moviesDomain configuration — reportFilename must point to the
+// recommendations report, not the stale franchise-gaps.md from before T468.
+{
+  assert.equal(moviesDomain.reportFilename, 'recommendations.md', 'moviesDomain.reportFilename must be recommendations.md');
+  assert.match(moviesDomain.config.reportDir, /out[\\/]reports/, 'moviesDomain.config.reportDir must contain /out/reports or \\out\\reports');
+  console.log('  ✓ T604: moviesDomain reportFilename and reportDir are correctly configured');
 }
 
 console.log('  ✓ movies recs-notify dedup/digest/ignore tests passed');
