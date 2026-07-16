@@ -16766,6 +16766,40 @@
           "cross-cutting"
         ]
       }
+    },
+    {
+      "id": "T615",
+      "title": "Capture each recommender branch's ACTUAL prompt item-set as its Inputs record",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "recommender",
+        "work-items",
+        "feature"
+      ],
+      "scope": [
+        "src/core/recommender/branch.ts",
+        "src/core/recommender/types.ts",
+        "src/workflows/movies/stages/branches.ts",
+        "src/workflows/movies/stages/recommend.ts",
+        "src/workflows/tv-recs/stages/branches.ts",
+        "src/workflows/tv-recs/stages/recommend.ts",
+        "src/core/recommender/branch.test.ts",
+        "src/db/store/workItems.ts",
+        "src/db/store.test.ts"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T615.md",
+      "facets": {
+        "layer": "framework",
+        "workType": "feature",
+        "risk": [
+          "cross-cutting"
+        ]
+      }
     }
   ]
 }
