@@ -16616,7 +16616,7 @@
     {
       "id": "T610",
       "title": "Add GET /api/cache/rows endpoint exposing service_cache row detail",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "T609"
       ],
