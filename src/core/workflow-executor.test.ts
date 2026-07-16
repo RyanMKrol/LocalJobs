@@ -143,6 +143,23 @@ for (const d of t595Members) {
   pushed.push(d);
 }
 
+// T596 members: a root stage whose inputKeys() REJECTS — simulates a live crawl's
+// API call failing before the run row exists. Proves a pre-row throw still ends up
+// as a visible failed workflow_runs row, not just a swallowed daemon-stdout log.
+const t596Members: JobDefinition[] = [
+  {
+    name: 't596-throwing-root',
+    inputKeys: () => Promise.reject(new Error('t596 simulated inputKeys() failure')),
+    run: async () => {},
+  },
+  { name: 't596-cons', run: async () => {} },
+];
+for (const d of t596Members) {
+  syncJob(d);
+  jobs.push(d);
+  pushed.push(d);
+}
+
 // T258 noop-detection members: a limitable workflow (root stage has inputKeys).
 // The fake child succeeds but never calls markWorkItem, so every run appears to
 // advance nothing → status 'skipped' (noop).
@@ -549,6 +566,28 @@ try {
     assert.ok(workflowRunId, 'run eventually produced a workflow_runs row');
     assert.equal(isWorkflowStarting('t595-wf'), false, 'starting flag cleared once the run settled');
     assert.equal(workflowRunInProgress('t595-wf'), false, 'T105 guard released after settle');
+  });
+
+  await test('T596: a limited run whose root stage inputKeys() throws still creates a failed workflow_runs row with the error captured', async () => {
+    const def: WorkflowDefinition = {
+      name: 't596-wf',
+      jobs: [{ job: 't596-throwing-root' }, { job: 't596-cons', dependsOn: ['t596-throwing-root'] }],
+    };
+    syncWorkflow(def);
+
+    // A limited manual run is what triggers the pre-row inputKeys() await.
+    const { workflowRunId } = await runWorkflow(def, 'manual', { limit: 1 });
+
+    assert.ok(workflowRunId, 'a workflow_runs row was created despite the pre-row throw');
+    const run = getWorkflowRun(workflowRunId);
+    assert.equal(run?.status, 'failed', 'the run is recorded failed, not left running or silently dropped');
+    const logs = getWorkflowLogs(workflowRunId);
+    assert.ok(
+      logs.some((l) => l.message.includes('t596 simulated inputKeys() failure')),
+      'the thrown error is captured in the run log, not just console.error',
+    );
+    assert.equal(isWorkflowStarting('t596-wf'), false, 'starting flag cleared after the failure');
+    assert.equal(workflowRunInProgress('t596-wf'), false, 'T105 guard released after the failure');
   });
 
   await test('parallelism (T156): independent stages run concurrently by DEFAULT; maxConcurrency:1 forces sequential; a dependent still waits', async () => {
