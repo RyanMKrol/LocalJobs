@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '../lib/api';
 import type { StuckItem } from '../lib/api';
@@ -26,6 +26,8 @@ export default function Workflows() {
   const [openWorkflow, setOpenWorkflow] = useState<string | null>(null);
   const [popoverItems, setPopoverItems] = useState<StuckItem[]>([]);
   const [busyWorkflows, setBusyWorkflows] = useState<Set<string>>(new Set());
+  const busyTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  useEffect(() => () => { busyTimersRef.current.forEach((t) => clearTimeout(t)); }, []);
 
   async function run(name: string) {
     setBusyWorkflows((prev) => new Set(prev).add(name));
@@ -34,11 +36,16 @@ export default function Workflows() {
     } catch {
       /* next poll reflects reality */
     } finally {
-      setBusyWorkflows((prev) => {
-        const next = new Set(prev);
-        next.delete(name);
-        return next;
-      });
+      const existing = busyTimersRef.current.get(name);
+      if (existing) clearTimeout(existing);
+      busyTimersRef.current.set(name, setTimeout(() => {
+        busyTimersRef.current.delete(name);
+        setBusyWorkflows((prev) => {
+          const next = new Set(prev);
+          next.delete(name);
+          return next;
+        });
+      }, 1200));
     }
   }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from './lib/api';
 import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtAbsolute, fmtDuration, fmtRelative, usePoll } from './ui';
@@ -23,6 +23,8 @@ export default function Overview() {
   const [activeFilter, setActiveFilter] = useState<Filter>(null);
   const [stuckPopoverOpen, setStuckPopoverOpen] = useState(false);
   const [busyWorkflows, setBusyWorkflows] = useState<Set<string>>(new Set());
+  const busyTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  useEffect(() => () => { busyTimersRef.current.forEach((t) => clearTimeout(t)); }, []);
 
   function toggleFilter(f: Filter) {
     setActiveFilter((prev) => (prev === f ? null : f));
@@ -42,11 +44,16 @@ export default function Overview() {
     } catch {
       /* next poll reflects reality */
     } finally {
-      setBusyWorkflows((prev) => {
-        const next = new Set(prev);
-        next.delete(name);
-        return next;
-      });
+      const existing = busyTimersRef.current.get(name);
+      if (existing) clearTimeout(existing);
+      busyTimersRef.current.set(name, setTimeout(() => {
+        busyTimersRef.current.delete(name);
+        setBusyWorkflows((prev) => {
+          const next = new Set(prev);
+          next.delete(name);
+          return next;
+        });
+      }, 1200));
     }
   }
 
