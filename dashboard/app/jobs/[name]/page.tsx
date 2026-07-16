@@ -4,7 +4,7 @@ import { Fragment, use, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '../../lib/api';
-import { StatusBadge, backFrom, fmtDuration, fmtRelative, usePoll } from '../../ui';
+import { StatusBadge, backFrom, fmtAbsolute, fmtDuration, fmtRelative, usePoll } from '../../ui';
 
 export default function JobDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
@@ -163,7 +163,7 @@ export default function JobDetail({ params }: { params: Promise<{ name: string }
               <tr key={r.id}>
                 <td><StatusBadge status={r.status} /></td>
                 <td className="muted">{r.trigger}</td>
-                <td className="muted">{fmtRelative(r.started_at)}</td>
+                <td className="muted">{fmtAbsolute(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>
                 <td>{r.attempt}</td>
                 <td><Link href={`/runs/${r.id}`}>details →</Link></td>

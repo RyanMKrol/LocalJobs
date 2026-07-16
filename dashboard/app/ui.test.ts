@@ -9,7 +9,7 @@
 // async main() instead, mirroring the other dashboard test suites.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cronToEnglish, resolveMode, backFrom, fmtDuration, fmtRelative, createPollController } from './ui.js';
+import { cronToEnglish, resolveMode, backFrom, fmtAbsolute, fmtDuration, fmtRelative, createPollController } from './ui.js';
 import type { PollDocumentLike } from './ui.js';
 
 async function main() {
@@ -120,6 +120,18 @@ async function main() {
   await test('fmtRelative: a future timestamp (clock skew) clamps to "just now"', () => {
     const t = new Date(Date.now() + 2_000).toISOString();
     assert.equal(fmtRelative(t), 'just now');
+  });
+
+  await test('fmtAbsolute: null renders as an em dash', () => {
+    assert.equal(fmtAbsolute(null), '—');
+  });
+
+  await test('fmtAbsolute: renders a fixed "D MMM YYYY, HH:mm" string, not locale-dependent toLocaleString output', () => {
+    assert.match(fmtAbsolute('2026-07-15 16:00:00'), /^\d{1,2} \w{3} \d{4}, \d{2}:\d{2}$/);
+  });
+
+  await test('fmtAbsolute: an already-ISO (Z-suffixed) input parses without NaN', () => {
+    assert.match(fmtAbsolute('2026-07-15T16:00:00Z'), /^\d{1,2} \w{3} \d{4}, \d{2}:\d{2}$/);
   });
 
   await test('createPollController: discards a stale response that resolves after a newer one', async () => {

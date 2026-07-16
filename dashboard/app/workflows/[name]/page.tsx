@@ -9,7 +9,7 @@ import { RecsManager, type RecsManagerConfig } from '../../components/RecsManage
 import { RunButton } from '../../components/RunButton';
 import { WorkflowOutputSection } from '../../components/WorkflowOutputSection';
 import { api, type MissingSeason, type MissingSeasons, type MovieGap, type MovieGaps, type MovieRec, type MovieRecs, type TvRec, type TvRecs } from '../../lib/api';
-import { CronBadge, StatusBadge, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
+import { CronBadge, StatusBadge, fmtAbsolute, fmtDuration, fmtRelative, fmtTime, usePoll } from '../../ui';
 
 /** Workflow names that show the Missing seasons section. */
 const MISSING_SEASONS_WORKFLOWS = new Set(['missing-tv-seasons']);
@@ -465,7 +465,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
               <tr key={r.id}>
                 <td><StatusBadge status={r.status} /></td>
                 <td className="muted">{r.trigger}</td>
-                <td className="muted">{fmtRelative(r.started_at)}</td>
+                <td className="muted">{fmtAbsolute(r.started_at)}</td>
                 <td className="mono">{fmtDuration(r.duration_ms)}</td>
                 <td><Link href={`/workflow-runs/${r.id}`}>details →</Link></td>
               </tr>

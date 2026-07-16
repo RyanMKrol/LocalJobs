@@ -77,6 +77,19 @@ export function fmtTime(t: string | null): string {
   return d.toLocaleString();
 }
 
+export function fmtAbsolute(t: string | null): string {
+  if (!t) return '—';
+  const d = new Date(t.includes('Z') || t.includes('T') ? t : t.replace(' ', 'T') + 'Z');
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
 export function fmtRelative(t: string | null): string {
   if (!t) return '—';
   const d = new Date(t.includes('Z') || t.includes('T') ? t : t.replace(' ', 'T') + 'Z').getTime();

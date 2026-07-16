@@ -6,7 +6,7 @@ import { DagFlow } from '../../components/DagFlow';
 import { StageIoPanel } from '../../components/StageIoLists';
 import { api } from '../../lib/api';
 import type { Run } from '../../lib/api';
-import { CopyLogsButton, StatusBadge, fmtDuration, fmtRelative, usePoll } from '../../ui';
+import { CopyLogsButton, StatusBadge, fmtAbsolute, fmtDuration, fmtRelative, usePoll } from '../../ui';
 
 function latestByStage(members: Run[]): Run[] {
   const latest = new Map<string, Run>();
@@ -124,7 +124,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
                   <tr>
                     <td><strong>{r.job_name}</strong></td>
                     <td><StatusBadge status={r.status} /></td>
-                    <td className="muted">{fmtRelative(r.started_at)}</td>
+                    <td className="muted">{fmtAbsolute(r.started_at)}</td>
                     <td className="mono">{fmtDuration(r.duration_ms)}</td>
                     <td><Link href={`/runs/${r.id}`}>logs →</Link></td>
                   </tr>
@@ -153,7 +153,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
                     <tr key={e.id}>
                       <td className="muted" style={{ paddingLeft: 24 }}>{r.job_name}</td>
                       <td><StatusBadge status={e.status} /></td>
-                      <td className="muted">{fmtRelative(e.started_at)}</td>
+                      <td className="muted">{fmtAbsolute(e.started_at)}</td>
                       <td className="mono">{fmtDuration(e.duration_ms)}</td>
                       <td><Link href={`/runs/${e.id}`}>logs →</Link></td>
                     </tr>

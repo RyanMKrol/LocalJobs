@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { api } from './lib/api';
-import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtDuration, fmtRelative, usePoll } from './ui';
+import { CronBadge, ProgressBar, StatusBadge, StuckPopover, fmtAbsolute, fmtDuration, fmtRelative, usePoll } from './ui';
 import { RunButton } from './components/RunButton';
 import { Pill } from './components/Pill';
 
@@ -274,7 +274,7 @@ export default function Overview() {
                   <td><Link href={`/workflows/${r.workflow_name}`}>{r.workflow_name}</Link></td>
                   <td><StatusBadge status={r.status} /></td>
                   <td className="muted">{r.trigger}</td>
-                  <td className="muted">{fmtRelative(r.started_at)}</td>
+                  <td className="muted">{fmtAbsolute(r.started_at)}</td>
                   <td className="mono">{fmtDuration(r.duration_ms)}</td>
                   <td><Link href={`/workflow-runs/${r.id}`}>details →</Link></td>
                 </tr>
