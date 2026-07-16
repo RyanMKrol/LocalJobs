@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { QuotaExceededError } from '../services.js';
 import type { JobContext } from '../types.js';
 import { runClaude } from '../../services/claude.js';
-import { isWorkItemDone } from '../../db/store.js';
+import { isWorkItemDone, markWorkItem } from '../../db/store.js';
 import { balanceByGenre, buildOwnedSet, dedupeRawByTitleYear, mergeLens, normTitle, recKey } from './pure.js';
 import { allHistoryTitles, collectBranchSuggestions, ignoredSuggestionTitles, recentTitles } from './branch.js';
 import type { RunClaudeFn } from './branch.js';
@@ -352,6 +352,18 @@ export async function runMerge<M, P>(
   const verified = [...byTmdb.values()];
   const out: RecommendationsFile = { generatedAt: now.toISOString(), pooled: pooled.length, recommendations: balanced };
   writeJsonFile(recsOut, out);
+
+  // One work_items row per FINAL balanced recommendation (T602) — the merge
+  // stage's own ledger (job = domain.mergeStageName, e.g. 'rec-merge' /
+  // 'tv-rec-merge'), distinct from domain.recsJob's separate
+  // notified/ignored keyspace (T144). Keyed by the recommendation's own
+  // tmdbId via recKey, so a same-day re-run with the same balanced set
+  // upserts the same rows rather than duplicating them.
+  for (const r of balanced) {
+    markWorkItem(domain.mergeStageName, recKey(r.tmdbId), 'success', {
+      detail: { title: r.title, year: r.year, genre: r.genre, reason: r.reason, lens: r.lens, tmdbRating: r.tmdbRating },
+    });
+  }
 
   ctx.progress(100, `${balanced.length} recommendation(s)`);
   ctx.log('');

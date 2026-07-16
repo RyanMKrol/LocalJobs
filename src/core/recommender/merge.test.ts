@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { markWorkItem } from '../../db/store.js';
+import { getWorkItem, markWorkItem, workItemCounts } from '../../db/store.js';
+import { recKey } from './pure.js';
 import type { JobContext } from '../types.js';
 import { runMerge } from './merge.js';
 import type { RecommenderConfig, RecommenderDomain } from './types.js';
@@ -134,6 +135,52 @@ async function runFixture(domain: RecommenderDomain<Item, Profile>, dir: string)
   const out = await runFixture(domain, dir);
   assert.equal(out.recommendations.length, 0, 'a rec already recommended under this domain\'s ledger job is dropped');
   console.log('  ✓ merge drops a previously-recommended pick, scoped to the domain\'s own recsJob ledger');
+}
+
+// ── T602: merge writes one work_items row per final balanced recommendation,
+// keyed by the merge stage's OWN job name (domain.mergeStageName), not
+// domain.recsJob — and a same-day re-run upserts (no duplicates). ──
+{
+  const dir = mkdtempSync(join(tmpdir(), 'recommender-merge-ledger-'));
+  const domain = makeDomain('ledgertest', dir, { 1: 'Action', 2: 'Comedy' });
+  const recsDir = domain.config.recsDir;
+  mkdirSync(recsDir, { recursive: true });
+  writeFileSync(domain.config.snapshotOut, JSON.stringify({ items: [] }));
+  writeFileSync(join(recsDir, 'branch-a.json'), JSON.stringify({
+    branchId: 'branch-a', lens: 'serendipity', generatedAt: NOW.toISOString(),
+    suggestions: [
+      { title: 'Pick One', year: 2010, reason: 'reason one', lens: 'serendipity' },
+      { title: 'Pick Two', year: 2012, reason: 'reason two', lens: 'targeted' },
+    ],
+  }));
+  const registry: Record<string, { id: number; title: string; year: number | null; vote_average: number; vote_count: number; genre_ids: number[] }> = {
+    'Pick One': { id: 111, title: 'Pick One', year: 2010, vote_average: 8, vote_count: 200, genre_ids: [1] },
+    'Pick Two': { id: 222, title: 'Pick Two', year: 2012, vote_average: 9, vote_count: 300, genre_ids: [2] },
+  };
+  const runOnce = () => runMerge(fakeCtx(), domain, {
+    search: async (title) => registry[title] ?? null,
+    now: NOW,
+    topUp: async () => [],
+  });
+
+  await runOnce();
+  let out = JSON.parse(readFileSync(domain.config.recsOut, 'utf8'));
+  assert.equal(out.recommendations.length, 2, 'both picks clear the quality bar and are balanced in');
+  let counts = workItemCounts(domain.mergeStageName);
+  assert.equal(counts.success, 2, 'merge stage ledger has one row per final recommendation');
+  const item1 = getWorkItem(domain.mergeStageName, recKey(111));
+  assert.ok(item1, 'row keyed by recKey(tmdbId) exists for the merge stage job name');
+  assert.deepEqual(item1 && JSON.parse(item1.detail ?? 'null'), { title: 'Pick One', year: 2010, genre: 'Action', reason: 'reason one', lens: 'serendipity', tmdbRating: 8 },
+    'detail carries this recommendation\'s own fields');
+  assert.equal(item1?.status, 'success');
+
+  // Re-run on the same day with the same balanced set — upserts, no duplicates.
+  await runOnce();
+  out = JSON.parse(readFileSync(domain.config.recsOut, 'utf8'));
+  assert.equal(out.recommendations.length, 2);
+  counts = workItemCounts(domain.mergeStageName);
+  assert.equal(counts.success, 2, 're-run with the same balanced set upserts the same rows, not duplicates');
+  console.log('  ✓ merge writes one idempotent work_items row per final recommendation, keyed by the merge stage\'s own job name');
 }
 
 console.log('  ✓ shared recommender merge golden-file tests passed');
