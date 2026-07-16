@@ -123,5 +123,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T588 — scope was missing CLAUDE.md, which the task's own spec required editing (second occurrence of this exact pattern on this task lineage)",
     "at": "2026-07-15T22:39:38Z"
+  },
+  "T601": {
+    "failed": true,
+    "reason": "review-failed: superseded by T615 — original scope excluded branches.ts/types.ts where each branch's real prompt input is built, so the blocked builder fabricated a sample; T615 widens scope + changes build() to expose the exact selected items with a byte-for-byte done-when",
+    "at": "2026-07-16T19:35:14Z"
   }
 }
