@@ -16592,7 +16592,7 @@
     {
       "id": "T609",
       "title": "Add listServiceCacheRows() store function for browsing service_cache rows",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
