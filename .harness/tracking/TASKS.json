@@ -16493,7 +16493,7 @@
     {
       "id": "T605",
       "title": "Snapshot stages (movie-snapshot / tv-snapshot) record one work_items row per movie/show, not a single bulk marker",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
