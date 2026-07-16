@@ -100,7 +100,7 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
           </button>
         )}
       </div>
-      <p className="sub">{run ? `${completedStages} of ${totalStages} stages` : ''}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}</p>
+      <p className="sub">{run ? `${completedStages} of ${totalStages} stages` : ''}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}{run?.started_at ? ` · Started ${fmtAbsolute(run.started_at)}` : ''}</p>
 
       {workflow && (
         <div className="panel dag-panel" style={{ marginBottom: 16 }}>
