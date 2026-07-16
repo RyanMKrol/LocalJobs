@@ -120,6 +120,60 @@ function JsonOutputBody({ content, truncated }: { content: string; truncated?: b
   return <RawOutputBody content={pretty} truncated={truncated} />;
 }
 
+/** Minimal shape of a plex-space-saver `SizeBreakdownFile` (see
+ *  src/workflows/plex-space-saver/types.ts) — only the fields the bar chart needs. */
+interface SizeBreakdownItem {
+  title: string;
+  human: string;
+  bytes: number;
+}
+interface SizeBreakdownFile {
+  items: SizeBreakdownItem[];
+}
+
+/**
+ * Renders the plex-space-saver disk-size breakdown (T617) as one proportional
+ * horizontal bar per title, biggest-first (the order the file is already sorted
+ * in) — bar width scaled to that item's `bytes` relative to the largest item's
+ * `bytes`. Falls back to `RawOutputBody` on invalid/empty JSON so it never
+ * throws or renders blank.
+ */
+function SizeTableOutputBody({ content, truncated }: { content: string; truncated?: boolean }) {
+  let items: SizeBreakdownItem[] | null = null;
+  try {
+    const parsed = JSON.parse(content) as SizeBreakdownFile;
+    if (Array.isArray(parsed.items) && parsed.items.length > 0) items = parsed.items;
+  } catch {
+    // Not valid JSON — fall through to the raw fallback below.
+  }
+  if (!items) return <RawOutputBody content={content} truncated={truncated} />;
+
+  const maxBytes = Math.max(...items.map((i) => i.bytes), 0);
+  return (
+    <>
+      {truncated && (
+        <p className="muted" style={{ margin: 0, fontSize: '0.82em' }}>
+          ⚠ Output is large — showing the first part only.
+        </p>
+      )}
+      <ul className="size-bar-list">
+        {items.map((item, i) => {
+          const pct = maxBytes > 0 ? (item.bytes / maxBytes) * 100 : 0;
+          return (
+            <li key={`${item.title}-${i}`} className="size-bar-row">
+              <div className="size-bar-label">{item.title}</div>
+              <div className="size-bar-track">
+                <div className="size-bar-fill" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="size-bar-value">{item.human}</div>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
 /**
  * Renderer dispatch keyed by an output item's declared form (`WorkflowRunOutput.format`,
  * T262). Add a new form's renderer here — the extension point this refactor exists for.
@@ -129,6 +183,7 @@ const OUTPUT_RENDERERS: Record<string, (props: { content: string; truncated?: bo
   markdown: MarkdownOutputBody,
   json: JsonOutputBody,
   text: RawOutputBody,
+  'size-table': SizeTableOutputBody,
 };
 
 export function renderOutputBody(result: WorkflowRunOutput): ReactElement {

@@ -573,6 +573,22 @@ const plexSpaceSaverStageIo = {
 const plexSpaceSaverStageIoOverall = {
   inputs: [], outputs: [plexSpaceSaverOutput], predecessorJobs: [], outputJobs: ['plex-space-saver-scan'], job: '__overall__',
 };
+// T617: the GET .../output(-items) response body for `plexSpaceSaverOutput` — a real
+// SizeBreakdownFile JSON string (biggest-first) so the OutputRenderer's 'size-table'
+// bar-chart renderer has real varied-`bytes` rows to paint, in both the workflow
+// Output section and the run-scoped Stage I/O popover.
+const plexSpaceSaverOutputFixture = {
+  found: true, job: 'plex-space-saver-scan', key: '2026-W25', format: 'size-table',
+  file: '/abs/data/out/size-breakdown-2026-W25.json', bytes: 512, truncated: false,
+  content: JSON.stringify({
+    items: [
+      { title: 'A Very Long Movie Title That Might Wrap On Narrow Screens', year: 2019, type: 'movie', ratingKey: '1', bytes: 42_949_672_960, human: '40.0 GB' },
+      { title: 'A Great TV Show', year: 2016, type: 'show', ratingKey: '2', bytes: 32_212_254_720, human: '30.0 GB' },
+      { title: 'Another Movie', year: 2021, type: 'movie', ratingKey: '3', bytes: 12_884_901_888, human: '12.0 GB' },
+      { title: 'A Small Documentary', year: 2011, type: 'movie', ratingKey: '4', bytes: 1_073_741_824, human: '1.0 GB' },
+    ],
+  }),
+};
 
 // plex-language-fix — discover -> resolve -> evaluate (fan-in on discover+resolve) -> apply.
 const plexLanguageFixMembers = [
@@ -879,6 +895,7 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/workflow-runs/perfumes-run') return { run: perfumesWorkflowRun, jobs: perfumesRunJobs, logs, gates: [] };
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
+    if (searchParams?.get('job') === 'plex-space-saver-scan') return plexSpaceSaverOutputFixture;
     return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
   }
   if (pathname.startsWith('/api/workflow-runs/')) {
@@ -956,6 +973,16 @@ export function fixtureFor(pathname, searchParams) {
         terminalJobs: ['places-enrich-with-llm'],
       };
     }
+    // T617: plex-space-saver's terminal-stage output item, so the workflow-definition
+    // Output section has a real row to click "View" on (exercises the size-table renderer).
+    if (pathname === '/api/workflows/plex-space-saver/output-items') {
+      return {
+        items: [
+          { jobName: 'plex-space-saver-scan', itemKey: '2026-W25', name: 'Disk-size breakdown — Week 25, 2026', hasMarkdown: true, viewable: true, updatedAt: NOW },
+        ],
+        terminalJobs: ['plex-space-saver-scan'],
+      };
+    }
     return { items: [], terminalJobs: [] };
   }
   // T282: GET /api/workflows/:name/output?job=&key= — the unified Output section's
@@ -963,6 +990,7 @@ export function fixtureFor(pathname, searchParams) {
   // (T262). Reuses the same synthetic markdown body as the run-scoped fixture above.
   if (pathname.endsWith('/output') && pathname.startsWith('/api/workflows/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
+    if (pathname === '/api/workflows/plex-space-saver/output') return plexSpaceSaverOutputFixture;
     return { found: true, job: 'places-enrich-with-llm', key: 'place:ChIJ' + LONG, format: 'markdown', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
   }
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
@@ -1106,6 +1134,35 @@ export const FLOWS = [
       await page.click('.output-section button.btn.btn-sm');
       await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
       await page.waitForSelector('.md-body', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    // T617: plex-space-saver's Output section popover — confirms the 'size-table'
+    // OutputRenderer draws a proportional horizontal bar chart, not a raw JSON dump.
+    name: 'workflow-output-section-size-table',
+    path: '/workflows/plex-space-saver',
+    viewport: true,
+    waitFor: ['.output-section button.btn.btn-sm'],
+    actions: async (page) => {
+      await page.click('.output-section button.btn.btn-sm');
+      await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForSelector('.size-bar-list', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    // T617: same 'size-table' bar chart, but via the run-scoped Stage I/O popover
+    // (StageIoLists) rather than the workflow-definition Output section — confirms
+    // both call sites of `renderOutputBody` paint it identically.
+    name: 'stage-io-size-table',
+    path: '/workflow-runs/plex-space-saver-run',
+    viewport: true,
+    waitFor: ['.stage-io-item-link'],
+    actions: async (page) => {
+      await page.click('.stage-io-item-link');
+      await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForSelector('.size-bar-list', { state: 'visible', timeout: 5000 });
       await page.waitForTimeout(300);
     },
   },

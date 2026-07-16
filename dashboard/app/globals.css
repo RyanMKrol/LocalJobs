@@ -413,6 +413,16 @@ a:hover .dag-node { border-color: var(--accent); border-left-color: var(--accent
 .md-body th,.md-body td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
 .md-body th { background: var(--panel-2); }
 
+/* ── Size-breakdown bar chart (T617, the plex-space-saver 'size-table' output form) ── */
+.size-bar-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.size-bar-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 2fr auto; align-items: center; gap: 10px;
+}
+.size-bar-label { font-size: 13px; overflow-wrap: anywhere; min-width: 0; }
+.size-bar-track { background: var(--panel-2); border-radius: 4px; height: 14px; overflow: hidden; }
+.size-bar-fill { background: var(--accent, #58a6ff); height: 100%; border-radius: 4px; }
+.size-bar-value { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
 /* ── Validation-gate flow (output → gate → input) ─────────────────────────── */
 .gate-flow { display: flex; align-items: stretch; gap: 10px; margin: 8px 0 16px; }
 .gate-card {
@@ -557,6 +567,10 @@ select:focus { border-color: var(--accent); }
 
   /* Decoupled stage inputs/outputs columns stack instead of sitting side by side. */
   .stage-io-columns { flex-direction: column; gap: 14px; }
+
+  /* Size-breakdown bars: drop the track to its own row so the label never gets squeezed. */
+  .size-bar-row { grid-template-columns: 1fr; gap: 2px; }
+  .size-bar-value { justify-self: start; }
   .md-fm-row:not(:first-child) .md-fm-key { margin-top: 6px; }
 
   /* DAG: reduce height and constrain width on mobile */
