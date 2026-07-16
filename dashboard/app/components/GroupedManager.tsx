@@ -110,16 +110,14 @@ export function GroupedManager<T, GK extends string | number, D>({ config }: { c
                     <td colSpan={activeColumns.length + 1}>
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                         <span>{renderGroupLabel(gk, items, data as D, false)}</span>
-                        {items.length > 1 && (
-                          <button
-                            className="btn btn-sm"
-                            onClick={() => doIgnoreGroup(gk, items)}
-                            disabled={group.busy === gk}
-                            style={{ flexShrink: 0 }}
-                          >
-                            {group.busy === gk ? 'Ignoring…' : '✕ Ignore all'}
-                          </button>
-                        )}
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => doIgnoreGroup(gk, items)}
+                          disabled={group.busy === gk}
+                          style={{ flexShrink: 0 }}
+                        >
+                          {group.busy === gk ? 'Ignoring…' : '✕ Ignore all'}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -160,16 +158,14 @@ export function GroupedManager<T, GK extends string | number, D>({ config }: { c
                     <td colSpan={ignoredColumns.length + 1}>
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                         <span>{renderGroupLabel(gk, items, data as D, true)}</span>
-                        {items.length > 1 && (
-                          <button
-                            className="btn btn-sm"
-                            onClick={() => doUnignoreGroup(gk, items)}
-                            disabled={ignoredGroup.busy === gk}
-                            style={{ flexShrink: 0 }}
-                          >
-                            {ignoredGroup.busy === gk ? 'Un-ignoring…' : '↺ Un-ignore all'}
-                          </button>
-                        )}
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => doUnignoreGroup(gk, items)}
+                          disabled={ignoredGroup.busy === gk}
+                          style={{ flexShrink: 0 }}
+                        >
+                          {ignoredGroup.busy === gk ? 'Un-ignoring…' : '↺ Un-ignore all'}
+                        </button>
                       </div>
                     </td>
                   </tr>
