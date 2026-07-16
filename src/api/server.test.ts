@@ -1992,6 +1992,85 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   }
 }
 
+// ── T591: POST /api/workflows/reset-output-all — skip certified workflows ──
+{
+  const { isWorkItemDone: t591IsWorkItemDone, setWorkflowCertified: t591SetCertified } = await import('../db/store.js');
+  syncJob({ name: 't591-j1', run: async () => {} });
+  syncJob({ name: 't591-j2', run: async () => {} });
+  syncJob({ name: 't591-j3', run: async () => {} });
+  syncWorkflow({ name: 't591-certified-wf', jobs: [{ job: 't591-j1' }] });
+  syncWorkflow({ name: 't591-uncertified-wf', jobs: [{ job: 't591-j2' }] });
+  syncWorkflow({ name: 't591-active-wf', jobs: [{ job: 't591-j3' }] });
+
+  // Certified workflow: seed output data that should NOT be reset.
+  markWorkItem('t591-j1', 'item-certified', 'success');
+  const t591CertWfRunId = createWorkflowRun('t591-certified-wf', 'manual');
+  finishWorkflowRun(t591CertWfRunId, 'success');
+  t591SetCertified('t591-certified-wf', true);
+
+  // Uncertified workflow: seed output data that SHOULD be reset.
+  markWorkItem('t591-j2', 'item-uncertified', 'success');
+  const t591UncertWfRunId = createWorkflowRun('t591-uncertified-wf', 'manual');
+  finishWorkflowRun(t591UncertWfRunId, 'success');
+
+  // Active workflow: seed output data but leave its run unfinished (should be skipped).
+  markWorkItem('t591-j3', 'item-active', 'success');
+  createWorkflowRun('t591-active-wf', 'manual');
+
+  await test('POST /api/workflows/reset-output-all: skips certified and active workflows, resets others', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/reset-output-all`, { method: 'POST' });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as {
+        ok: boolean;
+        totalWorkflows: number;
+        resetCount: number;
+        skippedCount: number;
+        results: Array<{ name: string; status: string; reason?: string; itemsDeleted?: number }>;
+      };
+      assert.equal(body.ok, true);
+
+      // Certified workflow should be skipped with 'certified' reason
+      const certifiedResult = body.results.find((r) => r.name === 't591-certified-wf');
+      assert.ok(certifiedResult, 't591-certified-wf present in results');
+      assert.equal(certifiedResult?.status, 'skipped', 'certified workflow is skipped');
+      assert.equal(certifiedResult?.reason, 'certified', 'certified reason is reported');
+
+      // Certified workflow's data must be untouched.
+      assert.equal(t591IsWorkItemDone('t591-j1', 'item-certified', 3), true, 'certified workflow work item untouched');
+
+      // Uncertified workflow should be reset
+      const uncertifiedResult = body.results.find((r) => r.name === 't591-uncertified-wf');
+      assert.ok(uncertifiedResult, 't591-uncertified-wf present in results');
+      assert.equal(uncertifiedResult?.status, 'reset', 'uncertified workflow is reset');
+      assert.ok((uncertifiedResult?.itemsDeleted ?? 0) >= 1, 't591-uncertified-wf items were deleted');
+
+      // Uncertified workflow's data must be cleared
+      assert.equal(t591IsWorkItemDone('t591-j2', 'item-uncertified', 3), false, 'uncertified workflow work item deleted');
+
+      // Active workflow should be skipped
+      const activeResult = body.results.find((r) => r.name === 't591-active-wf');
+      assert.ok(activeResult, 't591-active-wf present in results');
+      assert.equal(activeResult?.status, 'skipped', 'active workflow is skipped');
+      assert.equal(activeResult?.reason, 'active run in progress', 'active run reason is reported');
+
+      // Active workflow's data must be untouched.
+      assert.equal(t591IsWorkItemDone('t591-j3', 'item-active', 3), true, 'active workflow work item untouched');
+
+      assert.ok(body.resetCount >= 1, 'at least one workflow was reset');
+      assert.ok(body.skippedCount >= 2, 'at least two workflows were skipped (certified + active)');
+    });
+  });
+
+  // Cleanup registry stubs.
+  for (const n of ['t591-j1', 't591-j2', 't591-j3']) {
+    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
+  }
+  for (const n of ['t591-certified-wf', 't591-uncertified-wf', 't591-active-wf']) {
+    const i = workflows.findIndex((x) => x.name === n); if (i >= 0) workflows.splice(i, 1);
+  }
+}
+
 // ── T478: GET /api/cache + POST /api/cache/clear — service_cache management ──
 {
   const { setCachedServiceResponse: t478SetCache } = await import('../db/store.js');

@@ -228,7 +228,7 @@ export default function AdminPage() {
           <li>Service limits and usage</li>
         </ul>
         <p className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>
-          Workflows with an active run are skipped rather than reset. Every other workflow
+          Workflows with an active run or certified flag are skipped rather than reset. Every other workflow
           re-processes everything from scratch on its next run.
         </p>
 

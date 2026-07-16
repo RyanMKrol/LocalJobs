@@ -1428,11 +1428,11 @@ const routes: Route[] = [
 
   // POST /api/workflows/reset-output-all
   // Bulk variant of reset-output (T322): runs the SAME per-workflow reset across
-  // EVERY workflow in one call. A workflow with an active run is SKIPPED (not
-  // reset) rather than failing the whole call — this is deliberately best-effort
-  // across all workflows, not all-or-nothing. This path has no `:name` segment so
-  // it never collides with the :name-based reset-output route below.
-  // Mutating — behind the same loopback/token guard as all other POST endpoints.
+  // EVERY workflow in one call. Workflows with an active run or a certified flag
+  // are SKIPPED (not reset) rather than failing the whole call — this is
+  // deliberately best-effort across all workflows, not all-or-nothing. This path
+  // has no `:name` segment so it never collides with the :name-based reset-output
+  // route below. Mutating — behind the same loopback/token guard as all other POST endpoints.
   {
     method: 'POST',
     pattern: '/api/workflows/reset-output-all',
@@ -1444,6 +1444,10 @@ const routes: Route[] = [
       for (const wf of listWorkflows()) {
         if (workflowRunInProgress(wf.name)) {
           results.push({ name: wf.name, status: 'skipped', reason: 'active run in progress' });
+          continue;
+        }
+        if (wf.certified) {
+          results.push({ name: wf.name, status: 'skipped', reason: 'certified' });
           continue;
         }
         const outDir = await findWorkflowDataOut(wf.name);
