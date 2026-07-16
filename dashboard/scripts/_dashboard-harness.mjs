@@ -969,6 +969,15 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname.startsWith('/api/jobs/')) return { job: job() };
   if (pathname.startsWith('/api/runs/')) return { run: run(), logs };
   if (pathname === '/api/cache') return { counts: [{ service_name: 'gemini', count: 12 }, { service_name: 'google-places', count: 4 }] };
+  // T611: individual service_cache rows for the admin page's per-service "Browse" expand.
+  if (pathname === '/api/cache/rows') {
+    return {
+      rows: [
+        { service_name: 'gemini', cache_key: 'gemini:summarize:place:ChIJ' + LONG, cached_at: NOW, response_json: JSON.stringify({ summary: 'A short synthetic Gemini response.', tokens: 128 }), live: true },
+        { service_name: 'gemini', cache_key: 'gemini:summarize:place:second', cached_at: '2024-01-01T00:00:00.000Z', response_json: JSON.stringify({ summary: 'An older, expired cached response.' }), live: false },
+      ],
+    };
+  }
   if (pathname === '/api/cache/clear') return { ok: true, cleared: 16 };
   if (pathname === '/api/services') return { services: [service(), service({ name: 'gemini', paid: 1 }), service({ name: 'fragrantica', category: 'website-scrape', paid: 0, daily_cap: null, monthly_cap: null }), service({ name: 'claude-cli', category: 'cli-tool', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null }), service({ name: 'legacy-service', category: 'uncategorized', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null }), service({ name: 'plex', category: 'api', paid: 0, rate_per_minute: null, daily_cap: null, monthly_cap: null, timeout_ms: 8000, limits_overridden: 0, rate_limit_source: 'Local Plex server on the LAN — no external rate limit; timeout guards against a DHCP-stale host hanging a request.' })] };
   if (pathname.startsWith('/api/services/') && pathname.endsWith('/consumers')) return { consumers: [{ workflow_name: 'places', jobs: [{ job_name: 'places-enrich', last_used: NOW }, { job_name: 'places-enrich-with-llm', last_used: NOW }] }, { workflow_name: 'perfumes', jobs: [{ job_name: 'perfumes-build', last_used: NOW }] }] };
@@ -1070,6 +1079,20 @@ export const PAGES = [
 // ⚠️ LIVING ARTIFACT: when a UI change adds/removes an interactive state worth seeing
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
+  {
+    // T611: admin page's Cached responses panel — clicking "Browse" on a service
+    // row expands its individual service_cache rows (cache_key/cached_at/Live-Stale
+    // pill), then expanding a row's <details> shows the pretty-printed response_json.
+    name: 'admin-cache-browse-expanded',
+    path: '/admin',
+    waitFor: ['button:has-text("Browse")'],
+    actions: async (page) => {
+      await page.click('button:has-text("Browse")');
+      await page.waitForSelector('summary:has-text("view")', { timeout: 5000 });
+      await page.click('summary:has-text("view")');
+      await page.waitForTimeout(200);
+    },
+  },
   {
     // T282: the workflow-detail page's unified Output section (WorkflowOutputSection)
     // now dispatches its popover renderer by the item's declared `format` (T262) —

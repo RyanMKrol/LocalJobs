@@ -1,15 +1,26 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Fragment, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '../lib/api';
 import { Pill } from '../components/Pill';
 
 const DEFAULT_RUN_ALL_LIMIT = 3;
 
+// Pretty-print a cached response_json value; falls back to the raw string if it
+// isn't valid JSON (mirrors JsonOutputBody in components/OutputRenderer.tsx).
+function prettyPrintJson(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
+
 type ResetAllResult = Awaited<ReturnType<typeof api.resetAllWorkflowsOutput>>;
 type RunAllResult = Awaited<ReturnType<typeof api.runAllWorkflows>>;
 type CacheCounts = Awaited<ReturnType<typeof api.serviceCacheCounts>>['counts'];
+type CacheRows = Awaited<ReturnType<typeof api.serviceCacheRows>>['rows'];
 
 export default function AdminPage() {
   const [busy, setBusy] = useState(false);
@@ -26,6 +37,13 @@ export default function AdminPage() {
   const [cacheBusy, setCacheBusy] = useState(false);
   const [cacheClearedMsg, setCacheClearedMsg] = useState<string | null>(null);
   const [cacheErr, setCacheErr] = useState<string | null>(null);
+
+  // Per-service row browser (T611) — which service is currently expanded, its
+  // fetched rows, and load state, keyed by service name.
+  const [expandedCacheService, setExpandedCacheService] = useState<string | null>(null);
+  const [cacheRowsByService, setCacheRowsByService] = useState<Record<string, CacheRows>>({});
+  const [cacheRowsLoading, setCacheRowsLoading] = useState<string | null>(null);
+  const [cacheRowsErr, setCacheRowsErr] = useState<string | null>(null);
 
   const loadCacheCounts = useCallback(async () => {
     try {
@@ -58,6 +76,25 @@ export default function AdminPage() {
       setCacheErr(e instanceof Error ? e.message : String(e));
     } finally {
       setCacheBusy(false);
+    }
+  }
+
+  async function toggleBrowseService(serviceName: string) {
+    if (expandedCacheService === serviceName) {
+      setExpandedCacheService(null);
+      return;
+    }
+    setExpandedCacheService(serviceName);
+    setCacheRowsErr(null);
+    if (cacheRowsByService[serviceName]) return;
+    setCacheRowsLoading(serviceName);
+    try {
+      const r = await api.serviceCacheRows(serviceName);
+      setCacheRowsByService((prev) => ({ ...prev, [serviceName]: r.rows }));
+    } catch (e) {
+      setCacheRowsErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCacheRowsLoading(null);
     }
   }
 
@@ -190,18 +227,83 @@ export default function AdminPage() {
               <tr>
                 <th>Service</th>
                 <th>Cached rows</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {cacheCounts.map((c) => (
-                <tr key={c.service_name}>
-                  <td>{c.service_name}</td>
-                  <td>{c.count}</td>
-                </tr>
+                <Fragment key={c.service_name}>
+                  <tr>
+                    <td>{c.service_name}</td>
+                    <td>{c.count}</td>
+                    <td>
+                      <button className="btn" style={{ fontSize: 12, padding: '2px 8px' }} onClick={() => toggleBrowseService(c.service_name)}>
+                        {expandedCacheService === c.service_name ? 'Hide' : 'Browse'}
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedCacheService === c.service_name && (
+                    <tr>
+                      <td colSpan={3} style={{ background: 'var(--panel-2)' }}>
+                        {cacheRowsLoading === c.service_name && (
+                          <p className="muted" style={{ fontSize: 13 }}>Loading…</p>
+                        )}
+                        {cacheRowsErr && cacheRowsLoading !== c.service_name && (
+                          <p style={{ fontSize: 12, color: 'var(--red)' }}>{cacheRowsErr}</p>
+                        )}
+                        {cacheRowsLoading !== c.service_name && cacheRowsByService[c.service_name] && (
+                          cacheRowsByService[c.service_name].length === 0 ? (
+                            <p className="muted" style={{ fontSize: 13 }}>No cached rows for this service.</p>
+                          ) : (
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Cache key</th>
+                                  <th>Cached at</th>
+                                  <th>Status</th>
+                                  <th>Value</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cacheRowsByService[c.service_name].map((row) => (
+                                  <tr key={row.cache_key}>
+                                    <td className="mono" style={{ fontSize: 12 }}>{row.cache_key}</td>
+                                    <td className="muted" style={{ fontSize: 12 }}>{row.cached_at}</td>
+                                    <td><Pill kind={row.live ? 'on' : 'off'}>{row.live ? 'Live' : 'Stale'}</Pill></td>
+                                    <td>
+                                      <details>
+                                        <summary style={{ cursor: 'pointer', fontSize: 12 }}>view</summary>
+                                        <pre
+                                          style={{
+                                            fontSize: 12,
+                                            lineHeight: 1.5,
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-word',
+                                            background: 'var(--panel)',
+                                            borderRadius: 6,
+                                            padding: '8px 10px',
+                                            margin: '6px 0 0',
+                                          }}
+                                        >
+                                          {prettyPrintJson(row.response_json)}
+                                        </pre>
+                                      </details>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
               <tr>
                 <td><strong>Total</strong></td>
                 <td><strong>{cacheTotal}</strong></td>
+                <td></td>
               </tr>
             </tbody>
           </table>

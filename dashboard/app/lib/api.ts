@@ -620,6 +620,12 @@ export const api = {
     }>('/api/workflows/reset-output-all'),
   // Service response cache (T451/T478) — read-only per-service row counts.
   serviceCacheCounts: () => get<{ counts: Array<{ service_name: string; count: number }> }>('/api/cache'),
+  // Individual service_cache rows (T610/T611) — optionally scoped to one service.
+  // `live` is computed server-side against that service's configured cacheTtlMs.
+  serviceCacheRows: (service?: string) =>
+    get<{ rows: Array<{ service_name: string; cache_key: string; cached_at: string; response_json: string; live: boolean }> }>(
+      '/api/cache/rows' + (service ? `?service=${encodeURIComponent(service)}` : ''),
+    ),
   // Clear service_cache rows — all services, or one when serviceName is given.
   // Distinct from resetWorkflowOutput/resetAllWorkflowsOutput above, which never
   // touch service_cache.
