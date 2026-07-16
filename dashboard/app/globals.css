@@ -229,7 +229,7 @@ tbody tr:hover { background: var(--panel-2); }
 .ignored-section table th:last-child,
 .ignored-section table td:last-child { width: 1%; white-space: nowrap; }
 /* Full-width row-group header (show/collection name) inside a flattened single-table listing. */
-.table-group-header td { background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); font-weight: 600; padding: 8px 14px; border-top: 1px solid var(--border); border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.table-group-header td { background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); font-weight: 600; padding: 8px 18px; border-top: 1px solid var(--border); border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .mono { font-family: var(--font-mono); }
 .code-block { display: block; font-family: var(--font-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
