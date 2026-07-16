@@ -16160,7 +16160,7 @@
     {
       "id": "T593",
       "title": "Align 'Ignore all' group-header button padding with per-item 'Ignore' button padding in GroupedManager",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
