@@ -28,6 +28,14 @@ export interface BranchRunOpts {
   historyFile?: string;
   recsDir?: string;
   now?: Date;
+  /**
+   * Called once, right after `runBranch` writes this branch's suggestions file
+   * (on every path — success, skip-no-targets, Claude error, unparseable reply) —
+   * the hook that lets a domain (movies/tv-recs) record its own `work_items`
+   * ledger row from the REAL job execution path (`makeBranchJob`'s `run(ctx)`),
+   * not just from a direct call to a domain wrapper.
+   */
+  onBranchWritten?: (branchId: string, opts: BranchRunOpts) => void;
 }
 
 /** Parse a Claude branch reply into raw suggestions; throws on junk (no JSON). */
@@ -148,6 +156,7 @@ export async function runBranch<M, P>(
   if (prompt == null) {
     ctx.log('Branch has nothing to target (e.g. no qualifying directors) — skipping gracefully.', 'warn');
     writeBranchFile(recsDir, { ...base, error: 'no targets for this branch' });
+    opts.onBranchWritten?.(spec.id, opts);
     ctx.progress(100, 'skipped (no targets)');
     return;
   }
@@ -159,6 +168,7 @@ export async function runBranch<M, P>(
     const why = res.rateLimited ? 'rate/usage limit' : (res.error ?? 'claude error');
     ctx.log(`Claude call failed (${why}) — skipping this branch (run continues).`, 'warn');
     writeBranchFile(recsDir, { ...base, error: why });
+    opts.onBranchWritten?.(spec.id, opts);
     ctx.progress(100, 'skipped (claude error)');
     return;
   }
@@ -170,12 +180,14 @@ export async function runBranch<M, P>(
     const msg = err instanceof Error ? err.message : String(err);
     ctx.log(`Could not parse Claude output as recommendations (${msg}) — skipping branch.`, 'warn');
     writeBranchFile(recsDir, { ...base, error: `unparseable: ${msg}` });
+    opts.onBranchWritten?.(spec.id, opts);
     ctx.progress(100, 'skipped (junk output)');
     return;
   }
 
   const path = writeBranchFile(recsDir, { ...base, suggestions });
   for (const s of suggestions) ctx.log(`  • ${s.title}${s.year ? ` (${s.year})` : ''} — ${s.reason}`);
+  opts.onBranchWritten?.(spec.id, opts);
   ctx.progress(100, `${suggestions.length} suggestion(s)`);
   ctx.log(`Wrote ${suggestions.length} suggestion(s) → ${path}`);
 }
@@ -203,6 +215,20 @@ export async function collectBranchSuggestions<M, P>(
   }
 }
 
+export interface MakeBranchJobOpts {
+  /**
+   * Called once, right after this branch's suggestions file is written, from the
+   * REAL job execution path (`run(ctx)` below) — this is how a domain
+   * (movies/tv-recs) records its own `work_items` ledger row. Without this hook
+   * a domain's ledger-writing code is dead: the returned `run(ctx)` calls this
+   * module's OWN `runBranch`, not a domain wrapper's, so anything the domain does
+   * only after calling ITS OWN `runBranch` never actually executes.
+   */
+  onBranchWritten?: (branchId: string, opts: BranchRunOpts) => void;
+  /** Extra opts to thread into `runBranch` (test-only — e.g. an injected `runClaude` + fixture paths). */
+  runOpts?: BranchRunOpts;
+}
+
 /**
  * Build the thin JobDefinition for ONE recommender branch (its `*.job.ts` file
  * just calls the domain's own `makeBranchJob(id)` wrapper, which calls this with
@@ -214,6 +240,7 @@ export function makeBranchJob<M, P>(
   domain: RecommenderDomain<M, P>,
   id: string,
   contracts: { consumes: ArtifactContract[]; produces: ArtifactContract[] },
+  opts: MakeBranchJobOpts = {},
 ): JobDefinition {
   const spec = domain.branches.find((b) => b.id === id);
   if (!spec) throw new Error(`unknown recommender branch: ${id}`);
@@ -225,7 +252,7 @@ export function makeBranchJob<M, P>(
     consumes: contracts.consumes,
     produces: contracts.produces,
     async run(ctx) {
-      await runBranch(ctx, domain, spec);
+      await runBranch(ctx, domain, spec, { ...opts.runOpts, onBranchWritten: opts.onBranchWritten });
     },
   };
 }

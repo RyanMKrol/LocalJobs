@@ -58,8 +58,13 @@ export function ignoredSuggestionTitles(jobName: string = RECS_JOB): string[] {
  */
 export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchRunOpts = {}): Promise<void> {
   ensureDirs();
-  await coreRunBranch(ctx, moviesDomain, spec, opts);
-  recordBranchLedgerRow(spec.id, opts);
+  await coreRunBranch(ctx, moviesDomain, spec, {
+    ...opts,
+    onBranchWritten: (branchId, o) => {
+      recordBranchLedgerRow(branchId, o);
+      opts.onBranchWritten?.(branchId, o);
+    },
+  });
 }
 
 /**
@@ -107,12 +112,18 @@ export async function collectBranchSuggestions(
  * Build the thin JobDefinition for ONE recommender branch (its `*.job.ts` file
  * just calls this with its id). Each branch depends on movie-snapshot and is a
  * member of the `movies` workflow; it produces no gated artifact (an empty branch
- * is legitimate, so a gate would wrongly fail the run).
+ * is legitimate, so a gate would wrongly fail the run). `runOpts` is test-only —
+ * it lets a test inject a mock `runClaude` + fixture paths to drive the returned
+ * `run(ctx)` end-to-end without a live Claude call; real `*.job.ts` call sites
+ * never pass it.
  */
-export function makeBranchJob(id: string): JobDefinition {
+export function makeBranchJob(id: string, runOpts?: BranchRunOpts): JobDefinition {
   const spec = branchById(id);
   return coreMakeBranchJob(moviesDomain, id, {
     consumes: [movieSnapshotContract()],
     produces: [branchSuggestionsContract(spec.id)],
+  }, {
+    onBranchWritten: (branchId, opts) => recordBranchLedgerRow(branchId, opts),
+    runOpts,
   });
 }
