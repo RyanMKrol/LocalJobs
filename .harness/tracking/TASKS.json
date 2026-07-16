@@ -16243,7 +16243,7 @@
     {
       "id": "T596",
       "title": "Surface a fire-and-forget workflow-run failure from the API dispatch, not just daemon stdout",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "gate": null,
       "tags": [
