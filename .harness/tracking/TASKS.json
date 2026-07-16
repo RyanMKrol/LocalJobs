@@ -16800,6 +16800,90 @@
           "cross-cutting"
         ]
       }
+    },
+    {
+      "id": "T616",
+      "title": "Workflow Output section: show 'View' for non-markdown (JSON/path) outputs too",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "output",
+        "bugfix"
+      ],
+      "scope": [
+        "src/db/store/workItems.ts",
+        "src/db/store/workItems.test.ts",
+        "dashboard/app/lib/api.ts",
+        "dashboard/app/components/WorkflowOutputSection.tsx",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T616.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "bugfix",
+        "risk": [
+          "full-stack"
+        ]
+      }
+    },
+    {
+      "id": "T617",
+      "title": "Render plex-space-saver 'size-table' output as a per-title disk-usage bar chart",
+      "status": "pending",
+      "dependsOn": [],
+      "gate": null,
+      "tags": [
+        "dashboard",
+        "plex-space-saver",
+        "output-renderer"
+      ],
+      "scope": [
+        "dashboard/app/components/OutputRenderer.tsx",
+        "dashboard/app/globals.css",
+        "dashboard/scripts/_dashboard-harness.mjs"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": false,
+      "spec": ".harness/tasks/T617.md",
+      "facets": {
+        "layer": "ui",
+        "workType": "component",
+        "risk": []
+      }
+    },
+    {
+      "id": "T618",
+      "title": "vercel-daily-redeploy: record a per-day Output ledger row for the redeploy outcome",
+      "status": "pending",
+      "dependsOn": [
+        "T616"
+      ],
+      "gate": null,
+      "tags": [
+        "workflow",
+        "output-panel"
+      ],
+      "scope": [
+        "src/workflows/vercel-daily-redeploy/vercel-redeploy.job.ts",
+        "src/workflows/vercel-daily-redeploy/vercel-redeploy.test.ts",
+        "src/workflows/vercel-daily-redeploy/CLAUDE.md",
+        "src/workflows/vercel-daily-redeploy/data/out/**"
+      ],
+      "design": null,
+      "verify": [],
+      "expectsTest": true,
+      "spec": ".harness/tasks/T618.md",
+      "facets": {
+        "layer": "job",
+        "workType": "feature",
+        "risk": []
+      }
     }
   ]
 }
