@@ -128,5 +128,10 @@
     "failed": true,
     "reason": "review-failed: superseded by T615 — original scope excluded branches.ts/types.ts where each branch's real prompt input is built, so the blocked builder fabricated a sample; T615 widens scope + changes build() to expose the exact selected items with a byte-for-byte done-when",
     "at": "2026-07-16T19:35:14Z"
+  },
+  "T593": {
+    "failed": true,
+    "reason": "The buttons are still not aligned.",
+    "at": "2026-07-17T21:08:26Z"
   }
 }
