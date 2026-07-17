@@ -6,11 +6,28 @@
 // the per-show work_items ledger recording extracted out of `runSnapshot` so it can be
 // tested directly against synthetic show snapshots.
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { clearServiceCache, getWorkItem, syncService } from '../../../db/store.js';
 import { registerService } from '../../../core/services.js';
+import { plexConfig } from '../config.js';
 import { recordSnapshotLedger, runSnapshot, snapshotItemKey } from './snapshot.js';
 import type { PlexShow } from '../types.js';
+
+// Redirect this workflow's output paths to a throwaway temp dir BEFORE any stage code
+// runs. `runSnapshot` writes plexConfig.snapshotOut, which by default resolves to the
+// REAL (gitignored) src/workflows/missing-tv-seasons/data/out/snapshot.json — so running
+// the suite locally would otherwise overwrite the owner's live Plex snapshot with this
+// test's fixtures. The scratch-DB guard protects the DB the same way; this does it for
+// the on-disk artifacts. (Each test file runs in its own process, so mutating the
+// plexConfig singleton here can't leak into another file.)
+const testOut = mkdtempSync(join(tmpdir(), 'missing-tv-snapshot-test-'));
+plexConfig.outDir = testOut;
+plexConfig.snapshotOut = join(testOut, 'snapshot.json');
+plexConfig.missingOut = join(testOut, 'missing-seasons.json');
+plexConfig.reportDir = join(testOut, 'reports');
 
 // `callService('plex', ...)` only enforces quota if 'plex' is registered in the
 // in-process service registry — normally done by loading the daemon's registry,

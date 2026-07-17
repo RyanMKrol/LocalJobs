@@ -26,12 +26,28 @@ if (!process.env.SEASON_CHECK_TEST_CHILD) {
 }
 
 async function runChildAssertions(): Promise<void> {
-  const { readFileSync, writeFileSync } = await import('node:fs');
+  const { mkdtempSync, readFileSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
   const { getWorkItem, syncService, updateServiceLimits } = await import('../../../db/store.js');
   const { registerService } = await import('../../../core/services.js');
   const { plexConfig } = await import('../config.js');
   const { ensureDirs } = await import('../lib.js');
   const { runSeasonCheck } = await import('./season-check.js');
+
+  // Redirect this workflow's output paths to a throwaway temp dir BEFORE any stage
+  // code runs. `runSeasonCheck`/`writeSnapshot` write plexConfig.snapshotOut /
+  // plexConfig.missingOut, which by default resolve to the REAL (gitignored)
+  // src/workflows/missing-tv-seasons/data/out — so running the suite locally would
+  // otherwise overwrite the owner's live Plex snapshot + missing-seasons output with
+  // these test fixtures. The scratch-DB guard protects the DB the same way; this
+  // does it for the on-disk artifacts. (plexConfig is a module-singleton mutated per
+  // test process — each test file runs in its own process, so this can't leak.)
+  const testOut = mkdtempSync(join(tmpdir(), 'missing-tv-season-check-test-'));
+  plexConfig.outDir = testOut;
+  plexConfig.snapshotOut = join(testOut, 'snapshot.json');
+  plexConfig.missingOut = join(testOut, 'missing-seasons.json');
+  plexConfig.reportDir = join(testOut, 'reports');
 
   // `callService('tmdb', ...)` only enforces quota if 'tmdb' is registered in the
   // in-process service registry — normally done by loading the daemon's registry,

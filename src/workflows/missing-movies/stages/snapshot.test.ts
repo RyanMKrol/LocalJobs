@@ -6,11 +6,25 @@
 // the per-movie work_items ledger recording extracted out of `runSnapshot` so it can be
 // tested directly against synthetic movie snapshots.
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, syncService } from '../../../db/store.js';
 import { registerService } from '../../../core/services.js';
+import { missingMoviesConfig } from '../config.js';
 import { recordSnapshotLedger, runSnapshot, snapshotItemKey } from './snapshot.js';
 import type { PlexMovie } from '../../movies/types.js';
+
+// Redirect this workflow's output paths to a throwaway temp dir BEFORE any stage code
+// runs, so a `runSnapshot` call can never overwrite the owner's real (gitignored)
+// src/workflows/missing-movies/data/out with test fixtures. Today the only runSnapshot
+// call here throws before writing (0-movie guard), but this makes the guarantee
+// unconditional and matches missing-tv-seasons' snapshot/season-check tests.
+const testOut = mkdtempSync(join(tmpdir(), 'missing-movies-snapshot-test-'));
+missingMoviesConfig.outDir = testOut;
+missingMoviesConfig.snapshotOut = join(testOut, 'snapshot.json');
+missingMoviesConfig.gapsOut = join(testOut, 'franchise-gaps.json');
 
 // `callService('plex', ...)` only enforces quota if 'plex' is registered in the
 // in-process service registry — normally done by loading the daemon's registry,

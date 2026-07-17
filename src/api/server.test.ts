@@ -1774,9 +1774,14 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   const NOTIFIED_S  = 2;
   const FRESH_S     = 3;
   const IGNORE_S    = 1;
+  // Redirect the endpoint's source file to a temp path so this test never touches the
+  // owner's real data/out/missing-seasons.json — the /api/missing-seasons handler reads
+  // plexConfig.missingOut (the same singleton), so reassigning it here makes both the
+  // fixture write below and the endpoint read use the temp file. Replaces the former
+  // back-up-and-restore-the-real-file dance (which churned the real file's mtime and
+  // could leave the fixture behind if the process died mid-test).
+  plexConfig.missingOut = join(mkdtempSync(join(tmpdir(), 'server-missing-seasons-')), 'missing-seasons.json');
   const missingPath = plexConfig.missingOut;
-  const hadFile = existsSync(missingPath);
-  const backup = hadFile ? readFileSync(missingPath, 'utf8') : null;
   mkdirSync(join(missingPath, '..'), { recursive: true });
   writeFileSync(missingPath, JSON.stringify({
     generatedAt: '2026-06-01T00:00:00Z',
@@ -1833,8 +1838,8 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       });
     });
   } finally {
-    if (backup !== null) writeFileSync(missingPath, backup);
-    else rmSync(missingPath, { force: true });
+    // Temp file (see redirect above) — just remove it; the real data/out is untouched.
+    rmSync(missingPath, { force: true });
   }
 }
 
@@ -1845,6 +1850,10 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   const { existsSync: exists, readFileSync: readFS, mkdirSync: mkdirFS } = await import('node:fs');
   const { plexConfig } = await import('../workflows/missing-tv-seasons/config.js');
   const tmp = mkdtempSync(join(tmpdir(), 'notify-test-'));
+  // runNotify writes its markdown report to plexConfig.reportDir (not injectable) —
+  // redirect it to the temp dir so this test never pollutes the owner's real
+  // data/out/reports/missing-seasons.md.
+  plexConfig.reportDir = join(tmp, 'reports');
 
   await test('buildDigest count and title', () => {
     const d = buildDigest([{ title: 'Show A', tmdbId: 1, seasons: [2, 3] }, { title: 'Show B', tmdbId: 2, seasons: [1] }]);
