@@ -1437,19 +1437,24 @@ const routes: Route[] = [
     },
   },
 
-  // POST /api/workflows/reset-output-all
+  // POST /api/workflows/reset-output-all   { force?: boolean }
   // Bulk variant of reset-output (T322): runs the SAME per-workflow reset across
-  // EVERY workflow in one call. Workflows with an active run or a certified flag
-  // are SKIPPED (not reset) rather than failing the whole call — this is
-  // deliberately best-effort across all workflows, not all-or-nothing. This path
-  // has no `:name` segment so it never collides with the :name-based reset-output
-  // route below. Mutating — behind the same loopback/token guard as all other POST endpoints.
+  // EVERY workflow in one call. Workflows with an active run are ALWAYS skipped
+  // (resetting under a live executor would race it) — this is deliberately
+  // best-effort across all workflows, not all-or-nothing. A CERTIFIED workflow is
+  // skipped too UNLESS `force: true` is passed, which bypasses the certification
+  // guard and resets certified workflows as well (the active-run guard is NOT
+  // bypassable — force never resets a running workflow). This path has no `:name`
+  // segment so it never collides with the :name-based reset-output route below.
+  // Mutating — behind the same loopback/token guard as all other POST endpoints.
   {
     method: 'POST',
     pattern: '/api/workflows/reset-output-all',
-    handler: async ({ res }) => {
+    handler: async ({ res, req }) => {
+      const body = await readBody(req);
+      const force = body.force === true;
       const results: Array<
-        | { name: string; status: 'reset'; itemsDeleted: number; runsDeleted: number; wfRunsDeleted: number; filesRemoved: number; outDir: string | null }
+        | { name: string; status: 'reset'; certified: boolean; itemsDeleted: number; runsDeleted: number; wfRunsDeleted: number; filesRemoved: number; outDir: string | null }
         | { name: string; status: 'skipped'; reason: string }
       > = [];
       for (const wf of listWorkflows()) {
@@ -1457,7 +1462,7 @@ const routes: Route[] = [
           results.push({ name: wf.name, status: 'skipped', reason: 'active run in progress' });
           continue;
         }
-        if (wf.certified) {
+        if (wf.certified && !force) {
           results.push({ name: wf.name, status: 'skipped', reason: 'certified' });
           continue;
         }
@@ -1467,6 +1472,7 @@ const routes: Route[] = [
         results.push({
           name: wf.name,
           status: 'reset',
+          certified: !!wf.certified,
           itemsDeleted: result.itemsDeleted,
           runsDeleted: result.runsDeleted,
           wfRunsDeleted: result.wfRunsDeleted,
@@ -1476,12 +1482,16 @@ const routes: Route[] = [
       }
       const resetCount = results.filter((r) => r.status === 'reset').length;
       const skipped = results.filter((r) => r.status === 'skipped') as Array<{ name: string; status: 'skipped'; reason: string }>;
+      const forcedCertified = results.filter((r) => r.status === 'reset' && r.certified).length;
       console.log(
-        `[api] reset-output-all: ${resetCount} reset, ${skipped.length} skipped` +
+        `[api] reset-output-all${force ? ' (force)' : ''}: ${resetCount} reset` +
+          (force && forcedCertified ? ` (incl. ${forcedCertified} certified)` : '') +
+          `, ${skipped.length} skipped` +
           (skipped.length ? ` (${skipped.map((s) => `${s.name}: ${s.reason}`).join('; ')})` : ''),
       );
       return json(res, 200, {
         ok: true,
+        forced: force,
         totalWorkflows: results.length,
         resetCount,
         skippedCount: skipped.length,

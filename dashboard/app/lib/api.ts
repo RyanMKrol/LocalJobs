@@ -613,19 +613,21 @@ export const api = {
       `/api/workflows/${encodeURIComponent(name)}/reset-output`,
     ),
   // Bulk variant of resetWorkflowOutput (T322): runs the same reset across EVERY
-  // workflow in one call. Workflows with an active run are skipped (not reset)
-  // rather than failing the whole call.
-  resetAllWorkflowsOutput: () =>
+  // workflow in one call. Workflows with an active run are ALWAYS skipped; a
+  // certified workflow is skipped too UNLESS `force` is true, which bypasses the
+  // certification guard (the active-run guard is never bypassed).
+  resetAllWorkflowsOutput: (force = false) =>
     post<{
       ok: boolean;
+      forced: boolean;
       totalWorkflows: number;
       resetCount: number;
       skippedCount: number;
       results: Array<
-        | { name: string; status: 'reset'; itemsDeleted: number; runsDeleted: number; wfRunsDeleted: number; filesRemoved: number; outDir: string | null }
+        | { name: string; status: 'reset'; certified: boolean; itemsDeleted: number; runsDeleted: number; wfRunsDeleted: number; filesRemoved: number; outDir: string | null }
         | { name: string; status: 'skipped'; reason: string }
       >;
-    }>('/api/workflows/reset-output-all'),
+    }>('/api/workflows/reset-output-all', { force }),
   // Service response cache (T451/T478) — read-only per-service row counts.
   serviceCacheCounts: () => get<{ counts: Array<{ service_name: string; count: number }> }>('/api/cache'),
   // Individual service_cache rows (T610/T611) — optionally scoped to one service.

@@ -2201,6 +2201,60 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   }
 }
 
+// ── reset-output-all { force: true } — bypass the certification guard ──
+{
+  const { isWorkItemDone: tfIsWorkItemDone, setWorkflowCertified: tfSetCertified } = await import('../db/store.js');
+  syncJob({ name: 'tf-force-j1', run: async () => {} });
+  syncJob({ name: 'tf-force-j2', run: async () => {} });
+  syncWorkflow({ name: 'tf-force-certified-wf', jobs: [{ job: 'tf-force-j1' }] });
+  syncWorkflow({ name: 'tf-force-active-wf', jobs: [{ job: 'tf-force-j2' }] });
+
+  // Certified workflow with seeded output — force should reset it.
+  markWorkItem('tf-force-j1', 'item-cert', 'success');
+  finishWorkflowRun(createWorkflowRun('tf-force-certified-wf', 'manual'), 'success');
+  tfSetCertified('tf-force-certified-wf', true);
+
+  // Active workflow — force must NOT bypass the active-run guard.
+  markWorkItem('tf-force-j2', 'item-active', 'success');
+  createWorkflowRun('tf-force-active-wf', 'manual');
+
+  await test('POST /api/workflows/reset-output-all { force: true }: resets certified workflows but still skips active ones', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflows/reset-output-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as {
+        ok: boolean;
+        forced: boolean;
+        results: Array<{ name: string; status: string; reason?: string; certified?: boolean }>;
+      };
+      assert.equal(body.forced, true, 'response reports forced mode');
+
+      // Certified workflow is now RESET (guard bypassed), flagged certified in the row.
+      const cert = body.results.find((r) => r.name === 'tf-force-certified-wf');
+      assert.equal(cert?.status, 'reset', 'certified workflow is reset under force');
+      assert.equal(cert?.certified, true, 'row is flagged as a certified workflow that was forced');
+      assert.equal(tfIsWorkItemDone('tf-force-j1', 'item-cert', 3), false, 'certified workflow output cleared under force');
+
+      // Active workflow is STILL skipped — force never bypasses the active-run guard.
+      const active = body.results.find((r) => r.name === 'tf-force-active-wf');
+      assert.equal(active?.status, 'skipped', 'active workflow is still skipped under force');
+      assert.equal(active?.reason, 'active run in progress', 'active-run reason reported');
+      assert.equal(tfIsWorkItemDone('tf-force-j2', 'item-active', 3), true, 'active workflow output untouched under force');
+    });
+  });
+
+  for (const n of ['tf-force-j1', 'tf-force-j2']) {
+    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
+  }
+  for (const n of ['tf-force-certified-wf', 'tf-force-active-wf']) {
+    const i = workflows.findIndex((x) => x.name === n); if (i >= 0) workflows.splice(i, 1);
+  }
+}
+
 // ── T478: GET /api/cache + POST /api/cache/clear — service_cache management ──
 {
   const { setCachedServiceResponse: t478SetCache } = await import('../db/store.js');

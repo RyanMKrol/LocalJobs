@@ -24,6 +24,7 @@ type CacheRows = Awaited<ReturnType<typeof api.serviceCacheRows>>['rows'];
 
 export default function AdminPage() {
   const [busy, setBusy] = useState(false);
+  const [forceBusy, setForceBusy] = useState(false);
   const [result, setResult] = useState<ResetAllResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -98,17 +99,23 @@ export default function AdminPage() {
     }
   }
 
-  async function deleteAllOutput() {
-    setBusy(true);
+  async function deleteAllOutput(force = false) {
+    if (force && !window.confirm(
+      'Delete ALL workflow output, INCLUDING certified workflows?\n\n' +
+      'This bypasses the certification guard and resets certified workflows too. ' +
+      'It cannot be undone. (Workflows with an active run are still skipped.)',
+    )) return;
+    const setBusyFlag = force ? setForceBusy : setBusy;
+    setBusyFlag(true);
     setResult(null);
     setErr(null);
     try {
-      const r = await api.resetAllWorkflowsOutput();
+      const r = await api.resetAllWorkflowsOutput(force);
       setResult(r);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      setBusyFlag(false);
     }
   }
 
@@ -330,17 +337,26 @@ export default function AdminPage() {
           <li>Service limits and usage</li>
         </ul>
         <p className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>
-          Workflows with an active run or certified flag are skipped rather than reset. Every other workflow
-          re-processes everything from scratch on its next run.
+          Workflows with an active run or a <strong>certified</strong> flag are skipped rather than reset.
+          Every other workflow re-processes everything from scratch on its next run. To reset certified
+          workflows too, use the <strong>including certified</strong> button.
         </p>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             className="btn btn-danger"
-            onClick={deleteAllOutput}
-            disabled={busy}
+            onClick={() => deleteAllOutput(false)}
+            disabled={busy || forceBusy}
           >
             {busy ? 'Deleting…' : 'Delete all workflow output'}
+          </button>
+          <button
+            className="btn btn-danger"
+            onClick={() => deleteAllOutput(true)}
+            disabled={busy || forceBusy}
+            title="Bypasses the certification guard — resets certified workflows too. Active runs are still skipped."
+          >
+            {forceBusy ? 'Deleting…' : 'Delete all output (including certified)'}
           </button>
         </div>
 
@@ -350,6 +366,7 @@ export default function AdminPage() {
           <div style={{ marginTop: 16 }}>
             <p style={{ fontSize: 13, color: 'var(--green)' }}>
               Reset {result.resetCount} of {result.totalWorkflows} workflow(s); {result.skippedCount} skipped.
+              {result.forced ? ' Certification was bypassed (certified workflows were reset too).' : ''}
             </p>
             <div className="panel">
               <table>
@@ -369,7 +386,7 @@ export default function AdminPage() {
                       </td>
                       <td className="muted">
                         {r.status === 'reset'
-                          ? `${r.itemsDeleted} ledger rows, ${r.runsDeleted} job runs, ${r.wfRunsDeleted} workflow runs, ${r.filesRemoved} output file entries`
+                          ? `${r.itemsDeleted} ledger rows, ${r.runsDeleted} job runs, ${r.wfRunsDeleted} workflow runs, ${r.filesRemoved} output file entries${r.certified ? ' (certified — forced)' : ''}`
                           : r.reason}
                       </td>
                     </tr>
