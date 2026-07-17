@@ -43,6 +43,13 @@ schedules with no cross-workflow dependency — mirrors `plex-tv-snapshot` vs th
 own snapshot. Unlike `movie-snapshot`, it does NOT build a taste profile — nothing downstream here
 consumes one (only the recommender branches in `movie-recommendations` do).
 
+**Fails loud on a 0-movie read** (mirrors the same guard in `missing-tv-seasons`' snapshot): if the
+section listing returns zero movies it THROWS (before writing anything) rather than succeeding with
+an empty snapshot. A populated movie library never legitimately reads empty — an empty result is a
+transient Plex anomaly, and writing it would let `franchise-gaps` find 0 gaps and CLOBBER the
+last-good `franchise-gaps.json`, wiping the dashboard's Output section. Throwing (the stage has
+`maxRetries: 3`) preserves the last good snapshot + downstream output and surfaces the failure.
+
 ## Stage 2 — `franchise-gaps` (deterministic)
 
 Two-pass TMDB Collections audit (`src/workflows/missing-movies/stages/franchise-gaps.ts`):

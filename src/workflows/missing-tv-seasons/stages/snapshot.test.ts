@@ -7,7 +7,7 @@
 // tested directly against synthetic show snapshots.
 import assert from 'node:assert/strict';
 import type { JobContext } from '../../../core/types.js';
-import { getWorkItem, syncService } from '../../../db/store.js';
+import { clearServiceCache, getWorkItem, syncService } from '../../../db/store.js';
 import { registerService } from '../../../core/services.js';
 import { recordSnapshotLedger, runSnapshot, snapshotItemKey } from './snapshot.js';
 import type { PlexShow } from '../types.js';
@@ -67,7 +67,12 @@ console.log('  ✓ snapshotItemKey prefers tmdbId, falls back to ratingKey');
   const callsByPath = new Map<string, number>();
   const fakeFetchPlex = async <T,>(path: string): Promise<T> => {
     callsByPath.set(path, (callsByPath.get(path) ?? 0) + 1);
-    return { MediaContainer: { Metadata: [] } } as T;
+    // The shows-listing path (?includeGuids=1) must return ≥1 show so the new
+    // "fail on 0 shows" guard passes; the episode path (?type=4) can be empty.
+    const Metadata = path.includes('type=4')
+      ? []
+      : [{ title: 'Cached Show', ratingKey: 'cache-r1', Guid: [{ id: 'tmdb://615' }] }];
+    return { MediaContainer: { Metadata } } as T;
   };
 
   await runSnapshot(fakeCtx(), { fetchPlex: fakeFetchPlex });
@@ -78,6 +83,23 @@ console.log('  ✓ snapshotItemKey prefers tmdbId, falls back to ratingKey');
     assert.equal(count, 1, `path "${path}" should be fetched only once across two runs within the cache TTL`);
   }
   console.log('  ✓ plex-tv-snapshot Plex reads are cacheKey-deduped across runs (T477)');
+}
+
+// ── Fail loud on a 0-show read (never clobber good output with an empty snapshot) ──
+{
+  registerService({ name: 'plex', category: 'api' });
+  const ctx: JobContext = { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
+  // Clear the cache the T477 test above populated for section 5's shows path — otherwise
+  // this run gets a cache HIT (a non-empty show) and never reaches emptyFetch.
+  clearServiceCache('plex');
+  // Shows-listing path returns empty → the guard must throw before anything is written.
+  const emptyFetch = async <T,>(): Promise<T> => ({ MediaContainer: { Metadata: [] } } as T);
+  await assert.rejects(
+    runSnapshot(ctx, { fetchPlex: emptyFetch }),
+    /returned 0 shows/,
+    'runSnapshot throws on a 0-show Plex read instead of writing an empty snapshot',
+  );
+  console.log('  ✓ plex-tv-snapshot fails loud on a 0-show read (no empty-snapshot clobber)');
 }
 
 console.log('  ✓ plex-tv-snapshot ledger tests passed');

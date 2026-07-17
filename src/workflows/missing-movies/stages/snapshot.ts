@@ -55,6 +55,22 @@ export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Pro
   const meta = await fetchMeta();
   ctx.log(`Fetched ${meta.length} movies from section ${section}.`);
 
+  // Fail LOUD on a 0-movie read instead of silently succeeding with an empty
+  // snapshot. A populated movie library never legitimately reads empty — an empty
+  // result is a transient Plex connectivity/cache anomaly. If we wrote it, the
+  // downstream franchise-gaps stage would find 0 gaps and CLOBBER the last-good
+  // franchise-gaps.json, wiping the dashboard's Output section even though the
+  // library is unchanged. Throwing (this stage has maxRetries) preserves the last
+  // good snapshot + downstream output and surfaces the failure. Mirrors the same
+  // guard in missing-tv-seasons' snapshot stage.
+  if (meta.length === 0) {
+    throw new Error(
+      `Plex section ${section} returned 0 movies — treating as a transient read failure ` +
+        `(a populated movie library never legitimately reads empty). Refusing to overwrite the ` +
+        `last good snapshot with an empty one. Check PLEX_HOST reachability and retry.`,
+    );
+  }
+
   ctx.progress(70, 'building snapshot');
   const movies = buildMovieSnapshots(meta);
   const owned = buildOwnedSet(movies);

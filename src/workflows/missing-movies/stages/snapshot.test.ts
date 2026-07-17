@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, syncService } from '../../../db/store.js';
 import { registerService } from '../../../core/services.js';
-import { recordSnapshotLedger, snapshotItemKey } from './snapshot.js';
+import { recordSnapshotLedger, runSnapshot, snapshotItemKey } from './snapshot.js';
 import type { PlexMovie } from '../../movies/types.js';
 
 // `callService('plex', ...)` only enforces quota if 'plex' is registered in the
@@ -58,6 +58,17 @@ console.log('  ✓ snapshotItemKey prefers tmdbId, falls back to ratingKey');
   assert.deepEqual(detail2, { name: 'Unknown Film', tmdbId: null, year: null });
 
   console.log('  ✓ recordSnapshotLedger records one success row per movie, keyed + detailed correctly');
+}
+
+// ── Fail loud on a 0-movie read (never clobber good output with an empty snapshot) ──
+{
+  const ctx: JobContext = { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
+  await assert.rejects(
+    runSnapshot(ctx, { fetchMeta: async () => [] }),
+    /returned 0 movies/,
+    'runSnapshot throws on a 0-movie Plex read instead of writing an empty snapshot',
+  );
+  console.log('  ✓ plex-movie-snapshot fails loud on a 0-movie read (no empty-snapshot clobber)');
 }
 
 console.log('  ✓ plex-movie-snapshot ledger tests passed');

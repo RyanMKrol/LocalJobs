@@ -10,7 +10,16 @@ snapshot → check → notify, scheduled weekly.
 1. **`plex-tv-snapshot`** reads Plex library section `PLEX_TV_SECTION` (default `5`, "TV shows") by
    GUID, building a per-show snapshot: title, `tmdbId` (parsed from the show's `tmdb://` GUID — never
    guessed; a show with no such GUID is flagged unverifiable) and the highest owned REGULAR season
-   (season 0/specials excluded). Writes `data/out/snapshot.json`.
+   (season 0/specials excluded). Writes `data/out/snapshot.json`. **Fails loud on a 0-show read:** if
+   the section listing returns zero shows it THROWS (before writing anything) rather than succeeding
+   with an empty snapshot — a populated TV library never legitimately reads empty, so an empty result
+   is a transient Plex anomaly (stale DHCP host, dropped request, poisoned response cache). Without
+   this guard, an empty snapshot flowed downstream: `tmdb-season-check` read 0 shows and CLOBBERED the
+   last-good `missing-seasons.json` with an empty file, wiping the dashboard's Output section even
+   though the library was unchanged (the cumulative `work_items` ledger kept its rows, so the run page
+   still showed data — a confusing "runs have data but Output is empty" split). Throwing (the stage
+   has `maxRetries: 3`) preserves the last good `snapshot.json`, blocks the downstream stages so their
+   output is preserved too, and surfaces the failure instead of hiding it.
 2. **`tmdb-season-check`** reads the snapshot and, for each show with a `tmdbId`, checks TMDB
    (`GET /tv/{id}` for status + seasons, `GET /tv/{id}/season/{N}` per candidate season) for the
    highest AIRED regular season and which owned+1..aired seasons are fully COMPLETE (every episode

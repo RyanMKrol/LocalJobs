@@ -54,6 +54,23 @@ export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Pro
   const showsMeta = await fetchSectionMetadata<PlexShowMeta>(section, { query: '?includeGuids=1', fetch: opts.fetchPlex });
   ctx.log(`Fetched ${showsMeta.length} shows from section ${section}.`);
 
+  // Fail LOUD on a 0-show read instead of silently succeeding with an empty
+  // snapshot. A populated TV library never legitimately reads empty — an empty
+  // result is a transient Plex connectivity/cache anomaly (a stale DHCP host, a
+  // dropped request, a poisoned response cache). If we wrote it, the downstream
+  // season-check would read 0 shows and CLOBBER the last-good missing-seasons.json
+  // with an empty file, wiping the dashboard's Output section even though the
+  // library is unchanged. Throwing (this stage has maxRetries) leaves the last good
+  // snapshot.json in place, blocks the downstream stages so their output is
+  // preserved too, and surfaces the failure instead of hiding it.
+  if (showsMeta.length === 0) {
+    throw new Error(
+      `Plex section ${section} returned 0 shows — treating as a transient read failure ` +
+        `(a populated TV library never legitimately reads empty). Refusing to overwrite the ` +
+        `last good snapshot with an empty one. Check PLEX_HOST reachability and retry.`,
+    );
+  }
+
   ctx.progress(40, 'fetching episodes');
   const epsMeta = await fetchSectionMetadata<PlexEpisodeMeta>(section, { query: '?type=4', fetch: opts.fetchPlex });
   ctx.log(`Fetched ${epsMeta.length} episodes (flat read, type=4).`);
