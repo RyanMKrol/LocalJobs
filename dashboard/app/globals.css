@@ -229,6 +229,18 @@ tbody tr:hover { background: var(--panel-2); }
    aren't nested inside .movie-gaps-scroll, so give .ignored-section its own equivalent rule. */
 .ignored-section table th:last-child,
 .ignored-section table td:last-child { width: 1%; white-space: nowrap; }
+/* GroupedManager active table isn't nested in .movie-gaps-scroll either, so its action column
+   needs the same compact-last-column rule — otherwise the per-row "Ignore" buttons sit at the
+   left edge of the action column while the group-header "Ignore all" button (pushed right by
+   space-between across the full-span header cell) sits flush right, leaving the two misaligned. */
+.grouped-manager-table th:last-child,
+.grouped-manager-table td:last-child { width: 1%; white-space: nowrap; }
+/* Uniform width for the grouped action buttons so a per-row "Ignore" is the same
+   width as its group-header "Ignore all" (and "Un-ignore" matches "Un-ignore all"
+   in the ignored section) — otherwise the narrower per-row buttons read as jagged
+   against the wider header button even when right-aligned. min-width covers the
+   longest label ("↺ Un-ignore all"); text is centred within the padded button. */
+.grouped-action-btn { min-width: 116px; justify-content: center; }
 /* Full-width row-group header (show/collection name) inside a flattened single-table listing. */
 .table-group-header td { background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); font-weight: 600; padding: 8px 18px; border-top: 1px solid var(--border); border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .mono { font-family: var(--font-mono); }

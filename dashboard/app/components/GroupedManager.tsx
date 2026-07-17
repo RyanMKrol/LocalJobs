@@ -96,7 +96,7 @@ export function GroupedManager<T, GK extends string | number, D>({ config }: { c
 
       {active.length > 0 && (
         <div className="panel">
-          <table>
+          <table className="grouped-manager-table">
             <thead>
               <tr>
                 {activeColumns.map((label) => <th key={label}>{label}</th>)}
@@ -111,7 +111,7 @@ export function GroupedManager<T, GK extends string | number, D>({ config }: { c
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                         <span>{renderGroupLabel(gk, items, data as D, false)}</span>
                         <button
-                          className="btn btn-sm"
+                          className="btn btn-sm grouped-action-btn"
                           onClick={() => doIgnoreGroup(gk, items)}
                           disabled={group.busy === gk}
                           style={{ flexShrink: 0 }}
@@ -125,7 +125,7 @@ export function GroupedManager<T, GK extends string | number, D>({ config }: { c
                     <tr key={itemKey(it)}>
                       {renderCells(it, false)}
                       <td>
-                        <button className="btn btn-sm" onClick={() => doIgnore(it)} disabled={item.busy === itemKey(it)}>
+                        <button className="btn btn-sm grouped-action-btn" onClick={() => doIgnore(it)} disabled={item.busy === itemKey(it)}>
                           {item.busy === itemKey(it) ? 'Ignoring…' : '✕ Ignore'}
                         </button>
                       </td>
@@ -159,7 +159,7 @@ export function GroupedManager<T, GK extends string | number, D>({ config }: { c
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                         <span>{renderGroupLabel(gk, items, data as D, true)}</span>
                         <button
-                          className="btn btn-sm"
+                          className="btn btn-sm grouped-action-btn"
                           onClick={() => doUnignoreGroup(gk, items)}
                           disabled={ignoredGroup.busy === gk}
                           style={{ flexShrink: 0 }}
@@ -173,7 +173,7 @@ export function GroupedManager<T, GK extends string | number, D>({ config }: { c
                     <tr key={itemKey(it)} className="muted">
                       {renderCells(it, true)}
                       <td>
-                        <button className="btn btn-sm" onClick={() => doUnignore(it)} disabled={item.busy === itemKey(it)}>
+                        <button className="btn btn-sm grouped-action-btn" onClick={() => doUnignore(it)} disabled={item.busy === itemKey(it)}>
                           {item.busy === itemKey(it) ? 'Un-ignoring…' : '↺ Un-ignore'}
                         </button>
                       </td>
