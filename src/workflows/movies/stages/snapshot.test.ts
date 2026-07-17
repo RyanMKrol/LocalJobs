@@ -3,12 +3,28 @@
 // records (T605) have the expected shape: one row per movie, keyed by
 // tmdbId-or-ratingKey, detail { name, tmdbId, year }.
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import type { JobContext } from '../../../core/types.js';
 import { registerService } from '../../../core/services.js';
 import { getWorkItem, workItemCounts } from '../../../db/store.js';
+import { moviesConfig } from '../config.js';
 import type { PlexMovieMeta } from '../types.js';
 import { recordSnapshotLedger, runSnapshot, SNAPSHOT_JOB, snapshotItemKey } from './snapshot.js';
+
+// Redirect this workflow's output paths to a throwaway temp dir BEFORE any stage code
+// runs — `runSnapshot` writes moviesConfig.snapshotOut + moviesConfig.tasteOut, which by
+// default resolve to the REAL (gitignored) src/workflows/movies/data/out, so running the
+// suite locally would otherwise overwrite the owner's live movie-recommendations snapshot
+// + taste profile with test fixtures. The scratch-DB guard protects the DB the same way;
+// this does it for the on-disk artifacts. (Each test file runs in its own process, so
+// mutating the moviesConfig singleton here can't leak into another file.)
+const testOut = mkdtempSync(join(tmpdir(), 'movies-snapshot-test-'));
+moviesConfig.outDir = testOut;
+moviesConfig.snapshotOut = join(testOut, 'snapshot.json');
+moviesConfig.tasteOut = join(testOut, 'taste-profile.json');
 
 function fakeCtx(): JobContext {
   return {

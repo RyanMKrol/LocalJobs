@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveWorkflowDataDir } from '../../config.js';
 import { dayKey } from '../../core/dates.js';
 import { callService, QuotaExceededError } from '../../core/services.js';
 import type { JobContext, JobDefinition } from '../../core/types.js';
@@ -16,7 +17,7 @@ const DEFAULT_TIMEOUT_MS = 600_000; // 10 min — a real build+deploy, not an HT
 
 // Resources live alongside the job itself, never in a far-off top-level folder.
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = resolve(here, 'data', 'out');
+const outDir = resolve(resolveWorkflowDataDir(resolve(here, 'data')), 'out');
 
 type Outcome = 'deployed' | 'skipped' | 'failed';
 

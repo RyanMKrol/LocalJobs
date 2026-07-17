@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 
 // Resources live alongside the job itself (src/workflows/plex-profiles/data),
 // never in a far-off top-level folder. Paths are resolved relative to this file.
+import { resolveWorkflowDataDir } from '../../config.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
-const dataDir = resolve(here, 'data');
+const dataDir = resolveWorkflowDataDir(resolve(here, 'data'));
 
 /**
  * Connectivity + paths for the plex-profiles per-title markdown builder. Plex

@@ -1,8 +1,10 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveWorkflowDataDir } from '../../config.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
-const dataDir = resolve(here, 'data');
+const dataDir = resolveWorkflowDataDir(resolve(here, 'data'));
 
 /**
  * Connectivity + paths for the Plex TV recommendations workflow. Plex/TMDB

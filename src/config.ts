@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { mkdtempSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -58,6 +59,38 @@ export function resolveDbPath(opts: {
     return scratch;
   }
   return path;
+}
+
+/**
+ * Per-process cache of test scratch data dirs, keyed by the real data dir a config
+ * asked to redirect — so every module that imports the SAME workflow config sees the
+ * SAME redirected dir within one test process (a config computes its dir once at
+ * import, but this keeps the mapping stable even if called again).
+ */
+const testDataDirs = new Map<string, string>();
+
+/**
+ * Workflow on-disk output guard — the file-artifact analogue of `resolveDbPath`.
+ * A workflow config computes `const dataDir = resolveWorkflowDataDir(resolve(here,
+ * 'data'))`; every output path (snapshot.json, missing-seasons.json, profiles, …)
+ * derives from that. OUTSIDE tests this returns the real dir unchanged (the daemon
+ * path — production behaviour is identical). INSIDE a test it redirects to a unique
+ * per-process temp dir, so running the suite can NEVER overwrite the owner's live
+ * gitignored `data/out` with test fixtures. This was a real, repeated incident: a
+ * stage test that calls its `run*()` function writes real output files, and every
+ * `npm test` was wiping the owner's Plex snapshot / missing-seasons / profiles output
+ * — surfacing as a mysteriously-empty dashboard Output section after a test run. Pure
+ * for tests (isTest injectable). No `data/raw` read in any test goes through a config
+ * data dir, so redirecting the whole dir is safe.
+ */
+export function resolveWorkflowDataDir(defaultDir: string, isTest: boolean = isTestEnv()): string {
+  if (!isTest) return defaultDir;
+  let dir = testDataDirs.get(defaultDir);
+  if (!dir) {
+    dir = mkdtempSync(join(tmpdir(), 'lj-wf-data-'));
+    testDataDirs.set(defaultDir, dir);
+  }
+  return dir;
 }
 
 export const config = {

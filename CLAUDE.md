@@ -1209,6 +1209,26 @@ doubt, log it.
   that case, redirecting to a unique per-process scratch DB (with a warning).
   `config.dbPath` goes through this. Don't bypass it — never hardcode
   `data/jobs.db` in a test, and keep new test invocations covered by `isTestEnv`.
+- **Tests can NEVER touch a workflow's real `data/out` (guarded, the file-artifact
+  analogue of the DB guard).** A stage test that calls its `run*()` function
+  (`runSnapshot`/`runSeasonCheck`/`runBuild`/…) makes that function WRITE its real
+  output files — and those paths resolve to the gitignored, but very real,
+  `src/workflows/<wf>/data/out`. The DB was guarded; the FILES were not, so for a
+  long time every `npm test` silently overwrote the owner's live Plex snapshot /
+  missing-seasons / profiles / recommender output with test fixtures — surfacing as a
+  mysteriously-empty dashboard Output section right after a test run (a genuinely
+  confusing "the runs have data but Output is empty" incident). The guard:
+  `src/config.ts`'s **`resolveWorkflowDataDir(defaultDir)`** returns the real dir in
+  production (daemon behaviour unchanged) but a unique per-process temp dir under
+  `isTestEnv()`. **Every workflow `config.ts` computes its data dir through it** —
+  `const dataDir = resolveWorkflowDataDir(resolve(here, 'data'))` — so all output
+  paths (which derive from `dataDir`) redirect to scratch under test automatically;
+  the vercel job's job-local `outDir` wraps it the same way. A new workflow config (or
+  a job with a job-local out dir) MUST route its data dir through
+  `resolveWorkflowDataDir` for the same protection. The regression guard is behavioural:
+  the full suite must leave every real `data/out` file's mtime unchanged (snapshot
+  mtimes → `npm test` → diff → must be empty). Don't write a stage test that calls a
+  `run*()` writer without this in place.
 - **Dashboard must stay mobile-responsive.** Every page has to survive a phone-width
   (~402px) viewport with no horizontal page overflow and nothing crossing an
   element's boundary. Responsive rules live in one place — the `@media (max-width:

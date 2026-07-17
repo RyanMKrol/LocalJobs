@@ -4,8 +4,10 @@ import { plexConfig } from '../missing-tv-seasons/config.js';
 
 // Resources live alongside the job itself (src/workflows/plex-language-fix/data),
 // never in a far-off top-level folder. Paths are resolved relative to this file.
+import { resolveWorkflowDataDir } from '../../config.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
-const dataDir = resolve(here, 'data');
+const dataDir = resolveWorkflowDataDir(resolve(here, 'data'));
 
 /**
  * Connectivity + paths for the Plex per-title original-language default audit.

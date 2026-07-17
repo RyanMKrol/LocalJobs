@@ -1,10 +1,26 @@
 // build.ts tests — verify callService('plex', ...) wrapper + pass-through in test env
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { callService, registerService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
+import { plexProfilesConfig } from '../config.js';
 import { runBuild } from './build.js';
+
+// Redirect this workflow's output dirs to a throwaway temp dir BEFORE any stage code
+// runs — `runBuild` writes one markdown profile per title into
+// plexProfilesConfig.moviesOutDir/showsOutDir, which by default resolve to the REAL
+// (gitignored) src/workflows/plex-profiles/data/out, so running the suite locally would
+// otherwise write test-fixture profiles into the owner's real profile corpus. The
+// scratch-DB guard protects the DB the same way; this does it for the on-disk artifacts.
+// (Each test file runs in its own process, so mutating the singleton here can't leak.)
+const testOut = mkdtempSync(join(tmpdir(), 'plex-profiles-build-test-'));
+plexProfilesConfig.outDir = testOut;
+plexProfilesConfig.moviesOutDir = join(testOut, 'movies');
+plexProfilesConfig.showsOutDir = join(testOut, 'shows');
 
 // ── callService('plex', ...) wrapper — pass-through when service unregistered ──
 {
