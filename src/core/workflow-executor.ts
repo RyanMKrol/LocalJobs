@@ -177,9 +177,17 @@ export function workflowRunInProgress(name: string): boolean {
  * `workflow_runs` row yet to show — this flag lets the dashboard surface a
  * transient "Starting…" indicator during that gap instead of showing nothing.
  * Purely a read of the existing in-process claim; no schema/DB change.
+ *
+ * The claim itself is held for the WHOLE run (released in `runWorkflow`'s
+ * `finally`), so `startingWorkflows.has(name)` alone would stay true for the
+ * entire run — leaving the dashboard stuck on "Starting…" even after the run row
+ * exists and is `running`. Gate it on there being NO active DB run row yet, so
+ * the flag flips off the moment `createWorkflowRun` writes the `running` row and
+ * the dashboard falls back to its `last_run.status === 'running'` → "Running…"
+ * state.
  */
 export function isWorkflowStarting(name: string): boolean {
-  return startingWorkflows.has(name);
+  return startingWorkflows.has(name) && !hasActiveWorkflowRun(name);
 }
 
 /**

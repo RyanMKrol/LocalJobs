@@ -55,7 +55,7 @@ config.runJobScript = fakePath;
 config.ntfyTopic = ''; // never POST to ntfy during tests
 
 // Member jobs must be discoverable (getJobDefinition) AND exist in the jobs table (FK).
-const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d', 'timeout-cancel-pp', 'pp-after-cancel', 'timeout-guard-a', 'timeout-guard-b', 'slow-a', 'slow-b', 'slow-c', 'slow-d'];
+const members = ['pp-a', 'pp-b', 'fail-pp-a', 'pp-dep', 'rus-a', 'ru-a', 'ru-b', 'ru-c', 'ru-d', 'timeout-cancel-pp', 'pp-after-cancel', 'timeout-guard-a', 'timeout-guard-b', 'timeout-starting', 'slow-a', 'slow-b', 'slow-c', 'slow-d'];
 const pushed: JobDefinition[] = [];
 for (const name of members) {
   const d: JobDefinition = { name, run: async () => {} };
@@ -566,6 +566,42 @@ try {
     assert.ok(workflowRunId, 'run eventually produced a workflow_runs row');
     assert.equal(isWorkflowStarting('t595-wf'), false, 'starting flag cleared once the run settled');
     assert.equal(workflowRunInProgress('t595-wf'), false, 'T105 guard released after settle');
+  });
+
+  await test('isWorkflowStarting is FALSE once the run row exists and is running (mid-execution), even though the T105 claim is still held for the whole run', async () => {
+    // Regression: the in-process `startingWorkflows` claim is held for the ENTIRE
+    // run (released in runWorkflow's finally), so `isWorkflowStarting` gated only on
+    // that claim stayed true the whole run — leaving the dashboard's pill + Run
+    // button stuck on "Starting…" even after the run row was `running`. Gating it on
+    // "no active DB run row yet" makes it flip off the moment createWorkflowRun writes
+    // the running row, so the UI falls back to its `last_run.status === 'running'` →
+    // "Running…" state.
+    const def: WorkflowDefinition = { name: 'starting-flip-wf', jobs: [{ job: 'timeout-starting' }] };
+    syncWorkflow(def);
+
+    // Unlimited manual run: the row is created immediately (no pre-row inputKeys()
+    // wait), then the timeout-* member hangs, parking the run in execution.
+    const runPromise = runWorkflow(def, 'manual');
+
+    // Wait until the run row exists and is running.
+    const deadline = Date.now() + 5000;
+    let wrid: string | undefined;
+    while (Date.now() < deadline) {
+      const r = lastWorkflowRunForWorkflow('starting-flip-wf');
+      if (r && r.status === 'running' && isWorkflowRunActive(r.id)) { wrid = r.id; break; }
+      await new Promise((res) => setTimeout(res, 25));
+    }
+    assert.ok(wrid, 'workflow run became active');
+
+    // The exact assertion: mid-execution, the claim is still held (in-progress) but
+    // the "starting" window is over because the running row now exists.
+    assert.equal(workflowRunInProgress('starting-flip-wf'), true, 'T105 guard still reports in-progress mid-run');
+    assert.equal(isWorkflowStarting('starting-flip-wf'), false, 'starting flag is FALSE once the running row exists — not stuck on "Starting…"');
+
+    // Clean up: cancel the hanging run and await settlement.
+    cancelWorkflowRun(wrid!);
+    await runPromise;
+    assert.equal(workflowRunInProgress('starting-flip-wf'), false, 'guard released after settle');
   });
 
   await test('T596: a limited run whose root stage inputKeys() throws still creates a failed workflow_runs row with the error captured', async () => {
