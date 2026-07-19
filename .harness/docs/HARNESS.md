@@ -89,11 +89,12 @@ claude -p "<task prompt>" \
 ```
 
 - **`--model`** — always the FULL id (the bare alias resolves to "latest" and will drift).
-  The cold-start floor is `claude-sonnet-5` (`MODEL=` in `harness.env`) — the cheapest tier;
+  The cold-start floor is `claude-haiku-4-5` (`MODEL=` in `harness.env`) — the cheapest tier;
   the policy climbs the global ladder from there as a facet cell's history warrants.
-- **`--effort`** (`low|medium|high|xhigh|max`). Cold-start floor **`low`** (`EFFORT=` in
-  `harness.env`); the policy raises it via the ladder, whose top rungs reach `xhigh`/`max` only
-  for facet cells whose history proves they need it.
+- **`--effort`** (`low|medium|high|xhigh|max`). The floor model (Haiku) has no effort param, so
+  `EFFORT=` ships empty (`harness.env`); the policy raises model+effort via the ladder as a facet
+  cell's history warrants. The shipped ladder tops out at `opus/medium` — extend it toward
+  `high`/`xhigh`/`max` only for facet cells whose history proves they need it.
 - **`--dangerously-skip-permissions`** — deliberate. A headless loop has no human at the
   keyboard to answer permission prompts; the safety comes from the review gates and the
   bounded, reviewable per-task branches, not from per-action prompts.
@@ -116,13 +117,13 @@ there — so a backlog *tries cheap first* and automatically climbs to a stronge
 tasks that actually need it.
 
 > **Keep the ladder short on purpose.** A doomed task BLOCKS to a human after at most
-> `ladder_length × MAX_ATTEMPTS` attempts. The template ships a deliberately short **5-tier** ladder —
-> `haiku` (no effort param), then `sonnet/low → medium → high`, then `opus/high` — so that's at most
-> `5 × 2 = 10` cold attempts before a stuck task asks for help: if `opus/high` can't do it in two cold
-> passes, a human glance is far cheaper than burning `opus/xhigh`/`max`. If you extend it (adding e.g.
-> `opus/xhigh`/`max`), remember every extra rung is extra spend a *stuck* task grinds through before it
-> ever asks for help — match the top rung to the hardest task you'd want built unsupervised, not to the
-> strongest model available.
+> `ladder_length × MAX_ATTEMPTS` attempts. The template ships a deliberately short **3-tier** ladder —
+> `haiku` (no effort param), then `sonnet/medium`, then `opus/medium` — so that's at most
+> `3 × 2 = 6` cold attempts before a stuck task asks for help: if `opus/medium` can't do it in two cold
+> passes, a human glance is far cheaper than burning `opus/high`/`xhigh`/`max`. If you extend it (adding
+> e.g. `opus/high` or higher), remember every extra rung is extra spend a *stuck* task grinds through
+> before it ever asks for help — match the top rung to the hardest task you'd want built unsupervised,
+> not to the strongest model available.
 
 **Difficulty is auto-tuned (see `.harness/docs/designs/difficulty-autotune.md`).** Rather than per-task
 `escalation` ladders, the loop rides ONE global tier ladder (`facets.json → .tiers.ladder`) and a
@@ -157,8 +158,8 @@ exists in the project but lives **out of band** (optional, human-driven), never 
 
 Because the loop builds blind from the spec on the policy-chosen (often weaker) model, **clarification is
 front-loaded into the authoring stage**, not the build. When ideas become tasks
-(`/implementation-harness-convert-ideas`) or a failed task is reviewed
-(`/implementation-harness-review-failed`), that is where a human confirms the **definition of done** and
+(`/harness-convert-ideas`) or a failed task is reviewed
+(`/harness-review-failed`), that is where a human confirms the **definition of done** and
 any open decision — while a strong model and a person are both in the room — so the unattended build pass
 inherits an unambiguous contract it can hit in one cold pass. Those planning skills deliberately bias
 *toward* asking; the loop, having no human to ask, deliberately does not.
@@ -221,7 +222,7 @@ to a pricier tier, so `pick_base()`'s normal "cheapest eligible tier" rule will 
 its own; it has no way to distinguish "unproven" from "proven bad." To actually get it tested on
 established work, raise `.policy.exploreProbabilityPM` (per-mille, default `0`) in `config/facets.json`
 — see `docs/designs/difficulty-autotune.md` §2a for the full mechanism. The
-`implementation-harness-update-ladder` skill prompts for this after every insert.
+`harness-update-ladder` skill prompts for this after every insert.
 
 **A rejected rung isn't stuck forever (`exploreCooldownN`).** If a probed rung fails its trial,
 it isn't excluded permanently — task difficulty can drift over a project's life (a codebase
@@ -249,8 +250,8 @@ supervise.sh (heartbeat)
                              off origin/main — every attempt is COLD (no resume of partial work).
          3. WORK  (claude):  one `claude -p` (policy-chosen model/effort) IN that worktree: build
                              the task FRESH from its spec in scope, pass the Definition of Done
-                             (§5), update docs in lockstep, commit ONE commit on `tNNN`. Do NOT
-                             push, do NOT merge — the loop is the sole pusher.
+                             (§5), commit ONE commit on `tNNN`. Do NOT push, do NOT merge — the
+                             loop is the sole pusher.
          4. GATE  (shell):   run structural checks + LOCAL_DOD locally FIRST; on pass push `tNNN`
                              and watch its CI (`gh run watch`); on green run the sampled blocking
                              audit. all pass → fast-forward main via push (never checks main out),
@@ -310,9 +311,10 @@ A task is **done** only when **all** of the following hold. The loop will **not*
    by a fresh stronger agent (`max(opus-medium, builder tier)`) verifying the diff against the spec's
    `## Done when`, which must return PASS. A structural/audit FAIL is a `failed:soft` → cold retry /
    escalate. Each outcome is logged to `outcomes.jsonl` tagged `audited`/`ci-only`.
-6. **Docs in lockstep.** In the **same commit**: the task's `TASKS.json` `status` set to `"done"`, the
-   `README.md` status row updated, and any new trade-off added to `.harness/docs/LIMITATIONS.md`
-   (`CLAUDE.md` golden rules 3 & 5).
+6. **Task status is the loop's to set — not the builder's.** The loop flips the task's `TASKS.json`
+   `status` to `"done"` itself, in its own follow-up commit, once 1–5 hold (`CLAUDE.md` golden rule 3).
+   The builder never sets status, and never updates the root `README.md` — that is maintainer-owned
+   product documentation the loop never touches, not a per-task status log.
 
 Only when 1–6 hold does the task integrate. Anything short of that is a `failed:*` with a
 worklog entry, never a `done`.
@@ -367,12 +369,14 @@ Therefore:
 - **A concurrency lock** in the shared `.git` (`<repo>-loop.lock`, PID-stamped with stale
   reclamation) ensures only one `loop.sh` runs at once — a second invocation exits immediately
   rather than racing.
-- **When the loop finishes** (backlog drained) it optionally leaves the **primary checkout on
-  the latest `main`**, so your local copy reflects everything that just landed instead of sitting
-  stale on an old commit or branch (`sync_primary_checkout`). This is the *only* time it touches the
-  primary checkout, and it's safe + best-effort: it **skips a dirty tree** (never stashes or clobbers
-  uncommitted work), **fast-forwards only** (never rewrites unpushed local commits), and is non-fatal.
-  Set `SYNC_PRIMARY_ON_DONE=0` to keep the strict never-touch-the-primary-checkout behavior.
+- **After every iteration** (and on the drain / MAX_ITERS exits) it optionally fast-forwards the
+  **primary checkout onto the latest `main`**, so your local copy — and the **dashboard**, which reads
+  the primary checkout's files directly — reflects each task *as it lands* instead of sitting stale
+  until the backlog drains (`sync_primary_checkout`). This is the *only* thing that touches the primary
+  checkout, and it's safe + best-effort: it **skips a dirty tree** (never stashes or clobbers uncommitted
+  work) and a **non-`main` HEAD**, **fast-forwards only** (never rewrites unpushed local commits), is a
+  no-op when nothing changed, and is non-fatal. Set `SYNC_PRIMARY_ON_DONE=0` to keep the strict
+  never-touch-the-primary-checkout behavior.
 
 ### In-place variant (when the build needs untracked local state)
 
@@ -508,6 +512,7 @@ the top carries the human note (JSON has no comments). One task object:
   "verify": ["run-app"],               // optional empirical checks
   "expectsTest": true,                 // optional; true → the loop requires a test file in the diff (structural gate)
   "visualVerify": true,                // optional; true → force VISUAL_VERIFY_HOOK on any platform; false → suppress; omit → workType heuristic
+  "ciSkipOk": true,                    // optional; true → the loop accepts a builder [skip ci] commit for THIS task; omit/false → structural fail if the builder tags one
   "spec": ".harness/tasks/T014.md",    // REQUIRED — the task's do/done-when (## Do / ## Done when), in its own MD file
   "facets": { "layer": "backend", "workType": "feature", "risk": [] },  // calibration key; OMIT for gated/needs-human tasks
   "tags": ["validation"]               // optional, freeform
@@ -524,6 +529,7 @@ the top carries the human note (JSON has no comments). One task object:
 | `scope` | **The files this task is allowed to touch — a binding contract, and one of the most consequential fields you author. Take real care getting it right.** It is a hard structural gate: the loop requires the diff to land inside `scope`, and the **first** file touched outside it now **blocks the task immediately** — one attempt, no retry, no model escalation (a wrong scope is a human fix, not something a stronger model recovers). So a scope error is not cheap: **too narrow silently dooms the task**; too wide defeats the guard that lets cheap models run unsupervised. Derive it deliberately from what `## Done when` actually requires. **Prefer a directory-level scope over an exhaustive file list** — a directory prefix (`src/feature/**`) that honestly covers where the work lives is far more robust than pre-guessing every individual file (which you usually can't), while still catching the real risk: a build wandering into an unrelated subsystem. Each entry is one of: an **exact path** (`src/auth/session.ts`); a **directory prefix** — a trailing `/`, `/**`, or `/*`, all meaning *everything under it, recursively* (`src/feature/**`); or a **single-level extension glob** (`dir/*.tsx` = any `.tsx` **directly** in `dir`, not nested). Anything else with a glob metacharacter (e.g. a mid-path `**` like `dir/**/*.ts`, or brace expansion) is **not** supported and is flagged by `check-task-scope.sh` at pre-loop-checkin — split it into a directory prefix or explicit paths. |
 | `expectsTest` | Optional boolean. `true` → the loop requires a **test file** to change in the diff (a structural check); say what the test must assert in `## Done when`. Set it for tasks whose correctness should be pinned by a test. "Test file" is matched by built-in conventions (incl. Xcode/JVM CamelCase like `UITests/`, `FooTests.swift`) plus any project patterns in `custom/test-file-patterns.txt` (§8.3) — probe with `scripts/loop.sh --test-selftest <path>`. |
 | `visualVerify` | Optional boolean. `true` → inject the `VISUAL_VERIFY_HOOK` "actually LOOK at the output" instruction into the builder + auditor prompt **regardless of facets/platform** (a native screen, a mobile simulator, a generated image). `false` → suppress it even for an auto-covered task. **Omit** to use the facets heuristic: auto-fires when `facets.workType` ∈ `VISUAL_VERIFY_WORKTYPES` (default `component style`) on any layer, OR `facets.layer` ∈ `VISUAL_VERIFY_LAYERS` (default `frontend`) unless the work-type is in `VISUAL_VERIFY_SKIP_WORKTYPES` (default `docs config logging`). Maybe-visual work (`bugfix`/`feature`/`migration` off-frontend) is set by the authoring skills, not auto. No-op if `VISUAL_VERIFY_HOOK` is unset. See `docs/designs/visual-verification.md`. |
+| `ciSkipOk` | Optional boolean, **planner-only** — never set this because the builder asked for it or because a task is failing CI; it authorizes a `[skip ci]` commit message, it doesn't request one. `true` → this task is genuinely CI-irrelevant (pure docs/config, nothing a test suite would exercise), so the loop accepts a builder commit tagged `[skip ci]` and proceeds straight to the audit gate without waiting for a CI run. **Omit or `false`** (the default) → a structural check FAILS the attempt (`unauthorized-skip-ci`) if the builder's commit message contains `[skip ci]` — the builder cannot self-authorize skipping CI, only the field can (PRINCIPLES.md P2: no gate may be satisfiable by text the builder itself writes). Setting the field does not force a skip — the builder still needs to actually write `[skip ci]` for it to take effect. |
 | `design` | **Optional** path to a fuller design doc, or `null`. A path = the build pass **reads that doc** first; `null` = the agent builds from the `spec` on its own judgement. Never required. |
 | `verify` | Optional array naming extra **empirical** checks (e.g. `"run-app"`, `"live-api"`) that drive the §5 Definition of Done. Empty = unit/integration + CI suffice. |
 | `spec` | **Required** repo-relative path to the task's per-task Markdown spec (`.harness/tasks/TNNN.md`) — a leading **`## Overview`** (one or two plain-language sentences: the "what & why, at a glance", read first), then `## Do` (the work, kept short) and `## Done when` (the **task-specific** acceptance bar; the **universal** bar in §5 is not repeated). The loop appends its full text to the build prompt. `do`/`doneWhen` do **not** live in the JSON. (`## Overview` is a later convention — specs authored before it are left as-is, no backfill.) |
@@ -549,7 +555,7 @@ loop's perspective**. `reconcile_overlays()` promotes `human-done`/`manual-fail`
 this same checkout takes effect on the loop's very next pass. A `manual-fail` entry also
 retroactively corrects difficulty calibration **by subtracting at read time**, never by mutating the
 append-only ledger — see `docs/designs/manual-fail-signal.md` for the full mechanism and rationale.
-`reviews.json` is now also written automatically by `implementation-harness-review-failed` (for every
+`reviews.json` is now also written automatically by `harness-review-failed` (for every
 task it investigates, so a future sweep never re-investigates it) and by the dashboard's "Mark done"
 action (a human completing a needs-human task themselves is itself a review) — both are just
 additional callers of `mark-reviewed.sh`, not a change to the mechanism itself.
@@ -650,7 +656,8 @@ The loop **skips** `needs-human` during selection and surfaces it on the status 
    policy picks the start tier from the task's facets, and on repeated soft-failure the loop
    escalates up the global ladder before stopping for a human.
 4. Never mark `done` with any §5 gate red (including a red or unobserved CI run).
-5. Touch only the task's scope; update docs in the **same** commit.
+5. Touch only the task's scope. Never edit the root `README.md` (maintainer-owned) or set task
+   status (the loop owns it).
 6. **Every attempt is cold** — never read prior worklogs or resume partial work (§2.4).
 7. Never cross a 🔒 needs-human boundary autonomously.
 8. At most **one** task branch exists at a time (single-flight).
@@ -682,7 +689,7 @@ The loop **skips** `needs-human` during selection and surfaces it on the status 
 
 ---
 
-## 12. Trade-offs & limitations (kept honest — mirror into `.harness/docs/LIMITATIONS.md`)
+## 12. Trade-offs & limitations (the harness's own, kept honest)
 
 - **Hardened DoD makes each task longer.** Integration + empirical + CI-watch add wall-clock
   and tokens per task, raising the chance a single window can't finish one. Mitigation: keep

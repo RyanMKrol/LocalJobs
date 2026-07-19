@@ -1,5 +1,5 @@
 ---
-name: implementation-harness-add-to-backlog
+name: harness-add-to-backlog
 description: >-
   Use when a project already has the implementation harness (.harness/docs/HARNESS.md, .harness/scripts/loop.sh, .harness/tracking/TASKS.json
   present) and the user wants to draft or extend the task backlog — phrases like "add tasks",
@@ -23,7 +23,7 @@ but are never silently altered during an append.)
 ## 1. Pre-flight
 
 - Require the harness: `.harness/tracking/TASKS.json`, `.harness/docs/HARNESS.md`, and `.harness/scripts/loop.sh` must exist in the
-  project. If any is missing, stop and point the user at `implementation-harness:implementation-harness-create` first.
+  project. If any is missing, stop and point the user at `implementation-harness:create` first.
   (Either loop variant — worktree or in-place — installs as `.harness/scripts/loop.sh` and keeps
   `.harness/tracking/TASKS.json` at the same fixed path, so this skill is identical for both.)
 - Require `jq` (the loop and this skill use it). If absent, tell the user to `brew install jq`.
@@ -91,8 +91,8 @@ Use `AskUserQuestion`. Establish:
      project captured a run/backtest command at scaffold time, reuse that label. Else `[]`.
    - **do / done-when** — the work, and the task-specific acceptance bar. These go in the per-task
      Markdown spec `.harness/tasks/TNNN.md` (sections `## Do` / `## Done when`), NOT inline in the
-     JSON (see §3). Do **not** restate the universal bar (format/lint/test, CI green, docs lockstep)
-     in done-when — that lives once in HARNESS §5.
+     JSON (see §3). Do **not** restate the universal bar (format/lint/test, CI green) in done-when —
+     that lives once in HARNESS §5.
 4. **Facets (per task) — DESCRIBE the task; the policy decides difficulty.** Difficulty (which model
    + effort to start on) is now AUTO-TUNED by the loop's policy from escalation history — you do NOT
    guess it (see `.harness/docs/designs/difficulty-autotune.md`). Your job is to *classify* the task. Read the
@@ -180,6 +180,7 @@ For each task, in dependency order, produce a JSON object:
   "verify": [],                       // or ["run-app"]
   "expectsTest": false,               // true → the loop requires a test file in the diff (structural gate); set for test-pinnable tasks
   "visualVerify": false,              // OPTIONAL — true forces the VISUAL_VERIFY_HOOK "actually LOOK at it" check; false suppresses; OMIT to use the facets heuristic (see §3). Usually omitted.
+  "ciSkipOk": false,                  // OPTIONAL — true ONLY for genuinely CI-irrelevant work (pure docs/config, nothing a test suite exercises); authorizes a builder [skip ci] commit. Almost always omitted — an unauthorized [skip ci] fails the attempt (D01).
   "spec": ".harness/tasks/TNNN.md"    // the task's do/done-when (## Do / ## Done when) — author this MD file too
   // NO model/effort/escalation, NO inline do/doneWhen — the policy auto-tunes difficulty from facets + the ledger
 }
