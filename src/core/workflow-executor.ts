@@ -2,6 +2,7 @@ import { getJobDefinition } from '../workflows/registry.js';
 import {
   addWorkflowLog,
   createWorkflowRun,
+  setWorkflowRunSelectedRoots,
   finishWorkflowRun,
   getWorkflow,
   hasActiveWorkflowRun,
@@ -293,57 +294,26 @@ async function runWorkflowInner(
   const minAttempts = def.minAttempts ?? 4;
   const maxCycles = def.repeatUntilStable ? Math.max(1, def.maxCycles ?? 1) : 1;
 
-  // Run-limit selection (T094): for a manual limit, pick the first N pending
-  // originating-input roots from the root stage's inputKeys() and freeze them on
-  // the run row. The allowlist is computed ONCE here (reused across cycles); each
-  // member child reads it via the run row. Unset limit → unlimited (null).
+  // Run-limit selection (T094) via the OPTIMISTIC-ROW path: the run row is created
+  // UP-FRONT (below), so a *limited* run is visible immediately as a `running` run
+  // while it discovers its originating inputs — instead of the old invisible
+  // pre-DB-row "Starting…" window, which produced no artifact for the whole
+  // (potentially long) discovery scan AND silently 409-blocked every manual run in
+  // the meantime. The selected roots are frozen onto that existing row once the scan
+  // finishes, BEFORE any member stage spawns. Unset limit → unlimited (null).
   let runLimit: number | null = null;
-  let selectedRoots: string[] | null = null;
   let limitNote = '';
-  let emptySelectionWarning: string | null = null;
   if (opts.limit && opts.limit > 0) {
-    runLimit = opts.limit;
-    const rootStage = findRootStage(dag);
-    if (rootStage) {
-      // A throw here (e.g. inputKeys() rejecting on a live API call) happens BEFORE
-      // createWorkflowRun below, so with no try/catch it would escape runWorkflowInner
-      // entirely — invisible to the dashboard, logged only to daemon stdout by the
-      // fire-and-forget caller's `.catch(console.error)` (T596). Mirror the DAG-build
-      // failure pattern above: create the row here too, and mark it failed with the
-      // error captured, so any pre-row throw is still a visible failed run.
-      try {
-        const candidates = await getJobDefinition(rootStage)!.inputKeys!();
-        // "Pending" is propagation through the TERMINAL stage (the last DAG wave),
-        // not merely past the entry stage (T163) — so a root with un-attempted
-        // downstream work (e.g. resolved-but-not-enriched) is correctly selectable.
-        const terminalJobs = dag.waves[dag.waves.length - 1] ?? [];
-        selectedRoots = selectPendingRoots(memberNames, terminalJobs, candidates, runLimit, minAttempts);
-        limitNote = ` · limited to ${runLimit} originating input(s): ${selectedRoots.length ? selectedRoots.join(', ') : '(none pending)'}`;
-        // Guard the silent no-op (T163): a limit that selects 0 roots from a
-        // non-empty candidate set would otherwise "succeed" doing nothing. Surface
-        // it loudly so a backlog catch-up run that found nothing selectable is visible.
-        if (selectedRoots.length === 0 && candidates.length > 0) {
-          emptySelectionWarning = `Run limit ${runLimit} requested but 0 originating inputs were selectable — ${candidates.length} candidate(s), all already complete (propagated through the terminal stage, or permanently stuck). Nothing will run this run.`;
-        }
-      } catch (e) {
-        const id = createWorkflowRun(def.name, trigger, runLimit, null);
-        addWorkflowLog(
-          id,
-          `Failed to resolve input keys for root stage "${rootStage}": ${e instanceof Error ? e.message : e}`,
-          'error',
-        );
-        finishWorkflowRun(id, 'failed');
-        return { workflowRunId: id };
-      }
+    if (findRootStage(dag)) {
+      runLimit = opts.limit;
     } else {
       // Defensive: the API rejects a limit on a non-limitable workflow, so this is
       // only reachable if called directly. Fall back to unlimited rather than block.
-      limitNote = ` · limit ${runLimit} ignored (no stage declares input keys)`;
-      runLimit = null;
+      limitNote = ` · limit ${opts.limit} ignored (no stage declares input keys)`;
     }
   }
 
-  const workflowRunId = createWorkflowRun(def.name, trigger, runLimit, selectedRoots);
+  const workflowRunId = createWorkflowRun(def.name, trigger, runLimit, null);
   const controller = new AbortController();
   activeWorkflowRuns.set(workflowRunId, controller);
   const log = (m: string, level: LogLevel = 'info') => addWorkflowLog(workflowRunId, m, level);
@@ -351,6 +321,39 @@ async function runWorkflowInner(
   // catch-all below), so a throw that escapes AFTER the normal finalisation
   // already ran can't double-finish the run.
   let finished = false;
+
+  // Discover + freeze the selected roots now that the row exists and is visibly
+  // `running`. A throw (inputKeys() rejecting on a live API call) fails THIS row —
+  // no separate pre-row row needed anymore — and returns. The run is also
+  // cancellable during this window now, since the row already exists (the abort
+  // takes effect once the scan returns and gates the DAG below).
+  let emptySelectionWarning: string | null = null;
+  if (runLimit) {
+    const rootStage = findRootStage(dag)!;
+    log(`Discovering originating inputs for a limited run (limit ${runLimit}) via "${rootStage}"…`);
+    try {
+      const candidates = await getJobDefinition(rootStage)!.inputKeys!();
+      // "Pending" is propagation through the TERMINAL stage (the last DAG wave),
+      // not merely past the entry stage (T163) — so a root with un-attempted
+      // downstream work (e.g. resolved-but-not-enriched) is correctly selectable.
+      const terminalJobs = dag.waves[dag.waves.length - 1] ?? [];
+      const selectedRoots = selectPendingRoots(memberNames, terminalJobs, candidates, runLimit, minAttempts);
+      setWorkflowRunSelectedRoots(workflowRunId, selectedRoots);
+      limitNote = ` · limited to ${runLimit} originating input(s): ${selectedRoots.length ? selectedRoots.join(', ') : '(none pending)'}`;
+      // Guard the silent no-op (T163): a limit that selects 0 roots from a
+      // non-empty candidate set would otherwise "succeed" doing nothing. Surface
+      // it loudly so a backlog catch-up run that found nothing selectable is visible.
+      if (selectedRoots.length === 0 && candidates.length > 0) {
+        emptySelectionWarning = `Run limit ${runLimit} requested but 0 originating inputs were selectable — ${candidates.length} candidate(s), all already complete (propagated through the terminal stage, or permanently stuck). Nothing will run this run.`;
+      }
+    } catch (e) {
+      log(`Failed to resolve input keys for root stage "${rootStage}": ${e instanceof Error ? e.message : e}`, 'error');
+      finished = true;
+      finishWorkflowRun(workflowRunId, 'failed');
+      activeWorkflowRuns.delete(workflowRunId);
+      return { workflowRunId };
+    }
+  }
 
   try {
   log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);

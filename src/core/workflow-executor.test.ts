@@ -533,38 +533,41 @@ try {
     assert.equal(workflowRunInProgress('guard-wf-b'), false, 'B guard released after settle');
   });
 
-  await test('T595: isWorkflowStarting is true during a slow limited-run inputKeys() wait (pre-DB-row window) and false once the run settles', async () => {
+  await test('optimistic row: a limited run creates a VISIBLE running row BEFORE inputKeys() completes (no invisible pre-row "Starting…" window)', async () => {
     const def: WorkflowDefinition = {
       name: 't595-wf',
       jobs: [{ job: 't595-slow-root' }, { job: 't595-cons', dependsOn: ['t595-slow-root'] }],
     };
     syncWorkflow(def);
 
-    assert.equal(isWorkflowStarting('t595-wf'), false, 'not starting before the run is triggered');
+    assert.equal(lastWorkflowRunForWorkflow('t595-wf'), undefined, 'no run row before the run is triggered');
 
-    // Start a LIMITED manual run (only a limit triggers the inputKeys() await
-    // before createWorkflowRun) but don't await it — its root stage's inputKeys()
-    // hangs until we release it below.
+    // Start a LIMITED manual run but don't await it — its root stage's inputKeys()
+    // hangs until released below. With the optimistic-row change the run row is
+    // created BEFORE the discovery scan, so a running row appears WHILE inputKeys()
+    // is still pending — the old invisible pre-DB-row "Starting…" window is gone.
     const runPromise = runWorkflow(def, 'manual', { limit: 1 });
 
-    // Poll until the claim registers, then assert: starting=true, workflowRunInProgress
-    // is also true (T105 guard unaffected), and crucially NO workflow_runs row exists
-    // yet — this is the exact gap T595 makes visible.
     const deadline = Date.now() + 5000;
-    while (Date.now() < deadline && !isWorkflowStarting('t595-wf')) {
+    let running: ReturnType<typeof lastWorkflowRunForWorkflow>;
+    while (Date.now() < deadline) {
+      const r = lastWorkflowRunForWorkflow('t595-wf');
+      if (r && r.status === 'running') { running = r; break; }
       await new Promise((res) => setTimeout(res, 10));
     }
-    assert.equal(isWorkflowStarting('t595-wf'), true, 'starting flag set while inputKeys() is pending');
-    assert.equal(workflowRunInProgress('t595-wf'), true, 'T105 guard still reports in-progress (unchanged)');
-    assert.equal(lastWorkflowRunForWorkflow('t595-wf'), undefined, 'no workflow_runs row exists yet — the gap this task surfaces');
+    assert.ok(running, 'a running workflow_runs row exists WHILE inputKeys() is still pending (visible immediately)');
+    assert.equal(isWorkflowStarting('t595-wf'), false, 'no invisible "Starting…" window — the row is already running');
+    assert.equal(workflowRunInProgress('t595-wf'), true, 'T105 guard still reports in-progress');
+    // Roots not yet frozen (the scan hasn't finished) — they attach once inputKeys() returns.
+    assert.equal(getWorkflowRunRoots(running!.id), null, 'selected_roots not yet frozen while discovery is in flight');
 
     // Release the hanging inputKeys() so the run proceeds and settles.
     assert.ok(t595ReleaseInputKeys, 'release hook was captured');
     t595ReleaseInputKeys!();
     const { workflowRunId } = await runPromise;
 
-    assert.ok(workflowRunId, 'run eventually produced a workflow_runs row');
-    assert.equal(isWorkflowStarting('t595-wf'), false, 'starting flag cleared once the run settled');
+    assert.equal(workflowRunId, running!.id, 'the SAME up-front row is the one that settles (not a new row)');
+    assert.deepEqual(getWorkflowRunRoots(workflowRunId!), ['s1'], 'selected_roots frozen onto the existing row after the scan');
     assert.equal(workflowRunInProgress('t595-wf'), false, 'T105 guard released after settle');
   });
 

@@ -506,9 +506,10 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   { const i = workflows.indexOf(certifyWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
-// ── T595: while a limited manual run is awaiting its root stage's inputKeys()
-// (the pre-DB-row window), both GET /api/workflows and GET /api/workflows/:name
-// surface `starting: true` — clearing back to false once the run row exists. ──
+// ── Optimistic row: a limited manual run creates a VISIBLE running workflow_runs
+// row WHILE its root stage's inputKeys() is still pending — the old invisible
+// pre-DB-row "Starting…" window is gone, so GET payloads show a normal running run
+// (starting:false) during discovery, and the run is already cancellable. ──
 {
   let releaseInputKeys: (() => void) | null = null;
   const startingJob: JobDefinition = {
@@ -523,44 +524,41 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   const startingWf: WorkflowDefinition = { name: 'starting-api-wf', jobs: [{ job: 'starting-api-job' }] };
   syncWorkflow(startingWf); workflows.push(startingWf);
 
-  await test('starting: POST /run with a limit sets starting:true on both GET payloads before the run row exists, then clears it', async () => {
+  await test('optimistic row: a limited /run shows a running run during inputKeys() (no invisible pre-row Starting… window)', async () => {
     await withServer({}, async (base) => {
-      assert.equal(isWorkflowStarting('starting-api-wf'), false, 'not starting before the run is triggered');
+      assert.equal(lastWorkflowRunForWorkflow('starting-api-wf'), undefined, 'no run row before the run is triggered');
 
       const runRes = await fetch(`${base}/api/workflows/starting-api-wf/run`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 1 }),
       });
       assert.equal(runRes.status, 202, 'run accepted immediately (fire-and-forget)');
 
+      // A RUNNING workflow_runs row now appears WHILE inputKeys() is still pending
+      // (the row is created up-front), not after the scan completes.
       const deadline = Date.now() + 5000;
-      while (Date.now() < deadline && !isWorkflowStarting('starting-api-wf')) {
-        await new Promise((r) => setTimeout(r, 10));
+      let run: ReturnType<typeof lastWorkflowRunForWorkflow>;
+      while (Date.now() < deadline) {
+        const r = lastWorkflowRunForWorkflow('starting-api-wf');
+        if (r && r.status === 'running') { run = r; break; }
+        await new Promise((res) => setTimeout(res, 10));
       }
-      assert.equal(isWorkflowStarting('starting-api-wf'), true, 'claim registered while inputKeys() is pending');
-      assert.equal(lastWorkflowRunForWorkflow('starting-api-wf'), undefined, 'no workflow_runs row yet');
+      assert.ok(run, 'a running workflow_runs row exists while inputKeys() is still pending (immediately visible)');
+      assert.equal(isWorkflowStarting('starting-api-wf'), false, 'no invisible pre-row "Starting…" window — the row is already running');
 
+      // The GET payloads present it as a normal running workflow (starting:false).
       const get = await fetch(`${base}/api/workflows/starting-api-wf`);
-      const wf = ((await get.json()) as { workflow: { starting?: boolean } }).workflow;
-      assert.equal(wf.starting, true, 'detail payload surfaces starting:true during the pre-DB-row window');
-
-      const list = await fetch(`${base}/api/workflows`);
-      const body = (await list.json()) as { workflows: { name: string; starting?: boolean }[] };
-      const row = body.workflows.find((w) => w.name === 'starting-api-wf');
-      assert.equal(row?.starting, true, 'list payload surfaces starting:true during the pre-DB-row window');
+      const wf = ((await get.json()) as { workflow: { starting?: boolean; last_run?: { status?: string } } }).workflow;
+      assert.equal(wf.starting, false, 'detail payload: starting:false (row already running)');
+      assert.equal(wf.last_run?.status, 'running', 'detail payload shows a running last_run during discovery');
 
       // Release the hanging inputKeys() and let the run settle.
       assert.ok(releaseInputKeys, 'release hook captured');
       releaseInputKeys!();
       const settleDeadline = Date.now() + 5000;
-      while (Date.now() < settleDeadline && isWorkflowStarting('starting-api-wf')) {
-        await new Promise((r) => setTimeout(r, 10));
+      while (Date.now() < settleDeadline && lastWorkflowRunForWorkflow('starting-api-wf')?.status === 'running') {
+        await new Promise((res) => setTimeout(res, 10));
       }
-      assert.equal(isWorkflowStarting('starting-api-wf'), false, 'starting clears once the run settles');
-      assert.ok(lastWorkflowRunForWorkflow('starting-api-wf'), 'a workflow_runs row now exists');
-
-      const get2 = await fetch(`${base}/api/workflows/starting-api-wf`);
-      const wf2 = ((await get2.json()) as { workflow: { starting?: boolean } }).workflow;
-      assert.equal(wf2.starting, false, 'detail payload falls back to normal (starting:false) after settle');
+      assert.notEqual(lastWorkflowRunForWorkflow('starting-api-wf')?.status, 'running', 'the run settled (no longer running)');
     });
   });
 

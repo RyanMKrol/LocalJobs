@@ -827,7 +827,28 @@ doubt, log it.
     stage** is the first member (topological order) declaring `inputKeys()` — its
     keys are the candidate roots; selection (`selectPendingRoots` in `store.ts`)
     freezes the first N *pending* roots on the run row (`run_limit` +
-    `selected_roots` JSON) in `runWorkflow`. The id is threaded to each child via the
+    `selected_roots` JSON) in `runWorkflow`.
+    - **Optimistic run row — a limited run is visible immediately, no invisible
+      "Starting…" window.** `runWorkflowInner` now creates the `workflow_runs` row
+      **UP FRONT** (status `running`, `run_limit` set, `selected_roots` still null),
+      THEN runs the discovery scan (`inputKeys()`), THEN freezes the selected roots
+      onto that existing row via `setWorkflowRunSelectedRoots(id, roots)` — all
+      BEFORE any member stage spawns (children read `getWorkflowRunRoots` only once
+      the DAG starts). This replaces the earlier order (scan → create row), whose
+      pre-DB-row gap meant a limited run whose `inputKeys()` is a long live crawl
+      (e.g. `plex-language-fix`'s full-library `discoverInputKeys()`) produced **no
+      run artifact at all** for the whole scan — surfaced only as a transient
+      "Starting…" pill — AND held the T105 one-run lock the whole time, so every
+      manual `POST /run` in that window was silently `409`'d (a real incident: the
+      workflow "wouldn't start"). Now the row exists during discovery, so the run is
+      immediately visible AND cancellable, and a scan-time `inputKeys()` throw fails
+      THAT row (no separate pre-row failed row is created). Consequence:
+      `isWorkflowStarting`/the "Starting…" indicator (T595) is now effectively always
+      false — the row exists before the scan — kept only as a harmless fallback for
+      the microscopic claim→row-creation gap. NB for a limitable workflow whose
+      `inputKeys()` and root stage's `run()` walk the same source (plex-language-fix
+      walks the library in BOTH), a *limited* run walks twice; that's a per-workflow
+      efficiency matter, not this framework path's concern. The id is threaded to each child via the
     `LOCALJOBS_WORKFLOW_RUN_ID` env (`executor.ts`); the child (`runJob.ts`) loads
     `getWorkflowRunRoots` into `ctx.selectedRoots()`/`ctx.rootAllowed(rootKey)`. **Every
     stage MUST filter its work-list by `ctx.rootAllowed(root)`** — when unlimited it's

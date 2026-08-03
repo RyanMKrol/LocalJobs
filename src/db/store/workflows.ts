@@ -190,6 +190,17 @@ export function createWorkflowRun(
 }
 
 /**
+ * Freeze the selected originating-input allowlist onto an EXISTING run row — used
+ * by the optimistic-row path (the run row is created up-front so a limited run is
+ * visible immediately as `running` while it discovers inputs; the roots are
+ * attached here once the discovery scan finishes, BEFORE any member stage spawns).
+ */
+export function setWorkflowRunSelectedRoots(workflowRunId: string, selectedRoots: string[]): void {
+  db.prepare('UPDATE workflow_runs SET selected_roots = ? WHERE id = ?')
+    .run(JSON.stringify(selectedRoots), workflowRunId);
+}
+
+/**
  * The frozen originating-input allowlist for a workflow run (T094), or null when
  * the run is unlimited (no limit, or an unknown id). Read once per member child
  * (via LOCALJOBS_WORKFLOW_RUN_ID) to build `ctx.selectedRoots()`/`rootAllowed()`.
