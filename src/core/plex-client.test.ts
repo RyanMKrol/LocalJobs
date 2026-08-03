@@ -129,6 +129,36 @@ await (async () => {
   }
   resetPlexHostCacheForTests();
   console.log('  ✓ resolvePlexHost throws the clear error when no Plex is found');
+
+  // HARD cap: a probe that HANGS forever must NOT defeat the wall-clock cap. This is
+  // the regression for the "workflow stuck in Starting… forever" incident — a hung
+  // scan left runWorkflow's pre-DB-row inputKeys() await hanging, wedging the workflow
+  // and refusing every restart with 409. With the cap raced against the workers, the
+  // scan must return (→ resolvePlexHost throws its clear error) well within the cap.
+  resetPlexHostCacheForTests();
+  {
+    // Configured host fails FAST (like a refused connection); the SCAN candidates hang
+    // forever (like a firewalled LAN IP that neither answers nor times out).
+    const hangingProbe: PlexProbe = (host) =>
+      host.includes('dead') ? Promise.resolve(null) : new Promise<string | null>(() => {});
+    const started = Date.now();
+    await assert.rejects(
+      resolvePlexHost({
+        configuredHost: 'https://dead:32400',
+        machineId: '',
+        probe: hangingProbe,
+        candidateHosts: () => ['https://10.0.0.1:32400', 'https://10.0.0.2:32400', 'https://10.0.0.3:32400'],
+        overallCapMs: 150, // short cap for the test
+        log: SILENT,
+      }),
+      /set PLEX_HOST/,
+      'a hung probe still yields the set-PLEX_HOST error via the wall-clock cap',
+    );
+    // Bound the wall-time generously (the cap is 150ms; a broken Promise.all would hang forever).
+    assert.ok(Date.now() - started < 5000, 'scan returned via the hard cap, did not hang on the never-resolving probe');
+  }
+  resetPlexHostCacheForTests();
+  console.log('  ✓ resolvePlexHost hard-caps the scan even when a probe hangs (no permanent wedge)');
 })();
 
 // ── enumerateSubnetHosts: excludes virtual/VPN interfaces, prioritizes the

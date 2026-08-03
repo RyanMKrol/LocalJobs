@@ -184,7 +184,27 @@ async function scanForPlexHost(
   }
 
   const workerCount = Math.max(1, Math.min(concurrency, candidates.length));
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  const workers = Promise.all(Array.from({ length: workerCount }, () => worker()));
+  // HARD wall-clock cap: the `Date.now() < deadline` check in worker() only gates
+  // between probes — a SINGLE probe that hangs (a firewalled LAN IP that neither
+  // answers nor cleanly times out) would otherwise leave its worker awaiting forever,
+  // so `Promise.all(workers)` never settles and the "cap" is defeated. That hung the
+  // whole daemon: resolvePlexHost → discoverInputKeys → runWorkflow's pre-DB-row
+  // inputKeys() await never returned, wedging the workflow permanently in "Starting…"
+  // and refusing every restart with 409. Race the workers against the deadline so the
+  // scan ALWAYS returns by overallCapMs with whatever it found so far (null if nothing),
+  // even if some probes are still hung — a no-Plex LAN fails fast, as intended.
+  if (overallCapMs > 0) {
+    let capTimer: ReturnType<typeof setTimeout> | undefined;
+    const cap = new Promise<void>((resolve) => { capTimer = setTimeout(resolve, overallCapMs); });
+    // NB: the cap timer is deliberately NOT unref'd — it must reliably fire to enforce
+    // the cap even when the only pending work is a hung probe with no active handle.
+    // It's short-lived (≤ overallCapMs) and cleared immediately after the race settles.
+    await Promise.race([workers, cap]);
+    if (capTimer) clearTimeout(capTimer);
+  } else {
+    await workers;
+  }
   return result;
 }
 
