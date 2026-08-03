@@ -172,12 +172,23 @@ export async function runBranch<M, P>(
   ctx.log(`Calling Claude (${domain.config.recsModel}) for ~${domain.config.recsPerBranchAsk} recommendations…`);
   const res = await run(prompt, domain.config.recsModel);
   if (!res.ok) {
-    const why = res.rateLimited ? 'rate/usage limit' : (res.error ?? 'claude error');
-    ctx.log(`Claude call failed (${why}) — skipping this branch (run continues).`, 'warn');
-    writeBranchFile(recsDir, { ...base, error: why });
-    opts.onBranchWritten?.(spec.id, opts, sampledItems);
-    ctx.progress(100, 'skipped (claude error)');
-    return;
+    // A RATE/USAGE limit is a legitimate defer-to-next-run (an intentional soft-stop,
+    // not a failure — matching the repo's "skipped soft-stop" convention): record it and
+    // return normally so a transient monthly-quota pause doesn't fail the whole run.
+    if (res.rateLimited) {
+      ctx.log('Claude hit a rate/usage limit — skipping this branch (run continues; retried next run).', 'warn');
+      writeBranchFile(recsDir, { ...base, error: 'rate/usage limit' });
+      opts.onBranchWritten?.(spec.id, opts, sampledItems);
+      ctx.progress(100, 'skipped (rate limit)');
+      return;
+    }
+    // Any OTHER failure (spawn ENOENT — claude not found, a crash, a timeout, a non-rate
+    // error) means the branch did NOTHING. Fail LOUD instead of silently reporting success:
+    // throw so this branch job's run is recorded 'failed' (and, being a merge dependency,
+    // blocks the merge/notify rather than producing an empty digest that looks successful).
+    const why = res.error ?? 'claude error';
+    ctx.log(`Claude call failed (${why}) — failing this branch (produced no recommendations).`, 'error');
+    throw new Error(`Claude call failed for branch ${spec.id}: ${why}`);
   }
 
   let suggestions: RawSuggestion[] = [];

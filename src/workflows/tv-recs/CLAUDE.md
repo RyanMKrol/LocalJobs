@@ -27,6 +27,15 @@ branch is a Claude CLI call (`TV_RECS_MODEL`, default `claude-sonnet-4-6`) shown
 the owned library (`TV_RECS_SAMPLE`, default 40 shows) and asked for `TV_RECS_PER_BRANCH_ASK` (default
 9) suggestions — headroom before the merge stage's dedup/quality filter.
 
+**A branch's Claude failure is NOT silently swallowed (shared `src/core/recommender/branch.ts`).** Only a
+genuine **rate/usage limit** is a soft-skip (an intentional defer-to-next-run — the branch records it and
+resolves normally). ANY other Claude failure — `spawn claude ENOENT` (binary not found), a crash, a
+timeout, a non-rate error — means the branch produced nothing, so `runBranch` **throws**: the branch job's
+run is recorded `failed`, and (being a merge dependency) it blocks merge/notify instead of producing an
+empty digest that looks successful. This fixed a real incident where an unset `LOCALJOBS_CLAUDE_BIN` made
+every branch `ENOENT`, yet the whole workflow reported success with zero recommendations. The daemon's
+launchd PATH is minimal, so `LOCALJOBS_CLAUDE_BIN` MUST point at an absolute `claude` path in `.env`.
+
 **`tv-rec-merge`** (`tmdbGet` via the same shared client) TMDB-verifies every suggestion, dedupes
 against the owned library and recommendation history, enforces a quality bar (TMDB `vote_average` ≥
 `TV_RECS_MIN_RATING` [7.0] with `vote_count` ≥ `TV_RECS_MIN_VOTES` [50]), balances the list (max

@@ -98,6 +98,12 @@ above the eventual target, since verification/dedup/quality-filtering will drop 
 per-branch output goes to `data/out/recs/<branch-id>.json`. Model: `MOVIES_RECS_MODEL` (default a
 Sonnet 5 id), via the shared `src/services/claude.ts` `runClaude` helper (→ `callService('claude-cli', ...)`).
 
+**A branch's Claude failure fails the branch (shared `src/core/recommender/branch.ts`) — NOT a silent
+soft-skip.** Only a rate/usage limit defers gracefully; any genuine error (`spawn claude ENOENT`, crash,
+timeout) throws so the branch run is `failed` and blocks merge/notify instead of yielding an empty
+"successful" digest. Requires `LOCALJOBS_CLAUDE_BIN` to be an absolute path in `.env` (the daemon's
+launchd PATH won't find a bare `claude`). See `tv-recs/CLAUDE.md` for the full note (both share the runner).
+
 ## Stage 3 — `rec-merge`
 
 Pools every branch's raw suggestions (`src/workflows/movies/stages/merge.ts`), then per suggestion:

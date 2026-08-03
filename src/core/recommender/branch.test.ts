@@ -191,4 +191,41 @@ const ok = (text: string) => async (): Promise<ClaudeResult> => ({ ok: true, tex
   console.log('  ✓ rec-random-1 (random) input-sample rows EXACTLY match its seed=1000+n stratified sample (T615)');
 }
 
+// ── A GENUINE Claude failure fails the branch; a rate-limit soft-skips ──
+// Regression: a `spawn claude ENOENT` (claude not found) used to be swallowed as a
+// soft-skip, so the branch job reported SUCCESS despite producing zero recommendations
+// (and the whole workflow "succeeded" with an empty digest). A real error must FAIL the
+// run; only a rate/usage limit legitimately defers.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'movies-branch-fail-'));
+  const snapshotFile = join(dir, 'snapshot.json');
+  const tasteFile = join(dir, 'taste.json');
+  const historyFile = join(dir, 'history.json');
+  const snap: MovieSnapshotFile = {
+    generatedAt: NOW.toISOString(), section: '4',
+    movies: [{ title: 'The Matrix', year: 1999, tmdbId: 603, ratingKey: '1', genres: ['Action'], directors: ['Lana Wachowski'], countries: ['United States'], audienceRating: 8, rating: 8 }],
+  };
+  writeFileSync(snapshotFile, JSON.stringify(snap));
+  const taste: TasteProfileFile = {
+    generatedAt: NOW.toISOString(),
+    profile: { totalMovies: 1, withTmdbId: 1, genres: { Action: 1 }, directors: {}, decades: { '1990s': 1 }, countries: { 'United States': 1 } },
+  };
+  writeFileSync(tasteFile, JSON.stringify(taste));
+
+  // Genuine error (ENOENT-style) → the branch job MUST throw.
+  const failJob = makeMovieBranchJob('rec-random-2', {
+    runClaude: async (): Promise<ClaudeResult> => ({ ok: false, text: '', rateLimited: false, error: 'Error: spawn claude ENOENT' }),
+    snapshotFile, tasteFile, historyFile, recsDir: dir, now: NOW,
+  });
+  await assert.rejects(() => failJob.run(fakeCtx()), /spawn claude ENOENT/, 'a genuine Claude failure throws (branch run recorded failed, not swallowed)');
+
+  // Rate/usage limit → legitimate defer, resolves normally (no throw).
+  const rateLimitJob = makeMovieBranchJob('rec-random-3', {
+    runClaude: async (): Promise<ClaudeResult> => ({ ok: false, text: '', rateLimited: true, error: 'usage limit reached' }),
+    snapshotFile, tasteFile, historyFile, recsDir: dir, now: NOW,
+  });
+  await rateLimitJob.run(fakeCtx()); // must NOT throw
+  console.log('  ✓ genuine Claude error fails the branch; a rate-limit soft-skips (no false success)');
+}
+
 console.log('  ✓ branch.ts onBranchWritten-hook + per-suggestion-ledger tests passed');
