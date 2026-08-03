@@ -562,8 +562,14 @@ export const api = {
     get<WorkflowRunOutput>(
       `/api/workflows/${encodeURIComponent(name)}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,
     ),
+  // Surfaces the server's error body as the thrown message so the page can show it
+  // inline — notably the 409 "… already has an active run" when a run is in progress
+  // (otherwise a rejected Run click looks like it silently did nothing).
   runWorkflow: (name: string, limit?: number) =>
-    post<{ ok: boolean; limit: number | null }>(`/api/workflows/${encodeURIComponent(name)}/run`, limit !== undefined ? { limit } : undefined),
+    postWithServerError<{ ok: boolean; limit: number | null }>(
+      `/api/workflows/${encodeURIComponent(name)}/run`,
+      limit !== undefined ? { limit } : {},
+    ),
   toggleWorkflow: (name: string, enabled: boolean) => post<{ ok: boolean }>(`/api/workflows/${encodeURIComponent(name)}/toggle`, { enabled }),
   // Persist + live-apply a user override of a workflow's cron schedule (T135). An
   // empty string clears it to manual-only. Surfaces the server's 400 validation

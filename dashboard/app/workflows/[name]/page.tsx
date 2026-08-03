@@ -204,6 +204,7 @@ const MISSING_SEASONS_CONFIG: GroupedManagerConfig<MissingSeason, number, Missin
 export default function WorkflowDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const [busy, setBusy] = useState(false);
+  const [runErr, setRunErr] = useState<string | null>(null);
   const [limit, setLimit] = useState('');
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (busyTimerRef.current) clearTimeout(busyTimerRef.current); }, []);
@@ -308,7 +309,17 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
 
   async function run() {
     setBusy(true);
-    try { await api.runWorkflow(name, limit ? Number(limit) : undefined); } finally { busyTimerRef.current = setTimeout(() => setBusy(false), 1200); }
+    setRunErr(null);
+    try {
+      await api.runWorkflow(name, limit ? Number(limit) : undefined);
+    } catch (e) {
+      // Surface a rejected run (e.g. 409 "already has an active run") instead of
+      // silently doing nothing — that silent rejection is exactly what made a
+      // Run-now click look dead while a limited run was mid-discovery.
+      setRunErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      busyTimerRef.current = setTimeout(() => setBusy(false), 1200);
+    }
   }
   async function toggle() { if (p) await api.toggleWorkflow(name, p.enabled === 0); }
   async function toggleNotify() { if (p) await api.updateWorkflowNotify(name, !p.effective_notify_enabled); }
@@ -340,6 +351,7 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
         )}
         <RunButton isRunning={p?.starting || p?.last_run?.status === 'running'} busy={busy} onClick={run} runningLabel={p?.starting ? 'Starting…' : 'Running…'} />
       </div>
+      {runErr && <p className="error" style={{ marginTop: 4 }}>Couldn&apos;t start a run: {runErr}</p>}
       <p className="sub wf-desc">{p?.description}</p>
 
       <div className="panel" style={{ padding: 18, marginBottom: 8 }}>
