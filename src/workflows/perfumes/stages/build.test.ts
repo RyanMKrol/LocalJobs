@@ -11,6 +11,7 @@ import {
   notesMappingClause,
   personalFieldsClause,
   projectionLabel,
+  salvageProfile,
   voteDistribution,
   votesFromFragJson,
 } from './build.js';
@@ -213,3 +214,27 @@ console.log('  ✓ perfumes personalFieldsClause copies real personal values ver
 }
 
 console.log('  ✓ perfumes projectionLabel maps the 1–4 scale to its website labels');
+
+// ── salvageProfile: strip a stray preamble before the frontmatter; leave truncation to retry. ──
+{
+  const good = '---\nname: "X"\n---\n# X\n## Sources\n1. https://e.com\n';
+  // clean input is unchanged (still starts with ---, still has Sources)
+  assert.ok(salvageProfile(good).startsWith('---'), 'clean profile stays template-shaped');
+  assert.match(salvageProfile(good), /## Sources/, 'clean profile keeps Sources');
+
+  // a stray commentary preamble before the opener is dropped
+  const withPreamble = `Here's the finished profile for you:\n\n${good}`;
+  assert.ok(salvageProfile(withPreamble).startsWith('---'), 'preamble before --- is stripped');
+  assert.doesNotMatch(salvageProfile(withPreamble), /Here's the finished/, 'commentary is gone');
+
+  // a fenced reply is unwrapped then salvaged
+  const fenced = '```markdown\n' + good + '```';
+  assert.ok(salvageProfile(fenced).startsWith('---'), 'fenced profile is unwrapped');
+
+  // a genuinely truncated reply (no frontmatter opener at all) is NOT rescued —
+  // it must still fail the caller's shape check and retry
+  const truncated = 'I looked into this fragrance but could not find enough to write a full profile.';
+  assert.ok(!salvageProfile(truncated).startsWith('---'), 'no-opener output is not rescued');
+}
+
+console.log('  ✓ perfumes salvageProfile strips a stray preamble but leaves a truncated reply to retry');

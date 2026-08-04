@@ -52,11 +52,19 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
   frontmatter block and the `## Personal Notes`/`## Application` body sections sit immediately after
   the researched/crawled data (right after the frontmatter's researched fields, and right after
   `## Overview` in the body) rather than at the end of the document. Writes `data/out/markdown/<id>.md`.
+  The reply is cleaned via `salvageProfile` (unfence + drop any stray commentary Claude prepends
+  before the opening `---`) before the template-shape check (`startsWith('---')` and includes
+  `## Sources`). A reply that still fails that check — an intermittent formatting deviation, NOT a
+  data problem, since the same prompt succeeds on retry — has its raw text saved to
+  `data/out/build-failed/<id>.txt` (mirrors `pages-failed/`) for inspection, then fails the item so
+  `repeatUntilStable` retries it next cycle. `salvageProfile` deliberately does NOT rescue a
+  genuinely truncated reply (no `## Sources`) — that must retry.
 
 ## Files & config (`src/workflows/perfumes/config.ts`)
 
-- `data/out/{fragrantica-urls.json, pages/, pages-failed/, fragrantica/, markdown/}` — one file/dir
-  per stage's output, as above.
+- `data/out/{fragrantica-urls.json, pages/, pages-failed/, fragrantica/, markdown/, build-failed/}` —
+  one file/dir per stage's output, as above (`build-failed/` holds raw Claude replies that failed the
+  build template-shape check, written only on failure).
 - `profileDir` — the shared framework Chrome profile (`defaultChromeProfileDir` from
   `src/core/browser.ts`), NOT a perfumes-local one — other scrape jobs benefit from the same warmed,
   trusted profile.

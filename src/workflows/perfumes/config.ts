@@ -19,6 +19,7 @@ export const perfumesConfig = {
   profileDir: defaultChromeProfileDir, // shared framework profile (data/chrome-profile) — keeps Cloudflare clearance
   fragranticaDir: resolve(dataDir, 'out', 'fragrantica'),
   markdownDir: resolve(dataDir, 'out', 'markdown'),
+  buildFailedDir: resolve(dataDir, 'out', 'build-failed'), // raw Claude output for a build that failed the template-shape check (debugging)
   /** The output contract — the in-project profile template (self-contained, no
    *  external repo). Override with PERFUMES_TEMPLATE_PATH to point elsewhere. */
   templatePath: process.env.PERFUMES_TEMPLATE_PATH ?? resolve(here, 'profile.template.md'),

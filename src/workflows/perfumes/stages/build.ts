@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
@@ -54,8 +54,14 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
 
     try {
       if (!res.ok) throw new Error(res.error ?? 'claude error');
-      const md = unfenceMarkdown(res.text);
-      if (!md.startsWith('---') || !md.includes('## Sources')) throw new Error('output is not a template-shaped markdown file');
+      const md = salvageProfile(res.text);
+      if (!md.startsWith('---') || !md.includes('## Sources')) {
+        // Save the raw output so an intermittent formatting deviation is
+        // inspectable later (mirrors the fetch stage's pages-failed/ dir),
+        // rather than being discarded. The item still fails → retries next cycle.
+        saveFailedBuild(ctx, p.id, res.text);
+        throw new Error('output is not a template-shaped markdown file');
+      }
       const mdPath = join(perfumesConfig.markdownDir, `${p.id}.md`);
       writeFileSync(mdPath, md);
       // Record the artifact path so the dashboard's IO panel can preview it
@@ -73,6 +79,42 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
   }
 
   return { ok, failed, pending: pendingOf().length, rateLimited };
+}
+
+/**
+ * Clean up Claude's raw build reply into the template-shaped markdown we store.
+ *
+ * The build failures we see are intermittent formatting deviations, NOT bad data
+ * (the exact same prompt succeeds on a re-run). The commonest one is Claude
+ * prepending a stray line of commentary before the opening `---` despite being
+ * told to reply with only the file content. Rather than discard an otherwise-fine
+ * profile over a preamble, drop everything before the YAML frontmatter opener:
+ * the first line that is exactly `---` on its own. If there's no such opener the
+ * text is returned as-is (it'll still fail the caller's shape check and retry) —
+ * a genuinely truncated reply (no `## Sources`) is NOT salvaged, it must retry.
+ */
+export function salvageProfile(text: string): string {
+  const md = unfenceMarkdown(text);
+  if (md.startsWith('---')) return md;
+  const lines = md.split('\n');
+  const openerIdx = lines.findIndex((l) => l.trim() === '---');
+  if (openerIdx === -1) return md; // no frontmatter opener at all — let the caller reject it
+  return lines.slice(openerIdx).join('\n').trim() + '\n';
+}
+
+/** Persist a build reply that failed the template-shape check to
+ *  `data/out/build-failed/<id>.txt` for later inspection, mirroring the fetch
+ *  stage's `pages-failed/` dir. Best-effort: a write failure must never mask the
+ *  original build failure, so it's swallowed with a warn. */
+function saveFailedBuild(ctx: JobContext, id: string, raw: string): void {
+  try {
+    mkdirSync(perfumesConfig.buildFailedDir, { recursive: true });
+    const f = join(perfumesConfig.buildFailedDir, `${id}.txt`);
+    writeFileSync(f, raw);
+    ctx.log(`[build] saved unshaped output to ${f} for inspection`, 'warn');
+  } catch (e) {
+    ctx.log(`[build] could not save unshaped output for ${id}: ${e instanceof Error ? e.message : String(e)}`, 'warn');
+  }
 }
 
 function buildPrompt(
