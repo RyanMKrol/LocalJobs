@@ -37,10 +37,16 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
   `dateAdded`, `ownership`, `personalLongevity`, `personalProjection`, `personalSeasons`, `description`,
   `applicationSpots` — T461, T481) are passed through **verbatim, never researched or blended** via
   `personalFieldsClause`, populating the frontmatter's `personal_rating`/`personal_date_added`/
-  `personal_ownership`/`personal_longevity`/`personal_projection`/`personal_seasons` keys and the
+  `personal_ownership`/`personal_longevity_hours`/`personal_projection`/`personal_seasons` keys and the
   `## Personal Notes`/`## Application` sections — each falls back to an honest `null`/`[]`/"not
   recorded yet" when the Dynamo field is absent, same tone as the notes-pyramid honest-gap
-  convention. The dead `status: "owned"` frontmatter field (it never varied) was removed in T481.
+  convention. Two of these are **disambiguated** rather than written as bare integers (a raw 1–4 or
+  0–8 is meaningless to a downstream ingester): the 0–8 `personalLongevity` is a whole-hours figure
+  (8 = "8 or more hours"), so its frontmatter key is `personal_longevity_hours` and the value stays
+  the number; the 1–4 `personalProjection` is mapped to its website label (`projectionLabel`: 1 Skin
+  scent · 2 Moderate · 3 Strong · 4 Beast mode) and `personal_projection` holds that label string.
+  Both scales mirror the owner's `ryankrol.co.uk` `PerfumeCharacteristics` component (the source of
+  the `PerfumeRatings` rows). The dead `status: "owned"` frontmatter field (it never varied) was removed in T481.
   `personal_rating` is `loadPerfumes`'s Dynamo `rating` halved (0-10 → 0-5) so it lines up with
   Fragrantica's 0-5 `community_rating` scale, rather than the raw 0-10 owner score. The personal
   frontmatter block and the `## Personal Notes`/`## Application` body sections sit immediately after

@@ -28,8 +28,8 @@ fragrantica_url: "https://www.fragrantica.com/perfume/Brand/Name-12345.html"   #
 personal_rating: null        # your own score, 0.5–5 (halved from the raw 0-10 row value), or null if unknown
 personal_date_added: null    # DD-MM-YYYY string, or null if unknown
 personal_ownership: null     # Sample | Travel size | Full bottle, or null if unknown
-personal_longevity: null     # 0–8, or null if unknown
-personal_projection: null    # 1–4, or null if unknown
+personal_longevity_hours: null   # whole hours 0–8 (8 = 8 or more hours), or null if unknown
+personal_projection: null    # Skin scent | Moderate | Strong | Beast mode (the 1–4 scale), or null if unknown
 personal_seasons: []         # your own season tags, or [] if unknown
 # ── Provenance ──────────────────────────────────────────────────────────
 sources:

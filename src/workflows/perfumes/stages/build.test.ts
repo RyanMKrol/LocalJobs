@@ -10,6 +10,7 @@ import {
   DEFAULT_CONFIDENCE_K,
   notesMappingClause,
   personalFieldsClause,
+  projectionLabel,
   voteDistribution,
   votesFromFragJson,
 } from './build.js';
@@ -172,8 +173,10 @@ const BASE_PERFUME: PerfumeInput = { id: 'x__y__edp', name: 'X', concentration: 
   assert.match(clause, /personal_rating: 8/, 'rating value appears verbatim');
   assert.match(clause, /"05-03-2024"/, 'date_added value appears verbatim');
   assert.match(clause, /"Full bottle"/, 'ownership value appears verbatim');
-  assert.match(clause, /personal_longevity: 6/, 'personal_longevity value appears verbatim');
-  assert.match(clause, /personal_projection: 3/, 'personal_projection value appears verbatim');
+  assert.match(clause, /personal_longevity_hours: 6/, 'personal_longevity_hours value appears verbatim');
+  assert.match(clause, /whole-hours/, 'personal_longevity_hours is described as hours');
+  assert.match(clause, /personal_projection: "Strong"/, 'personal_projection is mapped to its 1–4 label (3 → Strong)');
+  assert.doesNotMatch(clause, /personal_projection: 3\b/, 'personal_projection is NOT the bare number');
   assert.match(clause, /\["autumn","winter"\]/, 'personal_seasons values appear verbatim');
   assert.match(clause, /A cosy autumn scent I reach for constantly\./, 'description appears verbatim');
   assert.match(clause, /\["2 to chest","1 to each wrist"\]/, 'applicationSpots appear verbatim');
@@ -188,7 +191,7 @@ const BASE_PERFUME: PerfumeInput = { id: 'x__y__edp', name: 'X', concentration: 
   assert.match(clause, /personal_rating:.*use null/, 'rating falls back to null');
   assert.match(clause, /personal_date_added:.*use null/, 'date_added falls back to null');
   assert.match(clause, /personal_ownership:.*use null/, 'ownership falls back to null');
-  assert.match(clause, /personal_longevity:.*use null/, 'personal_longevity falls back to null');
+  assert.match(clause, /personal_longevity_hours:.*use null/, 'personal_longevity_hours falls back to null');
   assert.match(clause, /personal_projection:.*use null/, 'personal_projection falls back to null');
   assert.match(clause, /personal_seasons:.*empty array/, 'personal_seasons falls back to []');
   assert.match(clause, /Personal Notes section:.*not recorded yet/, 'Personal Notes falls back to placeholder text');
@@ -198,3 +201,15 @@ const BASE_PERFUME: PerfumeInput = { id: 'x__y__edp', name: 'X', concentration: 
 }
 
 console.log('  ✓ perfumes personalFieldsClause copies real personal values verbatim, falls back honestly otherwise');
+
+// ── projectionLabel: the 1–4 scale maps to its website labels; out-of-range → null. ──
+{
+  assert.equal(projectionLabel(1), 'Skin scent');
+  assert.equal(projectionLabel(2), 'Moderate');
+  assert.equal(projectionLabel(3), 'Strong');
+  assert.equal(projectionLabel(4), 'Beast mode');
+  assert.equal(projectionLabel(0), null, 'below-range projection → null');
+  assert.equal(projectionLabel(5), null, 'above-range projection → null');
+}
+
+console.log('  ✓ perfumes projectionLabel maps the 1–4 scale to its website labels');

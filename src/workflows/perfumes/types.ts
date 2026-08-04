@@ -19,10 +19,15 @@ export interface PerfumeInput {
   /** From Dynamo's `ownership`. Maps to the template's `personal_ownership`
    *  frontmatter key. */
   ownership?: 'Sample' | 'Travel size' | 'Full bottle';
-  /** 0-8, from Dynamo's `longevity`. `personal`-prefixed so it's never confused
-   *  with the template's community-vote-derived `longevity` enum field. */
+  /** 0-8, from Dynamo's `longevity`. This is a whole-hours figure (8 = "8 or
+   *  more hours"), so it maps to the template's `personal_longevity_hours`
+   *  frontmatter key. `personal`-prefixed so it's never confused with the
+   *  template's community-vote-derived `longevity` enum field. */
   personalLongevity?: number;
-  /** 1-4, from Dynamo's `projection`. */
+  /** 1-4, from Dynamo's `projection`. Written to the `personal_projection`
+   *  frontmatter key as its website label (1 Skin scent, 2 Moderate, 3 Strong,
+   *  4 Beast mode) rather than the bare number — see `projectionLabel` in
+   *  `stages/build.ts`. */
   personalProjection?: number;
   /** From Dynamo's `seasons`. `personal`-prefixed so it's never confused with
    *  the template's community/LLM-researched `season` array field. */

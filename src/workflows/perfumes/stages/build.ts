@@ -278,6 +278,26 @@ export function notesMappingClause(fragJson: string): string {
 }
 
 /**
+ * Projection is recorded as a 1–4 integer on the owner's website; these are the
+ * exact human-readable labels it shows for each step (mirrors `PROJECTION_LABELS`
+ * in the ryankrol.co.uk `PerfumeCharacteristics` component). A bare 1–4 integer
+ * is meaningless to anything that later ingests the profile, so we map it to its
+ * label before writing the frontmatter.
+ */
+export const PROJECTION_LABELS: Record<number, string> = {
+  1: 'Skin scent',
+  2: 'Moderate',
+  3: 'Strong',
+  4: 'Beast mode',
+};
+
+/** The website's projection label for a 1–4 value, or null for anything outside
+ *  that range (treated as "not recorded", never guessed). */
+export function projectionLabel(n: number): string | null {
+  return PROJECTION_LABELS[n] ?? null;
+}
+
+/**
  * The build-prompt clause for the 8 owner-authored personal fields (from the
  * `PerfumeRatings` Dynamo row, T461), completely SEPARATE from the
  * Fragrantica-vs-LLM confidence blend above — these are never researched or
@@ -287,8 +307,18 @@ export function notesMappingClause(fragJson: string): string {
  * fallback (null / [] / the template's placeholder-style "not recorded yet"
  * text) per field when it's absent — mirroring the honest-gap tone
  * {@link notesMappingClause} uses for an empty notes pyramid.
+ *
+ * Two of the fields are DISAMBIGUATED rather than passed through as raw numbers,
+ * because a bare 1–4 or 0–8 integer is meaningless to a downstream reader:
+ * - `personal_longevity_hours` — the raw 0–8 value IS a whole-hours figure on
+ *   the website (8 means "8 or more hours"), so the frontmatter key names the
+ *   unit and the value stays the exact number.
+ * - `personal_projection` — mapped from the 1–4 value to its website label
+ *   (Skin scent | Moderate | Strong | Beast mode) via {@link projectionLabel}.
  */
 export function personalFieldsClause(p: PerfumeInput): string {
+  const projection =
+    p.personalProjection != null ? projectionLabel(p.personalProjection) : null;
   const lines = [
     'PERSONAL FIELDS (from your own PerfumeRatings row — copy these EXACT values verbatim into the',
     'corresponding frontmatter key or section below; do NOT alter, reinterpret, round, translate, or',
@@ -297,8 +327,8 @@ export function personalFieldsClause(p: PerfumeInput): string {
     `- personal_rating: ${p.rating != null ? `${p.rating} — copy this exact number verbatim.` : 'not provided — use null (do not invent a score).'}`,
     `- personal_date_added: ${p.dateAdded ? `"${p.dateAdded}" — copy this exact DD-MM-YYYY string verbatim.` : 'not provided — use null.'}`,
     `- personal_ownership: ${p.ownership ? `"${p.ownership}" — copy this exact value verbatim.` : 'not provided — use null.'}`,
-    `- personal_longevity: ${p.personalLongevity != null ? `${p.personalLongevity} — copy this exact number verbatim.` : 'not provided — use null.'}`,
-    `- personal_projection: ${p.personalProjection != null ? `${p.personalProjection} — copy this exact number verbatim.` : 'not provided — use null.'}`,
+    `- personal_longevity_hours: ${p.personalLongevity != null ? `${p.personalLongevity} — copy this exact number verbatim. It is a whole-hours figure on a 0–8 scale, where 8 means "8 or more hours".` : 'not provided — use null.'}`,
+    `- personal_projection: ${projection ? `"${projection}" — copy this exact label verbatim. It is the owner's projection strength on a 1–4 scale (1 Skin scent, 2 Moderate, 3 Strong, 4 Beast mode).` : 'not provided — use null.'}`,
     `- personal_seasons: ${p.personalSeasons && p.personalSeasons.length > 0 ? `${JSON.stringify(p.personalSeasons)} — copy these exact values verbatim.` : 'not provided — use an empty array ([]).'}`,
     `- ## Personal Notes section: ${p.description ? `fill it with your own description verbatim: "${p.description}"` : 'not provided — leave the section content as "not recorded yet" (do not fabricate personal thoughts).'}`,
     `- ## Application section: ${p.applicationSpots && p.applicationSpots.length > 0 ? `fill it with your own application spots verbatim: ${JSON.stringify(p.applicationSpots)}` : 'not provided — leave the section content as "not recorded yet" (do not fabricate a spray pattern).'}`,
@@ -306,4 +336,4 @@ export function personalFieldsClause(p: PerfumeInput): string {
   return lines.join('\n');
 }
 
-const FALLBACK_TEMPLATE = '---\nname: ""\nbrand: ""\nyear: null\nperfumer: ""\nconcentration: ""\nfamily: ""\naccords: []\nnotes:\n  top: []\n  heart: []\n  base: []\nseason: []\ntime: []\noccasion: []\nmood: []\ngender: ""\nlongevity: ""\nsillage: ""\ncommunity_rating: null\nfragrantica_status: "ok"\nfragrantica_url: null\npersonal_rating: null\npersonal_date_added: null\npersonal_ownership: null\npersonal_longevity: null\npersonal_projection: null\npersonal_seasons: []\nsources: []\n---\n\n# Name — Brand\n\n## Overview\n\n## Personal Notes\n\n## Application\n\n## Olfactory Profile\n\n## Community Sentiment\n\n## Recommended Settings\n\n## Similar Fragrances\n\n## History & Background\n\n## Sources\n';
+const FALLBACK_TEMPLATE = '---\nname: ""\nbrand: ""\nyear: null\nperfumer: ""\nconcentration: ""\nfamily: ""\naccords: []\nnotes:\n  top: []\n  heart: []\n  base: []\nseason: []\ntime: []\noccasion: []\nmood: []\ngender: ""\nlongevity: ""\nsillage: ""\ncommunity_rating: null\nfragrantica_status: "ok"\nfragrantica_url: null\npersonal_rating: null\npersonal_date_added: null\npersonal_ownership: null\npersonal_longevity_hours: null\npersonal_projection: null\npersonal_seasons: []\nsources: []\n---\n\n# Name — Brand\n\n## Overview\n\n## Personal Notes\n\n## Application\n\n## Olfactory Profile\n\n## Community Sentiment\n\n## Recommended Settings\n\n## Similar Fragrances\n\n## History & Background\n\n## Sources\n';
