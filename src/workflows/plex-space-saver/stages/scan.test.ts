@@ -100,10 +100,9 @@ describe('runScan — Plex reads are cacheKey-deduped (T477)', () => {
       callsByPath.set(path, (callsByPath.get(path) ?? 0) + 1);
       return { MediaContainer: { Metadata: [] } } as T;
     };
-    const noopPush = async () => ({ ok: true });
 
-    await runScan(fakeCtx(), { now: new Date('2026-07-14T09:00:00Z'), plexFetch, push: noopPush });
-    await runScan(fakeCtx(), { now: new Date('2026-07-14T10:00:00Z'), plexFetch, push: noopPush });
+    await runScan(fakeCtx(), { now: new Date('2026-07-14T09:00:00Z'), plexFetch });
+    await runScan(fakeCtx(), { now: new Date('2026-07-14T10:00:00Z'), plexFetch });
 
     assert.equal(callsByPath.size, 3, 'three distinct Plex paths were requested (movies/shows/episodes)');
     for (const [path, count] of callsByPath) {

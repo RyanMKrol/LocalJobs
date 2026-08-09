@@ -32,35 +32,20 @@ structured JSON breakdown, served through `safeOutputFile`; the dashboard's gene
 (`detail.markdown` is also set, to the same path, purely so the output list query's "View" button
 still surfaces — the fetch endpoint itself dispatches on `detail.format`/`detail.path` regardless.)
 
-**Shrink guard (T519) — a safety net against silent library data loss.** After computing this run's
-total on-disk size, the scan diffs it against the PRIOR run's persisted baseline
-(`data/out/size-baseline.json`, `{ totalBytes, at }`, written/read via `lib.ts`'s
-`readBaseline`/`writeBaseline`) and fires exactly ONE critical push (`core/notifier`'s `push`, urgent
-priority + `rotating_light,warning` tags) if the library shrank by more than `PLEX_SIZE_DROP_GB`
-(env-overridable, default **1 GB**). This is deliberately an **absolute GB threshold, not a
-percentage** — the library should essentially never shrink, so even a small absolute drop beyond a
-buffer absorbing trivial metadata/transcode fluctuation is worth flagging. The drop math itself is the
-pure, unit-tested `checkDrop` in `lib.ts`.
-
-- **First run (no baseline yet):** seeds the baseline, sends no alert.
-- **Stable or growing library** (`current >= prior`, or a drop under the threshold): sends nothing.
-- **Drop exceeds the threshold:** sends the alert once, guarded against re-sending for the SAME
-  already-alerted baseline via the notify-once `work_items` ledger (job name
-  `plex-space-saver-shrink-alert`, keyed by the baseline's `at` timestamp — mirrors
-  `missing-tv-seasons/stages/notify.ts`'s "have I already notified this?" pattern). A later run that
-  diffs against a NEW (post-alert) baseline can alert again if it also drops.
-- The baseline is written at the END of every successful scan, alert or not, so the NEXT run always
-  has a fresh prior total to diff against. The size breakdown report itself is unaffected — the drop
-  check is additive, never a replacement.
+**The old shrink guard (T519) was removed.** The "library shrank" safeguard now lives in the
+`plex-library-guard` workflow (daily, per-file inventory, zero-threshold by default), which
+supersedes the weekly total-size check this workflow used to carry. Nothing here reads or writes
+`data/out/size-baseline.json` anymore: an existing copy on disk is orphaned and safe to delete
+manually.
 
 **Plex reads are response-cached for a 3-hour window (T477) — a deliberate change from the prior
 design.** All three `plexGet` calls (movies/shows/episodes section listings) now pass a `cacheKey`
 derived from the request path (`plex:<path>`) to `callService('plex', ..., { cacheKey })`, engaging
 the `plex` service's 3-hour cache TTL (T476), so a back-to-back Plex-touching workflow run (e.g. the
 admin "Run all workflows" button) reuses the response instead of re-hitting Plex. This workflow only
-runs weekly on its own schedule, far outside the TTL window, so the shrink guard's week-over-week
-comparison is unaffected in normal operation. The one accepted trade-off: a MANUAL re-run within 3
-hours of a prior run (this workflow's own, or another Plex-touching workflow's overlapping section
-read) will see the cached total rather than a fresh live read until the cache expires. `runScan`
-accepts an injectable `plexFetch` option (tests) that stands in for the real `plexGet`, still routed
-through `callService`, so the cache dedup itself is unit-tested without a live Plex call.
+runs weekly on its own schedule, far outside the TTL window. The one accepted trade-off: a MANUAL
+re-run within 3 hours of a prior run (this workflow's own, or another Plex-touching workflow's
+overlapping section read) will see the cached total rather than a fresh live read until the cache
+expires. `runScan` accepts an injectable `plexFetch` option (tests) that stands in for the real
+`plexGet`, still routed through `callService`, so the cache dedup itself is unit-tested without a
+live Plex call.
