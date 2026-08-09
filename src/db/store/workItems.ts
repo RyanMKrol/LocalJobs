@@ -26,6 +26,18 @@ export function getWorkItem(jobName: string, itemKey: string): WorkItemRow | und
 }
 
 /**
+ * All `success` rows for one job, full row including `detail` + `updated_at`.
+ * Ordered by `item_key` for a deterministic iteration order. Used by consumers
+ * that need to enumerate another job's completed output with its recorded
+ * artifact paths (e.g. vault-sync) — `workflowTerminalItems` deliberately
+ * returns only display booleans, not the raw detail.
+ */
+export function listSuccessWorkItems(jobName: string): WorkItemRow[] {
+  return db.prepare("SELECT * FROM work_items WHERE job_name = ? AND status = 'success' ORDER BY item_key")
+    .all(jobName) as WorkItemRow[];
+}
+
+/**
  * Has this item been fully processed and so should NOT be reprocessed?
  * True when it succeeded, was manually ignored, or it failed but has exhausted
  * its retry budget. An `ignored` row is a human's "give up on this one
