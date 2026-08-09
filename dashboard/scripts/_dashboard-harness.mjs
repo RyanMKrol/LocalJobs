@@ -839,6 +839,29 @@ const plexLibraryGuardSnapshotFixture = {
   }),
 };
 
+// plex-rename — discover -> plan -> verify (report-only linear chain; apply/confirm land later).
+const plexRenameMembers = [
+  { job_name: 'plex-rename-discover', depends_on: [] },
+  { job_name: 'plex-rename-plan', depends_on: ['plex-rename-discover'] },
+  { job_name: 'plex-rename-verify', depends_on: ['plex-rename-plan'] },
+];
+const plexRenameWorkflowRun = workflowRun({ id: 'plex-rename-run', workflow_name: 'plex-rename' });
+const plexRenameRunJobs = plexRenameMembers.map((m, i) => run({
+  id: `plex-rename-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-rename-run',
+}));
+const plexRenameDiscoverOutput = { jobName: 'plex-rename-discover', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', file: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv' } };
+const plexRenamePlanOutput = { jobName: 'plex-rename-plan', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', decision: 'rename', from: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv', to: '/volume1/Share/TV/Mob Psycho 100 (2016) {tvdb-305074}/Season 02/Mob Psycho 100 (2016) - s02e05 - Discord.mkv' } };
+const plexRenameVerifyOutput = { jobName: 'plex-rename-verify', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', eligible: false, reason: 'mount-missing', reasonDetail: 'share /Volumes/Share is not mounted/healthy — routine skip, NOT a missing file' } };
+const plexRenameStageIo = {
+  'plex-rename-discover': { inputs: [], outputs: [plexRenameDiscoverOutput], predecessorJobs: [], job: 'plex-rename-discover' },
+  'plex-rename-plan': { inputs: [plexRenameDiscoverOutput], outputs: [plexRenamePlanOutput], predecessorJobs: ['plex-rename-discover'], job: 'plex-rename-plan' },
+  'plex-rename-verify': { inputs: [plexRenamePlanOutput], outputs: [plexRenameVerifyOutput], predecessorJobs: ['plex-rename-plan'], job: 'plex-rename-verify' },
+};
+const plexRenameStageIoOverall = {
+  inputs: [plexRenameDiscoverOutput], outputs: [plexRenameVerifyOutput],
+  predecessorJobs: ['plex-rename-discover'], outputJobs: ['plex-rename-verify'], job: '__overall__',
+};
+
 // Map an /api/* pathname (+ optional search params) to a fixture body.
 export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
@@ -974,6 +997,12 @@ export function fixtureFor(pathname, searchParams) {
     return plexLibraryGuardStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/plex-library-guard-run') return { run: plexLibraryGuardWorkflowRun, jobs: plexLibraryGuardRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/plex-rename-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return plexRenameStageIoOverall;
+    const job = searchParams?.get('job');
+    return plexRenameStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/plex-rename-run') return { run: plexRenameWorkflowRun, jobs: plexRenameRunJobs, logs, gates: [] };
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     if (searchParams?.get('job') === 'plex-space-saver-scan') return plexSpaceSaverOutputFixture;
@@ -1048,6 +1077,9 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/plex-library-guard') {
     return { workflow: workflow({ name: 'plex-library-guard', category: 'regular-maintenance', jobs: plexLibraryGuardMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/plex-rename') {
+    return { workflow: workflow({ name: 'plex-rename', category: 'regular-maintenance', jobs: plexRenameMembers, gates: [] }) };
   }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
@@ -1191,6 +1223,7 @@ export const PAGES = [
   { name: 'workflow-run-perfumes',           path: '/workflow-runs/perfumes-run',           waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-vault-sync',         path: '/workflow-runs/vault-sync-run',         waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-plex-library-guard', path: '/workflow-runs/plex-library-guard-run', waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-plex-rename',        path: '/workflow-runs/plex-rename-run',        waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },

@@ -339,6 +339,21 @@ summaries below are a quick-reference index, not the source of truth.
   the ideas inbox, and never patches any file itself — folding an override into
   code stays a fully manual step. Idempotent per ISO week via the work_items
   ledger. Single stage, runs weekly (Sundays 07:00).
+- **plex-rename** — Daily, currently report-only: plans canonical
+  Plex-convention renames for every movie and TV episode file, using Plex's own
+  matches as the source of truth ("Title (Year) {tmdb-N}" folders,
+  "Show (Year) {tvdb-N}/Season NN" trees, a .plexmatch per show), so the
+  library re-matches deterministically if the Plex database is ever lost.
+  Three read-only stages: a live (never-cached) library walk snapshots every
+  file, a pure naming engine computes each file's exact from -> to (or a typed
+  skip: missing ids, multi-version, disc images, collisions), and a local-disk
+  verify checks the SMB-mounted share state (mount health, exact size match,
+  a 7-day modified-recently guard for in-flight downloads, target-absent,
+  sidecar enumeration, .plexmatch safety). The mutating apply stage
+  (copy -> checksum-verify -> delete-original with a write-ahead journal, a
+  30-files/day quota, and an undo script) ships disabled behind
+  PLEX_RENAME_APPLY_ENABLED until the plans have been reviewed. Runs daily
+  (05:00).
 - **vault-sync** — Daily mirror of the places, perfumes, plex-profiles,
   listening-digest, and workouts-sync markdown output into a second-brain vault
   folder on disk (`~/SecondBrain` by default, `SECOND_BRAIN_VAULT_DIR` to

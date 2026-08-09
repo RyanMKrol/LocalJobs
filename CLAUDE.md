@@ -108,7 +108,7 @@ work** that doesn't fit serverless or a web request.
 
 ### Shipped example workflows — one folder, one `CLAUDE.md`, each
 
-The repo ships 19 worked-example workflows under `src/workflows/`. Each workflow's full
+The repo ships 20 worked-example workflows under `src/workflows/`. Each workflow's full
 current-state documentation — DAG stages, file paths, ledger conventions, credentials, schedule,
 and any non-obvious invariant worth protecting — lives in its OWN `CLAUDE.md` inside its folder
 (auto-loaded by Claude Code when working in that directory, same mechanism as this file and
@@ -135,12 +135,13 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **plex-language-fix** | `src/workflows/plex-language-fix/` | Weekly, 4-stage DAG (discover → resolve → evaluate → apply): resolves each title's true original language via TMDB, decides per-file audio/subtitle defaults, and APPLIES them via Plex's own API — fully unattended, with a Plex Butler backup + a per-file undo log (`scripts/plex-language-undo.ts`) as the safety net instead of manual sign-off. Each file is processed exactly once, ever, via the per-item work_items ledger (not a whole-library re-scan every run) |
 | **plex-profiles** | `src/workflows/plex-profiles/` | Weekly: writes one markdown profile per Plex title (movie + TV show) — summary, cast, per-source ratings, technical detail, file size — sourced purely from the Plex API, no LLM (phase 2, an optional Claude-narrated layer, is a deferred future task) |
 | **overrides-audit** | `src/workflows/overrides-audit/` | Weekly, report-only audit of dashboard `_overridden` flags (service limits, workflow schedule/concurrency/notify, job timeout) that have been live 2+ weeks or are unknown-age — a reminder to fold a stable override into its manifest/service-definition code default; never auto-patches anything |
+| **plex-rename** | `src/workflows/plex-rename/` | Daily canonical Plex library renamer: plans (report-only until `PLEX_RENAME_APPLY_ENABLED=1`) exact from→to renames to canonical Plex conventions (`Title (Year) {tmdb-N}`, `Show (Year) {tvdb-N}/Season NN`, `.plexmatch` per show) using Plex's own matches as truth, so the library re-matches deterministically if the DB is ever lost |
 | **vault-sync** | `src/workflows/vault-sync/` | Daily mirror of the places/perfumes/plex-profiles/listening-digest/workouts-sync markdown output into the owner's second-brain vault folder (`~/SecondBrain`, `SECOND_BRAIN_VAULT_DIR` to override) — copy-only, per-source folders, prettified filenames, never deletes |
 
-Eight workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
-`missing-movies`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`, `plex-library-guard`)
-share one Plex/TMDB connectivity client, `src/core/plex-client.ts` — see that file, or any of the
-eight workflows' own `CLAUDE.md`, for the DHCP-self-heal mechanism.
+Nine workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
+`missing-movies`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`, `plex-library-guard`,
+`plex-rename`) share one Plex/TMDB connectivity client, `src/core/plex-client.ts` — see that file,
+or any of the nine workflows' own `CLAUDE.md`, for the DHCP-self-heal mechanism.
 
 Keep it **simple, local, and dependency-light**. This is a personal tool, not a
 distributed system. Do not introduce Docker, external databases, message
@@ -298,7 +299,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/core/fsjson.ts` | Shared JSON-file + directory helpers (`readJsonFile`/`writeJsonFile`/`ensureDirs`, T588) — deduped out of `perfumes`/`movies`/`tv-recs`/`plex-space-saver`'s `lib.ts`, which now import from here and re-export the same names so every existing call site keeps resolving unchanged |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
-| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan, plus the mutating `plexPutStreams`/`triggerButlerBackup` used by `plex-language-apply`) — used by all 8 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `missing-movies`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`, `plex-library-guard`), owned by none of them. The shared `plex` service now sits in front of every `plexGet`/`plexPutStreams`/`triggerButlerBackup` call — every one of those 8 workflows routes its Plex reads/mutations through `callService('plex', ...)`, giving call-count metering + per-job consumer tracking on the Integrations page. Also exports 3 dedup helpers (T586) every one of those workflows now shares instead of re-declaring locally: `PlexAllResponse<T>` (the `{ MediaContainer?: { Metadata?: T[] } }` response shape), `extractTmdbId` (pulls the numeric id off a title's `tmdb://` GUID, or `null` when absent — never guessed), and `fetchSectionMetadata<T>` (a thin `/library/sections/<n>/all` listing wrapper, itself routed through `callService('plex', ...)`) |
+| `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan, plus the mutating `plexPutStreams`/`triggerButlerBackup` used by `plex-language-apply`) — used by all 9 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `missing-movies`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`, `plex-library-guard`, `plex-rename`), owned by none of them. The shared `plex` service now sits in front of every `plexGet`/`plexPutStreams`/`triggerButlerBackup` call — every one of those 9 workflows routes its Plex reads/mutations through `callService('plex', ...)`, giving call-count metering + per-job consumer tracking on the Integrations page. Also exports 3 dedup helpers (T586) every one of those workflows now shares instead of re-declaring locally: `PlexAllResponse<T>` (the `{ MediaContainer?: { Metadata?: T[] } }` response shape), `extractTmdbId` (pulls the numeric id off a title's `tmdb://` GUID, or `null` when absent — never guessed), and `fetchSectionMetadata<T>` (a thin `/library/sections/<n>/all` listing wrapper, itself routed through `callService('plex', ...)`); plus `extractTvdbId`/`extractImdbId` (same never-guess contract) and `plexRefreshSection` (targeted `GET /library/sections/<n>/refresh?path=` rescan trigger — a mutation trigger, never cached) added for `plex-rename` |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | A pure barrel (`export * from './store/<domain>.js'`, zero logic) — every symbol is still importable from `../db/store.js` exactly as before (T529) |
@@ -393,7 +394,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/workflows/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `missing-movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-library-guard/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`, and `vault-sync/` subfolder workflows as
+> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `missing-movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-library-guard/`, `plex-language-fix/`, `plex-profiles/`, `plex-rename/`, `overrides-audit/`, and `vault-sync/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
