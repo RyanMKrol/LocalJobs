@@ -131,11 +131,16 @@ export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}
   ctx.log(`Plan: ${toSync.length} to sync, ${unchanged} unchanged, ${noPath} with no source path.`);
 
   // ── Collision map: vault-relative path -> export key, seeded from every ──
-  // ── existing exporter row so names stay stable across runs.             ──
+  // ── existing exporter row so names stay stable across runs. Keyed by the ──
+  // ── LOWERCASED path: the vault lives on a default-macOS (case-insensitive) ──
+  // ── filesystem, so "Triangle Of Sadness" and "Triangle of Sadness" are the ──
+  // ── SAME file on disk — a case-only clash must disambiguate too, or the ──
+  // ── second copy silently overwrites the first (found live: two reviews of ──
+  // ── the same film differing only in the case of "of"). ──
   const usedNames = new Map<string, string>();
   for (const row of listSuccessWorkItems(JOB_NAME)) {
     const detail = parseDetail(row.detail) as ExporterDetail;
-    if (detail.vaultPath) usedNames.set(detail.vaultPath, row.item_key);
+    if (detail.vaultPath) usedNames.set(detail.vaultPath.toLowerCase(), row.item_key);
   }
 
   // ── Copy loop ──
@@ -150,7 +155,7 @@ export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}
 
       const target = vaultTargetFor(item.sourceJob, item.row.item_key, item.name, () => content);
       let vaultPath = `${target.folder}/${target.baseName}.md`;
-      const takenBy = usedNames.get(vaultPath);
+      const takenBy = usedNames.get(vaultPath.toLowerCase());
       if (takenBy !== undefined && takenBy !== item.exportKey) {
         // A different item already owns this pretty name — disambiguate with a
         // stable suffix derived from the source item key.
@@ -165,7 +170,7 @@ export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}
       const destAbs = join(vaultDir, vaultPath);
       mkdirSync(dirname(destAbs), { recursive: true });
       writeFileSync(destAbs, content);
-      usedNames.set(vaultPath, item.exportKey);
+      usedNames.set(vaultPath.toLowerCase(), item.exportKey);
 
       markWorkItem(JOB_NAME, item.exportKey, 'success', {
         detail: {

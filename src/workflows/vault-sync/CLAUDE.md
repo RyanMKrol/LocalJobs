@@ -25,7 +25,10 @@ jobs) into the owner's second-brain vault folder on disk. The vault is the owner
 
 Names are sanitized (`sanitizeFilename` in `lib.ts` — strips `\/:*?"<>|` + control chars,
 caps length, falls back to the item key). A collision between two different items gets a
-stable ` (<sanitized source key>)` suffix on the later one.
+stable ` (<sanitized source key>)` suffix on the later one — compared CASE-INSENSITIVELY,
+because the vault sits on a default-macOS (case-insensitive) filesystem where two names
+differing only in case are the same file (found live: two reviews of the same film differing
+only in the case of "of" silently overwrote each other before this).
 
 ## Vault location + test guard
 

@@ -168,6 +168,19 @@ assert.equal(readFileSync(join(vaultDir, 'Places/Duplicate Cafe.md'), 'utf8'), '
 assert.equal(readFileSync(join(vaultDir, 'Places/Duplicate Cafe (pidB).md'), 'utf8'), 'second duplicate');
 console.log('  ✓ colliding pretty names get a stable key-suffixed sibling');
 
+// ── Run 6b: a CASE-ONLY name clash also gets the suffix (the vault sits on a
+// case-insensitive filesystem, where "Case Cafe" and "CASE Cafe" are one file) ──
+const caseA = seedFile('case-a.md', 'lowercase original');
+const caseB = seedFile('case-b.md', 'uppercase variant');
+markWorkItem('enrich-with-llm', 'pidCaseA', 'success', { detail: { name: 'Case Cafe', markdown: caseA }, workflowRunId: null });
+markWorkItem('enrich-with-llm', 'pidCaseB', 'success', { detail: { name: 'CASE Cafe', markdown: caseB }, workflowRunId: null });
+const run6b = await runVaultExport(ctx, { vaultDir });
+assert.equal(run6b.synced, 2);
+assert.equal(readFileSync(join(vaultDir, 'Places/Case Cafe.md'), 'utf8'), 'lowercase original');
+assert.equal(readFileSync(join(vaultDir, 'Places/CASE Cafe (pidCaseB).md'), 'utf8'), 'uppercase variant',
+  'a case-only clash disambiguates instead of silently overwriting on a case-insensitive filesystem');
+console.log('  ✓ a case-only name clash gets the stable key suffix too');
+
 // ── Run 7: a missing source file fails its item AND the run, without blocking others ──
 markWorkItem('enrich-with-llm', 'pidGone', 'success', {
   detail: { name: 'Vanished Place', markdown: join(srcDir, 'does-not-exist.md') }, workflowRunId: null,
