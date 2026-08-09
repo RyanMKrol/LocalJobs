@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { markWorkItem } from '../../../db/store.js';
-import { runClaude, type ClaudeResult } from '../../../services/claude.js';
+import { runClaude, unfenceMarkdown, type ClaudeResult } from '../../../services/claude.js';
 import type { JobContext } from '../../../core/types.js';
 import { defaultHistoryPath, type HevyWorkout } from './hevy-sync.js';
 
@@ -186,6 +186,25 @@ export function buildClaudePrompt(data: ProgressData): string {
 
 export type RunClaude = (prompt: string, model: string) => Promise<ClaudeResult>;
 
+/**
+ * Clean up Claude's raw report reply into the markdown we store.
+ *
+ * Claude occasionally prepends a stray line of commentary before the report
+ * despite being told to reply with only the report (one shipped artifact
+ * literally began "I can't write files in this sandboxed temp directory...").
+ * Mirror the perfumes build stage's salvageProfile: drop everything before the
+ * first markdown heading. If there's no heading at all the text is returned
+ * as-is — the caller rejects it and the item retries next run.
+ */
+export function salvageReport(text: string): string {
+  const md = unfenceMarkdown(text);
+  if (md.startsWith('#')) return md;
+  const lines = md.split('\n');
+  const headingIdx = lines.findIndex((l) => /^\s{0,3}#{1,6}\s/.test(l));
+  if (headingIdx === -1) return md;
+  return lines.slice(headingIdx).join('\n').trim() + '\n';
+}
+
 export async function runWorkoutsProgress(
   ctx: JobContext,
   opts: {
@@ -252,8 +271,16 @@ export async function runWorkoutsProgress(
     throw new Error(`Claude report generation failed: ${result.error ?? 'unknown error'}`);
   }
 
-  const mdPath = resolve(outDir, 'workouts-progress.md');
-  writeFileSync(mdPath, result.text, 'utf8');
+  const report = salvageReport(result.text);
+  if (!report.startsWith('#')) {
+    // No markdown heading anywhere — not a report. Fail the run so it retries.
+    throw new Error('Claude reply is not a markdown report (no heading found)');
+  }
+
+  // Per-month filename so past months survive: the old single-slot file was
+  // overwritten every month, which made prior reports unrecoverable.
+  const mdPath = resolve(outDir, `workouts-progress-${current.key}.md`);
+  writeFileSync(mdPath, report, 'utf8');
   ctx.log(`info: wrote narrative report to ${mdPath}`);
 
   markWorkItem(JOB_NAME, current.key, 'success', {

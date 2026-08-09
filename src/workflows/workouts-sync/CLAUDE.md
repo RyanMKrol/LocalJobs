@@ -22,6 +22,12 @@ period; current period = the most recently completed calendar month** — across
 Sets with a null `weight_kg`/`reps` (duration/distance-based exercises) are skipped from all three
 metrics; an exercise with no usable sets in either period is excluded entirely. The raw comparison is
 written to `data/out/progress-data.json`, then fed to the shared `runClaude` helper
-(`src/services/claude.ts`) to narrate it into `data/out/workouts-progress.md`. Idempotent per
-calendar month via the `work_items` ledger (mirrors `listening-digest`) — a manual re-run the same
-month regenerates the report (same static filename) rather than duplicating it.
+(`src/services/claude.ts`) to narrate it into `data/out/workouts-progress-<YYYY-MM>.md` — one file
+PER MONTH, so past reports survive (the pre-fix single static filename was overwritten monthly,
+which made older months unrecoverable and forced a stale-slot special case in vault-sync).
+Claude's reply is passed through `salvageReport` (mirrors the perfumes build stage's
+`salvageProfile`): anything before the first markdown heading is dropped (a shipped report once
+began with a leaked "I can't write files..." preamble), and a reply with no heading at all fails
+the run so it retries. Idempotent per calendar month via the `work_items` ledger (mirrors
+`listening-digest`) — a manual re-run the same month regenerates that month's file rather than
+duplicating it.

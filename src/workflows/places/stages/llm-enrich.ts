@@ -288,15 +288,6 @@ function cityCountry(d: Record<string, any>): { city: string; country: string } 
   };
 }
 
-function priceRangeStr(d: Record<string, any>): string {
-  const pr = d.priceRange;
-  if (!pr) return '';
-  const sym: Record<string, string> = { GBP: '£', EUR: '€', USD: '$' };
-  const c = sym[pr.startPrice?.currencyCode ?? pr.endPrice?.currencyCode] ?? '';
-  const s = pr.startPrice?.units, e = pr.endPrice?.units;
-  return s && e ? `${c}${s}–${e}` : s ? `${c}${s}+` : e ? `up to ${c}${e}` : '';
-}
-
 /** YAML flow-sequence with each item quoted (handles commas inside list names). */
 function yamlList(items: string[]): string {
   return `[${items.map((x) => JSON.stringify(x)).join(', ')}]`;
@@ -321,8 +312,9 @@ function writeMarkdown(place: EnrichedPlace, name: string, r: LlmResult, meta?: 
     `cuisine: ${yamlList(r.cuisine)}`,
     `drinks: ${yamlList(r.drinks)}`,
     `vibe: ${r.vibe}`,
+    // No priceRange: Google's startPrice/endPrice data is too inconsistent to
+    // compare on (mixed currencies, missing symbols) — priceBand covers pricing.
     `priceBand: "${r.priceBand}"`,
-    priceRangeStr(d) && `priceRange: "${priceRangeStr(d)}"`,
     d.rating != null && `rating: ${d.rating}`,
     d.userRatingCount != null && `reviewCount: ${d.userRatingCount}`,
     `status: ${d.businessStatus ?? 'UNKNOWN'}`,

@@ -44,15 +44,14 @@ dataDir gets). The stage also takes an injectable `vaultDir` opt for tests.
   row's `updated_at` has moved (plex-profiles re-marks its row whenever Plex's own
   `updatedAt` moves; listening/workouts re-mark on an in-month re-run), or the vault copy
   was deleted by hand. A steady-state run is a pure DB compare — no file reads, no writes.
-- **The workouts single-slot invariant (do not break this).** `workouts-progress` writes
-  ONE static file (`workouts-sync/data/out/workouts-progress.md`) that is overwritten
-  every month, while its ledger accumulates one row per month all pointing at that file.
-  Only the LATEST month's row is ever synced; an older never-synced row is closed out with
-  a deliberate `success` row (`note: content unrecoverable`, no `vaultPath`) instead of
-  filing a later month's content under the old month's name. An already-synced older
-  month's vault copy is never touched again — its marker never moves. This is why the
-  marker is per-row `updated_at` and NOT a content hash: a hash of the shared slot file
-  would look "changed" for every old month and clobber their vault copies.
+- **Workouts per-month files (since 2026-08).** `workouts-progress` writes one file per
+  month (`workouts-sync/data/out/workouts-progress-<YYYY-MM>.md`), so every ledger row
+  points at its own surviving file and workouts needs no special-casing here. History:
+  it used to write ONE static slot file overwritten monthly, which forced the exporter
+  to sync only the latest month and close out older never-synced rows with a deliberate
+  `success` row (`note: content unrecoverable`, no `vaultPath`). Those legacy closed-out
+  rows still exist in the ledger and must stay untouched — their markers never move, so
+  they classify as unchanged forever.
 - **T447 — never a vault path in `detail.markdown`/`detail.path`.** The exporter's success
   detail keeps `detail.markdown` pointing at the SOURCE repo file (which the store
   relativizes as usual, and which the dashboard Output section's View button can preview);

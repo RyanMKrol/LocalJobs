@@ -27,7 +27,9 @@ interface ExporterDetail {
   vaultPath?: string;
   /** The source ledger row's `updated_at` at copy time — the re-sync marker. */
   sourceUpdatedAt?: string;
-  /** Set on a deliberate no-copy row (the workouts stale-slot case). */
+  /** Legacy: old workouts months were closed out with a "content unrecoverable"
+   *  note back when the source was a single overwritten slot file. Nothing
+   *  writes this anymore (per-month files since 2026-08), but old rows keep it. */
   note?: string;
 }
 
@@ -63,8 +65,6 @@ export interface VaultExportOpts {
 export interface VaultExportResult {
   synced: number;
   unchanged: number;
-  /** Deliberately skipped workouts rows whose source slot was already overwritten. */
-  skippedStale: number;
   failed: number;
 }
 
@@ -74,10 +74,11 @@ export interface VaultExportResult {
  * the exporter's own work_items ledger (key `<sourceJob>::<sourceItemKey>`):
  * an item is synced when it has no exporter row yet, when the source row's
  * `updated_at` has moved past the stored `sourceUpdatedAt` marker, or when the
- * vault copy has been deleted by hand. The workouts report's source file is a
- * single slot overwritten monthly, so only the latest month's row is ever
- * synced — an older never-synced month is closed out with a deliberate
- * "content unrecoverable" row instead of filing the wrong month's content.
+ * vault copy has been deleted by hand. Every source (including workouts, which
+ * writes per-month files since 2026-08) keeps one surviving file per ledger
+ * row, so no source needs special-casing; legacy workouts rows that were
+ * closed out as unrecoverable under the old single-slot layout simply stay
+ * unchanged forever.
  */
 export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}): Promise<VaultExportResult> {
   const vaultDir = opts.vaultDir ?? vaultSyncConfig.vaultDir;
@@ -88,22 +89,14 @@ export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}
   ctx.log(`vault-sync starting — vault: ${vaultDir}`);
   ctx.log(`Sources: ${sourceJobs.join(', ')}`);
 
-  // ── Classify every source row: sync / unchanged / stale workouts slot ──
+  // ── Classify every source row: sync / unchanged ──
   const toSync: Candidate[] = [];
   let unchanged = 0;
-  let skippedStale = 0;
   let noPath = 0;
 
   for (const sourceJob of sourceJobs) {
     const rows = listSuccessWorkItems(sourceJob);
     ctx.log(`${sourceJob}: ${rows.length} completed item(s) in the source ledger`);
-
-    // The workouts source file is ONE static slot overwritten each month —
-    // only the latest month's row can be synced truthfully (YYYY-MM keys
-    // sort lexicographically, so a string max finds the latest month).
-    const latestWorkoutsKey = sourceJob === 'workouts-progress' && rows.length > 0
-      ? rows.reduce((max, r) => (r.item_key > max ? r.item_key : max), rows[0].item_key)
-      : null;
 
     for (const row of rows) {
       const exportKey = exportKeyFor(sourceJob, row.item_key);
@@ -121,29 +114,6 @@ export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}
       const exporterRow = getWorkItem(JOB_NAME, exportKey);
       const exporterDetail = (exporterRow ? parseDetail(exporterRow.detail) : {}) as ExporterDetail;
 
-      if (latestWorkoutsKey !== null && row.item_key !== latestWorkoutsKey) {
-        // An older workouts month. Its recorded source path now holds a LATER
-        // month's content — syncing it would file the wrong content under this
-        // month's name, so it is never synced.
-        if (!exporterRow) {
-          markWorkItem(JOB_NAME, exportKey, 'success', {
-            detail: {
-              name: name ?? row.item_key,
-              note: 'source slot already overwritten by a later month — content unrecoverable, not synced',
-              sourceUpdatedAt: row.updated_at,
-            } satisfies ExporterDetail,
-          });
-          ctx.log(`  ${exportKey}: older workouts month never synced and its source slot was overwritten — closed out as unrecoverable`, 'warn');
-          skippedStale += 1;
-        } else if (exporterDetail.vaultPath && !existsSync(join(vaultDir, exporterDetail.vaultPath))) {
-          ctx.log(`  ${exportKey}: vault copy ${exporterDetail.vaultPath} was deleted, but the source slot now holds a later month — cannot restore it`, 'warn');
-          unchanged += 1;
-        } else {
-          unchanged += 1;
-        }
-        continue;
-      }
-
       const priorVaultPath = exporterDetail.vaultPath ?? null;
       let reason: Candidate['reason'] | null = null;
       if (!exporterRow || exporterRow.status !== 'success') reason = 'new';
@@ -158,7 +128,7 @@ export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}
     }
   }
 
-  ctx.log(`Plan: ${toSync.length} to sync, ${unchanged} unchanged, ${skippedStale} closed out as stale, ${noPath} with no source path.`);
+  ctx.log(`Plan: ${toSync.length} to sync, ${unchanged} unchanged, ${noPath} with no source path.`);
 
   // ── Collision map: vault-relative path -> export key, seeded from every ──
   // ── existing exporter row so names stay stable across runs.             ──
@@ -219,7 +189,7 @@ export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}
   }
 
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  ctx.log(`vault-sync done: ${synced} copied, ${unchanged} unchanged, ${skippedStale} stale-closed, ${failed} failed.`);
+  ctx.log(`vault-sync done: ${synced} copied, ${unchanged} unchanged, ${failed} failed.`);
   ctx.progress(100, `${synced} copied, ${unchanged} unchanged`);
 
   // Item-loop rule (T416): a run that failed any item must fail itself so the
@@ -227,5 +197,5 @@ export async function runVaultExport(ctx: JobContext, opts: VaultExportOpts = {}
   if (failed > 0) {
     throw new Error(`${failed}/${total} item(s) failed this run — see logs above`);
   }
-  return { synced, unchanged, skippedStale, failed };
+  return { synced, unchanged, failed };
 }

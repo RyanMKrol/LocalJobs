@@ -6,7 +6,7 @@ import { runClaude, unfenceMarkdown } from '../../../services/claude.js';
 import { perfumesConfig } from '../config.js';
 import { ensureDirs, label, loadPerfumes, loadVoteCorpus, readJsonFile, reportItemProgress } from '../lib.js';
 import { normalizeNotes, notesEmpty } from './parse.js';
-import type { PerfumeInput, StageResult } from '../types.js';
+import type { ApplicationSpot, PerfumeInput, StageResult } from '../types.js';
 
 export const BUILD_JOB = 'perfumes-build';
 
@@ -54,7 +54,7 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
 
     try {
       if (!res.ok) throw new Error(res.error ?? 'claude error');
-      const md = salvageProfile(res.text);
+      const md = enforceApplicationSection(salvageProfile(res.text), p.applicationSpots);
       if (!md.startsWith('---') || !md.includes('## Sources')) {
         // Save the raw output so an intermittent formatting deviation is
         // inspectable later (mirrors the fetch stage's pages-failed/ dir),
@@ -100,6 +100,50 @@ export function salvageProfile(text: string): string {
   const openerIdx = lines.findIndex((l) => l.trim() === '---');
   if (openerIdx === -1) return md; // no frontmatter opener at all — let the caller reject it
   return lines.slice(openerIdx).join('\n').trim() + '\n';
+}
+
+/**
+ * Render the owner's spray pattern as the `## Application` bullet list, e.g.
+ * `- 1 spray — Wrists`. Elements come straight from Dynamo so both the
+ * `{ sprays, spot }` object shape and a legacy plain string are handled;
+ * an element with neither key is skipped.
+ */
+export function renderApplicationBullets(spots: ApplicationSpot[]): string[] {
+  const bullets: string[] = [];
+  for (const s of spots) {
+    if (typeof s === 'string') {
+      if (s.trim()) bullets.push(`- ${s.trim()}`);
+      continue;
+    }
+    const spot = typeof s.spot === 'string' ? s.spot.trim() : '';
+    const sprays = typeof s.sprays === 'number' && Number.isFinite(s.sprays) ? s.sprays : null;
+    if (sprays != null && spot) bullets.push(`- ${sprays} spray${sprays === 1 ? '' : 's'} — ${spot}`);
+    else if (spot) bullets.push(`- ${spot}`);
+    else if (sprays != null) bullets.push(`- ${sprays} spray${sprays === 1 ? '' : 's'}`);
+  }
+  return bullets;
+}
+
+/**
+ * Overwrite the profile's `## Application` section body with bullets rendered
+ * deterministically from the owner's own data — Claude is TOLD to write them
+ * verbatim, but a run sometimes pastes the raw JSON array into the section
+ * instead (9 shipped profiles had literal `[{"sprays":1,...}]` bodies). The
+ * data is structured and owner-authored, so there is no reason to trust the
+ * model with the rendering at all. No-ops when there are no recorded spots
+ * (the template's "not recorded yet" text stays) or when the section heading
+ * is missing (the caller's shape check / template contract handles that).
+ */
+export function enforceApplicationSection(md: string, spots: ApplicationSpot[] | undefined): string {
+  const bullets = spots ? renderApplicationBullets(spots) : [];
+  if (bullets.length === 0) return md;
+  const m = /^## Application[ \t]*$/m.exec(md);
+  if (!m) return md;
+  const bodyStart = md.indexOf('\n', m.index) + 1;
+  if (bodyStart === 0) return md;
+  const nextHeading = md.indexOf('\n## ', bodyStart - 1);
+  const sectionEnd = nextHeading === -1 ? md.length : nextHeading + 1;
+  return `${md.slice(0, bodyStart)}${bullets.join('\n')}\n\n${md.slice(sectionEnd)}`;
 }
 
 /** Persist a build reply that failed the template-shape check to
@@ -373,7 +417,11 @@ export function personalFieldsClause(p: PerfumeInput): string {
     `- personal_projection: ${projection ? `"${projection}" — copy this exact label verbatim. It is the owner's projection strength on a 1–4 scale (1 Skin scent, 2 Moderate, 3 Strong, 4 Beast mode).` : 'not provided — use null.'}`,
     `- personal_seasons: ${p.personalSeasons && p.personalSeasons.length > 0 ? `${JSON.stringify(p.personalSeasons)} — copy these exact values verbatim.` : 'not provided — use an empty array ([]).'}`,
     `- ## Personal Notes section: ${p.description ? `fill it with your own description verbatim: "${p.description}"` : 'not provided — leave the section content as "not recorded yet" (do not fabricate personal thoughts).'}`,
-    `- ## Application section: ${p.applicationSpots && p.applicationSpots.length > 0 ? `fill it with your own application spots verbatim: ${JSON.stringify(p.applicationSpots)}` : 'not provided — leave the section content as "not recorded yet" (do not fabricate a spray pattern).'}`,
+    `- ## Application section: ${
+      p.applicationSpots && renderApplicationBullets(p.applicationSpots).length > 0
+        ? `fill it with EXACTLY these bullet lines, verbatim:\n${renderApplicationBullets(p.applicationSpots).join('\n')}`
+        : 'not provided — leave the section content as "not recorded yet" (do not fabricate a spray pattern).'
+    }`,
   ];
   return lines.join('\n');
 }

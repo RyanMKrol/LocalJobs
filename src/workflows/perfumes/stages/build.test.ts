@@ -8,9 +8,11 @@ import {
   confidenceClause,
   confidenceWeight,
   DEFAULT_CONFIDENCE_K,
+  enforceApplicationSection,
   notesMappingClause,
   personalFieldsClause,
   projectionLabel,
+  renderApplicationBullets,
   salvageProfile,
   voteDistribution,
   votesFromFragJson,
@@ -180,7 +182,8 @@ const BASE_PERFUME: PerfumeInput = { id: 'x__y__edp', name: 'X', concentration: 
   assert.doesNotMatch(clause, /personal_projection: 3\b/, 'personal_projection is NOT the bare number');
   assert.match(clause, /\["autumn","winter"\]/, 'personal_seasons values appear verbatim');
   assert.match(clause, /A cosy autumn scent I reach for constantly\./, 'description appears verbatim');
-  assert.match(clause, /\["2 to chest","1 to each wrist"\]/, 'applicationSpots appear verbatim');
+  assert.match(clause, /- 2 to chest\n- 1 to each wrist/, 'applicationSpots appear as pre-rendered bullet lines');
+  assert.match(clause, /EXACTLY these bullet lines/, 'instructs copying the rendered bullets verbatim');
   assert.match(clause, /copy th(is|ese) exact/i, 'instructs copying the exact value(s)');
   assert.match(clause, /do NOT alter, reinterpret/, 'instructs no alteration/reinterpretation');
   assert.match(clause, /invent additional values/, 'instructs no invention');
@@ -238,3 +241,46 @@ console.log('  ✓ perfumes projectionLabel maps the 1–4 scale to its website 
 }
 
 console.log('  ✓ perfumes salvageProfile strips a stray preamble but leaves a truncated reply to retry');
+
+// ── renderApplicationBullets: deterministic spray-pattern rendering. ──
+{
+  assert.deepEqual(
+    renderApplicationBullets([{ sprays: 1, spot: 'Wrists' }, { sprays: 2, spot: 'Neck' }]),
+    ['- 1 spray — Wrists', '- 2 sprays — Neck'],
+    'object rows render as "<n> spray(s) — <spot>"',
+  );
+  assert.deepEqual(renderApplicationBullets(['Behind ears']), ['- Behind ears'], 'legacy string rows pass through');
+  assert.deepEqual(renderApplicationBullets([{ spot: 'Chest' }]), ['- Chest'], 'missing sprays falls back to the spot alone');
+  assert.deepEqual(renderApplicationBullets([{}, '', { sprays: Number.NaN }]), [], 'unusable rows are skipped');
+}
+console.log('  ✓ perfumes renderApplicationBullets renders spray-pattern rows defensively');
+
+// ── enforceApplicationSection: the section body is ALWAYS machine-rendered. ──
+{
+  const spots = [{ sprays: 1, spot: 'Wrists' }, { sprays: 1, spot: 'Clavicles' }];
+  const jsonBody =
+    '---\nname: "X"\n---\n# X\n## Personal Notes\nMine.\n## Application\n[{"sprays":1,"spot":"Wrists"},{"sprays":1,"spot":"Clavicles"}]\n\n## Olfactory Profile\nWoody.\n## Sources\n1. https://e.com\n';
+  const fixed = enforceApplicationSection(jsonBody, spots);
+  assert.match(fixed, /## Application\n- 1 spray — Wrists\n- 1 spray — Clavicles\n\n## Olfactory Profile/,
+    'a raw JSON body is replaced with rendered bullets');
+  assert.doesNotMatch(fixed, /\[\{"sprays"/, 'the JSON blob is gone');
+  assert.match(fixed, /## Personal Notes\nMine\./, 'other sections untouched');
+
+  // already-correct bullets are normalized to the same deterministic output
+  const goodBody = jsonBody.replace(/\[\{.*\]\n/, '- 1 spray — Wrists\n- 1 spray — Clavicles\n');
+  assert.equal(enforceApplicationSection(goodBody, spots), fixed, 'correct output is stable');
+
+  // no recorded spots → the model's "not recorded yet" text stays
+  const noSpots = enforceApplicationSection(jsonBody, undefined);
+  assert.equal(noSpots, jsonBody, 'without spots the section is left alone');
+
+  // Application as the LAST section still terminates correctly
+  const lastSection = '---\nname: "X"\n---\n# X\n## Application\nold\n';
+  assert.match(enforceApplicationSection(lastSection, spots), /## Application\n- 1 spray — Wrists\n- 1 spray — Clavicles\n+$/,
+    'a trailing Application section is replaced to end-of-file');
+
+  // missing heading → untouched (shape check / template contract owns that failure)
+  const noHeading = '---\nname: "X"\n---\n# X\n## Sources\n';
+  assert.equal(enforceApplicationSection(noHeading, spots), noHeading, 'no heading, no change');
+}
+console.log('  ✓ perfumes enforceApplicationSection overwrites the Application body deterministically');

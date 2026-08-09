@@ -15,6 +15,7 @@ import {
   computeExerciseComparisons,
   estimatedOneRepMax,
   runWorkoutsProgress,
+  salvageReport,
 } from './workouts-progress.js';
 
 function fakeCtx(): JobContext {
@@ -182,6 +183,25 @@ describe('workouts-progress — computeExerciseComparisons', () => {
   });
 });
 
+describe('workouts-progress — salvageReport', () => {
+  it('returns a clean report unchanged (plus trailing newline)', () => {
+    assert.equal(salvageReport('# Report\n\nBody.'), '# Report\n\nBody.\n');
+  });
+
+  it('drops preamble lines before the first heading', () => {
+    const raw = 'Here is your report:\n\nSome more chat.\n\n## Section first\n\nBody.';
+    assert.equal(salvageReport(raw), '## Section first\n\nBody.\n');
+  });
+
+  it('unfences a code-fenced reply', () => {
+    assert.ok(salvageReport('```markdown\n# Report\n\nBody.\n```').startsWith('# Report'));
+  });
+
+  it('returns headingless text as-is for the caller to reject', () => {
+    assert.equal(salvageReport('no report here'), 'no report here\n');
+  });
+});
+
 describe('runWorkoutsProgress — end-to-end with injected Claude', () => {
   let scratchDir: string;
   let historyPath: string;
@@ -209,7 +229,7 @@ describe('runWorkoutsProgress — end-to-end with injected Claude', () => {
     writeFileSync(historyPath, JSON.stringify(workouts, null, 2));
   }
 
-  it('writes progress-data.json and workouts-progress.md, and marks the ledger for the current month', async () => {
+  it('writes progress-data.json and a per-month report file, and marks the ledger for the current month', async () => {
     seedHistory();
     let promptSeen = '';
     await runWorkoutsProgress(fakeCtx(), {
@@ -223,8 +243,8 @@ describe('runWorkoutsProgress — end-to-end with injected Claude', () => {
     });
 
     assert.ok(existsSync(join(outDir, 'progress-data.json')));
-    assert.ok(existsSync(join(outDir, 'workouts-progress.md')));
-    const md = readFileSync(join(outDir, 'workouts-progress.md'), 'utf8');
+    assert.ok(existsSync(join(outDir, 'workouts-progress-2026-06.md')));
+    const md = readFileSync(join(outDir, 'workouts-progress-2026-06.md'), 'utf8');
     assert.match(md, /Squat improved/);
 
     const data = JSON.parse(readFileSync(join(outDir, 'progress-data.json'), 'utf8'));
@@ -237,15 +257,47 @@ describe('runWorkoutsProgress — end-to-end with injected Claude', () => {
 
   it('re-running within the same month overwrites the report without duplicating the ledger row or filename', async () => {
     seedHistory();
-    const runClaudeFn = async () => ({ ok: true, text: 'first run', rateLimited: false });
+    const runClaudeFn = async () => ({ ok: true, text: '# Report\n\nfirst run', rateLimited: false });
     await runWorkoutsProgress(fakeCtx(), { historyPath, outDir, now: NOW, runClaudeFn });
 
-    const runClaudeFn2 = async () => ({ ok: true, text: 'second run', rateLimited: false });
+    const runClaudeFn2 = async () => ({ ok: true, text: '# Report\n\nsecond run', rateLimited: false });
     await runWorkoutsProgress(fakeCtx(), { historyPath, outDir, now: NOW, runClaudeFn: runClaudeFn2 });
 
-    const md = readFileSync(join(outDir, 'workouts-progress.md'), 'utf8');
-    assert.equal(md, 'second run', 'second run overwrote the same static filename, no duplicate file');
+    const md = readFileSync(join(outDir, 'workouts-progress-2026-06.md'), 'utf8');
+    assert.equal(md, '# Report\n\nsecond run\n', 'second run overwrote the same month filename, no duplicate file');
     assert.ok(isWorkItemDone('workouts-progress', '2026-06', 3));
+  });
+
+  it('strips a leaked preamble line before the report heading', async () => {
+    seedHistory();
+    await runWorkoutsProgress(fakeCtx(), {
+      historyPath,
+      outDir,
+      now: NOW,
+      runClaudeFn: async () => ({
+        ok: true,
+        text: "I can't write files in this sandboxed temp directory, so here's the report directly:\n\n# 6-Month Workout Progress Report\n\nBody.",
+        rateLimited: false,
+      }),
+    });
+    const md = readFileSync(join(outDir, 'workouts-progress-2026-06.md'), 'utf8');
+    assert.ok(md.startsWith('# 6-Month Workout Progress Report'), 'preamble stripped, report starts at the heading');
+    assert.ok(!md.includes('sandboxed temp directory'), 'preamble text gone');
+  });
+
+  it('throws (item retries) when the reply has no markdown heading at all', async () => {
+    seedHistory();
+    await assert.rejects(
+      () =>
+        runWorkoutsProgress(fakeCtx(), {
+          historyPath,
+          outDir,
+          now: NOW,
+          runClaudeFn: async () => ({ ok: true, text: 'Sorry, I cannot help with that.', rateLimited: false }),
+        }),
+      /not a markdown report/,
+    );
+    assert.ok(!existsSync(join(outDir, 'workouts-progress-2026-06.md')), 'no report file written');
   });
 
   it('does nothing gracefully when no history file exists yet', async () => {
@@ -286,7 +338,7 @@ describe('runWorkoutsProgress — end-to-end with injected Claude', () => {
       runClaudeFn: async () => ({ ok: false, text: '', rateLimited: true, error: 'usage limit reached' }),
     });
 
-    assert.ok(!existsSync(join(outDir, 'workouts-progress.md')), 'no narrative report written on rate limit');
+    assert.ok(!existsSync(join(outDir, 'workouts-progress-2026-07.md')), 'no narrative report written on rate limit');
     assert.ok(
       !isWorkItemDone('workouts-progress', currentPeriod(rateLimitedNow).key, 3),
       'item left un-done so a later run resumes it',

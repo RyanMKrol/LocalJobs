@@ -15,9 +15,11 @@ const job: JobDefinition = {
     'usable sets in either period is excluded entirely. The raw comparison is written to ' +
     'data/out/progress-data.json, then handed to the shared Claude CLI helper ' +
     '(src/services/claude.ts) to narrate into a readable markdown report at ' +
-    'data/out/workouts-progress.md. Idempotent per calendar month via the work_items ledger: a ' +
-    'manual re-run within the same month regenerates the report under the same static filename ' +
-    'rather than duplicating it.',
+    'data/out/workouts-progress-<YYYY-MM>.md — one file per month, so past reports survive. ' +
+    "Claude's reply is passed through salvageReport, which drops any leaked preamble before the " +
+    'first markdown heading and fails the run (for retry) when no heading exists. Idempotent per ' +
+    'calendar month via the work_items ledger: a manual re-run within the same month regenerates ' +
+    "that month's file rather than duplicating it.",
   timeoutMs: 300_000,
   maxRetries: 3,
   consumes: [workoutsHistoryContract()],

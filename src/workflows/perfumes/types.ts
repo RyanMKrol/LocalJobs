@@ -32,9 +32,18 @@ export interface PerfumeInput {
   /** From Dynamo's `seasons`. `personal`-prefixed so it's never confused with
    *  the template's community/LLM-researched `season` array field. */
   personalSeasons?: string[];
-  /** From Dynamo's `applicationSpots`. */
-  applicationSpots?: string[];
+  /** From Dynamo's `applicationSpots`. In practice each element is a
+   *  `{ sprays, spot }` object (the website's spray-pattern rows), but the
+   *  loader only guarantees an array, so elements are typed loosely and the
+   *  renderer (`renderApplicationBullets` in `stages/build.ts`) handles both
+   *  object and plain-string elements defensively. */
+  applicationSpots?: ApplicationSpot[];
 }
+
+/** One row of the owner's spray pattern, e.g. `{ sprays: 1, spot: "Wrists" }`.
+ *  Elements straight from Dynamo, so both keys are optional and a legacy
+ *  plain-string element is tolerated. */
+export type ApplicationSpot = string | { sprays?: number; spot?: string };
 
 /** One "main accord" with its relative strength. `pct` is the coloured bar's
  *  width on the Fragrantica page (strongest accord = 100); null when the page

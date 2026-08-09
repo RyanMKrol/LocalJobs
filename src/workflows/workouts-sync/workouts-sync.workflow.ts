@@ -15,7 +15,8 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * a baseline calendar month (6 months before the current period) vs the
  * current period (the most recently completed calendar month), writes the
  * raw comparison to `data/out/progress-data.json`, and uses the shared Claude
- * CLI helper to narrate it into `data/out/workouts-progress.md`. Idempotent
+ * CLI helper to narrate it into `data/out/workouts-progress-<YYYY-MM>.md`
+ * (one file per month, so past reports survive). Idempotent
  * per calendar month via the work_items ledger (mirrors `listening-digest`) —
  * a manual re-run the same month regenerates the report rather than
  * duplicating it.

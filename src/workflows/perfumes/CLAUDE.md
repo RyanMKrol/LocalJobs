@@ -46,7 +46,13 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
   the number; the 1–4 `personalProjection` is mapped to its website label (`projectionLabel`: 1 Skin
   scent · 2 Moderate · 3 Strong · 4 Beast mode) and `personal_projection` holds that label string.
   Both scales mirror the owner's `ryankrol.co.uk` `PerfumeCharacteristics` component (the source of
-  the `PerfumeRatings` rows). The dead `status: "owned"` frontmatter field (it never varied) was removed in T481.
+  the `PerfumeRatings` rows). The `## Application` section body is additionally **machine-rendered
+  after the build**: `enforceApplicationSection` overwrites whatever the model wrote there with
+  bullets rendered in code from `applicationSpots` (`renderApplicationBullets`, `- 1 spray — Wrists`)
+  — a run sometimes pasted the raw JSON array into the section (9 shipped profiles), and structured
+  owner data never needs the model for rendering. The prompt also feeds Claude the pre-rendered
+  bullet lines rather than a JSON blob. No spots recorded → the model's "not recorded yet" text
+  stands. The dead `status: "owned"` frontmatter field (it never varied) was removed in T481.
   `personal_rating` is `loadPerfumes`'s Dynamo `rating` halved (0-10 → 0-5) so it lines up with
   Fragrantica's 0-5 `community_rating` scale, rather than the raw 0-10 owner score. The personal
   frontmatter block and the `## Personal Notes`/`## Application` body sections sit immediately after
