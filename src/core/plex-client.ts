@@ -430,6 +430,34 @@ export function extractTmdbId(guids: { id?: string }[] | undefined): number | nu
   return null;
 }
 
+/**
+ * Extract the TVDB id from a title's Plex GUID list — the `tvdb://<id>` sibling
+ * of `extractTmdbId` above, same never-guess contract. The Plex TV Series agent
+ * carries one per matched show; it's the id the `{tvdb-...}` folder hint and
+ * `.plexmatch` `tvdbid:` line want.
+ */
+export function extractTvdbId(guids: { id?: string }[] | undefined): number | null {
+  if (!Array.isArray(guids)) return null;
+  for (const g of guids) {
+    const m = /^tvdb:\/\/(\d+)/.exec(g?.id ?? '');
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+/**
+ * Extract the IMDB id (the `tt...` string, e.g. `tt0372784`) from a title's Plex
+ * GUID list, or null when absent — never guessed, like the two extractors above.
+ */
+export function extractImdbId(guids: { id?: string }[] | undefined): string | null {
+  if (!Array.isArray(guids)) return null;
+  for (const g of guids) {
+    const m = /^imdb:\/\/(tt\d+)/.exec(g?.id ?? '');
+    if (m) return m[1];
+  }
+  return null;
+}
+
 export interface FetchSectionMetadataOpts {
   /** Extra query string appended after the section path, e.g. `'?includeGuids=1'` or `'?type=4'`. */
   query?: string;
@@ -511,6 +539,62 @@ export async function plexPutStreams(partId: number, audioStreamId: number, subt
       reject(new Error(`Plex unreachable at ${host} — ${e instanceof Error ? e.message : e}. Check PLEX_HOST / that the server is awake.`)),
     );
     req.end();
+  });
+}
+
+/**
+ * Build the path+query for a section refresh — pure and exported so the URL
+ * shape is unit-testable without a network. `path` (a Plex-side directory)
+ * scopes the rescan to just that folder; omitted → whole section.
+ */
+export function refreshSectionPath(section: string | number, path?: string): string {
+  const base = `/library/sections/${section}/refresh`;
+  return path ? `${base}?path=${encodeURIComponent(path)}` : base;
+}
+
+/**
+ * Ask Plex to rescan a library section (`GET /library/sections/<n>/refresh`),
+ * optionally scoped to one directory via `?path=` — the documented targeted
+ * rescan Plex's own "Scan Library Files" uses. A mutation TRIGGER: callers must
+ * route it through `callService('plex', ...)` with NO cacheKey (never cached),
+ * same doctrine as `plexPutStreams`/`triggerButlerBackup`. Uses the same
+ * resolved host + scoped insecure-TLS agent as `plexGet`. Throws on a non-2xx
+ * so the caller can log the failure (a failed refresh is recoverable — the next
+ * scheduled Plex scan picks the change up eventually).
+ */
+export async function plexRefreshSection(section: string | number, path?: string): Promise<void> {
+  if (!PLEX_API_TOKEN) {
+    throw new Error('Plex token missing — set PLEX_API_TOKEN in .env.');
+  }
+  const host = await resolvePlexHost();
+  const url = new URL(refreshSectionPath(section, path), host);
+  url.searchParams.set('X-Plex-Token', PLEX_API_TOKEN);
+  const isHttps = url.protocol === 'https:';
+  const mod = isHttps ? https : http;
+  const timeoutMs = plexRequestTimeoutMs();
+
+  await new Promise<void>((resolve, reject) => {
+    const req = mod.get(
+      url,
+      {
+        agent: isHttps ? insecurePlexAgent : undefined,
+        headers: { Accept: 'application/json' },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        res.resume();
+        if (status >= 400) {
+          reject(new Error(`Plex HTTP ${status} for GET ${refreshSectionPath(section, path)}`));
+          return;
+        }
+        resolve();
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for section refresh (${timeoutMs}ms)`)));
+    req.on('error', (e) =>
+      reject(new Error(`Plex unreachable at ${host} — ${e instanceof Error ? e.message : e}. Check PLEX_HOST / that the server is awake.`)),
+    );
   });
 }
 

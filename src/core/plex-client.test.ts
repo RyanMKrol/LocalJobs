@@ -2,8 +2,11 @@
 import assert from 'node:assert/strict';
 import {
   enumerateSubnetHosts,
+  extractImdbId,
   extractTmdbId,
+  extractTvdbId,
   plexRequestTimeoutMs,
+  refreshSectionPath,
   resetPlexHostCacheForTests,
   resolvePlexHost,
   type PlexAllResponse,
@@ -237,6 +240,31 @@ await (async () => {
   assert.equal(extractTmdbId(undefined), null, 'no GUID array at all → null');
   assert.equal(extractTmdbId([]), null, 'an empty GUID array → null');
   console.log('  ✓ extractTmdbId: present tmdb:// GUID → id, absent → null');
+}
+
+// ── extractTvdbId / extractImdbId: the tvdb/imdb siblings (plex-rename) ──
+{
+  const guids = [{ id: 'imdb://tt0468569' }, { id: 'tmdb://155' }, { id: 'tvdb://81189' }];
+  assert.equal(extractTvdbId(guids), 81189, 'a title with a tvdb:// GUID returns the numeric id');
+  assert.equal(extractTvdbId([{ id: 'tmdb://155' }]), null, 'no tvdb:// GUID → null (never guessed)');
+  assert.equal(extractTvdbId(undefined), null, 'no GUID array → null');
+
+  assert.equal(extractImdbId(guids), 'tt0468569', 'a title with an imdb:// GUID returns the tt-string');
+  assert.equal(extractImdbId([{ id: 'tmdb://155' }, { id: 'tvdb://81189' }]), null, 'no imdb:// GUID → null');
+  assert.equal(extractImdbId([{ id: 'imdb://0468569' }]), null, 'a malformed imdb GUID (no tt prefix) → null');
+  assert.equal(extractImdbId([]), null, 'an empty GUID array → null');
+  console.log('  ✓ extractTvdbId/extractImdbId: present GUID → id, absent/malformed → null');
+}
+
+// ── refreshSectionPath: the section-refresh URL shape (plex-rename) ──
+{
+  assert.equal(refreshSectionPath(2), '/library/sections/2/refresh', 'no path → whole-section refresh');
+  assert.equal(
+    refreshSectionPath('2', '/volume1/Shared Drive/TV/Show (2016) {tvdb-1}'),
+    '/library/sections/2/refresh?path=%2Fvolume1%2FShared%20Drive%2FTV%2FShow%20(2016)%20%7Btvdb-1%7D',
+    'a path is URL-encoded into the ?path= query (spaces, braces, slashes)',
+  );
+  console.log('  ✓ refreshSectionPath builds the targeted-rescan URL correctly');
 }
 
 // ── PlexAllResponse<T> typing round-trip (T586) ──
