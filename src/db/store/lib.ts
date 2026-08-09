@@ -24,6 +24,18 @@ export function toStoredPath(absPath: string): string {
 }
 
 /**
+ * Inverse of {@link toStoredPath}: resolve a stored workflows-root-relative path
+ * back to an absolute one. An absolute input (a legacy pre-T447 row, or an
+ * artifact deliberately recorded outside the workflows tree) passes through
+ * unchanged. The same conversion is inlined in src/api/server.ts's
+ * `safeOutputMarkdown`/`safeOutputFile`; this is the shared helper for any
+ * non-API consumer of a ledger row's `detail.markdown`/`detail.path`.
+ */
+export function fromStoredPath(stored: string): string {
+  return isAbsolute(stored) ? stored : resolvePath(WORKFLOWS_ROOT, stored);
+}
+
+/**
  * Normalize the two known path-bearing `detail` keys (`markdown`/`path`, per the
  * Output-form convention) to workflows-root-relative paths before persisting, so
  * every job's existing markWorkItem call sites need zero changes (T447).
