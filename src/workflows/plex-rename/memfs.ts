@@ -11,6 +11,8 @@ export interface MemFsOptions {
   corruptCopies?: boolean;
   /** Per-file mtimes (ms); default OLD (0). */
   mtimes?: Record<string, number>;
+  /** Free bytes reported for every path (default: effectively unlimited). */
+  freeBytes?: number;
 }
 
 export interface MemFs extends WriteFsSeam {
@@ -80,6 +82,9 @@ export function makeMemFs(initial: Record<string, string>, opts: MemFsOptions = 
     async writeFile(path, content) {
       oplog.push(`write:${path}`);
       files.set(path, content);
+    },
+    async freeBytes() {
+      return opts.freeBytes ?? Number.MAX_SAFE_INTEGER;
     },
     async rmdirIfEmpty(path) {
       oplog.push(`rmdir-if-empty:${path}`);

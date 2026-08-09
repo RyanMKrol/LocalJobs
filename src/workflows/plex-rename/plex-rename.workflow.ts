@@ -10,10 +10,11 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * matches as the source of truth, so the whole library becomes
  * deterministically re-discoverable from disk alone.
  *
- * Currently report-only: discover → plan → verify are all read-only. The
- * mutating apply stage (copy → checksum-verify → delete-original, write-ahead
- * journal, daily quota) and the confirm stage land behind the
- * PLEX_RENAME_APPLY_ENABLED probation gate.
+ * discover → plan → verify are read-only; apply (the only mutating stage —
+ * copy → checksum-verify → delete-original, write-ahead journal, 30/day
+ * quota) runs in REPORT-ONLY rehearsal mode until the owner flips
+ * PLEX_RENAME_APPLY_ENABLED=1 after the probation review; confirm then
+ * verifies Plex re-associated each moved file at the same ratingKey.
  */
 const workflow: WorkflowDefinition = {
   name: 'plex-rename',
@@ -29,10 +30,13 @@ const workflow: WorkflowDefinition = {
     'The mutating apply stage (when enabled) moves each physical file at most once, ever, via its own ' +
     'permanent ledger — re-moving a file requires manually unsticking its apply row from the dashboard.',
   schedule: '0 5 * * *',
+  outputJob: 'plex-rename-apply',
   jobs: [
     { job: 'plex-rename-discover' },
     { job: 'plex-rename-plan', dependsOn: ['plex-rename-discover'] },
     { job: 'plex-rename-verify', dependsOn: ['plex-rename-plan'] },
+    { job: 'plex-rename-apply', dependsOn: ['plex-rename-verify'] },
+    { job: 'plex-rename-confirm', dependsOn: ['plex-rename-apply'] },
   ],
 };
 

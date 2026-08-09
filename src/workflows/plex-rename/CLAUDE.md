@@ -39,8 +39,6 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
    (read-only, root)     (read-only)         (read-only, fs)      (MUTATING)          (read-only)
 ```
 
-(apply + confirm land in a later commit; the manifest currently ends at verify — report-only.)
-
 - **discover** — LIVE library walk (deliberately NEVER cached, unlike plex-language-fix's 3h-cached
   reads: a rename pipeline must not plan off a stale listing — `lib.ts`'s fetch helpers pass no
   cacheKey). Records one SNAPSHOT row per physical file, re-marked every run: path, `Part.size`,
@@ -62,6 +60,30 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   assets; episodes never move release-folder assets into Season dirs), sidecar-target collisions,
   and the `.plexmatch` rules (source-tree hit → ineligible; identical target content → write op
   dropped; divergent → ineligible). Recomputed every run.
+- **apply** — the ONLY mutating stage (`stages/apply.ts`). REHEARSAL MODE until
+  `PLEX_RENAME_APPLY_ENABLED=1`: same selection + logging + REPORT-ONLY markdown, but no journal,
+  no ledger marks, no Butler, zero mutations (a journal file existing always means real intent).
+  When enabled: hard mount preflight (any needed share unhealthy → ZERO mutations, nothing marked,
+  run success), daily quota via the `job_usage` meter (`PLEX_RENAME_MAX_PER_DAY`, default 30 media
+  files; sidecars uncounted; `recordUsage` per applied file), crash reconciliation of any
+  unresolved journal BEFORE new work (target-only → roll forward; both-sides-identical → delete
+  source after hash equality; divergent/neither → fail loud, never guess), one Plex Butler DB
+  backup before the first mutation (WARN-only — it protects the DB, not files), then per item:
+  re-check EVERYTHING at the moment of truth (existence, exact size, mtime window, target absent,
+  free space for a transient second copy, sidecar targets still clear — any drift is a SOFT skip,
+  recomputed next run), journal the full op list, and execute mkdir → write-plexmatch → media
+  move → sidecar moves → rmdir-if-empty, each move via `performVerifiedMove` with write-ahead
+  journaling per step. Ledger success only after the journal's item-done is flushed; once-ever
+  per file. Postamble: per-run report markdown (`data/out/reports/`), targeted
+  `plexRefreshSection` per changed dir (falling back to full-section past 30 dirs, WARN-only),
+  `run-end`, and a thrown error if any item failed.
+- **confirm** — read-only post-verification (`stages/confirm.ts`) that Plex re-associated each
+  moved file at the SAME ratingKey (watch state intact). Live fetch per applied-not-yet-confirmed
+  item: new path at same key → success (once-ever); old path still → `skipped` (retryable) until
+  `PLEX_RENAME_CONFIRM_GRACE_DAYS` (14) past `appliedAt`, then loud failure; ratingKey no longer
+  resolving → loud failure immediately (the duplicate-re-import worst case — plex-library-guard
+  independently alerts on the vanished key; deliberately NO library-wide search for the new owner
+  in v1, the owner investigates). Transient fetch errors are soft skips.
 
 ## The naming engine (`naming.ts`) — pure, exhaustively table-tested
 
@@ -88,9 +110,22 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   place" — old release folders keep their junk and are listed as leftovers in the report;
   cleanup is report-only in v1.
 
+## Undo + journal
+
+`journal.ts`: per-run NDJSON, `JournalWriter` fsyncs every record (and the journal dir at
+create); `analyzeJournal` classifies complete/aborted/unresolved for crash recovery.
+`move.ts`'s `performVerifiedMove` is the ONLY file-relocation primitive (copy → verify →
+finalize → delete-source; case-only renames swap the last two so the verified partial guards
+the bytes). `scripts/plex-rename-undo.ts` (manual, never scheduled, dry-run by default,
+`--apply` to act) reverses completed ops newest-first with the SAME verified procedure, treats
+every surprise as a loud conflict (occupied original, divergent duplicate, hand-edited
+`.plexmatch`), and refuses when a journaled mount is absent. It never touches the apply ledger —
+reprocessing an undone item is a manual unstick, same doctrine as plex-language-undo.
+
 ## Gates (contracts.ts)
 
-discover→plan is the sanctioned trivial minimum; **plan→verify and verify→apply are REAL** (T574
+discover→plan and apply→confirm are the sanctioned trivial minimum; **plan→verify and
+verify→apply are REAL** (T574
 pattern): plan's gate asserts every rename row has from ≠ to, target under the file's own library
 root, and global collision-freedom; verify's gate asserts every eligible row has same-share local
 paths, verified bytes > 0, and a well-formed sidecar list — exactly the malformations apply would
@@ -117,9 +152,15 @@ separate `plex-library-guard` workflow (the independent deletion detector) lande
 
 ## Testing
 
-Every stage's `run*()` takes injectable seams (Plex fetchers / `ReadFsSeam` / ledger readers /
-`now()`) — tests never touch a live Plex or the real disk. `naming.test.ts` is the table-driven
-engine suite (real-library-shaped cases: anime brackets, Steins;Gate, loose movies, date-based
-shows, specials, e100, collisions). Stage tests cover: snapshot re-marking (discover), decision
-recomputation + collision downgrades (plan), and every verify ineligibility reason including the
-mount-missing vs file-missing distinction and all three `.plexmatch` outcomes.
+Every stage's `run*()` takes injectable seams (Plex fetchers / `ReadFsSeam`/`WriteFsSeam` /
+ledger readers / quota / `now()`) — tests never touch a live Plex or the real disk (`memfs.ts` is
+the shared in-memory write seam; journals go to per-test temp dirs). `naming.test.ts` is the
+table-driven engine suite (real-library-shaped cases: anime brackets, Steins;Gate, loose movies,
+date-based shows, specials, e100, collisions). Stage tests cover: snapshot re-marking (discover),
+decision recomputation + collision downgrades (plan), every verify ineligibility reason including
+the mount-missing vs file-missing distinction and all three `.plexmatch` outcomes,
+`move.test.ts`'s hook-before-effect ordering + checksum-mismatch + caseOnly ordering,
+`journal.test.ts`'s torn-tail tolerance + unresolved classification, `apply.test.ts`'s rehearsal
+/ mount-absent / quota / soft-skip / checksum-failure / once-ever / crash-reconciliation-matrix /
+refresh-fallback coverage, `confirm.test.ts`'s four outcomes, and the undo script's
+conflict-never-overwrite suite (`scripts/plex-rename-undo.test.ts`).

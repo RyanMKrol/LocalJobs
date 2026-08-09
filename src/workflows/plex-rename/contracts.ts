@@ -94,6 +94,25 @@ export function plexRenamePlanContract(): ArtifactContract {
   };
 }
 
+/** apply → confirm boundary: the sanctioned trivial minimum (apply's own ledger is the artifact). */
+export function plexRenameApplyContract(): ArtifactContract {
+  return {
+    key: 'plex-rename-apply',
+    description:
+      'apply output: one work_items row per moved file (once-ever), detail { name, from, to, sha256, bytes, ' +
+      'sidecarCount, appliedAt } — the record confirm re-checks against live Plex.',
+    shape: {
+      summary: 'Every applied (moved + checksum-verified) file, with its final path and hash.',
+      format: 'work_items ledger rows for job "plex-rename-apply"',
+      expectations: [{ label: EXP_RECORDED, detail: 'The ledger for this job is queryable.' }],
+    },
+    check(): GateResult {
+      const n = ledgerSuccessCount('plex-rename-apply');
+      return fromChecks([{ label: EXP_RECORDED, ok: true, actual: `${n} applied item(s)` }], `${n} item(s)`);
+    },
+  };
+}
+
 const EXP_ELIGIBLE_ROWS_APPLIABLE =
   'Every eligible row has local paths mapped under the SAME share, verified bytes > 0, a well-formed sidecar list, and localFrom ≠ localTo unless case-only.';
 

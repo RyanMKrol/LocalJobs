@@ -179,6 +179,8 @@ export interface WriteFsSeam extends ReadFsSeam {
   writeFile(path: string, content: string): Promise<void>;
   /** rmdir ONLY when a fresh readdir shows empty — structurally incapable of deleting files. */
   rmdirIfEmpty(path: string): Promise<'removed' | 'not-empty' | 'missing'>;
+  /** Free bytes on the filesystem containing `path`, or null when unknowable. */
+  freeBytes(path: string): Promise<number | null>;
 }
 
 export const realWriteFs: WriteFsSeam = {
@@ -234,6 +236,16 @@ export const realWriteFs: WriteFsSeam = {
     return callService('fs', async () => {
       await fsp.mkdir(dirname(path), { recursive: true });
       await fsp.writeFile(path, content, 'utf8');
+    });
+  },
+  async freeBytes(path) {
+    return callService('fs', async () => {
+      try {
+        const st = await fsp.statfs(path);
+        return Number(st.bavail) * Number(st.bsize);
+      } catch {
+        return null;
+      }
     });
   },
   async rmdirIfEmpty(path) {

@@ -839,11 +839,13 @@ const plexLibraryGuardSnapshotFixture = {
   }),
 };
 
-// plex-rename — discover -> plan -> verify (report-only linear chain; apply/confirm land later).
+// plex-rename — discover -> plan -> verify -> apply (mutating, quota'd) -> confirm.
 const plexRenameMembers = [
   { job_name: 'plex-rename-discover', depends_on: [] },
   { job_name: 'plex-rename-plan', depends_on: ['plex-rename-discover'] },
   { job_name: 'plex-rename-verify', depends_on: ['plex-rename-plan'] },
+  { job_name: 'plex-rename-apply', depends_on: ['plex-rename-verify'] },
+  { job_name: 'plex-rename-confirm', depends_on: ['plex-rename-apply'] },
 ];
 const plexRenameWorkflowRun = workflowRun({ id: 'plex-rename-run', workflow_name: 'plex-rename' });
 const plexRenameRunJobs = plexRenameMembers.map((m, i) => run({
@@ -851,15 +853,19 @@ const plexRenameRunJobs = plexRenameMembers.map((m, i) => run({
 }));
 const plexRenameDiscoverOutput = { jobName: 'plex-rename-discover', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', file: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv' } };
 const plexRenamePlanOutput = { jobName: 'plex-rename-plan', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', decision: 'rename', from: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv', to: '/volume1/Share/TV/Mob Psycho 100 (2016) {tvdb-305074}/Season 02/Mob Psycho 100 (2016) - s02e05 - Discord.mkv' } };
-const plexRenameVerifyOutput = { jobName: 'plex-rename-verify', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', eligible: false, reason: 'mount-missing', reasonDetail: 'share /Volumes/Share is not mounted/healthy — routine skip, NOT a missing file' } };
+const plexRenameVerifyOutput = { jobName: 'plex-rename-verify', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', eligible: true, sidecars: [], bytes: 1073741824 } };
+const plexRenameApplyOutput = { jobName: 'plex-rename-apply', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', from: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv', to: '/volume1/Share/TV/Mob Psycho 100 (2016) {tvdb-305074}/Season 02/Mob Psycho 100 (2016) - s02e05 - Discord.mkv', sha256: 'ab12cd34ef56', sidecarCount: 1, markdown: '/abs/data/out/reports/rename-report.md' } };
+const plexRenameConfirmOutput = { jobName: 'plex-rename-confirm', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05 — confirmed', confirmed: true } };
 const plexRenameStageIo = {
   'plex-rename-discover': { inputs: [], outputs: [plexRenameDiscoverOutput], predecessorJobs: [], job: 'plex-rename-discover' },
   'plex-rename-plan': { inputs: [plexRenameDiscoverOutput], outputs: [plexRenamePlanOutput], predecessorJobs: ['plex-rename-discover'], job: 'plex-rename-plan' },
   'plex-rename-verify': { inputs: [plexRenamePlanOutput], outputs: [plexRenameVerifyOutput], predecessorJobs: ['plex-rename-plan'], job: 'plex-rename-verify' },
+  'plex-rename-apply': { inputs: [plexRenameVerifyOutput], outputs: [plexRenameApplyOutput], predecessorJobs: ['plex-rename-verify'], job: 'plex-rename-apply' },
+  'plex-rename-confirm': { inputs: [plexRenameApplyOutput], outputs: [plexRenameConfirmOutput], predecessorJobs: ['plex-rename-apply'], job: 'plex-rename-confirm' },
 };
 const plexRenameStageIoOverall = {
-  inputs: [plexRenameDiscoverOutput], outputs: [plexRenameVerifyOutput],
-  predecessorJobs: ['plex-rename-discover'], outputJobs: ['plex-rename-verify'], job: '__overall__',
+  inputs: [plexRenameDiscoverOutput], outputs: [plexRenameApplyOutput],
+  predecessorJobs: ['plex-rename-discover'], outputJobs: ['plex-rename-apply'], job: '__overall__',
 };
 
 // Map an /api/* pathname (+ optional search params) to a fixture body.

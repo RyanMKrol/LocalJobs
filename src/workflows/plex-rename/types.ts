@@ -139,3 +139,25 @@ export interface VerifyDetail {
   /** Files deliberately left behind in the source dir (report). */
   leftBehind?: string[];
 }
+
+/** The `plex-rename-apply` ledger's per-file detail — once-ever, permanent. */
+export interface ApplyDetail {
+  name: string;
+  from: string; // Plex-side source (as it was)
+  to: string; // Plex-side target (where the file now lives)
+  sha256: string;
+  bytes: number;
+  sidecarCount: number;
+  appliedAt: string; // ISO — confirm's grace window anchors here
+  /** The per-run report markdown (T110 View popover). */
+  markdown?: string;
+}
+
+/** The `plex-rename-confirm` ledger's per-file detail. */
+export interface ConfirmDetail {
+  name: string;
+  confirmed: boolean;
+  reason?: 'pending-rescan' | 'grace-exceeded' | 'ratingkey-gone';
+  reasonDetail?: string;
+  confirmedPath?: string;
+}
