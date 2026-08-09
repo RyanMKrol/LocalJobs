@@ -30,14 +30,23 @@ export async function fetchSections(fetchPlex: PlexFetcher = plexGet): Promise<P
   return (res.MediaContainer.Directory ?? []).filter((s) => s.type === 'movie' || s.type === 'show');
 }
 
+/**
+ * One section listing with `includeGuids=1` — the FULL per-item payload
+ * (Guid[], year, Media[].Part[].file/size/id, numbering) in a single call.
+ * This is deliberately the ONLY per-title data source for movies and the
+ * show-level source for TV: a verified live check against the owner's server
+ * confirmed the listing carries everything the naming engine needs, so
+ * discover never pays a per-item `/library/metadata/<key>` fetch (which once
+ * made the TV walk take hours — ~1 call per EPISODE at the service rate cap).
+ */
 export async function fetchSectionItems(
   sectionKey: string,
   type: string,
   fetchPlex: PlexFetcher = plexGet,
-): Promise<{ ratingKey: string; title: string }[]> {
+): Promise<PlexMetadataItem[]> {
   const plexType = type === 'movie' ? 1 : 2;
   const res = await callService('plex', () =>
-    fetchPlex<PlexListResponse<{ ratingKey: string; title: string }>>(`/library/sections/${sectionKey}/all?type=${plexType}`),
+    fetchPlex<PlexListResponse<PlexMetadataItem>>(`/library/sections/${sectionKey}/all?type=${plexType}&includeGuids=1`),
   );
   return res.MediaContainer.Metadata ?? [];
 }
@@ -50,14 +59,14 @@ export async function fetchItemDetail(
   return res.MediaContainer.Metadata?.[0];
 }
 
-export async function fetchAllLeaves(
-  showRatingKey: string,
-  fetchPlex: PlexFetcher = plexGet,
-): Promise<{ ratingKey: string; title: string; index?: number; parentIndex?: number }[]> {
+/**
+ * All of a show's episode leaves in ONE call — and the leaves carry their full
+ * Media[].Part[] (file/size/id) plus numbering/title/air-date (live-verified),
+ * so discover needs exactly one request per show, never one per episode.
+ */
+export async function fetchAllLeaves(showRatingKey: string, fetchPlex: PlexFetcher = plexGet): Promise<PlexMetadataItem[]> {
   const res = await callService('plex', () =>
-    fetchPlex<PlexListResponse<{ ratingKey: string; title: string; index?: number; parentIndex?: number }>>(
-      `/library/metadata/${showRatingKey}/allLeaves`,
-    ),
+    fetchPlex<PlexListResponse<PlexMetadataItem>>(`/library/metadata/${showRatingKey}/allLeaves`),
   );
   return res.MediaContainer.Metadata ?? [];
 }

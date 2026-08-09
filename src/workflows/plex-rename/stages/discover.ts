@@ -2,7 +2,7 @@ import type { JobContext } from '../../../core/types.js';
 import { extractImdbId, extractTmdbId, extractTvdbId } from '../../../core/plex-client.js';
 import { markWorkItem } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
-import { fetchAllLeaves, fetchItemDetail, fetchSectionItems, fetchSections } from '../lib.js';
+import { fetchAllLeaves, fetchSectionItems, fetchSections } from '../lib.js';
 import { resolveLibraryRoot, type EpisodeRef, type LibraryRoot } from '../naming.js';
 import type { DiscoverDetail, PlexMetadataItem, PlexSection } from '../types.js';
 
@@ -17,7 +17,6 @@ export function fileKey(itemRatingKey: string, partId: number): string {
 export interface PlexFetchOverrides {
   fetchSections?: typeof fetchSections;
   fetchSectionItems?: typeof fetchSectionItems;
-  fetchItemDetail?: typeof fetchItemDetail;
   fetchAllLeaves?: typeof fetchAllLeaves;
 }
 
@@ -47,11 +46,18 @@ export interface WalkResult {
  * `Location` paths — authoritative, no extra env var. Used by both
  * `runDiscover` (records the ledger) and `discoverInputKeys` (the T485
  * live-walk limitable root — never a ledger read-back).
+ *
+ * CALL BUDGET (deliberate, do not regress): 1 sections call + 1 listing per
+ * section (`includeGuids=1` puts Guid/year/Media.Part on every item) + 1
+ * `allLeaves` per show (leaves carry their full Media.Part too, live-verified)
+ * ≈ ~640 requests for the owner's library. The first implementation fetched
+ * `/library/metadata/<key>` PER ITEM — one call per movie and per EPISODE —
+ * which at the plex service's 300/min rate cap turned the TV walk into a
+ * 1–2+ hour crawl. Never reintroduce a per-episode fetch here.
  */
 export async function walkLibraryParts(opts: PlexFetchOverrides = {}, hooks: WalkHooks = {}): Promise<WalkResult> {
   const doFetchSections = opts.fetchSections ?? fetchSections;
   const doFetchSectionItems = opts.fetchSectionItems ?? fetchSectionItems;
-  const doFetchItemDetail = opts.fetchItemDetail ?? fetchItemDetail;
   const doFetchAllLeaves = opts.fetchAllLeaves ?? fetchAllLeaves;
 
   const configuredKeys = new Set([plexRenameConfig.movieSection, plexRenameConfig.tvSection].filter(Boolean));
@@ -78,25 +84,10 @@ export async function walkLibraryParts(opts: PlexFetchOverrides = {}, hooks: Wal
       const it = listing[i];
       try {
         if (section.type === 'movie') {
-          const detail = await doFetchItemDetail(it.ratingKey);
-          if (!detail) {
-            hooks.onItemError?.(it.title, 'could not fetch item detail');
-            continue;
-          }
-          collectMovieParts(detail, roots, entries, () => skippedNoFile++);
+          collectMovieParts(it, roots, entries, () => skippedNoFile++);
         } else {
-          const showDetail = await doFetchItemDetail(it.ratingKey);
-          if (!showDetail) {
-            hooks.onItemError?.(it.title, 'could not fetch item detail');
-            continue;
-          }
           const leaves = await doFetchAllLeaves(it.ratingKey);
-          const leafDetails: PlexMetadataItem[] = [];
-          for (const leaf of leaves) {
-            const epDetail = await doFetchItemDetail(leaf.ratingKey);
-            if (epDetail) leafDetails.push(epDetail);
-          }
-          collectShowParts(showDetail, leafDetails, roots, entries, () => skippedNoFile++);
+          collectShowParts(it, leaves, roots, entries, () => skippedNoFile++);
         }
         hooks.onItemProgress?.(section, i + 1, listing.length);
       } catch (err) {

@@ -70,17 +70,12 @@ function fakes(movieFile = '/volume1/Share/Movies/A.Movie.2016.mkv') {
     },
   ];
 
+  // The new call shape: listings carry the FULL per-item payload (includeGuids=1),
+  // and allLeaves carries each episode's Media/Part — no per-item detail fetches.
   return {
     fetchSections: async () => [MOVIE_SECTION, TV_SECTION],
-    fetchSectionItems: async (_key: string, type: string) =>
-      type === 'movie' ? [{ ratingKey: 'm1', title: 'A Movie' }] : [{ ratingKey: 's1', title: 'A Show' }],
-    fetchAllLeaves: async () =>
-      episodes.map((e) => ({ ratingKey: e.ratingKey, title: e.title, index: e.index, parentIndex: e.parentIndex })),
-    fetchItemDetail: async (ratingKey: string) => {
-      if (ratingKey === 'm1') return movieDetail;
-      if (ratingKey === 's1') return showDetail;
-      return episodes.find((e) => e.ratingKey === ratingKey);
-    },
+    fetchSectionItems: async (_key: string, type: string) => (type === 'movie' ? [movieDetail] : [showDetail]),
+    fetchAllLeaves: async () => episodes,
   };
 }
 
