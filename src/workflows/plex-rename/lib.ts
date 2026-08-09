@@ -1,8 +1,12 @@
 // Shared helpers for the plex-rename workflow: LIVE (never-cached) Plex reads,
-// Plex-side ↔ local-side path mapping, the injectable filesystem seam, and the
-// mount health check. No stage calls node:fs or plexGet directly — everything
-// routes through these seams so tests never touch a live Plex or the real disk.
-import { promises as fsp } from 'node:fs';
+// Plex-side ↔ local-side path mapping, the injectable filesystem seams (read
+// AND write), and the mount health check. No stage calls node:fs or plexGet
+// directly — everything routes through these seams so tests never touch a live
+// Plex or the real disk.
+import { createHash } from 'node:crypto';
+import { createReadStream, createWriteStream, promises as fsp } from 'node:fs';
+import { dirname } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { callService } from '../../core/services.js';
 import { plexGet } from '../../core/plex-client.js';
 import { pathKey } from './naming.js';
@@ -148,6 +152,107 @@ export const realReadFs: ReadFsSeam = {
         return await fsp.readFile(path, 'utf8');
       } catch (err) {
         if (isEnoent(err)) return null;
+        throw err;
+      }
+    });
+  },
+};
+
+/**
+ * The WRITE-side filesystem seam — used only by the mutating apply stage and
+ * the manual undo script, never by a read stage. Same ENOENT-is-data /
+ * everything-else-throws contract as ReadFsSeam. Every real call is metered
+ * via `callService('fs', ...)`.
+ *
+ * `copyStreamHashed` is the heart of the copy-verify-delete move procedure:
+ * it streams src → dest while SHA-256-hashing the READ stream (so the hash is
+ * of the SOURCE bytes actually read), fsyncs the destination before resolving,
+ * and returns the hash + byte count. `hashFile` re-reads a file from disk to
+ * hash what was actually WRITTEN — the verify step compares the two.
+ */
+export interface WriteFsSeam extends ReadFsSeam {
+  copyStreamHashed(src: string, dest: string): Promise<{ sha256: string; bytes: number }>;
+  hashFile(path: string): Promise<{ sha256: string; bytes: number } | null>;
+  rename(from: string, to: string): Promise<void>;
+  unlink(path: string): Promise<void>;
+  mkdirp(path: string): Promise<void>;
+  writeFile(path: string, content: string): Promise<void>;
+  /** rmdir ONLY when a fresh readdir shows empty — structurally incapable of deleting files. */
+  rmdirIfEmpty(path: string): Promise<'removed' | 'not-empty' | 'missing'>;
+}
+
+export const realWriteFs: WriteFsSeam = {
+  ...realReadFs,
+  async copyStreamHashed(src, dest) {
+    return callService('fs', async () => {
+      const hash = createHash('sha256');
+      let bytes = 0;
+      const read = createReadStream(src);
+      read.on('data', (chunk: string | Buffer) => {
+        const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+        hash.update(buf);
+        bytes += buf.length;
+      });
+      const write = createWriteStream(dest, { flags: 'wx' }); // 'wx': never overwrite an existing partial
+      await pipeline(read, write);
+      const fh = await fsp.open(dest, 'r');
+      try {
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
+      return { sha256: hash.digest('hex'), bytes };
+    });
+  },
+  async hashFile(path) {
+    return callService('fs', async () => {
+      try {
+        const hash = createHash('sha256');
+        let bytes = 0;
+        for await (const chunk of createReadStream(path)) {
+          const buf = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer);
+          hash.update(buf);
+          bytes += buf.length;
+        }
+        return { sha256: hash.digest('hex'), bytes };
+      } catch (err) {
+        if (isEnoent(err)) return null;
+        throw err;
+      }
+    });
+  },
+  async rename(from, to) {
+    return callService('fs', () => fsp.rename(from, to));
+  },
+  async unlink(path) {
+    return callService('fs', () => fsp.unlink(path));
+  },
+  async mkdirp(path) {
+    await callService('fs', () => fsp.mkdir(path, { recursive: true }));
+  },
+  async writeFile(path, content) {
+    return callService('fs', async () => {
+      await fsp.mkdir(dirname(path), { recursive: true });
+      await fsp.writeFile(path, content, 'utf8');
+    });
+  },
+  async rmdirIfEmpty(path) {
+    return callService('fs', async () => {
+      let entries: string[];
+      try {
+        entries = await fsp.readdir(path);
+      } catch (err) {
+        if (isEnoent(err)) return 'missing' as const;
+        throw err;
+      }
+      if (entries.length > 0) return 'not-empty' as const;
+      try {
+        await fsp.rmdir(path); // plain rmdir: fails on a race-filled dir rather than deleting anything
+        return 'removed' as const;
+      } catch (err) {
+        if (typeof err === 'object' && err !== null && (err as NodeJS.ErrnoException).code === 'ENOTEMPTY') {
+          return 'not-empty' as const;
+        }
         throw err;
       }
     });
