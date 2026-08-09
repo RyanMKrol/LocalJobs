@@ -868,6 +868,21 @@ const plexRenameStageIoOverall = {
   predecessorJobs: ['plex-rename-discover'], outputJobs: ['plex-rename-apply'], job: '__overall__',
 };
 
+// mount-keeper — single stage: mount-keeper-check (hourly NAS SMB share remounter).
+const mountKeeperMembers = [{ job_name: 'mount-keeper-check', depends_on: [] }];
+const mountKeeperWorkflowRun = workflowRun({ id: 'mount-keeper-run', workflow_name: 'mount-keeper' });
+const mountKeeperRunJobs = mountKeeperMembers.map((m, i) => run({
+  id: `mount-keeper-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'mount-keeper-run',
+}));
+const mountKeeperHealthyOutput = { jobName: 'mount-keeper-check', itemKey: '/Volumes/Share A', status: 'success', detail: { name: 'Share A', mountPoint: '/Volumes/Share A', action: 'already-mounted', stateBefore: 'healthy' } };
+const mountKeeperRemountOutput = { jobName: 'mount-keeper-check', itemKey: '/Volumes/Share B', status: 'success', detail: { name: 'Share B', mountPoint: '/Volumes/Share B', action: 'remounted', stateBefore: 'absent' } };
+const mountKeeperStageIo = {
+  'mount-keeper-check': { inputs: [], outputs: [mountKeeperHealthyOutput, mountKeeperRemountOutput], predecessorJobs: [], job: 'mount-keeper-check' },
+};
+const mountKeeperStageIoOverall = {
+  inputs: [], outputs: [mountKeeperHealthyOutput, mountKeeperRemountOutput], predecessorJobs: [], outputJobs: ['mount-keeper-check'], job: '__overall__',
+};
+
 // Map an /api/* pathname (+ optional search params) to a fixture body.
 export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
@@ -1009,6 +1024,12 @@ export function fixtureFor(pathname, searchParams) {
     return plexRenameStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/plex-rename-run') return { run: plexRenameWorkflowRun, jobs: plexRenameRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/mount-keeper-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return mountKeeperStageIoOverall;
+    const job = searchParams?.get('job');
+    return mountKeeperStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/mount-keeper-run') return { run: mountKeeperWorkflowRun, jobs: mountKeeperRunJobs, logs, gates: [] };
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     if (searchParams?.get('job') === 'plex-space-saver-scan') return plexSpaceSaverOutputFixture;
@@ -1086,6 +1107,9 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/plex-rename') {
     return { workflow: workflow({ name: 'plex-rename', category: 'regular-maintenance', jobs: plexRenameMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/mount-keeper') {
+    return { workflow: workflow({ name: 'mount-keeper', category: 'regular-maintenance', schedule: '45 * * * *', jobs: mountKeeperMembers, gates: [] }) };
   }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
@@ -1230,6 +1254,7 @@ export const PAGES = [
   { name: 'workflow-run-vault-sync',         path: '/workflow-runs/vault-sync-run',         waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-plex-library-guard', path: '/workflow-runs/plex-library-guard-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-plex-rename',        path: '/workflow-runs/plex-rename-run',        waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-mount-keeper',       path: '/workflow-runs/mount-keeper-run',       waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },

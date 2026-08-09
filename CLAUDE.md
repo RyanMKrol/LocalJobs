@@ -108,7 +108,7 @@ work** that doesn't fit serverless or a web request.
 
 ### Shipped example workflows — one folder, one `CLAUDE.md`, each
 
-The repo ships 20 worked-example workflows under `src/workflows/`. Each workflow's full
+The repo ships 21 worked-example workflows under `src/workflows/`. Each workflow's full
 current-state documentation — DAG stages, file paths, ledger conventions, credentials, schedule,
 and any non-obvious invariant worth protecting — lives in its OWN `CLAUDE.md` inside its folder
 (auto-loaded by Claude Code when working in that directory, same mechanism as this file and
@@ -136,6 +136,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **plex-profiles** | `src/workflows/plex-profiles/` | Weekly: writes one markdown profile per Plex title (movie + TV show) — summary, cast, per-source ratings, technical detail, file size — sourced purely from the Plex API, no LLM (phase 2, an optional Claude-narrated layer, is a deferred future task) |
 | **overrides-audit** | `src/workflows/overrides-audit/` | Weekly, report-only audit of dashboard `_overridden` flags (service limits, workflow schedule/concurrency/notify, job timeout) that have been live 2+ weeks or are unknown-age — a reminder to fold a stable override into its manifest/service-definition code default; never auto-patches anything |
 | **plex-rename** | `src/workflows/plex-rename/` | Daily canonical Plex library renamer: plans (report-only until `PLEX_RENAME_APPLY_ENABLED=1`) exact from→to renames to canonical Plex conventions (`Title (Year) {tmdb-N}`, `Show (Year) {tvdb-N}/Season NN`, `.plexmatch` per show) using Plex's own matches as truth, so the library re-matches deterministically if the DB is ever lost |
+| **mount-keeper** | `src/workflows/mount-keeper/` | Hourly guard that keeps the configured NAS SMB shares mounted at `/Volumes/<name>` (health check, stale-empty-mountpoint rmdir, Keychain-authenticated `mount volume` remount) — the availability guarantee plex-rename's daily run depends on |
 | **vault-sync** | `src/workflows/vault-sync/` | Daily mirror of the places/perfumes/plex-profiles/listening-digest/workouts-sync markdown output into the owner's second-brain vault folder (`~/SecondBrain`, `SECOND_BRAIN_VAULT_DIR` to override) — copy-only, per-source folders, prettified filenames, never deletes |
 
 Nine workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
@@ -394,7 +395,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/workflows/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `missing-movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-library-guard/`, `plex-language-fix/`, `plex-profiles/`, `plex-rename/`, `overrides-audit/`, and `vault-sync/` subfolder workflows as
+> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `missing-movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-library-guard/`, `plex-language-fix/`, `plex-profiles/`, `plex-rename/`, `mount-keeper/`, `overrides-audit/`, and `vault-sync/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.

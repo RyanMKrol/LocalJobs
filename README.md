@@ -354,6 +354,16 @@ summaries below are a quick-reference index, not the source of truth.
   30-files/day quota, and an undo script) ships disabled behind
   PLEX_RENAME_APPLY_ENABLED until the plans have been reviewed. Runs daily
   (05:00).
+- **mount-keeper** — Hourly (at :45) guard that keeps the configured NAS SMB
+  shares mounted at /Volumes/<name>, since macOS mounts network shares lazily
+  and drops them on reboot. A share that exists and is non-empty is left
+  alone; a stale empty mountpoint directory is removed first (plain rmdir,
+  incapable of deleting files) so the remount can't silently divert to
+  "<name> - 1"; missing shares are mounted via osascript's "mount volume",
+  which authenticates from the login Keychain like Finder does, so no
+  password lives in this repo. This is the availability guarantee
+  plex-rename's daily 05:00 run depends on. Fails loud (and notifies) when a
+  share can't be brought up. Configured via MOUNT_KEEPER_SHARES (env-only).
 - **vault-sync** — Daily mirror of the places, perfumes, plex-profiles,
   listening-digest, and workouts-sync markdown output into a second-brain vault
   folder on disk (`~/SecondBrain` by default, `SECOND_BRAIN_VAULT_DIR` to
