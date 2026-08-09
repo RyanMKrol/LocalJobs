@@ -787,6 +787,39 @@ const vaultSyncStageIoOverall = {
   inputs: [], outputs: [vaultSyncOutput], predecessorJobs: [], outputJobs: ['vault-sync-export'], job: '__overall__',
 };
 
+// plex-library-guard — single stage: plex-library-guard-scan (daily per-file snapshot + deletion alerts).
+const plexLibraryGuardMembers = [{ job_name: 'plex-library-guard-scan', depends_on: [] }];
+const plexLibraryGuardWorkflowRun = workflowRun({ id: 'plex-library-guard-run', workflow_name: 'plex-library-guard' });
+const plexLibraryGuardRunJobs = plexLibraryGuardMembers.map((m, i) => run({
+  id: `plex-library-guard-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-library-guard-run',
+}));
+const plexLibraryGuardOutput = { jobName: 'plex-library-guard-scan', itemKey: '2026-06-15', status: 'success', detail: { name: 'Library guard — 2026-06-15 — ALERT: 2 missing, -6.0 GB', path: '/abs/data/out/guard-report.json', format: 'json' } };
+const plexLibraryGuardStageIo = {
+  'plex-library-guard-scan': { inputs: [], outputs: [plexLibraryGuardOutput], predecessorJobs: [], job: 'plex-library-guard-scan' },
+};
+const plexLibraryGuardStageIoOverall = {
+  inputs: [], outputs: [plexLibraryGuardOutput], predecessorJobs: [], outputJobs: ['plex-library-guard-scan'], job: '__overall__',
+};
+// The GET .../output(-items) response body for `plexLibraryGuardOutput` — a real
+// GuardReportFile JSON string (an alerted run with missing files) so the generic
+// json OutputRenderer has realistic content to paint in the View popover.
+const plexLibraryGuardOutputFixture = {
+  found: true, job: 'plex-library-guard-scan', key: '2026-06-15', format: 'json',
+  file: '/abs/data/out/guard-report.json', bytes: 640, truncated: false,
+  content: JSON.stringify({
+    generatedAt: NOW, firstRun: false,
+    totalBytes: 19_216_842_162_176, totalHuman: '17.5 TB', fileCount: 14201,
+    prev: { generatedAt: '2026-06-14T10:30:00.000Z', totalBytes: 19_223_284_596_736, fileCount: 14203 },
+    dropBytes: 6_442_434_560, dropExceeds: true, thresholdGb: 0,
+    missingCount: 2,
+    missing: [
+      { key: '1001::501', ratingKey: '1001', type: 'movie', title: 'A Deleted Movie (2018)', file: '/movies/a-deleted-movie.mkv', bytes: 5_368_709_120 },
+      { key: '2002::701', ratingKey: '2002', type: 'episode', title: 'Some Show — S02E04 — Gone', file: '/tv/some-show-s02e04.mkv', bytes: 1_073_725_440 },
+    ],
+    addedCount: 0, suspectPartialRead: false, alerted: true,
+  }),
+};
+
 // Map an /api/* pathname (+ optional search params) to a fixture body.
 export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
@@ -916,9 +949,16 @@ export function fixtureFor(pathname, searchParams) {
     return vaultSyncStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/vault-sync-run') return { run: vaultSyncWorkflowRun, jobs: vaultSyncRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/plex-library-guard-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return plexLibraryGuardStageIoOverall;
+    const job = searchParams?.get('job');
+    return plexLibraryGuardStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/plex-library-guard-run') return { run: plexLibraryGuardWorkflowRun, jobs: plexLibraryGuardRunJobs, logs, gates: [] };
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     if (searchParams?.get('job') === 'plex-space-saver-scan') return plexSpaceSaverOutputFixture;
+    if (searchParams?.get('job') === 'plex-library-guard-scan') return plexLibraryGuardOutputFixture;
     return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
   }
   if (pathname.startsWith('/api/workflow-runs/')) {
@@ -985,6 +1025,9 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/workflows/vault-sync') {
     return { workflow: workflow({ name: 'vault-sync', category: 'second-brain', jobs: vaultSyncMembers, gates: [] }) };
   }
+  if (pathname === '/api/workflows/plex-library-guard') {
+    return { workflow: workflow({ name: 'plex-library-guard', category: 'regular-maintenance', jobs: plexLibraryGuardMembers, gates: [] }) };
+  }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
       return {
@@ -1009,6 +1052,16 @@ export function fixtureFor(pathname, searchParams) {
         terminalJobs: ['plex-space-saver-scan'],
       };
     }
+    // plex-library-guard's daily ledger row, so the workflow-definition Output
+    // section has a real row to click "View" on (exercises the json renderer).
+    if (pathname === '/api/workflows/plex-library-guard/output-items') {
+      return {
+        items: [
+          { jobName: 'plex-library-guard-scan', itemKey: '2026-06-15', name: 'Library guard — 2026-06-15 — ALERT: 2 missing, -6.0 GB', hasMarkdown: true, viewable: true, updatedAt: NOW },
+        ],
+        terminalJobs: ['plex-library-guard-scan'],
+      };
+    }
     return { items: [], terminalJobs: [] };
   }
   // T282: GET /api/workflows/:name/output?job=&key= — the unified Output section's
@@ -1017,6 +1070,7 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname.endsWith('/output') && pathname.startsWith('/api/workflows/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     if (pathname === '/api/workflows/plex-space-saver/output') return plexSpaceSaverOutputFixture;
+    if (pathname === '/api/workflows/plex-library-guard/output') return plexLibraryGuardOutputFixture;
     return { found: true, job: 'places-enrich-with-llm', key: 'place:ChIJ' + LONG, format: 'markdown', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
   }
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
@@ -1112,6 +1166,7 @@ export const PAGES = [
   { name: 'workflow-run-tv-recommendations', path: '/workflow-runs/tv-recommendations-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-perfumes',           path: '/workflow-runs/perfumes-run',           waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-vault-sync',         path: '/workflow-runs/vault-sync-run',         waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-plex-library-guard', path: '/workflow-runs/plex-library-guard-run', waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },

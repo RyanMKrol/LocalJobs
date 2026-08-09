@@ -305,6 +305,17 @@ summaries below are a quick-reference index, not the source of truth.
   movie, one row per TV show (summing every episode across every season).
   Never flags or suggests deletions — a report only. Idempotent per ISO week via
   the work_items ledger. Single stage, runs weekly (Sundays 06:00).
+- **plex-library-guard** — Daily safeguard against silent Plex library data
+  loss (a safety net while file-moving workflows are built). Snapshots every
+  media file (one entry per Part: title, on-disk path, size) from just 2 live
+  section-listing API calls (explicitly opting out of the Plex response cache),
+  diffs against the previous run's snapshot, and sends ONE urgent push if the
+  total size decreased beyond `PLEX_GUARD_DROP_GB` (default 0: any decrease) or
+  any previously-seen file went missing, naming up to 20 missing titles.
+  The baseline snapshot is only overwritten after the alert path settles, so a
+  failed push (or an empty/suspect partial Plex read) never loses the last-good
+  inventory: the run fails and the retry re-diffs. Supersedes plex-space-saver's
+  old weekly shrink alert. Single stage, runs daily at 10:30.
 - **plex-profiles** — Weekly, writes one markdown profile per Plex title (movie
   AND TV show) to `data/out/movies/` / `data/out/shows/`, sourced purely from
   the Plex API — no LLM. Each profile covers a summary, cast/crew, per-source
