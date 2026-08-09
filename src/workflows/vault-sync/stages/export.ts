@@ -58,7 +58,7 @@ interface Candidate {
 export interface VaultExportOpts {
   /** Override the vault directory (tests). Defaults to config. */
   vaultDir?: string;
-  /** Override the source job list (tests). Defaults to all five. */
+  /** Override the source job list (tests). Defaults to every SOURCE_JOBS entry. */
   sourceJobs?: readonly SourceJob[];
 }
 
@@ -69,7 +69,7 @@ export interface VaultExportResult {
 }
 
 /**
- * Mirror the five source workflows' markdown output into the vault folder.
+ * Mirror the nine source jobs' markdown output into the vault folder.
  * Copy-only, overwrite-on-change, never deletes. Re-copy decisions come from
  * the exporter's own work_items ledger (key `<sourceJob>::<sourceItemKey>`):
  * an item is synced when it has no exporter row yet, when the source row's

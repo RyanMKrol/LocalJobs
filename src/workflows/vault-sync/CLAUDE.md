@@ -1,14 +1,14 @@
 # CLAUDE.md — src/workflows/vault-sync/
 
-A single-stage mirror that copies the markdown output of five source workflows into the
-owner's second-brain vault folder on disk. The vault is the owner's browsable "second
-brain"; this workflow is the only thing that writes into it.
+A single-stage mirror that copies the markdown output of six source workflows (nine source
+jobs) into the owner's second-brain vault folder on disk. The vault is the owner's browsable
+"second brain"; this workflow is the only thing that writes into it.
 
 ## What it does
 
 `vault-sync-export` (the only stage — no DAG edge, no gate needed, mirroring the
 `plex-profiles`/`overrides-audit` single-stage precedent) enumerates the `success`
-`work_items` rows of the five source jobs via `listSuccessWorkItems` and copies each row's
+`work_items` rows of the nine source jobs via `listSuccessWorkItems` and copies each row's
 `detail.markdown` file into the vault:
 
 | Source job | Workflow | Vault folder | Filename rule |
@@ -18,6 +18,10 @@ brain"; this workflow is the only thing that writes into it.
 | `plex-profiles-build` | plex-profiles | `Plex/Movies/` or `Plex/TV/` (key prefix `movie:`/`show:`) | `<detail.name> (<year>).md` — year read from the source file's frontmatter |
 | `lastfm-digest` | listening-digest | `Listening/` | `July 2026.md` / `July 2026 (Trailing 3 Months).md` from the `YYYY-MM[-3month]` key |
 | `workouts-progress` | workouts-sync | `Workouts/` | `July 2026.md` from the `YYYY-MM` key |
+| `media-reviews-books` | media-reviews | `Reviews/Books/` | `<detail.name>.md` — the jobs already compute `Title (Author)` |
+| `media-reviews-movies` | media-reviews | `Reviews/Movies/` | `<detail.name>.md` — `Title (year)`, or bare `Title` when the site has no TMDB date |
+| `media-reviews-tv` | media-reviews | `Reviews/TV/` | `<detail.name>.md` — `Title (year)`, same rule as movies |
+| `media-reviews-albums` | media-reviews | `Reviews/Albums/` | `<detail.name>.md` — `Title (Artist)` |
 
 Names are sanitized (`sanitizeFilename` in `lib.ts` — strips `\/:*?"<>|` + control chars,
 caps length, falls back to the item key). A collision between two different items gets a
@@ -60,7 +64,8 @@ dataDir gets). The stage also takes an injectable `vaultDir` opt for tests.
 
 ## Limits / schedule
 
-Daily 07:30 (`30 7 * * *`), after the nightly places (03:00) / perfumes (02:00) runs. No
+Daily 07:30 (`30 7 * * *`), after the nightly perfumes (02:00) / places (03:00) /
+media-reviews (04:00) runs. No
 `inputKeys()` → not limitable: enumeration is a DB read of other jobs' ledgers, not a live
 external source, so there is no `inputKeysService` to name (T583) and a run-limit has
 nothing meaningful to bound. No paid calls, no services — pure local file copies.

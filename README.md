@@ -375,14 +375,15 @@ summaries below are a quick-reference index, not the source of truth.
   idempotent so a steady-state run writes nothing. Runs daily (04:00), ahead
   of vault-sync's morning mirror.
 - **vault-sync** — Daily mirror of the places, perfumes, plex-profiles,
-  listening-digest, and workouts-sync markdown output into a second-brain vault
-  folder on disk (`~/SecondBrain` by default, `SECOND_BRAIN_VAULT_DIR` to
-  override), one folder per source (`Places/`, `Perfumes/`, `Plex/Movies/`,
-  `Plex/TV/`, `Listening/`, `Workouts/`) with human-friendly filenames like
-  `10 Cloverfield Lane (2016).md`. Copy-only: source files stay in each
-  workflow's `data/out`, a vault copy is only rewritten when its source item
-  changes (or the copy was deleted by hand), and nothing is ever deleted from
-  the vault. Single stage, runs daily (07:30).
+  listening-digest, workouts-sync, and media-reviews markdown output into a
+  second-brain vault folder on disk (`~/SecondBrain` by default,
+  `SECOND_BRAIN_VAULT_DIR` to override), one folder per source (`Places/`,
+  `Perfumes/`, `Plex/Movies/`, `Plex/TV/`, `Listening/`, `Workouts/`,
+  `Reviews/Books/`, `Reviews/Movies/`, `Reviews/TV/`, `Reviews/Albums/`) with
+  human-friendly filenames like `10 Cloverfield Lane (2016).md`. Copy-only:
+  source files stay in each workflow's `data/out`, a vault copy is only
+  rewritten when its source item changes (or the copy was deleted by hand),
+  and nothing is ever deleted from the vault. Single stage, runs daily (07:30).
 
 ## Dashboard pages
 

@@ -1,13 +1,17 @@
 // Pure naming/mapping helpers for the vault-sync exporter. No I/O — the stage
 // passes file content in where needed, so everything here is unit-testable.
 
-/** The five source jobs whose markdown output is mirrored into the vault. */
+/** The source jobs whose markdown output is mirrored into the vault. */
 export const SOURCE_JOBS = [
   'enrich-with-llm', // places
   'perfumes-build',
   'plex-profiles-build',
   'lastfm-digest', // listening-digest
   'workouts-progress', // workouts-sync
+  'media-reviews-books',
+  'media-reviews-movies',
+  'media-reviews-tv',
+  'media-reviews-albums',
 ] as const;
 
 export type SourceJob = (typeof SOURCE_JOBS)[number];
@@ -114,5 +118,16 @@ export function vaultTargetFor(
       return { folder: 'Listening', baseName: sanitizeFilename(prettyMonth(itemKey), itemKey) };
     case 'workouts-progress':
       return { folder: 'Workouts', baseName: sanitizeFilename(prettyMonth(itemKey), itemKey) };
+    // media-reviews: detail.name is already the full display name the jobs
+    // compute ("Title (Author)" / "Title (Artist)" / "Title (year)"), so the
+    // vault name needs no key parsing or file reading.
+    case 'media-reviews-books':
+      return { folder: 'Reviews/Books', baseName: sanitizeFilename(name, itemKey) };
+    case 'media-reviews-movies':
+      return { folder: 'Reviews/Movies', baseName: sanitizeFilename(name, itemKey) };
+    case 'media-reviews-tv':
+      return { folder: 'Reviews/TV', baseName: sanitizeFilename(name, itemKey) };
+    case 'media-reviews-albums':
+      return { folder: 'Reviews/Albums', baseName: sanitizeFilename(name, itemKey) };
   }
 }

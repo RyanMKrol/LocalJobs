@@ -64,4 +64,24 @@ assert.deepEqual(vaultTargetFor('workouts-progress', '2026-07', 'Workouts progre
   folder: 'Workouts',
   baseName: 'July 2026',
 });
+assert.deepEqual(vaultTargetFor('media-reviews-books', 'book-0001-aaaa', 'Norwegian Wood (Haruki Murakami)', noRead), {
+  folder: 'Reviews/Books',
+  baseName: 'Norwegian Wood (Haruki Murakami)',
+});
+assert.deepEqual(vaultTargetFor('media-reviews-movies', 'movie-0001-bbbb', 'Arrival (2016)', noRead), {
+  folder: 'Reviews/Movies',
+  baseName: 'Arrival (2016)',
+});
+assert.deepEqual(vaultTargetFor('media-reviews-tv', 'tv-0001-cccc', 'Mr. Robot (2015)', noRead), {
+  folder: 'Reviews/TV',
+  baseName: 'Mr. Robot (2015)',
+});
+assert.deepEqual(vaultTargetFor('media-reviews-albums', 'album-0001-dddd', 'In Rainbows (Radiohead)', noRead), {
+  folder: 'Reviews/Albums',
+  baseName: 'In Rainbows (Radiohead)',
+});
+assert.deepEqual(vaultTargetFor('media-reviews-books', 'book-0002-eeee', null, noRead), {
+  folder: 'Reviews/Books',
+  baseName: 'book-0002-eeee',
+}, 'a review row with no detail.name falls back to the item key');
 console.log('  ✓ vaultTargetFor maps each source to its folder + prettified name');

@@ -15,7 +15,10 @@ const ctx: JobContext = { log() {}, progress() {}, selectedRoots: () => null, ro
 const srcDir = mkdtempSync(join(tmpdir(), 'vault-sync-src-'));
 const vaultDir = mkdtempSync(join(tmpdir(), 'vault-sync-vault-'));
 
-const SOURCES = ['enrich-with-llm', 'perfumes-build', 'plex-profiles-build', 'lastfm-digest', 'workouts-progress'] as const;
+const SOURCES = [
+  'enrich-with-llm', 'perfumes-build', 'plex-profiles-build', 'lastfm-digest', 'workouts-progress',
+  'media-reviews-books', 'media-reviews-movies', 'media-reviews-tv', 'media-reviews-albums',
+] as const;
 for (const name of SOURCES) syncJob({ name, run: async () => {} });
 syncJob({ name: JOB_NAME, run: async () => {} });
 
@@ -66,6 +69,25 @@ markWorkItem('workouts-progress', '2026-07', 'success', {
   detail: { name: 'Workouts progress — 2026-07', markdown: workoutsJuly }, workflowRunId: null,
 });
 
+// media-reviews: one item per category — detail.name is already the full
+// display name, so the vault name is just its sanitized form under Reviews/.
+const bookReview = seedFile('norwegian-wood.md', '---\ntype: book-review\n---\n\n## Review\n\nQuiet and sad.');
+markWorkItem('media-reviews-books', 'book-0001-aaaa', 'success', {
+  detail: { name: 'Norwegian Wood (Haruki Murakami)', markdown: bookReview, marker: 'aa11' }, workflowRunId: null,
+});
+const movieReview = seedFile('arrival.md', '---\ntype: movie-review\n---\n\n## Review\n\nStunning.');
+markWorkItem('media-reviews-movies', 'movie-0001-bbbb', 'success', {
+  detail: { name: 'Arrival (2016)', markdown: movieReview, marker: 'bb22' }, workflowRunId: null,
+});
+const tvReview = seedFile('mr-robot-review.md', '---\ntype: tv-review\n---\n\n## Review\n\nTense.');
+markWorkItem('media-reviews-tv', 'tv-0001-cccc', 'success', {
+  detail: { name: 'Mr. Robot (2015)', markdown: tvReview, marker: 'cc33' }, workflowRunId: null,
+});
+const albumReview = seedFile('in-rainbows.md', '---\ntype: album-review\n---\n\n## Highlights\n\nNude; Reckoner.');
+markWorkItem('media-reviews-albums', 'album-0001-dddd', 'success', {
+  detail: { name: 'In Rainbows (Radiohead)', markdown: albumReview, marker: 'dd44' }, workflowRunId: null,
+});
+
 // A legacy closed-out row from the old single-slot layout: exporter row exists
 // with a note and no vaultPath — it must stay untouched forever.
 markWorkItem('workouts-progress', '2026-05', 'success', {
@@ -81,7 +103,7 @@ markWorkItem(JOB_NAME, exportKeyFor('workouts-progress', '2026-05'), 'success', 
 
 // ── Run 1: initial full sync ──
 const run1 = await runVaultExport(ctx, { vaultDir });
-assert.equal(run1.synced, 7, 'seven items copied (both workout months)');
+assert.equal(run1.synced, 11, 'eleven items copied (both workout months + the four reviews)');
 assert.equal(run1.failed, 0);
 
 assert.equal(readFileSync(join(vaultDir, 'Places/Akoko.md'), 'utf8'), '# Akoko\noriginal');
@@ -92,16 +114,20 @@ assert.ok(existsSync(join(vaultDir, 'Listening/July 2026.md')));
 assert.equal(readFileSync(join(vaultDir, 'Workouts/June 2026.md'), 'utf8'), '# June workout report');
 assert.equal(readFileSync(join(vaultDir, 'Workouts/July 2026.md'), 'utf8'), '# July workout report');
 assert.ok(!existsSync(join(vaultDir, 'Workouts/May 2026.md')), 'legacy closed-out month never written');
+assert.equal(readFileSync(join(vaultDir, 'Reviews/Books/Norwegian Wood (Haruki Murakami).md'), 'utf8'), '---\ntype: book-review\n---\n\n## Review\n\nQuiet and sad.');
+assert.ok(existsSync(join(vaultDir, 'Reviews/Movies/Arrival (2016).md')));
+assert.ok(existsSync(join(vaultDir, 'Reviews/TV/Mr. Robot (2015).md')));
+assert.ok(existsSync(join(vaultDir, 'Reviews/Albums/In Rainbows (Radiohead).md')));
 
 const mayRow = getWorkItem(JOB_NAME, exportKeyFor('workouts-progress', '2026-05'));
 assert.equal(mayRow?.status, 'success');
 assert.match(JSON.parse(mayRow!.detail!).note, /unrecoverable/, 'legacy closed-out row untouched');
-console.log('  ✓ initial sync copies all five sources with prettified names, leaving the legacy closed-out month alone');
+console.log('  ✓ initial sync copies every source with prettified names, leaving the legacy closed-out month alone');
 
 // ── Run 2: nothing changed → nothing written ──
 const run2 = await runVaultExport(ctx, { vaultDir });
 assert.equal(run2.synced, 0);
-assert.equal(run2.unchanged, 8, 'seven synced items + the legacy closed-out May row all unchanged');
+assert.equal(run2.unchanged, 12, 'eleven synced items + the legacy closed-out May row all unchanged');
 console.log('  ✓ steady-state re-run writes nothing');
 
 // ── Run 3: source updated (marker moved) → re-copied ──
