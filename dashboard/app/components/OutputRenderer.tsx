@@ -4,7 +4,7 @@
 // `tsx --test` run (classic JSX transform, needs `React` in scope) — Next's
 // own build uses the automatic runtime and doesn't need it, but keeping the
 // import is harmless there.
-import React, { type ReactElement } from 'react';
+import React, { useState, type ReactElement } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { WorkflowRunOutput } from '../lib/api';
@@ -174,6 +174,90 @@ function SizeTableOutputBody({ content, truncated }: { content: string; truncate
   );
 }
 
+/** Minimal shape of a plex-library-guard `LibrarySnapshotFile` entry (see
+ *  src/workflows/plex-library-guard/types.ts) — only the fields the list needs. */
+interface SnapshotEntry {
+  key: string;
+  title: string;
+  file: string | null;
+  bytes: number;
+}
+interface SnapshotFile {
+  generatedAt?: string;
+  totalHuman?: string;
+  fileCount?: number;
+  files: SnapshotEntry[];
+}
+
+/** Human-readable byte count (binary units, matching the guard's own formatBytes). */
+function humanBytes(bytes: number): string {
+  if (!(bytes > 0)) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** exp).toFixed(exp === 0 ? 0 : 1)} ${units[exp]}`;
+}
+
+/** At most this many rows are painted at once — filter to narrow further. */
+const SNAPSHOT_ROW_CAP = 300;
+
+/**
+ * Renders plex-library-guard's full per-file baseline inventory
+ * (`library-snapshot.json`, the 'library-snapshot' form) as a SEARCHABLE file
+ * list: a summary header, a filter box matching title + path, and at most
+ * `SNAPSHOT_ROW_CAP` rows painted at once (a 27k-row DOM would crawl). Falls
+ * back to `RawOutputBody` on invalid/unexpected JSON so it never throws or
+ * renders blank.
+ */
+function LibrarySnapshotOutputBody({ content, truncated }: { content: string; truncated?: boolean }) {
+  const [query, setQuery] = useState('');
+  let snap: SnapshotFile | null = null;
+  try {
+    const parsed = JSON.parse(content) as SnapshotFile;
+    if (Array.isArray(parsed.files)) snap = parsed;
+  } catch {
+    // Not valid JSON (or truncated mid-stream) — fall through to the raw fallback.
+  }
+  if (!snap) return <RawOutputBody content={content} truncated={truncated} />;
+
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? snap.files.filter((f) => f.title.toLowerCase().includes(q) || (f.file ?? '').toLowerCase().includes(q))
+    : snap.files;
+  const shown = matches.slice(0, SNAPSHOT_ROW_CAP);
+
+  return (
+    <div className="snapshot-view">
+      <p className="snapshot-summary">
+        {(snap.fileCount ?? snap.files.length).toLocaleString()} files · {snap.totalHuman ?? ''}
+        {snap.generatedAt ? ` · snapshotted ${snap.generatedAt}` : ''}
+      </p>
+      <input
+        type="search"
+        className="snapshot-search"
+        placeholder="Filter by title or file path…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      <p className="muted snapshot-count">
+        {matches.length === shown.length
+          ? `${matches.length.toLocaleString()} file(s)${q ? ' matching' : ''}`
+          : `showing the first ${shown.length.toLocaleString()} of ${matches.length.toLocaleString()} matching file(s) — narrow the filter to see the rest`}
+      </p>
+      <ul className="snapshot-list">
+        {shown.map((f) => (
+          <li key={f.key} className="snapshot-row">
+            <div className="snapshot-row-head">
+              <span className="snapshot-row-title">{f.title}</span>
+              <span className="snapshot-row-size">{humanBytes(f.bytes)}</span>
+            </div>
+            {f.file && <div className="snapshot-row-path">{f.file}</div>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /**
  * Renderer dispatch keyed by an output item's declared form (`WorkflowRunOutput.format`,
  * T262). Add a new form's renderer here — the extension point this refactor exists for.
@@ -184,6 +268,7 @@ const OUTPUT_RENDERERS: Record<string, (props: { content: string; truncated?: bo
   json: JsonOutputBody,
   text: RawOutputBody,
   'size-table': SizeTableOutputBody,
+  'library-snapshot': LibrarySnapshotOutputBody,
 };
 
 export function renderOutputBody(result: WorkflowRunOutput): ReactElement {

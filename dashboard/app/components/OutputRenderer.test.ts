@@ -62,6 +62,41 @@ async function main() {
     assert.ok(html.includes('<h1'));
   });
 
+  await test('library-snapshot format: renders the summary, search box, and file rows', () => {
+    const content = JSON.stringify({
+      generatedAt: '2026-08-09T20:13:45.314Z',
+      totalHuman: '68.0 TB',
+      fileCount: 2,
+      files: [
+        { key: '1::11', title: 'Heat (1995)', file: '/movies/heat.mkv', bytes: 5 * 1024 ** 3 },
+        { key: '2::21', title: 'The Wire — S01E03 — The Buys', file: '/tv/wire.mkv', bytes: 1024 ** 3 },
+      ],
+    });
+    const html = render(base({ format: 'library-snapshot', content }));
+    assert.ok(html.includes('2 files'), 'summary carries the file count');
+    assert.ok(html.includes('68.0 TB'), 'summary carries the total');
+    assert.ok(html.includes('type="search"'), 'a filter box is rendered');
+    assert.ok(html.includes('Heat (1995)'), 'rows name the titles');
+    assert.ok(html.includes('/movies/heat.mkv'), 'rows show the file paths');
+    assert.ok(html.includes('5.0 GB'), 'bytes render human-readable');
+    assert.ok(!html.includes('<pre'), 'must not fall through to the raw renderer');
+  });
+
+  await test('library-snapshot format: caps painted rows and says how many are hidden', () => {
+    const files = Array.from({ length: 350 }, (_, i) => ({ key: `k${i}`, title: `Movie ${i}`, file: `/m/${i}.mkv`, bytes: 1 }));
+    const html = render(base({ format: 'library-snapshot', content: JSON.stringify({ fileCount: 350, totalHuman: '1 GB', files }) }));
+    assert.ok(html.includes('showing the first 300 of 350'), 'over-cap list announces the cap');
+    assert.ok(html.includes('Movie 299'), 'rows up to the cap are painted');
+    assert.ok(!html.includes('Movie 300<'), 'rows past the cap are not painted');
+  });
+
+  await test('library-snapshot format: falls back to raw content (no throw) for invalid JSON', () => {
+    const badContent = 'truncated { "files": [';
+    assert.doesNotThrow(() => render(base({ format: 'library-snapshot', content: badContent })));
+    const html = render(base({ format: 'library-snapshot', content: badContent }));
+    assert.ok(html.includes('<pre'), 'invalid JSON falls back to the raw renderer');
+  });
+
   await test('markdown format: frontmatter renders null placeholder for empty values and joins JSON arrays', () => {
     const content = '---\nrating: null\ntags: ["a","b"]\n---\n# Heading';
     const html = render(base({ format: 'markdown', content }));

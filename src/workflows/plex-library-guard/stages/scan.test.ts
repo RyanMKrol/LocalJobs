@@ -84,6 +84,7 @@ describe('runScan (plex-library-guard)', () => {
     assert.equal(report.firstRun, true);
     assert.equal(report.alerted, false);
     assert.equal(isWorkItemDone(JOB_NAME, dayKey(now), 1), true, 'one ledger row per day');
+    assert.equal(isWorkItemDone(JOB_NAME, 'snapshot', 1), true, 'the stable full-inventory snapshot row is recorded');
   });
 
   it('an unchanged library sends no push and advances the baseline', async () => {

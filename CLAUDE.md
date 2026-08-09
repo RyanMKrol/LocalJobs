@@ -1322,9 +1322,14 @@ doubt, log it.
     renderer bodies themselves: `MarkdownOutputBody` (frontmatter header + `react-markdown`
     body — the `markdown` form), `JsonOutputBody` (`JSON.parse` + `JSON.stringify(…, null, 2)`
     pretty-print inside a monospace `<pre>`, falling back to the raw content on a parse
-    failure — the `json` form), and `RawOutputBody` (plain monospace, preserved whitespace —
-    both the registered `text` form AND the fallback for any unrecognized format, e.g.
-    `plex-space-saver`'s `size-table`). `renderOutputBody(result: WorkflowRunOutput)` is the
+    failure — the `json` form), `RawOutputBody` (plain monospace, preserved whitespace —
+    both the registered `text` form AND the fallback for any unrecognized format),
+    `SizeTableOutputBody` (T617 — `plex-space-saver`'s `size-table` form, one proportional
+    horizontal bar per title), and `LibrarySnapshotOutputBody` (`plex-library-guard`'s
+    `library-snapshot` form — a searchable per-file inventory: summary header, title/path
+    filter box, at most 300 rows painted at once; that format is exempted from the output
+    endpoints' 512 KB payload cap via `outputPayloadMax(format)` in `src/api/server.ts`,
+    since the full ~10 MB inventory is the point). `renderOutputBody(result: WorkflowRunOutput)` is the
     entry point — call it, don't hand-roll a new dispatch. Both `WorkflowOutputSection` (the
     workflow-definition-page Output section popover) and `StageIoPanel`/`StageIoLists.tsx`
     (the workflow-RUN-page Stage I/O popover) import from here — before T458 each surface had

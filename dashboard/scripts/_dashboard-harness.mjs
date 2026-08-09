@@ -794,11 +794,12 @@ const plexLibraryGuardRunJobs = plexLibraryGuardMembers.map((m, i) => run({
   id: `plex-library-guard-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-library-guard-run',
 }));
 const plexLibraryGuardOutput = { jobName: 'plex-library-guard-scan', itemKey: '2026-06-15', status: 'success', detail: { name: 'Library guard — 2026-06-15 — ALERT: 2 missing, -6.0 GB', path: '/abs/data/out/guard-report.json', format: 'json' } };
+const plexLibraryGuardSnapshotItem = { jobName: 'plex-library-guard-scan', itemKey: 'snapshot', status: 'success', detail: { name: 'Full library snapshot — 14201 files, 17.5 TB', path: '/abs/data/out/library-snapshot.json', format: 'library-snapshot' } };
 const plexLibraryGuardStageIo = {
-  'plex-library-guard-scan': { inputs: [], outputs: [plexLibraryGuardOutput], predecessorJobs: [], job: 'plex-library-guard-scan' },
+  'plex-library-guard-scan': { inputs: [], outputs: [plexLibraryGuardOutput, plexLibraryGuardSnapshotItem], predecessorJobs: [], job: 'plex-library-guard-scan' },
 };
 const plexLibraryGuardStageIoOverall = {
-  inputs: [], outputs: [plexLibraryGuardOutput], predecessorJobs: [], outputJobs: ['plex-library-guard-scan'], job: '__overall__',
+  inputs: [], outputs: [plexLibraryGuardOutput, plexLibraryGuardSnapshotItem], predecessorJobs: [], outputJobs: ['plex-library-guard-scan'], job: '__overall__',
 };
 // The GET .../output(-items) response body for `plexLibraryGuardOutput` — a real
 // GuardReportFile JSON string (an alerted run with missing files) so the generic
@@ -817,6 +818,24 @@ const plexLibraryGuardOutputFixture = {
       { key: '2002::701', ratingKey: '2002', type: 'episode', title: 'Some Show — S02E04 — Gone', file: '/tv/some-show-s02e04.mkv', bytes: 1_073_725_440 },
     ],
     addedCount: 0, suspectPartialRead: false, alerted: true,
+  }),
+};
+// The GET .../output(-items) response body for the guard's STABLE 'snapshot' item —
+// a real (miniature) LibrarySnapshotFile so the 'library-snapshot' renderer's
+// searchable file list has realistic rows to paint.
+const plexLibraryGuardSnapshotFixture = {
+  found: true, job: 'plex-library-guard-scan', key: 'snapshot', format: 'library-snapshot',
+  file: '/abs/data/out/library-snapshot.json', bytes: 2048, truncated: false,
+  content: JSON.stringify({
+    generatedAt: NOW, movieSection: '4', tvSection: '5',
+    totalBytes: 19_223_284_596_736, totalHuman: '17.5 TB', fileCount: 5,
+    files: [
+      { key: '1001::501', ratingKey: '1001', type: 'movie', title: 'A Very Long Movie Title That Might Wrap On Narrow Screens (2019)', file: '/movies/A Very Long Movie Title/A.Very.Long.Movie.Title.2019.2160p.WEB.H265-GROUP.mkv', bytes: 42_949_672_960 },
+      { key: '1002::502', ratingKey: '1002', type: 'movie', title: 'Another Movie (2021)', file: '/movies/another-movie.mkv', bytes: 12_884_901_888 },
+      { key: '2001::701', ratingKey: '2001', type: 'episode', title: 'A Great TV Show — S01E01 — Pilot', file: '/tv/a-great-tv-show/s01e01.mkv', bytes: 3_221_225_472 },
+      { key: '2001::702', ratingKey: '2001', type: 'episode', title: 'A Great TV Show — S01E02 — The Second One', file: '/tv/a-great-tv-show/s01e02.mkv', bytes: 3_221_225_472 },
+      { key: '3001::801', ratingKey: '3001', type: 'movie', title: 'No Path Movie (2011)', file: null, bytes: 1_073_741_824 },
+    ],
   }),
 };
 
@@ -958,7 +977,9 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     if (searchParams?.get('job') === 'plex-space-saver-scan') return plexSpaceSaverOutputFixture;
-    if (searchParams?.get('job') === 'plex-library-guard-scan') return plexLibraryGuardOutputFixture;
+    if (searchParams?.get('job') === 'plex-library-guard-scan') {
+      return searchParams?.get('key') === 'snapshot' ? plexLibraryGuardSnapshotFixture : plexLibraryGuardOutputFixture;
+    }
     return { found: true, job: 'places-enrich-with-llm', key: 'place:x', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
   }
   if (pathname.startsWith('/api/workflow-runs/')) {
@@ -1058,6 +1079,7 @@ export function fixtureFor(pathname, searchParams) {
       return {
         items: [
           { jobName: 'plex-library-guard-scan', itemKey: '2026-06-15', name: 'Library guard — 2026-06-15 — ALERT: 2 missing, -6.0 GB', hasMarkdown: true, viewable: true, updatedAt: NOW },
+          { jobName: 'plex-library-guard-scan', itemKey: 'snapshot', name: 'Full library snapshot — 14201 files, 17.5 TB', hasMarkdown: true, viewable: true, updatedAt: NOW },
         ],
         terminalJobs: ['plex-library-guard-scan'],
       };
@@ -1070,7 +1092,9 @@ export function fixtureFor(pathname, searchParams) {
   if (pathname.endsWith('/output') && pathname.startsWith('/api/workflows/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     if (pathname === '/api/workflows/plex-space-saver/output') return plexSpaceSaverOutputFixture;
-    if (pathname === '/api/workflows/plex-library-guard/output') return plexLibraryGuardOutputFixture;
+    if (pathname === '/api/workflows/plex-library-guard/output') {
+      return searchParams?.get('key') === 'snapshot' ? plexLibraryGuardSnapshotFixture : plexLibraryGuardOutputFixture;
+    }
     return { found: true, job: 'places-enrich-with-llm', key: 'place:ChIJ' + LONG, format: 'markdown', file: '/abs/data/out/x.md', bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
   }
   if (pathname.startsWith('/api/workflows/')) return { workflow: workflow() };
@@ -1216,6 +1240,20 @@ export const FLOWS = [
       await page.click('.output-section button.btn.btn-sm');
       await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
       await page.waitForSelector('.md-body', { state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    // plex-library-guard's Output section popover for the STABLE 'snapshot' item —
+    // confirms the 'library-snapshot' OutputRenderer paints the searchable per-file
+    // inventory (summary line, filter box, file rows), not a raw JSON dump.
+    name: 'workflow-output-section-library-snapshot',
+    path: '/workflows/plex-library-guard',
+    waitFor: ['.output-section button.btn.btn-sm'],
+    actions: async (page) => {
+      await page.click('tr:has-text("Full library snapshot") button.btn.btn-sm');
+      await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
+      await page.waitForSelector('.snapshot-search', { state: 'visible', timeout: 5000 });
       await page.waitForTimeout(300);
     },
   },

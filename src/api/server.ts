@@ -246,6 +246,22 @@ function resolveOutputForm(jobName: string, itemKey: string): { format: string; 
 }
 
 /**
+ * Max bytes of artifact content the two output endpoints return, keyed by the
+ * item's declared format. The 512 KB default is a safety belt for preview-sized
+ * artifacts; `library-snapshot` (plex-library-guard's full per-file inventory,
+ * ~10 MB for a 27k-file library) is deliberately allowed through whole, since
+ * its dashboard renderer exists precisely to browse the complete inventory and
+ * a truncated JSON body would parse-fail into the raw fallback.
+ */
+const OUTPUT_PAYLOAD_MAX_DEFAULT = 512 * 1024;
+const OUTPUT_PAYLOAD_MAX_BY_FORMAT: Record<string, number> = {
+  'library-snapshot': 32 * 1024 * 1024,
+};
+function outputPayloadMax(format: string): number {
+  return OUTPUT_PAYLOAD_MAX_BY_FORMAT[format] ?? OUTPUT_PAYLOAD_MAX_DEFAULT;
+}
+
+/**
  * Resolve a bulk-stuck-action request body to a `BulkStuckScope`, or null if
  * the body specifies an unknown workflow. Accepts:
  *   {} or { scope: 'all' }           → all stuck items
@@ -1221,7 +1237,7 @@ const routes: Route[] = [
       } catch {
         return json(res, 200, { found: false, job: jobName, key, format });
       }
-      const MAX = 512 * 1024;
+      const MAX = outputPayloadMax(format);
       const truncated = content.length > MAX;
       return json(res, 200, {
         found: true,
@@ -1764,7 +1780,7 @@ const routes: Route[] = [
       } catch {
         return json(res, 200, { found: false, job: jobName, key, format });
       }
-      const MAX = 512 * 1024; // cap the payload; this is a safety belt
+      const MAX = outputPayloadMax(format); // cap the payload; this is a safety belt
       const truncated = content.length > MAX;
       return json(res, 200, {
         found: true,

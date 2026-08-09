@@ -22,9 +22,18 @@ at 10:30 (`30 10 * * *`, staggered clear of the other Plex workflows). Each run:
    missing file triggers ONE combined urgent push (`rotating_light,warning` tags) naming up
    to 20 missing titles. The full list always lands in `data/out/guard-report.json` (written
    every run) and the run log.
-4. Overwrites the baseline snapshot and records one ledger row per calendar day
+4. Overwrites the baseline snapshot and records TWO ledger rows: one per calendar day
    (`dayKey`, `detail.format: 'json'` + `detail.path` pointing at the report, plus
-   `detail.markdown` set to the same path purely so the Output list's View button surfaces).
+   `detail.markdown` set to the same path purely so the Output list's View button
+   surfaces), and one STABLE row keyed `snapshot` (updated in place each run) whose
+   `detail.format: 'library-snapshot'` points at the full baseline inventory. The
+   dashboard renders that form as a searchable per-file list
+   (`LibrarySnapshotOutputBody` in `dashboard/app/components/OutputRenderer.tsx`:
+   summary header, title/path filter, at most 300 rows painted at once). Because the
+   inventory is ~10 MB, the `library-snapshot` format is exempted from the output
+   endpoints' 512 KB payload cap (`outputPayloadMax(format)` in `src/api/server.ts`).
+   The snapshot row is recorded only right after a successful baseline write, so the
+   dashboard always shows exactly the inventory the next run will diff against.
 
 ## The write-ordering invariant (protect this)
 

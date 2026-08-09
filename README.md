@@ -314,8 +314,10 @@ summaries below are a quick-reference index, not the source of truth.
   any previously-seen file went missing, naming up to 20 missing titles.
   The baseline snapshot is only overwritten after the alert path settles, so a
   failed push (or an empty/suspect partial Plex read) never loses the last-good
-  inventory: the run fails and the retry re-diffs. Supersedes plex-space-saver's
-  old weekly shrink alert. Single stage, runs daily at 10:30.
+  inventory: the run fails and the retry re-diffs. The full inventory is
+  browsable on the dashboard: the Output section's "Full library snapshot" item
+  opens a searchable per-file list (filter by title or path). Supersedes
+  plex-space-saver's old weekly shrink alert. Single stage, runs daily at 10:30.
 - **plex-profiles** — Weekly, writes one markdown profile per Plex title (movie
   AND TV show) to `data/out/movies/` / `data/out/shows/`, sourced purely from
   the Plex API — no LLM. Each profile covers a summary, cast/crew, per-source

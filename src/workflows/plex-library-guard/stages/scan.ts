@@ -105,6 +105,7 @@ export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<voi
     ctx.log(`Wrote ${reportOut}`);
     ctx.log(`Seeded baseline ${snapshotOut} (${current.fileCount} files, ${current.totalHuman}).`);
     recordLedger(now, current.fileCount, current.totalHuman, null);
+    recordSnapshotLedger(current.fileCount, current.totalHuman);
     ctx.progress(100, `baseline seeded: ${current.fileCount} file(s), ${current.totalHuman}`);
     return;
   }
@@ -170,6 +171,7 @@ export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<voi
   ctx.log(`Baseline updated: ${snapshotOut} (${current.fileCount} files, ${current.totalHuman}).`);
 
   recordLedger(now, current.fileCount, current.totalHuman, report.alerted ? diff : null);
+  recordSnapshotLedger(current.fileCount, current.totalHuman);
   ctx.progress(100, `${current.fileCount} file(s), ${current.totalHuman}${alert ? ' — ALERTED' : ''}`);
 }
 
@@ -189,6 +191,25 @@ function recordLedger(now: Date, fileCount: number, totalHuman: string, alertedD
       format: 'json',
       path: plexLibraryGuardConfig.reportOut,
       markdown: plexLibraryGuardConfig.reportOut,
+    },
+  });
+}
+
+/**
+ * One STABLE ledger row (key 'snapshot', updated in place each run) exposing
+ * the full per-file baseline inventory on the dashboard's Output section, via
+ * the dedicated 'library-snapshot' renderer (a searchable file list; see
+ * dashboard/app/components/OutputRenderer.tsx). Recorded only right after a
+ * successful baseline write, so what the dashboard shows is always exactly the
+ * inventory the next run will diff against.
+ */
+function recordSnapshotLedger(fileCount: number, totalHuman: string): void {
+  markWorkItem(JOB_NAME, 'snapshot', 'success', {
+    detail: {
+      name: `Full library snapshot — ${fileCount} files, ${totalHuman}`,
+      format: 'library-snapshot',
+      path: plexLibraryGuardConfig.snapshotOut,
+      markdown: plexLibraryGuardConfig.snapshotOut,
     },
   });
 }
