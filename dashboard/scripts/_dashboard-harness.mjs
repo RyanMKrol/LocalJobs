@@ -770,6 +770,23 @@ const perfumesStageIoOverall = {
   predecessorJobs: ['perfumes-find-url'], outputJobs: ['perfumes-build'], job: '__overall__',
 };
 
+// vault-sync — single stage: vault-sync-export (the second-brain vault mirror).
+const vaultSyncMembers = [{ job_name: 'vault-sync-export', depends_on: [] }];
+const vaultSyncWorkflowRun = workflowRun({ id: 'vault-sync-run', workflow_name: 'vault-sync' });
+const vaultSyncRunJobs = vaultSyncMembers.map((m, i) => run({
+  id: `vault-sync-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'vault-sync-run',
+}));
+const vaultSyncOutput = {
+  jobName: 'vault-sync-export', itemKey: 'plex-profiles-build::movie:10123', status: 'success',
+  detail: { name: '10 Cloverfield Lane (2016)', markdown: '/abs/data/out/movies/10123-10-cloverfield-lane.md', vaultPath: 'Plex/Movies/10 Cloverfield Lane (2016).md', sourceUpdatedAt: NOW },
+};
+const vaultSyncStageIo = {
+  'vault-sync-export': { inputs: [], outputs: [vaultSyncOutput], predecessorJobs: [], job: 'vault-sync-export' },
+};
+const vaultSyncStageIoOverall = {
+  inputs: [], outputs: [vaultSyncOutput], predecessorJobs: [], outputJobs: ['vault-sync-export'], job: '__overall__',
+};
+
 // Map an /api/* pathname (+ optional search params) to a fixture body.
 export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
@@ -893,6 +910,12 @@ export function fixtureFor(pathname, searchParams) {
     return perfumesStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/perfumes-run') return { run: perfumesWorkflowRun, jobs: perfumesRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/vault-sync-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return vaultSyncStageIoOverall;
+    const job = searchParams?.get('job');
+    return vaultSyncStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/vault-sync-run') return { run: vaultSyncWorkflowRun, jobs: vaultSyncRunJobs, logs, gates: [] };
   if (pathname.includes('/output') && pathname.startsWith('/api/workflow-runs/')) {
     if (searchParams?.get('key') === PLACES_JSON_ITEM_KEY) return placesJsonOutputFixture;
     if (searchParams?.get('job') === 'plex-space-saver-scan') return plexSpaceSaverOutputFixture;
@@ -958,6 +981,9 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/perfumes') {
     return { workflow: workflow({ name: 'perfumes', category: 'second-brain', jobs: perfumesMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/vault-sync') {
+    return { workflow: workflow({ name: 'vault-sync', category: 'second-brain', jobs: vaultSyncMembers, gates: [] }) };
   }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
@@ -1085,6 +1111,7 @@ export const PAGES = [
   { name: 'workflow-run-vercel-daily-redeploy', path: '/workflow-runs/vercel-daily-redeploy-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-tv-recommendations', path: '/workflow-runs/tv-recommendations-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-perfumes',           path: '/workflow-runs/perfumes-run',           waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-vault-sync',         path: '/workflow-runs/vault-sync-run',         waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },
