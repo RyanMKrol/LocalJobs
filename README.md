@@ -176,7 +176,7 @@ see `CLAUDE.md`.
 
 ## Shipped example workflows
 
-Thirteen worked examples are published under `src/workflows/` (their `data/` stays
+Eighteen worked examples are published under `src/workflows/` (their `data/` stays
 gitignored). Private workflows live in gitignored subfolders. Each workflow's full
 current-state documentation lives in its own `CLAUDE.md` inside its folder — the
 summaries below are a quick-reference index, not the source of truth.
@@ -326,6 +326,15 @@ summaries below are a quick-reference index, not the source of truth.
   the ideas inbox, and never patches any file itself — folding an override into
   code stays a fully manual step. Idempotent per ISO week via the work_items
   ledger. Single stage, runs weekly (Sundays 07:00).
+- **vault-sync** — Daily mirror of the places, perfumes, plex-profiles,
+  listening-digest, and workouts-sync markdown output into a second-brain vault
+  folder on disk (`~/SecondBrain` by default, `SECOND_BRAIN_VAULT_DIR` to
+  override), one folder per source (`Places/`, `Perfumes/`, `Plex/Movies/`,
+  `Plex/TV/`, `Listening/`, `Workouts/`) with human-friendly filenames like
+  `10 Cloverfield Lane (2016).md`. Copy-only: source files stay in each
+  workflow's `data/out`, a vault copy is only rewritten when its source item
+  changes (or the copy was deleted by hand), and nothing is ever deleted from
+  the vault. Single stage, runs daily (07:30).
 
 ## Dashboard pages
 
@@ -367,3 +376,4 @@ See `.env.example`:
 | `LOCALJOBS_DB` | SQLite path (default `./data/jobs.db`) |
 | `LOCALJOBS_NTFY_TOPIC` | [ntfy.sh](https://ntfy.sh) push-alert topic; blank = off |
 | `LOCALJOBS_NTFY_SERVER` | ntfy server (default `https://ntfy.sh`) |
+| `SECOND_BRAIN_VAULT_DIR` | vault-sync destination folder (default `~/SecondBrain`) |

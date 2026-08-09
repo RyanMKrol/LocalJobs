@@ -108,7 +108,7 @@ work** that doesn't fit serverless or a web request.
 
 ### Shipped example workflows — one folder, one `CLAUDE.md`, each
 
-The repo ships 17 worked-example workflows under `src/workflows/`. Each workflow's full
+The repo ships 18 worked-example workflows under `src/workflows/`. Each workflow's full
 current-state documentation — DAG stages, file paths, ledger conventions, credentials, schedule,
 and any non-obvious invariant worth protecting — lives in its OWN `CLAUDE.md` inside its folder
 (auto-loaded by Claude Code when working in that directory, same mechanism as this file and
@@ -134,6 +134,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **plex-language-fix** | `src/workflows/plex-language-fix/` | Weekly, 4-stage DAG (discover → resolve → evaluate → apply): resolves each title's true original language via TMDB, decides per-file audio/subtitle defaults, and APPLIES them via Plex's own API — fully unattended, with a Plex Butler backup + a per-file undo log (`scripts/plex-language-undo.ts`) as the safety net instead of manual sign-off. Each file is processed exactly once, ever, via the per-item work_items ledger (not a whole-library re-scan every run) |
 | **plex-profiles** | `src/workflows/plex-profiles/` | Weekly: writes one markdown profile per Plex title (movie + TV show) — summary, cast, per-source ratings, technical detail, file size — sourced purely from the Plex API, no LLM (phase 2, an optional Claude-narrated layer, is a deferred future task) |
 | **overrides-audit** | `src/workflows/overrides-audit/` | Weekly, report-only audit of dashboard `_overridden` flags (service limits, workflow schedule/concurrency/notify, job timeout) that have been live 2+ weeks or are unknown-age — a reminder to fold a stable override into its manifest/service-definition code default; never auto-patches anything |
+| **vault-sync** | `src/workflows/vault-sync/` | Daily mirror of the places/perfumes/plex-profiles/listening-digest/workouts-sync markdown output into the owner's second-brain vault folder (`~/SecondBrain`, `SECOND_BRAIN_VAULT_DIR` to override) — copy-only, per-source folders, prettified filenames, never deletes |
 
 Seven workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
 `missing-movies`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`) share one Plex/TMDB
@@ -305,7 +306,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
 | `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/docs/LIMITATIONS.md`.) |
-| `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `missing-movies/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
+| `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `missing-movies/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`, `vault-sync/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
 | `src/workflows/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/workflows/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the workflow-folder root |
 | `src/api/server.ts` | Node `http` API (no framework). Routing is a declarative `routes: Route[]` table (`{ method, pattern, handler }`) matched by `matchRoute` — a small exact-segment-length matcher (T530) that replaced the old sequential `if (method === … && parts[N] === '…')` chain. A `:name`-style pattern segment matches any literal path segment and is captured into `ctx.params`; every other segment must match literally; the pattern and the path must have the SAME segment count. That length-exact requirement is the actual fix: the old chain had a real bug class where a check like `parts[3] === 'runs'` matched ANY path with `'runs'` at that position regardless of what followed, so `GET /api/workflows/foo/runs/extra` incorrectly matched the `:name/runs` handler instead of 404ing — `matchRoute` can't do that. Route order is otherwise irrelevant (no two routes share the same method + segment count with a possible overlap). Add a new endpoint by appending a `{ method, pattern, handler }` entry to `routes` |
@@ -391,7 +392,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/workflows/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `missing-movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`, `plex-profiles/`, and `overrides-audit/` subfolder workflows as
+> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `missing-movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`, and `vault-sync/` subfolder workflows as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
@@ -683,7 +684,8 @@ doubt, log it.
   label for the workflows-list page with NO `_overridden` column and NO edit
   endpoint: `syncWorkflow` always refreshes it from the manifest's `category` field
   on every sync (same as `description`), so there is nothing for the owner to
-  override. Controlled values in use: `second-brain` (places, perfumes),
+  override. Controlled values in use: `second-brain` (places, perfumes,
+  plex-profiles, vault-sync),
   `recommendations` (movie-recommendations, tv-recommendations,
   missing-tv-seasons, missing-movies), and `regular-maintenance` (workouts-sync, listening-digest,
   projects-sync, claude-warmer, stocks-sync). A manifest with no `category` set
