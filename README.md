@@ -364,6 +364,16 @@ summaries below are a quick-reference index, not the source of truth.
   password lives in this repo. This is the availability guarantee
   plex-rename's daily 05:00 run depends on. Fails loud (and notifies) when a
   share can't be brought up. Configured via MOUNT_KEEPER_SHARES (env-only).
+- **media-reviews** — Daily pull of the owner's book, movie, TV, and album
+  reviews from the website's DynamoDB tables (the live stores behind
+  ryankrol.co.uk/reviews/*), writing one markdown file per review to
+  `data/out/<category>/`: frontmatter with the rating, dates, and whatever
+  metadata the site recorded (ISBN/publisher/series for books, TMDB id and
+  poster for movies and TV, Last.fm enrichment for albums), then the review
+  text verbatim. Strictly read-only against Dynamo, never scraping the site;
+  four independent jobs run in parallel, and each review is content-hash
+  idempotent so a steady-state run writes nothing. Runs daily (04:00), ahead
+  of vault-sync's morning mirror.
 - **vault-sync** — Daily mirror of the places, perfumes, plex-profiles,
   listening-digest, and workouts-sync markdown output into a second-brain vault
   folder on disk (`~/SecondBrain` by default, `SECOND_BRAIN_VAULT_DIR` to
@@ -415,3 +425,7 @@ See `.env.example`:
 | `LOCALJOBS_NTFY_TOPIC` | [ntfy.sh](https://ntfy.sh) push-alert topic; blank = off |
 | `LOCALJOBS_NTFY_SERVER` | ntfy server (default `https://ntfy.sh`) |
 | `SECOND_BRAIN_VAULT_DIR` | vault-sync destination folder (default `~/SecondBrain`) |
+| `MEDIA_REVIEWS_BOOKS_TABLE` | media-reviews books table (default `BookRatingsV4`) |
+| `MEDIA_REVIEWS_MOVIES_TABLE` | media-reviews movies table (default `MovieRatingsV4`) |
+| `MEDIA_REVIEWS_TV_TABLE` | media-reviews TV table (default `TelevisionRatingsV4`) |
+| `MEDIA_REVIEWS_ALBUMS_TABLE` | media-reviews albums table (default `AlbumRatingsV3`) |

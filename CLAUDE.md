@@ -108,7 +108,7 @@ work** that doesn't fit serverless or a web request.
 
 ### Shipped example workflows — one folder, one `CLAUDE.md`, each
 
-The repo ships 21 worked-example workflows under `src/workflows/`. Each workflow's full
+The repo ships 22 worked-example workflows under `src/workflows/`. Each workflow's full
 current-state documentation — DAG stages, file paths, ledger conventions, credentials, schedule,
 and any non-obvious invariant worth protecting — lives in its OWN `CLAUDE.md` inside its folder
 (auto-loaded by Claude Code when working in that directory, same mechanism as this file and
@@ -137,6 +137,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | **overrides-audit** | `src/workflows/overrides-audit/` | Weekly, report-only audit of dashboard `_overridden` flags (service limits, workflow schedule/concurrency/notify, job timeout) that have been live 2+ weeks or are unknown-age — a reminder to fold a stable override into its manifest/service-definition code default; never auto-patches anything |
 | **plex-rename** | `src/workflows/plex-rename/` | Daily canonical Plex library renamer: plans (report-only until `PLEX_RENAME_APPLY_ENABLED=1`) exact from→to renames to canonical Plex conventions (`Title (Year) {tmdb-N}`, `Show (Year) {tvdb-N}/Season NN`, `.plexmatch` per show) using Plex's own matches as truth, so the library re-matches deterministically if the DB is ever lost |
 | **mount-keeper** | `src/workflows/mount-keeper/` | Hourly guard that keeps the configured NAS SMB shares mounted at `/Volumes/<name>` (health check, stale-empty-mountpoint rmdir, Keychain-authenticated `mount volume` remount) — the availability guarantee plex-rename's daily run depends on |
+| **media-reviews** | `src/workflows/media-reviews/` | Daily pull of the owner's book/movie/TV/album reviews from the website's DynamoDB tables (read-only scans, never scraping the site) — one markdown file per review, content-hash idempotent, four independent parallel jobs |
 | **vault-sync** | `src/workflows/vault-sync/` | Daily mirror of the places/perfumes/plex-profiles/listening-digest/workouts-sync markdown output into the owner's second-brain vault folder (`~/SecondBrain`, `SECOND_BRAIN_VAULT_DIR` to override) — copy-only, per-source folders, prettified filenames, never deletes |
 
 Nine workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,

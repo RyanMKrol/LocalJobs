@@ -883,6 +883,29 @@ const mountKeeperStageIoOverall = {
   inputs: [], outputs: [mountKeeperHealthyOutput, mountKeeperRemountOutput], predecessorJobs: [], outputJobs: ['mount-keeper-check'], job: '__overall__',
 };
 
+// media-reviews — four INDEPENDENT single-stage members (books/movies/tv/albums),
+// no dependsOn edges: exercises a 4-node, zero-edge DAG render.
+const mediaReviewsMembers = [
+  { job_name: 'media-reviews-books', depends_on: [] },
+  { job_name: 'media-reviews-movies', depends_on: [] },
+  { job_name: 'media-reviews-tv', depends_on: [] },
+  { job_name: 'media-reviews-albums', depends_on: [] },
+];
+const mediaReviewsWorkflowRun = workflowRun({ id: 'media-reviews-run', workflow_name: 'media-reviews' });
+const mediaReviewsRunJobs = mediaReviewsMembers.map((m, i) => run({
+  id: `media-reviews-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'media-reviews-run',
+}));
+const mediaReviewsBookOutput = { jobName: 'media-reviews-books', itemKey: 'book-0001-aaaa', status: 'success', detail: { name: 'Norwegian Wood (Haruki Murakami)', markdown: '/abs/data/out/books/norwegian-wood-haruki-murakami-book0001.md', marker: 'ab12cd34' } };
+const mediaReviewsAlbumOutput = { jobName: 'media-reviews-albums', itemKey: 'album-0001-bbbb', status: 'success', detail: { name: 'In Rainbows (Radiohead)', markdown: '/abs/data/out/albums/in-rainbows-radiohead-album0001.md', marker: 'ef56ab78' } };
+const mediaReviewsStageIo = {
+  'media-reviews-books': { inputs: [], outputs: [mediaReviewsBookOutput], predecessorJobs: [], job: 'media-reviews-books' },
+  'media-reviews-albums': { inputs: [], outputs: [mediaReviewsAlbumOutput], predecessorJobs: [], job: 'media-reviews-albums' },
+};
+const mediaReviewsStageIoOverall = {
+  inputs: [], outputs: [mediaReviewsBookOutput, mediaReviewsAlbumOutput], predecessorJobs: [],
+  outputJobs: ['media-reviews-books', 'media-reviews-movies', 'media-reviews-tv', 'media-reviews-albums'], job: '__overall__',
+};
+
 // Map an /api/* pathname (+ optional search params) to a fixture body.
 export function fixtureFor(pathname, searchParams) {
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
@@ -1024,6 +1047,12 @@ export function fixtureFor(pathname, searchParams) {
     return plexRenameStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/plex-rename-run') return { run: plexRenameWorkflowRun, jobs: plexRenameRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/media-reviews-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return mediaReviewsStageIoOverall;
+    const job = searchParams?.get('job') ?? '';
+    return mediaReviewsStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/media-reviews-run') return { run: mediaReviewsWorkflowRun, jobs: mediaReviewsRunJobs, logs, gates: [] };
   if (pathname === '/api/workflow-runs/mount-keeper-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return mountKeeperStageIoOverall;
     const job = searchParams?.get('job');
@@ -1110,6 +1139,9 @@ export function fixtureFor(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/mount-keeper') {
     return { workflow: workflow({ name: 'mount-keeper', category: 'regular-maintenance', schedule: '45 * * * *', jobs: mountKeeperMembers, gates: [] }) };
+  }
+  if (pathname === '/api/workflows/media-reviews') {
+    return { workflow: workflow({ name: 'media-reviews', category: 'second-brain', schedule: '0 4 * * *', jobs: mediaReviewsMembers, gates: [] }) };
   }
   if (pathname.endsWith('/output-items')) {
     if (pathname === '/api/workflows/places/output-items') {
@@ -1255,6 +1287,7 @@ export const PAGES = [
   { name: 'workflow-run-plex-library-guard', path: '/workflow-runs/plex-library-guard-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-plex-rename',        path: '/workflow-runs/plex-rename-run',        waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-mount-keeper',       path: '/workflow-runs/mount-keeper-run',       waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-media-reviews',      path: '/workflow-runs/media-reviews-run',      waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },
   { name: 'job',                     path: '/jobs/places-enrich' },
