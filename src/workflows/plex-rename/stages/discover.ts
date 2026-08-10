@@ -3,7 +3,7 @@ import { extractImdbId, extractTmdbId, extractTvdbId } from '../../../core/plex-
 import { markWorkItem } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { fetchAllLeaves, fetchSectionItems, fetchSections } from '../lib.js';
-import { resolveLibraryRoot, type EpisodeRef, type LibraryRoot } from '../naming.js';
+import { pathKey, resolveLibraryRoot, type EpisodeRef, type LibraryRoot } from '../naming.js';
 import type { DiscoverDetail, PlexMetadataItem, PlexSection } from '../types.js';
 
 export const JOB_NAME = 'plex-rename-discover';
@@ -157,8 +157,16 @@ function collectShowParts(
     imdbId: extractImdbId(show.Guid) ?? undefined,
   };
 
-  // Group every leaf's parts by part id — a multi-episode FILE surfaces as
-  // multiple leaves whose Media/Part all point at the same physical part.
+  // Group every leaf's parts by FILE PATH (case-folded NFC) — a multi-episode
+  // FILE surfaces as multiple leaves pointing at the same physical file, and
+  // Plex does NOT reliably share one part id across them: a real library
+  // double-episode (Mr.Robot.S02E01E02) carried TWO DIFFERENT part ids for
+  // the one file, so grouping by part id split it into two single-episode
+  // items — the first move renamed the file to an s02e01-only name and the
+  // second found its source gone (a harmless soft-skip, but episode 2 would
+  // have gone unavailable in Plex). The file path is the ground truth of
+  // "same physical file"; the group keeps the FIRST leaf's part id for the
+  // ledger key.
   interface PartGroup {
     file: string;
     partId: number;
@@ -169,7 +177,7 @@ function collectShowParts(
     firstLeafRatingKey: string;
     episodes: EpisodeRef[];
   }
-  const groups = new Map<number, PartGroup>();
+  const groups = new Map<string, PartGroup>();
 
   for (const leaf of leafDetails) {
     const ep: EpisodeRef = {
@@ -187,12 +195,13 @@ function collectShowParts(
           onNoFile();
           return;
         }
-        const existing = groups.get(part.id);
+        const groupKey = pathKey(part.file);
+        const existing = groups.get(groupKey);
         if (existing) {
           existing.episodes.push(ep);
           existing.mediaCount = Math.max(existing.mediaCount, mediaCount);
         } else {
-          groups.set(part.id, {
+          groups.set(groupKey, {
             file: part.file,
             partId: part.id,
             partSize: part.size,

@@ -41,7 +41,9 @@ function fakes(movieFile = '/volume1/Share/Movies/A.Movie.2016.mkv') {
     year: 2019,
     Guid: [{ id: 'tvdb://4242' }, { id: 'tmdb://777' }],
   };
-  // e1 is a normal episode; e2a + e2b share ONE part (a multi-episode file).
+  // e1 is a normal episode; e2a + e2b share ONE FILE — with DIFFERENT part ids,
+  // the shape found live (Mr.Robot.S02E01E02): Plex does not reliably share a
+  // part id across a double-episode file, so grouping keys on the file path.
   const episodes: PlexMetadataItem[] = [
     {
       ratingKey: 'e1',
@@ -66,7 +68,7 @@ function fakes(movieFile = '/volume1/Share/Movies/A.Movie.2016.mkv') {
       type: 'episode',
       parentIndex: 1,
       index: 3,
-      Media: [{ id: 4, Part: [{ id: 9102, file: '/volume1/Share/TV/A Show/s01e02-03.mkv', size: 3000 }] }],
+      Media: [{ id: 4, Part: [{ id: 9103, file: '/volume1/Share/TV/A Show/s01e02-03.mkv', size: 3000 }] }],
     },
   ];
 
@@ -104,7 +106,7 @@ test('runDiscover records rich per-file snapshots, grouping multi-episode files'
   const multiDetail = JSON.parse(multi!.detail!) as DiscoverDetail;
   assert.equal(multiDetail.episodes?.length, 2, 'both leaves grouped onto the shared part');
   assert.deepEqual(multiDetail.episodes?.map((e) => e.episode), [2, 3]);
-  assert.equal(getWorkItem('plex-rename-discover', fileKey('e2b', 9102)), undefined, 'no duplicate row under the second leaf');
+  assert.equal(getWorkItem('plex-rename-discover', fileKey('e2b', 9103)), undefined, 'no duplicate row under the second leaf\'s own part id');
 });
 
 test('runDiscover re-marks snapshots every run (a renamed file refreshes its recorded path)', async () => {
