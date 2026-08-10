@@ -65,6 +65,14 @@ export const plexRenameConfig = {
   maxPerDay: Number(process.env.PLEX_RENAME_MAX_PER_DAY ?? '30'),
 
   /**
+   * Volume-overburden guard: a move is skipped when the TARGET volume's
+   * projected utilization AFTER the copy would exceed this percentage.
+   * Especially load-bearing for cross-share consolidation moves, which add
+   * data to the target volume permanently. Owner-chosen default: 92.
+   */
+  maxVolumeUtilizationPct: Number(process.env.PLEX_RENAME_MAX_VOLUME_UTILIZATION ?? '92'),
+
+  /**
    * The probation gate: unset/0 = rehearsal mode (apply logs what it WOULD do,
    * writes the report, journals nothing, mutates nothing). Flipping to 1 is a
    * deliberate .env edit + daemon restart — never a dashboard misclick.

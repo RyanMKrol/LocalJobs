@@ -29,6 +29,7 @@ export interface ApplyOverrides {
   applyEnabled?: boolean;
   maxPerDay?: number;
   minAgeDays?: number;
+  maxVolumeUtilizationPct?: number;
   journalDir?: string;
   reportDir?: string;
   triggerBackup?: typeof triggerButlerBackup;
@@ -76,6 +77,7 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   const applyEnabled = opts.applyEnabled ?? plexRenameConfig.applyEnabled;
   const maxPerDay = opts.maxPerDay ?? plexRenameConfig.maxPerDay;
   const minAgeDays = opts.minAgeDays ?? plexRenameConfig.minAgeDays;
+  const maxVolumePct = opts.maxVolumeUtilizationPct ?? plexRenameConfig.maxVolumeUtilizationPct;
   const journalDir = opts.journalDir ?? plexRenameConfig.journalDir;
   const reportDir = opts.reportDir ?? plexRenameConfig.reportDir;
   const triggerBackup = opts.triggerBackup ?? triggerButlerBackup;
@@ -204,9 +206,20 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
       if (st.size !== verify.bytes) return `size changed since verify (${st.size} ≠ ${verify.bytes})`;
       if (now().getTime() - st.mtimeMs < minAgeMs) return 'modified again within the still-downloading window';
       if (!verify.caseOnly && (await fs.stat(verify.localTo!))) return `target appeared since verify: ${verify.localTo}`;
-      const free = await fs.freeBytes(posixDirname(verify.localTo!));
-      if (free !== null && free < st.size + FREE_SPACE_MARGIN) {
-        return `insufficient free space for a transient second copy (${free} free < ${st.size} + margin)`;
+      const usage = await fs.volumeUsage(posixDirname(verify.localTo!));
+      if (usage) {
+        if (usage.free < st.size + FREE_SPACE_MARGIN) {
+          return `insufficient free space for a transient second copy (${usage.free} free < ${st.size} + margin)`;
+        }
+        // Volume-overburden guard (owner rule): the target volume's projected
+        // utilization AFTER this copy lands must stay at or under the cap —
+        // moves to an overfull volume halt (soft-skip) rather than fill it.
+        if (usage.total > 0) {
+          const projectedPct = ((usage.total - usage.free + st.size) / usage.total) * 100;
+          if (projectedPct > maxVolumePct) {
+            return `target volume would reach ${projectedPct.toFixed(1)}% utilization (cap ${maxVolumePct}%) — halting moves onto it`;
+          }
+        }
       }
       for (const s of verify.sidecars ?? []) {
         const localTo = plexToLocal(s.to, pathMap);

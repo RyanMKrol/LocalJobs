@@ -206,6 +206,32 @@ test('moment-of-truth re-checks soft-skip (never fail) on drift: size change, ta
   assert.equal(fs.files.get(cTarget.verify.localTo!), 'OCCUPIED', 'occupied target untouched');
 });
 
+test('volume-overburden guard: a move that would push the target volume past the cap soft-skips', async () => {
+  // Under the cap: volume 60% used with plenty of free space → the move proceeds.
+  const cUnder = candidate();
+  const fsUnder = makeMemFs(
+    { ...MOUNT, [cUnder.verify.localFrom!]: 'BYTES-11!!!' },
+    { freeBytes: 4_000_000_000, totalBytes: 10_000_000_000 },
+  );
+  const envUnder = makeEnv(fsUnder, [cUnder], { maxVolumeUtilizationPct: 92 });
+  await runApply(fakeCtx(), envUnder.overrides);
+  assert.equal(getWorkItem('plex-rename-apply', cUnder.itemKey)?.status, 'success', 'under the cap the move proceeds');
+
+  // Over the cap: volume already 93.3% used (free 2GB of 30GB, still above the
+  // absolute margin) → the move halts as a soft skip and nothing is touched.
+  const cBlocked = candidate();
+  const fsBlocked = makeMemFs(
+    { ...MOUNT, [cBlocked.verify.localFrom!]: 'BYTES-11!!!' },
+    { freeBytes: 2_000_000_000, totalBytes: 30_000_000_000 },
+  );
+  const envBlocked = makeEnv(fsBlocked, [cBlocked], { maxVolumeUtilizationPct: 92 });
+  await runApply(fakeCtx(), envBlocked.overrides);
+  const row = getWorkItem('plex-rename-apply', cBlocked.itemKey);
+  assert.equal(row?.status, 'skipped', 'over the cap the move halts as a soft skip');
+  assert.match(JSON.parse(row!.detail!).reason, /utilization/);
+  assert.equal(fsBlocked.files.get(cBlocked.verify.localFrom!), 'BYTES-11!!!', 'nothing moved');
+});
+
 test('checksum mismatch: item fails, original untouched, run throws', async () => {
   const c = candidate();
   const fs = makeMemFs({ ...MOUNT, [c.verify.localFrom!]: 'BYTES-11!!!' }, { corruptCopies: true } as MemFsOptions);

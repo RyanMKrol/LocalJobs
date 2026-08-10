@@ -188,8 +188,9 @@ export interface WriteFsSeam extends ReadFsSeam {
   writeFile(path: string, content: string): Promise<void>;
   /** rmdir ONLY when a fresh readdir shows empty — structurally incapable of deleting files. */
   rmdirIfEmpty(path: string): Promise<'removed' | 'not-empty' | 'missing'>;
-  /** Free bytes on the filesystem containing `path`, or null when unknowable. */
-  freeBytes(path: string): Promise<number | null>;
+  /** Free + total bytes of the volume containing `path`, or null when unknowable
+   *  (SMB mounts report the NAS volume's real capacity — verified live). */
+  volumeUsage(path: string): Promise<{ free: number; total: number } | null>;
 }
 
 export const realWriteFs: WriteFsSeam = {
@@ -247,11 +248,11 @@ export const realWriteFs: WriteFsSeam = {
       await fsp.writeFile(path, content, 'utf8');
     });
   },
-  async freeBytes(path) {
+  async volumeUsage(path) {
     return callService('fs', async () => {
       try {
         const st = await fsp.statfs(path);
-        return Number(st.bavail) * Number(st.bsize);
+        return { free: Number(st.bavail) * Number(st.bsize), total: Number(st.blocks) * Number(st.bsize) };
       } catch {
         return null;
       }

@@ -11,8 +11,9 @@ export interface MemFsOptions {
   corruptCopies?: boolean;
   /** Per-file mtimes (ms); default OLD (0). */
   mtimes?: Record<string, number>;
-  /** Free bytes reported for every path (default: effectively unlimited). */
+  /** Volume free/total bytes reported for every path (default: effectively unlimited + empty). */
   freeBytes?: number;
+  totalBytes?: number;
 }
 
 export interface MemFs extends WriteFsSeam {
@@ -83,8 +84,9 @@ export function makeMemFs(initial: Record<string, string>, opts: MemFsOptions = 
       oplog.push(`write:${path}`);
       files.set(path, content);
     },
-    async freeBytes() {
-      return opts.freeBytes ?? Number.MAX_SAFE_INTEGER;
+    async volumeUsage() {
+      const free = opts.freeBytes ?? Number.MAX_SAFE_INTEGER / 2;
+      return { free, total: opts.totalBytes ?? Number.MAX_SAFE_INTEGER };
     },
     async rmdirIfEmpty(path) {
       oplog.push(`rmdir-if-empty:${path}`);

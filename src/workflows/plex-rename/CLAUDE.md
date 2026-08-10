@@ -22,6 +22,11 @@ the library becomes deterministically re-discoverable from disk alone.
 3. **Hard per-op state gates.** Before every operation, apply re-asserts the disk is exactly as
    expected (source present at Plex's recorded size, target absent, mount healthy); after, it
    re-stats and re-hashes. Any surprise aborts the item — never "probably fine".
+   The **volume-overburden guard** is part of this: a move soft-skips when the TARGET volume's
+   projected utilization after the copy would exceed `PLEX_RENAME_MAX_VOLUME_UTILIZATION`
+   (default 92%) — so moves onto a filling volume halt instead of filling it (load-bearing:
+   volume1 was measured at 88% when this was added; cross-share consolidation adds data to a
+   target volume permanently). The absolute free-space margin check still applies too.
 4. **Folder removal is structurally incapable of deleting files**: only `rmdir` on a directory a
    fresh `readdir` shows empty, never a library root or ancestor. A half-moved folder (daily quota
    hit mid-folder) keeps its remaining files by construction.
@@ -146,7 +151,8 @@ otherwise silently skip, failing loud at the boundary instead.
 `PLEX_RENAME_PATH_MAP` (env-ONLY, no committed default — this repo is public and the share names
 describe the owner's machine; empty map ⇒ everything `unmapped-path`, nothing can mutate),
 `PLEX_RENAME_MIN_AGE_DAYS` (7), `PLEX_RENAME_MAX_PER_DAY` (30 — the daily move quota via the
-job_usage meter, owner-raised in .env as trust grows), `PLEX_RENAME_APPLY_ENABLED` (0 — the
+job_usage meter, owner-raised in .env as trust grows), `PLEX_RENAME_MAX_VOLUME_UTILIZATION` (92 — the volume-overburden cap above),
+`PLEX_RENAME_APPLY_ENABLED` (0 — the
 probation gate: flipping it is a deliberate .env edit + daemon restart, never a dashboard click),
 `PLEX_RENAME_CONFIRM_GRACE_DAYS` (14). Sections reuse `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION`.
 Data dir routes through `resolveWorkflowDataDir` (the mandatory test guard).
