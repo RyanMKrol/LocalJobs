@@ -141,6 +141,20 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
     return;
   }
 
+  // ── Narrate the FULL batch manifest before touching anything — the log
+  // alone must say exactly what this run intends to do, item by item. ──
+  ctx.log(`━━━ BATCH MANIFEST — ${batch.length} item(s) selected (of ${candidates.length} eligible, budget ${budget}) ━━━`);
+  batch.forEach(({ verify }, i) => {
+    const fromShare0 = shareOf(verify.from, pathMap);
+    const toShare0 = shareOf(verify.to, pathMap);
+    const same0 = !!fromShare0 && !!toShare0 && fromShare0.plex === toShare0.plex;
+    const strat = same0 && !verify.caseOnly ? 'RENAME (same share, instant)' : 'COPY+VERIFY (cross-share or case-only)';
+    ctx.log(`  ${String(i + 1).padStart(3)}. "${verify.name}" — ${strat}, ${verify.bytes ?? '?'} bytes, ${(verify.sidecars ?? []).length} sidecar(s)${verify.plexmatch ? ', writes .plexmatch' : ''}`);
+    ctx.log(`       ${verify.from}`);
+    ctx.log(`       → ${verify.to}`);
+  });
+  ctx.log('━━━ END MANIFEST — beginning execution ━━━');
+
   // ── Crash reconciliation (before ANY new work, before Butler) ──
   let journal: JournalWriter | null = null;
   const openJournal = () => {
@@ -366,8 +380,13 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
     (journal as JournalWriter).close();
   }
 
+  const renamedCount = appliedRows.filter((r) => !r.sha256).length;
+  const copiedRows = appliedRows.filter((r) => r.sha256);
+  const copiedGb = copiedRows.reduce((sum, r) => sum + (r.bytes ?? 0), 0) / 1e9;
   ctx.log('═══════════════ APPLY SUMMARY ═══════════════');
-  ctx.log(`Applied: ${applied} · soft-skipped: ${skippedAtApply.length} · failed: ${failed} · quota now ${quota.today + applied}/${maxPerDay}`);
+  ctx.log(`Applied: ${applied} (${renamedCount} atomic rename(s), ${copiedRows.length} verified cross-share cop(ies) totalling ${copiedGb.toFixed(2)} GB)`);
+  ctx.log(`Soft-skipped: ${skippedAtApply.length} · failed: ${failed} · quota now ${quota.today + applied}/${maxPerDay}`);
+  ctx.log(`Plex directories refreshed: ${changedPlexDirs.size} · journal: ${journal ? (journal as JournalWriter).path : 'none (no mutations)'}`);
   ctx.log('═══════════════════════════════════════════');
   ctx.progress(100, `${applied} applied, ${failed} failed`);
   if (failed > 0) {
@@ -390,12 +409,16 @@ async function executeOps(
     const op = ops[idx];
     try {
       if (op.op === 'move') {
+        // Narrate every journaled step of every move — the log alone should
+        // reconstruct exactly what happened to each file, in order.
         const hooks = {
           before: (step: MoveStep) => {
             j.append({ kind: 'op-attempt', at: now().toISOString(), itemKey, opIndex: idx, step });
+            ctx.log(`    ${op.role}[${op.strategy ?? 'copy-verify'}] ${step}… ${step === 'copy' ? `${op.from} → ${op.partial}` : step === 'finalize' && op.strategy === 'rename' ? `${op.from} → ${op.to}` : op.to}`);
           },
           after: (step: MoveStep, info?: { sha256?: string; bytes?: number }) => {
             j.append({ kind: 'op-done', at: now().toISOString(), itemKey, opIndex: idx, step, sha256: info?.sha256, bytes: info?.bytes });
+            ctx.log(`    ${op.role} ${step} ✓${info?.bytes !== undefined ? ` (${info.bytes} bytes)` : ''}${info?.sha256 ? ` sha256=${info.sha256}` : ''}`);
           },
         };
         if (op.strategy === 'rename') {
@@ -408,11 +431,17 @@ async function executeOps(
       } else {
         j.append({ kind: 'op-attempt', at: now().toISOString(), itemKey, opIndex: idx });
         if (op.op === 'mkdir') {
+          ctx.log(`    mkdir -p ${op.path}`);
           await fs.mkdirp(op.path);
         } else if (op.op === 'write-plexmatch') {
           const current = await fs.readFile(op.path);
           if (current !== null && current !== op.content) throw new Error(`.plexmatch appeared with different content: ${op.path}`);
-          if (current === null) await fs.writeFile(op.path, op.content);
+          if (current === null) {
+            ctx.log(`    writing .plexmatch → ${op.path} (${op.content.split('\n').filter(Boolean).length} identity line(s))`);
+            await fs.writeFile(op.path, op.content);
+          } else {
+            ctx.log(`    .plexmatch already present with identical content — not rewritten: ${op.path}`);
+          }
         } else if (op.op === 'rmdir-if-empty') {
           const r = await fs.rmdirIfEmpty(op.path);
           ctx.log(`    rmdir-if-empty ${op.path}: ${r}`);

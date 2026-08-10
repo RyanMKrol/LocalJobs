@@ -84,7 +84,8 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
     const currentPath = part?.file?.normalize('NFC');
     if (currentPath === apply.to.normalize('NFC')) {
       confirmed++;
-      ctx.log(`  ✓ "${apply.name}" — Plex reports the new path at the same ratingKey`);
+      ctx.log(`  ✓ "${apply.name}" — Plex reports the new path at the same ratingKey ${ratingKey} (watch state/metadata intact)`);
+      ctx.log(`      confirmed at: ${apply.to}`);
       record({ name: `${apply.name} — confirmed`, confirmed: true, confirmedPath: apply.to }, 'success');
       continue;
     }

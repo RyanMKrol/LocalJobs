@@ -83,7 +83,13 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
       markWorkItem(JOB_NAME, row.itemKey, 'success', { detail });
       if (detail.eligible) {
         eligibleCount++;
-        ctx.log(`  ✓ eligible "${detail.name}"${detail.caseOnly ? ' (case-only)' : ''} — ${detail.sidecars?.length ?? 0} sidecar(s)`);
+        ctx.log(
+          `  ✓ eligible "${detail.name}"${detail.caseOnly ? ' (case-only)' : ''} — ${detail.bytes ?? '?'} bytes on disk (matches Plex)` +
+            `${detail.plexmatch ? ' · will write .plexmatch' : ''}`,
+        );
+        ctx.log(`      local: ${detail.localFrom} → ${detail.localTo}`);
+        for (const s of detail.sidecars ?? []) ctx.log(`      sidecar rides along: ${s.from} → ${s.to} [${s.role}]`);
+        if ((detail.leftBehind ?? []).length > 0) ctx.log(`      left behind: ${detail.leftBehind!.join(' · ')}`);
       } else {
         reasonCounts.set(detail.reason!, (reasonCounts.get(detail.reason!) ?? 0) + 1);
         ctx.log(`  ⊘ ineligible (${detail.reason}) "${detail.name}" — ${detail.reasonDetail}`, detail.reason === 'file-missing' ? 'warn' : 'info');

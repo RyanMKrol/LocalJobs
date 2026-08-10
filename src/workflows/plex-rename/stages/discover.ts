@@ -1,6 +1,6 @@
 import type { JobContext } from '../../../core/types.js';
 import { extractImdbId, extractTmdbId, extractTvdbId } from '../../../core/plex-client.js';
-import { markWorkItem } from '../../../db/store.js';
+import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { fetchAllLeaves, fetchSectionItems, fetchSections } from '../lib.js';
 import { pathKey, resolveLibraryRoot, type EpisodeRef, type LibraryRoot } from '../naming.js';
@@ -287,13 +287,42 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
 
   ctx.log(`Library roots (from Plex section Locations): ${roots.map((r) => `${r.path} [${r.kind}]`).join(' · ') || 'NONE — every item will be unmapped-root'}`);
 
+  // Narrate multi-episode groupings — these files carry SEVERAL episodes and
+  // get range names (sNNeNN-eMM), so name each one explicitly.
+  const multiEpisode = entries.filter((e) => (e.episodes?.length ?? 0) > 1);
+  ctx.log(`Multi-episode files (one physical file, several episodes — grouped by file path): ${multiEpisode.length}`);
+  for (const e of multiEpisode) {
+    ctx.log(`  ⧉ "${e.name}" — ${e.episodes!.length} episode(s) share ${e.file}`);
+  }
+
   let recorded = 0;
   let outsideLimit = 0;
+  let newFiles = 0;
+  let movedFiles = 0;
   for (const entry of entries) {
     const key = fileKey(kindRatingKey(entry), entry.partId);
     if (!ctx.rootAllowed(key)) {
       outsideLimit++;
       continue;
+    }
+    // Narrate CHANGES against the previous snapshot: a brand-new file (never
+    // seen before) and a file whose recorded path moved since last run (the
+    // convergence signal after an applied rename + Plex rescan) are the two
+    // genuinely interesting events in a re-marked snapshot ledger.
+    const prior = getWorkItem(JOB_NAME, key);
+    if (!prior) {
+      newFiles++;
+      ctx.log(`  ＋ NEW file: "${entry.name}" at ${entry.file} (${entry.partSize ?? '?'} bytes)`);
+    } else {
+      try {
+        const priorFile = (JSON.parse(prior.detail ?? '{}') as { file?: string }).file;
+        if (priorFile && priorFile !== entry.file) {
+          movedFiles++;
+          ctx.log(`  ⇢ PATH CHANGED: "${entry.name}"`);
+          ctx.log(`      was: ${priorFile}`);
+          ctx.log(`      now: ${entry.file}`);
+        }
+      } catch { /* unparseable prior detail — treat as unchanged */ }
     }
     markWorkItem(JOB_NAME, key, 'success', { detail: entry });
     recorded++;
@@ -301,6 +330,8 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
 
   ctx.log('═══════════════ DISCOVER SUMMARY ═══════════════');
   ctx.log(`File snapshot(s) recorded: ${recorded} · outside run limit: ${outsideLimit} · skipped (part with no file path): ${skippedNoFile}`);
+  ctx.log(`Never seen before: ${newFiles} · path changed since last snapshot: ${movedFiles} · multi-episode files: ${multiEpisode.length}`);
+  ctx.log(`Sections walked: movie=${plexRenameConfig.movieSection}, tv=${plexRenameConfig.tvSection} · library roots: ${roots.length}`);
   ctx.log('══════════════════════════════════════════════');
   ctx.progress(100, `${recorded} file snapshot(s) recorded`);
 }

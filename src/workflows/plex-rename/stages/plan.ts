@@ -62,15 +62,32 @@ export async function runPlan(ctx: JobContext, opts: PlanOverrides = {}): Promis
       return { showRatingKey: d?.show?.ratingKey, rootPath: d?.rootPath, bytes: d?.partSize };
     }),
   );
-  const splitShows = new Set<string>();
+  // Narrate the split-show consolidation decisions with the byte math that
+  // drove them, so a log reader can see WHY each home share won.
+  const showBytes = new Map<string, Map<string, { bytes: number; files: number }>>();
+  const showTitles = new Map<string, string>();
   for (const row of rows) {
     const d = row.detail as DiscoverDetail;
-    const home = d?.show?.ratingKey ? homeRoots.get(d.show.ratingKey) : undefined;
-    if (home && d.rootPath && pathKey(home) !== pathKey(d.rootPath)) splitShows.add(d.show!.title);
+    if (!d?.show?.ratingKey || !d.rootPath) continue;
+    showTitles.set(d.show.ratingKey, d.show.title);
+    const per = showBytes.get(d.show.ratingKey) ?? new Map();
+    const cur = per.get(d.rootPath) ?? { bytes: 0, files: 0 };
+    cur.bytes += d.partSize ?? 0;
+    cur.files += 1;
+    per.set(d.rootPath, cur);
+    showBytes.set(d.show.ratingKey, per);
   }
-  if (splitShows.size > 0) {
-    ctx.log(`Split shows consolidating to their majority share: ${[...splitShows].join(' · ')}`);
+  let splitCount = 0;
+  for (const [rk, per] of showBytes) {
+    if (per.size < 2) continue;
+    splitCount++;
+    const home = homeRoots.get(rk);
+    const parts = [...per.entries()]
+      .map(([root, v]) => `${root}: ${v.files} file(s), ${(v.bytes / 1e9).toFixed(1)} GB${home && pathKey(root) === pathKey(home) ? '  ← HOME (majority bytes)' : ''}`)
+      .join(' · ');
+    ctx.log(`  ⇄ split show "${showTitles.get(rk)}" — ${parts}`);
   }
+  ctx.log(`Split shows consolidating to their majority share: ${splitCount}`);
 
   const entries: PlanEntry[] = [];
   const detailByKey = new Map<string, DiscoverDetail>();
@@ -110,21 +127,27 @@ export async function runPlan(ctx: JobContext, opts: PlanOverrides = {}): Promis
     if (entry.decision.kind === 'rename') {
       renames++;
       const homeRoot = d.show?.ratingKey ? homeRoots.get(d.show.ratingKey) : undefined;
+      const targetRootPath = homeRoot ?? d.rootPath;
+      const crossShare = d.rootPath && targetRootPath && pathKey(d.rootPath) !== pathKey(targetRootPath);
       detail = {
         name: d.name,
         decision: 'rename',
         from: d.file,
         to: entry.decision.targetPath,
         rootPath: d.rootPath,
-        targetRootPath: homeRoot ?? d.rootPath,
+        targetRootPath,
         ops: entry.decision.ops,
       };
-      ctx.log(`  → RENAME "${d.name}"`);
+      ctx.log(`  → RENAME "${d.name}"${crossShare ? '  [CROSS-SHARE consolidation]' : ''} (${((d.partSize ?? 0) / 1e9).toFixed(2)} GB)`);
       ctx.log(`      from: ${d.file}`);
       ctx.log(`      to:   ${entry.decision.targetPath}`);
+      if (entry.decision.leftBehind.length > 0) {
+        ctx.log(`      leaving behind in the old folder: ${entry.decision.leftBehind.join(' · ')}`);
+      }
     } else if (entry.decision.kind === 'already-canonical') {
       canonical++;
       detail = { name: d.name, decision: 'already-canonical', from: d.file, to: entry.decision.targetPath };
+      ctx.log(`  ✓ already canonical: "${d.name}" at ${d.file}`);
     } else {
       skips++;
       skipReasons.set(entry.decision.reason, (skipReasons.get(entry.decision.reason) ?? 0) + 1);
