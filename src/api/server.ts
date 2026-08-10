@@ -50,6 +50,7 @@ import {
   stageIoLists,
   workItemMarkdownPath,
   workflowTerminalItems,
+  workflowTerminalItemsCount,
   type OutputItem,
   serviceCallsInLastSeconds,
   serviceCallsThisMonth,
@@ -76,6 +77,13 @@ import {
   bulkIgnoreItems,
   type BulkStuckScope,
 } from '../db/store.js';
+
+/** Parse an integer query param with clamping — NaN/absent/garbage yields the default. */
+function clampIntParam(raw: string | null, min: number, max: number, dflt: number): number {
+  const n = Number(raw);
+  if (raw === null || !Number.isFinite(n)) return dflt;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -1185,24 +1193,31 @@ const routes: Route[] = [
     },
   },
 
-  // GET /api/workflows/:name/output-items  (T205)
+  // GET /api/workflows/:name/output-items?limit=&offset=  (T205)
   // Return the terminal-stage work items with status='success', de-duped by
   // (job_name, item_key). Powers the unified Output section on every workflow's
   // detail page — items are naturally de-duped because the ledger has a UNIQUE
   // key per (job_name, item_key). Read-only, DB only, no paid/remote calls.
+  // ALWAYS paged (default limit 100, max 500) with a `total` — a workflow with
+  // tens of thousands of output items (plex-rename) must never ship them all
+  // in one response; the section lazy-loads pages on scroll.
   {
     method: 'GET',
     pattern: '/api/workflows/:name/output-items',
-    handler: ({ res, params }) => {
+    handler: ({ res, url, params }) => {
       const name = params.name;
+      const page = {
+        limit: clampIntParam(url.searchParams.get('limit'), 1, 500, 100),
+        offset: clampIntParam(url.searchParams.get('offset'), 0, Number.MAX_SAFE_INTEGER, 0),
+      };
       const refs = getWorkflowJobs(name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
-      if (refs.length === 0) return json(res, 200, { items: [] as OutputItem[], terminalJobs: [] as string[] });
+      if (refs.length === 0) return json(res, 200, { items: [] as OutputItem[], total: 0, terminalJobs: [] as string[] });
       let lastWave: string[] = [];
       try {
         const dag = buildDag(refs);
         lastWave = dag.waves[dag.waves.length - 1] ?? [];
       } catch {
-        return json(res, 200, { items: [] as OutputItem[], terminalJobs: [] as string[] });
+        return json(res, 200, { items: [] as OutputItem[], total: 0, terminalJobs: [] as string[] });
       }
       const def = getWorkflowDefinition(name);
       // T603: outputJob may name either an existing member job (stocks-sync-style,
@@ -1211,7 +1226,11 @@ const routes: Route[] = [
       // — either way just query it directly; a stale/misconfigured value yields an
       // empty (harmless) result, same as any other job name with no ledger rows.
       const outputJobs = def?.outputJob ? [def.outputJob] : lastWave;
-      return json(res, 200, { items: workflowTerminalItems(outputJobs), terminalJobs: outputJobs });
+      return json(res, 200, {
+        items: workflowTerminalItems(outputJobs, page),
+        total: workflowTerminalItemsCount(outputJobs),
+        terminalJobs: outputJobs,
+      });
     },
   },
 
@@ -1690,24 +1709,33 @@ const routes: Route[] = [
     },
   },
 
-  // GET /api/workflow-runs/:id/stage-io?job=<job>
+  // GET /api/workflow-runs/:id/stage-io?job=<job>&limit=&inputsOffset=&outputsOffset=
   // Decoupled inputs/outputs for ONE stage of a run (added for stock-digest's
   // workflow-run page, which has a genuine many-to-one aggregation stage that a
   // single joined row can't represent honestly; now the panel every workflow's
   // run page uses). Returns the stage's own work_items rows this run as
   // `outputs` and its direct predecessor(s)' rows this run as `inputs`, with NO
   // attempt to pair them 1:1 — a real 9-row fan-out stays 9 rows. DB reads only.
+  // ALWAYS paged (default limit 100, max 500) with per-side totals — a
+  // 27k-item run (plex-rename) used to ship both full lists in one response,
+  // which hard-froze the browser tab; the panel lazy-loads pages on scroll.
   {
     method: 'GET',
     pattern: '/api/workflow-runs/:id/stage-io',
     handler: ({ res, url, params }) => {
       const run = getWorkflowRun(params.id);
       if (!run) return json(res, 404, { error: 'workflow run not found' });
+      const page = {
+        limit: clampIntParam(url.searchParams.get('limit'), 1, 500, 100),
+        inputsOffset: clampIntParam(url.searchParams.get('inputsOffset'), 0, Number.MAX_SAFE_INTEGER, 0),
+        outputsOffset: clampIntParam(url.searchParams.get('outputsOffset'), 0, Number.MAX_SAFE_INTEGER, 0),
+      };
+      const empty = { inputs: [], outputs: [], inputTotal: 0, outputTotal: 0, limit: page.limit };
       const refs = getWorkflowJobs(run.workflow_name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
       // `overall=true` takes precedence over `job` when both are present (T384).
       if (url.searchParams.get('overall') === 'true') {
         if (refs.length === 0) {
-          return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], outputJobs: [], job: '__overall__' });
+          return json(res, 200, { ...empty, predecessorJobs: [], outputJobs: [], job: '__overall__' });
         }
         let rootWave: string[] = [];
         let lastWave: string[] = [];
@@ -1716,15 +1744,15 @@ const routes: Route[] = [
           rootWave = dag.waves[0] ?? [];
           lastWave = dag.waves[dag.waves.length - 1] ?? [];
         } catch {
-          return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], outputJobs: [], job: '__overall__' });
+          return json(res, 200, { ...empty, predecessorJobs: [], outputJobs: [], job: '__overall__' });
         }
         const def = getWorkflowDefinition(run.workflow_name);
         // T603: outputJob may name a decoupled ledger job_name (not necessarily an
         // actual DAG member — see the per-job branch below) — just use it directly.
         const outputJobs = def?.outputJob ? [def.outputJob] : lastWave;
         const inputJobs = rootWave.filter((j) => !outputJobs.includes(j));
-        const { inputs, outputs } = stageIoLists(outputJobs, inputJobs, run.id);
-        return json(res, 200, { inputs, outputs, predecessorJobs: inputJobs, outputJobs, job: '__overall__' });
+        const { inputs, outputs, inputTotal, outputTotal } = stageIoLists(outputJobs, inputJobs, run.id, page);
+        return json(res, 200, { inputs, outputs, inputTotal, outputTotal, limit: page.limit, predecessorJobs: inputJobs, outputJobs, job: '__overall__' });
       }
       const jobParam = url.searchParams.get('job');
       if (!jobParam) return json(res, 400, { error: 'job query param is required' });
@@ -1738,7 +1766,7 @@ const routes: Route[] = [
         predecessors = dag.dependencies.get(jobParam) ?? [];
         terminalWave = dag.waves[dag.waves.length - 1] ?? [];
       } catch {
-        return json(res, 200, { inputs: [], outputs: [], predecessorJobs: [], job: jobParam });
+        return json(res, 200, { ...empty, predecessorJobs: [], job: jobParam });
       }
       // T603: a DAG member's `outputJob` (T348) may record its ledger rows under a
       // DIFFERENT job_name than its own DAG member name (e.g. movie-recs-notify's
@@ -1749,8 +1777,8 @@ const routes: Route[] = [
       const def = getWorkflowDefinition(run.workflow_name);
       const ledgerJob =
         def?.outputJob && terminalWave.includes(jobParam) ? def.outputJob : jobParam;
-      const { inputs, outputs } = stageIoLists([ledgerJob], predecessors, run.id);
-      return json(res, 200, { inputs, outputs, predecessorJobs: predecessors, job: jobParam });
+      const { inputs, outputs, inputTotal, outputTotal } = stageIoLists([ledgerJob], predecessors, run.id, page);
+      return json(res, 200, { inputs, outputs, inputTotal, outputTotal, limit: page.limit, predecessorJobs: predecessors, job: jobParam });
     },
   },
 

@@ -202,8 +202,18 @@ export interface StageIoItem {
 export interface StageIo {
   inputs: StageIoItem[];
   outputs: StageIoItem[];
+  /** Per-side totals independent of paging (optional: absent from pre-paging fixtures). */
+  inputTotal?: number;
+  outputTotal?: number;
   predecessorJobs: string[];
   job: string;
+}
+
+/** Paging for the stage-io endpoint — the panel lazy-loads pages of PAGE_SIZE per side. */
+export interface StageIoPageParams {
+  limit?: number;
+  inputsOffset?: number;
+  outputsOffset?: number;
 }
 
 /**
@@ -215,6 +225,9 @@ export interface StageIo {
 export interface StageIoOverall {
   inputs: StageIoItem[];
   outputs: StageIoItem[];
+  /** Per-side totals independent of paging (optional: absent from pre-paging fixtures). */
+  inputTotal?: number;
+  outputTotal?: number;
   predecessorJobs: string[];
   outputJobs: string[];
   job: string;
@@ -406,6 +419,8 @@ export interface WorkflowOutputItem {
 
 export interface WorkflowOutputItems {
   items: WorkflowOutputItem[];
+  /** Total success items independent of paging (optional: absent from pre-paging fixtures). */
+  total?: number;
   terminalJobs: string[];
 }
 
@@ -435,6 +450,16 @@ async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
+}
+
+/** Build the &limit=&inputsOffset=&outputsOffset= tail for the stage-io endpoint. */
+function stageIoPageQuery(page?: StageIoPageParams): string {
+  if (!page) return '';
+  const parts: string[] = [];
+  if (page.limit !== undefined) parts.push(`limit=${page.limit}`);
+  if (page.inputsOffset !== undefined) parts.push(`inputsOffset=${page.inputsOffset}`);
+  if (page.outputsOffset !== undefined) parts.push(`outputsOffset=${page.outputsOffset}`);
+  return parts.length ? `&${parts.join('&')}` : '';
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
@@ -546,17 +571,19 @@ export const api = {
     get<StructuralGateDetail>(
       `/api/workflows/${encodeURIComponent(name)}/gates/${encodeURIComponent(producer)}/${encodeURIComponent(key)}`,
     ),
-  workflowRunStageIo: (id: string, job: string) =>
-    get<StageIo>(`/api/workflow-runs/${id}/stage-io?job=${encodeURIComponent(job)}`),
-  workflowRunStageIoOverall: (id: string) =>
-    get<StageIoOverall>(`/api/workflow-runs/${id}/stage-io?overall=true`),
+  workflowRunStageIo: (id: string, job: string, page?: StageIoPageParams) =>
+    get<StageIo>(`/api/workflow-runs/${id}/stage-io?job=${encodeURIComponent(job)}${stageIoPageQuery(page)}`),
+  workflowRunStageIoOverall: (id: string, page?: StageIoPageParams) =>
+    get<StageIoOverall>(`/api/workflow-runs/${id}/stage-io?overall=true${stageIoPageQuery(page)}`),
   workflowRunOutput: (id: string, job: string, key: string) =>
     get<WorkflowRunOutput>(
       `/api/workflow-runs/${id}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,
     ),
   // T205: unified output section — terminal-stage work items for a workflow.
-  workflowOutputItems: (name: string) =>
-    get<WorkflowOutputItems>(`/api/workflows/${encodeURIComponent(name)}/output-items`),
+  workflowOutputItems: (name: string, page?: { limit?: number; offset?: number }) =>
+    get<WorkflowOutputItems>(
+      `/api/workflows/${encodeURIComponent(name)}/output-items?limit=${page?.limit ?? 100}&offset=${page?.offset ?? 0}`,
+    ),
   // T205: markdown artifact for one output item (not scoped to a specific run).
   workflowOutput: (name: string, job: string, key: string) =>
     get<WorkflowRunOutput>(

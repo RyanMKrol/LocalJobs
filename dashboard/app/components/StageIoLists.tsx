@@ -1,12 +1,31 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { renderOutputBody } from './OutputRenderer';
 import { api } from '../lib/api';
-import type { StageIoItem, WorkflowMember, WorkflowRunOutput } from '../lib/api';
+import type { StageIo, StageIoItem, StageIoPageParams, WorkflowMember, WorkflowRunOutput } from '../lib/api';
 import { StatusBadge, usePoll } from '../ui';
 
 const OVERALL_TAB = '__overall__';
+
+/** Rows fetched per page — the panel NEVER loads a full list up front. A
+ *  27k-item run (plex-rename) used to ship both complete lists into the DOM in
+ *  one shot, hard-freezing the tab; pages now lazy-load as the user scrolls. */
+export const STAGE_IO_PAGE_SIZE = 100;
+
+/** De-dupe by ledger identity — a poll refresh of page one can overlap
+ *  already-appended pages when new rows shift the stable ordering mid-run. */
+export function dedupeStageIoItems(items: StageIoItem[]): StageIoItem[] {
+  const seen = new Set<string>();
+  const out: StageIoItem[] = [];
+  for (const item of items) {
+    const k = `${item.jobName}:${item.itemKey}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(item);
+  }
+  return out;
+}
 
 type ModalState =
   | { loading: true; title: string }
@@ -151,17 +170,25 @@ function StageIoItemRow(
 }
 
 function StageIoColumn(
-  { title, items, runId, emptyText, onOpen }: {
+  { title, items, total, runId, emptyText, onOpen, more }: {
     title: string;
     items: StageIoItem[];
+    /** Full row count for this side, independent of how many pages are loaded. */
+    total: number;
     runId: string;
     emptyText: string;
     onOpen: (title: string, resultPromise: Promise<WorkflowRunOutput>) => void;
+    /** Lazy paging trigger, rendered INSIDE the list (the list is its own 320px
+     *  scroll container, so an outside sentinel would always be "visible" and
+     *  eagerly load everything — inside, clipping keeps it un-intersected until
+     *  the user actually scrolls the column near its bottom). */
+    more?: { loading: boolean; onLoadMore: () => void };
   },
 ) {
+  const countLabel = total > items.length ? ` · ${items.length} of ${total}` : items.length > 0 ? ` · ${items.length}` : '';
   return (
     <div className="stage-io-col">
-      <h4 className="stage-io-col-heading">{title}{items.length > 0 ? ` · ${items.length}` : ''}</h4>
+      <h4 className="stage-io-col-heading">{title}{countLabel}</h4>
       {items.length === 0 ? (
         <p className="muted" style={{ margin: 0, fontSize: '0.85em' }}>{emptyText}</p>
       ) : (
@@ -169,10 +196,83 @@ function StageIoColumn(
           {items.map((item) => (
             <StageIoItemRow key={`${item.jobName}:${item.itemKey}`} runId={runId} item={item} onOpen={onOpen} />
           ))}
+          {more && items.length < total && (
+            <li>
+              <LoadMoreSentinel loading={more.loading} onLoadMore={more.onLoadMore} label={`${items.length} of ${total} loaded`} />
+            </li>
+          )}
         </ul>
       )}
     </div>
   );
+}
+
+/** Infinite-scroll trigger: fires `onLoadMore` when scrolled into view (with a
+ *  generous margin so pages arrive before the user reaches the bottom), and
+ *  doubles as a manual "Load more" button. Rendered only while more rows exist. */
+export function LoadMoreSentinel(
+  { loading, onLoadMore, label }: { loading: boolean; onLoadMore: () => void; label: string },
+) {
+  const ref = useRef<HTMLDivElement>(null);
+  const loadRef = useRef(onLoadMore);
+  loadRef.current = onLoadMore;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadRef.current();
+      },
+      { rootMargin: '400px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="stage-io-load-more">
+      <button type="button" className="btn btn-sm" onClick={() => loadRef.current()} disabled={loading}>
+        {loading ? 'Loading…' : `Load more (${label})`}
+      </button>
+    </div>
+  );
+}
+
+/** Shared lazy-paging state over the stage-io endpoint: the FIRST page stays on
+ *  the 5s poll (so a live run's newest rows and statuses keep refreshing), and
+ *  further pages append on demand as the sentinel scrolls into view. */
+function useLazyStageIo(
+  fetchPage: (page: StageIoPageParams) => Promise<StageIo | (StageIo & { outputJobs: string[] })>,
+  deps: unknown[],
+) {
+  const { data } = usePoll(() => fetchPage({ limit: STAGE_IO_PAGE_SIZE, inputsOffset: 0, outputsOffset: 0 }), 5000, deps);
+  const [extraInputs, setExtraInputs] = useState<StageIoItem[]>([]);
+  const [extraOutputs, setExtraOutputs] = useState<StageIoItem[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const inputs = useMemo(() => dedupeStageIoItems([...(data?.inputs ?? []), ...extraInputs]), [data, extraInputs]);
+  const outputs = useMemo(() => dedupeStageIoItems([...(data?.outputs ?? []), ...extraOutputs]), [data, extraOutputs]);
+  const inputTotal = data?.inputTotal ?? inputs.length;
+  const outputTotal = data?.outputTotal ?? outputs.length;
+  const hasMore = inputs.length < inputTotal || outputs.length < outputTotal;
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !data) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchPage({
+        limit: STAGE_IO_PAGE_SIZE,
+        inputsOffset: inputs.length,
+        outputsOffset: outputs.length,
+      });
+      setExtraInputs((prev) => [...prev, ...page.inputs]);
+      setExtraOutputs((prev) => [...prev, ...page.outputs]);
+    } finally {
+      setLoadingMore(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingMore, data, inputs.length, outputs.length]);
+
+  return { data, inputs, outputs, inputTotal, outputTotal, hasMore, loadMore, loadingMore };
 }
 
 /** The Inputs column's empty-state text (T607). A stage with NO predecessors at all is
@@ -185,11 +285,21 @@ export function inputsEmptyText(predecessorJobs: string[]): string {
     : 'No inputs recorded this run.';
 }
 
-/** One workflow member's decoupled inputs/outputs — polls its own
- *  `GET /workflow-runs/:id/stage-io?job=` independently of the other members. */
-function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
+/** One decoupled inputs/outputs block — a single workflow member (job tab) or
+ *  the workflow-wide Overall view, depending on the fetcher passed in. The
+ *  first page of each side stays live on the poll; further pages lazy-load via
+ *  the sentinel as the user scrolls (never everything up front). */
+function StageIoLazyBlock(
+  { runId, heading, fetchPage, deps, inputsEmpty }: {
+    runId: string;
+    heading: string;
+    fetchPage: (page: StageIoPageParams) => Promise<StageIo>;
+    deps: unknown[];
+    inputsEmpty: (predecessorJobs: string[]) => string;
+  },
+) {
   const [modal, setModal] = useState<ModalState | null>(null);
-  const { data } = usePoll(() => api.workflowRunStageIo(runId, jobName), 5000, [runId, jobName]);
+  const { data, inputs, outputs, inputTotal, outputTotal, hasMore, loadMore, loadingMore } = useLazyStageIo(fetchPage, deps);
 
   const openModal = useCallback(
     (title: string, resultPromise: Promise<WorkflowRunOutput>) => {
@@ -205,72 +315,25 @@ function StageIoBlock({ runId, jobName }: { runId: string; jobName: string }) {
 
   return (
     <div className="panel stage-io-block">
-      <h3 className="stage-io-stage-name">{jobName}</h3>
+      <h3 className="stage-io-stage-name">{heading}</h3>
       <div className="stage-io-columns">
         <StageIoColumn
           title="Inputs"
-          items={data.inputs}
+          items={inputs}
+          total={inputTotal}
           runId={runId}
-          emptyText={inputsEmptyText(data.predecessorJobs)}
+          emptyText={inputsEmpty(data.predecessorJobs)}
           onOpen={openModal}
+          more={hasMore ? { loading: loadingMore, onLoadMore: loadMore } : undefined}
         />
         <StageIoColumn
           title="Outputs"
-          items={data.outputs}
+          items={outputs}
+          total={outputTotal}
           runId={runId}
           emptyText="Nothing recorded this run."
           onOpen={openModal}
-        />
-      </div>
-      {modal && (
-        <StageIoModal
-          title={modal.title}
-          loading={modal.loading}
-          result={!modal.loading && 'result' in modal ? modal.result : undefined}
-          error={!modal.loading && 'error' in modal ? modal.error : undefined}
-          onClose={() => setModal(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-/** The workflow-wide "Overall" tab — polls `GET /workflow-runs/:id/stage-io?overall=true`
- *  (T384) to show the run's root-wave inputs and effective terminal-wave outputs,
- *  independent of any single stage's own inputs/outputs. */
-function StageIoOverallBlock({ runId }: { runId: string }) {
-  const [modal, setModal] = useState<ModalState | null>(null);
-  const { data } = usePoll(() => api.workflowRunStageIoOverall(runId), 5000, [runId]);
-
-  const openModal = useCallback(
-    (title: string, resultPromise: Promise<WorkflowRunOutput>) => {
-      setModal({ loading: true, title });
-      resultPromise
-        .then((result) => setModal({ loading: false, title, result }))
-        .catch((err) => setModal({ loading: false, title, error: err instanceof Error ? err.message : String(err) }));
-    },
-    [],
-  );
-
-  if (!data) return null;
-
-  return (
-    <div className="panel stage-io-block">
-      <h3 className="stage-io-stage-name">Overall</h3>
-      <div className="stage-io-columns">
-        <StageIoColumn
-          title="Inputs"
-          items={data.inputs}
-          runId={runId}
-          emptyText="No inputs recorded this run."
-          onOpen={openModal}
-        />
-        <StageIoColumn
-          title="Outputs"
-          items={data.outputs}
-          runId={runId}
-          emptyText="Nothing recorded this run."
-          onOpen={openModal}
+          more={hasMore ? { loading: loadingMore, onLoadMore: loadMore } : undefined}
         />
       </div>
       {modal && (
@@ -342,9 +405,25 @@ export function StageIoPanel({ runId, members }: { runId: string; members: Workf
         </div>
       </div>
       {selectedJob === OVERALL_TAB ? (
-        <StageIoOverallBlock runId={runId} />
+        <StageIoLazyBlock
+          key={OVERALL_TAB}
+          runId={runId}
+          heading="Overall"
+          fetchPage={(page) => api.workflowRunStageIoOverall(runId, page)}
+          deps={[runId]}
+          inputsEmpty={() => 'No inputs recorded this run.'}
+        />
       ) : (
-        visibleMembers.map((m) => <StageIoBlock key={m.job_name} runId={runId} jobName={m.job_name} />)
+        visibleMembers.map((m) => (
+          <StageIoLazyBlock
+            key={m.job_name}
+            runId={runId}
+            heading={m.job_name}
+            fetchPage={(page) => api.workflowRunStageIo(runId, m.job_name, page)}
+            deps={[runId, m.job_name]}
+            inputsEmpty={inputsEmptyText}
+          />
+        ))
       )}
     </>
   );

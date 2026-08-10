@@ -191,6 +191,7 @@ tbody tr:hover { background: var(--panel-2); }
 .stage-io-col { flex: 1 1 0; min-width: 0; }
 .stage-io-col-heading { margin: 0 0 6px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .stage-io-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.stage-io-load-more { display: flex; justify-content: center; padding: 8px 0 2px; }
 .stage-io-item { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .stage-io-item-meta { min-width: 0; }
 .stage-io-item-key { font-family: var(--font-mono, monospace); font-size: 0.82em; overflow-wrap: anywhere; }

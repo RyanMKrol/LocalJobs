@@ -210,6 +210,7 @@ describe('runStockDigestBuild', () => {
       portfolioPath: join(dir, 'nope.json'),
       outDir: join(dir, 'out'),
       claudeRunner,
+      now: new Date('2026-05-21T12:00:00Z'),
     });
     assert.equal(claudeCalled, false);
     assert.equal(existsSync(join(dir, 'out')), false);
@@ -228,6 +229,7 @@ describe('runStockDigestBuild', () => {
       portfolioPath,
       outDir: join(dir, 'out'),
       claudeRunner,
+      now: new Date('2026-05-28T12:00:00Z'),
     });
     assert.equal(claudeCalled, false);
   });
@@ -269,6 +271,7 @@ describe('runStockDigestBuild', () => {
       sectorsPath: join(dir, 'nope-sectors.json'),
       outDir,
       claudeRunner,
+      now: new Date('2026-06-04T12:00:00Z'),
     });
 
     assert.doesNotMatch(capturedPrompt, /Diversification/);
@@ -287,7 +290,11 @@ describe('runStockDigestBuild', () => {
       return { ok: true, text: 'ok', rateLimited: false };
     };
 
-    await runStockDigestBuild(fakeCtx(), { portfolioPath, sectorsPath, outDir, claudeRunner });
+    // Fixed clock: with the REAL clock, the moment the wall-clock week reached
+    // another subtest's "distinct" fixture week (2026-08-13 — hit on Mon 10 Aug
+    // 2026), this test marked that week's ledger key first and broke it. Every
+    // subtest in this suite must pin `now` to its own week.
+    await runStockDigestBuild(fakeCtx(), { portfolioPath, sectorsPath, outDir, claudeRunner, now: new Date('2026-05-07T12:00:00Z') });
 
     assert.match(capturedPrompt, /Diversification/);
     assert.match(capturedPrompt, /Technology/);
@@ -305,7 +312,7 @@ describe('runStockDigestBuild', () => {
     });
 
     await assert.rejects(
-      runStockDigestBuild(fakeCtx(), { portfolioPath, outDir: join(dir, 'out'), claudeRunner }),
+      runStockDigestBuild(fakeCtx(), { portfolioPath, outDir: join(dir, 'out'), claudeRunner, now: new Date('2026-05-14T12:00:00Z') }),
       /boom/,
     );
   });

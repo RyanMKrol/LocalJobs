@@ -265,6 +265,16 @@ export interface StageIoItem {
 export interface StageIoLists {
   inputs: StageIoItem[];
   outputs: StageIoItem[];
+  /** Total row counts per side, INDEPENDENT of any paging applied — the client's "X of Y". */
+  inputTotal: number;
+  outputTotal: number;
+}
+
+/** Optional paging for stageIoLists — each side gets its own offset, one shared page size. */
+export interface StageIoPage {
+  limit: number;
+  inputsOffset: number;
+  outputsOffset: number;
 }
 
 function toStageIoItem(r: LedgerRow): StageIoItem {
@@ -310,35 +320,60 @@ export function stageIoLists(
   outputJobNames: string[],
   inputJobNames: string[],
   workflowRunId: string,
+  page?: StageIoPage,
 ): StageIoLists {
-  const queryJobRows = (jobNames: string[]): LedgerRow[] => {
-    if (jobNames.length === 0) return [];
-    const ph = jobNames.map(() => '?').join(',');
-    return db.prepare(`
-      SELECT wi.job_name, wi.item_key, wi.status, wi.detail, wi.root_key
+  // The input-sample routing (T615) is applied IN SQL — with paging, filtering
+  // rows out in JS after a LIMIT/OFFSET would silently break the offset math
+  // (a page of 100 could shrink to 97 and rows between pages would be skipped).
+  // NB the COALESCE is load-bearing: json_extract yields SQL NULL for a detail
+  // with no `kind` key, and `NOT (... AND NULL)` is NULL — which silently
+  // excludes every normal row. COALESCE makes the predicate total (true/false).
+  const SAMPLE_PRED = `(wi.detail IS NOT NULL AND json_valid(wi.detail) AND COALESCE(json_extract(wi.detail, '$.kind'), '') = 'input-sample')`;
+
+  const querySide = (where: string, whereArgs: string[], offset: number): { rows: LedgerRow[]; total: number } => {
+    if (!where) return { rows: [], total: 0 };
+    const base = `
       FROM work_items wi
       JOIN work_item_runs wr
         ON wr.job_name = wi.job_name AND wr.item_key = wi.item_key AND wr.workflow_run_id = ?
-      WHERE wi.job_name IN (${ph})
-      ORDER BY wi.job_name, wi.item_key
-    `).all(workflowRunId, ...jobNames) as LedgerRow[];
+      WHERE ${where}
+    `;
+    const total = (db.prepare(`SELECT COUNT(*) AS n ${base}`).get(workflowRunId, ...whereArgs) as { n: number }).n;
+    const paging = page ? ` LIMIT ${Math.max(1, Math.floor(page.limit))} OFFSET ${Math.max(0, Math.floor(offset))}` : '';
+    const rows = db.prepare(
+      `SELECT wi.job_name, wi.item_key, wi.status, wi.detail, wi.root_key ${base} ORDER BY wi.job_name, wi.item_key${paging}`,
+    ).all(workflowRunId, ...whereArgs) as LedgerRow[];
+    return { rows, total };
   };
 
-  const isInputSample = (r: LedgerRow): boolean => {
-    if (!r.detail) return false;
-    try {
-      return (JSON.parse(r.detail) as { kind?: unknown } | null)?.kind === 'input-sample';
-    } catch {
-      return false;
-    }
+  const inList = (names: string[]) => names.map(() => '?').join(',');
+
+  // Outputs: the output jobs' own rows, minus their self-recorded input samples.
+  const outputSide = outputJobNames.length === 0
+    ? { rows: [] as LedgerRow[], total: 0 }
+    : querySide(`wi.job_name IN (${inList(outputJobNames)}) AND NOT ${SAMPLE_PRED}`, outputJobNames, page?.outputsOffset ?? 0);
+
+  // Inputs: the predecessor jobs' rows, plus the output jobs' input-sample rows.
+  const inputClauses: string[] = [];
+  const inputArgs: string[] = [];
+  if (inputJobNames.length > 0) {
+    inputClauses.push(`wi.job_name IN (${inList(inputJobNames)})`);
+    inputArgs.push(...inputJobNames);
+  }
+  if (outputJobNames.length > 0) {
+    inputClauses.push(`(wi.job_name IN (${inList(outputJobNames)}) AND ${SAMPLE_PRED})`);
+    inputArgs.push(...outputJobNames);
+  }
+  const inputSide = inputClauses.length === 0
+    ? { rows: [] as LedgerRow[], total: 0 }
+    : querySide(inputClauses.join(' OR '), inputArgs, page?.inputsOffset ?? 0);
+
+  return {
+    inputs: inputSide.rows.map(toStageIoItem),
+    outputs: outputSide.rows.map(toStageIoItem),
+    inputTotal: inputSide.total,
+    outputTotal: outputSide.total,
   };
-
-  const outputRows = queryJobRows(outputJobNames);
-  const outputs = outputRows.filter((r) => !isInputSample(r));
-  const selfInputSamples = outputRows.filter(isInputSample);
-  const inputs = [...queryJobRows(inputJobNames), ...selfInputSamples];
-
-  return { inputs: inputs.map(toStageIoItem), outputs: outputs.map(toStageIoItem) };
 }
 
 /**
@@ -404,11 +439,18 @@ export interface OutputItem {
  * by construction (the work_items ledger is keyed by that pair). Ordered newest first.
  * Used by GET /api/workflows/:name/output-items (T205).
  */
-export function workflowTerminalItems(terminalJobNames: string[]): OutputItem[] {
+export function workflowTerminalItems(
+  terminalJobNames: string[],
+  page?: { limit: number; offset: number },
+): OutputItem[] {
   if (terminalJobNames.length === 0) return [];
   const ph = terminalJobNames.map(() => '?').join(',');
+  // (job_name, item_key) is the ledger's UNIQUE key but updated_at ties are common
+  // (a bulk stage marks many rows in one second) — the rowid tiebreaker keeps
+  // paging deterministic (the T112 latest-run ordering rule, applied here).
+  const paging = page ? ` LIMIT ${Math.max(1, Math.floor(page.limit))} OFFSET ${Math.max(0, Math.floor(page.offset))}` : '';
   const rows = db.prepare(
-    `SELECT job_name, item_key, detail, updated_at FROM work_items WHERE job_name IN (${ph}) AND status = 'success' ORDER BY updated_at DESC`,
+    `SELECT job_name, item_key, detail, updated_at FROM work_items WHERE job_name IN (${ph}) AND status = 'success' ORDER BY updated_at DESC, rowid DESC${paging}`,
   ).all(...terminalJobNames) as { job_name: string; item_key: string; detail: string | null; updated_at: string }[];
   return rows.map((r) => {
     let name: string | null = null;
@@ -426,6 +468,14 @@ export function workflowTerminalItems(terminalJobNames: string[]): OutputItem[] 
     }
     return { jobName: r.job_name, itemKey: r.item_key, name, hasMarkdown, viewable, updatedAt: r.updated_at };
   });
+}
+
+/** Total success rows for the given terminal-stage job names — the Output section's "X of Y". */
+export function workflowTerminalItemsCount(terminalJobNames: string[]): number {
+  if (terminalJobNames.length === 0) return 0;
+  const ph = terminalJobNames.map(() => '?').join(',');
+  return (db.prepare(`SELECT COUNT(*) AS n FROM work_items WHERE job_name IN (${ph}) AND status = 'success'`)
+    .get(...terminalJobNames) as { n: number }).n;
 }
 
 /** Count of work items per status for a job, e.g. { success: 1700, failed: 3 }. */

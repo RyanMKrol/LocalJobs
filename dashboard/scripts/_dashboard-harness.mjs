@@ -857,7 +857,9 @@ const plexRenameVerifyOutput = { jobName: 'plex-rename-verify', itemKey: '1001::
 const plexRenameApplyOutput = { jobName: 'plex-rename-apply', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', from: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv', to: '/volume1/Share/TV/Mob Psycho 100 (2016) {tvdb-305074}/Season 02/Mob Psycho 100 (2016) - s02e05 - Discord.mkv', sha256: 'ab12cd34ef56', sidecarCount: 1, markdown: '/abs/data/out/reports/rename-report.md' } };
 const plexRenameConfirmOutput = { jobName: 'plex-rename-confirm', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05 — confirmed', confirmed: true } };
 const plexRenameStageIo = {
-  'plex-rename-discover': { inputs: [], outputs: [plexRenameDiscoverOutput], predecessorJobs: [], job: 'plex-rename-discover' },
+  // discover carries totals far above the list length — exercises the paged
+  // "X of Y" heading + the in-list LoadMoreSentinel (the 27k-item lazy-load fix).
+  'plex-rename-discover': { inputs: [], outputs: [plexRenameDiscoverOutput], inputTotal: 0, outputTotal: 27251, predecessorJobs: [], job: 'plex-rename-discover' },
   'plex-rename-plan': { inputs: [plexRenameDiscoverOutput], outputs: [plexRenamePlanOutput], predecessorJobs: ['plex-rename-discover'], job: 'plex-rename-plan' },
   'plex-rename-verify': { inputs: [plexRenamePlanOutput], outputs: [plexRenameVerifyOutput], predecessorJobs: ['plex-rename-plan'], job: 'plex-rename-verify' },
   'plex-rename-apply': { inputs: [plexRenameVerifyOutput], outputs: [plexRenameApplyOutput], predecessorJobs: ['plex-rename-verify'], job: 'plex-rename-apply' },
@@ -1311,6 +1313,19 @@ export const PAGES = [
 // ⚠️ LIVING ARTIFACT: when a UI change adds/removes an interactive state worth seeing
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
+  {
+    // Stage-I/O lazy paging (2026-08): the plex-rename-discover tab's fixture
+    // reports outputTotal 27251 against a 1-row list, so this shot paints the
+    // paged "1 of 27251" column heading + the in-list "Load more" sentinel —
+    // the fix for the 27k-item run page that used to freeze the tab.
+    name: 'workflow-run-stage-io-load-more',
+    path: '/workflow-runs/plex-rename-run',
+    waitFor: ['.io-job-filter-chip'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:has-text("plex-rename-discover")');
+      await page.waitForSelector('.stage-io-load-more', { timeout: 5000 });
+    },
+  },
   {
     // T611: admin page's Cached responses panel — clicking "Browse" on a service
     // row expands its individual service_cache rows (cache_key/cached_at/Live-Stale

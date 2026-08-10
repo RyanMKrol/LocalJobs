@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, type WorkflowOutputItem, type WorkflowRunOutput } from '../lib/api';
 import { renderOutputBody } from './OutputRenderer';
+import { LoadMoreSentinel, STAGE_IO_PAGE_SIZE } from './StageIoLists';
 import { usePoll } from '../ui';
 
 function OutputModal(
@@ -47,11 +48,43 @@ function OutputModal(
  * by construction (the work_items ledger is keyed by that pair). (T205)
  */
 export function WorkflowOutputSection({ workflowName }: { workflowName: string }) {
-  const { data, error } = usePoll(() => api.workflowOutputItems(workflowName), 10_000, [workflowName]);
+  // First page stays on the poll (fresh counts + newest items); further pages
+  // lazy-load on scroll — a workflow with tens of thousands of output items
+  // (plex-rename) must never render them all up front.
+  const { data, error } = usePoll(
+    () => api.workflowOutputItems(workflowName, { limit: STAGE_IO_PAGE_SIZE, offset: 0 }),
+    10_000,
+    [workflowName],
+  );
   const [modal, setModal] = useState<{ item: WorkflowOutputItem; result: WorkflowRunOutput | null; error?: string } | null>(null);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  const [extraItems, setExtraItems] = useState<WorkflowOutputItem[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const items = data?.items ?? [];
+  const items = useMemo(() => {
+    const seen = new Set<string>();
+    const out: WorkflowOutputItem[] = [];
+    for (const item of [...(data?.items ?? []), ...extraItems]) {
+      const k = `${item.jobName}:${item.itemKey}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(item);
+    }
+    return out;
+  }, [data, extraItems]);
+  const total = data?.total ?? items.length;
+  const hasMore = items.length < total;
+
+  async function loadMore() {
+    if (loadingMore || !data) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.workflowOutputItems(workflowName, { limit: STAGE_IO_PAGE_SIZE, offset: items.length });
+      setExtraItems((prev) => [...prev, ...page.items]);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function openOutput(item: WorkflowOutputItem) {
     const k = `${item.jobName}:${item.itemKey}`;
@@ -67,7 +100,9 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
     }
   }
 
-  const label = items.length === 1 ? '1 item' : `${items.length} items`;
+  const label = hasMore
+    ? `${items.length} of ${total} items loaded`
+    : items.length === 1 ? '1 item' : `${items.length} items`;
 
   return (
     <div className="output-section">
@@ -127,6 +162,9 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
               </table>
             </div>
           </div>
+          {hasMore && (
+            <LoadMoreSentinel loading={loadingMore} onLoadMore={loadMore} label={`${items.length} of ${total} loaded`} />
+          )}
         </>
       )}
 

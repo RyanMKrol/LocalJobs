@@ -519,7 +519,11 @@ job MAY colocate a service it owns).
   - **Adding a new workflow that produces output**: make the terminal stage call
     `markWorkItem(ctx, key, 'success', { detail: { name: ..., markdown: <path> } })` for
     markdown artifact items, OR just `markWorkItem(ctx, key, 'success')` for non-markdown
-    items. The output section renders automatically — no extra wiring needed.
+    items. The output section renders automatically — no extra wiring needed. The
+    `output-items` endpoint is always paged (`limit` default 100 max 500, `offset`) with a
+    `total`; `WorkflowOutputSection` lazy-loads further pages on scroll via the shared
+    `LoadMoreSentinel` — a workflow with tens of thousands of output items (plex-rename)
+    must never render them all up front.
   - **`outputJob` override for a non-terminal output stage (T348).** Some workflows are
     shaped build-then-notify, where the DAG's TERMINAL stage is a pure notify-trigger that
     structurally never records `work_items` rows (e.g. `stocks-sync`'s `stocks-notify`, which
@@ -1358,7 +1362,13 @@ doubt, log it.
     shows every row honestly, not just a representative one), backed by
     `GET /workflow-runs/:id/stage-io` → `stageIoLists` in `src/db/store.ts`. Every
     new workflow gets this same honest, un-paired treatment automatically; there
-    is no per-workflow opt-in to make.
+    is no per-workflow opt-in to make. **Always paged + lazy-loaded (2026-08):** the
+    endpoint takes `limit` (default 100, max 500) + per-side `inputsOffset`/`outputsOffset`
+    and returns per-side totals; the panel keeps page one on the 5s poll and appends
+    further pages via an in-list `LoadMoreSentinel` (IntersectionObserver inside each
+    column's own 320px scroll container) — a 27k-item run (plex-rename) used to ship
+    both full lists in one response and hard-froze the tab. The T615 input-sample
+    routing is applied IN SQL (`stageIoLists`) so paging offsets never skip rows.
   - **`<IgnoredSection>`** (`dashboard/app/components/IgnoredSection.tsx`, T390) —
     the "Ignored (N)" panel used by `RecsManager`/`GroupedManager` (below) on
     `workflows/[name]/page.tsx`. Owns only the panel chrome (padding + heading/subtitle
