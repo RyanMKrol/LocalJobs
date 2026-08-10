@@ -15,16 +15,25 @@ function fakeCtx(): JobContext {
   return { log() {}, progress() {}, selectedRoots: () => null, rootAllowed: () => true };
 }
 
-const MAP: PathMapPair[] = [{ plex: '/volume1/Share', local: '/Volumes/Share' }];
+const MAP: PathMapPair[] = [
+  { plex: '/volume1/Share', local: '/Volumes/Share' },
+  { plex: '/volume2/Share2', local: '/Volumes/Share2' },
+];
 const NOW = new Date('2026-08-09T05:00:00.000Z');
 const MOUNT = { '/Volumes/Share/Movies/.marker': 'x' };
+const MOUNT2 = { '/Volumes/Share2/Movies/.marker': 'x' };
 
 let keyCounter = 0;
 
-function candidate(over: Partial<VerifyDetail> = {}, kind: 'movie' | 'episode' = 'movie') {
+function candidate(
+  over: Partial<VerifyDetail> = {},
+  kind: 'movie' | 'episode' = 'movie',
+  opts: { crossShare?: boolean } = {},
+) {
   const n = ++keyCounter;
   const from = over.from ?? `/volume1/Share/Movies/Rel${n}/old${n}.mkv`;
-  const to = over.to ?? `/volume1/Share/Movies/Movie ${n} (2016) {tmdb-${n}}/Movie ${n} (2016) {tmdb-${n}}.mkv`;
+  const targetShare = opts.crossShare ? '/volume2/Share2' : '/volume1/Share';
+  const to = over.to ?? `${targetShare}/Movies/Movie ${n} (2016) {tmdb-${n}}/Movie ${n} (2016) {tmdb-${n}}.mkv`;
   const itemKey = `m${n}::part${n}`;
   const verify: VerifyDetail = {
     name: `Movie ${n}`,
@@ -32,7 +41,7 @@ function candidate(over: Partial<VerifyDetail> = {}, kind: 'movie' | 'episode' =
     from,
     to,
     localFrom: from.replace('/volume1/Share', '/Volumes/Share'),
-    localTo: to.replace('/volume1/Share', '/Volumes/Share'),
+    localTo: to.replace('/volume1/Share', '/Volumes/Share').replace('/volume2/Share2', '/Volumes/Share2'),
     bytes: 11,
     sidecars: [],
     leftBehind: [],
@@ -94,7 +103,7 @@ function makeEnv(
   };
 }
 
-test('apply happy path: verified move + sidecar + plexmatch + journal + ledger + report + refresh + quota tick', async () => {
+test('apply happy path (cross-share): verified copy + sidecar + journal + ledger + report + refresh + quota tick', async () => {
   const c = candidate(
     {
       sidecars: [
@@ -107,12 +116,14 @@ test('apply happy path: verified move + sidecar + plexmatch + journal + ledger +
       plexmatch: undefined,
     },
     'movie',
+    { crossShare: true },
   );
   c.verify.sidecars = [
     { from: c.from.replace('.mkv', '.en.srt'), to: c.to.replace('.mkv', '.en.srt'), role: 'sidecar' },
   ];
   const fs = makeMemFs({
     ...MOUNT,
+    ...MOUNT2,
     [c.verify.localFrom!]: 'MOVIE-BYTES',
     [c.verify.localFrom!.replace('.mkv', '.en.srt')]: 'SUBTITLE',
   });
@@ -138,6 +149,29 @@ test('apply happy path: verified move + sidecar + plexmatch + journal + ledger +
   assert.equal(env.butlerCalls.count, 1, 'Butler once per run');
   assert.ok(env.refreshes.length >= 1, 'targeted Plex refresh issued');
   assert.ok(readdirSync(env.reportDir).some((f) => f.startsWith('rename-report-')), 'report written');
+});
+
+test('same-share move: atomic rename — no copy, no partial, no hash, space checks skipped', async () => {
+  const c = candidate(); // default candidate is same-share
+  const fs = makeMemFs(
+    { ...MOUNT, [c.verify.localFrom!]: 'BYTES-11!!!' },
+    // A nearly-full volume: a copy would trip the 92% overburden guard, but a
+    // rename consumes no space and must proceed regardless.
+    { freeBytes: 500_000_000, totalBytes: 30_000_000_000 },
+  );
+  const env = makeEnv(fs, [c], { maxVolumeUtilizationPct: 92 });
+  await runApply(fakeCtx(), env.overrides);
+
+  const ledger = getWorkItem('plex-rename-apply', c.itemKey);
+  assert.equal(ledger?.status, 'success', 'renamed despite the full volume — no bytes copied');
+  assert.equal(JSON.parse(ledger!.detail!).sha256, '', 'no hash recorded — the bytes were never rewritten');
+  assert.equal(fs.files.get(c.verify.localTo!), 'BYTES-11!!!');
+  assert.equal(fs.files.has(c.verify.localFrom!), false);
+  assert.ok(!fs.oplog.some((o) => o.startsWith('copy:')), 'no copy op at all');
+  assert.ok(fs.oplog.some((o) => o.startsWith(`rename:${c.verify.localFrom}`)), 'a single atomic rename');
+
+  const analysis = analyzeJournal(readJournal(findLatestJournal(env.journalDir)!));
+  assert.equal(analysis.items[0].outcome, 'complete', 'journal completion detection handles the rename strategy');
 });
 
 test('rehearsal mode (apply disabled): report only — no journal, no marks, no mutations, no Butler', async () => {
@@ -208,9 +242,9 @@ test('moment-of-truth re-checks soft-skip (never fail) on drift: size change, ta
 
 test('volume-overburden guard: a move that would push the target volume past the cap soft-skips', async () => {
   // Under the cap: volume 60% used with plenty of free space → the move proceeds.
-  const cUnder = candidate();
+  const cUnder = candidate({}, 'movie', { crossShare: true });
   const fsUnder = makeMemFs(
-    { ...MOUNT, [cUnder.verify.localFrom!]: 'BYTES-11!!!' },
+    { ...MOUNT, ...MOUNT2, [cUnder.verify.localFrom!]: 'BYTES-11!!!' },
     { freeBytes: 4_000_000_000, totalBytes: 10_000_000_000 },
   );
   const envUnder = makeEnv(fsUnder, [cUnder], { maxVolumeUtilizationPct: 92 });
@@ -219,9 +253,9 @@ test('volume-overburden guard: a move that would push the target volume past the
 
   // Over the cap: volume already 93.3% used (free 2GB of 30GB, still above the
   // absolute margin) → the move halts as a soft skip and nothing is touched.
-  const cBlocked = candidate();
+  const cBlocked = candidate({}, 'movie', { crossShare: true });
   const fsBlocked = makeMemFs(
-    { ...MOUNT, [cBlocked.verify.localFrom!]: 'BYTES-11!!!' },
+    { ...MOUNT, ...MOUNT2, [cBlocked.verify.localFrom!]: 'BYTES-11!!!' },
     { freeBytes: 2_000_000_000, totalBytes: 30_000_000_000 },
   );
   const envBlocked = makeEnv(fsBlocked, [cBlocked], { maxVolumeUtilizationPct: 92 });
@@ -232,9 +266,9 @@ test('volume-overburden guard: a move that would push the target volume past the
   assert.equal(fsBlocked.files.get(cBlocked.verify.localFrom!), 'BYTES-11!!!', 'nothing moved');
 });
 
-test('checksum mismatch: item fails, original untouched, run throws', async () => {
-  const c = candidate();
-  const fs = makeMemFs({ ...MOUNT, [c.verify.localFrom!]: 'BYTES-11!!!' }, { corruptCopies: true } as MemFsOptions);
+test('checksum mismatch (cross-share copy): item fails, original untouched, run throws', async () => {
+  const c = candidate({}, 'movie', { crossShare: true });
+  const fs = makeMemFs({ ...MOUNT, ...MOUNT2, [c.verify.localFrom!]: 'BYTES-11!!!' }, { corruptCopies: true } as MemFsOptions);
   const env = makeEnv(fs, [c]);
   await assert.rejects(runApply(fakeCtx(), env.overrides), /1 item\(s\) failed/);
   assert.equal(fs.files.get(c.verify.localFrom!), 'BYTES-11!!!', 'original untouched');

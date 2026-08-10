@@ -349,11 +349,12 @@ summaries below are a quick-reference index, not the source of truth.
   skip: missing ids, multi-version, disc images, collisions), and a local-disk
   verify checks the SMB-mounted share state (mount health, exact size match,
   a 7-day modified-recently guard for in-flight downloads, target-absent,
-  sidecar enumeration, .plexmatch safety). The mutating apply stage
-  (copy -> checksum-verify -> delete-original with a write-ahead journal, a
-  30-files/day quota, and an undo script) ships disabled behind
-  PLEX_RENAME_APPLY_ENABLED until the plans have been reviewed. Runs daily
-  (05:00).
+  sidecar enumeration, .plexmatch safety). The mutating apply stage moves
+  same-share files with a single atomic rename (instant, bytes untouched) and
+  cross-share consolidations with copy -> checksum-verify -> delete-original,
+  all write-ahead journaled with an undo script, a daily quota, and a
+  volume-utilization cap; it ships disabled behind PLEX_RENAME_APPLY_ENABLED
+  until the plans have been reviewed. Runs daily (05:00).
 - **mount-keeper** — Hourly (at :45) guard that keeps the configured NAS SMB
   shares mounted at /Volumes/<name>, since macOS mounts network shares lazily
   and drops them on reboot. A share that exists and is non-empty is left

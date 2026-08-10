@@ -7,7 +7,7 @@ import { capStatus, isWorkItemDone, markWorkItem, recordUsage } from '../../../d
 import { plexRenameConfig } from '../config.js';
 import { analyzeJournal, findLatestJournal, JournalWriter, readJournal, type ItemJournalState, type JournalOp } from '../journal.js';
 import { mountHealthy, plexToLocal, realWriteFs, shareOf, type WriteFsSeam } from '../lib.js';
-import { MoveError, performVerifiedMove, PARTIAL_SUFFIX, type MoveStep } from '../move.js';
+import { MoveError, performAtomicRenameMove, performVerifiedMove, PARTIAL_SUFFIX, type MoveStep } from '../move.js';
 import { pathKey, posixDirname } from '../naming.js';
 import type { ApplyDetail, DiscoverDetail, PathMapPair, VerifyDetail } from '../types.js';
 import { ledgerSuccessRows } from './ledger.js';
@@ -199,6 +199,15 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
     const { itemKey, verify, discover } = batch[i];
     const say = (msg: string, level?: 'info' | 'warn' | 'error') => ctx.log(`  [${i + 1}/${batch.length}] ${msg}`, level);
 
+    // ── Move strategy: same-share (and not case-only) = atomic rename — the
+    // bytes are never rewritten, so there is nothing to copy, verify, or run
+    // out of space for. Cross-share physically requires copying and keeps the
+    // full copy → checksum-verify → delete procedure.
+    const fromShare = shareOf(verify.from, pathMap);
+    const toShare = shareOf(verify.to, pathMap);
+    const sameShare = !!fromShare && !!toShare && fromShare.plex === toShare.plex;
+    const strategy: 'rename' | 'copy-verify' = sameShare && !verify.caseOnly ? 'rename' : 'copy-verify';
+
     // ── Re-check EVERYTHING at the moment of truth (verify may be a day old) ──
     const softSkip = async (): Promise<string | null> => {
       const st = await fs.stat(verify.localFrom!);
@@ -206,18 +215,22 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
       if (st.size !== verify.bytes) return `size changed since verify (${st.size} ≠ ${verify.bytes})`;
       if (now().getTime() - st.mtimeMs < minAgeMs) return 'modified again within the still-downloading window';
       if (!verify.caseOnly && (await fs.stat(verify.localTo!))) return `target appeared since verify: ${verify.localTo}`;
-      const usage = await fs.volumeUsage(posixDirname(verify.localTo!));
-      if (usage) {
-        if (usage.free < st.size + FREE_SPACE_MARGIN) {
-          return `insufficient free space for a transient second copy (${usage.free} free < ${st.size} + margin)`;
-        }
-        // Volume-overburden guard (owner rule): the target volume's projected
-        // utilization AFTER this copy lands must stay at or under the cap —
-        // moves to an overfull volume halt (soft-skip) rather than fill it.
-        if (usage.total > 0) {
-          const projectedPct = ((usage.total - usage.free + st.size) / usage.total) * 100;
-          if (projectedPct > maxVolumePct) {
-            return `target volume would reach ${projectedPct.toFixed(1)}% utilization (cap ${maxVolumePct}%) — halting moves onto it`;
+      if (strategy === 'copy-verify') {
+        // Space checks only matter when bytes are actually copied — an atomic
+        // rename consumes no space and cannot change volume utilization.
+        const usage = await fs.volumeUsage(posixDirname(verify.localTo!));
+        if (usage) {
+          if (usage.free < st.size + FREE_SPACE_MARGIN) {
+            return `insufficient free space for a transient second copy (${usage.free} free < ${st.size} + margin)`;
+          }
+          // Volume-overburden guard (owner rule): the target volume's projected
+          // utilization AFTER this copy lands must stay at or under the cap —
+          // moves to an overfull volume halt (soft-skip) rather than fill it.
+          if (usage.total > 0) {
+            const projectedPct = ((usage.total - usage.free + st.size) / usage.total) * 100;
+            if (projectedPct > maxVolumePct) {
+              return `target volume would reach ${projectedPct.toFixed(1)}% utilization (cap ${maxVolumePct}%) — halting moves onto it`;
+            }
           }
         }
       }
@@ -259,11 +272,22 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
       role: 'media',
       bytes: verify.bytes,
       caseOnly: verify.caseOnly,
+      strategy,
     });
     for (const s of verify.sidecars ?? []) {
       const from = plexToLocal(s.from, pathMap);
       const to = plexToLocal(s.to, pathMap);
-      if (from && to) ops.push({ op: 'move', from, to, partial: `${to}${PARTIAL_SUFFIX}`, role: s.role, caseOnly: pathKey(from) === pathKey(to) });
+      if (!from || !to) continue;
+      const scCaseOnly = pathKey(from) === pathKey(to);
+      ops.push({
+        op: 'move',
+        from,
+        to,
+        partial: `${to}${PARTIAL_SUFFIX}`,
+        role: s.role,
+        caseOnly: scCaseOnly,
+        strategy: sameShare && !scCaseOnly ? 'rename' : 'copy-verify',
+      });
     }
     ops.push({ op: 'rmdir-if-empty', path: posixDirname(verify.localFrom!) });
 
@@ -291,7 +315,11 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
       appliedRows.push(detail);
       changedPlexDirs.set(posixDirname(verify.from), discover?.kind ?? 'movie');
       changedPlexDirs.set(posixDirname(verify.to), discover?.kind ?? 'movie');
-      say(`✓ "${verify.name}" moved + verified (sha256 ${result.mediaSha?.slice(0, 12)}…, ${(verify.sidecars ?? []).length} sidecar(s))`);
+      say(
+        result.mediaSha
+          ? `✓ "${verify.name}" copied + verified + original deleted (sha256 ${result.mediaSha.slice(0, 12)}…, ${(verify.sidecars ?? []).length} sidecar(s))`
+          : `✓ "${verify.name}" renamed atomically (same share — bytes untouched, ${(verify.sidecars ?? []).length} sidecar(s))`,
+      );
     } else {
       j.append({ kind: 'item-aborted', at: now().toISOString(), itemKey, error: result.error!, completedOps: result.completedOps });
       markWorkItem(JOB_NAME, itemKey, 'failed', { detail: { name: `${verify.name} — apply failed`, error: result.error } });
@@ -370,8 +398,13 @@ async function executeOps(
             j.append({ kind: 'op-done', at: now().toISOString(), itemKey, opIndex: idx, step, sha256: info?.sha256, bytes: info?.bytes });
           },
         };
-        const moved = await performVerifiedMove(fs, { from: op.from, to: op.to, partial: op.partial, expectedBytes: op.bytes, caseOnly: op.caseOnly }, hooks);
-        if (op.role === 'media') mediaSha = moved.sha256;
+        if (op.strategy === 'rename') {
+          await performAtomicRenameMove(fs, { from: op.from, to: op.to, expectedBytes: op.bytes }, hooks);
+          // No hash: the bytes were never read or rewritten — nothing to verify.
+        } else {
+          const moved = await performVerifiedMove(fs, { from: op.from, to: op.to, partial: op.partial, expectedBytes: op.bytes, caseOnly: op.caseOnly }, hooks);
+          if (op.role === 'media') mediaSha = moved.sha256;
+        }
       } else {
         j.append({ kind: 'op-attempt', at: now().toISOString(), itemKey, opIndex: idx });
         if (op.op === 'mkdir') {

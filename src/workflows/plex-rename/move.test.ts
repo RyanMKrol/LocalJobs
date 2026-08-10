@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { makeMemFs } from './memfs.js';
-import { MoveError, performVerifiedMove, PARTIAL_SUFFIX, type MoveStep } from './move.js';
+import { MoveError, performAtomicRenameMove, performVerifiedMove, PARTIAL_SUFFIX, type MoveStep } from './move.js';
 
 const FROM = '/vol/Movies/Rel/old.mkv';
 const TO = '/vol/Movies/New Folder/new.mkv';
@@ -86,6 +86,36 @@ test('verified move: preflight gates — missing source, size drift, occupied ta
   await assert.rejects(
     performVerifiedMove(makeMemFs({ [FROM]: 'XX', [PARTIAL]: 'DEBRIS' }), { from: FROM, to: TO }),
     (e: unknown) => e instanceof MoveError && /stale partial/.test(e.message),
+  );
+});
+
+test('atomic rename move: one rename, no partial, no bytes touched, hooks around finalize', async () => {
+  const fs = makeMemFs({ [FROM]: 'MOVIE-BYTES', '/vol/Movies/marker': 'x' });
+  const steps: string[] = [];
+  const result = await performAtomicRenameMove(
+    fs,
+    { from: FROM, to: TO, expectedBytes: 'MOVIE-BYTES'.length },
+    { async before(s) { steps.push(`before:${s}`); }, async after(s) { steps.push(`after:${s}`); } },
+  );
+  assert.deepEqual(steps, ['before:finalize', 'after:finalize'], 'a single journaled finalize step');
+  assert.equal(fs.files.get(TO), 'MOVIE-BYTES');
+  assert.equal(fs.files.has(FROM), false);
+  assert.equal(fs.files.has(PARTIAL), false, 'no partial is ever created');
+  assert.equal(result.bytes, 'MOVIE-BYTES'.length);
+  assert.ok(!fs.oplog.some((o) => o.startsWith('copy:')), 'no copy happened — metadata-only');
+
+  // Preflight gates mirror the verified move's.
+  await assert.rejects(
+    performAtomicRenameMove(makeMemFs({}), { from: FROM, to: TO }),
+    (e: unknown) => e instanceof MoveError && e.step === 'preflight' && /source missing/.test(e.message),
+  );
+  await assert.rejects(
+    performAtomicRenameMove(makeMemFs({ [FROM]: 'XX', [TO]: 'OCCUPIED' }), { from: FROM, to: TO }),
+    (e: unknown) => e instanceof MoveError && /never overwritten/.test(e.message),
+  );
+  await assert.rejects(
+    performAtomicRenameMove(makeMemFs({ [FROM]: 'XX' }), { from: FROM, to: TO, expectedBytes: 999 }),
+    (e: unknown) => e instanceof MoveError && /size/.test(e.message),
   );
 });
 

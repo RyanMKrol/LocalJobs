@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 
 import { realWriteFs, type WriteFsSeam } from '../src/workflows/plex-rename/lib.js';
 import { analyzeJournal, findLatestJournal, readJournal, type ItemJournalState, type JournalOp, type JournalRecord } from '../src/workflows/plex-rename/journal.js';
-import { performVerifiedMove, MoveError, PARTIAL_SUFFIX } from '../src/workflows/plex-rename/move.js';
+import { performAtomicRenameMove, performVerifiedMove, MoveError, PARTIAL_SUFFIX } from '../src/workflows/plex-rename/move.js';
 import { posixDirname } from '../src/workflows/plex-rename/naming.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -130,14 +130,21 @@ async function undoItem(
         continue;
       }
       if (toSt && !fromSt) {
-        // The normal completed move — reverse it with the same verified procedure.
+        // The normal completed move — reverse it the way it was applied: an
+        // atomic rename reverses as an atomic rename (metadata-only, nothing
+        // to verify); a copy-verify move reverses with the same verified
+        // copy-back procedure.
         if (!apply) {
-          push('dry-run', op.to, `would move back → ${op.from}`);
+          push('dry-run', op.to, `would ${op.strategy === 'rename' ? 'rename' : 'move'} back → ${op.from}`);
           continue;
         }
         try {
           await fs.mkdirp(posixDirname(op.from));
-          await performVerifiedMove(fs, { from: op.to, to: op.from, expectedBytes: op.bytes, caseOnly: op.caseOnly });
+          if (op.strategy === 'rename') {
+            await performAtomicRenameMove(fs, { from: op.to, to: op.from, expectedBytes: op.bytes });
+          } else {
+            await performVerifiedMove(fs, { from: op.to, to: op.from, expectedBytes: op.bytes, caseOnly: op.caseOnly });
+          }
           push('reverted', op.to, `moved back → ${op.from}`);
         } catch (err) {
           const msg = err instanceof MoveError ? `${err.step}: ${err.message}` : err instanceof Error ? err.message : String(err);

@@ -17,7 +17,19 @@ import type { MoveStep } from './move.js';
 export type JournalOp =
   | { op: 'mkdir'; path: string }
   | { op: 'write-plexmatch'; path: string; content: string; priorContent: string | null }
-  | { op: 'move'; from: string; to: string; partial: string; role: 'media' | 'sidecar' | 'asset'; bytes?: number; caseOnly?: boolean }
+  | {
+      op: 'move';
+      from: string;
+      to: string;
+      partial: string;
+      role: 'media' | 'sidecar' | 'asset';
+      bytes?: number;
+      caseOnly?: boolean;
+      /** 'rename' = same-share atomic rename (metadata-only, no partial ever
+       *  exists); 'copy-verify' (or absent, the pre-strategy default) = the
+       *  full copy → checksum-verify → delete-original procedure. */
+      strategy?: 'rename' | 'copy-verify';
+    }
   | { op: 'rmdir-if-empty'; path: string };
 
 export type JournalRecord =
@@ -163,11 +175,12 @@ export function analyzeJournal(records: JournalRecord[]): JournalAnalysis {
         if (!op) break;
         if (r.step) {
           op.doneSteps.push(r.step);
-          // A move op is fully done once its LAST step completed (delete-source
-          // normally; finalize for case-only, which runs it last).
+          // A move op is fully done once its LAST step completed: 'finalize'
+          // for an atomic same-share rename (its only step) and for case-only
+          // copy-verify (which runs it last); 'delete-source' otherwise.
           const planned = item!.planned.ops[r.opIndex];
           if (planned.op === 'move') {
-            const lastStep: MoveStep = planned.caseOnly ? 'finalize' : 'delete-source';
+            const lastStep: MoveStep = planned.strategy === 'rename' || planned.caseOnly ? 'finalize' : 'delete-source';
             if (r.step === lastStep) op.done = true;
           }
         } else {

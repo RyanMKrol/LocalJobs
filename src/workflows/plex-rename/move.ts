@@ -123,3 +123,42 @@ export async function performVerifiedMove(fs: WriteFsSeam, plan: MovePlanPaths, 
   }
   return copied;
 }
+
+/**
+ * The SAME-SHARE fast path: one atomic rename(2), metadata-only — the file's
+ * bytes are never read or rewritten, so there is nothing to checksum and
+ * nothing that CAN corrupt. Used only when source and target live on the same
+ * share (a cross-share move physically requires copying, and keeps the full
+ * copy → verify → delete procedure) and never for case-only renames (those
+ * keep the partial-staged procedure, whose verified intermediate guards the
+ * bytes through the delete/finalize shuffle on a case-insensitive fs).
+ *
+ * Crash-safety is inherent: rename is atomic, so the file is always fully at
+ * exactly one of the two paths — the journal's reconciliation maps both
+ * states (source-present → not-started; target-present → roll forward) with
+ * no partials possible.
+ */
+export async function performAtomicRenameMove(
+  fs: WriteFsSeam,
+  plan: { from: string; to: string; expectedBytes?: number },
+  hooks: MoveHooks = {},
+): Promise<{ bytes: number }> {
+  const srcSt = await fs.stat(plan.from);
+  if (!srcSt || !srcSt.isFile) throw new MoveError('preflight', `source missing: ${plan.from}`);
+  if (plan.expectedBytes !== undefined && srcSt.size !== plan.expectedBytes) {
+    throw new MoveError('preflight', `source size ${srcSt.size} ≠ expected ${plan.expectedBytes}: ${plan.from}`);
+  }
+  if (await fs.stat(plan.to)) {
+    throw new MoveError('preflight', `target already exists (never overwritten): ${plan.to}`);
+  }
+
+  await hooks.before?.('finalize');
+  await fs.mkdirp(posixDirname(plan.to));
+  await fs.rename(plan.from, plan.to);
+  const finalSt = await fs.stat(plan.to);
+  if (!finalSt || !finalSt.isFile || finalSt.size !== srcSt.size) {
+    throw new MoveError('finalize', `renamed target failed its stat check: ${plan.to}`);
+  }
+  await hooks.after?.('finalize', { bytes: finalSt.size });
+  return { bytes: finalSt.size };
+}

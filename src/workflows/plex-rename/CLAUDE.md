@@ -10,11 +10,22 @@ the library becomes deterministically re-discoverable from disk alone.
 
 ## Safety doctrine (the owner's hard requirements — never weaken these)
 
-1. **Never delete content that isn't verifiably replicated.** Every move is
-   copy → checksum-verify → delete-original: stream-copy to `<target>.plexrename-partial` (never a
-   media extension, so Plex can't scan a half-copy), SHA-256 both sides, atomically finalize
-   partial → target, and ONLY then delete the source. The journal's copy-verified record is written
-   before any delete is eligible. Worst crash outcome = a dead extra file, never a lost one.
+1. **Never delete content that isn't verifiably replicated — and never rewrite bytes without
+   verification.** Two move strategies (2026-08), chosen per move by whether bytes actually travel:
+   - **Same-share (and not case-only) → ONE atomic rename** (`performAtomicRenameMove`): metadata
+     only, the file's bytes are never read or rewritten, so there is nothing that CAN corrupt and
+     nothing to checksum — and it's instant, which is what makes the ~26k same-share bulk of the
+     library finishable in days instead of months of I/O. Crash-safe inherently (rename is atomic;
+     the file is always fully at exactly one path). Space/utilization checks are skipped — a
+     rename consumes no space.
+   - **Cross-share (or case-only) → copy → checksum-verify → delete-original**
+     (`performVerifiedMove`): stream-copy to `<target>.plexrename-partial` (never a media
+     extension, so Plex can't scan a half-copy), SHA-256 both sides, atomically finalize
+     partial → target, and ONLY then delete the source. The journal's copy-verified record is
+     written before any delete is eligible. Worst crash outcome = a dead extra file, never a
+     lost one.
+   The journal records each move op's `strategy`, and the undo script reverses each the way it
+   was applied (rename back / verified copy back).
 2. **Write-AHEAD journal.** Intent is appended + fsync'd to the per-run NDJSON journal BEFORE each
    filesystem operation runs; completion records after. Ledger success is only recorded after the
    journal's item-done is flushed. (This is deliberately stronger than plex-language-fix's
