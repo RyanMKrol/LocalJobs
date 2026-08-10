@@ -63,6 +63,42 @@ test('runPlan records rename / already-canonical / skip decisions with from→to
   assert.equal(skip.reason, 'missing-id');
 });
 
+test('runPlan consolidates a split show to its majority-bytes home share', async () => {
+  const show = { ratingKey: 's9', title: 'A Split Show', year: 2017, tvdbId: 999 };
+  const epRow = (key: string, root: string, season: number, episode: number, bytes: number) => ({
+    itemKey: key,
+    detail: {
+      name: `A Split Show — s0${season}e0${episode}`,
+      kind: 'episode' as const,
+      file: `${root}/Rel S${season}/ep${episode}.mkv`,
+      partId: Number(key.split('part')[1]),
+      partSize: bytes,
+      mediaCount: 1,
+      partCount: 1,
+      partIndex: 0,
+      rootPath: root,
+      show,
+      episodes: [{ ratingKey: `${key}-ep`, season, episode, title: `Ep ${episode}` }],
+    } as DiscoverDetail,
+  });
+  const V1 = '/volume1/Share/TV';
+  const V2 = '/volume2/Share2/TV';
+  // Two big episodes on V1, one small on V2 → V1 is home; the V2 episode crosses.
+  const rows = [
+    epRow('s9a::part901', V1, 2, 1, 5_000_000_000),
+    epRow('s9b::part902', V1, 2, 2, 5_000_000_000),
+    epRow('s9c::part903', V2, 1, 1, 1_000_000_000),
+  ];
+  await runPlan(fakeCtx(), { readDiscoverRows: () => rows });
+
+  const homeDir = `${V1}/A Split Show (2017) {tvdb-999}`;
+  assert.ok(planOf('s9a::part901').to!.startsWith(homeDir), 'V1 episode stays under the home root');
+  assert.ok(
+    planOf('s9c::part903').to!.startsWith(homeDir),
+    'the V2 episode plans a CROSS-SHARE move into the same single show folder',
+  );
+});
+
 test('runPlan downgrades duplicate targets to collisions and recomputes on every run', async () => {
   // Two different movies computing the SAME canonical target.
   const dup = [

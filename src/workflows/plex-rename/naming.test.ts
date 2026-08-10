@@ -347,6 +347,50 @@ function mediaMove(d: RenameDecision): Extract<NamingOp, { op: 'move' }> {
   console.log('  ✓ naming: already-canonical convergence + caseOnly flag');
 }
 
+// ── chooseShowHomeRoots + cross-share consolidation ──
+{
+  const { chooseShowHomeRoots } = await import('./naming.js');
+  // A show split across shares: 33 big files on volume1, 23 on volume2 → volume1 wins.
+  const files = [
+    ...Array.from({ length: 33 }, () => ({ showRatingKey: 'hmt', rootPath: '/volume1/NAS-Cool Shared Drive/TV', bytes: 2 * GB })),
+    ...Array.from({ length: 23 }, () => ({ showRatingKey: 'hmt', rootPath: '/volume2/NAS-Cool Shared Drive - 2/TV', bytes: 2 * GB })),
+    { showRatingKey: 'other', rootPath: '/volume2/NAS-Cool Shared Drive - 2/TV', bytes: 1 * GB },
+    { showRatingKey: 'nowhere', rootPath: '', bytes: 1 * GB }, // unmapped — never a candidate
+  ];
+  const homes = chooseShowHomeRoots(files);
+  assert.equal(homes.get('hmt'), '/volume1/NAS-Cool Shared Drive/TV', 'majority-bytes share wins');
+  assert.equal(homes.get('other'), '/volume2/NAS-Cool Shared Drive - 2/TV');
+  assert.equal(homes.has('nowhere'), false);
+
+  // Deterministic tie-break: equal weight → lexicographically first root.
+  const tied = chooseShowHomeRoots([
+    { showRatingKey: 's', rootPath: '/volume2/B/TV', bytes: 100 },
+    { showRatingKey: 's', rootPath: '/volume1/A/TV', bytes: 100 },
+  ]);
+  assert.equal(tied.get('s'), '/volume1/A/TV');
+
+  // homeRootPath overrides the file's own root for the TARGET — a volume2
+  // episode of a volume1-homed show plans a cross-share move into ONE folder.
+  const crossShare = decideRename(
+    episodeInput({
+      file: '/volume2/NAS-Cool Shared Drive - 2/TV/The.Handmaids.Tale.S02/The.Handmaids.Tale.S02E01.mkv',
+      homeRootPath: '/volume1/NAS-Cool Shared Drive/TV',
+      show: { ratingKey: 'hmt', title: "The Handmaid's Tale", year: 2017, tvdbId: 321239 },
+      episodes: [{ ratingKey: 'e', season: 2, episode: 1, title: 'June' }],
+      roots: [
+        { path: '/volume1/NAS-Cool Shared Drive/TV', kind: 'tv' },
+        { path: '/volume2/NAS-Cool Shared Drive - 2/TV', kind: 'tv' },
+      ],
+    }),
+  );
+  assert.equal(
+    mediaMove(crossShare).to,
+    "/volume1/NAS-Cool Shared Drive/TV/The Handmaid's Tale (2017) {tvdb-321239}/Season 02/The Handmaid's Tale (2017) - s02e01 - June.mkv",
+    'the target lives under the HOME root, not the file\'s own share',
+  );
+  console.log('  ✓ naming: chooseShowHomeRoots majority-bytes + cross-share consolidation target');
+}
+
 // ── buildPlexmatch ──
 {
   const content = buildPlexmatch({ ratingKey: '1', title: 'Steins;Gate\nX', year: 2011, tvdbId: 244061, tmdbId: 42509, imdbId: 'tt1910272' });

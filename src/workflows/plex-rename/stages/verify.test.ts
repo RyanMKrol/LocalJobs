@@ -188,7 +188,8 @@ test('verify: every ineligibility reason fires precisely', async () => {
     'sidecar-collision',
   );
 
-  // Cross-share targets can never happen by construction, but the guard is defensive.
+  // Cross-share consolidation move with the TARGET share unmounted → mount-missing
+  // (the target's health is as load-bearing as the source's).
   const crossRows = movieRows({ to: '/volume2/Other/Movies/A Movie (2016) {tmdb-555}/m.mkv' });
   assert.equal(
     (
@@ -196,9 +197,24 @@ test('verify: every ineligibility reason fires precisely', async () => {
         pathMap: [...MAP, { plex: '/volume2/Other', local: '/Volumes/Other' }],
       })
     ).reason,
-    // volume2 has no files in the fake fs → its mount is unhealthy; cross-share fires first though.
-    'cross-share',
+    'mount-missing',
   );
+});
+
+test('verify: a cross-share consolidation move is ELIGIBLE when both shares are healthy', async () => {
+  const rows = movieRows({ to: '/volume2/Other/Movies/A Movie (2016) {tmdb-555}/A Movie (2016) {tmdb-555}.mkv' });
+  const d = await verdict(
+    {
+      ...HEALTHY_MOUNT,
+      '/Volumes/Other/Movies/.marker': { size: 1 }, // makes the target share healthy too
+      '/Volumes/Share/Movies/Rel/A.Movie.2016.mkv': { size: 1000, mtimeMs: OLD_MTIME },
+    },
+    rows,
+    { pathMap: [...MAP, { plex: '/volume2/Other', local: '/Volumes/Other' }] },
+  );
+  assert.equal(d.eligible, true, 'a split show consolidating to its home share is a legitimate move');
+  assert.equal(d.localFrom, '/Volumes/Share/Movies/Rel/A.Movie.2016.mkv');
+  assert.equal(d.localTo, '/Volumes/Other/Movies/A Movie (2016) {tmdb-555}/A Movie (2016) {tmdb-555}.mkv');
 });
 
 test('verify: case-only rename stays eligible with the target "existing"', async () => {

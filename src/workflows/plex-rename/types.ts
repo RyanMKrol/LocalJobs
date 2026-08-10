@@ -103,7 +103,6 @@ export type VerifyIneligibleReason =
   | 'size-mismatch'
   | 'size-unknown'
   | 'target-exists'
-  | 'cross-share'
   | 'sidecar-collision'
   | 'existing-plexmatch'
   | 'not-a-rename';

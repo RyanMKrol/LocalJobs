@@ -96,7 +96,11 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
       continue;
     }
 
-    // ── Path mapping + same-share ──
+    // ── Path mapping ──
+    // Cross-share targets are LEGITIMATE (a split show consolidating to its
+    // home share) — the copy → verify → delete move procedure crosses shares
+    // as safely as it moves within one. Both sides just need mapped, healthy
+    // mounts.
     const fromShare = shareOf(plan.from, pathMap);
     const toShare = shareOf(plan.to, pathMap);
     const localFrom = plexToLocal(plan.from, pathMap);
@@ -105,15 +109,15 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
       record(ineligible(base, 'unmapped-path', `no PLEX_RENAME_PATH_MAP prefix covers ${!fromShare ? plan.from : plan.to}`));
       continue;
     }
-    if (fromShare.plex !== toShare.plex) {
-      record(ineligible(base, 'cross-share', `source share ${fromShare.plex} ≠ target share ${toShare.plex} — moves never cross shares`));
-      continue;
-    }
     const withLocal = { ...base, localFrom, localTo };
 
-    // ── Mount health ──
+    // ── Mount health (BOTH sides — the source share and the target share) ──
     if (!mountOk.get(pathKey(fromShare.plex))) {
-      record(ineligible(withLocal, 'mount-missing', `share ${fromShare.local} is not mounted/healthy — routine skip, NOT a missing file`));
+      record(ineligible(withLocal, 'mount-missing', `source share ${fromShare.local} is not mounted/healthy — routine skip, NOT a missing file`));
+      continue;
+    }
+    if (!mountOk.get(pathKey(toShare.plex))) {
+      record(ineligible(withLocal, 'mount-missing', `target share ${toShare.local} is not mounted/healthy — routine skip`));
       continue;
     }
 

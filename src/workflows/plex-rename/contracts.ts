@@ -114,7 +114,7 @@ export function plexRenameApplyContract(): ArtifactContract {
 }
 
 const EXP_ELIGIBLE_ROWS_APPLIABLE =
-  'Every eligible row has local paths mapped under the SAME share, verified bytes > 0, a well-formed sidecar list, and localFrom ≠ localTo unless case-only.';
+  'Every eligible row has both local paths mapped under configured shares (cross-share consolidation moves are legitimate), verified bytes > 0, a well-formed sidecar list, and localFrom ≠ localTo unless case-only.';
 
 /**
  * verify → apply boundary: THE pre-mutation gate. Asserts exactly the
@@ -126,7 +126,7 @@ export function plexRenameVerifyContract(): ArtifactContract {
     key: 'plex-rename-verify',
     description:
       'verify output: one work_items row per rename candidate with the on-disk eligibility verdict; every ' +
-      '"eligible" row carries localFrom/localTo (same share), verified bytes, the enumerated sidecar moves, and ' +
+      '"eligible" row carries localFrom/localTo (each under a configured share), verified bytes, the enumerated sidecar moves, and ' +
       'the optional .plexmatch write — the exact preconditions the mutating apply stage relies on.',
     shape: {
       summary: "Every rename candidate's local-disk eligibility verdict, with verified sizes and sidecar moves.",

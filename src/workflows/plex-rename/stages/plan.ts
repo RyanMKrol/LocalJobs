@@ -1,6 +1,6 @@
 import type { JobContext } from '../../../core/types.js';
 import { markWorkItem } from '../../../db/store.js';
-import { decideRename, finalizePlan, pathKey, type LibraryRoot, type PlanEntry, type RenameInput } from '../naming.js';
+import { chooseShowHomeRoots, decideRename, finalizePlan, pathKey, type LibraryRoot, type PlanEntry, type RenameInput } from '../naming.js';
 import type { DiscoverDetail, PlanDetail } from '../types.js';
 import { ledgerSuccessRows } from './ledger.js';
 
@@ -53,6 +53,25 @@ export async function runPlan(ctx: JobContext, opts: PlanOverrides = {}): Promis
     if (d?.file) existingPaths.add(pathKey(d.file));
   }
 
+  // One folder per show: pick each show's HOME root (the share already holding
+  // the most bytes of it) so a show split across shares consolidates into a
+  // single tree — the minority share's files plan a cross-share move.
+  const homeRoots = chooseShowHomeRoots(
+    rows.map((row) => {
+      const d = row.detail as DiscoverDetail;
+      return { showRatingKey: d?.show?.ratingKey, rootPath: d?.rootPath, bytes: d?.partSize };
+    }),
+  );
+  const splitShows = new Set<string>();
+  for (const row of rows) {
+    const d = row.detail as DiscoverDetail;
+    const home = d?.show?.ratingKey ? homeRoots.get(d.show.ratingKey) : undefined;
+    if (home && d.rootPath && pathKey(home) !== pathKey(d.rootPath)) splitShows.add(d.show!.title);
+  }
+  if (splitShows.size > 0) {
+    ctx.log(`Split shows consolidating to their majority share: ${[...splitShows].join(' · ')}`);
+  }
+
   const entries: PlanEntry[] = [];
   const detailByKey = new Map<string, DiscoverDetail>();
   for (const row of rows) {
@@ -73,6 +92,7 @@ export async function runPlan(ctx: JobContext, opts: PlanOverrides = {}): Promis
       episodes: d.episodes,
       siblings: [], // sidecars are enumerated from the REAL listing by verify
       roots,
+      homeRootPath: d.show?.ratingKey ? homeRoots.get(d.show.ratingKey) : undefined,
     };
     entries.push({ key: row.itemKey, decision: decide(input) });
   }

@@ -53,7 +53,8 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   the owner reviews during probation).
 - **verify** — the only fs-touching read stage (via `callService('fs', ...)` through the injectable
   `ReadFsSeam`). Mount preflight per `PLEX_RENAME_PATH_MAP` pair; maps Plex-side → local paths;
-  asserts same-share, source exists at exactly Plex's recorded size, mtime ≥
+  asserts BOTH sides' shares are mounted + healthy (cross-share consolidation moves are
+  legitimate — see the home-root rule below), source exists at exactly Plex's recorded size, mtime ≥
   `PLEX_RENAME_MIN_AGE_DAYS` (default 7 — the still-downloading guard: downloads land directly in
   library folders, so recency is the only in-flight signal), target absent (case-only excepted),
   sidecars enumerated from the REAL listing (`planSidecars`, movie folders also carry fixed-name
@@ -106,6 +107,15 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   `sNNeNN` names parse deterministically; per-episode hints couple the file to exact paths).
 - **Anime:** names come from Plex's OWN parentIndex/index belief — self-consistent on rescan. If
   Plex's match is wrong, the plan report is the v1 mitigation (garbage-in isn't detectable here).
+- **One folder per show — the home-root consolidation rule (2026-08).** A show split across
+  shares (e.g. seasons 1–2 on volume2, 3–5 on volume1) consolidates into ONE folder on its HOME
+  root: `chooseShowHomeRoots` picks, per show, the library root already holding the most BYTES of
+  it (each file weighs bytes + 1; ties resolve to the lexicographically first root — fully
+  deterministic), and `plan` passes it as `RenameInput.homeRootPath`, overriding the file's own
+  root for the TARGET. The minority share's files plan cross-share moves — safe because the move
+  procedure is copy → verify → delete (never a rename), which crosses filesystems exactly as
+  safely as it moves within one, and all bytes route through the Mac over SMB either way. Movies
+  are per-item single folders on their own share by construction.
 - **Folder strategy:** uniform "move out into a fresh canonical folder, never rename a directory in
   place" — old release folders keep their junk and are listed as leftovers in the report;
   cleanup is report-only in v1.
@@ -127,8 +137,8 @@ reprocessing an undone item is a manual unstick, same doctrine as plex-language-
 discover→plan and apply→confirm are the sanctioned trivial minimum; **plan→verify and
 verify→apply are REAL** (T574
 pattern): plan's gate asserts every rename row has from ≠ to, target under the file's own library
-root, and global collision-freedom; verify's gate asserts every eligible row has same-share local
-paths, verified bytes > 0, and a well-formed sidecar list — exactly the malformations apply would
+root, and global collision-freedom; verify's gate asserts every eligible row has both local
+paths mapped under configured shares, verified bytes > 0, and a well-formed sidecar list — exactly the malformations apply would
 otherwise silently skip, failing loud at the boundary instead.
 
 ## Config (`config.ts`)

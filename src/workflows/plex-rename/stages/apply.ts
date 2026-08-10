@@ -105,10 +105,14 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   ctx.log(`Eligible, not-yet-applied candidates: ${candidates.length}`);
 
   // ── Hard mount preflight: ALL shares referenced by any candidate must be healthy ──
+  // Both sides: a consolidating (cross-share) move reads from one share and
+  // writes to another, so the TARGET's share is just as load-bearing.
   const neededShares = new Map<string, PathMapPair>();
   for (const c of candidates) {
-    const share = shareOf(c.verify.from, pathMap);
-    if (share) neededShares.set(pathKey(share.plex), share);
+    for (const p of [c.verify.from, c.verify.to]) {
+      const share = shareOf(p, pathMap);
+      if (share) neededShares.set(pathKey(share.plex), share);
+    }
   }
   for (const share of neededShares.values()) {
     if (!(await mountHealthy(share.local, fs))) {

@@ -92,6 +92,15 @@ export interface RenameInput {
   /** Listing of the file's CURRENT directory (sidecar planning). */
   siblings: DirEntry[];
   roots: LibraryRoot[];
+  /**
+   * Episodes only: the show's consolidated HOME root (chosen by
+   * `chooseShowHomeRoots` — the share already holding the most bytes of the
+   * show). When set, the target is built under THIS root instead of the
+   * file's own — so a show split across shares converges to ONE folder,
+   * moving the minority share's files across. Movies ignore it (a movie is a
+   * single folder on its own share by construction).
+   */
+  homeRootPath?: string;
 }
 
 export type SkipReason =
@@ -268,9 +277,11 @@ export function currentPathGuard(file: string): { reason: SkipReason; detail: st
 // ── Library-root resolution ────────────────────────────────────────────────────
 
 /**
- * Longest-prefix match of a file against the configured library roots. Files
- * never change share/root by construction — the matched root is the `{root}`
- * of every generated target path. Null when the file lives under no root.
+ * Longest-prefix match of a file against the configured library roots — the
+ * default `{root}` of a generated target path. Episodes may override it with
+ * the show's consolidated HOME root (`homeRootPath`, from
+ * `chooseShowHomeRoots`) so a split show converges to one folder on one
+ * share. Null when the file lives under no root.
  */
 export function resolveLibraryRoot(file: string, roots: LibraryRoot[]): LibraryRoot | null {
   const key = pathKey(file);
@@ -282,6 +293,38 @@ export function resolveLibraryRoot(file: string, roots: LibraryRoot[]): LibraryR
     }
   }
   return best;
+}
+
+/**
+ * Pick each show's HOME root: the library root already holding the most BYTES
+ * of that show's files — the consolidation target that moves the least data
+ * when a show is split across shares. Every file counts bytes + 1 (so
+ * zero/unknown-size files still register as presence), and ties resolve to the
+ * lexicographically first root path — fully deterministic, input-order-free.
+ */
+export function chooseShowHomeRoots(
+  files: { showRatingKey?: string; rootPath?: string; bytes?: number }[],
+): Map<string, string> {
+  const sums = new Map<string, Map<string, number>>();
+  for (const f of files) {
+    if (!f.showRatingKey || !f.rootPath) continue;
+    const per = sums.get(f.showRatingKey) ?? new Map<string, number>();
+    per.set(f.rootPath, (per.get(f.rootPath) ?? 0) + (f.bytes ?? 0) + 1);
+    sums.set(f.showRatingKey, per);
+  }
+  const out = new Map<string, string>();
+  for (const [show, per] of sums) {
+    let best: string | null = null;
+    let bestWeight = -1;
+    for (const [root, weight] of [...per.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+      if (weight > bestWeight) {
+        best = root;
+        bestWeight = weight;
+      }
+    }
+    if (best) out.set(show, best);
+  }
+  return out;
 }
 
 // ── .plexmatch content ─────────────────────────────────────────────────────────
@@ -512,7 +555,12 @@ export function decideRename(input: RenameInput): RenameDecision {
     return skip('sample-filter-hazard', `generated file name "${fileName}" would trip the <300MB "sample" filter`);
   }
 
-  const showDir = `${rootPath}/${showFolder}`;
+  // Consolidation: a split show's target lives under its HOME root (the share
+  // with most of its bytes), not necessarily the file's own — the move
+  // procedure is copy → verify → delete, which crosses shares as safely as it
+  // moves within one.
+  const targetRoot = (input.homeRootPath ?? rootPath).replace(/\/+$/, '');
+  const showDir = `${targetRoot}/${showFolder}`;
   const newDir = `${showDir}/${seasonFolder}`;
   const targetPath = `${newDir}/${fileName}`;
   return assembleDecision(input, targetPath, newDir, { dir: showDir, content: buildPlexmatch(show) }, ext, {
