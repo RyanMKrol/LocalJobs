@@ -93,10 +93,10 @@ test('runPlan consolidates a split show to its majority-bytes home share', async
 
   const homeDir = `${V1}/A Split Show (2017) {tvdb-999}`;
   assert.ok(planOf('s9a::part901').to!.startsWith(homeDir), 'V1 episode stays under the home root');
-  assert.ok(
-    planOf('s9c::part903').to!.startsWith(homeDir),
-    'the V2 episode plans a CROSS-SHARE move into the same single show folder',
-  );
+  const cross = planOf('s9c::part903');
+  assert.ok(cross.to!.startsWith(homeDir), 'the V2 episode plans a CROSS-SHARE move into the same single show folder');
+  assert.equal(cross.rootPath, V2, 'rootPath stays the file\'s own root');
+  assert.equal(cross.targetRootPath, V1, 'targetRootPath is the home root — what the plan→verify gate asserts against');
 });
 
 test('runPlan downgrades duplicate targets to collisions and recomputes on every run', async () => {

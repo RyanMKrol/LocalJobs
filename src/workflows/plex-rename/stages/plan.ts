@@ -109,12 +109,14 @@ export async function runPlan(ctx: JobContext, opts: PlanOverrides = {}): Promis
     let detail: PlanDetail;
     if (entry.decision.kind === 'rename') {
       renames++;
+      const homeRoot = d.show?.ratingKey ? homeRoots.get(d.show.ratingKey) : undefined;
       detail = {
         name: d.name,
         decision: 'rename',
         from: d.file,
         to: entry.decision.targetPath,
         rootPath: d.rootPath,
+        targetRootPath: homeRoot ?? d.rootPath,
         ops: entry.decision.ops,
       };
       ctx.log(`  → RENAME "${d.name}"`);

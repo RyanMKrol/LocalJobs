@@ -89,8 +89,12 @@ export interface PlanDetail {
   to?: string; // canonical Plex-side target (rename / already-canonical)
   reason?: SkipReason;
   reasonDetail?: string;
-  /** The library root the target stays under (the gate asserts to.startsWith(rootPath)). */
+  /** The file's OWN library root (where it currently lives). */
   rootPath?: string;
+  /** The root the TARGET lives under — the show's consolidated home root when it
+   *  differs from rootPath (cross-share move); the plan→verify gate asserts
+   *  to.startsWith(targetRootPath). */
+  targetRootPath?: string;
   /** Engine ops for a 'rename' decision (Plex-side paths; media move + mkdir + optional plexmatch). */
   ops?: NamingOp[];
 }

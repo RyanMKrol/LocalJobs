@@ -45,7 +45,7 @@ export function plexRenameDiscoverContract(): ArtifactContract {
 }
 
 const EXP_RENAME_ROWS_WELL_FORMED =
-  'Every "rename" decision has a non-empty from and to, from ≠ to, the target stays under the file\'s own library root, and no two rows share a target.';
+  'Every "rename" decision has a non-empty from and to, from ≠ to, the target stays under its declared target root (the file\'s own, or the show\'s consolidated home root for a cross-share move), and no two rows share a target.';
 
 /** plan → verify boundary: a REAL check on every rename decision's shape. */
 export function plexRenamePlanContract(): ArtifactContract {
@@ -72,7 +72,10 @@ export function plexRenamePlanContract(): ArtifactContract {
         const fromOk = typeof d.from === 'string' && d.from.length > 0;
         const toOk = typeof d.to === 'string' && d.to.length > 0;
         const differs = fromOk && toOk && d.from !== d.to;
-        const underRoot = toOk && typeof d.rootPath === 'string' && d.rootPath.length > 0 && pathKey(d.to!).startsWith(pathKey(d.rootPath));
+        // Cross-share consolidation: the target's root is the show's HOME root
+        // when set (targetRootPath), else the file's own root.
+        const targetRoot = d.targetRootPath ?? d.rootPath;
+        const underRoot = toOk && typeof targetRoot === 'string' && targetRoot.length > 0 && pathKey(d.to!).startsWith(pathKey(targetRoot));
         if (!fromOk || !toOk || !differs || !underRoot) {
           offenders.push(row.itemKey);
           continue;
