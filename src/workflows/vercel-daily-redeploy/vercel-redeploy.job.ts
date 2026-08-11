@@ -15,6 +15,26 @@ export type SpawnFn = (cwd: string) => ChildProcess;
 const JOB_NAME = 'vercel-redeploy';
 const DEFAULT_TIMEOUT_MS = 600_000; // 10 min — a real build+deploy, not an HTTP call
 
+/** Which checkout a redeploy run targets — the same runner deploys every target. */
+export interface RedeployTarget {
+  jobName: string;
+  envVarName: string;
+  /** Prefix for the per-day JSON artifact under data/out/. */
+  outPrefix: string;
+}
+
+const RYANKROL_TARGET: RedeployTarget = {
+  jobName: JOB_NAME,
+  envVarName: 'RYANKROL_CO_UK_PATH',
+  outPrefix: 'vercel-redeploy',
+};
+
+export const POMODIARY_TARGET: RedeployTarget = {
+  jobName: 'vercel-redeploy-pomodiary',
+  envVarName: 'POMODIARY_PATH',
+  outPrefix: 'vercel-redeploy-pomodiary',
+};
+
 // Resources live alongside the job itself, never in a far-off top-level folder.
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(resolveWorkflowDataDir(resolve(here, 'data')), 'out');
@@ -30,16 +50,17 @@ type Outcome = 'deployed' | 'skipped' | 'failed';
  * panel has something concrete to preview.
  */
 function recordOutcome(
+  target: RedeployTarget,
   key: string,
   outcome: Outcome,
   extra: { deployUrl?: string; reason?: string },
   status: 'success' | 'failed',
 ): void {
   mkdirSync(outDir, { recursive: true });
-  const outPath = resolve(outDir, `vercel-redeploy-${key}.json`);
+  const outPath = resolve(outDir, `${target.outPrefix}-${key}.json`);
   const body = { generatedAt: new Date().toISOString(), key, outcome, ...extra };
   writeFileSync(outPath, JSON.stringify(body, null, 2));
-  markWorkItem(JOB_NAME, key, status, {
+  markWorkItem(target.jobName, key, status, {
     detail: {
       name: `Redeploy ${outcome} — ${key}`,
       outcome,
@@ -72,19 +93,22 @@ export async function runVercelRedeploy(
     timeoutMs?: number;
     callServiceFn?: typeof callService;
     now?: Date;
+    target?: RedeployTarget;
   } = {},
 ): Promise<void> {
   const now = opts.now ?? new Date();
   const key = dayKey(now);
-  const checkoutPath = opts.checkoutPath ?? process.env.RYANKROL_CO_UK_PATH;
+  const target = opts.target ?? RYANKROL_TARGET;
+  const checkoutPath = opts.checkoutPath ?? process.env[target.envVarName];
   if (!checkoutPath) {
-    ctx.log('RYANKROL_CO_UK_PATH not configured — skipping redeploy (see .env.example)', 'warn');
-    recordOutcome(key, 'skipped', { reason: 'missing-config: RYANKROL_CO_UK_PATH is not set' }, 'success');
+    ctx.log(`${target.envVarName} not configured — skipping redeploy (see .env.example)`, 'warn');
+    recordOutcome(target, key, 'skipped', { reason: `missing-config: ${target.envVarName} is not set` }, 'success');
     return;
   }
   if (!existsSync(checkoutPath)) {
-    ctx.log(`RYANKROL_CO_UK_PATH (${checkoutPath}) does not exist on disk — skipping redeploy`, 'warn');
+    ctx.log(`${target.envVarName} (${checkoutPath}) does not exist on disk — skipping redeploy`, 'warn');
     recordOutcome(
+      target,
       key,
       'skipped',
       { reason: `missing-config: checkout path ${checkoutPath} does not exist on disk` },
@@ -110,15 +134,15 @@ export async function runVercelRedeploy(
   } catch (e) {
     if (e instanceof QuotaExceededError) {
       ctx.log(`vercel service quota exhausted — skipping today's redeploy (${e.message})`, 'warn');
-      recordOutcome(key, 'skipped', { reason: `quota-exhausted: ${e.message}` }, 'success');
+      recordOutcome(target, key, 'skipped', { reason: `quota-exhausted: ${e.message}` }, 'success');
       return;
     }
     const reason = e instanceof Error ? e.message : String(e);
-    recordOutcome(key, 'failed', { reason }, 'failed');
+    recordOutcome(target, key, 'failed', { reason }, 'failed');
     throw e;
   }
 
-  recordOutcome(key, 'deployed', { deployUrl }, 'success');
+  recordOutcome(target, key, 'deployed', { deployUrl }, 'success');
 }
 
 function deployOnce(ctx: JobContext, checkoutPath: string, spawnFn: SpawnFn, timeoutMs: number): Promise<string | undefined> {

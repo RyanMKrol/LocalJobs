@@ -53,3 +53,14 @@ re-runs the same day without ever blocking legitimate use, while still catching 
 bug that fires repeatedly. A `QuotaExceededError` from the service check is caught and logged as a
 clean WARN ("no deploy attempted today, budget exhausted") — it does NOT fail the run, mirroring the
 existing soft-skip for an unconfigured `RYANKROL_CO_UK_PATH`.
+
+## The PomoDiary job (`vercel-redeploy-pomodiary`)
+
+Added 2026-08-12: a second job in this workflow deploys the separate `PomoDiary` checkout
+(`POMODIARY_PATH` env var) with the same runner, parameterized via `RedeployTarget`. One
+important difference in intent: for PomoDiary this daily deploy is the PRIMARY ship
+mechanism, not a safety net — that repo sets `git.deploymentEnabled: false` in its
+`vercel.json`, so pushes to `main` create no Vercel deployments at all (same Hobby-quota
+lesson as ryankrol.co.uk, learned before it burned the quota this time). Its per-day
+artifacts land at `data/out/vercel-redeploy-pomodiary-<day>.json` under its own
+`vercel-redeploy-pomodiary` work-item ledger name.
