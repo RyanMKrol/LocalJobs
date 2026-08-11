@@ -470,6 +470,24 @@ export function workflowTerminalItems(
   });
 }
 
+/**
+ * Delete a SNAPSHOT job's ledger rows whose keys were NOT seen this run —
+ * for stages whose ledger is re-marked fresh every run (plex-rename's
+ * discover/plan/verify), where a key that stops being emitted is a GHOST
+ * (found live: pre-fix ungrouped double-episode rows lingered forever and
+ * re-noised every apply run as "source no longer present" soft-skips).
+ * This is DISTINCT from the manual `pruneOrphanedWorkItems` flow and MUST
+ * NEVER be pointed at a once-ever ledger (apply/confirm) — deleting those
+ * rows would re-arm already-done mutations. Callers must also skip it on
+ * LIMITED runs, where only the selected roots get re-marked.
+ */
+export function pruneSnapshotRows(jobName: string, seenKeys: string[]): number {
+  const res = db.prepare(
+    `DELETE FROM work_items WHERE job_name = ? AND item_key NOT IN (SELECT value FROM json_each(?))`,
+  ).run(jobName, JSON.stringify(seenKeys));
+  return res.changes;
+}
+
 /** Total success rows for the given terminal-stage job names — the Output section's "X of Y". */
 export function workflowTerminalItemsCount(terminalJobNames: string[]): number {
   if (terminalJobNames.length === 0) return 0;

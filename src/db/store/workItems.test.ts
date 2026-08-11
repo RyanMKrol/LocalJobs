@@ -3,8 +3,10 @@
 import assert from 'node:assert/strict';
 import {
   createWorkflowRun,
+  getWorkItem,
   listSuccessWorkItems,
   markWorkItem,
+  pruneSnapshotRows,
   stageIoLists,
   syncJob,
   syncWorkflow,
@@ -108,6 +110,24 @@ assert.ok(md!.updated_at);
   const keys = new Set([...page1, ...page2].map((i) => i.itemKey));
   assert.equal(keys.size, 3, 'pages are disjoint and cover every item');
   assert.equal(workflowTerminalItemsCount([]), 0);
+}
+
+// ── pruneSnapshotRows: ghost keys removed, seen keys kept, other jobs untouched ──
+{
+  syncJob({ name: 'snap-job', run: async () => {} });
+  syncJob({ name: 'snap-other', run: async () => {} });
+  markWorkItem('snap-job', 'kept-1', 'success', { detail: { name: 'kept' } });
+  markWorkItem('snap-job', 'kept-2', 'failed', { detail: { name: 'kept regardless of status' } });
+  markWorkItem('snap-job', 'ghost-1', 'success', { detail: { name: 'ghost' } });
+  markWorkItem('snap-other', 'ghost-1', 'success', { detail: { name: 'same key, other job' } });
+
+  const pruned = pruneSnapshotRows('snap-job', ['kept-1', 'kept-2']);
+  assert.equal(pruned, 1, 'exactly the unseen key is removed');
+  assert.ok(getWorkItem('snap-job', 'kept-1'));
+  assert.ok(getWorkItem('snap-job', 'kept-2'), 'non-success rows with seen keys survive too');
+  assert.equal(getWorkItem('snap-job', 'ghost-1'), undefined);
+  assert.ok(getWorkItem('snap-other', 'ghost-1'), 'other jobs are never touched');
+  assert.equal(pruneSnapshotRows('snap-job', ['kept-1', 'kept-2']), 0, 'idempotent');
 }
 
 console.log('workItems.test.ts: ok');

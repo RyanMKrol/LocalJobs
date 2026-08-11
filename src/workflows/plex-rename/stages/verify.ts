@@ -1,5 +1,5 @@
 import type { JobContext } from '../../../core/types.js';
-import { markWorkItem } from '../../../db/store.js';
+import { markWorkItem, pruneSnapshotRows } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { mountHealthy, plexToLocal, realReadFs, shareOf, type ReadFsSeam } from '../lib.js';
 import { pathKey, planSidecars, posixBasename, posixDirname, splitExt, type NamingOp } from '../naming.js';
@@ -240,6 +240,11 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
       plexmatch: plexmatchWrite,
       leftBehind: sidecarPlan.leftBehind,
     });
+  }
+
+  if (ctx.selectedRoots() === null) {
+    const pruned = pruneSnapshotRows(JOB_NAME, planRows.map((r) => r.itemKey));
+    if (pruned > 0) ctx.log(`Pruned ${pruned} stale verify row(s) for keys plan no longer emits.`);
   }
 
   ctx.log('═══════════════ VERIFY SUMMARY ═══════════════');

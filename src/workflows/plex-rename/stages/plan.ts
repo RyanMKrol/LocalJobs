@@ -1,5 +1,5 @@
 import type { JobContext } from '../../../core/types.js';
-import { markWorkItem } from '../../../db/store.js';
+import { markWorkItem, pruneSnapshotRows } from '../../../db/store.js';
 import { chooseShowHomeRoots, decideRename, finalizePlan, pathKey, type LibraryRoot, type PlanEntry, type RenameInput } from '../naming.js';
 import type { DiscoverDetail, PlanDetail } from '../types.js';
 import { ledgerSuccessRows } from './ledger.js';
@@ -163,6 +163,11 @@ export async function runPlan(ctx: JobContext, opts: PlanOverrides = {}): Promis
     markWorkItem(JOB_NAME, entry.key, 'success', { detail });
     if ((i + 1) % 100 === 0) ctx.progress(10 + Math.round((85 * (i + 1)) / finalized.length), `${i + 1}/${finalized.length} planned`);
   });
+
+  if (ctx.selectedRoots() === null) {
+    const pruned = pruneSnapshotRows(JOB_NAME, finalized.map((e) => e.key));
+    if (pruned > 0) ctx.log(`Pruned ${pruned} stale plan row(s) for keys discover no longer produces.`);
+  }
 
   ctx.log('═══════════════ PLAN SUMMARY ═══════════════');
   ctx.log(`Planned: ${finalized.length} · rename: ${renames} · already-canonical: ${canonical} · skip: ${skips}`);

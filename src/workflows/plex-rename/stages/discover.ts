@@ -1,6 +1,6 @@
 import type { JobContext } from '../../../core/types.js';
 import { extractImdbId, extractTmdbId, extractTvdbId } from '../../../core/plex-client.js';
-import { getWorkItem, markWorkItem } from '../../../db/store.js';
+import { getWorkItem, markWorkItem, pruneSnapshotRows } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { fetchAllLeaves, fetchSectionItems, fetchSections } from '../lib.js';
 import { pathKey, resolveLibraryRoot, type EpisodeRef, type LibraryRoot } from '../naming.js';
@@ -326,6 +326,16 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
     }
     markWorkItem(JOB_NAME, key, 'success', { detail: entry });
     recorded++;
+  }
+
+  // Snapshot semantics done right: keys the walk no longer produces are
+  // GHOSTS (a file re-grouped, deleted, or re-keyed by Plex) — prune them so
+  // downstream stages never re-plan a row that no longer describes reality.
+  // Only on UNLIMITED runs: a limited run re-marks just its selected roots.
+  if (ctx.selectedRoots() === null) {
+    const seen = entries.map((e) => fileKey(kindRatingKey(e), e.partId));
+    const pruned = pruneSnapshotRows(JOB_NAME, seen);
+    if (pruned > 0) ctx.log(`Pruned ${pruned} stale snapshot row(s) whose keys the live walk no longer produces.`);
   }
 
   ctx.log('═══════════════ DISCOVER SUMMARY ═══════════════');

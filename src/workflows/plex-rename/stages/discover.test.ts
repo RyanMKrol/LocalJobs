@@ -123,6 +123,24 @@ test('runDiscover re-marks snapshots every run (a renamed file refreshes its rec
   );
 });
 
+test('discover prunes GHOST snapshot rows (keys the walk no longer produces) on unlimited runs only', async () => {
+  // Seed a stale row shaped like the pre-grouping-fix double-episode ghosts:
+  // a key the live walk will never emit again.
+  const { markWorkItem } = await import('../../../db/store.js');
+  markWorkItem('plex-rename-discover', 'ghost-rk::part999', 'success', { detail: { name: 'stale ungrouped twin' } });
+
+  // A LIMITED run must NOT prune (only its selected roots get re-marked).
+  const only = fileKey('e1', 9101);
+  const limitedCtx: JobContext = { log() {}, progress() {}, selectedRoots: () => new Set([only]), rootAllowed: (k) => k === only };
+  await runDiscover(limitedCtx, fakes());
+  assert.ok(getWorkItem('plex-rename-discover', 'ghost-rk::part999'), 'limited runs never prune');
+
+  // An UNLIMITED run prunes the ghost, keeps every live key.
+  await runDiscover(fakeCtx(), fakes());
+  assert.equal(getWorkItem('plex-rename-discover', 'ghost-rk::part999'), undefined, 'ghost pruned');
+  assert.ok(getWorkItem('plex-rename-discover', fileKey('m1', 9001)), 'live keys kept');
+});
+
 test('discoverInputKeys walks live and respects rootAllowed at record time', async () => {
   const keys = await discoverInputKeys(fakes());
   assert.deepEqual(new Set(keys), new Set([fileKey('m1', 9001), fileKey('e1', 9101), fileKey('e2a', 9102)]));

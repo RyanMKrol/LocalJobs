@@ -62,6 +62,12 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   air-dates. Multi-episode files are grouped by shared Part id into one row (keyed by the FIRST
   leaf's ratingKey) listing every episode. Library roots come from Plex's own section `Location`
   paths — no env var. `inputKeys()` = the same live walk (T485), `inputKeysService: 'plex'`.
+  **Snapshot ledgers self-prune (2026-08-11):** discover/plan/verify each end an UNLIMITED run by
+  deleting their own rows whose keys this run didn't re-mark (`pruneSnapshotRows` in store) —
+  keys that stop being emitted are GHOSTS (found live: pre-grouping-fix double-episode rows
+  lingered and re-noised every apply run as "source no longer present" soft-skips). Limited runs
+  never prune (they only re-mark selected roots), and the once-ever apply/confirm ledgers are
+  NEVER pruned — deleting those rows would re-arm already-done mutations.
 - **plan** — pure naming-engine computation (`naming.ts`), recomputed every run (plans are derived
   state). No disk, no Plex. Passes `siblings: []` — sidecar enumeration is verify's job, because
   directory listings are a FILESYSTEM fact. Cross-item collision pass (`finalizePlan`) downgrades
