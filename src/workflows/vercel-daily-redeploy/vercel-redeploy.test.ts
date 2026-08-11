@@ -12,7 +12,7 @@ import { dayKey } from '../../core/dates.js';
 import { QuotaExceededError, type callService } from '../../core/services.js';
 import type { JobContext, LogLevel } from '../../core/types.js';
 import { getWorkItem } from '../../db/store.js';
-import { runVercelRedeploy, type SpawnFn } from './vercel-redeploy.job.js';
+import { POMODIARY_TARGET, runVercelRedeploy, type SpawnFn } from './vercel-redeploy.job.js';
 
 const JOB = 'vercel-redeploy';
 
@@ -300,5 +300,25 @@ describe('runVercelRedeploy', () => {
       assert.equal(second!.created_at, first!.created_at, 'same (job_name, item_key) row should be upserted, not duplicated');
       assert.equal(JSON.parse(second!.detail!).outcome, 'deployed');
     });
+  });
+});
+
+describe('runVercelRedeploy (pomodiary target)', () => {
+  it('soft-skips naming POMODIARY_PATH when unset — spawnFn never called', async () => {
+    const ctx = fakeCtx();
+    let spawnCalled = false;
+    const spawnFn: SpawnFn = () => { spawnCalled = true; return makeFakeChild(); };
+    const prev = process.env.POMODIARY_PATH;
+    delete process.env.POMODIARY_PATH;
+    try {
+      await runVercelRedeploy(ctx, { spawnFn, target: POMODIARY_TARGET });
+    } finally {
+      if (prev !== undefined) process.env.POMODIARY_PATH = prev;
+    }
+
+    assert.equal(spawnCalled, false);
+    assert.ok(
+      ctx.logs.some((l) => l.level === 'warn' && l.message.includes('POMODIARY_PATH not configured')),
+    );
   });
 });

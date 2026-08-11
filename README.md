@@ -297,7 +297,12 @@ summaries below are a quick-reference index, not the source of truth.
   CLI's own persistent login session already on this machine. `RYANKROL_CO_UK_PATH`
   (the checkout path) is optional — unset or a nonexistent path soft-skips the job
   cleanly (a warn log, no failure). Runs daily at 23:00 (`'0 23 * * *'`),
-  deliberately late in the day.
+  deliberately late in the day. A second job in the same workflow,
+  `vercel-redeploy-pomodiary`, does the same for the separate `PomoDiary`
+  checkout (`POMODIARY_PATH`) — for that repo the daily CLI deploy is the
+  primary ship mechanism, since it disables push-triggered Vercel deployments
+  entirely (`vercel.json` `git.deploymentEnabled: false`) to protect the Hobby
+  deployment quota from its agent-driven commit volume.
 - **plex-space-saver** — Weekly, report-only Plex disk-space breakdown, distinct
   from `missing-tv-seasons` (which audits missing seasons, not disk usage). Scans
   the Plex movie + TV sections via the API (each media Part's `size` in bytes —

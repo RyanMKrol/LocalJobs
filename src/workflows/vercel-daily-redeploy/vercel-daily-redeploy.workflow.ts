@@ -36,12 +36,13 @@ const workflow: WorkflowDefinition = {
   name: 'vercel-daily-redeploy',
   category: 'regular-maintenance',
   description:
-    'Daily safety-net production deploy ("vercel --prod --yes") for ryankrol.co.uk, run directly ' +
-    'via the Vercel CLI, independent of that repo\'s own deploy-task mechanism or Git integration state.',
+    'Daily production deploys ("vercel --prod --yes") run directly via the Vercel CLI, independent ' +
+    'of Git integration state: a safety net for ryankrol.co.uk, and the primary ship mechanism for ' +
+    'PomoDiary (which disables push-triggered deploys to protect the Hobby deployment quota).',
   idempotencyNote: 'There\'s no per-item tracking here — this is a simple fire-and-forget daily deploy trigger with no items to track, gated only by a daily/monthly deploy-count budget.',
   schedule: '0 23 * * *',
   maxConcurrency: 1,
-  jobs: [{ job: 'vercel-redeploy' }],
+  jobs: [{ job: 'vercel-redeploy' }, { job: 'vercel-redeploy-pomodiary' }],
 };
 
 export default workflow;
