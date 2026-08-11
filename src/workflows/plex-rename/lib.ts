@@ -281,6 +281,35 @@ export const realWriteFs: WriteFsSeam = {
   },
 };
 
+// ── Plex server health ─────────────────────────────────────────────────────────
+
+export interface PlexHealth {
+  ok: boolean;
+  ms: number;
+  error?: string;
+}
+
+/**
+ * Probe Plex's DATABASE-backed health — `/library/sections`, not `/identity`.
+ * Found live (2026-08-11): a saturated Plex answers `/identity` instantly
+ * (served without the DB) while every DB-backed endpoint hangs and clients
+ * show the server as unavailable — so a liveness probe is worthless here.
+ * A short, hard timeout: a healthy server answers this in well under a
+ * second; blowing the budget IS the unhealthy signal.
+ */
+export async function probePlexHealth(timeoutMs = 15_000, fetchPlex: <T>(path: string) => Promise<T> = plexGet): Promise<PlexHealth> {
+  const started = Date.now();
+  try {
+    await Promise.race([
+      callService('plex', () => fetchPlex<PlexListResponse<PlexSection>>('/library/sections')),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`no response within ${timeoutMs}ms`)), timeoutMs).unref?.()),
+    ]);
+    return { ok: true, ms: Date.now() - started };
+  } catch (err) {
+    return { ok: false, ms: Date.now() - started, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ── Mount health ───────────────────────────────────────────────────────────────
 
 /**

@@ -99,6 +99,7 @@ function makeEnv(
       },
       butlerAlreadyToday: () => false,
       recordButler: () => {},
+      probeHealth: async () => ({ ok: true, ms: 5 }),
       now: () => NOW,
       ...over,
     },
@@ -199,6 +200,34 @@ test('emptied nested release wrappers are removed up the ancestor chain, stoppin
   assert.ok(!rmdirs.includes('rmdir-if-empty:/Volumes/Share/TV'), 'the library root is NEVER touched');
   const st = await fs.stat('/Volumes/Share/TV/Wrapper S01-S04 REMUX [RiCK]');
   assert.equal(st, null, 'the husk is gone from disk');
+});
+
+test('Plex health gate: an unhealthy server defers the whole batch; mid-batch degradation stops early', async () => {
+  // Pre-batch probe fails → zero mutations, nothing marked, run succeeds.
+  const cDeferred = candidate();
+  const fsDef = makeMemFs({ ...MOUNT, [cDeferred.verify.localFrom!]: 'BYTES-11!!!' });
+  const envDef = makeEnv(fsDef, [cDeferred], { probeHealth: async () => ({ ok: false, ms: 15000, error: 'no response within 15000ms' }) });
+  await runApply(fakeCtx(), envDef.overrides); // must not throw
+  assert.equal(getWorkItem('plex-rename-apply', cDeferred.itemKey), undefined, 'nothing marked while Plex is unhealthy');
+  assert.equal(fsDef.files.get(cDeferred.verify.localFrom!), 'BYTES-11!!!', 'nothing moved');
+  assert.equal(envDef.butlerCalls.count, 0);
+
+  // Healthy at start, degrades at the first mid-batch re-probe (item 26) → the
+  // first 25 items applied, the rest untouched, run still succeeds.
+  const cs = Array.from({ length: 30 }, () => candidate());
+  const files: Record<string, string> = { ...MOUNT };
+  for (const c of cs) files[c.verify.localFrom!] = 'BYTES-11!!!';
+  const fsMid = makeMemFs(files);
+  let probes = 0;
+  const envMid = makeEnv(fsMid, cs, {
+    maxPerDay: 100,
+    cap: () => ({ allowed: true, reason: '', today: 0, month: 0, dayLeft: 100, monthLeft: 3000 }),
+    probeHealth: async () => ({ ok: ++probes === 1, ms: 5, error: probes > 1 ? 'degraded' : undefined }),
+  });
+  await runApply(fakeCtx(), envMid.overrides);
+  const appliedMid = cs.filter((c) => getWorkItem('plex-rename-apply', c.itemKey)?.status === 'success').length;
+  assert.equal(appliedMid, 25, 'stopped at the first failed mid-batch probe');
+  assert.equal(cs.filter((c) => fsMid.files.has(c.verify.localFrom!)).length, 5, 'unprocessed items untouched');
 });
 
 test('Butler DB backup fires at most once per day across batches', async () => {

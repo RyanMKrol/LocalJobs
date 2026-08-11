@@ -87,6 +87,15 @@ export const plexRenameConfig = {
    */
   applyEnabled: process.env.PLEX_RENAME_APPLY_ENABLED === '1',
 
+  /**
+   * Plex health-probe budget (ms): apply probes a DATABASE-backed Plex
+   * endpoint before the batch and every 25 items; a probe blowing this budget
+   * means the server is saturated and the batch stops gracefully (2026-08-11
+   * incident: a wedged Plex answered /identity instantly while every
+   * DB-backed endpoint hung and clients showed the server unavailable).
+   */
+  healthProbeTimeoutMs: Number(process.env.PLEX_RENAME_HEALTH_TIMEOUT_MS ?? '15000'),
+
   /** How long confirm waits for Plex to re-associate a renamed file before failing loud. */
   confirmGraceDays: Number(process.env.PLEX_RENAME_CONFIRM_GRACE_DAYS ?? '14'),
 };

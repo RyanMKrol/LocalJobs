@@ -147,6 +147,19 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   incapable of deleting files and stopping strictly below the library root. Pre-fix husks (4)
   were swept by hand.
 
+## Plex health gate (2026-08-11 incident)
+
+Apply probes Plex's **database-backed** health (`probePlexHealth` in `lib.ts` —
+`/library/sections` under a hard `PLEX_RENAME_HEALTH_TIMEOUT_MS` budget, default 15s; NEVER
+`/identity`, which a saturated server still answers instantly) BEFORE each batch and every 25
+items during one. Pre-batch failure → the whole batch defers (zero mutations, run success);
+mid-batch failure → stop early, unprocessed items lead the next run. Rationale: file moves
+don't need Plex, but every batch triggers rescans + analysis on the same disks Plex's DB lives
+on — during the live incident (five same-day batches + five Butler DB backups + Plex analyzing
+~2,200 re-scanned files) the NAS saturated, Plex's DB-backed API hung, and clients showed the
+server unavailable. The Butler backup is also once-per-day now (its own `job_usage` meter),
+not once-per-batch.
+
 ## Undo + journal
 
 `journal.ts`: per-run NDJSON, `JournalWriter` fsyncs every record (and the journal dir at

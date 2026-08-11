@@ -6,7 +6,7 @@ import { plexRefreshSection, triggerButlerBackup } from '../../../core/plex-clie
 import { capStatus, isWorkItemDone, markWorkItem, recordUsage, usageToday } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { analyzeJournal, findLatestJournal, JournalWriter, readJournal, type ItemJournalState, type JournalOp } from '../journal.js';
-import { mountHealthy, plexToLocal, realWriteFs, shareOf, type WriteFsSeam } from '../lib.js';
+import { mountHealthy, plexToLocal, probePlexHealth, realWriteFs, shareOf, type PlexHealth, type WriteFsSeam } from '../lib.js';
 import { MoveError, performAtomicRenameMove, performVerifiedMove, PARTIAL_SUFFIX, type MoveStep } from '../move.js';
 import { pathKey, posixDirname } from '../naming.js';
 import type { ApplyDetail, DiscoverDetail, PathMapPair, VerifyDetail } from '../types.js';
@@ -22,6 +22,8 @@ const BUTLER_METER = 'plex-rename-butler-backup';
 const FREE_SPACE_MARGIN = 1024 * 1024 * 1024;
 /** Past this many distinct changed dirs, one full section refresh beats many targeted ones. */
 const REFRESH_DIR_CAP = 30;
+/** Re-probe Plex's DB-backed health every N applied items during a batch. */
+const HEALTH_CHECK_EVERY = 25;
 
 export interface ApplyOverrides {
   fs?: WriteFsSeam;
@@ -43,6 +45,8 @@ export interface ApplyOverrides {
   butlerAlreadyToday?: () => boolean;
   /** Records today's Butler trigger on its own meter (injectable for tests). */
   recordButler?: () => void;
+  /** Plex DB-backed health probe (injectable for tests). */
+  probeHealth?: () => Promise<PlexHealth>;
   now?: () => Date;
 }
 
@@ -94,6 +98,7 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   const record = opts.record ?? recordUsage;
   const butlerAlreadyToday = opts.butlerAlreadyToday ?? (() => usageToday(BUTLER_METER) > 0);
   const recordButler = opts.recordButler ?? (() => recordUsage(BUTLER_METER));
+  const probeHealth = opts.probeHealth ?? (() => probePlexHealth(plexRenameConfig.healthProbeTimeoutMs));
   const now = opts.now ?? (() => new Date());
 
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -151,6 +156,18 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
     rehearse(ctx, batch, candidates.length, reportDir, now());
     return;
   }
+
+  // ── Plex health gate: a saturated Plex means DO NOT pile a batch on top.
+  // File moves don't need Plex, but every batch triggers rescans + analysis
+  // on the same disks Plex's database lives on — mid-incident, more batches
+  // deepen the hole. Stop gracefully; the next run resumes. ──
+  const preHealth = await probeHealth();
+  if (!preHealth.ok) {
+    ctx.log(`✗ Plex DB-backed health probe FAILED (${preHealth.error}, ${preHealth.ms}ms) — the server looks saturated. Performing ZERO mutations this run; the next run resumes when Plex is healthy.`, 'warn');
+    ctx.progress(100, 'Plex unhealthy — batch deferred');
+    return;
+  }
+  ctx.log(`✓ Plex DB-backed health probe ok in ${preHealth.ms}ms`);
 
   // ── Narrate the FULL batch manifest before touching anything — the log
   // alone must say exactly what this run intends to do, item by item. ──
@@ -233,9 +250,23 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   const minAgeMs = minAgeDays * 24 * 60 * 60 * 1000;
   const reportPath = resolve(reportDir, `rename-report-${now().toISOString().replace(/[:.]/g, '-')}.md`);
 
+  let healthStopped = false;
   for (let i = 0; i < batch.length; i++) {
     const { itemKey, verify, discover } = batch[i];
     const say = (msg: string, level?: 'info' | 'warn' | 'error') => ctx.log(`  [${i + 1}/${batch.length}] ${msg}`, level);
+
+    // Mid-batch health valve: re-probe every HEALTH_CHECK_EVERY items and stop
+    // EARLY if Plex degrades under the batch — unprocessed items stay untouched
+    // and simply lead the next batch.
+    if (i > 0 && i % HEALTH_CHECK_EVERY === 0) {
+      const health = await probeHealth();
+      if (!health.ok) {
+        ctx.log(`✗ Plex health degraded mid-batch at item ${i + 1}/${batch.length} (${health.error}, ${health.ms}ms) — stopping this batch early; the remaining ${batch.length - i} item(s) lead the next run.`, 'warn');
+        healthStopped = true;
+        break;
+      }
+      ctx.log(`  ✓ mid-batch Plex health ok in ${health.ms}ms (item ${i + 1}/${batch.length})`);
+    }
 
     // ── Move strategy: same-share (and not case-only) = atomic rename — the
     // bytes are never rewritten, so there is nothing to copy, verify, or run
@@ -416,6 +447,7 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   const copiedRows = appliedRows.filter((r) => r.sha256);
   const copiedGb = copiedRows.reduce((sum, r) => sum + (r.bytes ?? 0), 0) / 1e9;
   ctx.log('═══════════════ APPLY SUMMARY ═══════════════');
+  if (healthStopped) ctx.log('⚠ Batch STOPPED EARLY — Plex health degraded mid-batch; unprocessed items lead the next run.', 'warn');
   ctx.log(`Applied: ${applied} (${renamedCount} atomic rename(s), ${copiedRows.length} verified cross-share cop(ies) totalling ${copiedGb.toFixed(2)} GB)`);
   ctx.log(`Soft-skipped: ${skippedAtApply.length} · failed: ${failed} · quota now ${quota.today + applied}/${maxPerDay}`);
   ctx.log(`Plex directories refreshed: ${changedPlexDirs.size} · journal: ${journal ? (journal as JournalWriter).path : 'none (no mutations)'}`);
