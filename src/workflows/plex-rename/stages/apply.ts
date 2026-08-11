@@ -303,7 +303,15 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
         strategy: sameShare && !scCaseOnly ? 'rename' : 'copy-verify',
       });
     }
-    ops.push({ op: 'rmdir-if-empty', path: posixDirname(verify.localFrom!) });
+    // The stop boundary for empty-ancestor cleanup: the file's own library
+    // root, mapped local — nested release wrappers (Show S01-S04/Season X/…)
+    // would otherwise leave empty husk chains behind once drained.
+    const localLibraryRoot = discover?.rootPath ? plexToLocal(discover.rootPath, pathMap) : null;
+    ops.push({
+      op: 'rmdir-if-empty',
+      path: posixDirname(verify.localFrom!),
+      stopRoot: localLibraryRoot ?? shareOf(verify.from, pathMap)?.local ?? undefined,
+    });
 
     // ── Journal the full intent, then execute op by op ──
     const j = openJournal();
@@ -445,6 +453,21 @@ async function executeOps(
         } else if (op.op === 'rmdir-if-empty') {
           const r = await fs.rmdirIfEmpty(op.path);
           ctx.log(`    rmdir-if-empty ${op.path}: ${r}`);
+          // Climb the now-empty ANCESTOR chain (nested release wrappers become
+          // husks otherwise — found live: "Mr Robot S01-S04 …/Mr.Robot.S02…"
+          // left its outer wrapper behind once drained). Plain rmdir only —
+          // structurally incapable of deleting files — and strictly below the
+          // library-root boundary; the first non-empty ancestor stops the climb.
+          if (r === 'removed' && op.stopRoot) {
+            const rootKey = pathKey(op.stopRoot.replace(/\/+$/, ''));
+            let cursor = posixDirname(op.path);
+            while (pathKey(cursor).startsWith(`${rootKey}/`)) {
+              const rc = await fs.rmdirIfEmpty(cursor);
+              ctx.log(`    rmdir-if-empty (empty ancestor) ${cursor}: ${rc}`);
+              if (rc !== 'removed') break;
+              cursor = posixDirname(cursor);
+            }
+          }
         }
         j.append({ kind: 'op-done', at: now().toISOString(), itemKey, opIndex: idx });
       }

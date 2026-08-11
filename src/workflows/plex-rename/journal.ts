@@ -30,7 +30,15 @@ export type JournalOp =
        *  full copy → checksum-verify → delete-original procedure. */
       strategy?: 'rename' | 'copy-verify';
     }
-  | { op: 'rmdir-if-empty'; path: string };
+  | {
+      op: 'rmdir-if-empty';
+      path: string;
+      /** Local library-root boundary: after removing `path`, now-empty ANCESTOR
+       *  dirs are also removed (plain rmdir, bottom-up) but ONLY strictly below
+       *  this root — the root itself and anything above are never touched.
+       *  Absent (pre-fix journals) = no ancestor climbing. */
+      stopRoot?: string;
+    };
 
 export type JournalRecord =
   | {

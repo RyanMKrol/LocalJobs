@@ -29,7 +29,20 @@ function sha(content: string): string {
 export function makeMemFs(initial: Record<string, string>, opts: MemFsOptions = {}): MemFs {
   const files = new Map(Object.entries(initial));
   const oplog: string[] = [];
-  const isDir = (p: string) => [...files.keys()].some((f) => f.startsWith(`${p}/`));
+  // Directories persist like on a real fs: seeded from every initial path's
+  // ancestor chain, extended by mkdirp, removed only by rmdirIfEmpty — moving
+  // the last file OUT of a dir leaves the (now empty) dir behind, exactly the
+  // husk behaviour the empty-ancestor cleanup exists for.
+  const dirs = new Set<string>();
+  const addAncestors = (p: string) => {
+    let cursor = p;
+    while (cursor.includes('/') && cursor.lastIndexOf('/') > 0) {
+      cursor = cursor.slice(0, cursor.lastIndexOf('/'));
+      if (cursor) dirs.add(cursor);
+    }
+  };
+  for (const f of files.keys()) addAncestors(f);
+  const isDir = (p: string) => dirs.has(p) || [...files.keys()].some((f) => f.startsWith(`${p}/`));
 
   return {
     files,
@@ -79,6 +92,8 @@ export function makeMemFs(initial: Record<string, string>, opts: MemFsOptions = 
     },
     async mkdirp(path) {
       oplog.push(`mkdirp:${path}`);
+      dirs.add(path);
+      addAncestors(path);
     },
     async writeFile(path, content) {
       oplog.push(`write:${path}`);
@@ -91,7 +106,13 @@ export function makeMemFs(initial: Record<string, string>, opts: MemFsOptions = 
     async rmdirIfEmpty(path) {
       oplog.push(`rmdir-if-empty:${path}`);
       if (files.has(path)) throw new Error(`not a directory: ${path}`);
-      if (isDir(path)) return 'not-empty';
+      const hasContent =
+        [...files.keys()].some((f) => f.startsWith(`${path}/`)) || [...dirs].some((d) => d.startsWith(`${path}/`));
+      if (hasContent) return 'not-empty';
+      if (dirs.has(path)) {
+        dirs.delete(path);
+        return 'removed';
+      }
       return 'missing';
     },
   };

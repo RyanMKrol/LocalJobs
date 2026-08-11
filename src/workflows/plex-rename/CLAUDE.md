@@ -134,7 +134,12 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   are per-item single folders on their own share by construction.
 - **Folder strategy:** uniform "move out into a fresh canonical folder, never rename a directory in
   place" — old release folders keep their junk and are listed as leftovers in the report;
-  cleanup is report-only in v1.
+  cleanup of folders still HOLDING files is report-only. Emptied dirs
+  are removed via plain `rmdir-if-empty` — including the emptied ANCESTOR chain (2026-08-11:
+  nested release wrappers like "Mr Robot S01-S04 …/Season S02/" left an empty outer husk once
+  drained; apply now climbs bottom-up, journal op carries `stopRoot`), each step structurally
+  incapable of deleting files and stopping strictly below the library root. Pre-fix husks (4)
+  were swept by hand.
 
 ## Undo + journal
 

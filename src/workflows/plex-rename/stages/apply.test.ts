@@ -174,6 +174,31 @@ test('same-share move: atomic rename — no copy, no partial, no hash, space che
   assert.equal(analysis.items[0].outcome, 'complete', 'journal completion detection handles the rename strategy');
 });
 
+test('emptied nested release wrappers are removed up the ancestor chain, stopping at the library root', async () => {
+  // The Mr Robot husk shape: TV/Wrapper S01-S04/Season S02/file.mkv — moving
+  // the only file out must remove Season S02 AND the outer wrapper, but never
+  // the TV library root itself.
+  const from = '/volume1/Share/TV/Wrapper S01-S04 REMUX [RiCK]/Season S02/old.mkv';
+  const c = candidate({ from });
+  c.verify.localFrom = from.replace('/volume1/Share', '/Volumes/Share');
+  c.discover.detail = { kind: 'episode', rootPath: '/volume1/Share/TV' } as DiscoverDetail;
+  const fs = makeMemFs({
+    '/Volumes/Share/TV/.marker': 'x', // keeps the TV root non-empty + mount healthy
+    ...MOUNT,
+    [c.verify.localFrom!]: 'BYTES-11!!!',
+  });
+  const env = makeEnv(fs, [c]);
+  await runApply(fakeCtx(), env.overrides);
+
+  assert.equal(getWorkItem('plex-rename-apply', c.itemKey)?.status, 'success');
+  const rmdirs = fs.oplog.filter((o) => o.startsWith('rmdir-if-empty:'));
+  assert.ok(rmdirs.includes('rmdir-if-empty:/Volumes/Share/TV/Wrapper S01-S04 REMUX [RiCK]/Season S02'), 'immediate parent removed');
+  assert.ok(rmdirs.includes('rmdir-if-empty:/Volumes/Share/TV/Wrapper S01-S04 REMUX [RiCK]'), 'empty OUTER wrapper removed too');
+  assert.ok(!rmdirs.includes('rmdir-if-empty:/Volumes/Share/TV'), 'the library root is NEVER touched');
+  const st = await fs.stat('/Volumes/Share/TV/Wrapper S01-S04 REMUX [RiCK]');
+  assert.equal(st, null, 'the husk is gone from disk');
+});
+
 test('rehearsal mode (apply disabled): report only — no journal, no marks, no mutations, no Butler', async () => {
   const c = candidate();
   const fs = makeMemFs({ ...MOUNT, [c.verify.localFrom!]: 'MOVIE-BYTES' });
