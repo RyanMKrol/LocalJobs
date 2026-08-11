@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
 import { plexRefreshSection, triggerButlerBackup } from '../../../core/plex-client.js';
-import { capStatus, isWorkItemDone, markWorkItem, recordUsage } from '../../../db/store.js';
+import { capStatus, isWorkItemDone, markWorkItem, recordUsage, usageToday } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { analyzeJournal, findLatestJournal, JournalWriter, readJournal, type ItemJournalState, type JournalOp } from '../journal.js';
 import { mountHealthy, plexToLocal, realWriteFs, shareOf, type WriteFsSeam } from '../lib.js';
@@ -16,6 +16,8 @@ export const JOB_NAME = 'plex-rename-apply';
 export const VERIFY_JOB = 'plex-rename-verify';
 export const DISCOVER_JOB = 'plex-rename-discover';
 const MAX_ATTEMPTS = 3;
+/** job_usage meter name tracking Butler DB-backup triggers (once per day). */
+const BUTLER_METER = 'plex-rename-butler-backup';
 /** Transient headroom the share must have beyond the file's own size (the copy phase doubles it). */
 const FREE_SPACE_MARGIN = 1024 * 1024 * 1024;
 /** Past this many distinct changed dirs, one full section refresh beats many targeted ones. */
@@ -37,6 +39,10 @@ export interface ApplyOverrides {
   refreshSection?: typeof plexRefreshSection;
   cap?: typeof capStatus;
   record?: typeof recordUsage;
+  /** Whether a Butler DB backup was already triggered today (injectable for tests). */
+  butlerAlreadyToday?: () => boolean;
+  /** Records today's Butler trigger on its own meter (injectable for tests). */
+  recordButler?: () => void;
   now?: () => Date;
 }
 
@@ -86,6 +92,8 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   const refreshSection = opts.refreshSection ?? plexRefreshSection;
   const cap = opts.cap ?? capStatus;
   const record = opts.record ?? recordUsage;
+  const butlerAlreadyToday = opts.butlerAlreadyToday ?? (() => usageToday(BUTLER_METER) > 0);
+  const recordButler = opts.recordButler ?? (() => recordUsage(BUTLER_METER));
   const now = opts.now ?? (() => new Date());
 
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -201,12 +209,25 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
     }
   }
 
-  // ── Butler backup once, before the first new mutation ──
+  // ── Butler backup at most ONCE PER DAY, before the day's first mutation ──
+  // Right-sized for batch-driven operation (2026-08-11): backing up the large
+  // live Plex DB before EVERY batch — five in one day — contributed to a real
+  // NAS saturation incident (Plex's DB-backed API hung, clients showed the
+  // server unavailable). One backup per day is the same protection: it
+  // snapshots the DB before the day's mutations begin.
   if (batch.length > 0) {
-    ctx.log('Triggering Plex Butler DATABASE backup (secondary net — the journal + copy-verify protect the files themselves)…');
-    const butler = await callService('plex', () => triggerBackup());
-    if (butler.ok) ctx.log('✓ Butler backup triggered');
-    else ctx.log(`⚠ Butler backup trigger failed: ${butler.error} — continuing (journal + copy-verify are the primary safety net)`, 'warn');
+    if (butlerAlreadyToday()) {
+      ctx.log('Plex Butler DB backup already triggered today — not re-triggering (once per day; journal + copy-verify are the primary net).');
+    } else {
+      ctx.log('Triggering Plex Butler DATABASE backup (secondary net — the journal + copy-verify protect the files themselves)…');
+      const butler = await callService('plex', () => triggerBackup());
+      if (butler.ok) {
+        recordButler();
+        ctx.log('✓ Butler backup triggered');
+      } else {
+        ctx.log(`⚠ Butler backup trigger failed: ${butler.error} — continuing (journal + copy-verify are the primary safety net)`, 'warn');
+      }
+    }
   }
 
   const minAgeMs = minAgeDays * 24 * 60 * 60 * 1000;

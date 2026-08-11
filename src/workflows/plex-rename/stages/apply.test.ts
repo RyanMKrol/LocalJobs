@@ -97,6 +97,8 @@ function makeEnv(
       record: () => {
         usage.count++;
       },
+      butlerAlreadyToday: () => false,
+      recordButler: () => {},
       now: () => NOW,
       ...over,
     },
@@ -197,6 +199,15 @@ test('emptied nested release wrappers are removed up the ancestor chain, stoppin
   assert.ok(!rmdirs.includes('rmdir-if-empty:/Volumes/Share/TV'), 'the library root is NEVER touched');
   const st = await fs.stat('/Volumes/Share/TV/Wrapper S01-S04 REMUX [RiCK]');
   assert.equal(st, null, 'the husk is gone from disk');
+});
+
+test('Butler DB backup fires at most once per day across batches', async () => {
+  const c1 = candidate();
+  const fs1 = makeMemFs({ ...MOUNT, [c1.verify.localFrom!]: 'BYTES-11!!!' });
+  const env1 = makeEnv(fs1, [c1], { butlerAlreadyToday: () => true });
+  await runApply(fakeCtx(), env1.overrides);
+  assert.equal(getWorkItem('plex-rename-apply', c1.itemKey)?.status, 'success', 'the batch still applies');
+  assert.equal(env1.butlerCalls.count, 0, 'no re-trigger when a backup already ran today');
 });
 
 test('rehearsal mode (apply disabled): report only — no journal, no marks, no mutations, no Butler', async () => {
