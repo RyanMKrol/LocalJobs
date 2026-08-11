@@ -534,8 +534,10 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
       assert.equal(runRes.status, 202, 'run accepted immediately (fire-and-forget)');
 
       // A RUNNING workflow_runs row now appears WHILE inputKeys() is still pending
-      // (the row is created up-front), not after the scan completes.
-      const deadline = Date.now() + 5000;
+      // (the row is created up-front), not after the scan completes. Generous,
+      // exit-early deadline: under real machine load (a live plex-rename batch
+      // saturating SMB/CPU) the executor's async hops can far exceed a tight one.
+      const deadline = Date.now() + 15_000;
       let run: ReturnType<typeof lastWorkflowRunForWorkflow>;
       while (Date.now() < deadline) {
         const r = lastWorkflowRunForWorkflow('starting-api-wf');
@@ -554,7 +556,11 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
       // Release the hanging inputKeys() and let the run settle.
       assert.ok(releaseInputKeys, 'release hook captured');
       releaseInputKeys!();
-      const settleDeadline = Date.now() + 5000;
+      // Settling requires SPAWNING a real member child process — trivially fast
+      // quiet, but well over 5s under concurrent load (found live: this flaked
+      // exactly while a 1000-file apply batch was running). Exit-early loop, so
+      // the generous ceiling costs nothing when idle.
+      const settleDeadline = Date.now() + 30_000;
       while (Date.now() < settleDeadline && lastWorkflowRunForWorkflow('starting-api-wf')?.status === 'running') {
         await new Promise((res) => setTimeout(res, 10));
       }
