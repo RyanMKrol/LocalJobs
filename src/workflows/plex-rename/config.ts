@@ -73,6 +73,14 @@ export const plexRenameConfig = {
   maxVolumeUtilizationPct: Number(process.env.PLEX_RENAME_MAX_VOLUME_UTILIZATION ?? '92'),
 
   /**
+   * Per-RUN batch cap (0 = no per-run cap, daily quota only). The owner's
+   * manual-batch workflow: each trigger applies at most this many, so "run a
+   * batch of 1000" needs no cap juggling; the daily cap above stays the
+   * overall blast-radius ceiling.
+   */
+  maxPerRun: Number(process.env.PLEX_RENAME_MAX_PER_RUN ?? '0'),
+
+  /**
    * The probation gate: unset/0 = rehearsal mode (apply logs what it WOULD do,
    * writes the report, journals nothing, mutates nothing). Flipping to 1 is a
    * deliberate .env edit + daemon restart — never a dashboard misclick.

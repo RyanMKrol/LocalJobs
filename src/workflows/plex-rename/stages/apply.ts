@@ -28,6 +28,7 @@ export interface ApplyOverrides {
   pathMap?: PathMapPair[];
   applyEnabled?: boolean;
   maxPerDay?: number;
+  maxPerRun?: number;
   minAgeDays?: number;
   maxVolumeUtilizationPct?: number;
   journalDir?: string;
@@ -76,6 +77,7 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   const pathMap = opts.pathMap ?? plexRenameConfig.pathMap;
   const applyEnabled = opts.applyEnabled ?? plexRenameConfig.applyEnabled;
   const maxPerDay = opts.maxPerDay ?? plexRenameConfig.maxPerDay;
+  const maxPerRun = opts.maxPerRun ?? plexRenameConfig.maxPerRun;
   const minAgeDays = opts.minAgeDays ?? plexRenameConfig.minAgeDays;
   const maxVolumePct = opts.maxVolumeUtilizationPct ?? plexRenameConfig.maxVolumeUtilizationPct;
   const journalDir = opts.journalDir ?? plexRenameConfig.journalDir;
@@ -127,7 +129,8 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   // ── Daily quota ──
   const quota = cap(JOB_NAME, maxPerDay, maxPerDay * 30);
   ctx.log(`Daily quota: ${quota.today}/${maxPerDay} used today (${quota.dayLeft} left) · month ${quota.month}/${maxPerDay * 30}`);
-  const budget = Math.min(quota.dayLeft, candidates.length);
+  const budget = Math.min(quota.dayLeft, maxPerRun > 0 ? maxPerRun : Number.MAX_SAFE_INTEGER, candidates.length);
+  if (maxPerRun > 0) ctx.log(`Per-run batch cap: ${maxPerRun} (budget this run: ${budget})`);
   const batch = candidates.slice(0, budget);
   if (candidates.length > 0 && budget === 0) {
     ctx.log(`Daily quota exhausted (${quota.reason}) — stopping gracefully; the next run resumes.`);

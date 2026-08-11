@@ -249,6 +249,30 @@ test('daily quota: batch capped to the remaining budget; exhausted quota stops g
   assert.equal(env2.butlerCalls.count, 0);
 });
 
+test('per-run batch cap: each trigger applies at most maxPerRun, daily quota still the ceiling', async () => {
+  const cs = [candidate(), candidate(), candidate()];
+  const files: Record<string, string> = { ...MOUNT };
+  for (const c of cs) files[c.verify.localFrom!] = 'BYTES-11!!!';
+  const fs = makeMemFs(files);
+  const env = makeEnv(fs, cs, {
+    maxPerRun: 2,
+    cap: () => ({ allowed: true, reason: '', today: 0, month: 0, dayLeft: 30, monthLeft: 900 }),
+  });
+  await runApply(fakeCtx(), env.overrides);
+  const applied = cs.filter((c) => getWorkItem('plex-rename-apply', c.itemKey)?.status === 'success').length;
+  assert.equal(applied, 2, 'the per-run cap bounds the batch');
+
+  // The daily quota still wins when smaller than the per-run cap.
+  const c4 = candidate();
+  const fs2 = makeMemFs({ ...MOUNT, [c4.verify.localFrom!]: 'BYTES-11!!!' });
+  const env2 = makeEnv(fs2, [c4], {
+    maxPerRun: 1000,
+    cap: () => ({ allowed: false, reason: 'daily cap reached', today: 30, month: 100, dayLeft: 0, monthLeft: 800 }),
+  });
+  await runApply(fakeCtx(), env2.overrides);
+  assert.equal(getWorkItem('plex-rename-apply', c4.itemKey), undefined, 'exhausted daily quota still halts');
+});
+
 test('moment-of-truth re-checks soft-skip (never fail) on drift: size change, target appeared', async () => {
   const cSize = candidate();
   const cTarget = candidate();
