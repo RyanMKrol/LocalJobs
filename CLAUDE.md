@@ -318,7 +318,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `dashboard/scripts/_dashboard-harness.mjs` | Shared hermetic test harness (the SINGLE living artifact): `PAGES` list + synthetic API fixtures + `next start` spawn + `/api/**` interception + theme seeding; imported by both checks below. Update it when the UI surface changes |
 | `dashboard/scripts/mobile-check.mjs` | Hermetic phone-viewport (402px) styling check — overflow/box-spill; local only, not in CI |
 | `dashboard/scripts/visual-check.mjs` | Hermetic desktop-viewport SCREENSHOT capture for visual confirmation (the thing actually renders) — writes PNGs to the gitignored `visual-out/`; no appearance assertions; local/loop only, not in CI |
-| `scripts/*` | launchd install scripts + start wrapper, plus one-off manual admin scripts (`backfill-service-usage.ts`, `cleanup-listens-spotify.ts`, `reset-stock-sector-lookup-null-successes.ts`, `plex-language-undo.ts` — a manual, never-scheduled revert tool for `plex-language-apply`, dry-run by default, `--apply` to actually revert) |
+| `scripts/*` | launchd install scripts + start wrapper, `safe-restart.sh` (the ONLY sanctioned daemon restart — refuses while a workflow run is active, `--force` to override), plus one-off manual admin scripts (`backfill-service-usage.ts`, `cleanup-listens-spotify.ts`, `reset-stock-sector-lookup-null-successes.ts`, `plex-language-undo.ts` — a manual, never-scheduled revert tool for `plex-language-apply`, dry-run by default, `--apply` to actually revert) |
 
 ## How to add a job (the common request)
 
@@ -373,7 +373,8 @@ load.
 3. That's it for wiring — jobs and workflows are **auto-discovered** by filename
    glob (`*.job.ts` / `*.workflow.ts`). There is **no registry to edit**.
 4. Tell the user to restart the daemon (jobs are loaded at startup):
-   `launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs`
+   `scripts/safe-restart.sh` (refuses while a workflow run is active — see the
+   restart rule in Conventions; `--force` to interrupt deliberately)
 
 **Multi-stage workflow layout (the example folders).** A workflow folder keeps its
 shared files at the JOB ROOT (`*.workflow.ts`, `config.ts`, `types.ts`,
@@ -1482,10 +1483,17 @@ doubt, log it.
   The daemon loads job/daemon code at startup and the dashboard serves a prebuilt
   bundle, so editing files changes nothing in the running product until you restart.
   Whenever you touch:
-  - **`src/` (daemon/jobs):** restart the daemon —
-    `launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs`
+  - **`src/` (daemon/jobs):** restart the daemon — **always via `scripts/safe-restart.sh`**,
+    never a bare `launchctl kickstart`. A daemon restart hard-kills any in-flight workflow
+    run (the fresh daemon reaps it as `cancelled`) — this has interrupted three real runs,
+    most recently a parallel session restarting the daemon to load a new workflow while a
+    multi-hour `plex-rename` batch was mid-copy. The script refuses to restart while any
+    workflow run is `running` (exit 1, listing the runs) and takes `--force` for the rare
+    case where killing the run is the intent.
   - **`dashboard/` (UI):** rebuild **and** restart it —
     `npm --prefix dashboard run build && launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs-dashboard`
+    (the dashboard is a read-only client — restarting it never touches running jobs, so it
+    needs no guard)
 
   Do this in the same step as the change so what's running always matches `main`.
   (DB-only data fixes don't need a restart, but they do need to be safe to re-run.)

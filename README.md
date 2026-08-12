@@ -73,7 +73,7 @@ After this you never manually start anything — reboot and both come back.
 ```bash
 launchctl list | grep localjobs                 # both should appear
 tail -f data/daemon.out.log                      # daemon activity
-launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs            # restart daemon
+scripts/safe-restart.sh                          # restart daemon (refuses while a workflow run is active; --force to override)
 launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs-dashboard  # restart dashboard
 # uninstall:
 launchctl unload ~/Library/LaunchAgents/com.ryankrol.localjobs.plist
@@ -160,7 +160,7 @@ Every job must be declared in a `*.workflow.ts` manifest — even a lone job
 3. Restart the daemon — jobs and workflows are **auto-discovered** (no registry
    to edit):
    ```bash
-   launchctl kickstart -k gui/$(id -u)/com.ryankrol.localjobs
+   scripts/safe-restart.sh   # refuses while a workflow run is active; --force to override
    ```
 
 > **Your jobs stay private by default.** This repo is public; every
