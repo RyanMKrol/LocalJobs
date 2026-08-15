@@ -160,6 +160,54 @@ on — during the live incident (five same-day batches + five Butler DB backups 
 server unavailable. The Butler backup is also once-per-day now (its own `job_usage` meter),
 not once-per-batch.
 
+## Operating the backlog sweep (2026-08-09 → 2026-08-15) — what the full-library run taught
+
+The whole ~27k-file backlog was swept in batches over a week (30/day → 1,000 → 2,000 → 5,000 →
+one 14,419-item run). Final state: **26,902 files moved, zero failed items, zero dangling
+partials**, every journal closing with a matching `run-end`. Four operational facts worth
+keeping, none of which are visible from the code alone:
+
+- **Restarting the daemon kills an in-flight batch.** A restart hard-kills the apply child and
+  the fresh daemon reaps the run as `cancelled`; this happened three times (twice from the
+  autonomous loop, once from a parallel session deploying an unrelated workflow mid-batch).
+  Always restart via `scripts/safe-restart.sh`, which refuses while a workflow run is active.
+  The interruptions cost nothing but time — each stranded partial was reconciled away on the
+  next run, exactly as designed.
+- **Long batches need timeout overrides on BOTH mutating and verifying stages.** `apply`'s
+  6h manifest default is far short of a multi-thousand-file batch (cross-share copies run
+  ~55 files/hour vs ~1,200/hour for same-share renames); it was overridden to 96h from the
+  dashboard. `confirm` is the subtler one: it makes ONE live Plex call per applied item, so a
+  ~10k-item confirm backlog blew its 30-minute default three times in a row, each attempt
+  making partial progress. Overridden to 6h. Both are `_overridden` dashboard values, so per
+  the root doc's override rule they should be folded into the manifests as real defaults.
+- **The health valve genuinely fires on big batches.** The 14,419-item run stopped itself at
+  item 13,276 when Plex stopped answering inside the 15s window; the remaining 1,144 items led
+  the next run and applied cleanly. Working as intended — treat an early stop as routine, not
+  as a failure.
+- **Watch state survives renaming; a changed ratingKey does not mean lost history.** Verified
+  live: shows watched months before their rename still report their full watched count
+  afterwards. Consolidation DOES retire duplicate show entries (the old episode ratingKeys 404
+  afterwards) — see the confirm gap below.
+
+## Two known gaps the sweep exposed (unfixed — owner decision pending)
+
+1. **`confirm` assumes a stable ratingKey, but consolidation legitimately changes it.** When a
+   show that was split across two folders is consolidated into one, Plex retires the duplicate
+   show entry and its episode items — so `GET /library/metadata/<oldRatingKey>` 404s even though
+   the file is present, correctly named, and matched under a NEW item. `confirm` currently treats
+   that as a transient fetch failure ("re-checked next run"), which is harmless inside the 14-day
+   `PLEX_RENAME_CONFIRM_GRACE_DAYS` grace but will then start failing loudly for ~3k items that
+   are in fact fine. The fix is to treat "a Plex item exists at the target path with matching
+   GUIDs" as success even under a new ratingKey — NOT done yet, because it softens the
+   reassociation check the safety doctrine above calls out by name, and that is the owner's call.
+2. **Our own `.plexmatch` blocks later renames for the same show (self-inflicted).** The
+   `existing-plexmatch` skip exists to never clobber a HAND-AUTHORED `.plexmatch`, but apply
+   writes one per show folder — so any file for that show surfacing in a LATER run is skipped
+   forever. ~963 files sit in this state: already in the right canonical folder, differing only
+   in episode-title text (`- (Root Path).mkv` → `.mkv`, `Earning's` → `Earnings`). Cosmetic, not
+   a data risk, but permanently stuck until the rule distinguishes a `.plexmatch` we wrote (its
+   content matches `buildPlexmatch` exactly) from one the owner hand-wrote.
+
 ## Undo + journal
 
 `journal.ts`: per-run NDJSON, `JournalWriter` fsyncs every record (and the journal dir at
