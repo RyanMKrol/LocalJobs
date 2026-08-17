@@ -2,7 +2,17 @@ import type { JobContext } from '../../../core/types.js';
 import { markWorkItem, pruneSnapshotRows } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { mountHealthy, plexToLocal, realReadFs, shareOf, type ReadFsSeam } from '../lib.js';
-import { buildPlexmatch, pathKey, planSidecars, posixBasename, posixDirname, splitExt, type NamingOp } from '../naming.js';
+import {
+  buildPlexmatch,
+  pathKey,
+  planNestedSubtitles,
+  planSidecars,
+  posixBasename,
+  posixDirname,
+  splitExt,
+  type NamingOp,
+  type NestedSubtitle,
+} from '../naming.js';
 import type { DiscoverDetail, PathMapPair, PlanDetail, SidecarMove, VerifyDetail, VerifyIneligibleReason } from '../types.js';
 import { ledgerSuccessRows } from './ledger.js';
 
@@ -175,6 +185,28 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
       listing.map((e) => ({ name: e.name, isDir: e.isDir })),
       { moveFixedAssets: discover.kind === 'movie', mediaName },
     );
+    // Release packages park subtitles in Subs/<media stem>/<lang>.srt — flat sibling
+    // enumeration never saw them, so pre-2026-08 renames orphaned them (scripts/
+    // plex-rename-backfill-subtitles.ts repairs the ones already stranded).
+    const nested: NestedSubtitle[] = [];
+    for (const entry of listing) {
+      if (!entry.isDir) continue;
+      const dirKey = pathKey(entry.name);
+      if (dirKey !== 'subs' && dirKey !== 'subtitles') continue;
+      const inner = (await fs.readdir(`${localDir}/${entry.name}`)) ?? [];
+      for (const sub of inner) {
+        if (sub.isDir) {
+          const deeper = (await fs.readdir(`${localDir}/${entry.name}/${sub.name}`)) ?? [];
+          for (const f of deeper) if (!f.isDir) nested.push({ relPath: `${entry.name}/${sub.name}/${f.name}` });
+        } else {
+          nested.push({ relPath: `${entry.name}/${sub.name}` });
+        }
+      }
+    }
+    const nestedPlan = planNestedSubtitles(plexDir, splitExt(mediaName).stem, newPlexDir, splitExt(posixBasename(plan.to)).stem, nested);
+    sidecarPlan.moves.push(...nestedPlan.moves);
+    sidecarPlan.leftBehind.push(...nestedPlan.leftBehind);
+
     let sidecarCollision: string | null = null;
     for (const s of sidecarPlan.moves) {
       if (pathKey(s.from) === pathKey(s.to)) continue;

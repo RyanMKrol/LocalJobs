@@ -6,6 +6,8 @@ import {
   decideRename,
   finalizePlan,
   hasExclusionHazard,
+  planNestedSubtitles,
+  subtitleSuffix,
   pathKey,
   planSidecars,
   posixBasename,
@@ -460,6 +462,76 @@ function mediaMove(d: RenameDecision): Extract<NamingOp, { op: 'move' }> {
   const kindsB = new Map(shuffled.map((e) => [e.key, e.decision.kind]));
   assert.deepEqual(Object.fromEntries(kindsA), Object.fromEntries(kindsB), 'input order never changes decisions');
   console.log('  ✓ naming: finalizePlan (collisions, disk clash, caseOnly exemption, plexmatch dedup, determinism)');
+}
+
+
+// ── Nested release-layout subtitles (2026-08) ─────────────────────────────────
+// Videos were moved out from under `Subs/<media stem>/2_eng.srt` trees during the
+// backlog sweep, orphaning thousands of subtitle files. These lock in the mapping.
+{
+  assert.equal(subtitleSuffix('2_eng.srt'), '.eng.srt');
+  assert.equal(subtitleSuffix('3_English.srt'), '.eng.srt');
+  assert.equal(subtitleSuffix('English.forced.srt'), '.eng.forced.srt');
+  assert.equal(subtitleSuffix('4_spa.ass'), '.spa.ass');
+  assert.equal(subtitleSuffix('12_eng_sdh.srt'), '.eng.sdh.srt');
+  assert.equal(subtitleSuffix('10_fre,Français.srt'), '.fre.srt', 'comma-joined native names still declare a code');
+  assert.equal(subtitleSuffix('2_eng,English (SDH).srt'), '.eng.sdh.srt', 'bracketed modifiers are preserved');
+  assert.equal(subtitleSuffix('2_und.srt'), null, 'unknown language is never guessed');
+  assert.equal(subtitleSuffix('readme.txt'), null, 'not a subtitle at all');
+  assert.equal(subtitleSuffix('eng.mkv'), null, 'never a video container');
+
+  const mapped = planNestedSubtitles(
+    '/lib/Rel',
+    'Show.S01E01.REL',
+    '/lib/Show (2019) {tvdb-1}/Season 01',
+    'Show (2019) - s01e01 - Pilot',
+    [
+      { relPath: 'Subs/Show.S01E01.REL/2_eng.srt' },
+      { relPath: 'Subs/Show.S01E01.REL/3_spa.srt' },
+      { relPath: 'Subs/2_eng.srt' },
+    ],
+  );
+  assert.deepEqual(
+    mapped.moves.map((m) => m.to),
+    [
+      '/lib/Show (2019) {tvdb-1}/Season 01/Show (2019) - s01e01 - Pilot.eng.srt',
+      '/lib/Show (2019) {tvdb-1}/Season 01/Show (2019) - s01e01 - Pilot.spa.srt',
+      '/lib/Show (2019) {tvdb-1}/Season 01/Show (2019) - s01e01 - Pilot.eng.2_eng.srt',
+    ],
+  );
+  assert.equal(
+    mapped.moves.every((m) => m.role === 'sidecar'),
+    true,
+  );
+
+  // Flat Subs/ holding files NAMED for the media (the .idx/.sub release layout).
+  const named = planNestedSubtitles('/lib/Rel', 'Killing.Eve.S02E03.REL', '/lib/KE/Season 02', 'Killing Eve - s02e03', [
+    { relPath: 'Subs/Killing.Eve.S02E03.REL.idx' },
+    { relPath: 'Subs/Killing.Eve.S02E03.REL.sub' },
+    { relPath: 'Subs/Killing.Eve.S02E03.REL.en.forced.srt' },
+  ]);
+  assert.deepEqual(
+    named.moves.map((m) => m.to),
+    [
+      '/lib/KE/Season 02/Killing Eve - s02e03.idx',
+      '/lib/KE/Season 02/Killing Eve - s02e03.sub',
+      '/lib/KE/Season 02/Killing Eve - s02e03.en.forced.srt',
+    ],
+  );
+
+  const refused = planNestedSubtitles('/lib/Rel', 'Show.S01E01.REL', '/lib/New', 'New Name', [
+    { relPath: 'Subs/Some.Other.Episode/2_eng.srt' },
+    { relPath: 'Subs/Show.S01E01.REL/unknown.srt' },
+    { relPath: 'Extras/clip.srt' },
+    { relPath: 'Subs/a/b/c/2_eng.srt' },
+  ]);
+  assert.equal(refused.moves.length, 0, 'nothing ambiguous is ever moved');
+  assert.deepEqual(refused.leftBehind.sort(), [
+    '/lib/Rel/Subs/Show.S01E01.REL/unknown.srt',
+    '/lib/Rel/Subs/Some.Other.Episode/2_eng.srt',
+    '/lib/Rel/Subs/a/b/c/2_eng.srt',
+  ]);
+  console.log('  ✓ naming: nested release-layout subtitles (Subs/<stem>/<lang>) map beside the media');
 }
 
 console.log('  ✓ plex-rename naming engine tests passed');

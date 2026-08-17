@@ -359,6 +359,158 @@ export interface SidecarPlan {
   leftBehind: string[];
 }
 
+/** Subtitle extensions we will relocate (text formats only — never a container).
+ *  Bare, no leading dot: `splitExt` returns the extension without one. */
+const SUBTITLE_EXTS = new Set(['srt', 'ass', 'ssa', 'vtt', 'sub', 'idx', 'smi']);
+
+/**
+ * ISO 639-2/B codes and English language names we accept as an EXPLICIT language
+ * declaration. Anything outside this table is never guessed at — see below.
+ */
+const LANGUAGE_TOKENS: Record<string, string> = {
+  eng: 'eng', english: 'eng',
+  spa: 'spa', spanish: 'spa', esp: 'spa',
+  fre: 'fre', fra: 'fre', french: 'fre',
+  ger: 'ger', deu: 'ger', german: 'ger',
+  ita: 'ita', italian: 'ita',
+  por: 'por', portuguese: 'por',
+  dut: 'dut', nld: 'dut', dutch: 'dut',
+  dan: 'dan', danish: 'dan',
+  swe: 'swe', swedish: 'swe',
+  nor: 'nor', norwegian: 'nor',
+  fin: 'fin', finnish: 'fin',
+  pol: 'pol', polish: 'pol',
+  rus: 'rus', russian: 'rus',
+  jpn: 'jpn', japanese: 'jpn',
+  kor: 'kor', korean: 'kor',
+  chi: 'chi', zho: 'chi', chinese: 'chi',
+  ara: 'ara', arabic: 'ara',
+  heb: 'heb', hebrew: 'heb',
+  tur: 'tur', turkish: 'tur',
+  cze: 'cze', ces: 'cze', czech: 'cze',
+  hun: 'hun', hungarian: 'hun',
+  gre: 'gre', ell: 'gre', greek: 'gre',
+  rum: 'rum', ron: 'rum', romanian: 'rum',
+  bul: 'bul', bulgarian: 'bul',
+  hrv: 'hrv', croatian: 'hrv',
+  srp: 'srp', serbian: 'srp',
+  ukr: 'ukr', ukrainian: 'ukr',
+  vie: 'vie', vietnamese: 'vie',
+  tha: 'tha', thai: 'tha',
+  ind: 'ind', indonesian: 'ind',
+  hin: 'hin', hindi: 'hin',
+};
+
+/** Modifier tokens Plex understands as part of a subtitle name, preserved verbatim. */
+const SUBTITLE_MODIFIERS = new Set(['forced', 'sdh', 'cc', 'hi']);
+
+export interface NestedSubtitle {
+  /** Path of the subtitle file, relative to the media file's own directory. */
+  relPath: string;
+}
+
+/**
+ * The suffix chain a release-layout subtitle should carry once it sits beside its
+ * media file — `2_eng.srt` → `.eng.srt`, `3_English.forced.srt` → `.eng.forced.srt`.
+ * Returns null when the name declares NO language we recognise, because inventing
+ * one is exactly the guess that mislabels a library.
+ */
+export function subtitleSuffix(fileName: string): string | null {
+  const { stem, ext } = splitExt(fileName);
+  if (!SUBTITLE_EXTS.has(ext.toLowerCase())) return null;
+  // Split on every separator these packs actually use, including the comma and
+  // bracket forms (`10_fre,Français.srt`, `2_eng,English (SDH).srt`).
+  const tokens = stem
+    .split(/[._\-\s,()[\]]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+  let lang: string | null = null;
+  const modifiers: string[] = [];
+  for (const t of tokens) {
+    if (!lang && LANGUAGE_TOKENS[t]) {
+      lang = LANGUAGE_TOKENS[t];
+      continue;
+    }
+    if (SUBTITLE_MODIFIERS.has(t)) modifiers.push(t);
+  }
+  if (!lang) return null;
+  return `.${[lang, ...modifiers].join('.')}.${ext.toLowerCase()}`;
+}
+
+/**
+ * Release packages routinely park subtitles in a nested folder named after the
+ * media file — `Subs/<media stem>/2_eng.srt` (and, for single-file releases,
+ * `Subs/2_eng.srt`). `planSidecars` only ever considered flat siblings, so the
+ * 2026-08 sweep moved thousands of videos out from under their subtitles, leaving
+ * them orphaned in the old release tree. This maps each such file onto the
+ * canonical `<newStem>.<lang>[.modifier].<ext>` name that Plex reads.
+ *
+ * Deliberately conservative: only a `Subs`/`Subtitles` directory is considered,
+ * only a subdirectory whose name matches the media stem (or the flat case), only
+ * files declaring a language we recognise. Anything else is reported, never guessed.
+ * Collisions keep BOTH files by appending the original stem, so nothing is lost.
+ */
+export function planNestedSubtitles(
+  oldDir: string,
+  oldStem: string,
+  newDir: string,
+  newStem: string,
+  entries: NestedSubtitle[],
+): SidecarPlan {
+  const moves: SidecarPlan['moves'] = [];
+  const leftBehind: string[] = [];
+  const used = new Set<string>();
+  const oldStemKey = pathKey(oldStem);
+  for (const { relPath } of entries) {
+    const parts = relPath.split('/').filter(Boolean);
+    if (parts.length < 2) continue;
+    const top = pathKey(parts[0]);
+    if (top !== 'subs' && top !== 'subtitles') continue;
+    const fileName = parts[parts.length - 1];
+    // Either Subs/<media stem>/<file> or a flat Subs/<file>.
+    const middle = parts.slice(1, -1);
+    if (middle.length > 1) {
+      leftBehind.push(`${oldDir}/${relPath}`);
+      continue;
+    }
+    if (middle.length === 1 && pathKey(middle[0]) !== oldStemKey) {
+      leftBehind.push(`${oldDir}/${relPath}`);
+      continue;
+    }
+    // Two attributable layouts, neither of which involves guessing:
+    //  1. the file is NAMED for the media (`<media stem>.idx`, `<media stem>.en.srt`)
+    //     → keep its entire suffix chain verbatim, exactly as planSidecars does;
+    //  2. the file declares a language (`2_eng.srt`) inside a folder that already
+    //     ties it to this media → rebuild as `<newStem>.<lang>[.modifier].<ext>`.
+    const { stem: fileStem, ext: fileExt } = splitExt(fileName);
+    let suffix: string | null = null;
+    if (SUBTITLE_EXTS.has(fileExt.toLowerCase())) {
+      if (pathKey(fileStem) === oldStemKey) suffix = `.${fileExt.toLowerCase()}`;
+      else if (pathKey(fileName).startsWith(`${oldStemKey}.`)) suffix = fileName.slice(oldStem.length);
+    }
+    if (!suffix) suffix = subtitleSuffix(fileName);
+    if (!suffix) {
+      leftBehind.push(`${oldDir}/${relPath}`);
+      continue;
+    }
+    let target = `${newDir}/${newStem}${suffix}`;
+    if (used.has(pathKey(target))) {
+      // Two files claiming the same language (e.g. 2_eng.srt and 4_eng.srt):
+      // keep both by carrying the original stem through as a disambiguator.
+      const { stem: origStem, ext } = splitExt(fileName);
+      const withoutExt = suffix.slice(0, suffix.length - (ext.length + 1));
+      target = `${newDir}/${newStem}${withoutExt}.${sanitizeComponent(origStem, 40) ?? 'alt'}.${ext.toLowerCase()}`;
+    }
+    if (used.has(pathKey(target))) {
+      leftBehind.push(`${oldDir}/${relPath}`);
+      continue;
+    }
+    used.add(pathKey(target));
+    moves.push({ from: `${oldDir}/${relPath}`, to: target, role: 'sidecar' });
+  }
+  return { moves, leftBehind };
+}
+
 /**
  * Decide which of the media file's directory siblings move with it. A sibling
  * sharing the media's basename stem + '.' keeps its ENTIRE suffix chain
