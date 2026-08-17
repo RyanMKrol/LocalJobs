@@ -160,7 +160,9 @@ export interface ApplyDetail {
 export interface ConfirmDetail {
   name: string;
   confirmed: boolean;
-  reason?: 'pending-rescan' | 'grace-exceeded' | 'ratingkey-gone';
+  reason?: 'pending-rescan' | 'grace-exceeded' | 'ratingkey-gone' | 'reassociated';
   reasonDetail?: string;
   confirmedPath?: string;
+  /** Set when confirmation came via a NEW ratingKey owning the target path (consolidation merge). */
+  confirmedRatingKey?: string;
 }

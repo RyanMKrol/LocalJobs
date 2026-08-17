@@ -85,19 +85,112 @@ test('confirm: old path within grace → soft pending, re-checked; past grace �
   assert.equal(failed.detail.reason, 'grace-exceeded');
 });
 
-test('confirm: vanished ratingKey (possible duplicate re-import) fails loud immediately', async () => {
-  const row = applyRow();
+test('confirm: vanished ratingKey with NOTHING at the target path — pending inside grace, fails loud past it', async () => {
+  const inGrace = applyRow();
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => [{ itemKey: inGrace.itemKey, detail: inGrace.detail }],
+    readDiscoverRows: () => [], // no live item anywhere at the target path
+    fetchItemDetail: async () => undefined,
+    graceDays: 14,
+    now: () => NOW,
+  }); // must not throw — a rescan may still land
+  const pending = confirmOf(inGrace.itemKey);
+  assert.equal(pending.status, 'skipped');
+  assert.equal(pending.detail.reason, 'pending-rescan');
+
+  const stale = applyRow({ appliedAt: '2026-07-01T00:00:00.000Z' }); // 39 days before NOW
   await assert.rejects(
     runConfirm(fakeCtx(), {
-      readApplyRows: () => [{ itemKey: row.itemKey, detail: row.detail }],
+      readApplyRows: () => [{ itemKey: stale.itemKey, detail: stale.detail }],
+      readDiscoverRows: () => [],
       fetchItemDetail: async () => undefined,
+      graceDays: 14,
       now: () => NOW,
     }),
     /failed confirmation/,
   );
+  const failed = confirmOf(stale.itemKey);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.detail.reason, 'ratingkey-gone');
+});
+
+// ── Consolidation re-association (2026-08): merging a show Plex held as TWO split
+// entries retires the duplicate entry and its episode items, so the original
+// ratingKey legitimately 404s while the file stays correctly matched. ──
+
+/** A discover snapshot row placing `ratingKey` at `file` with the given movie tmdb id. */
+function discoverRow(ratingKey: string, file: string, tmdbId: number) {
+  return {
+    itemKey: `${ratingKey}::part99`,
+    detail: {
+      name: 'A Movie',
+      kind: 'movie' as const,
+      file,
+      partId: 99,
+      mediaCount: 1,
+      partCount: 1,
+      partIndex: 0,
+      rootPath: '/volume1/Share/Movies',
+      movie: { ratingKey, title: 'A Movie', year: 2016, tmdbId },
+    },
+  };
+}
+
+test('confirm: vanished ratingKey but a NEW item owns the target path with matching ids → confirmed as re-associated', async () => {
+  const row = applyRow();
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => [{ itemKey: row.itemKey, detail: row.detail }],
+    readDiscoverRows: () => [discoverRow('newRk', TO, 1)], // TO embeds {tmdb-1}
+    fetchItemDetail: async () => undefined,
+    now: () => NOW,
+  }); // must NOT throw
   const c = confirmOf(row.itemKey);
-  assert.equal(c.status, 'failed');
-  assert.equal(c.detail.reason, 'ratingkey-gone');
+  assert.equal(c.status, 'success');
+  assert.equal(c.detail.confirmed, true);
+  assert.equal(c.detail.reason, 'reassociated');
+  assert.equal(c.detail.confirmedRatingKey, 'newRk');
+  assert.equal(c.detail.confirmedPath, TO);
+});
+
+test('confirm: a Plex 404 error (not just a null item) also resolves via re-association', async () => {
+  const row = applyRow();
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => [{ itemKey: row.itemKey, detail: row.detail }],
+    readDiscoverRows: () => [discoverRow('newRk2', TO, 1)],
+    fetchItemDetail: async () => {
+      throw new Error('Plex HTTP 404 for /library/metadata/rk');
+    },
+    now: () => NOW,
+  });
+  assert.equal(confirmOf(row.itemKey).detail.reason, 'reassociated');
+});
+
+test('confirm: an item at the target path whose ids DO NOT match is never accepted as proof', async () => {
+  const stale = applyRow({ appliedAt: '2026-07-01T00:00:00.000Z' }); // past grace
+  await assert.rejects(
+    runConfirm(fakeCtx(), {
+      readApplyRows: () => [{ itemKey: stale.itemKey, detail: stale.detail }],
+      readDiscoverRows: () => [discoverRow('otherRk', TO, 999)], // wrong tmdb id
+      fetchItemDetail: async () => undefined,
+      graceDays: 14,
+      now: () => NOW,
+    }),
+    /failed confirmation/,
+  );
+  assert.equal(confirmOf(stale.itemKey).detail.reason, 'ratingkey-gone');
+});
+
+test('confirm: old ratingKey survives but points elsewhere — re-association still confirms', async () => {
+  const row = applyRow();
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => [{ itemKey: row.itemKey, detail: row.detail }],
+    readDiscoverRows: () => [discoverRow('mergedRk', TO, 1)],
+    fetchItemDetail: async () => plexItem(row.ratingKey, row.partId, OLD), // still the old path
+    now: () => NOW,
+  });
+  const c = confirmOf(row.itemKey);
+  assert.equal(c.status, 'success');
+  assert.equal(c.detail.confirmedRatingKey, 'mergedRk');
 });
 
 test('confirm: transient fetch error is soft (skipped, retried), and a confirmed item is never re-fetched', async () => {

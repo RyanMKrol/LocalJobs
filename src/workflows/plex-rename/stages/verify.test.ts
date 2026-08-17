@@ -307,3 +307,23 @@ test('verify: .plexmatch safety — source tree blocks, matching target content 
   assert.equal(d.eligible, false);
   assert.equal(d.reason, 'existing-plexmatch');
 });
+
+test('verify: a .plexmatch in the SOURCE tree that is byte-identical to ours does NOT block the rename', async () => {
+  // The 2026-08 self-block: apply writes a .plexmatch into every show folder, so a
+  // file already living in its canonical folder was frozen against later in-place
+  // corrections. Ours carries identity lines only (never `ep:` hints), so it cannot
+  // pin a filename — only a DIVERGENT one may block.
+  const rows = episodeRows();
+  const media = { '/Volumes/Share/TV/[Rel] Show - 05/[Rel] Show - 05.mkv': { size: 2000 } };
+
+  const d = await episodeVerdict({ ...media, '/Volumes/Share/TV/[Rel] Show - 05/.plexmatch': { size: 10, content: rows.content } }, rows);
+  assert.equal(d.eligible, true, 'our own .plexmatch must not block a later rename');
+
+  // A divergent one in the same position still blocks (the original protection).
+  const blocked = await episodeVerdict(
+    { ...media, '/Volumes/Share/TV/[Rel] Show - 05/.plexmatch': { size: 10, content: 'title: Hand Tuned\nep: 5: keep-this.mkv\n' } },
+    rows,
+  );
+  assert.equal(blocked.eligible, false);
+  assert.equal(blocked.reason, 'existing-plexmatch');
+});

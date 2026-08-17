@@ -2,7 +2,7 @@ import type { JobContext } from '../../../core/types.js';
 import { markWorkItem, pruneSnapshotRows } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { mountHealthy, plexToLocal, realReadFs, shareOf, type ReadFsSeam } from '../lib.js';
-import { pathKey, planSidecars, posixBasename, posixDirname, splitExt, type NamingOp } from '../naming.js';
+import { buildPlexmatch, pathKey, planSidecars, posixBasename, posixDirname, splitExt, type NamingOp } from '../naming.js';
 import type { DiscoverDetail, PathMapPair, PlanDetail, SidecarMove, VerifyDetail, VerifyIneligibleReason } from '../types.js';
 import { ledgerSuccessRows } from './ledger.js';
 
@@ -195,15 +195,26 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
     // ── .plexmatch safety (episodes only) ──
     // Source tree: a .plexmatch anywhere from the file's dir up to the library
     // root may pin CURRENT filenames (ep: hints) — never rename under one.
+    // EXCEPTION: one WE wrote. `buildPlexmatch` emits identity lines only (title/
+    // year/ids, never `ep:` hints — see its doc), so a byte-identical file cannot
+    // pin any filename and must not block a later rename of the same show. Without
+    // this, apply's own .plexmatch permanently froze every already-consolidated
+    // show against later in-place corrections (~963 files after the 2026-08 sweep).
     let plexmatchWrite: { dir: string; content: string } | undefined;
     if (discover.kind === 'episode') {
+      const ours = discover.show ? buildPlexmatch(discover.show) : null;
       const rootLocal = plexToLocal(discover.rootPath, pathMap);
       let cursor = localDir;
       let foundSource: string | null = null;
       while (rootLocal && pathKey(cursor).startsWith(pathKey(rootLocal)) && pathKey(cursor) !== pathKey(rootLocal)) {
         if (await fs.stat(`${cursor}/.plexmatch`)) {
-          foundSource = `${cursor}/.plexmatch`;
-          break;
+          const content = await fs.readFile(`${cursor}/.plexmatch`);
+          if (ours !== null && content === ours) {
+            ctx.log(`    .plexmatch at ${cursor} is one we wrote (identity-only, no ep: hints) — not a rename blocker`);
+          } else {
+            foundSource = `${cursor}/.plexmatch`;
+            break;
+          }
         }
         const parent = posixDirname(cursor);
         if (parent === cursor) break;
