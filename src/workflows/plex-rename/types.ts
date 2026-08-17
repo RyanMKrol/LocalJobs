@@ -1,4 +1,5 @@
 // Shared types for the plex-rename workflow (canonical Plex library renamer).
+import type { ArtworkSelection } from './artwork.js';
 import type { EpisodeRef, MovieRef, NamingOp, ShowRef, SkipReason } from './naming.js';
 
 // ── Plex API shapes (richer than plex-language-fix's — year/date/edition matter here) ──
@@ -154,6 +155,9 @@ export interface ApplyDetail {
   appliedAt: string; // ISO — confirm's grace window anchors here
   /** The per-run report markdown (T110 View popover). */
   markdown?: string;
+  /** What artwork the owner had showing before the move, so confirm can restore it
+   *  if Plex recreates the entry and reverts to the agent default (see artwork.ts). */
+  artwork?: ArtworkSelection;
 }
 
 /** The `plex-rename-confirm` ledger's per-file detail. */

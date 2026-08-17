@@ -6,7 +6,17 @@ import { plexRefreshSection, triggerButlerBackup } from '../../../core/plex-clie
 import { capStatus, isWorkItemDone, markWorkItem, recordUsage, usageToday } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
 import { analyzeJournal, findLatestJournal, JournalWriter, readJournal, type ItemJournalState, type JournalOp } from '../journal.js';
-import { mountHealthy, plexToLocal, probePlexHealth, realWriteFs, shareOf, type PlexHealth, type WriteFsSeam } from '../lib.js';
+import { selectedIdentity, type ArtworkKind, type ArtworkSelection } from '../artwork.js';
+import {
+  fetchArtworkCandidates,
+  mountHealthy,
+  plexToLocal,
+  probePlexHealth,
+  realWriteFs,
+  shareOf,
+  type PlexHealth,
+  type WriteFsSeam,
+} from '../lib.js';
 import { MoveError, performAtomicRenameMove, performVerifiedMove, PARTIAL_SUFFIX, type MoveStep } from '../move.js';
 import { pathKey, posixDirname } from '../naming.js';
 import type { ApplyDetail, DiscoverDetail, PathMapPair, VerifyDetail } from '../types.js';
@@ -39,6 +49,8 @@ export interface ApplyOverrides {
   reportDir?: string;
   triggerBackup?: typeof triggerButlerBackup;
   refreshSection?: typeof plexRefreshSection;
+  /** Read an item's artwork candidates (injected in tests; live Plex by default). */
+  fetchArtwork?: (ratingKey: string, kind: ArtworkKind) => Promise<{ key: string; selected: boolean }[]>;
   cap?: typeof capStatus;
   record?: typeof recordUsage;
   /** Whether a Butler DB backup was already triggered today (injectable for tests). */
@@ -94,6 +106,7 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   const reportDir = opts.reportDir ?? plexRenameConfig.reportDir;
   const triggerBackup = opts.triggerBackup ?? triggerButlerBackup;
   const refreshSection = opts.refreshSection ?? plexRefreshSection;
+  const getArtwork = opts.fetchArtwork ?? ((rk: string, kind: ArtworkKind) => fetchArtworkCandidates(rk, kind));
   const cap = opts.cap ?? capStatus;
   const record = opts.record ?? recordUsage;
   const butlerAlreadyToday = opts.butlerAlreadyToday ?? (() => usageToday(BUTLER_METER) > 0);
@@ -371,6 +384,21 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
     // ── Journal the full intent, then execute op by op ──
     const j = openJournal();
     const { ratingKey, partId } = parseKey(itemKey);
+
+    // Capture the owner's artwork choice BEFORE the move. Plex may retire this
+    // entry and build a fresh one when the folder changes, which reverts to the
+    // agent's default — confirm re-selects what was showing here. Best-effort:
+    // artwork continuity must never block or fail a move.
+    let artwork: ArtworkSelection | undefined;
+    try {
+      const [posters, arts] = await Promise.all([getArtwork(ratingKey, 'poster'), getArtwork(ratingKey, 'art')]);
+      const poster = selectedIdentity(posters) ?? undefined;
+      const art = selectedIdentity(arts) ?? undefined;
+      if (poster || art) artwork = { poster, art };
+    } catch (err) {
+      ctx.log(`    (could not read current artwork selection: ${err instanceof Error ? err.message : err})`, 'warn');
+    }
+
     j.append({ kind: 'item-planned', at: now().toISOString(), itemKey, ratingKey, partId, title: verify.name, from: verify.from, to: verify.to, ops });
 
     const result = await executeOps(ctx, j, itemKey, ops, fs, now, 0);
@@ -385,6 +413,7 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
         sidecarCount: (verify.sidecars ?? []).length,
         appliedAt: now().toISOString(),
         markdown: reportPath,
+        artwork,
       };
       markWorkItem(JOB_NAME, itemKey, 'success', { detail });
       record(JOB_NAME);

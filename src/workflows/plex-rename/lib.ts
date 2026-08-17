@@ -8,7 +8,8 @@ import { createReadStream, createWriteStream, promises as fsp } from 'node:fs';
 import { dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { callService } from '../../core/services.js';
-import { plexGet } from '../../core/plex-client.js';
+import type { ArtworkCandidate, ArtworkKind } from './artwork.js';
+import { plexGet, resolvePlexHost } from '../../core/plex-client.js';
 import { pathKey } from './naming.js';
 import type { PathMapPair, PlexMetadataItem, PlexSection } from './types.js';
 
@@ -57,6 +58,39 @@ export async function fetchItemDetail(
 ): Promise<PlexMetadataItem | undefined> {
   const res = await callService('plex', () => fetchPlex<PlexListResponse<PlexMetadataItem>>(`/library/metadata/${ratingKey}`));
   return res.MediaContainer.Metadata?.[0];
+}
+
+/**
+ * The artwork candidates Plex offers for an item — posters or background art —
+ * with which one is currently selected. Read-only; used to keep the owner's own
+ * artwork choice alive across a rename (see artwork.ts for why that is needed).
+ */
+export async function fetchArtworkCandidates(
+  ratingKey: string,
+  kind: ArtworkKind,
+  fetchPlex: PlexFetcher = plexGet,
+): Promise<ArtworkCandidate[]> {
+  const path = `/library/metadata/${ratingKey}/${kind === 'poster' ? 'posters' : 'arts'}`;
+  const res = await callService('plex', () => fetchPlex<PlexListResponse<{ key?: string; selected?: boolean }>>(path));
+  return (res.MediaContainer.Metadata ?? [])
+    .filter((m): m is { key: string; selected?: boolean } => typeof m.key === 'string')
+    .map((m) => ({ key: m.key, selected: m.selected === true }));
+}
+
+/**
+ * Select an artwork candidate on an item. A MUTATION of Plex metadata only —
+ * it never touches a file, and re-selecting an image the owner already had is
+ * the least destructive write this workflow makes.
+ */
+export async function selectArtwork(ratingKey: string, kind: ArtworkKind, key: string): Promise<void> {
+  const token = process.env.PLEX_API_TOKEN ?? '';
+  if (!token) throw new Error('Plex token missing — set PLEX_API_TOKEN in .env.');
+  const host = await resolvePlexHost();
+  const url = `${host}/library/metadata/${ratingKey}/${kind}?url=${encodeURIComponent(key)}&X-Plex-Token=${token}`;
+  await callService('plex', async () => {
+    const res = await fetch(url, { method: 'PUT' });
+    if (!res.ok) throw new Error(`Plex HTTP ${res.status} selecting ${kind} for ${ratingKey}`);
+  });
 }
 
 /**

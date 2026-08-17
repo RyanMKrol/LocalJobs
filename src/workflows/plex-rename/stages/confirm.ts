@@ -1,7 +1,8 @@
 import type { JobContext } from '../../../core/types.js';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { plexRenameConfig } from '../config.js';
-import { fetchItemDetail } from '../lib.js';
+import { candidateToRestore, orphanedUpload, type ArtworkKind } from '../artwork.js';
+import { fetchArtworkCandidates, fetchItemDetail, selectArtwork } from '../lib.js';
 import type { ApplyDetail, ConfirmDetail, DiscoverDetail } from '../types.js';
 import { ledgerSuccessRows } from './ledger.js';
 
@@ -16,6 +17,9 @@ export interface ConfirmOverrides {
   readDiscoverRows?: () => { itemKey: string; detail: unknown }[];
   graceDays?: number;
   now?: () => Date;
+  /** Artwork continuity seams (live Plex by default; injected in tests). */
+  fetchArtwork?: (ratingKey: string, kind: ArtworkKind) => Promise<{ key: string; selected: boolean }[]>;
+  setArtwork?: (ratingKey: string, kind: ArtworkKind, key: string) => Promise<void>;
 }
 
 function parseKey(itemKey: string): { ratingKey: string; partId: number } {
@@ -96,6 +100,8 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
   const readDiscoverRows = opts.readDiscoverRows ?? (() => ledgerSuccessRows(DISCOVER_JOB));
   const graceDays = opts.graceDays ?? plexRenameConfig.confirmGraceDays;
   const now = opts.now ?? (() => new Date());
+  const getArtwork = opts.fetchArtwork ?? ((rk: string, kind: ArtworkKind) => fetchArtworkCandidates(rk, kind));
+  const setArtwork = opts.setArtwork ?? selectArtwork;
 
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   ctx.log(`plex-rename-confirm starting — live re-association check (grace window ${graceDays} day(s)).`);
@@ -122,6 +128,33 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
     return matched.length > 0 ? { ratingKey: hit.ratingKey, matched } : null;
   };
 
+  let artworkRestored = 0;
+
+  /**
+   * Put back the artwork the owner had showing before the move. Plex reverts a
+   * RECREATED entry to the agent's default, silently discarding a poster they had
+   * chosen — the 2026-08 sweep cost ~103 films their custom posters that way.
+   * Best-effort and never fatal: artwork is cosmetic, confirmation is not.
+   */
+  const restoreArtwork = async (ratingKey: string, apply: ApplyDetail, label: string): Promise<void> => {
+    for (const kind of ['poster', 'art'] as const) {
+      const wanted = kind === 'poster' ? apply.artwork?.poster : apply.artwork?.art;
+      try {
+        const candidates = await getArtwork(ratingKey, kind);
+        // Prefer the exact recorded selection; fall back to an available upload for
+        // items renamed before capture existed (that fallback only ever switches TO
+        // an upload, so it cannot override a deliberate agent-artwork preference).
+        const target = candidateToRestore(candidates, wanted) ?? (wanted ? null : orphanedUpload(candidates));
+        if (!target) continue;
+        await setArtwork(ratingKey, kind, target.key);
+        artworkRestored++;
+        ctx.log(`      ↺ restored ${kind} on ${label} — Plex had reverted it to the agent default`);
+      } catch (err) {
+        ctx.log(`      (could not restore ${kind} on ${label}: ${err instanceof Error ? err.message : err})`, 'warn');
+      }
+    }
+  };
+
   let confirmed = 0;
   let reassociated = 0;
   let stillPending = 0;
@@ -136,12 +169,13 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
     };
 
     /** Second chance for every non-same-ratingKey outcome: is the file matched under a NEW item? */
-    const tryReassociation = (why: string): boolean => {
+    const tryReassociation = async (why: string): Promise<boolean> => {
       const hit = reassociatedAt(apply.to);
       if (!hit) return false;
       reassociated++;
       ctx.log(`  ✓ "${apply.name}" — ${why}, but Plex has the file matched at the target path under ratingKey ${hit.ratingKey} with matching ids (${hit.matched.join(', ')}) — a consolidation merge, not a lost item`);
       ctx.log(`      confirmed at: ${apply.to}`);
+      await restoreArtwork(hit.ratingKey, apply, `"${apply.name}"`);
       record(
         {
           name: `${apply.name} — confirmed (re-associated)`,
@@ -163,7 +197,7 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
       const msg = err instanceof Error ? err.message : String(err);
       // A 404 is Plex answering definitively "no such item", not a transport wobble —
       // treat it exactly like a null item so consolidation merges resolve here too.
-      if (/\b404\b/.test(msg) && tryReassociation(`ratingKey ${ratingKey} no longer resolves`)) continue;
+      if (/\b404\b/.test(msg) && (await tryReassociation(`ratingKey ${ratingKey} no longer resolves`))) continue;
       stillPending++;
       ctx.log(`  ⚠ "${apply.name}" — Plex fetch failed (${msg}); re-checked next run`, 'warn');
       record({ name: apply.name, confirmed: false, reason: 'pending-rescan', reasonDetail: `plex fetch failed: ${msg}` }, 'skipped');
@@ -171,7 +205,7 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
     }
 
     if (!item) {
-      if (tryReassociation(`ratingKey ${ratingKey} no longer resolves`)) continue;
+      if (await tryReassociation(`ratingKey ${ratingKey} no longer resolves`)) continue;
       const goneAgeMs = now().getTime() - new Date(apply.appliedAt || 0).getTime();
       if (goneAgeMs <= graceDays * 24 * 60 * 60 * 1000) {
         stillPending++;
@@ -198,13 +232,14 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
       confirmed++;
       ctx.log(`  ✓ "${apply.name}" — Plex reports the new path at the same ratingKey ${ratingKey} (watch state/metadata intact)`);
       ctx.log(`      confirmed at: ${apply.to}`);
+      await restoreArtwork(ratingKey, apply, `"${apply.name}"`);
       record({ name: `${apply.name} — confirmed`, confirmed: true, confirmedPath: apply.to }, 'success');
       continue;
     }
 
     // The old item survives but points elsewhere — our file may have been merged
     // under a different item (the same consolidation case) rather than left behind.
-    if (tryReassociation(`ratingKey ${ratingKey} now reports ${currentPath ?? 'no path'}`)) continue;
+    if (await tryReassociation(`ratingKey ${ratingKey} now reports ${currentPath ?? 'no path'}`)) continue;
 
     const ageMs = now().getTime() - new Date(apply.appliedAt || 0).getTime();
     const graceMs = graceDays * 24 * 60 * 60 * 1000;
@@ -226,6 +261,7 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
   ctx.log('═══════════════ CONFIRM SUMMARY ═══════════════');
   ctx.log(`Confirmed: ${confirmed + reassociated} (${confirmed} at the original ratingKey, ${reassociated} re-associated after a consolidation merge)`);
   ctx.log(`Still pending rescan: ${stillPending} · failed: ${failed}`);
+  if (artworkRestored > 0) ctx.log(`Artwork selections restored after Plex reverted them: ${artworkRestored}`);
   ctx.log('═════════════════════════════════════════════');
   ctx.progress(100, `${confirmed + reassociated} confirmed, ${stillPending} pending, ${failed} failed`);
   if (failed > 0) {

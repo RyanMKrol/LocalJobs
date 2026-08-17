@@ -226,3 +226,61 @@ test('confirm: transient fetch error is soft (skipped, retried), and a confirmed
   assert.equal(extraCalls, 0, 'confirmed items are permanently done');
   assert.ok(calls >= 1);
 });
+
+// ── Artwork continuity (2026-08) ──────────────────────────────────────────────
+// Plex reverts a RECREATED entry to the agent's default poster, silently
+// discarding one the owner uploaded. confirm restores what was showing before.
+
+const OLD_UPLOAD = '/library/metadata/rk1/file?url=upload%3A%2F%2Fposters%2Fabc123';
+const NEW_UPLOAD = '/library/metadata/newRk/file?url=upload%3A%2F%2Fposters%2Fabc123';
+const AGENT_POSTER = '/library/metadata/newRk/file?url=metadata%3A%2F%2Fposters%2Fagent_default';
+
+test('confirm: restores the exact artwork the owner had, on whichever entry now owns the file', async () => {
+  const row = applyRow({ artwork: { poster: 'upload:abc123' } });
+  const set: { ratingKey: string; kind: string; key: string }[] = [];
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => [{ itemKey: row.itemKey, detail: row.detail }],
+    readDiscoverRows: () => [discoverRow('newRk', TO, 1)],
+    fetchItemDetail: async () => undefined, // entry was recreated
+    fetchArtwork: async (_rk, kind) =>
+      kind === 'poster'
+        ? [
+            { key: AGENT_POSTER, selected: true }, // Plex reverted to the default
+            { key: NEW_UPLOAD, selected: false }, // the owner's image, still there
+          ]
+        : [],
+    setArtwork: async (ratingKey, kind, key) => {
+      set.push({ ratingKey, kind, key });
+    },
+    now: () => NOW,
+  });
+  assert.equal(confirmOf(row.itemKey).status, 'success');
+  assert.deepEqual(set, [{ ratingKey: 'newRk', kind: 'poster', key: NEW_UPLOAD }]);
+});
+
+test('confirm: leaves artwork alone when it is already what was recorded, and never fails a confirm over artwork', async () => {
+  const intact = applyRow({ artwork: { poster: 'upload:abc123' } });
+  const set: string[] = [];
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => [{ itemKey: intact.itemKey, detail: intact.detail }],
+    fetchItemDetail: async () => plexItem(intact.ratingKey, intact.partId, TO),
+    fetchArtwork: async () => [{ key: OLD_UPLOAD, selected: true }],
+    setArtwork: async (_rk, _k, key) => {
+      set.push(key);
+    },
+    now: () => NOW,
+  });
+  assert.equal(set.length, 0, 'idempotent — nothing to restore');
+
+  // An artwork failure must never take down a confirmation.
+  const broken = applyRow({ artwork: { poster: 'upload:abc123' } });
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => [{ itemKey: broken.itemKey, detail: broken.detail }],
+    fetchItemDetail: async () => plexItem(broken.ratingKey, broken.partId, TO),
+    fetchArtwork: async () => {
+      throw new Error('Plex artwork endpoint down');
+    },
+    now: () => NOW,
+  });
+  assert.equal(confirmOf(broken.itemKey).status, 'success', 'artwork is cosmetic; confirmation is not');
+});
