@@ -189,24 +189,48 @@ keeping, none of which are visible from the code alone:
   afterwards. Consolidation DOES retire duplicate show entries (the old episode ratingKeys 404
   afterwards) — see the confirm gap below.
 
-## Two known gaps the sweep exposed (unfixed — owner decision pending)
+## Three gaps the sweep exposed — all fixed (2026-08-17)
 
-1. **`confirm` assumes a stable ratingKey, but consolidation legitimately changes it.** When a
-   show that was split across two folders is consolidated into one, Plex retires the duplicate
-   show entry and its episode items — so `GET /library/metadata/<oldRatingKey>` 404s even though
-   the file is present, correctly named, and matched under a NEW item. `confirm` currently treats
-   that as a transient fetch failure ("re-checked next run"), which is harmless inside the 14-day
-   `PLEX_RENAME_CONFIRM_GRACE_DAYS` grace but will then start failing loudly for ~3k items that
-   are in fact fine. The fix is to treat "a Plex item exists at the target path with matching
-   GUIDs" as success even under a new ratingKey — NOT done yet, because it softens the
-   reassociation check the safety doctrine above calls out by name, and that is the owner's call.
-2. **Our own `.plexmatch` blocks later renames for the same show (self-inflicted).** The
-   `existing-plexmatch` skip exists to never clobber a HAND-AUTHORED `.plexmatch`, but apply
-   writes one per show folder — so any file for that show surfacing in a LATER run is skipped
-   forever. ~963 files sit in this state: already in the right canonical folder, differing only
-   in episode-title text (`- (Root Path).mkv` → `.mkv`, `Earning's` → `Earnings`). Cosmetic, not
-   a data risk, but permanently stuck until the rule distinguishes a `.plexmatch` we wrote (its
-   content matches `buildPlexmatch` exactly) from one the owner hand-wrote.
+1. **`confirm` assumed a stable ratingKey; consolidation legitimately changes it.** Merging a show
+   Plex held as TWO split entries retires the duplicate entry and its episode items, so the
+   original key 404s while the file stays correctly matched (~6.5k items). `confirm` now indexes
+   THIS run's discover snapshot by path and accepts an item at the exact target path whose ids
+   match the ones the canonical name embeds, recording `reason: 'reassociated'`. That is a
+   SHARPER check than the old one, not a weaker one — it distinguishes a merge from a genuinely
+   lost file, which a bare ratingKey test cannot. A vanished key with nothing at the target now
+   waits out the grace window before failing loud (the bytes were checksum-verified at apply
+   time, so a missing Plex item is a matching problem, not data loss). Costs zero extra Plex
+   calls — discover already walked the live library at the top of the same run.
+2. **Our own `.plexmatch` blocked later renames for the same show.** `buildPlexmatch` emits
+   identity lines only (never `ep:` hints), so a byte-identical file cannot pin a filename;
+   `verify` now recognises one as ours and lets the rename through. A DIVERGENT `.plexmatch`
+   still blocks, which is the protection that rule was actually written for.
+3. **Release-layout subtitles were left behind.** `planSidecars` only ever saw flat siblings, so
+   the `Subs/<media stem>/2_eng.srt` trees releases ship were orphaned when the video moved
+   (~4.4k files). `planNestedSubtitles` handles both attributable layouts — a file NAMED for the
+   media keeps its suffix chain verbatim (`.idx`/`.sub` pairs), and a file declaring a language
+   inside a folder tied to the media becomes `<newStem>.<lang>[.modifier].<ext>`. A name with no
+   language we recognise (`11_Français (Canadien).srt`) is still left behind and reported: the
+   engine reports rather than guesses, always.
+
+## One-time repair scripts (manual, dry-run by default, never scheduled)
+
+- **`scripts/plex-rename-backfill-subtitles.ts`** — re-unites subtitles stranded by pre-fix runs,
+  using the apply ledger's own from → to record to know where each belongs. Copy → checksum →
+  delete, same procedure as the workflow. Ran 2026-08-17: 3,984 moved, 0 failed.
+- **`scripts/plex-rename-cleanup-leftovers.ts`** — clears the old release folders of bonus
+  featurettes Plex never indexed, orphaned release artwork/nfo, and husk directories kept alive
+  by a Finder `.DS_Store`. Cross-checks every candidate against the live discover snapshot so a
+  Plex-indexed file can NEVER be touched, only enters non-canonical folders, and moves everything
+  into the share's own `#recycle/plex-rename-cleanup-<stamp>/` rather than unlinking. Ran
+  2026-08-17: 570 files (75.4 GB) recycled, 648 empty directories removed, 0 failures — the
+  library went from 195 non-canonical top-level folders to 44.
+
+**What the remaining 44 are** (none are bugs): the multi-version duplicates the engine
+deliberately never names (one Plex title, two files — a human picks the keeper), downloads still
+inside the 7-day `PLEX_RENAME_MIN_AGE_DAYS` window, a handful of unattributable subtitle variants,
+and three harmless non-media files (an `index.json`, a `.blake3` checksum, and one of the owner's
+own shell scripts) that the cleanup correctly refused to classify.
 
 ## Undo + journal
 

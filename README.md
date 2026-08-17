@@ -344,8 +344,9 @@ summaries below are a quick-reference index, not the source of truth.
   the ideas inbox, and never patches any file itself — folding an override into
   code stays a fully manual step. Idempotent per ISO week via the work_items
   ledger. Single stage, runs weekly (Sundays 07:00).
-- **plex-rename** — Daily, currently report-only: plans canonical
-  Plex-convention renames for every movie and TV episode file, using Plex's own
+- **plex-rename** — Daily (05:00), applying for real since the 2026-08 backlog
+  sweep moved 26,902 files with zero failures: renames every movie and TV
+  episode file to canonical Plex convention, using Plex's own
   matches as the source of truth ("Title (Year) {tmdb-N}" folders,
   "Show (Year) {tvdb-N}/Season NN" trees, a .plexmatch per show), so the
   library re-matches deterministically if the Plex database is ever lost.
@@ -358,8 +359,9 @@ summaries below are a quick-reference index, not the source of truth.
   same-share files with a single atomic rename (instant, bytes untouched) and
   cross-share consolidations with copy -> checksum-verify -> delete-original,
   all write-ahead journaled with an undo script, a daily quota, and a
-  volume-utilization cap; it ships disabled behind PLEX_RENAME_APPLY_ENABLED
-  until the plans have been reviewed. Runs daily (05:00).
+  volume-utilization cap. Subtitles ship in nested Subs/<media stem>/ trees, so
+  those move with the media too. New installs keep it disabled behind
+  PLEX_RENAME_APPLY_ENABLED until the plans have been reviewed.
 - **mount-keeper** — Hourly (at :45) guard that keeps the configured NAS SMB
   shares mounted at /Volumes/<name>, since macOS mounts network shares lazily
   and drops them on reboot. A share that exists and is non-empty is left
