@@ -24,10 +24,12 @@
  */
 import 'dotenv/config';
 import { callService } from '../src/core/services.js';
-import { plexGet, resolvePlexHost } from '../src/core/plex-client.js';
+import { plexGet, plexPut, resolvePlexHost } from '../src/core/plex-client.js';
 
 interface Candidate {
   key: string;
+  /** What Plex expects back to select this image — NOT the same as `key`. */
+  ratingKey: string;
   selected: boolean;
   isUpload: boolean;
 }
@@ -42,6 +44,7 @@ export interface RestoreResult {
 
 interface PhotoRow {
   key?: string;
+  ratingKey?: string;
   provider?: string;
   selected?: boolean;
 }
@@ -51,6 +54,7 @@ function parseCandidates(rows: PhotoRow[]): Candidate[] {
     const key = r.key ?? '';
     return {
       key,
+      ratingKey: String(r.ratingKey ?? key),
       selected: r.selected === true,
       // Plex serves an uploaded image through the item's own file URL as upload://…
       // (and reports no provider for it), vs metadata://… for anything an agent supplied.
@@ -121,9 +125,8 @@ export async function restoreUploadedArtwork(
           continue;
         }
         try {
-          const url = `${host}/library/metadata/${item.ratingKey}/${kind}?url=${encodeURIComponent(target.key)}&X-Plex-Token=${token}`;
-          const res = await callService('plex', () => fetch(url, { method: 'PUT' }));
-          if (!res.ok) throw new Error(`Plex HTTP ${res.status}`);
+          // Plex selects by the PHOTO's ratingKey; passing `key` returns 200 and does nothing.
+          await callService('plex', () => plexPut(`/library/metadata/${item.ratingKey}/${kind}`, { url: target.ratingKey }));
           result.restored.push({ ratingKey: item.ratingKey, title: item.title, kind });
         } catch (err) {
           result.failures.push({ ratingKey: item.ratingKey, error: err instanceof Error ? err.message : String(err) });

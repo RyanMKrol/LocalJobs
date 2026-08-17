@@ -233,6 +233,8 @@ test('confirm: transient fetch error is soft (skipped, retried), and a confirmed
 
 const OLD_UPLOAD = '/library/metadata/rk1/file?url=upload%3A%2F%2Fposters%2Fabc123';
 const NEW_UPLOAD = '/library/metadata/newRk/file?url=upload%3A%2F%2Fposters%2Fabc123';
+const UP_ID2 = 'upload://posters/abc123';
+const AGENT_ID2 = 'metadata://posters/agent_default';
 const AGENT_POSTER = '/library/metadata/newRk/file?url=metadata%3A%2F%2Fposters%2Fagent_default';
 
 test('confirm: restores the exact artwork the owner had, on whichever entry now owns the file', async () => {
@@ -245,8 +247,8 @@ test('confirm: restores the exact artwork the owner had, on whichever entry now 
     fetchArtwork: async (_rk, kind) =>
       kind === 'poster'
         ? [
-            { key: AGENT_POSTER, selected: true }, // Plex reverted to the default
-            { key: NEW_UPLOAD, selected: false }, // the owner's image, still there
+            { key: AGENT_POSTER, ratingKey: AGENT_ID2, selected: true }, // Plex reverted to the default
+            { key: NEW_UPLOAD, ratingKey: UP_ID2, selected: false }, // the owner's image, still there
           ]
         : [],
     setArtwork: async (ratingKey, kind, key) => {
@@ -255,7 +257,8 @@ test('confirm: restores the exact artwork the owner had, on whichever entry now 
     now: () => NOW,
   });
   assert.equal(confirmOf(row.itemKey).status, 'success');
-  assert.deepEqual(set, [{ ratingKey: 'newRk', kind: 'poster', key: NEW_UPLOAD }]);
+  // Selected by the PHOTO's ratingKey — passing the `key` URL returns 200 and does nothing.
+  assert.deepEqual(set, [{ ratingKey: 'newRk', kind: 'poster', key: UP_ID2 }]);
 });
 
 test('confirm: leaves artwork alone when it is already what was recorded, and never fails a confirm over artwork', async () => {
@@ -264,7 +267,7 @@ test('confirm: leaves artwork alone when it is already what was recorded, and ne
   await runConfirm(fakeCtx(), {
     readApplyRows: () => [{ itemKey: intact.itemKey, detail: intact.detail }],
     fetchItemDetail: async () => plexItem(intact.ratingKey, intact.partId, TO),
-    fetchArtwork: async () => [{ key: OLD_UPLOAD, selected: true }],
+    fetchArtwork: async () => [{ key: OLD_UPLOAD, ratingKey: UP_ID2, selected: true }],
     setArtwork: async (_rk, _k, key) => {
       set.push(key);
     },

@@ -499,6 +499,49 @@ export async function fetchSectionMetadata<T>(
  * same resolved host + scoped insecure-TLS agent as `plexGet` — no second TLS
  * bypass. Throws on a non-2xx so the caller can record the failure.
  */
+/**
+ * A generic authenticated PUT against Plex, for endpoints that take their whole
+ * payload in the query string (artwork selection, for one). Shares plexGet's TLS
+ * handling — Plex serves a self-signed certificate, so a plain `fetch` fails on
+ * every call; always route Plex writes through here rather than global fetch.
+ */
+export async function plexPut(path: string, params: Record<string, string> = {}): Promise<void> {
+  if (!PLEX_API_TOKEN) {
+    throw new Error('Plex token missing — set PLEX_API_TOKEN in .env.');
+  }
+  const host = await resolvePlexHost();
+  const url = new URL(path, host);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  url.searchParams.set('X-Plex-Token', PLEX_API_TOKEN);
+  const isHttps = url.protocol === 'https:';
+  const mod = isHttps ? https : http;
+  const timeoutMs = plexRequestTimeoutMs();
+
+  await new Promise<void>((resolve, reject) => {
+    const req = mod.request(
+      url,
+      {
+        method: 'PUT',
+        agent: isHttps ? insecurePlexAgent : undefined,
+        headers: { Accept: 'application/json' },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        res.resume();
+        if (status >= 400) {
+          reject(new Error(`Plex HTTP ${status} for PUT ${path}`));
+          return;
+        }
+        resolve();
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for PUT ${path} (${timeoutMs}ms)`)));
+    req.on('error', (e) => reject(new Error(`Plex unreachable at ${host} — ${e instanceof Error ? e.message : e}.`)));
+    req.end();
+  });
+}
+
 export async function plexPutStreams(partId: number, audioStreamId: number, subtitleStreamId?: number | null): Promise<void> {
   if (!PLEX_API_TOKEN) {
     throw new Error('Plex token missing — set PLEX_API_TOKEN in .env.');

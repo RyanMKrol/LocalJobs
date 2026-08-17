@@ -18,8 +18,8 @@ export interface ConfirmOverrides {
   graceDays?: number;
   now?: () => Date;
   /** Artwork continuity seams (live Plex by default; injected in tests). */
-  fetchArtwork?: (ratingKey: string, kind: ArtworkKind) => Promise<{ key: string; selected: boolean }[]>;
-  setArtwork?: (ratingKey: string, kind: ArtworkKind, key: string) => Promise<void>;
+  fetchArtwork?: (ratingKey: string, kind: ArtworkKind) => Promise<{ key: string; ratingKey: string; selected: boolean }[]>;
+  setArtwork?: (itemRatingKey: string, kind: ArtworkKind, photoRatingKey: string) => Promise<void>;
 }
 
 function parseKey(itemKey: string): { ratingKey: string; partId: number } {
@@ -146,7 +146,7 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
         // an upload, so it cannot override a deliberate agent-artwork preference).
         const target = candidateToRestore(candidates, wanted) ?? (wanted ? null : orphanedUpload(candidates));
         if (!target) continue;
-        await setArtwork(ratingKey, kind, target.key);
+        await setArtwork(ratingKey, kind, target.ratingKey);
         artworkRestored++;
         ctx.log(`      ↺ restored ${kind} on ${label} — Plex had reverted it to the agent default`);
       } catch (err) {

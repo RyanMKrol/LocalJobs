@@ -9,7 +9,7 @@ import { dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { callService } from '../../core/services.js';
 import type { ArtworkCandidate, ArtworkKind } from './artwork.js';
-import { plexGet, resolvePlexHost } from '../../core/plex-client.js';
+import { plexGet, plexPut, resolvePlexHost } from '../../core/plex-client.js';
 import { pathKey } from './naming.js';
 import type { PathMapPair, PlexMetadataItem, PlexSection } from './types.js';
 
@@ -71,10 +71,10 @@ export async function fetchArtworkCandidates(
   fetchPlex: PlexFetcher = plexGet,
 ): Promise<ArtworkCandidate[]> {
   const path = `/library/metadata/${ratingKey}/${kind === 'poster' ? 'posters' : 'arts'}`;
-  const res = await callService('plex', () => fetchPlex<PlexListResponse<{ key?: string; selected?: boolean }>>(path));
+  const res = await callService('plex', () => fetchPlex<PlexListResponse<{ key?: string; ratingKey?: string; selected?: boolean }>>(path));
   return (res.MediaContainer.Metadata ?? [])
-    .filter((m): m is { key: string; selected?: boolean } => typeof m.key === 'string')
-    .map((m) => ({ key: m.key, selected: m.selected === true }));
+    .filter((m): m is { key: string; ratingKey?: string; selected?: boolean } => typeof m.key === 'string')
+    .map((m) => ({ key: m.key, ratingKey: String(m.ratingKey ?? m.key), selected: m.selected === true }));
 }
 
 /**
@@ -82,15 +82,13 @@ export async function fetchArtworkCandidates(
  * it never touches a file, and re-selecting an image the owner already had is
  * the least destructive write this workflow makes.
  */
-export async function selectArtwork(ratingKey: string, kind: ArtworkKind, key: string): Promise<void> {
-  const token = process.env.PLEX_API_TOKEN ?? '';
-  if (!token) throw new Error('Plex token missing — set PLEX_API_TOKEN in .env.');
-  const host = await resolvePlexHost();
-  const url = `${host}/library/metadata/${ratingKey}/${kind}?url=${encodeURIComponent(key)}&X-Plex-Token=${token}`;
-  await callService('plex', async () => {
-    const res = await fetch(url, { method: 'PUT' });
-    if (!res.ok) throw new Error(`Plex HTTP ${res.status} selecting ${kind} for ${ratingKey}`);
-  });
+export async function selectArtwork(itemRatingKey: string, kind: ArtworkKind, photoRatingKey: string): Promise<void> {
+  // Two traps, both learned the hard way in 2026-08:
+  //  - go through plexPut, NOT global fetch: Plex serves a self-signed certificate
+  //    that fetch rejects, which failed all 152 writes on the first attempt;
+  //  - pass the PHOTO's ratingKey (upload://posters/<hash>), not its `key` URL.
+  //    Plex answers 200 to the `key` form and silently changes nothing.
+  await callService('plex', () => plexPut(`/library/metadata/${itemRatingKey}/${kind}`, { url: photoRatingKey }));
 }
 
 /**

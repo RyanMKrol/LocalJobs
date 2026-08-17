@@ -50,7 +50,7 @@ export interface ApplyOverrides {
   triggerBackup?: typeof triggerButlerBackup;
   refreshSection?: typeof plexRefreshSection;
   /** Read an item's artwork candidates (injected in tests; live Plex by default). */
-  fetchArtwork?: (ratingKey: string, kind: ArtworkKind) => Promise<{ key: string; selected: boolean }[]>;
+  fetchArtwork?: (ratingKey: string, kind: ArtworkKind) => Promise<{ key: string; ratingKey: string; selected: boolean }[]>;
   cap?: typeof capStatus;
   record?: typeof recordUsage;
   /** Whether a Butler DB backup was already triggered today (injectable for tests). */

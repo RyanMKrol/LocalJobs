@@ -23,7 +23,12 @@
 export type ArtworkKind = 'poster' | 'art';
 
 export interface ArtworkCandidate {
+  /** The item-scoped file URL (identity is derived from this). */
   key: string;
+  /** What Plex expects back to SELECT this image — `upload://posters/<hash>`,
+   *  `metadata://posters/<agent id>`, or a remote URL. NOT interchangeable with
+   *  `key`: selecting by `key` is accepted with a 200 and silently does nothing. */
+  ratingKey: string;
   selected: boolean;
 }
 
@@ -44,6 +49,10 @@ export interface ArtworkSelection {
 export function artworkIdentity(key: string): string | null {
   if (!key) return null;
   if (/^https?:\/\//i.test(key)) return key;
+  // A bare ratingKey form (upload://posters/… or metadata://posters/…) identifies
+  // itself directly — no item-scoped URL to unwrap.
+  const bare = /^(upload|metadata):\/\/(?:posters|art)\/(.+)$/.exec(key);
+  if (bare) return `${bare[1]}:${bare[2]}`;
   const m = /[?&]url=([^&]+)/.exec(key);
   if (!m) return null;
   const decoded = decodeURIComponent(m[1]);
