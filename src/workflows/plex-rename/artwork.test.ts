@@ -59,6 +59,20 @@ const REMOTE = 'https://image.tmdb.org/t/p/original/bk9GVjN4kxmGekswNigaa5YIdr5.
 
   const noUpload: ArtworkCandidate[] = [{ key: AGENT, ratingKey: AGENT_ID, selected: true }, { key: REMOTE, ratingKey: REMOTE, selected: false }];
   assert.equal(orphanedUpload(noUpload), null, 'never switches away from agent artwork when there is no upload');
+
+  // An item can carry SEVERAL uploads (the owner replaced a poster and Plex kept
+  // both). The API exposes no date and no ordering guarantee, so the first listed
+  // is NOT the one they last chose — restoring it brought back artwork that had
+  // been deliberately replaced. Ambiguity is left alone, never guessed.
+  const twoUploads: ArtworkCandidate[] = [
+    { key: AGENT, ratingKey: AGENT_ID, selected: true },
+    { key: UPLOAD_NEW, ratingKey: UP_ID, selected: false },
+    { key: '/library/metadata/63109/file?url=upload%3A%2F%2Fposters%2F38c489a912', ratingKey: 'upload://posters/38c489a912', selected: false },
+  ];
+  assert.equal(orphanedUpload(twoUploads), null, 'two uploads: which one the owner wants is unknowable here');
+
+  // The recorded-selection path still resolves exactly, however many uploads exist.
+  assert.equal(candidateToRestore(twoUploads, UP_ID.replace('://posters/', ':'))?.ratingKey, UP_ID);
   console.log('  ✓ artwork: orphaned-upload fallback only ever switches TO an upload');
 }
 

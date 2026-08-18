@@ -85,9 +85,18 @@ export function candidateToRestore(candidates: ArtworkCandidate[], wanted: strin
  * showing, the upload is what the owner had chosen. Only ever switches TO an
  * upload, so it cannot undo a deliberate preference for agent artwork on an item
  * that has no upload at all.
+ *
+ * AMBIGUITY IS NOT RESOLVED BY GUESSING (2026-08-18). An item can carry SEVERAL
+ * uploads — the owner replaced a poster, and Plex keeps both images. The API
+ * exposes no upload date and no ordering guarantee, so "the first one listed" is
+ * not "the one they last chose": picking it restored a poster the owner had
+ * replaced months earlier. With more than one upload present there is nothing here
+ * that can distinguish them, so this returns null and leaves Plex's current choice
+ * alone. The recorded-selection path (`candidateToRestore`) is unaffected — it
+ * matches an exact image and stays correct however many uploads exist.
  */
 export function orphanedUpload(candidates: ArtworkCandidate[]): ArtworkCandidate | null {
   const uploads = candidates.filter((c) => artworkIdentity(c.key)?.startsWith('upload:'));
-  if (uploads.length === 0 || uploads.some((u) => u.selected)) return null;
+  if (uploads.length !== 1 || uploads[0].selected) return null;
   return uploads[0];
 }
