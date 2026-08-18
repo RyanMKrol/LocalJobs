@@ -456,6 +456,7 @@ export function planNestedSubtitles(
   newDir: string,
   newStem: string,
   entries: NestedSubtitle[],
+  opts: { soleMediaInDir?: boolean } = {},
 ): SidecarPlan {
   const moves: SidecarPlan['moves'] = [];
   const leftBehind: string[] = [];
@@ -477,18 +478,24 @@ export function planNestedSubtitles(
       leftBehind.push(`${oldDir}/${relPath}`);
       continue;
     }
-    // Two attributable layouts, neither of which involves guessing:
-    //  1. the file is NAMED for the media (`<media stem>.idx`, `<media stem>.en.srt`)
-    //     → keep its entire suffix chain verbatim, exactly as planSidecars does;
-    //  2. the file declares a language (`2_eng.srt`) inside a folder that already
-    //     ties it to this media → rebuild as `<newStem>.<lang>[.modifier].<ext>`.
+    // ATTRIBUTION FIRST — a subtitle may only be claimed when something ties it to
+    // THIS media file, never by language alone. A season folder with one shared
+    // `Subs/` directory holds every episode's subtitles side by side, so
+    // language-only matching hands them all to whichever episode happens to be
+    // processed first. That shipped on 2026-08-17 and mis-filed 607 files.
     const { stem: fileStem, ext: fileExt } = splitExt(fileName);
     let suffix: string | null = null;
     if (SUBTITLE_EXTS.has(fileExt.toLowerCase())) {
+      // 1. named for the media (`<media stem>.idx`, `<media stem>.en.srt`) — keep
+      //    the suffix chain verbatim, exactly as planSidecars does.
       if (pathKey(fileStem) === oldStemKey) suffix = `.${fileExt.toLowerCase()}`;
       else if (pathKey(fileName).startsWith(`${oldStemKey}.`)) suffix = fileName.slice(oldStem.length);
     }
-    if (!suffix) suffix = subtitleSuffix(fileName);
+    // 2. a language declaration is enough ONLY when the containing folder already
+    //    ties the file to this media: either `Subs/<media stem>/…`, or a flat
+    //    `Subs/` beside a directory holding exactly one media file.
+    const folderTiesIt = middle.length === 1 || opts.soleMediaInDir === true;
+    if (!suffix && folderTiesIt) suffix = subtitleSuffix(fileName);
     if (!suffix) {
       leftBehind.push(`${oldDir}/${relPath}`);
       continue;

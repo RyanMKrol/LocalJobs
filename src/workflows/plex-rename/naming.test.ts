@@ -490,6 +490,7 @@ function mediaMove(d: RenameDecision): Extract<NamingOp, { op: 'move' }> {
       { relPath: 'Subs/Show.S01E01.REL/3_spa.srt' },
       { relPath: 'Subs/2_eng.srt' },
     ],
+    { soleMediaInDir: true }, // a lone media file — the flat Subs/ entry is attributable
   );
   assert.deepEqual(
     mapped.moves.map((m) => m.to),
@@ -518,6 +519,28 @@ function mediaMove(d: RenameDecision): Extract<NamingOp, { op: 'move' }> {
       '/lib/KE/Season 02/Killing Eve - s02e03.en.forced.srt',
     ],
   );
+
+  // REGRESSION (2026-08-18): a season folder with ONE shared Subs/ dir holds every
+  // episode's subtitles side by side. Attributing by language alone handed them all
+  // to whichever episode was processed first — 607 files landed on the wrong episode.
+  const shared = planNestedSubtitles('/lib/Show S01', 'Show.S01E01.REL', '/lib/Show (2019) {tvdb-1}/Season 01', 'Show - s01e01', [
+    { relPath: 'Subs/Show.S01E01.REL.eng.srt' }, // ours — named for the media
+    { relPath: 'Subs/Show.S01E02.REL.eng.srt' }, // a DIFFERENT episode's
+    { relPath: 'Subs/Show.S01E03.REL.eng.srt' }, // and another
+  ]);
+  assert.deepEqual(
+    shared.moves.map((m) => m.to),
+    ['/lib/Show (2019) {tvdb-1}/Season 01/Show - s01e01.eng.srt'],
+    'only the subtitle named for THIS episode is claimed',
+  );
+  assert.equal(shared.leftBehind.length, 2, 'the other episodes\' subtitles are left for their own runs');
+
+  // The single-media case still works: a lone movie folder with a flat Subs/ dir
+  // where the folder itself is the only thing tying the file to the media.
+  const lone = planNestedSubtitles('/lib/Movie REL', 'Movie.REL', '/lib/Movie (2019) {tmdb-1}', 'Movie (2019) {tmdb-1}', [{ relPath: 'Subs/2_eng.srt' }], {
+    soleMediaInDir: true,
+  });
+  assert.deepEqual(lone.moves.map((m) => m.to), ['/lib/Movie (2019) {tmdb-1}/Movie (2019) {tmdb-1}.eng.srt']);
 
   const refused = planNestedSubtitles('/lib/Rel', 'Show.S01E01.REL', '/lib/New', 'New Name', [
     { relPath: 'Subs/Some.Other.Episode/2_eng.srt' },

@@ -103,7 +103,10 @@ export async function backfillSubtitles(
 
     const entries = await nestedSubtitleEntries(fs, localOldDir);
     if (entries.length === 0) continue;
-    const plan = planNestedSubtitles(oldDir, oldStem, newDir, newStem, entries);
+    const MEDIA_EXTS = new Set(['mkv', 'mp4', 'avi', 'm4v', 'ts', 'wmv', 'mpg', 'mpeg', 'mov', 'flv']);
+    const dirListing = (await fs.readdir(localOldDir)) ?? [];
+    const mediaInDir = dirListing.filter((e) => !e.isDir && MEDIA_EXTS.has(splitExt(e.name).ext.toLowerCase())).length;
+    const plan = planNestedSubtitles(oldDir, oldStem, newDir, newStem, entries, { soleMediaInDir: mediaInDir <= 1 });
     for (const move of plan.moves) {
       const localFrom = plexToLocal(move.from, pathMap);
       const localTo = plexToLocal(move.to, pathMap);

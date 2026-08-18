@@ -203,7 +203,11 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
         }
       }
     }
-    const nestedPlan = planNestedSubtitles(plexDir, splitExt(mediaName).stem, newPlexDir, splitExt(posixBasename(plan.to)).stem, nested);
+    const MEDIA_EXTS = new Set(['mkv', 'mp4', 'avi', 'm4v', 'ts', 'wmv', 'mpg', 'mpeg', 'mov', 'flv']);
+    const mediaInDir = listing.filter((e) => !e.isDir && MEDIA_EXTS.has(splitExt(e.name).ext.toLowerCase())).length;
+    const nestedPlan = planNestedSubtitles(plexDir, splitExt(mediaName).stem, newPlexDir, splitExt(posixBasename(plan.to)).stem, nested, {
+      soleMediaInDir: mediaInDir <= 1,
+    });
     sidecarPlan.moves.push(...nestedPlan.moves);
     sidecarPlan.leftBehind.push(...nestedPlan.leftBehind);
 
