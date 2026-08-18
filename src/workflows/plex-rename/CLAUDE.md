@@ -213,6 +213,47 @@ keeping, none of which are visible from the code alone:
    language we recognise (`11_Français (Canadien).srt`) is still left behind and reported: the
    engine reports rather than guesses, always.
 
+## Companion files: what moves with the media, and the attribution rule
+
+Verified against the live library (2026-08-18) — every file type present is accounted for:
+
+| Type | Count | Handling |
+|---|---|---|
+| `.mkv` / `.mp4` / `.avi` | 27.3k | the media itself |
+| `.srt` | 4.5k | sidecar (7 subtitle formats supported: srt, ass, ssa, vtt, sub, idx, smi — a superset of what the library holds) |
+| `.idx` + `.sub` | 32 + 32 | sidecar pairs; they ride along via the shared-stem rule, never re-interpreted |
+| `.plexmatch` | 637 | one per show, written by apply |
+| `.jpg` / `.nfo` | 27 | movie folders carry fixed-name assets (`poster.*`, `movie.nfo`, `theme.mp3`, …); anything else is left behind and reported |
+| `.parts` | 24 | in-flight downloads — correctly invisible to the engine (Plex doesn't index them) |
+| `.DS_Store` | 4 | Finder noise; the cleanup script treats a directory holding only these as empty |
+
+**THE ATTRIBUTION RULE (2026-08-18, learned the hard way).** A companion file may only
+be claimed when something ties it to THAT media file: it is NAMED for the media
+(`<stem>.eng.srt`, `<stem>.idx`), or it sits in a folder that ties it there
+(`Subs/<media stem>/…`, or a flat `Subs/` beside a directory holding exactly one media
+file). **A language code is never sufficient on its own.** The first cut allowed
+language-only matching, which quietly handed every episode's subtitles to whichever
+episode ran first in a season folder with one shared `Subs/` directory — 607 files landed
+against the wrong episode, and their rightful owners lost theirs. Callers report the
+single-media case via `soleMediaInDir`; `naming.test.ts` locks the regression in.
+
+## Artwork continuity (2026-08-17)
+
+Plex can retire a library entry and build a fresh one when a file's folder changes, which
+reverts to the agent's DEFAULT artwork — that silently cost ~103 films their uploaded
+posters mid-sweep. apply now records which poster/background is showing BEFORE it touches
+a file; confirm re-selects the same image afterwards on whichever entry owns the file.
+Two traps worth remembering, both of which produced silent no-ops before they were found:
+
+- **Write through `plexPut`, never global `fetch`.** Plex serves a self-signed certificate
+  that `fetch` rejects outright — all 152 writes in the first attempt failed.
+- **Select by the PHOTO's `ratingKey`** (`upload://posters/<hash>`), not by its
+  item-scoped `key` URL. Plex answers **HTTP 200** to the `key` form and changes nothing.
+
+A candidate's URL embeds the owning ratingKey, which is exactly what changes when an entry
+is recreated, so `artworkIdentity()` matches on the stable part instead. Best-effort
+throughout: artwork is cosmetic, confirmation is not, so a failure here never fails a run.
+
 ## One-time repair scripts (manual, dry-run by default, never scheduled)
 
 - **`scripts/plex-rename-backfill-subtitles.ts`** — re-unites subtitles stranded by pre-fix runs,
@@ -225,6 +266,14 @@ keeping, none of which are visible from the code alone:
   into the share's own `#recycle/plex-rename-cleanup-<stamp>/` rather than unlinking. Ran
   2026-08-17: 570 files (75.4 GB) recycled, 648 empty directories removed, 0 failures — the
   library went from 195 non-canonical top-level folders to 44.
+- **`scripts/plex-restore-uploaded-artwork.ts`** — re-selects uploaded artwork Plex
+  deselected on entries it recreated before continuity existed. Only ever switches TO an
+  upload, skips items already showing theirs. Ran 2026-08-18: 144 posters + 12 backgrounds
+  restored across 2,280 items, verified by re-reading the selection back from Plex.
+- **`scripts/plex-rename-repair-missubbed.ts`** — re-homes subtitles the language-only bug
+  filed against the wrong episode, using the original name the disambiguator preserved, and
+  only when the rightful episode's media file is in the same directory. Ran 2026-08-18:
+  34 re-homed, 0 ambiguous, 0 failures.
 
 **What the remaining 44 are** (none are bugs): the multi-version duplicates the engine
 deliberately never names (one Plex title, two files — a human picks the keeper), downloads still
