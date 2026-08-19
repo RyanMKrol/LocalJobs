@@ -78,7 +78,7 @@ given stage, that stage never touches it again:
 - `evaluate` never re-evaluates a file it has already evaluated. **Trade-off, deliberately accepted:**
   a real-world drift AFTER a file's evaluation (someone manually re-picks a track in Plex, a new audio
   track gets muxed in) is NOT automatically re-detected — the old re-scan-every-run design would have
-  caught this on the next weekly run; this design does not. Re-evaluating requires manually unsticking
+  caught this on the next daily run; this design does not. Re-evaluating requires manually unsticking
   (or deleting) that file's `plex-language-evaluate` ledger row.
 - `apply` never re-applies a file it has already applied — PERMANENTLY, even if `evaluate`'s ledger row
   for that file is later re-flagged `'change'` by some future change to the evaluate logic. Re-applying
@@ -117,7 +117,7 @@ a null `currentAudio` → fail, naming the offending `itemKey`).
 
 ## Fully unattended — no per-run manual sign-off, by explicit owner decision
 
-The owner does not want to review every run by hand; this runs on the workflow's weekly schedule with
+The owner does not want to review every run by hand; this runs on the workflow's daily schedule with
 no approval gate. Every `'change'` entry (including what would previously have been flagged an
 ambiguous channel-count tie) is applied the same way, using `evaluate`'s best-judgment pick. In place
 of manual review, two safety nets stand in:
