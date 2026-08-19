@@ -278,6 +278,17 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
       }
     }
 
+    // "Left behind" means: this file is LEAVING a folder, and these are the
+    // things in it I could not attribute to the file, so I am not taking them.
+    // That only means anything when the folder is actually being vacated. For
+    // an in-place rename (case-only, or Plex revising an episode title) the
+    // "source folder" is the folder the file stays in, so every sibling the
+    // attribution rule declines to claim is just the rest of the season —
+    // 110 indexed library files were reported as cleanup candidates on
+    // 2026-08-19 for exactly this reason. Sidecar MOVES are unaffected: a
+    // subtitle still gets recased alongside its episode.
+    const leavesFolder = pathKey(plexDir) !== pathKey(newPlexDir);
+
     record({
       ...withLocal,
       eligible: true,
@@ -285,7 +296,7 @@ export async function runVerify(ctx: JobContext, opts: VerifyOverrides = {}): Pr
       bytes: st.size,
       sidecars,
       plexmatch: plexmatchWrite,
-      leftBehind: sidecarPlan.leftBehind,
+      leftBehind: leavesFolder ? sidecarPlan.leftBehind : [],
     });
   }
 

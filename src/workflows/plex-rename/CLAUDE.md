@@ -140,7 +140,14 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   are per-item single folders on their own share by construction.
 - **Folder strategy:** uniform "move out into a fresh canonical folder, never rename a directory in
   place" — old release folders keep their junk and are listed as leftovers in the report;
-  cleanup of folders still HOLDING files is report-only. Emptied dirs
+  cleanup of folders still HOLDING files is report-only. **Leftovers are only reported when the
+  file actually LEAVES its folder** (`leavesFolder` in verify, 2026-08-19): "left behind" means
+  "I vacated this folder and declined to claim these", which is meaningless for an in-place
+  rename (case-only, or Plex revising an episode title) where the source folder IS the
+  destination. Without that guard `planSidecars`' "every sibling I can't attribute" enumeration
+  reports the rest of the season — the 2026-08-19 run listed 110 files, all of them indexed
+  library media and their subtitles, under a heading telling the owner to clean them up. Sidecar
+  MOVES are untouched by this; only the reporting narrowed. Emptied dirs
   are removed via plain `rmdir-if-empty` — including the emptied ANCESTOR chain (2026-08-11:
   nested release wrappers like "Mr Robot S01-S04 …/Season S02/" left an empty outer husk once
   drained; apply now climbs bottom-up, journal op carries `stopRoot`), each step structurally

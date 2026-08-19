@@ -132,6 +132,34 @@ test('verify: happy path is eligible with mapped paths, verified size, sidecars 
   assert.deepEqual(d.leftBehind, ['/volume1/Share/Movies/Rel/RARBG.txt']);
 });
 
+test('verify: an in-place rename reports NO leftovers (the folder is not being vacated)', async () => {
+  // The 2026-08-19 report listed 110 indexed library files as manual-cleanup
+  // candidates: one Simpsons episode was recased inside its own Season folder,
+  // and every sibling the attribution rule declined to claim — i.e. the rest of
+  // the season — was reported as "left behind". Leftovers only mean something
+  // when the file is actually LEAVING a folder.
+  const dir = '/volume1/Share/Movies/A Movie (2016) {tmdb-555}';
+  const rows = movieRows({ from: `${dir}/A Movie Is Great.mkv`, to: `${dir}/A Movie is Great.mkv` });
+  const d = await verdict(
+    {
+      ...HEALTHY_MOUNT,
+      '/Volumes/Share/Movies/A Movie (2016) {tmdb-555}/A Movie Is Great.mkv': { size: 1000, mtimeMs: OLD_MTIME },
+      '/Volumes/Share/Movies/A Movie (2016) {tmdb-555}/A Movie Is Great.en.srt': { size: 5 },
+      // A neighbour that is emphatically NOT cleanup material.
+      '/Volumes/Share/Movies/A Movie (2016) {tmdb-555}/Another Film.mkv': { size: 7 },
+    },
+    rows,
+  );
+  assert.equal(d.eligible, true);
+  assert.equal(d.caseOnly, true);
+  assert.deepEqual(d.leftBehind, [], 'a neighbouring media file is not a cleanup candidate');
+  assert.deepEqual(
+    d.sidecars,
+    [{ from: `${dir}/A Movie Is Great.en.srt`, to: `${dir}/A Movie is Great.en.srt`, role: 'sidecar' }],
+    'the subtitle still rides along — only the REPORTING changed',
+  );
+});
+
 test('verify: every ineligibility reason fires precisely', async () => {
   const rows = movieRows();
 
