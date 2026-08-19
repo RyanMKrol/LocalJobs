@@ -32,10 +32,23 @@ export interface ArtworkCandidate {
   selected: boolean;
 }
 
-/** What was showing before the move, as portable identities. */
+/**
+ * What was showing before the move, as portable identities.
+ *
+ * For a TV file the item being moved is an EPISODE, and episodes carry no
+ * uploaded artwork — the artwork an owner curates lives on the SEASON and the
+ * SHOW, which are separate Plex items that get rebuilt when their folders change.
+ * Capturing only the episode's own artwork therefore protects nothing on TV,
+ * which is how 478 hand-picked season posters were lost in the 2026-08 sweep
+ * despite item-level continuity being in place.
+ */
 export interface ArtworkSelection {
   poster?: string;
   art?: string;
+  /** The parent SEASON's poster (TV only), with the season number it belongs to. */
+  season?: { index: number; poster?: string };
+  /** The grandparent SHOW's poster (TV only). */
+  show?: { poster?: string };
 }
 
 /**

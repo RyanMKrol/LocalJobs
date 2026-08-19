@@ -30,6 +30,10 @@ export interface PlexMetadataItem {
   Media?: PlexMedia[];
   parentTitle?: string;
   grandparentTitle?: string;
+  /** Season / show the episode belongs to. Both are rebuilt when folders change,
+   *  so confirm resolves them fresh rather than trusting the pre-move values. */
+  parentRatingKey?: string;
+  grandparentRatingKey?: string;
   index?: number;
   parentIndex?: number;
 }

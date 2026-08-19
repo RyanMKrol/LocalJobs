@@ -278,6 +278,24 @@ A candidate's URL embeds the owning ratingKey, which is exactly what changes whe
 is recreated, so `artworkIdentity()` matches on the stable part instead. Best-effort
 throughout: artwork is cosmetic, confirmation is not, so a failure here never fails a run.
 
+**Continuity must reach PAST the item being moved (2026-08-19).** For TV the moved item is
+an EPISODE, and episodes carry no uploaded artwork at all (verified against Plex's own
+metadata tree: uploads exist only for movies, shows, and seasons). The artwork an owner
+curates lives on the SEASON and the SHOW, and those items are rebuilt too when their
+folders change — so item-level continuity protected nothing on TV, and 478 hand-picked
+season posters were lost before anyone noticed. apply now also captures the season's and
+show's selections, and confirm restores them against the season/show as they stand AFTER
+the move (their ratingKeys change as well, so the pre-move values must not be trusted).
+Both are cached per run, so a 500-episode batch costs a couple of extra calls per show
+rather than per file.
+
+**Season artwork identifies itself differently.** A season's candidate is
+`upload://posters/seasons/<n>/<hash>`, not the item-level `upload://posters/<hash>`.
+Parsing only the item form made every season look unselected — a scan reported all 1,902
+as broken with zero correct, which a control group of never-renamed shows disproved before
+anything was written. If a scan ever claims 100% of anything is broken, check a group the
+work never touched before believing it.
+
 ## One-time repair scripts (manual, dry-run by default, never scheduled)
 
 - **`scripts/plex-rename-backfill-subtitles.ts`** — re-unites subtitles stranded by pre-fix runs,
@@ -294,6 +312,13 @@ throughout: artwork is cosmetic, confirmation is not, so a failure here never fa
   deselected on entries it recreated before continuity existed. Only ever switches TO an
   upload, skips items already showing theirs. Ran 2026-08-18: 144 posters + 12 backgrounds
   restored across 2,280 items, verified by re-reading the selection back from Plex.
+- **`scripts/plex-select-newest-upload.ts`** — where an item carries SEVERAL uploads (the
+  owner replaced a poster and Plex kept both), selects the most recently uploaded one,
+  dating them from the files in Plex's own metadata bundle since the API exposes no date.
+  Ran 2026-08-18: 19 titles corrected, including Alien, where the first restore had
+  reinstated a 2023 poster over the 2025 replacement.
+- **`scripts/plex-restore-season-artwork.ts`** — restores custom SEASON posters the sweep
+  deselected. Ran 2026-08-19: 478 restored, 1,424 already correct, 0 failures.
 - **`scripts/plex-rename-repair-missubbed.ts`** — re-homes subtitles the language-only bug
   filed against the wrong episode, using the original name the disambiguator preserved, and
   only when the rightful episode's media file is in the same directory. Ran 2026-08-18:

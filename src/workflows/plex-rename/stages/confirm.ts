@@ -136,22 +136,50 @@ export async function runConfirm(ctx: JobContext, opts: ConfirmOverrides = {}): 
    * chosen — the 2026-08 sweep cost ~103 films their custom posters that way.
    * Best-effort and never fatal: artwork is cosmetic, confirmation is not.
    */
+  const restoreOne = async (rk: string, kind: ArtworkKind, wanted: string | undefined, label: string): Promise<void> => {
+    try {
+      const candidates = await getArtwork(rk, kind);
+      // Prefer the exact recorded selection; fall back to an available upload for
+      // items renamed before capture existed (that fallback only ever switches TO
+      // an upload, and never picks between several, so it cannot override a
+      // deliberate choice).
+      const target = candidateToRestore(candidates, wanted) ?? (wanted ? null : orphanedUpload(candidates));
+      if (!target) return;
+      await setArtwork(rk, kind, target.ratingKey);
+      artworkRestored++;
+      ctx.log(`      ↺ restored ${kind} on ${label} — Plex had reverted it to the agent default`);
+    } catch (err) {
+      ctx.log(`      (could not restore ${kind} on ${label}: ${err instanceof Error ? err.message : err})`, 'warn');
+    }
+  };
+
+  // A season/show is shared by every episode of a batch: repair it once per run.
+  const repairedParents = new Set<string>();
+
   const restoreArtwork = async (ratingKey: string, apply: ApplyDetail, label: string): Promise<void> => {
-    for (const kind of ['poster', 'art'] as const) {
-      const wanted = kind === 'poster' ? apply.artwork?.poster : apply.artwork?.art;
-      try {
-        const candidates = await getArtwork(ratingKey, kind);
-        // Prefer the exact recorded selection; fall back to an available upload for
-        // items renamed before capture existed (that fallback only ever switches TO
-        // an upload, so it cannot override a deliberate agent-artwork preference).
-        const target = candidateToRestore(candidates, wanted) ?? (wanted ? null : orphanedUpload(candidates));
-        if (!target) continue;
-        await setArtwork(ratingKey, kind, target.ratingKey);
-        artworkRestored++;
-        ctx.log(`      ↺ restored ${kind} on ${label} — Plex had reverted it to the agent default`);
-      } catch (err) {
-        ctx.log(`      (could not restore ${kind} on ${label}: ${err instanceof Error ? err.message : err})`, 'warn');
+    await restoreOne(ratingKey, 'poster', apply.artwork?.poster, label);
+    await restoreOne(ratingKey, 'art', apply.artwork?.art, label);
+
+    // TV: the curated artwork lives on the season and show, not the episode, and
+    // those items are rebuilt too. Their ratingKeys may have changed, so resolve
+    // them from the item as it stands NOW rather than trusting the pre-move values.
+    const wantSeason = apply.artwork?.season?.poster;
+    const wantShow = apply.artwork?.show?.poster;
+    if (!wantSeason && !wantShow) return;
+    try {
+      const current = await doFetch(ratingKey);
+      const seasonKey = current?.parentRatingKey;
+      const showKey = current?.grandparentRatingKey;
+      if (wantSeason && seasonKey && !repairedParents.has(`s${seasonKey}`)) {
+        repairedParents.add(`s${seasonKey}`);
+        await restoreOne(seasonKey, 'poster', wantSeason, `${label} (season)`);
       }
+      if (wantShow && showKey && !repairedParents.has(`g${showKey}`)) {
+        repairedParents.add(`g${showKey}`);
+        await restoreOne(showKey, 'poster', wantShow, `${label} (show)`);
+      }
+    } catch (err) {
+      ctx.log(`      (could not resolve season/show for ${label}: ${err instanceof Error ? err.message : err})`, 'warn');
     }
   };
 

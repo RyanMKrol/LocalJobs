@@ -287,3 +287,66 @@ test('confirm: leaves artwork alone when it is already what was recorded, and ne
   });
   assert.equal(confirmOf(broken.itemKey).status, 'success', 'artwork is cosmetic; confirmation is not');
 });
+
+// ── Season/show artwork continuity (2026-08-19) ───────────────────────────────
+// The moved item is an EPISODE, and episodes carry no uploads: the artwork an
+// owner curates lives on the season and show, which Plex rebuilds when their
+// folders change. Capturing only the episode protected nothing on TV, which cost
+// 478 hand-picked season posters.
+
+const SEASON_UP = 'upload://posters/seasons/2/aabbcc';
+const SHOW_UP = 'upload://posters/ddeeff';
+
+test('confirm: restores the season and show posters an episode rename disturbed', async () => {
+  const row = applyRow({
+    artwork: { season: { index: 2, poster: 'upload:seasons/2/aabbcc' }, show: { poster: 'upload:ddeeff' } },
+  });
+  const set: { rk: string; key: string }[] = [];
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => [{ itemKey: row.itemKey, detail: row.detail }],
+    // The episode confirms at its own key, and reports its CURRENT season/show,
+    // whose keys differ from before because Plex rebuilt them.
+    fetchItemDetail: async () => ({
+      ...plexItem(row.ratingKey, row.partId, TO),
+      parentRatingKey: 'newSeasonRk',
+      grandparentRatingKey: 'newShowRk',
+    }),
+    fetchArtwork: async (rk) =>
+      rk === 'newSeasonRk'
+        ? [{ key: '/library/metadata/newSeasonRk/file?url=metadata%3A%2F%2Fposters%2Fagent', ratingKey: 'metadata://posters/agent', selected: true },
+           { key: '/library/metadata/newSeasonRk/file?url=upload%3A%2F%2Fposters%2Fseasons%2F2%2Faabbcc', ratingKey: SEASON_UP, selected: false }]
+        : rk === 'newShowRk'
+          ? [{ key: '/library/metadata/newShowRk/file?url=metadata%3A%2F%2Fposters%2Fagent', ratingKey: 'metadata://posters/agent', selected: true },
+             { key: '/library/metadata/newShowRk/file?url=upload%3A%2F%2Fposters%2Fddeeff', ratingKey: SHOW_UP, selected: false }]
+          : [],
+    setArtwork: async (rk, _kind, key) => {
+      set.push({ rk, key });
+    },
+    now: () => NOW,
+  });
+  assert.equal(confirmOf(row.itemKey).status, 'success');
+  assert.deepEqual(set, [
+    { rk: 'newSeasonRk', key: SEASON_UP },
+    { rk: 'newShowRk', key: SHOW_UP },
+  ], 'both parents repaired, at their NEW keys');
+});
+
+test('confirm: repairs a shared season only once per run, however many episodes moved', async () => {
+  const rows = [1, 2, 3].map(() =>
+    applyRow({ artwork: { season: { index: 2, poster: 'upload:seasons/2/aabbcc' } } }),
+  );
+  let seasonWrites = 0;
+  await runConfirm(fakeCtx(), {
+    readApplyRows: () => rows.map((r) => ({ itemKey: r.itemKey, detail: r.detail })),
+    fetchItemDetail: async (rk) => ({ ...plexItem(String(rk), 1, TO), parentRatingKey: 'sharedSeason' }),
+    fetchArtwork: async (rk) =>
+      rk === 'sharedSeason'
+        ? [{ key: '/library/metadata/sharedSeason/file?url=upload%3A%2F%2Fposters%2Fseasons%2F2%2Faabbcc', ratingKey: SEASON_UP, selected: false }]
+        : [],
+    setArtwork: async (rk) => {
+      if (rk === 'sharedSeason') seasonWrites++;
+    },
+    now: () => NOW,
+  });
+  assert.equal(seasonWrites, 1, 'three episodes of one season cost one season write');
+});

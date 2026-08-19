@@ -77,6 +77,16 @@ export async function fetchArtworkCandidates(
     .map((m) => ({ key: m.key, ratingKey: String(m.ratingKey ?? m.key), selected: m.selected === true }));
 }
 
+/** A show's seasons (ratingKey + season number), for locating an episode's parent. */
+export async function fetchChildren(ratingKey: string, fetchPlex: PlexFetcher = plexGet): Promise<{ ratingKey: string; index?: number }[]> {
+  const res = await callService('plex', () =>
+    fetchPlex<PlexListResponse<{ ratingKey?: string; index?: number }>>(`/library/metadata/${ratingKey}/children`),
+  );
+  return (res.MediaContainer.Metadata ?? [])
+    .filter((m): m is { ratingKey: string; index?: number } => typeof m.ratingKey === 'string')
+    .map((m) => ({ ratingKey: m.ratingKey, index: m.index }));
+}
+
 /**
  * Select an artwork candidate on an item. A MUTATION of Plex metadata only —
  * it never touches a file, and re-selecting an image the owner already had is

@@ -9,6 +9,7 @@ import { analyzeJournal, findLatestJournal, JournalWriter, readJournal, type Ite
 import { selectedIdentity, type ArtworkKind, type ArtworkSelection } from '../artwork.js';
 import {
   fetchArtworkCandidates,
+  fetchChildren,
   mountHealthy,
   plexToLocal,
   probePlexHealth,
@@ -51,6 +52,8 @@ export interface ApplyOverrides {
   refreshSection?: typeof plexRefreshSection;
   /** Read an item's artwork candidates (injected in tests; live Plex by default). */
   fetchArtwork?: (ratingKey: string, kind: ArtworkKind) => Promise<{ key: string; ratingKey: string; selected: boolean }[]>;
+  /** List a show's seasons, to find the one an episode belongs to. */
+  fetchChildren?: (ratingKey: string) => Promise<{ ratingKey: string; index?: number }[]>;
   cap?: typeof capStatus;
   record?: typeof recordUsage;
   /** Whether a Butler DB backup was already triggered today (injectable for tests). */
@@ -107,6 +110,22 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
   const triggerBackup = opts.triggerBackup ?? triggerButlerBackup;
   const refreshSection = opts.refreshSection ?? plexRefreshSection;
   const getArtwork = opts.fetchArtwork ?? ((rk: string, kind: ArtworkKind) => fetchArtworkCandidates(rk, kind));
+  const listChildren = opts.fetchChildren ?? fetchChildren;
+  // Per-run caches: a season/show is shared by every episode in a batch.
+  const posterCache = new Map<string, string | null>();
+  const seasonKeyCache = new Map<string, string | null>();
+  const cachedSelectedPoster = async (rk: string): Promise<string | undefined> => {
+    if (!posterCache.has(rk)) posterCache.set(rk, selectedIdentity(await getArtwork(rk, 'poster')));
+    return posterCache.get(rk) ?? undefined;
+  };
+  const cachedSeasonKey = async (showKey: string, index: number): Promise<string | undefined> => {
+    const k = `${showKey}::${index}`;
+    if (!seasonKeyCache.has(k)) {
+      const kids = await listChildren(showKey);
+      seasonKeyCache.set(k, kids.find((c) => c.index === index)?.ratingKey ?? null);
+    }
+    return seasonKeyCache.get(k) ?? undefined;
+  };
   const cap = opts.cap ?? capStatus;
   const record = opts.record ?? recordUsage;
   const butlerAlreadyToday = opts.butlerAlreadyToday ?? (() => usageToday(BUTLER_METER) > 0);
@@ -398,12 +417,31 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
     // entry and build a fresh one when the folder changes, which reverts to the
     // agent's default — confirm re-selects what was showing here. Best-effort:
     // artwork continuity must never block or fail a move.
+    //
+    // For TV this MUST reach past the episode. The moved item is an episode, and
+    // episodes carry no uploads; the curated artwork lives on the season and show,
+    // which are rebuilt too when their folders change. Season/show reads are cached
+    // per run, so a 500-episode batch costs a couple of calls per show, not per file.
     let artwork: ArtworkSelection | undefined;
     try {
       const [posters, arts] = await Promise.all([getArtwork(ratingKey, 'poster'), getArtwork(ratingKey, 'art')]);
       const poster = selectedIdentity(posters) ?? undefined;
       const art = selectedIdentity(arts) ?? undefined;
       if (poster || art) artwork = { poster, art };
+
+      const showKey = discover?.show?.ratingKey;
+      const seasonIndex = discover?.episodes?.[0]?.season;
+      if (showKey) {
+        const showPoster = await cachedSelectedPoster(showKey);
+        if (showPoster) artwork = { ...(artwork ?? {}), show: { poster: showPoster } };
+        if (seasonIndex !== undefined) {
+          const seasonKey = await cachedSeasonKey(showKey, seasonIndex);
+          if (seasonKey) {
+            const seasonPoster = await cachedSelectedPoster(seasonKey);
+            if (seasonPoster) artwork = { ...(artwork ?? {}), season: { index: seasonIndex, poster: seasonPoster } };
+          }
+        }
+      }
     } catch (err) {
       ctx.log(`    (could not read current artwork selection: ${err instanceof Error ? err.message : err})`, 'warn');
     }
