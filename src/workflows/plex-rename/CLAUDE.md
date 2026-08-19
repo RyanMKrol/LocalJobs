@@ -213,6 +213,30 @@ keeping, none of which are visible from the code alone:
    language we recognise (`11_Français (Canadien).srt`) is still left behind and reported: the
    engine reports rather than guesses, always.
 
+## Case-only sidecars deadlocked apply (2026-08-19)
+
+Four items (3 Venture Bros, 1 Simpsons) soft-skipped with `sidecar target appeared since
+verify` on every run for days. All four were case-only media renames (`Any Which Way But
+Zeus` → `but Zeus`) whose `.eng.srt` needed the same case fix.
+
+`verify` was right: its sidecar-collision pass skips a move whose `pathKey(from) ===
+pathKey(to)`, because on a case-insensitive share those are one file and there is no
+collision. `apply`'s moment-of-truth re-check then re-tested the same sidecars with a bare
+`fs.stat(localTo)` and no such exemption — the share resolved that path back to the SOURCE
+file, so apply concluded a target had appeared and soft-skipped the whole item. Forever:
+nothing about the next run differs. The media file's own check never had this bug (it has
+carried `!verify.caseOnly` all along), and the op-builder already computed per-sidecar
+`caseOnly` and picked the right strategy, so the entire downstream pathway was correct —
+only the gate in front of it disagreed. apply now applies the same exemption.
+
+Worth noting for anything similar: **a check that opens the door must use the same equality
+the checks behind it use.** `pathKey` exists precisely because these shares fold case; a raw
+path comparison or a bare `stat` anywhere in a gate is the bug shape to look for.
+
+The regression test needed the in-memory disk to actually behave like the share, so
+`makeMemFs` gained a `caseInsensitive` option (see Testing) — without it the test passes on
+the broken code, because an exact-string fs never reproduces the collision.
+
 ## Companion files: what moves with the media, and the attribution rule
 
 Verified against the live library (2026-08-18) — every file type present is accounted for:
@@ -326,7 +350,9 @@ separate `plex-library-guard` workflow (the independent deletion detector) lande
 
 Every stage's `run*()` takes injectable seams (Plex fetchers / `ReadFsSeam`/`WriteFsSeam` /
 ledger readers / quota / `now()`) — tests never touch a live Plex or the real disk (`memfs.ts` is
-the shared in-memory write seam; journals go to per-test temp dirs). `naming.test.ts` is the
+the shared in-memory write seam; journals go to per-test temp dirs). `makeMemFs` is
+exact-string by default; pass `{ caseInsensitive: true }` to make it fold case like the real
+SMB shares, which is the only way a case-only rename test can fail on broken code. `naming.test.ts` is the
 table-driven engine suite (real-library-shaped cases: anime brackets, Steins;Gate, loose movies,
 date-based shows, specials, e100, collisions). Stage tests cover: snapshot re-marking (discover),
 decision recomputation + collision downgrades (plan), every verify ineligibility reason including

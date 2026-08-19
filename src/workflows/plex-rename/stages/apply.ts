@@ -317,8 +317,17 @@ export async function runApply(ctx: JobContext, opts: ApplyOverrides = {}): Prom
         }
       }
       for (const s of verify.sidecars ?? []) {
+        const localFrom = plexToLocal(s.from, pathMap);
         const localTo = plexToLocal(s.to, pathMap);
-        if (localTo && (await fs.stat(localTo))) return `sidecar target appeared since verify: ${s.to}`;
+        if (!localTo) continue;
+        // A case-only sidecar rename resolves to the SAME file on a
+        // case-insensitive share, so its target ALWAYS stats as present — that
+        // is the source itself, not a collision. The media check above exempts
+        // case-only for exactly this reason (see !verify.caseOnly), as does
+        // verify's own sidecar-collision pass; without the same exemption here
+        // a case-only sidecar soft-skips its item on every run, forever.
+        if (localFrom && pathKey(localFrom) === pathKey(localTo)) continue;
+        if (await fs.stat(localTo)) return `sidecar target appeared since verify: ${s.to}`;
       }
       return null;
     };

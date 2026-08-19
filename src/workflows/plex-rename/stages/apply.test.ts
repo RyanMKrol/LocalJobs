@@ -329,6 +329,40 @@ test('moment-of-truth re-checks soft-skip (never fail) on drift: size change, ta
   assert.equal(fs.files.get(cTarget.verify.localTo!), 'OCCUPIED', 'occupied target untouched');
 });
 
+test('case-only sidecar is not mistaken for a collision (on a case-insensitive share)', async () => {
+  // The real deadlock this guards: a case-only media rename whose sidecar is
+  // case-only too. On the SMB shares this workflow writes to, the sidecar's
+  // target path resolves to the SOURCE file, so a bare existence check reads it
+  // as "target appeared since verify" and soft-skips the item on EVERY run,
+  // forever — four episodes sat stuck this way for days. verify already exempts
+  // case-only sidecars from its collision pass; apply must agree.
+  const dir = '/volume1/Share/TV/Show (2004) {tvdb-1}/Season 04';
+  const c = candidate({
+    from: `${dir}/Show (2004) - s04e11 - Any Which Way But Zeus.mkv`,
+    to: `${dir}/Show (2004) - s04e11 - Any Which Way but Zeus.mkv`,
+    caseOnly: true,
+  });
+  c.verify.sidecars = [
+    { from: c.from.replace('.mkv', '.eng.srt'), to: c.to.replace('.mkv', '.eng.srt'), role: 'sidecar' },
+  ];
+  const fs = makeMemFs(
+    {
+      ...MOUNT,
+      [c.verify.localFrom!]: 'BYTES-11!!!',
+      [c.verify.localFrom!.replace('.mkv', '.eng.srt')]: 'SUBTITLE',
+    },
+    { caseInsensitive: true },
+  );
+  const env = makeEnv(fs, [c]);
+  await runApply(fakeCtx(), env.overrides);
+
+  assert.equal(getWorkItem('plex-rename-apply', c.itemKey)?.status, 'success', 'applies instead of soft-skipping forever');
+  assert.equal(fs.files.get(c.verify.localTo!), 'BYTES-11!!!', 'media stored under the new casing');
+  assert.equal(fs.files.has(c.verify.localFrom!), false, 'old casing gone');
+  assert.equal(fs.files.get(c.verify.localTo!.replace('.mkv', '.eng.srt')), 'SUBTITLE', 'sidecar recased in lockstep');
+  assert.equal(fs.files.has(c.verify.localFrom!.replace('.mkv', '.eng.srt')), false, 'old sidecar casing gone');
+});
+
 test('volume-overburden guard: a move that would push the target volume past the cap soft-skips', async () => {
   // Under the cap: volume 60% used with plenty of free space → the move proceeds.
   const cUnder = candidate({}, 'movie', { crossShare: true });

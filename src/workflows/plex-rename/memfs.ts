@@ -14,6 +14,13 @@ export interface MemFsOptions {
   /** Volume free/total bytes reported for every path (default: effectively unlimited + empty). */
   freeBytes?: number;
   totalBytes?: number;
+  /**
+   * Resolve lookups by `pathKey` (NFC + case-folded) instead of exact string —
+   * i.e. behave like the SMB shares this workflow actually writes to, where
+   * `Foo.srt` and `foo.srt` are one file. Off by default so existing tests keep
+   * their exact-string semantics; turn it on to exercise case-only renames.
+   */
+  caseInsensitive?: boolean;
 }
 
 export interface MemFs extends WriteFsSeam {
@@ -42,53 +49,77 @@ export function makeMemFs(initial: Record<string, string>, opts: MemFsOptions = 
     }
   };
   for (const f of files.keys()) addAncestors(f);
-  const isDir = (p: string) => dirs.has(p) || [...files.keys()].some((f) => f.startsWith(`${p}/`));
+  // The lookup key for every path. Identity unless caseInsensitive is set, so
+  // the exact-string behaviour every existing test relies on is unchanged.
+  const key = (p: string) => (opts.caseInsensitive ? p.normalize('NFC').toLowerCase() : p);
+  /** The stored path a lookup lands on — itself, unless a case-variant is what exists. */
+  const resolveFile = (p: string) => {
+    if (files.has(p) || !opts.caseInsensitive) return p;
+    const k = key(p);
+    for (const existing of files.keys()) if (key(existing) === k) return existing;
+    return p;
+  };
+  /** Write at exactly `p`, replacing any case-variant already stored (as a real rename does). */
+  const setFile = (p: string, content: string) => {
+    const existing = resolveFile(p);
+    if (existing !== p) files.delete(existing);
+    files.set(p, content);
+  };
+  const isDir = (p: string) => {
+    const k = key(p);
+    for (const d of dirs) if (key(d) === k) return true;
+    for (const f of files.keys()) if (key(f).startsWith(`${k}/`)) return true;
+    return false;
+  };
 
   return {
     files,
     oplog,
     async stat(path): Promise<FsStat | null> {
-      const f = files.get(path);
-      if (f !== undefined) return { isFile: true, isDirectory: false, size: f.length, mtimeMs: opts.mtimes?.[path] ?? 0 };
+      const stored = resolveFile(path);
+      const f = files.get(stored);
+      if (f !== undefined) return { isFile: true, isDirectory: false, size: f.length, mtimeMs: opts.mtimes?.[stored] ?? 0 };
       if (isDir(path)) return { isFile: false, isDirectory: true, size: 0, mtimeMs: 0 };
       return null;
     },
     async readdir(path): Promise<FsDirEntry[] | null> {
       if (!isDir(path)) return null;
       const names = new Map<string, boolean>();
+      const k = key(path);
       for (const f of files.keys()) {
-        if (!f.startsWith(`${path}/`)) continue;
+        if (!key(f).startsWith(`${k}/`)) continue;
         const rest = f.slice(path.length + 1);
         names.set(rest.split('/')[0], rest.includes('/'));
       }
       return [...names.entries()].map(([name, dir]) => ({ name, isDir: dir }));
     },
     async readFile(path) {
-      return files.get(path) ?? null;
+      return files.get(resolveFile(path)) ?? null;
     },
     async copyStreamHashed(src, dest) {
       oplog.push(`copy:${src}→${dest}`);
-      const content = files.get(src);
+      const content = files.get(resolveFile(src));
       if (content === undefined) throw Object.assign(new Error(`ENOENT: ${src}`), { code: 'ENOENT' });
-      if (files.has(dest)) throw Object.assign(new Error(`EEXIST: ${dest}`), { code: 'EEXIST' });
+      if (files.has(resolveFile(dest))) throw Object.assign(new Error(`EEXIST: ${dest}`), { code: 'EEXIST' });
       files.set(dest, opts.corruptCopies ? `${content}#CORRUPT` : content);
       return { sha256: sha(content), bytes: content.length };
     },
     async hashFile(path) {
-      const content = files.get(path);
+      const content = files.get(resolveFile(path));
       if (content === undefined) return null;
       return { sha256: sha(content), bytes: content.length };
     },
     async rename(from, to) {
       oplog.push(`rename:${from}→${to}`);
-      const content = files.get(from);
+      const stored = resolveFile(from);
+      const content = files.get(stored);
       if (content === undefined) throw Object.assign(new Error(`ENOENT: ${from}`), { code: 'ENOENT' });
-      files.delete(from);
-      files.set(to, content);
+      files.delete(stored);
+      setFile(to, content);
     },
     async unlink(path) {
       oplog.push(`unlink:${path}`);
-      if (!files.delete(path)) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+      if (!files.delete(resolveFile(path))) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
     },
     async mkdirp(path) {
       oplog.push(`mkdirp:${path}`);
@@ -97,7 +128,7 @@ export function makeMemFs(initial: Record<string, string>, opts: MemFsOptions = 
     },
     async writeFile(path, content) {
       oplog.push(`write:${path}`);
-      files.set(path, content);
+      setFile(path, content);
     },
     async volumeUsage() {
       const free = opts.freeBytes ?? Number.MAX_SAFE_INTEGER / 2;
@@ -105,13 +136,16 @@ export function makeMemFs(initial: Record<string, string>, opts: MemFsOptions = 
     },
     async rmdirIfEmpty(path) {
       oplog.push(`rmdir-if-empty:${path}`);
-      if (files.has(path)) throw new Error(`not a directory: ${path}`);
+      if (files.has(resolveFile(path))) throw new Error(`not a directory: ${path}`);
+      const k = key(path);
       const hasContent =
-        [...files.keys()].some((f) => f.startsWith(`${path}/`)) || [...dirs].some((d) => d.startsWith(`${path}/`));
+        [...files.keys()].some((f) => key(f).startsWith(`${k}/`)) || [...dirs].some((d) => key(d).startsWith(`${k}/`));
       if (hasContent) return 'not-empty';
-      if (dirs.has(path)) {
-        dirs.delete(path);
-        return 'removed';
+      for (const d of dirs) {
+        if (key(d) === k) {
+          dirs.delete(d);
+          return 'removed';
+        }
       }
       return 'missing';
     },
