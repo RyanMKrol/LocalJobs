@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
-  hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop,
+  hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop, jobSoftStoppedThisRun, workflowRunItemTally, workflowStuckCount,
   ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoredWorkItemDetails, ignoreSurfacedItem, ignoreSurfacedItems, unignoreSurfacedItem, unignoreSurfacedItems, isWorkItemDone,
   listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, stageIoLists, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
@@ -1507,3 +1507,79 @@ console.log('  ✓ T478: serviceCacheCounts/clearServiceCache scope correctly an
   assert.equal(unknownRows.length, 0, 'unknown service returns empty array');
 }
 console.log('  ✓ T609: listServiceCacheRows lists cache rows ordered by cached_at DESC, filtered by service');
+
+// ---------------------------------------------------------------------------
+// Soft-stop vs forward progress: a 'skipped' ledger row is NOT an advance.
+// This is the store-level half of the fix for the places incident, where a stage
+// that completed zero items looked productive purely because its quota soft-stop
+// wrote one 'skipped' row.
+// ---------------------------------------------------------------------------
+{
+  const STALL_JOB = 'stall-job';
+  const OTHER_JOB = 'stall-other';
+  syncJob({ name: STALL_JOB, run: async () => {} });
+  syncJob({ name: OTHER_JOB, run: async () => {} });
+  syncWorkflow({ name: 'stall-wf', jobs: [{ job: STALL_JOB }, { job: OTHER_JOB, dependsOn: [STALL_JOB] }] });
+
+  // A run whose ONLY ledger write is a soft stop: it had work and completed none.
+  const stallRun = createWorkflowRun('stall-wf', 'schedule');
+  markWorkItem(STALL_JOB, 'p1', 'skipped', { rootKey: 'p1', workflowRunId: stallRun });
+  assert.equal(
+    hasJobAdvancedAnyItem(stallRun, STALL_JOB), false,
+    'a lone skipped row is NOT forward progress (this is the bug that hid the Gemini outage)',
+  );
+  assert.equal(jobSoftStoppedThisRun(stallRun, STALL_JOB), true, 'the soft stop itself IS detected');
+
+  // A run that completed real work and THEN soft-stopped is genuine progress.
+  const mixedRun = createWorkflowRun('stall-wf', 'schedule');
+  markWorkItem(STALL_JOB, 'p2', 'success', { rootKey: 'p2', workflowRunId: mixedRun });
+  markWorkItem(STALL_JOB, 'p3', 'skipped', { rootKey: 'p3', workflowRunId: mixedRun });
+  assert.equal(hasJobAdvancedAnyItem(mixedRun, STALL_JOB), true, 'success + skipped is still forward progress');
+  assert.equal(jobSoftStoppedThisRun(mixedRun, STALL_JOB), true, 'and the soft stop is still reported');
+
+  // A stage that touched nothing at all soft-stopped nothing either.
+  assert.equal(jobSoftStoppedThisRun(mixedRun, OTHER_JOB), false, 'a job that wrote nothing did not soft stop');
+  assert.equal(hasJobAdvancedAnyItem(mixedRun, OTHER_JOB), false, 'and it made no progress');
+
+  // A failed item is forward progress: it was genuinely attempted.
+  const failRun = createWorkflowRun('stall-wf', 'schedule');
+  markWorkItem(STALL_JOB, 'p4', 'failed', { rootKey: 'p4', workflowRunId: failRun });
+  assert.equal(hasJobAdvancedAnyItem(failRun, STALL_JOB), true, 'a failed attempt still counts as advancing');
+  assert.equal(jobSoftStoppedThisRun(failRun, STALL_JOB), false, 'a failure is not a soft stop');
+}
+console.log('  ✓ soft-stop skips are not forward progress; jobSoftStoppedThisRun detects them');
+
+// ---------------------------------------------------------------------------
+// workflowRunItemTally + workflowStuckCount — the numbers the aggregate push carries.
+// ---------------------------------------------------------------------------
+{
+  const TJOB = 'tally-job';
+  syncJob({ name: TJOB, run: async () => {} });
+  syncWorkflow({ name: 'tally-wf', jobs: [{ job: TJOB }] });
+
+  const emptyRun = createWorkflowRun('tally-wf', 'schedule');
+  assert.deepEqual(
+    workflowRunItemTally(emptyRun), { done: 0, failed: 0, skipped: 0 },
+    'a run that touched nothing tallies all zeroes',
+  );
+
+  const tRun = createWorkflowRun('tally-wf', 'schedule');
+  markWorkItem(TJOB, 'a', 'success', { workflowRunId: tRun });
+  markWorkItem(TJOB, 'b', 'success', { workflowRunId: tRun });
+  markWorkItem(TJOB, 'c', 'failed', { workflowRunId: tRun });
+  markWorkItem(TJOB, 'd', 'skipped', { workflowRunId: tRun });
+  assert.deepEqual(
+    workflowRunItemTally(tRun), { done: 2, failed: 1, skipped: 1 },
+    'tally counts done/failed/skipped for the items THIS run touched',
+  );
+
+  // Items from another run are not counted.
+  assert.deepEqual(workflowRunItemTally(emptyRun), { done: 0, failed: 0, skipped: 0 }, 'tally is per-run');
+
+  // Stuck = failed AND out of retries, across the workflow's member jobs.
+  assert.equal(workflowStuckCount('tally-wf'), 0, 'one failed attempt is not yet stuck');
+  markWorkItem(TJOB, 'c', 'failed', { attempts: 4, workflowRunId: tRun });
+  assert.equal(workflowStuckCount('tally-wf'), 1, 'a failed item at max attempts is stuck');
+  assert.equal(workflowStuckCount('no-such-wf'), 0, 'an unknown workflow has no stuck items');
+}
+console.log('  ✓ workflowRunItemTally + workflowStuckCount report per-run and standing counts');

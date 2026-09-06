@@ -86,14 +86,48 @@ export function setRunNoop(runId: string): void {
 }
 
 /**
- * Did the given job advance any work items during this specific workflow run?
- * Checks `work_item_runs` for any row with (workflow_run_id, job_name). Returns
- * false when the job ran but called no `markWorkItem` — i.e. nothing to do.
- * Used by the workflow executor to detect noop stages (T258).
+ * Did the given job make FORWARD PROGRESS on any work item during this specific
+ * workflow run? Checks `work_item_runs` for a row with (workflow_run_id,
+ * job_name) whose ledger item did not end the run in `'skipped'`.
+ *
+ * A `'skipped'` row is a deliberate SOFT STOP, not an advance: a stage that hits
+ * a quota/rate ceiling records the item it was about to attempt as `'skipped'`
+ * with `attempts - 1` precisely so the attempt is NOT counted (see the quota
+ * branches in the places stages). Counting that row as an advance made a stage
+ * that completed ZERO items look productive — the hole that let the places
+ * `enrich-with-llm` stage report success for 18 consecutive nights while Gemini
+ * refused every call. Excluding it means such a run is correctly seen as a noop.
+ *
+ * Returns false when the job ran but called no `markWorkItem`, or when its only
+ * ledger writes this run were soft-stop skips. Used by the workflow executor to
+ * detect noop and STALLED stages (T258).
  */
 export function hasJobAdvancedAnyItem(workflowRunId: string, jobName: string): boolean {
-  return !!db.prepare('SELECT 1 FROM work_item_runs WHERE workflow_run_id = ? AND job_name = ? LIMIT 1')
-    .get(workflowRunId, jobName);
+  return !!db.prepare(`
+    SELECT 1 FROM work_item_runs r
+    JOIN work_items w ON w.job_name = r.job_name AND w.item_key = r.item_key
+    WHERE r.workflow_run_id = ? AND r.job_name = ? AND w.status <> 'skipped'
+    LIMIT 1
+  `).get(workflowRunId, jobName);
+}
+
+/**
+ * Did the given job SOFT STOP during this workflow run — i.e. record at least one
+ * `'skipped'` work item? A soft stop is the stage saying "I had work queued and
+ * deliberately stopped early" (quota reached, rate limit, upstream refusal).
+ *
+ * Paired with `hasJobAdvancedAnyItem` this separates the two very different noop
+ * shapes the executor must not confuse:
+ *   • no advance, no soft stop  → genuinely nothing to do (benign, `'skipped'`)
+ *   • no advance, WITH soft stop → STALLED: it had work and completed none of it
+ */
+export function jobSoftStoppedThisRun(workflowRunId: string, jobName: string): boolean {
+  return !!db.prepare(`
+    SELECT 1 FROM work_item_runs r
+    JOIN work_items w ON w.job_name = r.job_name AND w.item_key = r.item_key
+    WHERE r.workflow_run_id = ? AND r.job_name = ? AND w.status = 'skipped'
+    LIMIT 1
+  `).get(workflowRunId, jobName);
 }
 
 /**
@@ -105,6 +139,41 @@ export function hasJobAdvancedAnyItem(workflowRunId: string, jobName: string): b
 export function workflowRunAdvancedAnyItem(workflowRunId: string): boolean {
   return !!db.prepare('SELECT 1 FROM work_item_runs WHERE workflow_run_id = ? LIMIT 1')
     .get(workflowRunId);
+}
+
+/** Per-status tally of the work items a whole workflow run touched. */
+export interface WorkflowRunItemTally {
+  /** Items completed successfully this run. */
+  done: number;
+  /** Items that genuinely failed this run. */
+  failed: number;
+  /** Items recorded as a soft stop (quota/rate ceiling) this run. */
+  skipped: number;
+}
+
+/**
+ * Tally, by current ledger status, every work item this workflow run touched.
+ * Powers the aggregate run notification body (T189 sends ONE push per run, and
+ * before this it carried only the stage roll-up string — so a run that processed
+ * nothing read exactly like a run that processed hundreds). Counting is by the
+ * item's CURRENT status, which for a just-finished run is the status this run
+ * wrote.
+ */
+export function workflowRunItemTally(workflowRunId: string): WorkflowRunItemTally {
+  const rows = db.prepare(`
+    SELECT w.status AS status, COUNT(*) AS n
+    FROM work_item_runs r
+    JOIN work_items w ON w.job_name = r.job_name AND w.item_key = r.item_key
+    WHERE r.workflow_run_id = ?
+    GROUP BY w.status
+  `).all(workflowRunId) as { status: string; n: number }[];
+  const tally: WorkflowRunItemTally = { done: 0, failed: 0, skipped: 0 };
+  for (const { status, n } of rows) {
+    if (status === 'success') tally.done += n;
+    else if (status === 'failed') tally.failed += n;
+    else if (status === 'skipped') tally.skipped += n;
+  }
+  return tally;
 }
 
 export function addLog(runId: string, message: string, level: LogLevel = 'info'): void {

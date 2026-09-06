@@ -754,3 +754,17 @@ export function stuckCount(jobName: string, minAttempts = 4): number {
     "SELECT COUNT(*) AS n FROM work_items WHERE job_name = ? AND status = 'failed' AND attempts >= ?",
   ).get(jobName, minAttempts) as { n: number }).n;
 }
+
+/**
+ * How many items have given up (failed, out of retries) across every member job
+ * of one workflow. Used by the aggregate run notification so a push can carry the
+ * stuck heads-up the notifier has always claimed to send, without the caller
+ * having to enumerate member jobs itself.
+ */
+export function workflowStuckCount(workflowName: string, minAttempts = 4): number {
+  return (db.prepare(`
+    SELECT COUNT(*) AS n FROM work_items
+    WHERE status = 'failed' AND attempts >= ?
+      AND job_name IN (SELECT job_name FROM workflow_jobs WHERE workflow_name = ?)
+  `).get(minAttempts, workflowName) as { n: number }).n;
+}
