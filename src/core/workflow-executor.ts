@@ -7,6 +7,7 @@ import {
   getWorkflow,
   hasActiveWorkflowRun,
   hasJobAdvancedAnyItem,
+  jobSoftStoppedThisRun,
   noForwardProgress,
   recordGateFailure,
   recordSkippedRun,
@@ -376,6 +377,8 @@ async function runWorkflowInner(
   // Track which member jobs were detected as noops this run (succeeded but advanced
   // no items). Used by onSettle to log "skipped (noop)" instead of "→ success".
   const noopJobs = new Set<string>();
+  /** Stages that soft-stopped having completed ZERO items this run (see below). */
+  const stalledJobs = new Set<string>();
 
   let lastStatuses = new Map<string, RunStatus>();
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
@@ -419,7 +422,22 @@ async function runWorkflowInner(
         if (status === 'success' && runId && isLimitableWorkflow && !hasJobAdvancedAnyItem(workflowRunId, job)) {
           setRunNoop(runId);
           noopJobs.add(job);
-          log(`⊙ ${job} → skipped (nothing to do — all items already processed or no items in scope)`, 'warn');
+          // Two very different shapes of "advanced nothing", and conflating them is
+          // what let a hard-broken stage report success indefinitely:
+          //   • soft-stopped → it HAD work queued and completed none of it. That is
+          //     a STALL (an upstream refusal, an exhausted ceiling), not a quiet
+          //     day, and it must colour the whole run so the push says so.
+          //   • no soft stop → genuinely nothing to do. Benign, stays success.
+          if (jobSoftStoppedThisRun(workflowRunId, job)) {
+            stalledJobs.add(job);
+            log(
+              `⊙ ${job} → STALLED (stopped early having completed 0 items — it had work queued ` +
+              `but an external limit or refusal blocked every one; see the stage log for the cause)`,
+              'warn',
+            );
+          } else {
+            log(`⊙ ${job} → skipped (nothing to do — all items already processed or no items in scope)`, 'warn');
+          }
         }
         return status;
       },
@@ -492,13 +510,29 @@ async function runWorkflowInner(
   // workflowRunAdvancedAnyItem is the authoritative check.
   const statuses = [...lastStatuses.values()];
   const anyRealWork = !isLimitableWorkflow || workflowRunAdvancedAnyItem(workflowRunId);
+  // A STALLED stage (soft-stopped having completed zero items) downgrades an
+  // otherwise-clean run to 'partial'. Every member job genuinely returned
+  // 'success' — it caught its own quota/refusal error and stopped politely — so
+  // without this the run settles 'success' and the push says ✅ even though the
+  // stage achieved nothing. That is exactly how the places workflow reported
+  // success for 18 consecutive nights after its Gemini credits ran dry. 'partial'
+  // maps to ⚠️ + 'high' priority in notifyWorkflow, so a stall actually reaches
+  // the phone instead of blending into the nightly green ticks.
+  const stalled = stalledJobs.size > 0;
   const status: FinalWorkflowRunStatus = controller.signal.aborted
     ? 'cancelled'
     : statuses.length === 0 ? 'failed'
-    : !anyRealWork && statuses.every((s) => s === 'success') ? 'skipped'
-    : statuses.every((s) => s === 'success') ? 'success'
+    : !anyRealWork && statuses.every((s) => s === 'success') && !stalled ? 'skipped'
+    : statuses.every((s) => s === 'success') ? (stalled ? 'partial' : 'success')
     : statuses.some((s) => s === 'success') ? 'partial'
     : 'failed';
+  if (stalled) {
+    log(
+      `Workflow "${def.name}" is PARTIAL — ${stalledJobs.size} stage(s) stalled: ${[...stalledJobs].join(', ')}. ` +
+      `Each stopped early without completing a single item.`,
+      'warn',
+    );
+  }
   finished = true;
   finishWorkflowRun(workflowRunId, status);
   log(status === 'cancelled' ? `Workflow "${def.name}" cancelled` : `Workflow "${def.name}" finished: ${status}`);

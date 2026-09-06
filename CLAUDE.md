@@ -244,6 +244,19 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   burned all 40 cycles re-running all stages for nothing. The early stop logs a warn
   telling you to unstick/ignore the stuck item.
 - **Workflow notifications are aggregate-only (T189, supersedes T112 per-stage dedup).** `runWorkflow` emits ONLY the aggregate `notifyWorkflow(...)` call at the end of a run — there are NO per-stage push notifications (success, failure, timeout, or cycling). The former `notifyStage` per-stage push and the `lastNotifiedStatus` cycling-dedup map were removed in T189. `notifyStage` still exists in `src/core/notifier.ts` but is no longer called by the executor. The dashboard's per-stage run status is unaffected — member runs still record `running`/`succeeded`/`failed`/`cancelled` to the DB exactly as before.
+- **A STALLED stage makes the run `partial`, not `success`.** A stage that soft-stops
+  (records a `'skipped'` work item because it hit an external ceiling) having completed
+  ZERO items this run is *stalled*: it had work queued and achieved none of it. Every
+  member job still returns `success` in that situation, because the stage caught its own
+  error and stopped politely, so without a specific check the workflow settles `success`
+  and the push says ✅. That is exactly how `places` reported success for 18 consecutive
+  nights after its Gemini prepay credits ran dry while a 514-item backlog went untouched.
+  `runWorkflow` now tracks `stalledJobs` alongside the existing T258 `noopJobs` — the two
+  are distinguished by `jobSoftStoppedThisRun` (see `src/db/store/runs.ts`) — and a
+  non-empty `stalledJobs` downgrades an otherwise-clean run to `'partial'`, which
+  `notifyWorkflow` maps to ⚠️ + `high` priority so it actually reaches the phone. A
+  genuine "nothing to do" noop (no advance AND no soft stop) still settles `'skipped'`,
+  so an idle night never raises a false alarm.
 - **Latest-run-per-stage ordering is rowid-deterministic (T112).**
   `listRunsForWorkflowRun` orders by `(started_at, rowid)`, NOT `started_at` alone.
   `started_at` is second-granularity, so during fast cycling an earlier cycle's

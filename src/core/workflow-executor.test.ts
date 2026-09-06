@@ -6,6 +6,7 @@
 // scratch DB (LOCALJOBS_DB).
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../config.js';
@@ -36,10 +37,37 @@ async function test(name: string, fn: () => Promise<void>) {
 // fixed delay (so concurrency can be observed by wall-time overlap); anything else
 // succeeds immediately.
 const SLOW_MS = 250;
+// Resolved here so the fake child (which lives in a temp dir, outside any
+// node_modules) can still open the scratch DB.
+const BS3 = createRequire(import.meta.url).resolve('better-sqlite3');
+
 const FAKE = `
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
 const name = process.argv[2] ?? '';
 const done = (o, code) => process.stdout.write(JSON.stringify(o) + '\\n', () => process.exit(code));
-if (name.startsWith('timeout')) setTimeout(() => {}, 60000); // hang until killed
+// 'softstop' models a paid stage that hits an external ceiling: it writes ONE
+// 'skipped' ledger row (+ its run linkage, exactly as markWorkItem does) and then
+// reports SUCCESS, which is precisely what the places enrich-with-llm stage did
+// every night while Gemini refused every call.
+if (name.startsWith('softstop')) {
+  try {
+    const Database = require(${JSON.stringify(BS3)});
+    // The parent's RESOLVED db path, not process.env.LOCALJOBS_DB — under a direct
+    // (non-npm-test) invocation config.ts redirects to a unique scratch DB and the
+    // env var is never set, so the child would open nothing.
+    const db = new Database(${JSON.stringify(config.dbPath)});
+    const wfRun = process.env.LOCALJOBS_WORKFLOW_RUN_ID;
+    const key = 'blocked-item';
+    db.prepare("INSERT INTO work_items (job_name, item_key, status, attempts, root_key) VALUES (?, ?, 'skipped', 0, ?) ON CONFLICT(job_name, item_key) DO UPDATE SET status='skipped'").run(name, key, key);
+    if (wfRun) db.prepare('INSERT OR IGNORE INTO work_item_runs (workflow_run_id, job_name, item_key, root_key) VALUES (?, ?, ?, ?)').run(wfRun, name, key, key);
+    db.close();
+    done({ type: 'result', status: 'success' }, 0);
+  } catch (e) {
+    done({ type: 'result', status: 'failed', error: 'fixture DB write failed: ' + e.message }, 1);
+  }
+}
+else if (name.startsWith('timeout')) setTimeout(() => {}, 60000); // hang until killed
 else if (name.startsWith('fail')) done({ type: 'result', status: 'failed', error: 'planned failure' }, 1);
 else if (name.startsWith('slow')) setTimeout(() => done({ type: 'result', status: 'success' }, 0), ${SLOW_MS});
 else done({ type: 'result', status: 'success' }, 0);
@@ -117,6 +145,18 @@ const limitMembers: JobDefinition[] = [
   { name: 't163-cons', run: async () => {} },
 ];
 for (const d of limitMembers) {
+  syncJob(d);
+  jobs.push(d);
+  pushed.push(d);
+}
+
+// Stalled-stage members: a limitable workflow whose terminal stage soft-stops
+// having completed ZERO items — the exact shape of the places Gemini outage.
+const stallMembers: JobDefinition[] = [
+  { name: 'stall-root', inputKeys: () => ['s1', 's2'], run: async () => {} },
+  { name: 'softstop-terminal', run: async () => {} },
+];
+for (const d of stallMembers) {
   syncJob(d);
   jobs.push(d);
   pushed.push(d);
@@ -845,6 +885,45 @@ try {
     // The framework log must include the noop explanation.
     const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
     assert.match(logText, /nothing to do — all items already processed/, `noop log missing: ${logText}`);
+  });
+
+  // A stage that soft-stops having completed ZERO items is STALLED, not a quiet
+  // noop: the run must settle 'partial' so the aggregate push is ⚠️/high priority.
+  // Without this the places workflow reported ✅ success for 18 consecutive nights
+  // while Gemini refused every call and a 514-item backlog went untouched.
+  await test('a stage that soft-stops having completed 0 items → workflow status partial (not success)', async () => {
+    const def: WorkflowDefinition = {
+      name: 'stall-partial-wf',
+      jobs: [{ job: 'stall-root' }, { job: 'softstop-terminal', dependsOn: ['stall-root'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    assert.ok(workflowRunId);
+    assert.equal(
+      getWorkflowRun(workflowRunId!)?.status, 'partial',
+      'a stalled stage downgrades the run to partial even though every member returned success',
+    );
+    const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
+    assert.match(logText, /STALLED/, `stall must be named in the framework log: ${logText}`);
+    assert.match(logText, /softstop-terminal/, 'the stalled stage must be named');
+    assert.match(logText, /is PARTIAL/, 'the run-level explanation must be logged');
+  });
+
+  // The counterpart guard: "nothing to do" must NOT be reported as a stall, or
+  // every idle night becomes a ⚠️ and the signal is worthless again.
+  await test('a genuine no-work noop is still skipped, never partial (no false stall alarm)', async () => {
+    const def: WorkflowDefinition = {
+      name: 'stall-nofalse-wf',
+      jobs: [{ job: 't258-stage-a' }, { job: 't258-stage-b', dependsOn: ['t258-stage-a'] }],
+    };
+    syncWorkflow(def);
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    assert.equal(
+      getWorkflowRun(workflowRunId!)?.status, 'skipped',
+      'a stage with nothing to do must stay a benign noop, not a stall',
+    );
+    const logText = getWorkflowLogs(workflowRunId!).map((l) => l.message).join('\n');
+    assert.ok(!/STALLED/.test(logText), `a quiet noop must not be logged as STALLED: ${logText}`);
   });
 
   await test('T258: non-limitable workflow (no inputKeys) still settles success even with no work_item_runs', async () => {
