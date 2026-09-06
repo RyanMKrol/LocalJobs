@@ -1066,6 +1066,26 @@ doubt, log it.
   metering when cross-job coordination isn't needed. (When migrating an existing
   job onto a service, top up `service_usage` from its historical `job_usage` once
   with `scripts/backfill-service-usage.ts` so the month's count carries over.)
+  - **A graceful stop is for TRANSIENT ceilings only — classify with
+    `isPermanentProviderFailure` (`src/core/services.ts`) first.** A paid stage that
+    catches an upstream 429 / `RESOURCE_EXHAUSTED` and stops the run gracefully is
+    doing the right thing for a rate limit or a daily quota window: both heal
+    unattended, and the next run resumes. It is the WRONG response to a drained
+    prepay balance, a revoked key, or a suspended account, none of which ever heal.
+    Google returns both through the identical door — HTTP 429 + `RESOURCE_EXHAUSTED`
+    — with only the human-readable message distinguishing "slow down" from "your
+    prepayment credits are depleted", so a predicate that matches on `429` alone
+    cannot tell them apart. The places `enrich-with-llm` stage did exactly that: it
+    folded `credits depleted` into its rate-limit regex, soft-stopped every night
+    for 18 nights, and reported success the whole time while a 514-item backlog sat
+    untouched. **Any stage that soft-stops on a provider error must call
+    `isPermanentProviderFailure(err)` FIRST and `throw` when it matches** — a
+    permanent failure has to fail the run loudly so the aggregate push is ❌/high
+    priority and names the cause. `places-enrich` and `enrich-with-llm` are the
+    worked examples. The predicate deliberately matches operator-actionable phrases
+    (depleted credits, insufficient funds, billing disabled, invalid/revoked key,
+    suspended account) and NOT the bare word "billing", since Google embeds a
+    billing docs URL in perfectly ordinary quota messages.
   - **Limits are code-seeded but user-overridable.** `ratePerMinute` / `dailyCap`
     / `monthlyCap` from the `ServiceDefinition` seed the `services` row on sync,
     but the Services dashboard page can edit them

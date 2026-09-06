@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../../db/store.js';
-import { QuotaExceededError, callService, getServiceDef } from '../../../core/services.js';
+import { QuotaExceededError, callService, getServiceDef, isPermanentProviderFailure } from '../../../core/services.js';
 import { enrichConfig, placesConfig } from '../config.js';
 import type { EnrichedFile, EnrichedPlace, ResolvedFile } from '../types.js';
 
@@ -130,6 +130,15 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       throw e;
     }
 
+    if (res.rateLimited && isPermanentProviderFailure(res.error ?? '')) {
+      // Same 429/RESOURCE_EXHAUSTED envelope as an ordinary ceiling, but the body
+      // says depleted credits / disabled billing — which no later run recovers
+      // from. Fail loudly rather than soft-stopping nightly forever (the failure
+      // mode that hid the Gemini outage on the sibling llm stage for 18 nights).
+      throw new Error(
+        `Places API permanently unavailable (operator action required): HTTP ${res.status} — ${res.error}`,
+      );
+    }
     if (res.rateLimited) {
       // Quota/rate exhausted (429 or RESOURCE_EXHAUSTED) — e.g. the Cloud daily
       // cap was reached. Stop gracefully; the next daily run continues.

@@ -5,7 +5,7 @@
 // sleeps bounded by maxWaitMs; the timeout paths use a negative maxWaitMs to throw
 // on the first loop iteration (no sleep) and stay fast.
 import assert from 'node:assert/strict';
-import { callService, effectiveServiceTimeoutMs, QuotaExceededError, registerService } from './services.js';
+import { callService, effectiveServiceTimeoutMs, isPermanentProviderFailure, QuotaExceededError, registerService } from './services.js';
 import { recordServiceCall, serviceCallsToday, syncService, listServiceConsumers, updateServiceLimits } from '../db/store.js';
 
 let passed = 0;
@@ -227,6 +227,57 @@ await test('effectiveServiceTimeoutMs: overridden but null timeout_ms falls back
   // Override rate only — timeout_ms stays null, but limits_overridden flips true.
   updateServiceLimits('svc-timeout-override-null', { rate_per_minute: 5, daily_cap: null, monthly_cap: null, timeout_ms: null });
   assert.equal(effectiveServiceTimeoutMs('svc-timeout-override-null', 12_345), 20_000);
+});
+
+
+// ---------------------------------------------------------------------------
+// isPermanentProviderFailure — the transient/permanent split that stops a dead
+// provider being retried nightly forever while the run reports success.
+// ---------------------------------------------------------------------------
+
+await test('isPermanentProviderFailure: the real Gemini depleted-credits 429 is PERMANENT', async () => {
+  // Verbatim from the places enrich-with-llm run log, 2026-09-06 02:00.
+  const real = 'Your prepayment credits are depleted. Please go to AI Studio at '
+    + 'https://ai.studio/projects to manage your project and billing. Learn more at '
+    + 'https://ai.google.dev/gemini-api/docs/billing#prepay.';
+  assert.equal(isPermanentProviderFailure(new Error(real)), true);
+});
+
+await test('isPermanentProviderFailure: credential failures are PERMANENT', async () => {
+  for (const m of [
+    'API key not valid. Please pass a valid API key.',
+    'API_KEY_INVALID',
+    'PERMISSION_DENIED: the caller does not have permission',
+    'UNAUTHENTICATED',
+    'insufficient funds on the account',
+    'billing is not enabled for this project',
+    'This account is suspended',
+  ]) {
+    assert.equal(isPermanentProviderFailure(new Error(m)), true, `expected PERMANENT: ${m}`);
+  }
+});
+
+await test('isPermanentProviderFailure: ordinary ceilings stay TRANSIENT', async () => {
+  for (const m of [
+    'HTTP 429 Too Many Requests',
+    'RESOURCE_EXHAUSTED: Quota exceeded for quota metric requests',
+    'rate limit reached, retry shortly',
+    'Resource has been exhausted (e.g. check quota).',
+  ]) {
+    assert.equal(isPermanentProviderFailure(new Error(m)), false, `expected TRANSIENT: ${m}`);
+  }
+});
+
+await test('isPermanentProviderFailure: a benign quota message carrying a billing DOC LINK stays transient', async () => {
+  // Guard against over-matching: Google embeds a billing docs URL in ordinary
+  // quota errors, so the bare word "billing" must never by itself mean permanent.
+  const benign = 'Quota exceeded. See https://ai.google.dev/gemini-api/docs/billing for details.';
+  assert.equal(isPermanentProviderFailure(new Error(benign)), false);
+});
+
+await test('isPermanentProviderFailure: accepts a raw string as well as an Error', async () => {
+  assert.equal(isPermanentProviderFailure('credits are depleted'), true);
+  assert.equal(isPermanentProviderFailure('429 slow down'), false);
 });
 
 console.log(`\n${passed} services test(s) passed.`);

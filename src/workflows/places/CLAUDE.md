@@ -97,6 +97,16 @@ place in this workflow where `rootKey` isn't implicit). Credential:
   omitting `rootKey` there correctly defaults `root_key = item_key`. Dropping
   the explicit `rootKey` here would make each LLM-enriched item its own root,
   silently breaking manual run-limits.
+- **Both paid stages must classify a provider refusal before soft-stopping.**
+  `places-enrich` and `enrich-with-llm` call `isPermanentProviderFailure`
+  (`src/core/services.ts`) BEFORE their transient-rate-limit branch, and throw when
+  it matches. This is not optional tidiness: `enrich-with-llm` used to match
+  `credits? (are )?depleted` inside its own `isRateLimited` regex, so when the
+  Gemini prepay balance ran out on 2026-08-20 it attempted exactly one place a
+  night, caught the 429, recorded it `'skipped'`, stopped "gracefully", and
+  reported SUCCESS — for 18 consecutive nights, while 514 places went unenriched
+  and the nightly push showed a green tick. A ceiling that clears on its own is a
+  graceful stop; one that needs a human is a failed run.
 - Both paid stages (`places-enrich`, `enrich-with-llm`) rely EXCLUSIVELY on
   their service's quota (`google-places`, `gemini`) as the spend governor —
   don't add a redundant per-job `job_usage` cap on top; it would shadow the

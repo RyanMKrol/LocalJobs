@@ -91,6 +91,47 @@ export class QuotaExceededError extends Error {
   }
 }
 
+/**
+ * Does this provider error describe a PERMANENT failure that needs an operator to
+ * act, rather than a transient ceiling that clears on its own?
+ *
+ * Paid-call stages in this repo catch an upstream 429 / RESOURCE_EXHAUSTED and
+ * stop the run *gracefully*, leaving the item un-done for the next run. That is
+ * exactly right for a rate limit or a daily quota window, both of which heal
+ * unattended. It is exactly WRONG for a drained prepay balance or a revoked key,
+ * which never heal and which no amount of waiting fixes.
+ *
+ * Google returns both through the same door: HTTP 429 + `RESOURCE_EXHAUSTED`,
+ * with only the human-readable message distinguishing "slow down" from "your
+ * prepayment credits are depleted". Because the two were treated identically, the
+ * places `enrich-with-llm` stage retried one place a night for 18 nights, stopped
+ * "gracefully" every time, and reported success while a 514-item backlog sat
+ * untouched. Anything matching here must FAIL the run loudly instead.
+ *
+ * Deliberately matches the operator-actionable phrases only, not the word
+ * "billing" on its own — Google embeds a billing docs URL in perfectly ordinary
+ * quota messages, and matching that would turn every benign daily-cap stop into a
+ * false alarm.
+ */
+export function isPermanentProviderFailure(err: unknown): boolean {
+  const text = (err instanceof Error ? err.message : String(err));
+  return new RegExp(
+    [
+      // Spend exhausted — the incident that motivated this.
+      /credits?\s+(are\s+)?depleted/.source,
+      /insufficient\s+(funds|credits?|balance)/.source,
+      /(billing|payment)\s+(is\s+)?(required|disabled|not\s+enabled)/.source,
+      /billing_disabled|billing_not_enabled/.source,
+      // Credentials revoked, invalid, or never valid.
+      /api[\s_-]?key\s+not\s+valid|api_key_invalid|invalid\s+api[\s_-]?key/.source,
+      /permission_denied|unauthenticated/.source,
+      // Account-level stop.
+      /account\s+(is\s+)?(suspended|disabled|closed)/.source,
+    ].join('|'),
+    'i',
+  ).test(text);
+}
+
 export interface CallServiceOpts {
   /** Max time to wait for a per-minute rate slot before giving up. Default 5 min. */
   maxWaitMs?: number;

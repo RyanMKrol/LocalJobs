@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../../db/store.js';
-import { QuotaExceededError, callService, getServiceDef } from '../../../core/services.js';
+import { QuotaExceededError, callService, getServiceDef, isPermanentProviderFailure } from '../../../core/services.js';
 import { llmConfig, placesConfig } from '../config.js';
 import type { EnrichedFile, EnrichedPlace } from '../types.js';
 
@@ -12,10 +12,21 @@ const JOB_NAME = 'enrich-with-llm';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** A quota / rate / depleted-credits error — treat as a graceful stop, not a per-place failure. */
-function isRateLimited(err: unknown): boolean {
+/**
+ * A TRANSIENT rate/quota ceiling — the provider is telling us to come back later,
+ * so stop the run gracefully and let the next one resume.
+ *
+ * Note what is deliberately NOT here any more: depleted credits. This predicate
+ * used to match `credits? (are )?depleted` too, folding a drained prepay balance
+ * in with ordinary throttling. Both arrive from Gemini as 429 RESOURCE_EXHAUSTED,
+ * but only one of them ever clears by waiting — so the stage stopped "gracefully"
+ * every night for 18 nights and reported success while enriching nothing. A
+ * permanent failure is now caught by `isPermanentProviderFailure` FIRST and
+ * thrown, and only what is left reaches here.
+ */
+function isTransientRateLimit(err: unknown): boolean {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return /\b429\b|resource_exhausted|rate.?limit|too many requests|quota|credits? (are )?depleted|exceeded/.test(m);
+  return /\b429\b|resource_exhausted|rate.?limit|too many requests|quota|exceeded/.test(m);
 }
 
 /** The LLM's structured verdict about a place. */
@@ -137,7 +148,19 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
         break;
       }
       const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
-      if (isRateLimited(err)) {
+      if (isPermanentProviderFailure(err)) {
+        // Depleted credits, a revoked key, a suspended account: every remaining
+        // place would hit the identical wall, and no future run fixes it on its
+        // own. Fail the run LOUDLY so the aggregate push is ❌/high priority and
+        // names the cause, instead of a green tick over an untouched backlog.
+        ctx.log(
+          `Gemini is refusing every call for a reason that will NOT clear on its own — failing the run. ` +
+          `Fix the account, then re-run. Cause: ${msg}`,
+          'error',
+        );
+        throw new Error(`Gemini permanently unavailable (operator action required): ${msg}`);
+      }
+      if (isTransientRateLimit(err)) {
         // Quota / rate / depleted-credits — a global stop signal, NOT this place's
         // fault. Stop gracefully without marking it failed or burning an attempt;
         // the next run resumes once capacity/credits return.
