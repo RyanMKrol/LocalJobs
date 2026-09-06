@@ -55,7 +55,10 @@ the same meter, so caps hold no matter how many jobs run at once, and a job that
 hits the ceiling stops politely instead of burning through your budget.
 
 **Failures find you.** Runs that fail, time out, or leave items stuck send a push
-notification to your phone, with a summary of what was processed.
+notification to your phone, and it carries the numbers: how many items were done,
+failed, left unattempted, and how many are stuck. A run that stopped early without
+finishing a single item is reported as a warning rather than a success, so a job
+quietly achieving nothing every night cannot hide behind a green tick.
 
 **Nothing runs twice by accident.** A workflow can only have one run in flight. Ask
 for a second and you get told, rather than quietly getting two.

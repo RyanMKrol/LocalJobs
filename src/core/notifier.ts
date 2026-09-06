@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { getWorkflowRun } from '../db/store.js';
+import { getWorkflowRun, workflowRunItemTally, workflowStuckCount } from '../db/store.js';
 import type { LogLevel, WorkflowRunStatus } from './types.js';
 
 type LogFn = (message: string, level?: LogLevel) => void;
@@ -74,6 +74,44 @@ export async function push(
   return ntfy;
 }
 
+/**
+ * Build the aggregate notification body: the stage roll-up line, then a second
+ * line of ACTUAL NUMBERS — items done/failed/soft-stopped this run, plus the
+ * workflow's standing stuck count.
+ *
+ * Why the numbers matter: the body used to be the stage roll-up alone
+ * ("4/4 stages (enrich-with-llm success) · 24s"), which is identical whether a
+ * run enriched 500 places or zero. The places workflow sent that exact string for
+ * 18 consecutive nights while its terminal stage completed nothing, and the push
+ * gave no way to tell. `0 done` in the body would have made it obvious on night
+ * one. Exported for unit tests.
+ */
+export function workflowNotificationBody(
+  workflowName: string,
+  workflowRunId: string,
+  status: WorkflowRunStatus,
+): string {
+  const run = getWorkflowRun(workflowRunId);
+  const head = (run?.progress_msg?.trim() || `workflow ${status}`)
+    + (run?.duration_ms ? ` · ${fmtDur(run.duration_ms)}` : '');
+
+  // A tally/stuck lookup must never be the reason a notification fails to send —
+  // the push is the last thing standing between a broken run and silence.
+  let counts = '';
+  try {
+    const tally = workflowRunItemTally(workflowRunId);
+    const stuck = workflowStuckCount(workflowName);
+    const parts = [`${tally.done} done`];
+    if (tally.failed > 0) parts.push(`${tally.failed} failed`);
+    if (tally.skipped > 0) parts.push(`${tally.skipped} not attempted`);
+    if (stuck > 0) parts.push(`${stuck} stuck`);
+    counts = parts.join(' · ');
+  } catch {
+    return head;
+  }
+  return `${head}\n${counts}`;
+}
+
 /** Notify on the whole workflow run finishing (aggregate), and log the outcome. */
 export async function notifyWorkflow(
   workflowName: string,
@@ -81,10 +119,9 @@ export async function notifyWorkflow(
   status: WorkflowRunStatus,
   log: LogFn,
 ): Promise<void> {
-  const run = getWorkflowRun(workflowRunId);
   const emoji = status === 'success' ? '✅' : status === 'partial' ? '⚠️' : status === 'cancelled' ? '🛑' : '❌';
   const title = `${emoji} ${workflowName} workflow — ${status}`;
-  const body = (run?.progress_msg?.trim() || `workflow ${status}`) + (run?.duration_ms ? ` · ${fmtDur(run.duration_ms)}` : '');
+  const body = workflowNotificationBody(workflowName, workflowRunId, status);
   const res = await push(title, body, {
     job: workflowName,
     priority: status === 'success' ? 'default' : 'high',

@@ -1,6 +1,12 @@
 // Unit tests for the notifier: HTTP-header sanitiser + ntfy 429 backoff behaviour.
 import assert from 'node:assert/strict';
+import { config } from '../config.js';
 import {
+  createWorkflowRun, finishWorkflowRun, markWorkItem, rollUpWorkflowProgress, syncJob, syncWorkflow,
+} from '../db/store.js';
+import {
+  notifyWorkflow,
+  workflowNotificationBody,
   sanitizeHeader,
   _sendNtfyToUrl,
   _resetNtfyBackoff,
@@ -257,6 +263,86 @@ test('an HTTP error status is not retried', async () => {
   } finally {
     _resetFetchForTest();
     _resetNtfyBackoff();
+  }
+});
+
+
+// ---------------------------------------------------------------------------
+// workflowNotificationBody — the run's ACTUAL NUMBERS in the push.
+// The body used to be the stage roll-up alone, which reads identically whether a
+// run processed 500 items or none. That is precisely why 18 nights of a fully
+// stalled places workflow were indistinguishable from 18 healthy ones.
+// ---------------------------------------------------------------------------
+
+test('body carries the per-run item counts, not just the stage roll-up', async () => {
+  syncJob({ name: 'notif-job', run: async () => {} });
+  syncWorkflow({ name: 'notif-wf', jobs: [{ job: 'notif-job' }] });
+  const runId = createWorkflowRun('notif-wf', 'schedule');
+  markWorkItem('notif-job', 'a', 'success', { workflowRunId: runId });
+  markWorkItem('notif-job', 'b', 'success', { workflowRunId: runId });
+  markWorkItem('notif-job', 'c', 'failed', { workflowRunId: runId });
+  rollUpWorkflowProgress(runId, '1/1 stages (notif-job success)');
+  finishWorkflowRun(runId, 'partial');
+
+  const body = workflowNotificationBody('notif-wf', runId, 'partial');
+  assert.match(body, /1\/1 stages/, `roll-up line must survive: ${body}`);
+  assert.match(body, /2 done/, `done count missing: ${body}`);
+  assert.match(body, /1 failed/, `failed count missing: ${body}`);
+});
+
+test('a run that completed NOTHING says "0 done" — the line that would have caught the outage', async () => {
+  syncJob({ name: 'notif-stall-job', run: async () => {} });
+  syncWorkflow({ name: 'notif-stall-wf', jobs: [{ job: 'notif-stall-job' }] });
+  const runId = createWorkflowRun('notif-stall-wf', 'schedule');
+  // Exactly what the places LLM stage recorded each night: one soft stop, nothing done.
+  markWorkItem('notif-stall-job', 'blocked', 'skipped', { workflowRunId: runId });
+  finishWorkflowRun(runId, 'partial');
+
+  const body = workflowNotificationBody('notif-stall-wf', runId, 'partial');
+  assert.match(body, /0 done/, `a stalled run must say 0 done: ${body}`);
+  assert.match(body, /1 not attempted/, `the soft stop must be surfaced: ${body}`);
+});
+
+test('zero-noise: a clean run omits the failed/skipped/stuck fragments', async () => {
+  syncJob({ name: 'notif-clean-job', run: async () => {} });
+  syncWorkflow({ name: 'notif-clean-wf', jobs: [{ job: 'notif-clean-job' }] });
+  const runId = createWorkflowRun('notif-clean-wf', 'schedule');
+  markWorkItem('notif-clean-job', 'x', 'success', { workflowRunId: runId });
+  finishWorkflowRun(runId, 'success');
+
+  const body = workflowNotificationBody('notif-clean-wf', runId, 'success');
+  assert.match(body, /1 done/, `done count missing: ${body}`);
+  assert.ok(!/failed/.test(body), `no failed fragment expected: ${body}`);
+  assert.ok(!/not attempted/.test(body), `no skipped fragment expected: ${body}`);
+  assert.ok(!/stuck/.test(body), `no stuck fragment expected: ${body}`);
+});
+
+test('a partial run pushes ⚠️ at HIGH priority, so a stall actually reaches the phone', async () => {
+  syncJob({ name: 'notif-prio-job', run: async () => {} });
+  syncWorkflow({ name: 'notif-prio-wf', jobs: [{ job: 'notif-prio-job' }] });
+  const runId = createWorkflowRun('notif-prio-wf', 'schedule');
+  markWorkItem('notif-prio-job', 'blocked', 'skipped', { workflowRunId: runId });
+  finishWorkflowRun(runId, 'partial');
+
+  const seen: { title: string; priority: string; body: string }[] = [];
+  const capture: typeof fetch = async (_url, init) => {
+    const h = new Headers(init?.headers);
+    seen.push({ title: h.get('Title') ?? '', priority: h.get('Priority') ?? '', body: String(init?.body ?? '') });
+    return new Response('', { status: 200, headers: new Headers() });
+  };
+  const origTopic = config.ntfyTopic;
+  config.ntfyTopic = 'test-topic';
+  _setFetchForTest(capture);
+  try {
+    await notifyWorkflow('notif-prio-wf', runId, 'partial', () => {});
+    assert.equal(seen.length, 1, 'exactly one aggregate push');
+    assert.equal(seen[0].priority, 'high', 'a partial run must be HIGH priority, not default');
+    assert.match(seen[0].title, /partial/, `title should name the status: ${seen[0].title}`);
+    assert.match(seen[0].body, /0 done/, `body should carry the counts: ${seen[0].body}`);
+  } finally {
+    _resetFetchForTest();
+    _resetNtfyBackoff();
+    config.ntfyTopic = origTopic;
   }
 });
 
