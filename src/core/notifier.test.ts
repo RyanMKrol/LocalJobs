@@ -346,5 +346,22 @@ test('a partial run pushes ⚠️ at HIGH priority, so a stall actually reaches 
   }
 });
 
+
+test('the body NAMES a stalled stage, even when a bulk sibling stage swamps the totals', async () => {
+  syncJob({ name: 'notif-bulk', run: async () => {} });
+  syncJob({ name: 'notif-terminal', run: async () => {} });
+  syncWorkflow({ name: 'notif-swamp-wf', jobs: [{ job: 'notif-bulk' }, { job: 'notif-terminal', dependsOn: ['notif-bulk'] }] });
+  const runId = createWorkflowRun('notif-swamp-wf', 'schedule');
+  // The places shape: the first stage re-records its whole catalogue every run...
+  for (let i = 0; i < 40; i++) markWorkItem('notif-bulk', `k${i}`, 'success', { workflowRunId: runId });
+  // ...while the terminal stage completes nothing at all.
+  markWorkItem('notif-terminal', 'blocked', 'skipped', { workflowRunId: runId });
+  finishWorkflowRun(runId, 'partial');
+
+  const body = workflowNotificationBody('notif-swamp-wf', runId, 'partial');
+  assert.match(body, /40 done/, `the raw total is still reported: ${body}`);
+  assert.match(body, /stalled, completed 0 items: notif-terminal/, `the stalled stage must be NAMED: ${body}`);
+});
+
 await testChain;
 console.log(`\n${passed} notifier test(s) passed.`);

@@ -141,6 +141,38 @@ export function workflowRunAdvancedAnyItem(workflowRunId: string): boolean {
     .get(workflowRunId);
 }
 
+/**
+ * Which stages STALLED during this workflow run — soft-stopped (recorded a
+ * `'skipped'` item) while making no forward progress at all.
+ *
+ * The per-run item tally alone cannot reveal this. A workflow whose first stage
+ * re-records its whole catalogue each run (the places `places-ingest` convention:
+ * 1,766 rows every night) swamps the totals, so the aggregate body reads
+ * "1797 done" on a night the terminal stage enriched exactly zero places. Naming
+ * the stalled stage is what makes the push actionable rather than merely numeric.
+ *
+ * Like `workflowRunItemTally` this reads the ledger's CURRENT status, which is the
+ * status THIS run wrote at the moment the notification is built. Re-run the item
+ * later and it stops looking stalled in hindsight — correct for a live push, worth
+ * knowing before using this to audit historical runs.
+ */
+export function stalledJobsInRun(workflowRunId: string): string[] {
+  return (db.prepare(`
+    SELECT DISTINCT r.job_name AS job_name
+    FROM work_item_runs r
+    JOIN work_items w ON w.job_name = r.job_name AND w.item_key = r.item_key
+    WHERE r.workflow_run_id = ? AND w.status = 'skipped'
+      AND NOT EXISTS (
+        SELECT 1 FROM work_item_runs r2
+        JOIN work_items w2 ON w2.job_name = r2.job_name AND w2.item_key = r2.item_key
+        WHERE r2.workflow_run_id = r.workflow_run_id
+          AND r2.job_name = r.job_name
+          AND w2.status <> 'skipped'
+      )
+    ORDER BY r.job_name
+  `).all(workflowRunId) as { job_name: string }[]).map((r) => r.job_name);
+}
+
 /** Per-status tally of the work items a whole workflow run touched. */
 export interface WorkflowRunItemTally {
   /** Items completed successfully this run. */

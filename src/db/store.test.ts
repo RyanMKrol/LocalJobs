@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   addWorkflowLog, backfillServiceUsage, createWorkflowRun, createRun, finishWorkflowRun, finishRun,
   getWorkflow, getWorkflowJobs, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots, getServiceRow, getWorkItem, hasActiveWorkflowRun,
-  hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop, jobSoftStoppedThisRun, workflowRunItemTally, workflowStuckCount,
+  hasJobAdvancedAnyItem, workflowRunAdvancedAnyItem, setRunNoop, jobSoftStoppedThisRun, workflowRunItemTally, workflowStuckCount, stalledJobsInRun,
   ignoreWorkItem, ignoredItems, ignoredItemKeys, ignoredWorkItemDetails, ignoreSurfacedItem, ignoreSurfacedItems, unignoreSurfacedItem, unignoreSurfacedItems, isWorkItemDone,
   listRunsForWorkflowRun, listServices, listWorkflows, markWorkItem, noForwardProgress, orphanedWorkItems, selectPendingRoots, workflowProgressSignature, workflowRetryableCount, stageIoLists, workItemMarkdownPath, workflowHasRunLinkage,
   pruneOrphanedWorkItems, reapOrphanWorkflowRuns, recordServiceCall, recordSkippedRun, recordUsage, rollUpWorkflowProgress, setProgress,
@@ -1583,3 +1583,39 @@ console.log('  ✓ soft-stop skips are not forward progress; jobSoftStoppedThisR
   assert.equal(workflowStuckCount('no-such-wf'), 0, 'an unknown workflow has no stuck items');
 }
 console.log('  ✓ workflowRunItemTally + workflowStuckCount report per-run and standing counts');
+
+// ---------------------------------------------------------------------------
+// stalledJobsInRun — names the stage that soft-stopped having done nothing, even
+// when a bulk sibling stage swamps the run's totals (the places shape).
+// ---------------------------------------------------------------------------
+{
+  const BULK = 'sj-bulk';
+  const TERMINAL = 'sj-terminal';
+  syncJob({ name: BULK, run: async () => {} });
+  syncJob({ name: TERMINAL, run: async () => {} });
+  syncWorkflow({ name: 'sj-wf', jobs: [{ job: BULK }, { job: TERMINAL, dependsOn: [BULK] }] });
+
+  const runId = createWorkflowRun('sj-wf', 'schedule');
+  // The bulk first stage re-records its whole catalogue, exactly as places-ingest does.
+  for (let i = 0; i < 50; i++) markWorkItem(BULK, `b${i}`, 'success', { workflowRunId: runId });
+  // The terminal stage soft-stops having completed nothing.
+  markWorkItem(TERMINAL, 'blocked', 'skipped', { workflowRunId: runId });
+
+  assert.deepEqual(
+    stalledJobsInRun(runId), [TERMINAL],
+    'the stalled terminal stage is named even though the run tallies 50 done',
+  );
+  assert.equal(workflowRunItemTally(runId).done, 50, 'the bulk stage does inflate the done count — hence the naming');
+
+  // A stage that soft-stopped AFTER real work is not stalled.
+  const okRun = createWorkflowRun('sj-wf', 'schedule');
+  markWorkItem(TERMINAL, 'did-one', 'success', { workflowRunId: okRun });
+  markWorkItem(TERMINAL, 'then-stopped', 'skipped', { workflowRunId: okRun });
+  assert.deepEqual(stalledJobsInRun(okRun), [], 'progress-then-softstop is not a stall');
+
+  // A run with no soft stops at all reports nothing.
+  const cleanRun = createWorkflowRun('sj-wf', 'schedule');
+  markWorkItem(BULK, 'b0', 'success', { workflowRunId: cleanRun });
+  assert.deepEqual(stalledJobsInRun(cleanRun), [], 'a clean run has no stalled stages');
+}
+console.log('  ✓ stalledJobsInRun names a stalled stage even when a bulk sibling swamps the totals');

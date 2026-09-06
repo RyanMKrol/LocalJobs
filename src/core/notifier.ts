@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { getWorkflowRun, workflowRunItemTally, workflowStuckCount } from '../db/store.js';
+import { getWorkflowRun, stalledJobsInRun, workflowRunItemTally, workflowStuckCount } from '../db/store.js';
 import type { LogLevel, WorkflowRunStatus } from './types.js';
 
 type LogFn = (message: string, level?: LogLevel) => void;
@@ -106,6 +106,12 @@ export function workflowNotificationBody(
     if (tally.skipped > 0) parts.push(`${tally.skipped} not attempted`);
     if (stuck > 0) parts.push(`${stuck} stuck`);
     counts = parts.join(' · ');
+    // Name the stalled stage(s). The totals alone can hide a stall completely: a
+    // workflow whose first stage re-records its whole catalogue each run reports
+    // "1797 done" on a night its terminal stage completed nothing. The stage name
+    // is the part that tells you where to look.
+    const stalled = stalledJobsInRun(workflowRunId);
+    if (stalled.length > 0) counts += `\n⚠ stalled, completed 0 items: ${stalled.join(', ')}`;
   } catch {
     return head;
   }
