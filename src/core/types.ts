@@ -180,6 +180,16 @@ export interface RunRow {
   error: string | null;
   /** Set when this run is a member of a workflow run; null/absent for standalone runs. */
   workflow_run_id?: string | null;
+  /** repeatUntilStable cycle (1-based) this run belongs to; null for pre-v2 rows. */
+  cycle?: number | null;
+  /** Machine-readable reason the run ended as it did (see `OutcomeReason` in the store). */
+  outcome_reason?: string | null;
+  /** Epoch ms: stage became ready / attempt spawned / attempt settled. */
+  queued_at_ms?: number | null;
+  started_at_ms?: number | null;
+  finished_at_ms?: number | null;
+  /** ms spent on inbound gates / input resolution before this run. */
+  gate_ms?: number | null;
 }
 
 // ─────────────────────────────── Workflows ───────────────────────────────
@@ -285,6 +295,12 @@ export interface WorkflowRunRow {
   started_at: string | null;
   finished_at: string | null;
   duration_ms: number | null;
+  /** Why the run ended, when the status alone does not say (cancel source, restart, unhandled error). */
+  end_reason?: string | null;
+  /** How many repeatUntilStable cycles actually ran. */
+  cycles?: number | null;
+  /** The workflow run this one resumed from, if any. */
+  resumed_from?: string | null;
 }
 
 // ──────────────────────────────── Services ───────────────────────────────

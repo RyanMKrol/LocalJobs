@@ -154,8 +154,13 @@ try {
     ac.abort();
     const { status } = await runJobForWorkflow(d, PL, ac.signal);
     assert.equal(status, 'cancelled');
-    // No attempt spawned at all → no run rows for this job.
-    assert.equal(listRunsForJob('retry-precancel').length, 0);
+    // No attempt was spawned and nothing was retried, but the stage still leaves
+    // ONE row saying it never started: a stage with no record at all is the
+    // hardest thing to explain afterwards.
+    const rows = listRunsForJob('retry-precancel');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, 'cancelled');
+    assert.equal(rows[0].outcome_reason, 'not-started-cancelled');
   });
 
   await test('overlap guard (runJobForWorkflow): an already-running job is skipped without spawning', async () => {

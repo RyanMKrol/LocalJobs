@@ -148,20 +148,32 @@ export interface GateRunRef {
   job_name: string;
   status: string;
   error: string | null;
+  /** Engine-v2 machine-readable reason (see `OutcomeReason`); absent on old rows. */
+  outcome_reason?: string | null;
 }
+
+/** Outcome reasons meaning the consumer never actually crossed its gates and ran. */
+const NEVER_RAN_REASONS = new Set(['upstream-skipped', 'overlap', 'not-started-cancelled', 'orphaned']);
 
 /**
  * Classify each gate against a workflow run's member runs — pure, so it's the
  * same logic on the API and in tests. `runs` must be in chronological order (the
  * DB returns them `ORDER BY started_at`), so the consumer's LAST run reflects the
  * current state. A gate is:
- *  - **failed** if its consumer's latest run is a gate-failure for THIS gate (its
- *    error starts with `gateFailurePrefix`); links to that run's logs.
+ *  - **failed** if its consumer's latest run is a gate-failure naming THIS gate
+ *    (its error contains `gateFailurePrefix`); links to that run's logs.
  *  - **passed** if the consumer actually executed — the consumer only spawns once
- *    all its inbound gates passed.
+ *    all its inbound gates passed. A consumer that ran and was then marked a noop
+ *    or stalled (status `skipped`, `outcome_reason` noop/stalled) DID run, so its
+ *    gates passed; reading its `skipped` status as "never ran" used to show a gate
+ *    that had passed as pending.
  *  - **pending** otherwise: the consumer hasn't crossed this boundary — not yet
- *    run, skipped by an upstream failure, or blocked by a DIFFERENT inbound gate
- *    (its latest run is a gate failure that isn't this gate's).
+ *    run, skipped by an upstream failure, never started (cancel / restart), or
+ *    blocked by a DIFFERENT inbound gate (its latest run is a gate failure that
+ *    isn't this gate's).
+ *
+ * Rows written before `outcome_reason` existed fall back to the old rule
+ * (`skipped` = never ran).
  */
 export function classifyGates(gates: Gate[], runs: GateRunRef[]): GateStatus[] {
   return gates.map((gate) => {
@@ -169,13 +181,16 @@ export function classifyGates(gates: Gate[], runs: GateRunRef[]): GateStatus[] {
     const latest = consumerRuns[consumerRuns.length - 1];
     if (!latest) return { ...gate, state: 'pending' };
     const err = latest.error ?? '';
-    if (latest.status === 'failed' && err.startsWith(gateFailurePrefix(gate))) {
+    // `includes`, not `startsWith`: every inbound gate is evaluated, so one
+    // gate-failure row can carry SEVERAL gates' violations (joined), and each of
+    // those gates must read as failed, not just the one that happens to lead.
+    if (latest.status === 'failed' && err.includes(gateFailurePrefix(gate))) {
       return { ...gate, state: 'failed', failureRunId: latest.id };
     }
-    if (latest.status === 'skipped' || err.startsWith('Gate violation')) {
-      return { ...gate, state: 'pending' };
-    }
-    return { ...gate, state: 'passed' };
+    if (err.startsWith('Gate violation')) return { ...gate, state: 'pending' };
+    const reason = latest.outcome_reason ?? null;
+    const neverRan = reason ? NEVER_RAN_REASONS.has(reason) : latest.status === 'skipped';
+    return { ...gate, state: neverRan ? 'pending' : 'passed' };
   });
 }
 
@@ -210,6 +225,10 @@ export interface DagExecHooks {
   /** Run one job and resolve with its terminal status. */
   runOne: (job: string) => Promise<RunStatus>;
   concurrency?: number;
+  /** Called ONCE per job, the first time all its dependencies have settled
+   *  successfully (it is now waiting only for a free concurrency slot). Lets the
+   *  caller timestamp "became ready" so queue-wait time is measurable. */
+  onReady?: (job: string) => void;
   onStart?: (job: string) => void;
   onSettle?: (job: string, status: RunStatus) => void | Promise<void>;
   onSkip?: (job: string, reason: string) => void | Promise<void>;
@@ -240,6 +259,7 @@ export async function executeDag(dag: Dag, hooks: DagExecHooks): Promise<Map<str
   const remaining = new Set(dag.nodes);
   const indegree = new Map<string, number>(dag.nodes.map((n) => [n, dag.dependencies.get(n)!.length]));
   const inflight = new Map<string, Promise<void>>();
+  const readied = new Set<string>();
 
   const settle = async (job: string, s: RunStatus, skipped: boolean, reason?: string) => {
     status.set(job, s);
@@ -254,10 +274,20 @@ export async function executeDag(dag: Dag, hooks: DagExecHooks): Promise<Map<str
     if (!hooks.signal?.aborted) {
       const ready = [...remaining].filter((n) => indegree.get(n) === 0 && !inflight.has(n));
       for (const job of ready) {
-        const failedDep = dag.dependencies.get(job)!.find((d) => status.get(d) !== 'success');
-        if (failedDep) {
-          await settle(job, 'skipped', true, `upstream ${failedDep} did not succeed`);
+        // Name EVERY dependency that did not succeed (with its status), not just
+        // the first: on a fan-in the answer to "why was this skipped" is often
+        // more than one branch.
+        const failedDeps = dag.dependencies.get(job)!.filter((d) => status.get(d) !== 'success');
+        if (failedDeps.length > 0) {
+          const detail = failedDeps.length === 1
+            ? `upstream ${failedDeps[0]} did not succeed (${status.get(failedDeps[0])})`
+            : `${failedDeps.length} upstream stages did not succeed: ${failedDeps.map((d) => `${d} (${status.get(d)})`).join(', ')}`;
+          await settle(job, 'skipped', true, detail);
           continue;
+        }
+        if (!readied.has(job)) {
+          readied.add(job);
+          hooks.onReady?.(job);
         }
         if (inflight.size >= concurrency) continue; // no free slot; pick up next round
         hooks.onStart?.(job);

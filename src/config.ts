@@ -160,6 +160,38 @@ export const config = {
    */
   ntfyBackoffCapMs: Number(process.env.LOCALJOBS_NTFY_BACKOFF_CAP_MS ?? 600_000),
 
+  /**
+   * Wait (ms) before each RETRY of a failed/timed-out job attempt: the Nth retry
+   * waits the Nth value, and the last value repeats for any further retries.
+   * Retrying instantly mostly re-hits whatever just failed (a blipped network, a
+   * briefly unavailable API), so the default spaces attempts out: 5s, 30s, 2min.
+   * Comma-separated; `0` disables the wait. Tests default to no wait.
+   */
+  retryBackoffMs: parseBackoff(process.env.LOCALJOBS_RETRY_BACKOFF_MS, isTestEnv() ? [0] : [5_000, 30_000, 120_000]),
+
+  /**
+   * How long (ms) a single gate/contract `check()` may run before the engine
+   * treats it as failed. A check is meant to be a quick look at a local file; one
+   * that hangs would otherwise hold its stage (and a concurrency slot) forever,
+   * since the job's own timeout only starts once its process is spawned.
+   */
+  gateTimeoutMs: Number(process.env.LOCALJOBS_GATE_TIMEOUT_MS ?? 30_000),
+
+  /**
+   * Retention for the per-run Inputs & Outputs detail (which items a run touched
+   * and what it recorded): kept for runs that started within this many days…
+   */
+  runHistoryKeepDays: Number(process.env.LOCALJOBS_RUN_HISTORY_KEEP_DAYS ?? 90),
+  /** …and always for each workflow's most recent N runs, however old. */
+  runHistoryKeepRuns: Number(process.env.LOCALJOBS_RUN_HISTORY_KEEP_RUNS ?? 20),
+
   /** Absolute path to the child job-runner entrypoint. */
   runJobScript: resolve(__dirname, 'runJob.ts'),
 };
+
+/** Parse a comma-separated list of non-negative ms values; fall back when unset/invalid. */
+function parseBackoff(raw: string | undefined, fallback: number[]): number[] {
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const parts = raw.split(',').map((p) => Number(p.trim()));
+  return parts.length > 0 && parts.every((n) => Number.isFinite(n) && n >= 0) ? parts : fallback;
+}

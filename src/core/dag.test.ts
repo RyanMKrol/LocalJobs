@@ -225,6 +225,31 @@ test('classifyGates: consumer skipped by an upstream failure → pending (gate n
   assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'pending' }]);
 });
 
+test('classifyGates: a consumer that RAN and was then marked a noop/stalled → passed (its gates did pass)', () => {
+  for (const reason of ['noop', 'stalled']) {
+    const runs: GateRunRef[] = [{ id: 'r', job_name: 'b', status: 'skipped', error: null, outcome_reason: reason }];
+    assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'passed' }], `${reason} consumer`);
+  }
+});
+
+test('classifyGates: a consumer that never started (cancel, restart, overlap, upstream skip) → pending', () => {
+  for (const [status, reason] of [['cancelled', 'not-started-cancelled'], ['cancelled', 'orphaned'], ['skipped', 'overlap'], ['skipped', 'upstream-skipped']]) {
+    const runs: GateRunRef[] = [{ id: 'r', job_name: 'b', status, error: 'x', outcome_reason: reason }];
+    assert.deepEqual(classifyGates([G], runs), [{ ...G, state: 'pending' }], reason);
+  }
+});
+
+test('classifyGates: when one gate-failure row carries SEVERAL gates\' violations, each of those gates is failed', () => {
+  const g1: Gate = { key: 'rows', producer: 'a', consumer: 'c' };
+  const g2: Gate = { key: 'meta', producer: 'b', consumer: 'c' };
+  const g3: Gate = { key: 'ok', producer: 'x', consumer: 'c' };
+  const error = `${gateFailurePrefix(g1)}: empty | ${gateFailurePrefix(g2)}: stale`;
+  const runs: GateRunRef[] = [{ id: 'r9', job_name: 'c', status: 'failed', error, outcome_reason: 'gate-failed' }];
+  const res = classifyGates([g1, g2, g3], runs);
+  assert.deepEqual(res.map((g) => g.state), ['failed', 'failed', 'pending']);
+  assert.equal(res[1].failureRunId, 'r9');
+});
+
 test('classifyGates: one inbound gate failing leaves the consumer\'s OTHER inbound gate pending', () => {
   const g1: Gate = { key: 'rows', producer: 'a', consumer: 'c' };
   const g2: Gate = { key: 'meta', producer: 'b', consumer: 'c' };
@@ -296,6 +321,51 @@ await atest('executeDag: a rejecting runOne settles that node failed (not a pois
   assert.equal(res.get('c'), 'skipped'); // depends on the failed b
   assert.equal(res.get('d'), 'success'); // independent of b, still ran
   assert.ok(!ran.includes('c'));
+});
+
+await atest('executeDag: a fan-in waits for EVERY branch and is skipped when one fails; the reason names it with its status', async () => {
+  const dag = buildDag([
+    { job: 'src' },
+    { job: 'b1', dependsOn: ['src'] }, { job: 'b2', dependsOn: ['src'] }, { job: 'b3', dependsOn: ['src'] },
+    { job: 'join', dependsOn: ['b1', 'b2', 'b3'] },
+  ]);
+  const ran: string[] = [];
+  const skips: Record<string, string> = {};
+  const settledBeforeJoinDecision: string[] = [];
+  const res = await executeDag(dag, {
+    concurrency: 3,
+    runOne: async (job) => {
+      ran.push(job);
+      // b2 fails FAST while b1/b3 are still running: the join must not be decided
+      // (skipped or started) until all three have settled.
+      if (job === 'b2') return 'failed';
+      if (job === 'b1' || job === 'b3') await new Promise((r) => setTimeout(r, 30));
+      return 'success';
+    },
+    onSettle: (job) => { settledBeforeJoinDecision.push(job); },
+    onSkip: (job, reason) => { skips[job] = reason; settledBeforeJoinDecision.push(`skip:${job}`); },
+  });
+  assert.equal(res.get('join'), 'skipped');
+  assert.ok(!ran.includes('join'), 'the join never ran');
+  assert.deepEqual(ran.slice().sort(), ['b1', 'b2', 'b3', 'src'], 'the healthy branches still ran');
+  assert.equal(skips.join, 'upstream b2 did not succeed (failed)');
+  const idx = settledBeforeJoinDecision.indexOf('skip:join');
+  assert.deepEqual(settledBeforeJoinDecision.slice(0, idx).sort(), ['b1', 'b2', 'b3', 'src'], 'join decided only after every branch settled');
+});
+
+await atest('executeDag: onReady fires once per job, when its dependencies have all succeeded, even if it then waits for a slot', async () => {
+  const dag = buildDag([{ job: 'a' }, { job: 'b' }, { job: 'c' }, { job: 'd', dependsOn: ['a'] }]);
+  const ready: string[] = [];
+  const started: string[] = [];
+  await executeDag(dag, {
+    concurrency: 1,
+    onReady: (job) => ready.push(job),
+    onStart: (job) => started.push(job),
+    runOne: async () => { await new Promise((r) => setTimeout(r, 5)); return 'success'; },
+  });
+  assert.deepEqual(ready.slice(0, 3), ['a', 'b', 'c'], 'all three roots are ready at once, though only one can start');
+  assert.deepEqual(ready.slice().sort(), ['a', 'b', 'c', 'd'], 'each job is reported ready exactly once');
+  assert.equal(started.length, 4);
 });
 
 await atest('executeDag: independent branches overlap up to concurrency', async () => {

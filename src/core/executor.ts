@@ -2,15 +2,52 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { config } from '../config.js';
 import {
+  activeRunOf,
   addLog,
   createRun,
   finishRun,
   getJob,
-  hasActiveRun,
+  recordNotStarted,
   recordSkippedRun,
   setProgress,
+  type RunMeta,
 } from '../db/store.js';
 import type { JobDefinition, JobEvent, RunStatus, RunTrigger } from './types.js';
+
+/**
+ * The child-protocol version this daemon speaks. Passed to every child as
+ * `LOCALJOBS_ENGINE`. Children are spawned with `tsx` straight from disk, so a
+ * child always runs the code currently checked out, while the daemon keeps the
+ * code it was started with until it is restarted. A stage that needs engine
+ * support the running daemon does not have (it reads this) can therefore fail
+ * with a clear "restart the daemon" message instead of half-working.
+ */
+export const ENGINE_PROTOCOL = 2;
+
+/** Identity of the workflow run a member attempt belongs to, threaded to the child. */
+export interface MemberRunContext extends RunMeta {
+  workflowName?: string;
+  /** What started the WORKFLOW run (the member's own trigger is always 'workflow'). */
+  workflowTrigger?: RunTrigger;
+}
+
+/** Sleep that resolves early (returning true) if `signal` aborts, so a cancel
+ *  never has to wait a pause out. Resolves false when the full time elapsed. */
+export function abortableSleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+  if (ms <= 0) return Promise.resolve(!!signal?.aborted);
+  return new Promise((done) => {
+    if (signal?.aborted) return done(true);
+    const onAbort = () => { clearTimeout(t); done(true); };
+    const t = setTimeout(() => { signal?.removeEventListener('abort', onAbort); done(false); }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** The wait before the Nth retry (1-based): the Nth configured value, last one repeating. */
+export function retryDelayMs(retryNumber: number, schedule: number[] = config.retryBackoffMs): number {
+  if (schedule.length === 0) return 0;
+  return schedule[Math.min(retryNumber, schedule.length) - 1];
+}
 
 /**
  * The attempt+retry loop, shared by the standalone and workflow paths. Creates a
@@ -28,6 +65,7 @@ async function runAttempts(
   trigger: RunTrigger,
   workflowRunId: string | null,
   signal?: AbortSignal,
+  ctx: MemberRunContext = {},
 ): Promise<{ runId: string | null; status: RunStatus }> {
   const jobRow = getJob(def.name);
   const timeoutMs = jobRow?.timeout_ms ?? def.timeoutMs ?? 0;
@@ -35,12 +73,24 @@ async function runAttempts(
 
   let lastRunId: string | null = null;
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-    // Already cancelled (e.g. between retries) — don't spawn another attempt.
-    if (signal?.aborted) return { runId: lastRunId, status: 'cancelled' };
+    // Already cancelled (before the first attempt, or between retries) — don't
+    // spawn. If NO attempt ever ran, still leave a row saying so: a stage that
+    // silently has no record is the hardest thing to debug afterwards.
+    if (signal?.aborted) {
+      if (!lastRunId && workflowRunId) {
+        lastRunId = recordNotStarted(def.name, workflowRunId, 'not started: the workflow run was cancelled first', 'not-started-cancelled', ctx);
+      }
+      return { runId: lastRunId, status: 'cancelled' };
+    }
 
-    const runId = createRun(def.name, trigger, attempt, workflowRunId);
+    // Only the FIRST attempt carries the gate time; queue time is the same for all.
+    const runId = createRun(def.name, trigger, attempt, workflowRunId, {
+      cycle: ctx.cycle,
+      queuedAtMs: ctx.queuedAtMs,
+      gateMs: attempt === 1 ? ctx.gateMs : null,
+    });
     lastRunId = runId;
-    const outcome = await executeAttempt(def.name, runId, timeoutMs, signal, workflowRunId);
+    const outcome = await executeAttempt(def.name, runId, timeoutMs, signal, workflowRunId, { ...ctx, attempt });
 
     if (outcome.status === 'success') {
       finishRun(runId, 'success', { exitCode: 0 });
@@ -51,7 +101,14 @@ async function runAttempts(
     // Cancellation is terminal — never retried (the whole workflow is stopping).
     if (outcome.status === 'cancelled') return { runId, status: 'cancelled' };
     if (attempt <= maxRetries) {
-      addLog(runId, `Attempt ${attempt} ${outcome.status}; retrying...`, 'warn');
+      const waitMs = retryDelayMs(attempt);
+      addLog(
+        runId,
+        `Attempt ${attempt}/${maxRetries + 1} ${outcome.status}; retrying${waitMs > 0 ? ` in ${Math.round(waitMs / 1000)}s` : ''}...`,
+        'warn',
+      );
+      // Abortable: a cancel during the wait stops the retry instead of waiting it out.
+      if (await abortableSleep(waitMs, signal)) return { runId, status: 'cancelled' };
       continue;
     }
     return { runId, status: outcome.status };
@@ -71,12 +128,22 @@ export async function runJobForWorkflow(
   def: JobDefinition,
   workflowRunId: string,
   signal?: AbortSignal,
+  ctx: MemberRunContext = {},
 ): Promise<{ runId: string | null; status: RunStatus }> {
-  if (hasActiveRun(def.name)) {
-    const runId = recordSkippedRun(def.name, workflowRunId, 'skipped: another active run of this job is already in progress');
+  const holder = activeRunOf(def.name);
+  if (holder) {
+    // Say WHO holds the job, so "why was this skipped" does not need guessing.
+    const where = holder.workflow_run_id ? ` of workflow run ${holder.workflow_run_id}` : '';
+    const runId = recordSkippedRun(
+      def.name,
+      workflowRunId,
+      `skipped: another active run of this job is already in progress (run ${holder.id}${where})`,
+      'overlap',
+      ctx,
+    );
     return { runId, status: 'skipped' };
   }
-  return runAttempts(def, 'workflow', workflowRunId, signal);
+  return runAttempts(def, 'workflow', workflowRunId, signal, ctx);
 }
 
 interface AttemptOutcome {
@@ -91,6 +158,7 @@ function executeAttempt(
   timeoutMs: number,
   signal?: AbortSignal,
   workflowRunId?: string | null,
+  ctx: MemberRunContext & { attempt?: number } = {},
 ): Promise<AttemptOutcome> {
   return new Promise((resolveOutcome) => {
     // Cancelled before we even spawn — don't start a child at all.
@@ -99,12 +167,22 @@ function executeAttempt(
       return;
     }
 
-    // Pass the workflow run id to the child so a LIMITED run's frozen
-    // originating-input allowlist (T094) reaches the job via ctx.rootAllowed().
-    // A standalone run (null) sets nothing → the child sees an unlimited run.
-    const env = workflowRunId
-      ? { ...process.env, LOCALJOBS_WORKFLOW_RUN_ID: workflowRunId }
-      : process.env;
+    // Run identity for the child. The workflow run id lets a LIMITED run's frozen
+    // originating-input allowlist (T094) reach the job via ctx.rootAllowed() and
+    // attributes ledger writes to this run; the rest (this attempt's own run id,
+    // attempt number, cycle, workflow name, trigger) lets the child record what
+    // THIS attempt read and wrote. A standalone run (null) sets only the run id →
+    // the child sees an unlimited, workflow-less run.
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      LOCALJOBS_ENGINE: String(ENGINE_PROTOCOL),
+      LOCALJOBS_RUN_ID: runId,
+      LOCALJOBS_RUN_ATTEMPT: String(ctx.attempt ?? 1),
+      LOCALJOBS_RUN_CYCLE: String(ctx.cycle ?? 1),
+    };
+    if (workflowRunId) env.LOCALJOBS_WORKFLOW_RUN_ID = workflowRunId;
+    if (ctx.workflowName) env.LOCALJOBS_WORKFLOW_NAME = ctx.workflowName;
+    if (ctx.workflowTrigger) env.LOCALJOBS_RUN_TRIGGER = ctx.workflowTrigger;
     const child = spawn(
       process.execPath,
       ['--import', 'tsx', config.runJobScript, jobName],
@@ -150,17 +228,25 @@ function executeAttempt(
         return;
       }
       try {
-        switch (event.type) {
+        // A line that parses as JSON but is not one of our events (a job that
+        // `console.log`s a number or an object, a future event type an older
+        // daemon does not know) is still OUTPUT: log it rather than drop it.
+        const type = event !== null && typeof event === 'object' ? (event as { type?: unknown }).type : undefined;
+        switch (type) {
           case 'log':
-            addLog(runId, event.message, event.level);
+            addLog(runId, (event as Extract<JobEvent, { type: 'log' }>).message, (event as Extract<JobEvent, { type: 'log' }>).level);
             break;
           case 'progress':
-            setProgress(runId, event.pct, event.message);
+            setProgress(runId, (event as Extract<JobEvent, { type: 'progress' }>).pct, (event as Extract<JobEvent, { type: 'progress' }>).message);
             break;
-          case 'result':
-            resultStatus = event.status;
-            resultError = event.status === 'failed' ? event.error : null;
+          case 'result': {
+            const r = event as Extract<JobEvent, { type: 'result' }>;
+            resultStatus = r.status;
+            resultError = r.status === 'failed' ? r.error : null;
             break;
+          }
+          default:
+            addLog(runId, trimmed);
         }
       } catch (err) {
         // A synchronous store throw (e.g. SQLITE_BUSY) must drop at most this
@@ -194,7 +280,7 @@ function executeAttempt(
       resultError = err.message;
     });
 
-    child.on('close', (code) => {
+    child.on('close', (code, killSignal) => {
       if (timer) clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', onAbort);
       if (cancelled) {
@@ -209,10 +295,15 @@ function executeAttempt(
         resolveOutcome({ status: 'success', exitCode: code, error: null });
         return;
       }
+      // Killed by a signal we did not send (the OS out-of-memory killer, a manual
+      // `kill`): `code` is null there, so name the signal instead of "code null".
+      const died = killSignal
+        ? `Process was killed by ${killSignal} without reporting a result`
+        : `Process exited with code ${code} without reporting a result`;
       resolveOutcome({
         status: 'failed',
         exitCode: code,
-        error: resultError ?? `Process exited with code ${code} without reporting a result`,
+        error: resultError ?? died,
       });
     });
   });

@@ -9,42 +9,116 @@ function escapeLike(s: string): string {
 
 // ---- runs ----
 
+/**
+ * WHY a member run ended in a state other than a plain success/failure of its own
+ * process. The `status` column alone is ambiguous: `skipped` used to mean four
+ * different things (an upstream stage failed, the job was already running
+ * elsewhere, the stage had nothing to do, the stage stalled), told apart only by
+ * the free-text `error`. This is the machine-readable answer to "why did stage X
+ * not run / not do anything", shown on the run page.
+ *
+ *  - `noop`                  ran and succeeded, but had nothing to do
+ *  - `stalled`               ran, had work queued, completed none of it (soft-stopped)
+ *  - `upstream-skipped`      never spawned: a dependency did not succeed
+ *  - `overlap`               never spawned: the same job was already running elsewhere
+ *  - `gate-failed`           never spawned: an inbound gate / input check failed
+ *  - `not-started-cancelled` never spawned: the workflow run was cancelled first
+ *  - `orphaned`              was running (or queued) when the daemon restarted
+ */
+export type OutcomeReason =
+  | 'noop'
+  | 'stalled'
+  | 'upstream-skipped'
+  | 'overlap'
+  | 'gate-failed'
+  | 'not-started-cancelled'
+  | 'orphaned';
+
+/** Engine-v2 run metadata recorded alongside a run row (all optional). */
+export interface RunMeta {
+  /** repeatUntilStable cycle (1-based) this run belongs to. */
+  cycle?: number | null;
+  /** Epoch ms the stage became ready (every dependency settled). */
+  queuedAtMs?: number | null;
+  /** ms spent checking inbound gates / resolving inputs before this run. */
+  gateMs?: number | null;
+}
+
 export function createRun(
   jobName: string,
   trigger: RunTrigger,
   attempt = 1,
   workflowRunId: string | null = null,
+  meta: RunMeta = {},
 ): string {
   const id = randomUUID();
   db.prepare(`
-    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, workflow_run_id)
-    VALUES (?, ?, 'running', ?, ?, datetime('now'), ?)
-  `).run(id, jobName, trigger, attempt, workflowRunId);
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, workflow_run_id, cycle, queued_at_ms, started_at_ms, gate_ms)
+    VALUES (?, ?, 'running', ?, ?, datetime('now'), ?, ?, ?, ?, ?)
+  `).run(id, jobName, trigger, attempt, workflowRunId, meta.cycle ?? null, meta.queuedAtMs ?? null, Date.now(), meta.gateMs ?? null);
   return id;
 }
 
-/** Record a terminal run row without spawning a process — used for workflow
- *  members that are SKIPPED because an upstream dependency didn't succeed. */
-export function recordSkippedRun(jobName: string, workflowRunId: string, reason: string): string {
+/**
+ * Record a TERMINAL member run row without spawning a process: the stage is
+ * settled by the engine itself (skipped, gate-failed, never started). Every stage
+ * of every workflow run gets a row one way or another, so "why is there nothing
+ * for stage X" always has a recorded answer (`status` + `outcome_reason` + `error`).
+ */
+export function recordSettledRun(
+  jobName: string,
+  workflowRunId: string,
+  status: Extract<RunStatus, 'skipped' | 'failed' | 'cancelled'>,
+  error: string,
+  outcomeReason: OutcomeReason,
+  meta: RunMeta = {},
+): string {
   const id = randomUUID();
+  const now = Date.now();
   db.prepare(`
-    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error, workflow_run_id)
-    VALUES (?, ?, 'skipped', 'workflow', 1, datetime('now'), datetime('now'), 0, ?, ?)
-  `).run(id, jobName, reason, workflowRunId);
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error,
+                      workflow_run_id, cycle, outcome_reason, queued_at_ms, started_at_ms, finished_at_ms, gate_ms)
+    VALUES (?, ?, ?, 'workflow', 1, datetime('now'), datetime('now'), 0, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, jobName, status, error, workflowRunId, meta.cycle ?? null, outcomeReason, meta.queuedAtMs ?? null, now, now, meta.gateMs ?? null);
   return id;
+}
+
+/** Record a member that is SKIPPED without spawning: an upstream dependency did
+ *  not succeed (the default), or the job was already running elsewhere (`overlap`). */
+export function recordSkippedRun(
+  jobName: string,
+  workflowRunId: string,
+  reason: string,
+  outcomeReason: OutcomeReason = 'upstream-skipped',
+  meta: RunMeta = {},
+): string {
+  return recordSettledRun(jobName, workflowRunId, 'skipped', reason, outcomeReason, meta);
 }
 
 /** Record a terminal FAILED run row without spawning a process — used when a
  *  validation gate between workflow stages is violated, so the consumer never
  *  runs but the failure is surfaced as a first-class failed run (with the drift
  *  detail in `error`). */
-export function recordGateFailure(jobName: string, workflowRunId: string, error: string): string {
-  const id = randomUUID();
-  db.prepare(`
-    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error, workflow_run_id)
-    VALUES (?, ?, 'failed', 'workflow', 1, datetime('now'), datetime('now'), 0, ?, ?)
-  `).run(id, jobName, error, workflowRunId);
-  return id;
+export function recordGateFailure(jobName: string, workflowRunId: string, error: string, meta: RunMeta = {}): string {
+  return recordSettledRun(jobName, workflowRunId, 'failed', error, 'gate-failed', meta);
+}
+
+/** Record a member that never started because its workflow run was cancelled (or
+ *  the daemon restarted) before the engine reached it. */
+export function recordNotStarted(
+  jobName: string,
+  workflowRunId: string,
+  reason: string,
+  outcomeReason: Extract<OutcomeReason, 'not-started-cancelled' | 'orphaned'> = 'not-started-cancelled',
+  meta: RunMeta = {},
+): string {
+  return recordSettledRun(jobName, workflowRunId, 'cancelled', reason, outcomeReason, meta);
+}
+
+/** The currently-`running` run of a job, if any (who holds the overlap guard). */
+export function activeRunOf(jobName: string): { id: string; workflow_run_id: string | null } | undefined {
+  return db.prepare(`SELECT id, workflow_run_id FROM runs WHERE job_name = ? AND status = 'running' ORDER BY rowid DESC LIMIT 1`)
+    .get(jobName) as { id: string; workflow_run_id: string | null } | undefined;
 }
 
 export function setProgress(runId: string, pct: number, message: string): void {
@@ -61,18 +135,25 @@ export function setProgress(runId: string, pct: number, message: string): void {
 export function finishRun(
   runId: string,
   status: RunStatus,
-  opts: { exitCode?: number | null; error?: string | null } = {},
+  opts: { exitCode?: number | null; error?: string | null; outcomeReason?: OutcomeReason | null } = {},
 ): void {
+  // duration_ms uses the ms-precision start when the row has one (engine v2);
+  // rows created before it fall back to the second-granularity julianday maths.
+  const now = Date.now();
   db.prepare(`
     UPDATE runs SET
       status = ?,
       finished_at = datetime('now'),
-      duration_ms = CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER),
+      finished_at_ms = ?,
+      duration_ms = CASE
+        WHEN started_at_ms IS NOT NULL THEN ? - started_at_ms
+        ELSE CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER) END,
       exit_code = ?,
       error = ?,
+      outcome_reason = COALESCE(?, outcome_reason),
       progress = CASE WHEN ? = 'success' THEN 100 ELSE progress END
     WHERE id = ?
-  `).run(status, opts.exitCode ?? null, opts.error ?? null, status, runId);
+  `).run(status, now, now, opts.exitCode ?? null, opts.error ?? null, opts.outcomeReason ?? null, status, runId);
 }
 
 /**
@@ -81,8 +162,8 @@ export function finishRun(
  * nothing to do). Called by the workflow executor after `hasJobAdvancedAnyItem`
  * returns false for a successful stage. T258.
  */
-export function setRunNoop(runId: string): void {
-  db.prepare("UPDATE runs SET status = 'skipped' WHERE id = ?").run(runId);
+export function setRunNoop(runId: string, reason: Extract<OutcomeReason, 'noop' | 'stalled'> = 'noop'): void {
+  db.prepare("UPDATE runs SET status = 'skipped', outcome_reason = ? WHERE id = ?").run(reason, runId);
 }
 
 /**
@@ -413,10 +494,16 @@ export function lastRunForJob(jobName: string): RunRow | undefined {
 
 /** On daemon startup, any run still marked 'running' is orphaned from a crash. */
 export function reapOrphanRuns(): number {
+  const now = Date.now();
   const res = db.prepare(`
     UPDATE runs SET status = 'cancelled', finished_at = datetime('now'),
+      finished_at_ms = ?,
+      duration_ms = CASE
+        WHEN started_at_ms IS NOT NULL THEN ? - started_at_ms
+        ELSE CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER) END,
+      outcome_reason = 'orphaned',
       error = 'Orphaned by daemon restart'
     WHERE status = 'running'
-  `).run();
+  `).run(now, now);
   return res.changes;
 }

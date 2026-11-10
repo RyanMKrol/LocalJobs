@@ -67,7 +67,13 @@ for a second and you get told, rather than quietly getting two.
 see what a change does before letting it loose on the whole library.
 
 **Everything is inspectable.** Live logs stream as jobs run, every past run is kept
-with its output, and the dashboard shows what each step produced.
+with its output, and the dashboard shows what each step produced. Every step of
+every run records how it ended and why: ran, had nothing to do, was skipped because
+an earlier step failed, never started because the run was cancelled.
+
+**A crash can't corrupt a hand-off.** Files passed between steps are written whole or
+not at all, and an item is only marked done once its result is safely on disk, so
+killing a job at any moment costs a little repeated work and never loses data.
 
 ## What it currently runs
 
@@ -145,6 +151,11 @@ tail -f data/daemon.out.log
 ```
 
 Settings live in `.env`, documented in `.env.example`.
+
+A job process runs whatever code is on disk when it starts, while the daemon keeps the
+code it was started with. Restart the daemon after changing anything under `src/`, and
+make larger changes in a separate git worktree so a half-finished edit is never picked
+up by the next scheduled job.
 
 ## Adding a job
 

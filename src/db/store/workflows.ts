@@ -280,15 +280,21 @@ export function rollUpWorkflowProgress(workflowRunId: string, message?: string):
  */
 export type FinalWorkflowRunStatus = WorkflowRunStatus | 'skipped';
 
-export function finishWorkflowRun(id: string, status: FinalWorkflowRunStatus): void {
+export function finishWorkflowRun(
+  id: string,
+  status: FinalWorkflowRunStatus,
+  opts: { endReason?: string | null; cycles?: number | null } = {},
+): void {
   db.prepare(`
     UPDATE workflow_runs SET
       status = ?,
       finished_at = datetime('now'),
       duration_ms = CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER),
+      end_reason = COALESCE(?, end_reason),
+      cycles = COALESCE(?, cycles),
       progress = CASE WHEN ? = 'success' THEN 100 ELSE progress END
     WHERE id = ?
-  `).run(status, status, id);
+  `).run(status, opts.endReason ?? null, opts.cycles ?? null, status, id);
 }
 
 export function getWorkflowRun(id: string): WorkflowRunRow | undefined {
@@ -330,12 +336,61 @@ export function hasActiveWorkflowRun(name: string): boolean {
     .get(name) as { n: number }).n > 0;
 }
 
-/** On daemon startup, close workflow runs orphaned by a crash. */
+/**
+ * On daemon startup, close workflow runs orphaned by a crash or restart, and leave
+ * a readable record of what happened. A reaped run used to be flipped to
+ * `cancelled` with nothing else: no reason, no duration, no log line, and no trace
+ * of the stages that had not started, so the run page could not tell a restart
+ * apart from a deliberate cancel. Now each reaped run gets an `end_reason`, a
+ * duration, a framework log line, and a `cancelled` / `orphaned` row for every
+ * member stage that has no run row at all.
+ *
+ * Call AFTER `reapOrphanRuns` (which settles the member rows that were `running`).
+ */
 export function reapOrphanWorkflowRuns(): number {
-  return db.prepare(`
-    UPDATE workflow_runs SET status = 'cancelled', finished_at = datetime('now')
-    WHERE status = 'running'
-  `).run().changes;
+  const orphans = db.prepare(`SELECT id, workflow_name FROM workflow_runs WHERE status = 'running'`)
+    .all() as { id: string; workflow_name: string }[];
+  const reap = db.transaction((run: { id: string; workflow_name: string }) => {
+    const members = getWorkflowJobs(run.workflow_name).map((j) => j.job_name);
+    const seen = new Set(
+      (db.prepare('SELECT DISTINCT job_name FROM runs WHERE workflow_run_id = ?').all(run.id) as { job_name: string }[])
+        .map((r) => r.job_name),
+    );
+    const notStarted = members.filter((m) => !seen.has(m));
+    for (const job of notStarted) {
+      recordNotStartedRow(job, run.id, 'not started: the daemon restarted before this stage was reached', 'orphaned');
+    }
+    db.prepare(`
+      UPDATE workflow_runs SET
+        status = 'cancelled',
+        finished_at = datetime('now'),
+        duration_ms = CAST((julianday('now') - julianday(started_at)) * 86400000 AS INTEGER),
+        end_reason = 'orphaned by a daemon restart'
+      WHERE id = ?
+    `).run(run.id);
+    addWorkflowLog(
+      run.id,
+      `Workflow "${run.workflow_name}" interrupted — the daemon restarted while this run was in flight. ` +
+        `In-flight stages were killed and recorded as cancelled` +
+        (notStarted.length ? `; ${notStarted.length} stage(s) had not started: ${notStarted.join(', ')}` : '') +
+        `. Finished work is kept in the ledger, so the next run resumes what is outstanding.`,
+      'warn',
+    );
+  });
+  for (const run of orphans) reap(run);
+  return orphans.length;
+}
+
+/** Insert a `cancelled` member row for a stage that never started. Local to this
+ *  module (rather than importing runs.ts's `recordNotStarted`) because runs.ts
+ *  already imports from here; kept to the one INSERT the reap needs. */
+function recordNotStartedRow(jobName: string, workflowRunId: string, reason: string, outcomeReason: string): void {
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, error,
+                      workflow_run_id, outcome_reason, started_at_ms, finished_at_ms)
+    VALUES (?, ?, 'cancelled', 'workflow', 1, datetime('now'), datetime('now'), 0, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), jobName, reason, workflowRunId, outcomeReason, now, now);
 }
 
 /** Member-job work items still in the retry window = "retryable work left" (for repeatUntilStable). */

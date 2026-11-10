@@ -520,8 +520,12 @@ try {
     const runs = listRunsForWorkflowRun(workflowRunId!);
     const killed = runs.find((r) => r.job_name === 'timeout-cancel-pp');
     assert.equal(killed?.status, 'cancelled', 'the in-flight member was killed and recorded cancelled');
-    // The downstream stage never spawned (no row at all) — cancel stops launching.
-    assert.equal(runs.find((r) => r.job_name === 'pp-after-cancel'), undefined, 'no further stage launched');
+    // The downstream stage never spawned — cancel stops launching — and it is
+    // recorded as "not started" rather than being absent from the run.
+    const after = runs.find((r) => r.job_name === 'pp-after-cancel');
+    assert.equal(after?.status, 'cancelled', 'no further stage launched');
+    assert.equal(after?.outcome_reason, 'not-started-cancelled');
+    assert.equal(after?.exit_code, null, 'no process was ever spawned for it');
     // Registry cleaned up after the run settled.
     assert.equal(isWorkflowRunActive(workflowRunId!), false, 'registry entry removed on settle');
     // A second cancel of a now-terminal run is a no-op (returns false).

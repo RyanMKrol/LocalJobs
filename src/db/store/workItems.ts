@@ -109,6 +109,11 @@ export function markWorkItem(
   const detail = normalizedDetail === undefined ? null : JSON.stringify(normalizedDetail);
   const rootKey = resolveRootKey(jobName, itemKey, opts);
   const parentKey = opts.parentKey ?? null;
+  // The ledger row and its run-attribution row are written in ONE transaction: a
+  // process killed between the two used to leave an item the ledger said was done
+  // but no run was credited with, which the run page and the noop/stall checks
+  // then read as "this run did nothing".
+  db.transaction(() => {
   db.prepare(`
     INSERT INTO work_items (job_name, item_key, status, attempts, detail, root_key, parent_key)
     VALUES (@job, @key, @status, @attempts, @detail, @root, @parent)
@@ -136,6 +141,7 @@ export function markWorkItem(
         at = datetime('now')
     `).run({ run: workflowRunId, job: jobName, key: itemKey, root: rootKey });
   }
+  })();
 }
 
 /**

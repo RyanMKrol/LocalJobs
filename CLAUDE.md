@@ -162,7 +162,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
                             │                     executor ──spawns──▶ child (src/runJob.ts)
                             │                  (single job,              runs ONE job,
                             ▼                   timeout/retries)          emits NDJSON
-                         SQLite (data/jobs.db, WAL)  ◀── parent is sole writer
+                         SQLite (data/jobs.db, WAL)  ◀── daemon writes run state; children write the ledger
                             ▲
                          dashboard (Next.js, :4788) ── polls the API, read-only
 ```
@@ -202,7 +202,47 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   `callService` → the shared SQLite `service_usage` meter, so rate limits + monthly
   quotas are enforced GLOBALLY across processes regardless of concurrency — the
   service quota is the spend governor, not the cap.
-- **The child only emits events; the parent (executor) is the sole DB writer.**
+- **Who writes what.** The daemon (executor) is the sole writer of RUN STATE: `runs`,
+  `run_logs`, `workflow_runs`, `workflow_run_logs`, progress. A child reports those as
+  NDJSON events on stdout and the daemon records them. A child writes its own WORK
+  directly: the `work_items` ledger and its per-run attribution (`markWorkItem`), plus
+  the service meters and cache (`callService`). Every process opens the same SQLite
+  file in WAL mode with a 5s busy timeout.
+- **A child runs the code on disk; the daemon runs the code it started with.** Children
+  are spawned with `tsx` straight from the checkout (`executor.ts`), so each one compiles
+  and runs whatever is in the working tree at that moment, including
+  `src/db/index.ts`'s migrations and the registry's load-time validation. The daemon
+  keeps its start-time code until restarted. Consequences worth remembering:
+  - A half-edited file under `src/` is LIVE for the next child that spawns (mount-keeper
+    fires hourly). Do multi-file engine work in a git worktree and fast-forward `main`
+    only at a green commit, then restart.
+  - A schema migration first runs in whichever process opens the DB next, quite possibly
+    a child under an old daemon, and several children can open it at once. Migrations
+    must be additive and safe to race: see `migrateEngineV2` (one `BEGIN IMMEDIATE`
+    transaction, guards evaluated inside it) and `src/db/migrate-concurrent.test.ts`.
+  - The daemon passes `LOCALJOBS_ENGINE` (its child-protocol version) to every child, so
+    a stage that needs newer engine support can fail with "restart the daemon" rather
+    than half-work.
+- **Every stage of every run gets a recorded outcome.** A member `runs` row carries
+  `status` plus `outcome_reason`, the machine-readable WHY for anything that is not a
+  plain success or failure of its own process: `noop` (ran, nothing to do), `stalled`
+  (ran, had work, completed none), `upstream-skipped`, `overlap` (the job was already
+  running; the reason names the holding run), `gate-failed`, `not-started-cancelled`,
+  `orphaned`. `skipped` alone used to mean four different things, told apart only by
+  free text the run page did not show. Stages the engine never reached, because the run
+  was cancelled or the daemon restarted, still get a `cancelled` row saying so instead of
+  being absent. Rows also carry `cycle`, `queued_at_ms` / `started_at_ms` /
+  `finished_at_ms` and `gate_ms`, so queue wait and gate time are measurable. A workflow
+  run records `end_reason` (who or what ended it) and `cycles`.
+- **Gate verdicts are recorded when they are reached.** Each inbound gate's result goes
+  into `run_inputs` (ok, reason, the check's own detail, duration) at the moment the
+  engine checks it. Every inbound gate is evaluated even after one fails, so a fan-in
+  reports all of its bad inputs, not just the first. A `check()` gets
+  `LOCALJOBS_GATE_TIMEOUT_MS` (default 30s) and is abandoned on cancel; a hung check used
+  to hold its stage and a concurrency slot forever.
+- **Retries back off.** A failed or timed-out attempt is retried after
+  `LOCALJOBS_RETRY_BACKOFF_MS` (default 5s, 30s, 2min; the last value repeats). The wait
+  is cancellable.
 - **A running workflow run is cancellable.** `runWorkflow` registers each run in an
   in-process `workflowRunId → AbortController` map (so BOTH the scheduler and the
   manual `POST /api/workflows/:name/run` path register, since both flow through it)
@@ -303,11 +343,13 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | Path | Responsibility |
 |---|---|
 | `src/config.ts` | Env-driven config: ports, bind host, CORS allowlist, auth token, db path, ntfy, shared Chrome profile dir |
-| `src/daemon.ts` | Long-lived entrypoint: sync jobs + workflows, reap orphans, start scheduler + API |
+| `src/daemon.ts` | Long-lived entrypoint: sync jobs + workflows, reap orphans (member runs first, then workflow runs: a reaped run gets an `end_reason`, a duration, a log line, and a row for each stage that never started), start scheduler + API + the retention sweep |
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
 | `src/core/types.ts` | `JobDefinition`, `WorkflowDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
 | `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled`; registers each cron from the **effective** (DB) schedule, and `rescheduleWorkflow(name, schedule)` re-registers it LIVE after a dashboard edit — no restart (T135) |
+| `src/core/checkpoint.ts` | `createCheckpoint(save, { every })`: "save, then mark done". Holds an item-loop stage's ledger marks back until the hand-off file that carries those items' data has been saved, so a kill can never leave an item marked done whose data never reached the next stage. Used by the places stages |
+| `src/core/retention.ts` | Daily background sweep (daemon only) that trims per-run I/O detail of old runs via `pruneRunHistoryChunk` |
 | `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
 | `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; `repeatUntilStable` cycling with a **no-forward-progress early stop** (T112, via `workflowProgressSignature`/`noForwardProgress`); owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below); emits ONLY the aggregate `notifyWorkflow` at run end (no per-stage pushes — T189) |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout): ntfy push + macOS notification. The body is built by `workflowNotificationBody` — the stage roll-up line PLUS a counts line (`N done · N failed · N not attempted · N stuck`, empty fragments omitted) from `workflowRunItemTally`/`workflowStuckCount`. Counts matter: the body used to be the roll-up alone, which reads identically whether a run processed 500 items or zero — the ambiguity that let the places Gemini outage go unnoticed for 18 nights. A tally lookup can never block the push (it falls back to the roll-up line on any throw). `notifyWorkflow` is called once per workflow run at completion (aggregate). `notifyStage` is exported but no longer called by the executor (T189) |
@@ -318,7 +360,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | A pure barrel (`export * from './store/<domain>.js'`, zero logic) — every symbol is still importable from `../db/store.js` exactly as before (T529) |
-| `src/db/store/` | ALL queries live here, split by domain — add new ones to the matching domain file, not inline. `lib.ts` (shared path helpers), `jobs.ts`, `runs.ts` (+ global log feed), `workItems.ts` (per-item ledger, lineage, stuck/ignored), `usage.ts` (per-job spend meter), `workflows.ts` (workflow defs, workflow runs, progress roll-up, framework logs), `services.ts` (service defs, rate/quota meter, consumers, response cache), `admin.ts` (stale-override audit, output reset, definition deletes, read-only DB browser + canned queries) |
+| `src/db/store/` | ALL queries live here, split by domain — add new ones to the matching domain file, not inline. `lib.ts` (shared path helpers), `jobs.ts`, `runs.ts` (+ global log feed), `workItems.ts` (per-item ledger, lineage, stuck/ignored), `usage.ts` (per-job spend meter), `workflows.ts` (workflow defs, workflow runs, progress roll-up, framework logs), `services.ts` (service defs, rate/quota meter, consumers, response cache), `admin.ts` (stale-override audit, output reset, definition deletes, run-history retention, read-only DB browser + canned queries), `artifacts.ts` (`run_inputs` / `run_artifacts`: what each stage was handed and what it committed, per run) |
 | `src/workflows/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/workflows/` AND `*.service.ts` under BOTH `src/services/` and `src/workflows/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
@@ -598,6 +640,28 @@ doubt, log it.
   cron. The registry enforces this at load via `orphanJobNames` and **throws** (the
   daemon refuses to start) if any discovered job has no workflow. When you add a
   job, add its manifest in the same change.
+- **Any broken definition is fatal at load, and all of them are reported together.**
+  `src/workflows/registry.ts` collects every problem (a job or workflow file with no
+  valid default export, a duplicate job or workflow name, an invalid DAG, a member that
+  is not a known job, a job that is a member of MORE than one workflow, an orphan job)
+  and throws one error listing them all. It used to `console.warn` and skip the file,
+  which either crashed anyway with a misleading orphan message or let a workflow quietly
+  drop off the schedule. **A job belongs to exactly one workflow** (`sharedJobNames`):
+  the ledger, the overlap guard and a stage's inputs are all keyed by job name. To reuse
+  logic across workflows, share the function, not the job.
+- **Save, then mark done.** An item-loop stage that adds each item's result to a
+  hand-off file the next stage reads must not mark the item done in the ledger before
+  that file has been saved. Mark-then-save loses data silently when the process is
+  killed in between: the item is "done" forever and never reaches the next stage. Either
+  save per item before `markWorkItem`, or, when the file is too large for that, hold the
+  marks back with `createCheckpoint` (`src/core/checkpoint.ts`) and flush in a `finally`.
+  When re-saving a file that may already contain an item (a re-run after a kill), merge
+  by id rather than append, so nothing is duplicated.
+- **A discovery walk that could not read everything must not prune.** A stage that
+  re-records a snapshot and then deletes the rows it did not see (`pruneSnapshotRows`)
+  must skip the prune, and fail the run, when any part of its walk errored: those rows
+  are missing because the source did not answer, not because the items are gone
+  (`plex-rename` discover is the worked example).
 - **A workflow's `schedule` is user-editable + code-reconciled (T135).** Like the
   `enabled` toggle and the editable service limits, the cron `schedule` is
   **user-owned**: `POST /api/workflows/:name/schedule { schedule }`
@@ -719,7 +783,8 @@ doubt, log it.
   output state for a workflow so it re-processes from scratch on the next run.
   **What is cleared:** `work_items` + `work_item_runs` (the per-item ledger), `run_logs` +
   `runs` (all member job run history), `workflow_run_logs` + `workflow_runs` (all workflow run
-  history), and the contents of the workflow's `data/out/**` directory (output files only —
+  history), `run_artifacts` + `run_inputs` (the per-run record of what each stage read and
+  wrote), and the contents of the workflow's `data/out/**` directory (output files only —
   NOT the `data/out` directory itself, which is left in place).
   **What is preserved:** `data/raw/**` (input data), `data/chrome-profile/`, `.env`, the
   definition tables (`workflows`, `jobs`, `workflow_jobs`), all user-owned settings
@@ -1005,6 +1070,15 @@ doubt, log it.
     The `StuckPopover` reuses the existing `.db-modal-overlay` / `.db-modal`
     chrome and adds only `.stuck-popover` (wider width) and `.stuck-popover-bulk`
     (footer action row) in `dashboard/app/globals.css`.
+- **Per-run I/O detail is trimmed after 90 days.** `work_item_runs`, `run_artifacts` and
+  `run_inputs` gain rows on every run with no natural bound (a library-wide workflow adds
+  tens of thousands a day), so a daily sweep (`src/core/retention.ts` →
+  `pruneRunHistoryChunk`) removes them for runs that started more than
+  `LOCALJOBS_RUN_HISTORY_KEEP_DAYS` (90) ago, always keeping each workflow's most recent
+  `LOCALJOBS_RUN_HISTORY_KEEP_RUNS` (20) runs and anything still running. The runs
+  themselves, their logs and the `work_items` ledger are never trimmed: an old run keeps
+  its status, stages, timings and logs and loses only its Inputs & Outputs lists. It
+  deletes in 5,000-row chunks so no job is blocked for long.
 - **Spend / usage caps.** For jobs that make metered external calls (paid APIs),
   enforce per-day AND per-month caps via the `job_usage` meter in `src/db/store.ts`
   (`recordUsage`, `capStatus`). Call `recordUsage(jobName)` once per real action;
@@ -1553,7 +1627,9 @@ doubt, log it.
 ## Gotchas
 - The in-process scheduler can't fire while the Mac sleeps — the Mini must stay
   awake (`sudo pmset -a sleep 0 disablesleep 1`).
-- Changing job code without restarting the daemon = no effect.
+- Job code is picked up by the NEXT child that spawns (children run from disk), but the
+  daemon itself (scheduler, executor, API, the manifest it synced) only changes on
+  restart. Never leave the two out of step: restart after every `src/` change.
 - SQLite datetimes are UTC strings without `Z`; the dashboard appends `Z` when
   parsing (see `app/ui.tsx`). Preserve that.
 - **Never let `data/` folders be scanned for code, by anything.** The job registry

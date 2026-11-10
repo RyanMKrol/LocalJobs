@@ -10,6 +10,9 @@ import {
   jobSoftStoppedThisRun,
   noForwardProgress,
   recordGateFailure,
+  recordNotStarted,
+  recordRunInput,
+  recordSettledRun,
   recordSkippedRun,
   rollUpWorkflowProgress,
   selectPendingRoots,
@@ -20,11 +23,10 @@ import {
   type WorkflowProgressSignature,
 } from '../db/store.js';
 import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
-import { runJobForWorkflow } from './executor.js';
+import { config } from '../config.js';
+import { abortableSleep, runJobForWorkflow } from './executor.js';
 import { notifyWorkflow } from './notifier.js';
-import type { LogLevel, WorkflowDefinition, RunStatus } from './types.js';
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+import type { GateResult, LogLevel, WorkflowDefinition, RunStatus } from './types.js';
 
 /**
  * Default bounded parallelism for a workflow's independent stages (T156). When a
@@ -97,25 +99,73 @@ function gateAssertions(gate: Gate): string[] {
   return out;
 }
 
-async function enforceGate(gate: Gate): Promise<{ ok: boolean; violations: string[] }> {
+/** What one side of a gate reported, kept so it can be recorded and shown later. */
+export interface GateSideResult {
+  side: 'output' | 'input';
+  job: string;
+  ok: boolean;
+  /** The contract's own result (checks, sample, detail), when the check returned one. */
+  result?: GateResult;
+  /** Set when the check threw, timed out, or was abandoned on cancel. */
+  error?: string;
+}
+
+/**
+ * Run one contract `check()` with a time limit and cancel-awareness. A check is
+ * meant to be a quick look at a local file. Without a limit, one that hangs
+ * (an awaited promise that never settles) holds its stage, and a concurrency
+ * slot, forever: the job's own timeout only starts once its process is spawned,
+ * and a cancel waits for in-flight stages, so not even cancelling got out of it.
+ * (A check that blocks the event loop SYNCHRONOUSLY cannot be interrupted from
+ * here; checks must not do that.)
+ */
+async function runCheck(check: () => GateResult | Promise<GateResult>, signal?: AbortSignal): Promise<GateResult> {
+  let timer: NodeJS.Timeout | undefined;
+  let onAbort: (() => void) | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`check did not finish within ${Math.round(config.gateTimeoutMs / 1000)}s`)),
+      config.gateTimeoutMs,
+    );
+    if (signal) {
+      onAbort = () => reject(new Error('check abandoned — the workflow run was cancelled'));
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+  try {
+    return await Promise.race([Promise.resolve().then(check), limit]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+async function enforceGate(
+  gate: Gate,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; violations: string[]; sides: GateSideResult[] }> {
   const producer = getJobDefinition(gate.producer);
   const consumer = getJobDefinition(gate.consumer);
-  const sides: Array<['output' | 'input', ReturnType<typeof getJobDefinition>, 'produces' | 'consumes']> = [
-    ['output', producer, 'produces'],
-    ['input', consumer, 'consumes'],
+  const sides: Array<['output' | 'input', ReturnType<typeof getJobDefinition>, 'produces' | 'consumes', string]> = [
+    ['output', producer, 'produces', gate.producer],
+    ['input', consumer, 'consumes', gate.consumer],
   ];
   const violations: string[] = [];
-  for (const [side, def, field] of sides) {
+  const results: GateSideResult[] = [];
+  for (const [side, def, field, job] of sides) {
     const contract = def?.[field]?.find((c) => c.key === gate.key);
     if (!contract) continue;
     try {
-      const r = await contract.check();
+      const r = await runCheck(() => contract.check(), signal);
       if (!r.ok) violations.push(...(r.violations?.length ? r.violations : [`${gate.key}: ${side} contract not satisfied`]));
+      results.push({ side, job, ok: r.ok, result: r });
     } catch (e) {
       violations.push(`${gate.key}: ${side} check threw — ${msg(e)}`);
+      results.push({ side, job, ok: false, error: msg(e) });
     }
   }
-  return { ok: violations.length === 0, violations };
+  return { ok: violations.length === 0, violations, sides: results };
 }
 
 export interface WorkflowRunResult {
@@ -200,10 +250,11 @@ export function isWorkflowStarting(name: string): boolean {
  * `runWorkflow` itself when it observes the abort, keeping the executor the sole
  * writer.
  */
-export function cancelWorkflowRun(workflowRunId: string): boolean {
+export function cancelWorkflowRun(workflowRunId: string, reason = 'cancelled from the dashboard / API'): boolean {
   const controller = activeWorkflowRuns.get(workflowRunId);
   if (!controller) return false;
-  controller.abort();
+  // The reason rides on the signal and is recorded as the run's `end_reason`.
+  controller.abort(reason);
   return true;
 }
 
@@ -272,7 +323,7 @@ async function runWorkflowInner(
   } catch (e) {
     const id = createWorkflowRun(def.name, trigger);
     addWorkflowLog(id, `Invalid workflow DAG: ${e instanceof Error ? e.message : e}`, 'error');
-    finishWorkflowRun(id, 'failed');
+    finishWorkflowRun(id, 'failed', { endReason: `invalid workflow DAG: ${msg(e)}` });
     return { workflowRunId: id };
   }
 
@@ -350,7 +401,7 @@ async function runWorkflowInner(
     } catch (e) {
       log(`Failed to resolve input keys for root stage "${rootStage}": ${e instanceof Error ? e.message : e}`, 'error');
       finished = true;
-      finishWorkflowRun(workflowRunId, 'failed');
+      finishWorkflowRun(workflowRunId, 'failed', { endReason: `could not discover inputs for a limited run: ${msg(e)}` });
       activeWorkflowRuns.delete(workflowRunId);
       return { workflowRunId };
     }
@@ -374,44 +425,96 @@ async function runWorkflowInner(
   // detection via work_item_runs. Non-limitable workflows (no static input list)
   // re-scan each run by design; marking them noop would misfire (T258).
   const isLimitableWorkflow = !!findRootStage(dag);
-  // Track which member jobs were detected as noops this run (succeeded but advanced
-  // no items). Used by onSettle to log "skipped (noop)" instead of "→ success".
-  const noopJobs = new Set<string>();
-  /** Stages that soft-stopped having completed ZERO items this run (see below). */
-  const stalledJobs = new Set<string>();
+  // Which member jobs were detected as noops (succeeded but advanced no items) and
+  // which STALLED (soft-stopped having completed ZERO items). Both are PER CYCLE:
+  // they are reset at the top of each repeatUntilStable cycle, and the run's
+  // outcome is judged on the FINAL cycle (as its member statuses already are).
+  // They used to live for the whole run, so a stage that was a noop in cycle 1
+  // and then FAILED in cycle 2 had its "✗ failed" log line suppressed and its
+  // progress message read "skipped (noop)".
+  let noopJobs = new Set<string>();
+  let stalledJobs = new Set<string>();
+  /** job → epoch ms it became ready this cycle (deps settled; waiting for a slot). */
+  const queuedAt = new Map<string, number>();
 
   let lastStatuses = new Map<string, RunStatus>();
+  let cyclesRun = 0;
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
     if (def.repeatUntilStable) log(`──── cycle ${cycle}/${maxCycles} ────`);
     let settled = 0;
+    cyclesRun = cycle;
+    noopJobs = new Set<string>();
+    stalledJobs = new Set<string>();
+    queuedAt.clear();
 
     lastStatuses = await executeDag(dag, {
       concurrency: effectiveConcurrency,
       signal: controller.signal,
+      onReady: (job) => { queuedAt.set(job, Date.now()); },
       runOne: async (job) => {
+        const meta = { cycle, queuedAtMs: queuedAt.get(job) ?? Date.now() };
         const jd = getJobDefinition(job);
         if (!jd) {
           log(`job "${job}" has no definition — failing it`, 'error');
+          // Still leave a row: every stage of every run gets a recorded outcome.
+          recordSettledRun(job, workflowRunId, 'failed', `job "${job}" has no definition in the registry`, 'gate-failed', meta);
           return 'failed';
         }
         // Validation gate: every inbound contract from a (now-succeeded) upstream
         // is checked BEFORE the consumer runs. A violation is a first-class failed
         // run — the consumer never spawns and the drift is surfaced + notified,
         // so bad data is stopped at the exact boundary.
+        //
+        // EVERY inbound gate is evaluated, even after one fails: on a fan-in the
+        // useful answer is "which of the 8 inputs are bad", not just the first.
+        // Each verdict is RECORDED (run_inputs) as it is reached, so the run page
+        // shows what was checked at run time rather than re-checking later.
+        const gateStart = Date.now();
+        const failures: Array<{ gate: Gate; detail: string }> = [];
         for (const gate of inboundGates.get(job) ?? []) {
           const asserts = gateAssertions(gate);
           const suffix = asserts.length ? ` · ${asserts.join('; ')}` : '';
           log(`⛒ checking gate [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${suffix}`);
-          const verdict = await enforceGate(gate);
+          const t0 = Date.now();
+          const verdict = await enforceGate(gate, controller.signal);
+          recordRunInput({
+            workflowRunId,
+            cycle,
+            jobName: gate.consumer,
+            port: gate.key,
+            producerJob: gate.producer,
+            artifactKey: gate.key,
+            ok: verdict.ok,
+            reason: verdict.ok ? null : verdict.violations.join('; '),
+            check: { sides: verdict.sides },
+            durationMs: Date.now() - t0,
+          });
           if (!verdict.ok) {
             const detail = `${gateFailurePrefix(gate)}: ${verdict.violations.join('; ')}`;
             log(`⨯ ${detail}`, 'error');
-            recordGateFailure(job, workflowRunId, detail);
-            return 'failed';
+            failures.push({ gate, detail });
+            continue;
           }
-          log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${suffix}`);
+          const sample = verdict.sides.map((sd) => sd.result?.sample ?? sd.result?.detail).find(Boolean);
+          log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${sample ? ` (${sample})` : ''}${suffix}`);
         }
-        const { runId, status } = await runJobForWorkflow(jd, workflowRunId, controller.signal);
+        const gateMs = Date.now() - gateStart;
+        if (controller.signal.aborted) {
+          recordNotStarted(job, workflowRunId, 'not started: the workflow run was cancelled during its gate checks', 'not-started-cancelled', { ...meta, gateMs });
+          return 'cancelled';
+        }
+        if (failures.length > 0) {
+          // The first failing gate leads the error (classifyGates matches on that
+          // prefix); any others follow so none is hidden.
+          recordGateFailure(job, workflowRunId, failures.map((f) => f.detail).join(' | '), { ...meta, gateMs });
+          return 'failed';
+        }
+        const { runId, status } = await runJobForWorkflow(jd, workflowRunId, controller.signal, {
+          ...meta,
+          gateMs,
+          workflowName: def.name,
+          workflowTrigger: trigger,
+        });
         // Noop detection (T258): for limitable workflows, a stage that succeeds
         // without advancing any work items (no markWorkItem calls during this run)
         // is a noop — all items were already done or quota-soft-stopped. Update the
@@ -420,7 +523,8 @@ async function runWorkflowInner(
         // doesn't cascade-skip dependents — the noop is a per-stage annotation,
         // not a workflow-level failure.
         if (status === 'success' && runId && isLimitableWorkflow && !hasJobAdvancedAnyItem(workflowRunId, job)) {
-          setRunNoop(runId);
+          const stalledNow = jobSoftStoppedThisRun(workflowRunId, job);
+          setRunNoop(runId, stalledNow ? 'stalled' : 'noop');
           noopJobs.add(job);
           // Two very different shapes of "advanced nothing", and conflating them is
           // what let a hard-broken stage report success indefinitely:
@@ -428,7 +532,7 @@ async function runWorkflowInner(
           //     a STALL (an upstream refusal, an exhausted ceiling), not a quiet
           //     day, and it must colour the whole run so the push says so.
           //   • no soft stop → genuinely nothing to do. Benign, stays success.
-          if (jobSoftStoppedThisRun(workflowRunId, job)) {
+          if (stalledNow) {
             stalledJobs.add(job);
             log(
               `⊙ ${job} → STALLED (stopped early having completed 0 items — it had work queued ` +
@@ -457,7 +561,7 @@ async function runWorkflowInner(
       },
       onSkip: async (job, reason) => {
         settled++;
-        recordSkippedRun(job, workflowRunId, `skipped: ${reason}`);
+        recordSkippedRun(job, workflowRunId, `skipped: ${reason}`, 'upstream-skipped', { cycle, queuedAtMs: Date.now() });
         rollUpWorkflowProgress(workflowRunId, `${settled}/${total} stages (${job} skipped)`);
         log(`⊘ ${job} skipped — ${reason}`, 'warn');
       },
@@ -465,7 +569,16 @@ async function runWorkflowInner(
 
     // Cancelled mid-run — stop cycling (the in-flight stage was already killed
     // and drained by executeDag) and fall through to the cancelled finalisation.
-    if (controller.signal.aborted) break;
+    // Stages executeDag never reached are absent from its status map; give each a
+    // row and a log line so the run page shows "not started", not a blank.
+    if (controller.signal.aborted) {
+      for (const job of dag.nodes) {
+        if (lastStatuses.has(job)) continue;
+        recordNotStarted(job, workflowRunId, 'not started: the workflow run was cancelled first', 'not-started-cancelled', { cycle });
+        log(`⊘ ${job} not started — the workflow run was cancelled before it was reached`, 'warn');
+      }
+      break;
+    }
 
     if (!def.repeatUntilStable) break;
     const sig = workflowProgressSignature(memberNames, minAttempts);
@@ -493,7 +606,8 @@ async function runWorkflowInner(
     prevSig = sig;
     if (cycle < maxCycles && (def.cycleSleepMs ?? 0) > 0) {
       log(`sleeping ${Math.round((def.cycleSleepMs ?? 0) / 1000)}s before next cycle…`);
-      await sleep(def.cycleSleepMs ?? 0);
+      // Abortable: a cancel during the pause ends the run now, not after the sleep.
+      if (await abortableSleep(def.cycleSleepMs ?? 0, controller.signal)) break;
     }
   }
 
@@ -534,8 +648,13 @@ async function runWorkflowInner(
     );
   }
   finished = true;
-  finishWorkflowRun(workflowRunId, status);
-  log(status === 'cancelled' ? `Workflow "${def.name}" cancelled` : `Workflow "${def.name}" finished: ${status}`);
+  const cancelReason = controller.signal.aborted
+    ? (typeof controller.signal.reason === 'string' ? controller.signal.reason : 'cancelled')
+    : null;
+  finishWorkflowRun(workflowRunId, status, { endReason: cancelReason, cycles: cyclesRun });
+  log(status === 'cancelled'
+    ? `Workflow "${def.name}" cancelled${cancelReason ? ` (${cancelReason})` : ''}`
+    : `Workflow "${def.name}" finished: ${status}`);
   // notifyWorkflow accepts WorkflowRunStatus; a 'skipped' (noop) run is
   // quiet/benign — map it to 'success' for the aggregate notification.
   const notifyStatus = status === 'skipped' ? 'success' : status;
@@ -557,12 +676,21 @@ async function runWorkflowInner(
     // in-flight member (hard-killed via the existing SIGTERM→SIGKILL path) and
     // fail the run explicitly so the workflow is immediately re-runnable — the
     // error is logged loudly to the run, not swallowed silently.
-    controller.abort();
+    controller.abort('engine error');
     const message = err instanceof Error ? err.message : String(err);
-    log(`Workflow "${def.name}" run failed with an unhandled error: ${message}`, 'error');
+    // Best-effort: this is the catch-all, so a logging failure must not mask the
+    // original error or stop the run being finalised below.
+    try {
+      log(`Workflow "${def.name}" run failed with an unhandled error: ${err instanceof Error ? (err.stack ?? message) : message}`, 'error');
+    } catch { /* the DB is the likely culprit; fall through to finalise */ }
     if (!finished) {
       finished = true;
-      finishWorkflowRun(workflowRunId, 'failed');
+      finishWorkflowRun(workflowRunId, 'failed', { endReason: `unhandled engine error: ${message}` });
+      // A run that died this way used to end silently. It is a failure like any
+      // other, so it reaches the phone too (best-effort: never throw from here).
+      try {
+        if (effectiveWorkflowNotifyEnabled(def)) await notifyWorkflow(def.name, workflowRunId, 'failed', log);
+      } catch { /* notification is best-effort on this path */ }
     }
     return { workflowRunId };
   } finally {
