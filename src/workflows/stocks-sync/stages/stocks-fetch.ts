@@ -2,7 +2,6 @@ import { mkdirSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
-import { markWorkItem } from '../../../db/store.js';
 import {
   fetchPortfolio,
   normalizePosition,
@@ -12,7 +11,12 @@ import {
 import { stocksSyncConfig } from '../config.js';
 import { dayKey } from './stocks-snapshot.js';
 
-const JOB_NAME = 'stocks-fetch';
+/** What one run fetched. Returned so a caller (and the tests) can see the counts. */
+export interface StocksFetchSummary {
+  investCount: number;
+  isaCount: number;
+  totalFetched: number;
+}
 
 export type RawPositionsWriter = (positions: NormalizedPosition[]) => void;
 
@@ -26,6 +30,9 @@ export function writeRawPositions(positions: NormalizedPosition[]): void {
  * configured), normalize + tag each by account, and write
  * data/out/raw-positions.json for `stocks-snapshot` to resolve real-world
  * tickers for. No ticker resolution happens here — that's the next stage.
+ *
+ * Writes no ledger row: the raw positions file is this stage's declared output,
+ * and the run page shows that.
  */
 export async function runStocksFetch(
   ctx: JobContext,
@@ -34,7 +41,7 @@ export async function runStocksFetch(
     writeRawPositions?: RawPositionsWriter;
     now?: Date;
   } = {},
-): Promise<void> {
+): Promise<StocksFetchSummary> {
   const apiKeyId = process.env.TRADING212_API_KEY_ID ?? '';
   const apiSecretKey = process.env.TRADING212_API_SECRET_KEY ?? '';
   if (!apiKeyId) throw new Error('TRADING212_API_KEY_ID is not set');
@@ -75,20 +82,10 @@ export async function runStocksFetch(
   const key = dayKey(now);
   const investCount = rawInvestPositions.length;
 
-  markWorkItem(JOB_NAME, key, 'success', {
-    detail: {
-      name: `Positions fetched — ${key}`,
-      investCount,
-      isaCount,
-      totalFetched: positions.length,
-      path: stocksSyncConfig.rawPositionsJsonPath,
-      format: 'json',
-    },
-  });
-
   ctx.log(
-    `stocks-fetch complete — recorded 1 ledger row (${key}) for ${positions.length} ` +
-      `fetched position(s) (${investCount} Invest, ${isaCount} ISA)`,
+    `stocks-fetch complete for ${key} — ${positions.length} fetched position(s) ` +
+      `(${investCount} Invest, ${isaCount} ISA)`,
   );
   ctx.progress(100, `${positions.length} position(s) fetched for ${key}`);
+  return { investCount, isaCount, totalFetched: positions.length };
 }

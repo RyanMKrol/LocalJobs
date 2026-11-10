@@ -2,11 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import type { JobContext } from '../../../core/types.js';
 import { dayKey } from '../../../core/dates.js';
-import { markWorkItem, workItemCounts } from '../../../db/store.js';
 import type { NormalizedPosition } from '../../../services/trading212.service.js';
 import { stocksSyncConfig } from '../config.js';
-
-const JOB_NAME = 'stocks-snapshot';
 
 export { dayKey };
 
@@ -66,8 +63,16 @@ export function readNamedPositions(): NormalizedPosition[] {
 }
 
 // ---------------------------------------------------------------------------
-// Core sync logic (injectable dependencies for hermeticity in tests)
+// Core sync logic (injectable dependencies for hermeticity in tests).
+// Writes no ledger row: portfolio.json and portfolio.md are this stage's
+// declared outputs, and the run page shows those.
 // ---------------------------------------------------------------------------
+
+/** What one run wrote. Returned so a caller (and the tests) can see the numbers. */
+export interface StocksSnapshotSummary {
+  positionCount: number;
+  totalValue: number;
+}
 
 export async function runStocksSnapshot(
   ctx: JobContext,
@@ -76,7 +81,7 @@ export async function runStocksSnapshot(
     writePortfolio?: PortfolioWriter;
     now?: Date;
   } = {},
-): Promise<void> {
+): Promise<StocksSnapshotSummary> {
   const readNamedPositionsFn = opts.readNamedPositions ?? readNamedPositions;
   const writePortfolioFn = opts.writePortfolio ?? writePortfolio;
   const now = opts.now ?? new Date();
@@ -86,9 +91,6 @@ export async function runStocksSnapshot(
   const positions = readNamedPositionsFn();
   ctx.log(`read ${positions.length} named position(s) from stocks-resolve-names`);
 
-  const counts = workItemCounts(JOB_NAME);
-  ctx.log(`ledger: ${counts['success'] ?? 0} previously recorded`);
-
   writePortfolioFn(positions);
   ctx.log(
     `wrote ${positions.length} position(s) to data/out/portfolio.json and data/out/portfolio.md`,
@@ -97,7 +99,7 @@ export async function runStocksSnapshot(
   if (positions.length === 0) {
     ctx.log('no open positions to record — done');
     ctx.progress(100, 'no positions to record');
-    return;
+    return { positionCount: 0, totalValue: 0 };
   }
 
   let done = 0;
@@ -114,18 +116,10 @@ export async function runStocksSnapshot(
   const totalValue = positions.reduce((sum, p) => sum + p.currentValue, 0);
   const key = dayKey(now);
 
-  markWorkItem(JOB_NAME, key, 'success', {
-    detail: {
-      name: `Portfolio snapshot — ${key}`,
-      positionCount: positions.length,
-      totalValue,
-      markdown: stocksSyncConfig.portfolioMdPath,
-    },
-  });
-
   ctx.log(
-    `stocks-snapshot complete — recorded 1 combined ledger row (${key}) for ${positions.length} ` +
-      `position(s), total value ${totalValue.toFixed(2)}`,
+    `stocks-snapshot complete for ${key} — ${positions.length} position(s), ` +
+      `total value ${totalValue.toFixed(2)}`,
   );
-  ctx.progress(100, `${positions.length} position(s) recorded for ${key}`);
+  ctx.progress(100, `${positions.length} position(s) written for ${key}`);
+  return { positionCount: positions.length, totalValue };
 }

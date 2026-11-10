@@ -13,9 +13,9 @@ export default defineStage({
     'one row per position, an Account column, and the company name (falling back to an em-dash ' +
     'when a name could not be resolved). This stage is a pure report builder — it makes no ' +
     'Trading212 or OpenFIGI calls of its own; all resolution work happens upstream in ' +
-    'stocks-resolve-names. It records one combined work-item ledger row per calendar day (skipped ' +
-    'entirely when there is nothing to record), and declares no inputKeys(), so it is not ' +
-    'limitable from the dashboard\'s run-limit box.',
+    'stocks-resolve-names. Both files are written on every run, including when no positions are ' +
+    'held. It writes no work-item ledger rows (the two files are its declared outputs) and ' +
+    'declares no inputKeys(), so it is not limitable from the dashboard\'s run-limit box.',
   timeoutMs: 60_000,
   maxRetries: 3,
   inputs: { named: { artifact: namedPositions } },

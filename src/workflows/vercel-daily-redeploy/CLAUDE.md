@@ -43,7 +43,7 @@ so a same-day manual re-run overwrites that day's row instead of duplicating it.
 successful deploy, or a `reason` string (`missing-config: ...` / `quota-exhausted: ...` / the deploy
 error message) on a skip or failure. The row is also a file-backed JSON artifact under
 `data/out/vercel-redeploy-<day>.json` (`detail.format: 'json'` + `detail.path`, the
-overrides-audit/stocks-fetch convention), so it's previewable via the standard Output panel. A
+same `path` + `format` pair any non-markdown output uses), so it's previewable via the standard Output panel. A
 deploy failure records a `'failed'` ledger row **in addition to** the run itself failing (the run
 still throws so the executor records a failed run — the ledger row is a second, queryable signal of
 the same failure). `category: 'regular-maintenance'`. Runs daily at 23:00 (`'0 23 * * *'`),

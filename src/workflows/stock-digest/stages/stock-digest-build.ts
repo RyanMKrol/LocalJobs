@@ -277,10 +277,9 @@ export async function runStockDigestBuild(
   ctx.log(`wrote digest markdown to ${mdPath}`);
 
   markWorkItem(JOB_NAME, key, 'success', {
-    // Explicit rootKey (== this stage's own item_key here) so the Input → Output
-    // panel's lineage is stated, not just relying on the item_key === root_key
-    // default — matches the same shared week-key root stock-portfolio-snapshot
-    // and stock-sector-lookup root themselves to.
+    // Explicit rootKey (== this stage's own item_key here), so the lineage is
+    // stated instead of relying on the item_key === root_key default. It is the
+    // same week key stock-sector-lookup roots its per-ticker rows to.
     rootKey: key,
     detail: { name: `Stock digest — ${label}`, markdown: mdPath },
   });

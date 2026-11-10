@@ -31,6 +31,13 @@ const DISPLAY_ONLY_LEDGERS: { job: string; was: string }[] = [
   { job: 'franchise-gaps', was: 'one row per collection checked, re-marked every run' },
   { job: 'plex-tv-snapshot', was: 'one row per show in the library, re-marked every run' },
   { job: 'tmdb-season-check', was: 'one row per show checked, re-marked every run' },
+  // stocks-sync: the stocks-watch ledger (per-run checks and what has been announced) is real state and is kept.
+  { job: 'stocks-fetch', was: 'one row per day pointing at raw-positions.json' },
+  { job: 'stocks-resolve-names', was: 'one row per day pointing at named-positions.json' },
+  { job: 'stocks-snapshot', was: 'one row per day pointing at portfolio.md' },
+  // stock-digest: stock-sector-lookup (a ticker is looked up once) and stock-digest-build (one digest per week) are kept.
+  { job: 'stock-portfolio-fetch', was: 'one row per ISO week pointing at raw-portfolio.json' },
+  { job: 'stock-portfolio-snapshot', was: 'one row per ISO week summarising portfolio.json' },
 ];
 
 const apply = process.argv.includes('--apply');

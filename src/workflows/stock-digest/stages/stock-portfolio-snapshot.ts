@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
-import { markWorkItem } from '../../../db/store.js';
 import {
   fetchInstrumentsMetadata,
   resolveOpenFigiTickersBatched,
@@ -14,7 +13,12 @@ import {
 import { portfolioJsonPath, rawPortfolioJsonPath, stockDigestConfig } from '../config.js';
 import { weekKey, weekLabel } from '../lib.js';
 
-const JOB_NAME = 'stock-portfolio-snapshot';
+/** What one run wrote. Returned so a caller (and the tests) can see the numbers. */
+export interface StockPortfolioSnapshotSummary {
+  positionCount: number;
+  totalValue: number;
+  resolvedCount: number;
+}
 
 // ---------------------------------------------------------------------------
 // Raw-portfolio reader (the hand-off from stock-portfolio-fetch)
@@ -46,13 +50,11 @@ export function writePortfolio(positions: NormalizedPosition[]): void {
 // OpenFIGI real-ticker resolution) via the shared
 // src/services/trading212.service.ts.
 //
-// Unlike stocks-sync's per-position ledger, this stage records ONE combined
-// work_items row per run, keyed by the SAME ISO week key stock-digest-build
-// uses — the whole workflow only ever runs its stages together, and the
-// final report is bucketed weekly, so one shared week-keyed root gives every
-// downstream stage (stock-sector-lookup's per-ticker rows, stock-digest-build's
-// own row) something clean to point their `rootKey` at, instead of disjoint
-// key spaces that don't join in the Input → Output panel.
+// This stage writes no ledger row: portfolio.json is its declared output, and
+// the run page shows that. The ISO week key is still used here for the
+// limited-run check and the log lines; stock-sector-lookup and
+// stock-digest-build pass the same week key as an explicit `rootKey` on their
+// own rows, which does not need a row from this stage to exist.
 // ---------------------------------------------------------------------------
 
 export async function runStockPortfolioSnapshot(
@@ -64,7 +66,7 @@ export async function runStockPortfolioSnapshot(
     writePortfolio?: PortfolioWriter;
     now?: Date;
   } = {},
-): Promise<void> {
+): Promise<StockPortfolioSnapshotSummary> {
   const now = opts.now ?? new Date();
   const key = weekKey(now);
   const label = weekLabel(now);
@@ -72,7 +74,7 @@ export async function runStockPortfolioSnapshot(
   if (!ctx.rootAllowed(key)) {
     ctx.log(`root ${key} not in this limited run's selection — skipping`);
     ctx.progress(100, 'skipped — not selected');
-    return;
+    return { positionCount: 0, totalValue: 0, resolvedCount: 0 };
   }
 
   const apiKeyId = process.env.TRADING212_API_KEY_ID ?? '';
@@ -122,25 +124,16 @@ export async function runStockPortfolioSnapshot(
   if (positions.length === 0) {
     ctx.log('no open positions to record — done');
     ctx.progress(100, 'no positions to record');
-    return;
+    return { positionCount: 0, totalValue: 0, resolvedCount: 0 };
   }
 
   const totalValue = positions.reduce((sum, p) => sum + p.currentValue, 0);
   const resolvedCount = positions.filter((p) => p.resolvedTicker).length;
 
-  markWorkItem(JOB_NAME, key, 'success', {
-    rootKey: key,
-    detail: {
-      name: `Portfolio snapshot — ${label}`,
-      positionCount: positions.length,
-      totalValue,
-      resolvedCount,
-    },
-  });
-
-  ctx.progress(100, `${positions.length} position(s) recorded for ${label}`);
+  ctx.progress(100, `${positions.length} position(s) written for ${label}`);
   ctx.log(
-    `stock-portfolio-snapshot complete — recorded 1 combined ledger row (${key}) for ` +
-      `${positions.length} position(s), total value ${totalValue.toFixed(2)}, ${resolvedCount} real-ticker resolved`,
+    `stock-portfolio-snapshot complete for ${key} — ${positions.length} position(s), ` +
+      `total value ${totalValue.toFixed(2)}, ${resolvedCount} real-ticker resolved`,
   );
+  return { positionCount: positions.length, totalValue, resolvedCount };
 }

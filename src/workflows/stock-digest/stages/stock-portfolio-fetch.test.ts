@@ -5,13 +5,13 @@
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 
-import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   type NormalizedPosition,
   type Trading212Position,
 } from '../../../services/trading212.service.js';
-import { weekKey, weekLabel } from '../lib.js';
+import { weekKey } from '../lib.js';
 import { runStockPortfolioFetch, type RawPortfolioWriter } from './stock-portfolio-fetch.js';
 
 function fakeCtx(): JobContext {
@@ -50,8 +50,8 @@ function makeWriterSpy() {
 
 const JOB = 'stock-portfolio-fetch';
 
-// Each ledger-touching test needs its OWN distinct ISO week: the ledger row is
-// keyed by weekKey, so two tests sharing the same `now` would collide.
+// Each test gets its OWN distinct ISO week, so a "no ledger row for this week"
+// check looks at a key no other test in this file has touched.
 let weekOffset = 0;
 function freshNow(): Date {
   weekOffset += 1;
@@ -118,16 +118,16 @@ describe('runStockPortfolioFetch', () => {
     assert.equal('resolvedTicker' in calls[0][0], false, 'raw positions carry no resolvedTicker field yet');
   });
 
-  it('records investCount/isaCount/totalFetched in ledger detail', async () => {
+  it('returns investCount/isaCount/totalFetched and writes no ledger row', async () => {
     const now = freshNow();
     process.env.TRADING212_ISA_API_KEY_ID = 'isa-key-id';
     process.env.TRADING212_ISA_API_SECRET_KEY = 'isa-secret-key';
 
     const investPos = makePosition({ ticker: `DETAIL_INVEST_${Date.now()}_EQ` });
     const isaPos = makePosition({ ticker: `DETAIL_ISA_${Date.now()}_EQ` });
-    const { write } = makeWriterSpy();
+    const { write, calls } = makeWriterSpy();
 
-    await runStockPortfolioFetch(fakeCtx(), {
+    const summary = await runStockPortfolioFetch(fakeCtx(), {
       now,
       fetchPortfolio: async (keyId) => (keyId === 'isa-key-id' ? [isaPos] : [investPos]),
       writeRawPortfolio: write,
@@ -136,33 +136,26 @@ describe('runStockPortfolioFetch', () => {
     delete process.env.TRADING212_ISA_API_KEY_ID;
     delete process.env.TRADING212_ISA_API_SECRET_KEY;
 
-    const row = getWorkItem(JOB, weekKey(now));
-    assert.ok(row, 'ledger row should exist');
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.investCount, 1);
-    assert.equal(detail.isaCount, 1);
-    assert.equal(detail.totalFetched, 2);
-    assert.equal(detail.name, `Positions fetched — ${weekLabel(now)}`);
-    assert.equal(detail.format, 'json');
-    assert.ok(typeof detail.path === 'string' && detail.path.endsWith('raw-portfolio.json'));
+    assert.deepEqual(summary, { investCount: 1, isaCount: 1, totalFetched: 2 });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].length, 2, 'the writer received both positions');
+    assert.equal(getWorkItem(JOB, weekKey(now)), undefined, 'the stage writes no ledger row');
   });
 
-  it('records a ledger row even when zero positions are fetched', async () => {
+  it('still writes the (empty) file when zero positions are fetched, and returns zero counts', async () => {
     const now = freshNow();
     const { write, calls } = makeWriterSpy();
 
-    await runStockPortfolioFetch(fakeCtx(), {
+    const summary = await runStockPortfolioFetch(fakeCtx(), {
       now,
       fetchPortfolio: async () => [],
       writeRawPortfolio: write,
     });
 
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 1, 'the output is written even for an empty fetch');
     assert.equal(calls[0].length, 0);
-    assert.ok(isWorkItemDone(JOB, weekKey(now), 1), 'a row is recorded even for an empty fetch');
-    const row = getWorkItem(JOB, weekKey(now));
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.totalFetched, 0);
+    assert.deepEqual(summary, { investCount: 0, isaCount: 0, totalFetched: 0 });
+    assert.equal(getWorkItem(JOB, weekKey(now)), undefined, 'the stage writes no ledger row');
   });
 
   it('fetches only Invest positions when ISA credentials are unset', async () => {
@@ -219,7 +212,7 @@ describe('runStockPortfolioFetch', () => {
     const isaPos = makePosition({ ticker: sharedTicker, averagePrice: 50, currentPrice: 60 });
     const { write, calls } = makeWriterSpy();
 
-    await runStockPortfolioFetch(fakeCtx(), {
+    const summary = await runStockPortfolioFetch(fakeCtx(), {
       now,
       fetchPortfolio: async (keyId) => (keyId === 'isa-key-id' ? [isaPos] : [investPos]),
       writeRawPortfolio: write,
@@ -229,8 +222,6 @@ describe('runStockPortfolioFetch', () => {
     delete process.env.TRADING212_ISA_API_SECRET_KEY;
 
     assert.equal(calls[0].length, 2);
-    const row = getWorkItem(JOB, weekKey(now));
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.totalFetched, 2);
+    assert.equal(summary.totalFetched, 2);
   });
 });

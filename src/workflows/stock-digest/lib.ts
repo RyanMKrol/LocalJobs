@@ -1,11 +1,8 @@
 /**
- * "2026-W27" — the ISO-8601 week key. Shared across ALL THREE stock-digest
- * stages as the common lineage root (`root_key`): `stock-portfolio-snapshot`
- * records its one collapsed ledger row keyed by this, and both
+ * "2026-W27" — the ISO-8601 week key. The two stock-digest stages that write
+ * to the ledger share it as their lineage root (`root_key`):
  * `stock-sector-lookup` (per-ticker keys) and `stock-digest-build` (its own
- * week-keyed row) pass it as `rootKey` so the workflow-run Input → Output
- * panel joins all three stages to one shared root instead of three disjoint
- * key spaces. Re-exported from `src/core/dates.ts` (the single shared
+ * week-keyed row) both pass it as `rootKey`. Re-exported from `src/core/dates.ts` (the single shared
  * definition) so every existing `from '../lib.js'` import keeps resolving.
  */
 import { readFileSync } from 'fs';

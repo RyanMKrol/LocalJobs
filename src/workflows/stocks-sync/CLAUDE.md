@@ -15,9 +15,8 @@ Fetches raw positions from Trading212 and tags them by account — nothing else.
 OPTIONAL second Stocks & Shares ISA account via `TRADING212_ISA_API_KEY_ID`/`_SECRET_KEY` (Trading212
 scopes one key/secret pair PER account); when set, positions are tagged `account: 'isa'` (vs
 `'invest'`) and merged into the same list. Writes `data/out/raw-positions.json`, not yet
-ticker-resolved (the `stocks-raw-positions` gate validates the hand-off). Records one combined
-`work_items` row per calendar day, **written unconditionally even at zero positions** — so this
-stage's ledger activity is always real, never mislabeled noop.
+ticker-resolved (the `stocks-raw-positions` gate validates the hand-off). The file is written on
+every run, even at zero positions.
 
 ## Stage 2 — `stocks-resolve-names` (T413)
 
@@ -30,8 +29,7 @@ mechanically enforces the endpoint's documented 1-request-per-50-seconds spacing
 only the portfolio-fetch endpoint. `NormalizedPosition` gains an optional `name`
 field; a miss is a soft skip (logged, `name` left `undefined`) — never fails the stage. Writes
 `data/out/named-positions.json` for `stocks-snapshot` to read (the `stocks-named-positions` gate
-validates the hand-off). Records one combined ledger row per day, skipped entirely when there's
-nothing to resolve.
+validates the hand-off). With no positions it writes the empty list and makes no metadata call.
 
 ## Stage 3 — `stocks-snapshot`
 
@@ -40,8 +38,8 @@ A pure report builder — no Trading212/OpenFIGI calls of its own, no credential
 `data/out/portfolio.md`. `portfolio.md` shows a **"Company name"** column (`p.name ?? '—'`) instead of
 a resolved ticker — the resolution work now lives entirely in `stocks-resolve-names` (T414 removed
 this stage's now-redundant ISIN/OpenFIGI resolution, which used to duplicate the instruments-metadata
-call `stocks-resolve-names` already makes). Records one combined ledger row per day (skipped
-entirely when there's nothing to record). Declares no `inputKeys()` — not limitable, no Run-limit box.
+call `stocks-resolve-names` already makes). Declares no `inputKeys()`, so it is not limitable and has
+no Run-limit box.
 
 ## Stage 4 — `stocks-watch`
 
@@ -85,10 +83,9 @@ A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contra
 
 Every output is rebuilt on every run, so each stage reads what the previous one committed in
 the same run, and a stage that returned without writing its file fails. An empty position list
-and an empty breach list are both valid. Still to do: the per-day ledger rows that
-`stocks-fetch`, `stocks-resolve-names` and `stocks-snapshot` write exist only for display and
-can go now that their outputs are declared (their tests assert them, so they were left for a
-follow-up). The `stocks-watch` ledger is real state (which positions have been announced).
+and an empty breach list are both valid. `stocks-fetch`, `stocks-resolve-names` and
+`stocks-snapshot` write no ledger rows, and the run page shows their declared outputs. The
+`stocks-watch` ledger is real state (which positions have been announced).
 
 ## Distinct from `stock-digest`
 

@@ -5,10 +5,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it, beforeEach } from 'node:test';
 
-import { getWorkItem, isWorkItemDone, toStoredPath } from '../../../db/store.js';
+import { getWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import type { NormalizedPosition, Trading212Instrument } from '../../../services/trading212.service.js';
-import { stocksSyncConfig } from '../config.js';
 import { dayKey } from './stocks-snapshot.js';
 import {
   runStocksResolveNames,
@@ -81,11 +80,11 @@ describe('runStocksResolveNames', () => {
     assert.ok(!/resolveOpenFigiTickersBatched/.test(source), 'must not reference resolveOpenFigiTickersBatched');
   });
 
-  it('records zero ledger rows when there are no raw positions to resolve', async () => {
+  it('writes the empty file and returns zero counts when there are no raw positions to resolve', async () => {
     const { write, calls } = makeWriterSpy();
     const now = new Date('2026-07-13T00:00:00.000Z');
 
-    await runStocksResolveNames(fakeCtx(), {
+    const summary = await runStocksResolveNames(fakeCtx(), {
       readRawPositions: stubRaw([]),
       writeNamedPositions: write,
       now,
@@ -93,7 +92,8 @@ describe('runStocksResolveNames', () => {
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].length, 0);
-    assert.ok(!isWorkItemDone(JOB, dayKey(now), 1), 'no ledger row when there is nothing to resolve');
+    assert.deepEqual(summary, { resolvedCount: 0, totalPositions: 0 });
+    assert.equal(getWorkItem(JOB, dayKey(now)), undefined, 'the stage writes no ledger row');
   });
 
   it('resolves a company name from Trading212 metadata and attaches it', async () => {
@@ -102,7 +102,7 @@ describe('runStocksResolveNames', () => {
     let metadataCalls = 0;
     const now = new Date('2026-07-13T09:00:00.000Z');
 
-    await runStocksResolveNames(fakeCtx(), {
+    const summary = await runStocksResolveNames(fakeCtx(), {
       readRawPositions: stubRaw([pos]),
       fetchInstrumentsMetadata: async () => {
         metadataCalls++;
@@ -115,14 +115,9 @@ describe('runStocksResolveNames', () => {
     assert.equal(metadataCalls, 1, 'instruments-metadata is fetched at most once per stage run');
     assert.equal(calls[0][0].name, 'Apple Inc.');
 
-    const row = getWorkItem(JOB, dayKey(now));
-    assert.ok(row, 'ledger row should exist');
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.resolvedCount, 1);
-    assert.equal(detail.totalPositions, 1);
-    assert.equal(detail.name, `Names resolved — ${dayKey(now)}`);
-    assert.equal(detail.format, 'json');
-    assert.equal(detail.path, toStoredPath(stocksSyncConfig.namedPositionsJsonPath), 'stored relative to WORKFLOWS_ROOT (T447)');
+    assert.deepEqual(summary, { resolvedCount: 1, totalPositions: 1 });
+    assert.equal(calls.length, 1, 'the named positions are written once');
+    assert.equal(getWorkItem(JOB, dayKey(now)), undefined, 'the stage writes no ledger row');
   });
 
   it('leaves name undefined and logs a warn when the ticker is absent from instruments-metadata', async () => {
@@ -132,7 +127,7 @@ describe('runStocksResolveNames', () => {
     const levels: Array<{ msg: string; level?: string }> = [];
     const now = new Date('2026-07-13T10:00:00.000Z');
 
-    await runStocksResolveNames(fakeCtx(logs, levels), {
+    const summary = await runStocksResolveNames(fakeCtx(logs, levels), {
       readRawPositions: stubRaw([pos]),
       fetchInstrumentsMetadata: async () => [makeInstrument({ ticker: 'OTHER_TICKER_EQ' })],
       writeNamedPositions: write,
@@ -145,10 +140,7 @@ describe('runStocksResolveNames', () => {
       'should log at warn level naming the unresolved ticker',
     );
 
-    const row = getWorkItem(JOB, dayKey(now));
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.resolvedCount, 0);
-    assert.equal(detail.totalPositions, 1);
+    assert.deepEqual(summary, { resolvedCount: 0, totalPositions: 1 });
   });
 
   it('throws if TRADING212_API_KEY_ID is missing (and there is work to resolve)', async () => {

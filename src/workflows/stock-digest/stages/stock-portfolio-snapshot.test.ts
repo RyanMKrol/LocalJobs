@@ -2,12 +2,12 @@
 // filesystem writes to the real job data dir. Uses a stub raw-portfolio reader +
 // stub writer + the scratch DB (npm test sets LOCALJOBS_DB). Proves this stage
 // resolves ISIN/OpenFIGI tickers from stock-portfolio-fetch's raw-portfolio.json
-// (T415 split) and records ONE combined ledger row per run, keyed by the same
-// ISO week key stock-digest-build uses — not one row per position.
+// (T415 split), returns a summary of what it wrote, and writes no ledger row
+// (portfolio.json is its declared output).
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 
-import { getWorkItem, isWorkItemDone } from '../../../db/store.js';
+import { getWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import {
   normalizePosition,
@@ -69,9 +69,8 @@ function rawReaderOf(positions: NormalizedPosition[]): RawPortfolioReader {
 
 const JOB = 'stock-portfolio-snapshot';
 
-// Each ledger-touching test needs its OWN distinct ISO week: the ledger row is
-// collapsed to one-per-week (keyed by weekKey), so two tests sharing the
-// same `now` would collide on the same row in the shared scratch DB.
+// Each test gets its OWN distinct ISO week, so a "no ledger row for this week"
+// check looks at a key no other test in this file has touched.
 let weekOffset = 0;
 function freshNow(): Date {
   weekOffset += 1;
@@ -118,12 +117,12 @@ describe('runStockPortfolioSnapshot', () => {
     }
   });
 
-  it('reads its raw positions from stock-portfolio-fetch and writes portfolio.json, marking ONE combined ledger row keyed by ISO week', async () => {
+  it('reads its raw positions from stock-portfolio-fetch and writes portfolio.json, with no ledger row', async () => {
     const now = freshNow();
     const pos = normalizePosition(makePosition({ ticker: `SELF_${Date.now()}_EQ` }));
     const { write, calls } = makeWriterSpy();
 
-    await runStockPortfolioSnapshot(fakeCtx(), {
+    const summary = await runStockPortfolioSnapshot(fakeCtx(), {
       now,
       readRawPortfolio: rawReaderOf([pos]),
       writePortfolio: write,
@@ -131,49 +130,50 @@ describe('runStockPortfolioSnapshot', () => {
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0][0].ticker, pos.ticker);
-    assert.ok(isWorkItemDone(JOB, weekKey(now), 3));
+    assert.equal(summary.positionCount, 1);
+    assert.equal(getWorkItem(JOB, weekKey(now)), undefined, 'the stage writes no ledger row');
   });
 
-  it('records exactly ONE ledger row regardless of position count', async () => {
+  it('returns one summary counting every position', async () => {
     const now = freshNow();
     const positions = [
       normalizePosition(makePosition({ ticker: `MULTI1_${Date.now()}_EQ` })),
       normalizePosition(makePosition({ ticker: `MULTI2_${Date.now()}_EQ` })),
       normalizePosition(makePosition({ ticker: `MULTI3_${Date.now()}_EQ` })),
     ];
-    const { write } = makeWriterSpy();
+    const { write, calls } = makeWriterSpy();
 
-    await runStockPortfolioSnapshot(fakeCtx(), {
+    const summary = await runStockPortfolioSnapshot(fakeCtx(), {
       now,
       readRawPortfolio: rawReaderOf(positions),
       writePortfolio: write,
     });
 
-    const row = getWorkItem(JOB, weekKey(now));
-    assert.ok(row, 'the single combined ledger row should exist');
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.positionCount, 3);
+    const expectedValue = positions.reduce((sum, p) => sum + p.currentValue, 0);
+    assert.equal(calls[0].length, 3);
+    assert.deepEqual(summary, { positionCount: 3, totalValue: expectedValue, resolvedCount: 0 });
   });
 
-  it('sets root_key to the same ISO week key (self-rooted, for downstream stages to point rootKey at)', async () => {
+  it('writes no week-keyed ledger row of its own (downstream stages pass the week key as an explicit rootKey)', async () => {
     const now = freshNow();
-    const { write } = makeWriterSpy();
-    await runStockPortfolioSnapshot(fakeCtx(), {
+    const { write, calls } = makeWriterSpy();
+    const summary = await runStockPortfolioSnapshot(fakeCtx(), {
       now,
       readRawPortfolio: rawReaderOf([normalizePosition(makePosition())]),
       writePortfolio: write,
     });
 
-    const row = getWorkItem(JOB, weekKey(now));
-    assert.equal(row!.root_key, weekKey(now));
+    assert.equal(calls.length, 1);
+    assert.equal(summary.positionCount, 1);
+    assert.equal(getWorkItem(JOB, weekKey(now)), undefined);
   });
 
-  it('resolves ISIN + real-world ticker end-to-end (mirrors stocks-sync T373), summarized in the combined row', async () => {
+  it('resolves ISIN + real-world ticker end-to-end (mirrors stocks-sync T373), counted in the summary', async () => {
     const now = freshNow();
     const pos = normalizePosition(makePosition({ ticker: 'YNDX_US_EQ' }));
     const { write, calls } = makeWriterSpy();
 
-    await runStockPortfolioSnapshot(fakeCtx(), {
+    const summary = await runStockPortfolioSnapshot(fakeCtx(), {
       now,
       readRawPortfolio: rawReaderOf([pos]),
       fetchInstrumentsMetadata: async () => [makeInstrument()],
@@ -184,21 +184,21 @@ describe('runStockPortfolioSnapshot', () => {
     assert.equal(calls[0][0].isin, 'NL0009805522');
     assert.equal(calls[0][0].resolvedTicker, 'NBIS');
 
-    const row = getWorkItem(JOB, weekKey(now));
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.resolvedCount, 1);
+    assert.equal(summary.resolvedCount, 1);
+    assert.equal(summary.positionCount, 1);
   });
 
-  it('handles empty raw-portfolio gracefully — writes the empty file but records no ledger row', async () => {
+  it('handles empty raw-portfolio gracefully — writes the empty file, returns a zero summary, no ledger row', async () => {
     const now = freshNow();
     const { write, calls } = makeWriterSpy();
-    await runStockPortfolioSnapshot(fakeCtx(), {
+    const summary = await runStockPortfolioSnapshot(fakeCtx(), {
       now,
       readRawPortfolio: rawReaderOf([]),
       writePortfolio: write,
     });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].length, 0);
+    assert.deepEqual(summary, { positionCount: 0, totalValue: 0, resolvedCount: 0 });
     assert.equal(getWorkItem(JOB, weekKey(now)), undefined);
   });
 });

@@ -75,9 +75,9 @@ export async function runStockSectorLookup(
   const apiKey = opts.apiKey ?? process.env.FINNHUB_API_KEY ?? '';
   const fetchProfile = opts.fetchProfile ?? ((ticker, key) => callService('finnhub', () => fetchFinnhubProfile(ticker, key), { cacheKey: `finnhub:profile:${ticker}` }));
   const now = opts.now ?? new Date();
-  // The lineage root: the SAME key stock-portfolio-snapshot's one collapsed row
-  // uses, so every per-ticker row this stage marks joins back to it in the
-  // Input → Output panel instead of becoming its own disjoint root.
+  // The lineage root: this run's ISO week, the same key stock-digest-build uses
+  // for its own row, so every per-ticker row belongs to the week it was looked
+  // up in instead of being its own root.
   const rootKey = weekKey(now);
 
   if (!ctx.rootAllowed(rootKey)) {

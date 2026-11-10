@@ -14,9 +14,8 @@ export default defineStage({
     'ticker or company-name resolution of its own — that is deliberately left to the next stage. ' +
     'Like every job that talks to a broker in this repo, the Trading212 calls made here are ' +
     'strictly read-only (GET-only, HTTP Basic auth) and never place, modify, or cancel anything. ' +
-    'It records one combined work-item ledger row per calendar day, written unconditionally even ' +
-    'when zero positions are held, so the ledger always reflects real activity rather than a ' +
-    'stale no-op.',
+    'The file is written on every run, even when zero positions are held. The stage writes no ' +
+    'work-item ledger rows: the raw positions file is its declared output.',
   timeoutMs: 60_000,
   maxRetries: 3,
   // Fetched afresh from Trading212 (read-only) on every run.

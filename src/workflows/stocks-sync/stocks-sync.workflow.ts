@@ -8,16 +8,14 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * Stage 1, `stocks-fetch`, calls Trading212's read-only portfolio endpoint for the Invest
  * account (and the ISA account too, if TRADING212_ISA_API_KEY_ID/_SECRET_KEY are set),
  * normalizes each position into a broker-agnostic shape tagged by account, and writes
- * data/out/raw-positions.json — NOT yet ticker-resolved. Records one combined `work_items`
- * row per calendar day (investCount/isaCount/totalFetched), written unconditionally even
- * when zero positions are fetched.
+ * data/out/raw-positions.json — NOT yet ticker-resolved. The file is written on every run,
+ * even when zero positions are fetched.
  *
  * Stage 2, `stocks-resolve-names` (depends on stocks-fetch), reads raw-positions.json and
  * resolves each position's company name via Trading212's own instruments-metadata endpoint (at
  * most once per run) — Trading212-metadata-only, no OpenFIGI at all. A miss is a soft skip
  * (logged, `name` left undefined). Writes data/out/named-positions.json for stocks-snapshot to
- * read. Records ONE combined `work_items` row per calendar day, skipped entirely when there's
- * nothing to resolve.
+ * read.
  *
  * Stage 3, `stocks-snapshot` (depends on stocks-resolve-names), reads named-positions.json and
  * ALSO resolves each position's ISIN + a current, real-world ticker (Trading212's
@@ -26,9 +24,8 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * position). This is a deliberate, temporary duplication of the metadata call `stocks-resolve-names`
  * already makes — removing it (so `stocks-snapshot` no longer needs OpenFIGI at all) is a follow-up
  * task (T414). Writes the FINAL data/out/portfolio.json (structured) + data/out/portfolio.md
- * (human-readable, with a "Real ticker" column). Records ONE combined `work_items` row per
- * calendar day (same day-key convention as stocks-fetch — a same-day re-run overwrites rather
- * than duplicates), summarizing positionCount/totalValue/resolvedCount.
+ * (human-readable, with a "Real ticker" column). Like the two stages before it, it writes
+ * no ledger row: its declared outputs are what the run page shows.
  *
  * Stage 4, `stocks-watch` (depends on stocks-snapshot), reads that snapshot and, for EVERY
  * position on EVERY run, computes + records its gain since average buy price — this

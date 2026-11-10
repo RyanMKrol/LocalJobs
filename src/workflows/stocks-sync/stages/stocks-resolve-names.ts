@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
-import { markWorkItem } from '../../../db/store.js';
 import {
   fetchInstrumentsMetadata,
   type InstrumentsMetadataFetcher,
@@ -11,7 +10,11 @@ import {
 import { stocksSyncConfig } from '../config.js';
 import { dayKey } from './stocks-snapshot.js';
 
-const JOB_NAME = 'stocks-resolve-names';
+/** What one run resolved. Returned so a caller (and the tests) can see the counts. */
+export interface StocksResolveNamesSummary {
+  resolvedCount: number;
+  totalPositions: number;
+}
 
 // ---------------------------------------------------------------------------
 // Raw-positions reader (the hand-off from stocks-fetch) — a short-lived
@@ -37,6 +40,9 @@ export function writeNamedPositions(positions: NormalizedPosition[]): void {
  * instruments-metadata endpoint — no OpenFIGI, no ISIN, just a broker-agnostic
  * `name` field to make the eventual report readable. Writes
  * data/out/named-positions.json for `stocks-snapshot` to read.
+ *
+ * Writes no ledger row: the named positions file is this stage's declared
+ * output, and the run page shows that.
  */
 export async function runStocksResolveNames(
   ctx: JobContext,
@@ -46,7 +52,7 @@ export async function runStocksResolveNames(
     writeNamedPositions?: NamedPositionsWriter;
     now?: Date;
   } = {},
-): Promise<void> {
+): Promise<StocksResolveNamesSummary> {
   const readRawPositionsFn = opts.readRawPositions ?? readRawPositions;
   const writeNamedPositionsFn = opts.writeNamedPositions ?? writeNamedPositions;
   const now = opts.now ?? new Date();
@@ -60,7 +66,7 @@ export async function runStocksResolveNames(
     writeNamedPositionsFn(positions);
     ctx.log('no open positions to resolve — done');
     ctx.progress(100, 'no positions to resolve');
-    return;
+    return { resolvedCount: 0, totalPositions: 0 };
   }
 
   const apiKeyId = process.env.TRADING212_API_KEY_ID ?? '';
@@ -92,19 +98,10 @@ export async function runStocksResolveNames(
   ctx.log(`wrote ${namedPositions.length} named position(s) to data/out/named-positions.json`);
 
   const key = dayKey(now);
-  markWorkItem(JOB_NAME, key, 'success', {
-    detail: {
-      name: `Names resolved — ${key}`,
-      resolvedCount,
-      totalPositions: namedPositions.length,
-      path: stocksSyncConfig.namedPositionsJsonPath,
-      format: 'json',
-    },
-  });
-
   ctx.log(
-    `stocks-resolve-names complete — recorded 1 ledger row (${key}) for ${namedPositions.length} ` +
-      `position(s), ${resolvedCount} name(s) resolved`,
+    `stocks-resolve-names complete for ${key} — ${namedPositions.length} position(s), ` +
+      `${resolvedCount} name(s) resolved`,
   );
-  ctx.progress(100, `${namedPositions.length} position(s) recorded for ${key}`);
+  ctx.progress(100, `${namedPositions.length} position(s) named for ${key}`);
+  return { resolvedCount, totalPositions: namedPositions.length };
 }

@@ -35,15 +35,12 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * Markdown-only output — no push notification is sent, mirroring
  * `listening-digest`.
  *
- * Shared lineage root (follow-up to T382): every stage's `markWorkItem` call
- * uses the SAME `weekKey(now)` (`src/workflows/stock-digest/lib.ts`) as its `rootKey` —
- * `stock-portfolio-fetch` and `stock-portfolio-snapshot` each collapse to ONE
- * combined ledger row per run (keyed by that week, not one row per position),
- * and both `stock-sector-lookup` (per-ticker keys) and `stock-digest-build` (its
- * own week-keyed row) pass that same value as `rootKey` explicitly. This is
- * genuinely correct for ledger POTENCY/idempotency (one row per week per
- * snapshot stage; the same root threaded through for lineage) — kept
- * deliberately, not reverted.
+ * Shared lineage root (follow-up to T382): the two stages that write to the
+ * ledger, `stock-sector-lookup` (per-ticker rows) and `stock-digest-build` (one
+ * row per week), both pass the SAME `weekKey(now)`
+ * (`src/workflows/stock-digest/lib.ts`) as an explicit `rootKey`. The fetch and
+ * snapshot stages write no ledger rows: their declared outputs are what the
+ * run page shows.
  *
  * Decoupled dashboard display, NOT a joined table (second follow-up to T382): the
  * generic workflow-run Input → Output panel pairs "one input" to "one output" by

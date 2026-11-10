@@ -4,10 +4,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { getWorkItem, isWorkItemDone, toStoredPath } from '../../../db/store.js';
+import { getWorkItem } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
 import { type NormalizedPosition } from '../../../services/trading212.service.js';
-import { stocksSyncConfig } from '../config.js';
 import {
   runStocksSnapshot,
   priceDiff,
@@ -166,7 +165,7 @@ describe('dayKey', () => {
 const JOB = 'stocks-snapshot';
 
 describe('runStocksSnapshot', () => {
-  it('writes portfolio.json + portfolio.md and records one combined ledger row', async () => {
+  it('writes portfolio.json + portfolio.md and writes no ledger row', async () => {
     const pos = makeNormalized({ ticker: `TEST_${Date.now()}_EQ` });
     const { write, calls } = makeWriterSpy();
     const now = new Date('2026-07-04T12:00:00.000Z');
@@ -180,44 +179,39 @@ describe('runStocksSnapshot', () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0].length, 1);
     assert.equal(calls[0][0].ticker, pos.ticker);
-    assert.ok(isWorkItemDone(JOB, dayKey(now), 1), 'the day-keyed row should be marked done');
+    assert.equal(getWorkItem(JOB, dayKey(now)), undefined, 'the stage writes no ledger row');
   });
 
-  it('records positionCount/totalValue/markdown in the collapsed ledger detail', async () => {
+  it('returns positionCount and totalValue (and nothing else)', async () => {
     const pos = makeNormalized({ ticker: `DETAIL_${Date.now()}_EQ`, averageBuyPrice: 100, currentPrice: 130, currentValue: 1300 });
     const { write } = makeWriterSpy();
     const now = new Date('2026-07-05T08:00:00.000Z');
 
-    await runStocksSnapshot(fakeCtx(), {
+    const summary = await runStocksSnapshot(fakeCtx(), {
       readNamedPositions: stubRaw([pos]),
       writePortfolio: write,
       now,
     });
 
-    const row = getWorkItem(JOB, dayKey(now));
-    assert.ok(row, 'ledger row should exist');
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.positionCount, 1);
-    assert.equal(detail.totalValue, 1300);
-    assert.equal(detail.resolvedCount, undefined);
-    assert.equal(detail.markdown, toStoredPath(stocksSyncConfig.portfolioMdPath), 'stored relative to WORKFLOWS_ROOT (T447)');
-    assert.equal(detail.name, `Portfolio snapshot — ${dayKey(now)}`);
+    assert.deepEqual(summary, { positionCount: 1, totalValue: 1300 });
+    assert.equal(getWorkItem(JOB, dayKey(now)), undefined, 'the stage writes no ledger row');
   });
 
-  it('handles empty position list gracefully (no ledger row)', async () => {
+  it('handles empty position list gracefully (empty file written, zero summary, no ledger row)', async () => {
     const { write, calls } = makeWriterSpy();
     const now = new Date('2026-07-06T00:00:00.000Z');
-    await runStocksSnapshot(fakeCtx(), {
+    const summary = await runStocksSnapshot(fakeCtx(), {
       readNamedPositions: stubRaw([]),
       writePortfolio: write,
       now,
     });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].length, 0);
-    assert.ok(!isWorkItemDone(JOB, dayKey(now), 1), 'no ledger row when there is nothing to resolve');
+    assert.deepEqual(summary, { positionCount: 0, totalValue: 0 });
+    assert.equal(getWorkItem(JOB, dayKey(now)), undefined, 'the stage writes no ledger row');
   });
 
-  it('records multiple positions in one row and reports progress', async () => {
+  it('counts multiple positions in one summary and reports progress', async () => {
     const positions = [
       makeNormalized({ ticker: `MULTI1_${Date.now()}_EQ` }),
       makeNormalized({ ticker: `MULTI2_${Date.now()}_EQ` }),
@@ -234,65 +228,69 @@ describe('runStocksSnapshot', () => {
     const now = new Date('2026-07-07T00:00:00.000Z');
 
     const { write, calls } = makeWriterSpy();
-    await runStocksSnapshot(ctx, {
+    const summary = await runStocksSnapshot(ctx, {
       readNamedPositions: stubRaw(positions),
       writePortfolio: write,
       now,
     });
 
     assert.equal(calls[0].length, 2);
-    const row = getWorkItem(JOB, dayKey(now));
-    assert.ok(row, 'combined ledger row should exist');
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.positionCount, 2);
+    assert.equal(summary.positionCount, 2);
+    assert.equal(summary.totalValue, 2600);
     assert.ok(progressCalls.length >= 2, 'progress called at least once per position');
     assert.equal(progressCalls[progressCalls.length - 1], 100, 'final progress is 100');
   });
 
-  it('a same-day re-run overwrites the row rather than duplicating it', async () => {
+  it('a same-day re-run rewrites the portfolio with the latest positions', async () => {
     const now = new Date('2026-07-08T09:00:00.000Z');
     const posA = makeNormalized({ ticker: `SAMEDAY_A_${Date.now()}_EQ` });
     const posB = makeNormalized({ ticker: `SAMEDAY_B_${Date.now()}_EQ` });
-    const { write: write1 } = makeWriterSpy();
-    const { write: write2 } = makeWriterSpy();
+    const { write: write1, calls: calls1 } = makeWriterSpy();
+    const { write: write2, calls: calls2 } = makeWriterSpy();
 
-    await runStocksSnapshot(fakeCtx(), {
+    const first = await runStocksSnapshot(fakeCtx(), {
       readNamedPositions: stubRaw([posA]),
       writePortfolio: write1,
       now,
     });
-    await runStocksSnapshot(fakeCtx(), {
+    const second = await runStocksSnapshot(fakeCtx(), {
       readNamedPositions: stubRaw([posA, posB]),
       writePortfolio: write2,
       now: new Date('2026-07-08T20:00:00.000Z'),
     });
 
-    const row = getWorkItem(JOB, dayKey(now));
-    assert.ok(row, 'ledger row should exist');
-    const detail = JSON.parse(row!.detail!);
-    assert.equal(detail.positionCount, 2, 'the second run overwrote the row with the latest detail');
+    assert.equal(first.positionCount, 1);
+    assert.equal(calls1[0].length, 1);
+    assert.equal(second.positionCount, 2, 'the second run reports the latest positions');
+    assert.equal(calls2.length, 1, 'the second run writes the portfolio again');
+    assert.equal(calls2[0].length, 2);
+    assert.equal(getWorkItem(JOB, dayKey(now)), undefined, 'neither run writes a ledger row');
   });
 
-  it('runs on different days produce two distinct rows', async () => {
+  it('runs on different days each write the portfolio and leave no ledger row for either day', async () => {
     const nowDay1 = new Date('2026-07-09T09:00:00.000Z');
     const nowDay2 = new Date('2026-07-10T09:00:00.000Z');
     const pos = makeNormalized({ ticker: `MULTIDAY_${Date.now()}_EQ` });
-    const { write: write1 } = makeWriterSpy();
-    const { write: write2 } = makeWriterSpy();
+    const { write: write1, calls: calls1 } = makeWriterSpy();
+    const { write: write2, calls: calls2 } = makeWriterSpy();
 
-    await runStocksSnapshot(fakeCtx(), {
+    const day1 = await runStocksSnapshot(fakeCtx(), {
       readNamedPositions: stubRaw([pos]),
       writePortfolio: write1,
       now: nowDay1,
     });
-    await runStocksSnapshot(fakeCtx(), {
+    const day2 = await runStocksSnapshot(fakeCtx(), {
       readNamedPositions: stubRaw([pos]),
       writePortfolio: write2,
       now: nowDay2,
     });
 
-    assert.ok(isWorkItemDone(JOB, dayKey(nowDay1), 1));
-    assert.ok(isWorkItemDone(JOB, dayKey(nowDay2), 1));
     assert.notEqual(dayKey(nowDay1), dayKey(nowDay2));
+    assert.equal(calls1.length, 1);
+    assert.equal(calls2.length, 1);
+    assert.deepEqual(day1, { positionCount: 1, totalValue: 1300 });
+    assert.deepEqual(day2, { positionCount: 1, totalValue: 1300 });
+    assert.equal(getWorkItem(JOB, dayKey(nowDay1)), undefined);
+    assert.equal(getWorkItem(JOB, dayKey(nowDay2)), undefined);
   });
 });

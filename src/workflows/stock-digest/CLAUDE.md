@@ -26,9 +26,8 @@ stock-portfolio-fetch ──▶ stock-portfolio-snapshot ──▶ stock-sector-
 **Stage 1 (`stock-portfolio-fetch`, T415)** fetches Invest + optional ISA positions from Trading212
 (same credentials as `stocks-sync`: `TRADING212_API_KEY_ID`/`_SECRET_KEY`,
 `TRADING212_ISA_API_KEY_ID`/`_SECRET_KEY`), normalizes + tags each by account, and writes
-`data/out/raw-portfolio.json`. No ISIN/ticker resolution here. Records ONE combined ledger row per
-run, keyed by ISO week, **unconditionally** (even at zero fetched positions — a zero-position fetch
-is still a real, worth-recording observation).
+`data/out/raw-portfolio.json`. No ISIN/ticker resolution here. The file is written on every run,
+even at zero fetched positions.
 
 **Stage 2 (`stock-portfolio-snapshot`, T415 split from the old combined fetch+resolve stage —
 mirrors `stocks-sync`'s `stocks-fetch`/`stocks-snapshot` split)** reads stage 1's
@@ -91,16 +90,17 @@ both have succeeded. The sector map is a store that grows (a ticker is looked up
 no `FINNHUB_API_KEY`, or nothing resolved, the lookup stage commits an EMPTY map rather than
 writing nothing, and the digest reads that as "no sector data". It used to return without
 writing, and the build stage quietly used whatever file was there. The digests folder shares
-`data/out` with the other files, so its artifact type names its own files (`files`). Still to
-do: the per-week rows `stock-portfolio-fetch` and `stock-portfolio-snapshot` write are
-display-only and can go (their tests assert them, so they were left for a follow-up).
+`data/out` with the other files, so its artifact type names its own files (`files`).
+`stock-portfolio-fetch` and `stock-portfolio-snapshot` write no ledger rows, and the run page
+shows their declared outputs.
 
-## Ledger lineage — all 4 stages share the same root key
+## Ledger lineage: stages 3 and 4 share the same root key
 
-Every stage's `markWorkItem` call passes the **same** `weekKey(now)` (`lib.ts`) as `rootKey` — stages 1
-and 2 each collapse to ONE combined ledger row per week (not one per position); stage 3's per-ticker
-rows and stage 4's own week-keyed row both pass that identical value explicitly. This is deliberate
-(correct for both idempotency and lineage), not an oversight to "fix" into per-item keys.
+Only stages 3 and 4 write to the ledger. Both pass the **same** `weekKey(now)` (`lib.ts`) as an
+explicit `rootKey`: stage 3 on each of its per-ticker rows, stage 4 on its own week-keyed row. An
+explicit `rootKey` does not need a row with that key to exist, so nothing is lost by stages 1 and 2
+writing no rows. This is deliberate (correct for both idempotency and lineage), not an oversight
+to "fix" into per-item keys.
 
 **Dashboard display is NOT the generic joined Input→Output panel.** Because stage 3 genuinely fans out
 (many tickers) and stage 4 genuinely fans in (aggregates both predecessors), pairing "one input" to
