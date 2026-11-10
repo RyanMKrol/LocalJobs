@@ -690,6 +690,16 @@ job MAY colocate a service it owns).
   This is convention, not mechanically enforced (unlike the gate-coverage test) — there is no
   structural way to distinguish "identity-only because there's genuinely nothing to show" from
   "identity-only because the author never considered it" without reading the stage's own code.
+- **The Output section of a PORTS workflow needs no ledger row.** For a ports workflow
+  `GET /api/workflows/:name/output-items` returns, as `artifacts`, the latest artifact each
+  output of the workflow's product stage committed in any run (`latestProductArtifacts` in
+  `src/engine/reporting.ts`; the product stage is the one marked `product: true`, else the
+  final stage), and as `items` the rows of every ledger that stage's attempts write to
+  (`ledgersWrittenByJob`). `WorkflowOutputSection` shows the artifacts as the same cards the
+  run page uses (`ProductArtifacts`), each saying which run committed it. So a single-stage
+  workflow that writes one report declares it as an output and is done: it must NOT write a
+  per-run or per-week ledger row just to appear here. The bullet below describes the legacy
+  (ledger-only) form.
 - **Unified Output section on the workflow detail page (T205).** Every workflow's detail
   page shows a consolidated **Output** section backed by `GET /api/workflows/:name/output-items`
   → `workflowTerminalItems(lastWave)` in `src/db/store.ts`. The convention is:
@@ -1583,6 +1593,10 @@ doubt, log it.
     on"`). Existing kinds in `globals.css`: `on`/`off`, `reviewed`/`unreviewed`,
     `done`, `failed`, `buildable`, `human`, `dep-waiting`, `paid`/`free`. New
     enumeration labels must use `<Pill>`, not bare `<span className="pill ...">`.
+  - `DagFlow` draws an edge that skips a column on the same row AROUND the nodes in between
+    (down into the gap under the top row), with its padlock on the detour. It used to be
+    drawn straight through them, which hid the line and stacked its padlock on another: a
+    stage reading from two stages back looked like it had no such dependency.
   - `DagFlow`, `WorkflowOutputSection` — existing components for the workflow DAG
     graph and unified output panel.
   - **`<CategoryTable>`** (`dashboard/app/components/CategoryTable.tsx`, T471) — the

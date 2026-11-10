@@ -1349,7 +1349,20 @@ function fixtureForRaw(pathname, searchParams) {
         terminalJobs: ['plex-library-guard-scan'],
       };
     }
-    return { items: [], terminalJobs: [] };
+    // A PORTS workflow: the Output section shows the latest artifact its product
+    // stage committed (a card, with which run wrote it) above the produced items.
+    if (pathname === '/api/workflows/perfumes/output-items') {
+      return {
+        items: [
+          { jobName: 'perfumes-build', itemKey: AVENTUS, name: 'Aventus — Creed', hasMarkdown: true, viewable: true, updatedAt: NOW },
+          { jobName: 'perfumes-build', itemKey: HALFETI, name: 'Halfeti — Penhaligon\'s', hasMarkdown: true, viewable: true, updatedAt: NOW },
+        ],
+        total: 45,
+        terminalJobs: ['perfumes-build'],
+        artifacts: [{ ...perfumesProfiles, workflowRunId: 'perfumes-run' }],
+      };
+    }
+    return { items: [], terminalJobs: [], artifacts: [] };
   }
   // T282: GET /api/workflows/:name/output?job=&key= — the unified Output section's
   // (not-run-scoped) artifact fetch, dispatched by the item's declared `format`
@@ -1436,6 +1449,8 @@ export const PAGES = [
   { name: 'workflow-missing-movies', path: '/workflows/missing-movies',        waitFor: ['.rf-dag-node'] },
   { name: 'workflow-empty-output',   path: '/workflows/workouts-sync',         waitFor: ['.rf-dag-node'] },
   { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
+  // A ports workflow's page: its Output section leads with the product artifact card.
+  { name: 'workflow-perfumes-ports-output', path: '/workflows/perfumes',       waitFor: ['.rf-dag-node', '.stage-io-artifact'] },
   { name: 'workflow-missing-tv-seasons', path: '/workflows/missing-tv-seasons', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-movie-recs', path: '/workflow-runs/movie-recs-run',   waitFor: ['.rf-dag-node'] },

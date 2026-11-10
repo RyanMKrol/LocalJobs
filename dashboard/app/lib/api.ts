@@ -270,6 +270,8 @@ export interface StageIoArtifact {
   inline?: unknown;
   sample: IoItem[];
   check: RecordedCheck | null;
+  /** The workflow run that committed it (set where a card is shown outside its run page). */
+  workflowRunId?: string;
   /** Inputs only. */
   consumerPort?: string;
   resolved?: { ok: boolean; reason: string | null };
@@ -512,6 +514,12 @@ export interface WorkflowOutputItems {
   /** Total success items independent of paging (optional: absent from pre-paging fixtures). */
   total?: number;
   terminalJobs: string[];
+  /**
+   * For a ports workflow: the latest artifact each output of its product stage
+   * committed, in any run (what the workflow's product looks like right now).
+   * Empty or absent for a legacy workflow.
+   */
+  artifacts?: StageIoArtifact[];
 }
 
 /** Scope for bulk stuck-item operations passed to the bulk API endpoints. */

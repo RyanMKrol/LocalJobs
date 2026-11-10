@@ -222,6 +222,34 @@ export function producedArtifact(
 }
 
 /**
+ * The most recent artifact each output port of `jobName` committed, across all
+ * runs: what the stage's outputs look like right now. One row per port. Used by
+ * the workflow page's Output section, which is about the current product and not
+ * about any one run.
+ */
+export function latestArtifactsOfJob(jobName: string): RunArtifactRow[] {
+  return db.prepare(`
+    SELECT a.* FROM run_artifacts a
+    WHERE a.job_name = ? AND a.ok = 1
+      AND a.id = (SELECT MAX(b.id) FROM run_artifacts b WHERE b.job_name = a.job_name AND b.port = a.port AND b.ok = 1)
+    ORDER BY a.port
+  `).all(jobName) as RunArtifactRow[];
+}
+
+/**
+ * The ledgers `jobName` records its items under: its own name, plus any other
+ * ledger its recent attempts have written to (a stage may keep its items under a
+ * shared name, as the recommenders' notify stages do).
+ */
+export function ledgersWrittenByJob(jobName: string): string[] {
+  const rows = db.prepare(`
+    SELECT DISTINCT w.job_name AS ledger FROM work_item_runs w
+    WHERE w.run_id IN (SELECT id FROM runs WHERE job_name = ? ORDER BY rowid DESC LIMIT 20)
+  `).all(jobName) as { ledger: string }[];
+  return [...new Set([jobName, ...rows.map((r) => r.ledger)])];
+}
+
+/**
  * The content fingerprint this stage last committed for a port in any EARLIER
  * attempt or run, used to tell a re-written artifact that actually changed from
  * one that came out identical.

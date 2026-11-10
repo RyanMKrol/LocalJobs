@@ -17,12 +17,12 @@ import { test } from 'node:test';
 import { acceptAny, defineStage, inlineArtifact, jsonArtifact } from './ports.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 import {
-  createRun, createWorkflowRun, finishRun, getWorkflowRun, markWorkItem, recordRunArtifact, recordRunInput,
+  createRun, createWorkflowRun, finishRun, getWorkflowRun, ledgersWrittenByJob, markWorkItem, recordRunArtifact, recordRunInput,
   setRunInputUsed, syncJob, syncWorkflow,
 } from '../db/store.js';
 import { sha256File } from './hash.js';
 import { statSync } from 'node:fs';
-import { OVERALL, artifactItems, stageIo } from './reporting.js';
+import { OVERALL, artifactItems, latestProductArtifacts, productStages, stageIo } from './reporting.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'lj-stageio-'));
 const page = { limit: 100, inputsOffset: 0, outputsOffset: 0 };
@@ -242,3 +242,24 @@ test('legacy: a run with no artifacts renders through the frozen mapping (predec
 });
 
 test.after(() => rmSync(dir, { recursive: true, force: true }));
+
+test('the workflow page: a workflow\'s product is the latest artifact of each output of its product stage, and that stage\'s ledgers', () => {
+  assert.deepEqual(productStages(wf.jobs, getJob), ['sio-pick'], 'with nothing marked `product`, the final stage');
+  const marked = defineStage({ ...snapshotStage, product: true, run });
+  assert.deepEqual(
+    productStages(wf.jobs, (n) => (n === 'sio-snap' ? marked : getJob(n))),
+    ['sio-snap'],
+    'a stage marked `product` wins over the final stage',
+  );
+
+  seedRun([{ id: 1, title: 'One' }], [{ key: 'tmdb-1', name: 'First', lens: 'canon' }]);
+  const latest = seedRun([{ id: 1, title: 'One' }], [{ key: 'tmdb-2', name: 'Second', lens: 'canon' }, { key: 'tmdb-3', name: 'Third', lens: 'world' }]);
+
+  const cards = latestProductArtifacts(getJob, ['sio-pick']);
+  assert.equal(cards.length, 1, 'one card per output port, not one per run');
+  assert.equal(cards[0].port, 'digest');
+  assert.deepEqual(cards[0].inline, { sent: 2 }, 'the most recent run\'s value');
+  assert.equal(cards[0].workflowRunId, latest.wfRun, 'and which run committed it, so its items can be browsed');
+
+  assert.deepEqual(ledgersWrittenByJob('sio-pick').sort(), ['sio-pick', 'sio-recs'], 'the shared ledger its attempts wrote to is found');
+});

@@ -21,7 +21,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { db } from '../db/index.js';
 import {
-  artifactsForWorkflowRun, fromStoredPath, getRunArtifact, getWorkflowJobs, getWorkItem, listRunsForWorkflowRun,
+  artifactsForWorkflowRun, fromStoredPath, getRunArtifact, getWorkflowJobs, getWorkItem, latestArtifactsOfJob, listRunsForWorkflowRun,
   runInputsForWorkflowRun, stageIoLists, type RunArtifactRow, type RunInputRow, type StageIoItem,
 } from '../db/store.js';
 import { buildDag } from './dag.js';
@@ -63,6 +63,8 @@ export interface ArtifactCard {
   sample: IoItem[];
   /** The producer's own check result, as recorded when it committed. */
   check: GateResult | null;
+  /** The workflow run that committed it (set where a card is shown outside its run page). */
+  workflowRunId?: string;
   /** Inputs only: the consuming port, and what the engine found when resolving it. */
   consumerPort?: string;
   resolved?: { ok: boolean; reason: string | null };
@@ -221,6 +223,30 @@ function card(getJob: JobLookup, a: RunArtifactRow, input?: RunInputRow): Artifa
     if (used) c.used = used;
   }
   return c;
+}
+
+/**
+ * The stages whose output is the workflow's PRODUCT: those marked `product`, or
+ * failing that the final stage(s) of the DAG.
+ */
+export function productStages(members: { job: string; dependsOn?: string[] }[], getJob: JobLookup): string[] {
+  const marked = members.filter((m) => getJob(m.job)?.product).map((m) => m.job);
+  if (marked.length > 0) return marked;
+  const depended = new Set(members.flatMap((m) => m.dependsOn ?? []));
+  return members.filter((m) => !depended.has(m.job)).map((m) => m.job);
+}
+
+/**
+ * What a workflow's product looks like right now: the latest artifact each
+ * output port of its product stage(s) committed, in any run. A port the stage no
+ * longer declares is left out.
+ */
+export function latestProductArtifacts(getJob: JobLookup, stages: string[]): ArtifactCard[] {
+  return stages.flatMap((job) =>
+    latestArtifactsOfJob(job)
+      .filter((a) => getJob(job)?.outputs?.[a.port])
+      .map((a) => ({ ...card(getJob, a), workflowRunId: a.workflow_run_id })),
+  );
 }
 
 /** An input the engine could NOT resolve to an artifact: still shown, with the reason. */

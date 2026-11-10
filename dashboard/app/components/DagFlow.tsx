@@ -68,14 +68,13 @@ interface GateEdgeData extends Record<string, unknown> {
   isFailed?: boolean;
   isPassed?: boolean;
   /**
-   * Vertical pixel offset applied on top of getBezierPath's computed label midpoint, for a
-   * same-row 'skip-column' edge (source/target share a Y but the wave-column gap is 2+) whose
-   * geometric midpoint would otherwise land inside an unrelated intervening node's footprint
-   * (e.g. discover -> evaluate crossing directly over the resolve node in a discover -> resolve
-   * -> evaluate chain). Undefined/0 for the common producer -> immediate-consumer case, which
-   * renders exactly as before.
+   * Set for a same-row edge that skips one or more columns and would otherwise be
+   * drawn straight THROUGH the nodes in between (so it, and its padlock, would be
+   * hidden behind them): route the edge around instead. It drops by `dy` inside
+   * the gap after the source, runs level past the nodes in between, and comes back
+   * in the gap before the target. `gap` is the horizontal room each bend may use.
    */
-  labelOffsetY?: number;
+  bow?: { dy: number; gap: number };
 }
 
 // Full edge type needed for EdgeProps generic in React Flow v12
@@ -92,9 +91,19 @@ function GateEdge({
   sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
   style, markerEnd, data,
 }: EdgeProps<GateEdgeType>) {
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const bow = data?.bow;
+  let [edgePath, labelX, labelY] = getBezierPath({
     sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
   });
+  if (bow) {
+    const y = sourceY + bow.dy;
+    const g = Math.min(bow.gap, (targetX - sourceX) / 2);
+    edgePath =
+      `M ${sourceX},${sourceY} C ${sourceX + g * 0.6},${sourceY} ${sourceX + g * 0.4},${y} ${sourceX + g},${y} ` +
+      `L ${targetX - g},${y} C ${targetX - g * 0.4},${y} ${targetX - g * 0.6},${targetY} ${targetX},${targetY}`;
+    labelX = (sourceX + targetX) / 2;
+    labelY = y;
+  }
 
   const gateHref = data?.gateHref;
   const gateState = data?.gateState;
@@ -102,7 +111,6 @@ function GateEdge({
   const isFailed = !!data?.isFailed;
   const isPassed = !!data?.isPassed;
   const hasGate = !!gateState;
-  const labelOffsetY = data?.labelOffsetY ?? 0;
 
   const lockColor = isFailed ? 'var(--red)' : isPassed ? 'var(--green)' : 'var(--muted)';
   const lockFill = `color-mix(in srgb, ${lockColor} 18%, transparent)`;
@@ -143,7 +151,7 @@ function GateEdge({
             className="nodrag nopan"
             style={{
               position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY + labelOffsetY}px)`,
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
               pointerEvents: 'all',
               background: 'var(--panel-2)',
               borderRadius: 4,
@@ -333,7 +341,12 @@ function buildLayout(
       // wave column — if that midpoint falls inside another node's own footprint, the padlock
       // would paint underneath that (opaque) node instead of on the connecting line. Detected
       // generically off the real node boxes computed above, not any specific stage name.
-      let labelOffsetY: number | undefined;
+      // A same-row edge that skips a column would be drawn straight through whatever
+      // node sits between its ends, hiding both the line and its padlock: a real
+      // dependency (a stage reading from two stages back) would then look absent.
+      // Route such an edge around, through the gap between this row and the next.
+      // Detected from the node boxes computed above, not from any stage name.
+      let bow: GateEdgeData['bow'];
       const depWave = wave.get(dep) ?? 0;
       const jobWave = wave.get(m.job_name) ?? 0;
       if (jobWave - depWave >= 2) {
@@ -342,25 +355,25 @@ function buildLayout(
         const sourceY = depBox.top + NODE_H / 2;
         const targetY = jobBox.top + NODE_H / 2;
         if (Math.abs(sourceY - targetY) < 1) {
-          const midX = (depBox.right + jobBox.left) / 2;
-          const midY = sourceY;
-          const collides = members.some((other) => {
+          const blocked = members.some((other) => {
             if (other.job_name === dep || other.job_name === m.job_name) return false;
             const box = nodeBox(other.job_name);
-            return midX >= box.left && midX <= box.right && midY >= box.top && midY <= box.bottom;
+            return box.left >= depBox.right && box.right <= jobBox.left && sourceY >= box.top && sourceY <= box.bottom;
           });
-          if (collides) {
-            // Bow the label off the row — downward if this is the topmost row (nothing above to
-            // clear into), upward otherwise. Only the label moves; the edge path is unchanged.
+          if (blocked) {
+            // Down into the gap below the topmost row (there is nothing above it to
+            // clear into), up into the gap above any other row.
             const isTopmostRow = sourceY <= NODE_H / 2 + 1;
-            labelOffsetY = isTopmostRow ? NODE_H / 2 + 16 : -(NODE_H / 2 + 16);
+            const dy = NODE_H / 2 + NODE_SEP / 2;
+            bow = { dy: isTopmostRow ? dy : -dy, gap: RANK_SEP };
           }
         }
       }
 
-      const edgeData: GateEdgeData = gateData
-        ? { gateHref, gateState, tooltipText, isFailed, isPassed, ...(labelOffsetY !== undefined ? { labelOffsetY } : {}) }
-        : {};
+      const edgeData: GateEdgeData = {
+        ...(gateData ? { gateHref, gateState, tooltipText, isFailed, isPassed } : {}),
+        ...(bow ? { bow } : {}),
+      };
 
       edges.push({
         id: `${dep}->${m.job_name}`,

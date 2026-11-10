@@ -155,11 +155,13 @@ function ArtifactItemsBrowser({ runId, artifact, onOpenFile }: { runId: string; 
  * said it actually used.
  */
 function ArtifactCardView(
-  { artifact, side, onOpenFile, onBrowse }: {
+  { artifact, side, onOpenFile, onBrowse, committed }: {
     artifact: StageIoArtifact;
     side: 'input' | 'output';
     onOpenFile: OpenFile;
     onBrowse: (a: StageIoArtifact) => void;
+    /** Show when it was committed and link to that run (used outside a run page). */
+    committed?: boolean;
   },
 ) {
   const unresolved = artifact.resolved && !artifact.resolved.ok;
@@ -177,7 +179,13 @@ function ArtifactCardView(
           <span className="stage-io-artifact-port">{name}</span>
           <span className="stage-io-item-hint">{artifact.artifactKey}</span>
           {side === 'input' && <span className="stage-io-item-name">from {artifact.job}</span>}
-          {!artifact.fresh && !unresolved && <span className="stage-io-item-hint stage-io-hint-carried" title={artifact.note ?? undefined}>carried forward</span>}
+          {!committed && !artifact.fresh && !unresolved && <span className="stage-io-item-hint stage-io-hint-carried" title={artifact.note ?? undefined}>carried forward</span>}
+          {committed && (
+            <span className="stage-io-item-name">
+              {artifact.job} · {artifact.fresh ? 'written' : 'last checked'} {new Date(artifact.committedAtMs).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              {artifact.workflowRunId && <> · <a href={`/workflow-runs/${artifact.workflowRunId}`}>run</a></>}
+            </span>
+          )}
         </div>
         {artifact.description && <div className="stage-io-item-name">{artifact.description}</div>}
         {(artifact.summary || facts.length > 0) && (
@@ -415,6 +423,49 @@ function StageIoLazyBlock(
       {modal?.kind === 'items' && (
         <ModalShell title={modal.title} onClose={() => setModal(null)}>
           <ArtifactItemsBrowser runId={runId} artifact={modal.artifact} onOpenFile={openFile} />
+        </ModalShell>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A workflow's product, on the workflow page: the latest artifact each output of
+ * its product stage committed, as the same cards the run page shows. Each card
+ * says which run committed it and links there.
+ */
+export function ProductArtifacts({ artifacts }: { artifacts: StageIoArtifact[] }) {
+  const [modal, setModal] = useState<ModalState | null>(null);
+  const openFile: OpenFile = useCallback((title, preview) => {
+    setModal({ kind: 'file', loading: true, title });
+    api.outputFile(preview.path, preview.format)
+      .then((result) => setModal({ kind: 'file', loading: false, title, result }))
+      .catch((err) => setModal({ kind: 'file', loading: false, title, error: err instanceof Error ? err.message : String(err) }));
+  }, []);
+  const browse = useCallback((artifact: StageIoArtifact) => {
+    setModal({ kind: 'items', title: `${artifact.job} · ${artifact.port}`, artifact });
+  }, []);
+  if (artifacts.length === 0) return null;
+  return (
+    <div className="panel stage-io-block">
+      <ul className="stage-io-list stage-io-artifacts">
+        {artifacts.map((a) => (
+          <ArtifactCardView key={a.id} artifact={a} side="output" onOpenFile={openFile} onBrowse={browse} committed />
+        ))}
+      </ul>
+      {modal?.kind === 'file' && (
+        <ModalShell title={modal.title} onClose={() => setModal(null)}>
+          {modal.loading && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
+          {!modal.loading && 'error' in modal && <p className="error" style={{ margin: 0 }}>Failed to load output: {modal.error}</p>}
+          {!modal.loading && 'result' in modal && modal.result.found && renderOutputBody(modal.result)}
+          {!modal.loading && 'result' in modal && !modal.result.found && (
+            <p className="muted" style={{ margin: 0 }}>No output content found. The file may have been moved or removed.</p>
+          )}
+        </ModalShell>
+      )}
+      {modal?.kind === 'items' && modal.artifact.workflowRunId && (
+        <ModalShell title={modal.title} onClose={() => setModal(null)}>
+          <ArtifactItemsBrowser runId={modal.artifact.workflowRunId} artifact={modal.artifact} onOpenFile={openFile} />
         </ModalShell>
       )}
     </div>

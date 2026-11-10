@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type WorkflowOutputItem, type WorkflowRunOutput } from '../lib/api';
 import { renderOutputBody } from './OutputRenderer';
-import { LoadMoreSentinel, STAGE_IO_PAGE_SIZE } from './StageIoLists';
+import { LoadMoreSentinel, ProductArtifacts, STAGE_IO_PAGE_SIZE } from './StageIoLists';
 import { usePoll } from '../ui';
 
 function OutputModal(
@@ -42,10 +42,10 @@ function OutputModal(
 }
 
 /**
- * Generic unified output section for any workflow that produces terminal-stage
- * work items with markdown artifacts (e.g. places, perfumes). Reads from
- * GET /api/workflows/:name/output-items — items are de-duped by (job_name, item_key)
- * by construction (the work_items ledger is keyed by that pair). (T205)
+ * The Output section of a workflow's page. Reads GET /api/workflows/:name/output-items:
+ * for a ports workflow, the latest artifact each output of its product stage
+ * committed (cards), and for any workflow the items in that stage's ledger, which
+ * are de-duped by (job_name, item_key) by construction. (T205)
  */
 export function WorkflowOutputSection({ workflowName }: { workflowName: string }) {
   // First page stays on the poll (fresh counts + newest items); further pages
@@ -72,6 +72,7 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
     }
     return out;
   }, [data, extraItems]);
+  const artifacts = data?.artifacts ?? [];
   const total = data?.total ?? items.length;
   const hasMore = items.length < total;
 
@@ -108,13 +109,15 @@ export function WorkflowOutputSection({ workflowName }: { workflowName: string }
     <div className="output-section">
       <h2>Output</h2>
       <p className="muted" style={{ fontSize: 13 }}>
-        Items produced by this workflow, de-duplicated by stable item key. Each item appears exactly
-        once — re-runs that process the same item update it in place, never duplicate it.
+        What this workflow produces: the latest of each thing its final stage writes, and the items
+        it has produced, each listed once (a re-run that processes the same item updates it in place).
       </p>
 
       {error && <p className="error">Failed to load output: {String(error)}</p>}
 
-      {data && items.length === 0 && (
+      {artifacts.length > 0 && <ProductArtifacts artifacts={artifacts} />}
+
+      {data && items.length === 0 && artifacts.length === 0 && (
         <div className="panel">
           <p className="empty-state-panel">
             No output yet. Run the workflow — produced items will appear here.

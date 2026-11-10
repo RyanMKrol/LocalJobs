@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { type Gate, type GateStatus, buildDag, classifyGates, deriveGates, shapesIdentical } from '../engine/dag.js';
 import { portGates, workflowMode } from '../engine/ports.js';
-import { OVERALL, artifactItems, stageIo } from '../engine/reporting.js';
+import { OVERALL, artifactItems, latestProductArtifacts, productStages, stageIo, type ArtifactCard } from '../engine/reporting.js';
 import type { GateResult, RunRow } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, isWorkflowStarting, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../engine/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
@@ -53,6 +53,7 @@ import {
   workItemMarkdownPath,
   workflowTerminalItems,
   workflowTerminalItemsCount,
+  ledgersWrittenByJob,
   type OutputItem,
   serviceCallsInLastSeconds,
   serviceCallsThisMonth,
@@ -1241,6 +1242,8 @@ const routes: Route[] = [
   },
 
   // GET /api/workflows/:name/output-items?limit=&offset=  (T205)
+  // For a ports workflow: the product stage's latest committed artifacts
+  // (`artifacts`) and its ledger items. For a legacy one, `artifacts` is empty.
   // Return the terminal-stage work items with status='success', de-duped by
   // (job_name, item_key). Powers the unified Output section on every workflow's
   // detail page — items are naturally de-duped because the ledger has a UNIQUE
@@ -1258,13 +1261,28 @@ const routes: Route[] = [
         offset: clampIntParam(url.searchParams.get('offset'), 0, Number.MAX_SAFE_INTEGER, 0),
       };
       const refs = getWorkflowJobs(name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
-      if (refs.length === 0) return json(res, 200, { items: [] as OutputItem[], total: 0, terminalJobs: [] as string[] });
+      const none = { items: [] as OutputItem[], total: 0, terminalJobs: [] as string[], artifacts: [] as ArtifactCard[] };
+      if (refs.length === 0) return json(res, 200, none);
+      // A ports workflow's product is what its product stage committed: the latest
+      // artifact of each of that stage's outputs, plus the items in its ledger. No
+      // stage has to write a ledger row for this section to have something to show.
+      if (workflowMode({ jobs: refs }, getJobDefinition) === 'ports') {
+        const stages = productStages(refs, getJobDefinition);
+        // A stage's items live under its own name unless it records them elsewhere.
+        const ledgers = [...new Set(stages.flatMap(ledgersWrittenByJob))];
+        return json(res, 200, {
+          items: workflowTerminalItems(ledgers, page),
+          total: workflowTerminalItemsCount(ledgers),
+          terminalJobs: stages,
+          artifacts: latestProductArtifacts(getJobDefinition, stages),
+        });
+      }
       let lastWave: string[] = [];
       try {
         const dag = buildDag(refs);
         lastWave = dag.waves[dag.waves.length - 1] ?? [];
       } catch {
-        return json(res, 200, { items: [] as OutputItem[], total: 0, terminalJobs: [] as string[] });
+        return json(res, 200, none);
       }
       const def = getWorkflowDefinition(name);
       // T603: outputJob may name either an existing member job (stocks-sync-style,
@@ -1277,6 +1295,7 @@ const routes: Route[] = [
         items: workflowTerminalItems(outputJobs, page),
         total: workflowTerminalItemsCount(outputJobs),
         terminalJobs: outputJobs,
+        artifacts: [] as ArtifactCard[],
       });
     },
   },
