@@ -1,10 +1,11 @@
 // SCENARIO: a linear pipeline, run for real with fixture stages.
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { config } from '../../config.js';
 import { getLogs } from '../../db/store.js';
 import { setupScenario } from '../testing/scenario.js';
 import { cancelWorkflowRun } from '../workflow-executor.js';
-import { jobs, linearWorkflow } from './linear.scenario.js';
+import { jobs, linearWorkflow, mirrorWorkflow } from './linear.scenario.js';
 
 let passed = 0;
 async function test(name: string, fn: () => Promise<void>) {
@@ -18,7 +19,7 @@ async function test(name: string, fn: () => Promise<void>) {
   }
 }
 
-const s = setupScenario({ moduleUrl: new URL('./linear.scenario.ts', import.meta.url).href, jobs, workflows: [linearWorkflow] });
+const s = setupScenario({ moduleUrl: new URL('./linear.scenario.ts', import.meta.url).href, jobs, workflows: [linearWorkflow, mirrorWorkflow] });
 
 try {
   await test('data flows down the chain; every stage records its inputs and outputs; the host is notified once', async () => {
@@ -145,6 +146,72 @@ try {
 
     s.control({});
     assert.equal((await s.run(linearWorkflow)).status, 'success');
+  });
+
+  await test('a workflow that comes `after` another starts at once when that one is idle', async () => {
+    const r = await s.run(mirrorWorkflow);
+    assert.equal(r.status, 'success', r.log);
+    assert.doesNotMatch(r.log, /Waiting for/);
+  });
+
+  await test('a workflow that comes `after` another waits while that one is running, then runs', async () => {
+    s.control({ 'ln-transform': 'hang' });
+    const pipeline = await s.start(linearWorkflow);
+    await s.until(pipeline.id, 'the pipeline to be mid-run', (rep) => rep.stage('ln-transform')?.status === 'running');
+
+    const mirror = await s.start(mirrorWorkflow);
+    const waiting = await s.until(mirror.id, 'the mirror to say it is waiting', (rep) => /Waiting for ln-linear to finish/.test(rep.log));
+    // Give it several polls' worth of time: it must still not have started a stage.
+    await new Promise((res) => setTimeout(res, 200));
+    assert.equal(s.report(mirror.id).status, 'running');
+    assert.deepEqual(s.report(mirror.id).runs, [], 'no stage of the waiting run has started');
+    assert.doesNotMatch(waiting.log, /Workflow "ln-mirror-wf" started/);
+
+    // The pipeline ends (how it ends does not matter: the wait is only for it to be over).
+    cancelWorkflowRun(pipeline.id, 'cancelled by the scenario');
+    await pipeline.done;
+    const r = await mirror.done;
+    assert.equal(r.status, 'success', r.log);
+    assert.match(r.log, /ln-linear has finished\./);
+    assert.match(r.log, /Waited \d+s\. Starting now\./);
+    assert.equal(r.stage('ln-mirror')?.status, 'success');
+    s.control({});
+  });
+
+  await test('a wait that goes on too long gives up with a warning and starts anyway', async () => {
+    s.control({ 'ln-transform': 'hang' });
+    const pipeline = await s.start(linearWorkflow);
+    await s.until(pipeline.id, 'the pipeline to be mid-run', (rep) => rep.stage('ln-transform')?.status === 'running');
+    const maxWait = config.afterMaxWaitMs;
+    config.afterMaxWaitMs = 100;
+    try {
+      const r = await s.run(mirrorWorkflow);
+      assert.equal(r.status, 'success', r.log);
+      assert.match(r.log, /Still running after .*: ln-linear\. Starting anyway/);
+    } finally {
+      config.afterMaxWaitMs = maxWait;
+      cancelWorkflowRun(pipeline.id, 'cancelled by the scenario');
+      await pipeline.done;
+      s.control({});
+    }
+  });
+
+  await test('a run that is waiting can be cancelled: its stages are recorded as never started', async () => {
+    s.control({ 'ln-transform': 'hang' });
+    const pipeline = await s.start(linearWorkflow);
+    await s.until(pipeline.id, 'the pipeline to be mid-run', (rep) => rep.stage('ln-transform')?.status === 'running');
+    const mirror = await s.start(mirrorWorkflow);
+    await s.until(mirror.id, 'the mirror to say it is waiting', (rep) => /Waiting for ln-linear/.test(rep.log));
+
+    cancelWorkflowRun(mirror.id, 'no longer needed');
+    const r = await mirror.done;
+    assert.equal(r.status, 'cancelled');
+    assert.equal(r.run.end_reason, 'no longer needed');
+    assert.equal(r.stage('ln-mirror')?.outcome_reason, 'not-started-cancelled');
+
+    cancelWorkflowRun(pipeline.id, 'cancelled by the scenario');
+    await pipeline.done;
+    s.control({});
   });
 } finally {
   s.cleanup();

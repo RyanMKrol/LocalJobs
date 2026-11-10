@@ -178,6 +178,14 @@ export const config = {
   gateTimeoutMs: Number(process.env.LOCALJOBS_GATE_TIMEOUT_MS ?? 30_000),
 
   /**
+   * A workflow that declares `after` waits for the workflows it names to finish
+   * before its first stage starts. This is how often it looks (ms), and how long
+   * it will wait in total before giving up on them and starting anyway.
+   */
+  afterPollMs: Number(process.env.LOCALJOBS_AFTER_POLL_MS ?? (isTestEnv() ? 20 : 15_000)),
+  afterMaxWaitMs: Number(process.env.LOCALJOBS_AFTER_MAX_WAIT_MS ?? 3 * 60 * 60_000),
+
+  /**
    * Retention for the per-run Inputs & Outputs detail (which items a run touched
    * and what it recorded): kept for runs that started within this many days…
    */

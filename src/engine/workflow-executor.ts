@@ -232,6 +232,40 @@ export function workflowRunInProgress(name: string): boolean {
 }
 
 /**
+ * Hold a run back while any workflow named in `def.after` has a run in progress.
+ * Returns when none has, when the run is cancelled, or after
+ * `config.afterMaxWaitMs`, whichever comes first. It only ever delays: the other
+ * workflow's outcome is not looked at, and nothing here starts it.
+ */
+async function waitForWorkflows(
+  def: WorkflowDefinition,
+  log: (m: string, level?: LogLevel) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const others = (def.after ?? []).filter((n) => n !== def.name);
+  const busy = () => others.filter((n) => workflowRunInProgress(n));
+  let waitingOn = busy();
+  if (waitingOn.length === 0) return;
+  const startedAt = Date.now();
+  log(`Waiting for ${waitingOn.join(', ')} to finish before starting (this workflow reads their output).`);
+  while (waitingOn.length > 0) {
+    if (Date.now() - startedAt >= config.afterMaxWaitMs) {
+      log(
+        `Still running after ${Math.round(config.afterMaxWaitMs / 60_000)} min: ${waitingOn.join(', ')}. ` +
+          `Starting anyway; this run may read output that is part-way through being rebuilt.`,
+        'warn',
+      );
+      return;
+    }
+    if (await abortableSleep(config.afterPollMs, signal)) return;
+    const now = busy();
+    for (const done of waitingOn.filter((n) => !now.includes(n))) log(`${done} has finished.`);
+    waitingOn = now;
+  }
+  log(`Waited ${Math.round((Date.now() - startedAt) / 1000)}s. Starting now.`);
+}
+
+/**
  * Whether the named workflow is CURRENTLY in the pre-DB-row "starting" window —
  * claimed in `startingWorkflows` (T105) but not yet past `createWorkflowRun`
  * (T595). A limited manual run whose root stage's `inputKeys()` is an expensive
@@ -420,6 +454,12 @@ async function runWorkflowInner(
   // already ran can't double-finish the run.
   let finished = false;
 
+  // Wait for the workflows this one reads from (`after`) before doing anything
+  // else, discovery included, so everything below sees their finished output.
+  // (Not awaited at all without `after`: a run with nothing to wait for must not
+  // yield here, since a limited run's discovery is expected to start at once.)
+  if (def.after?.length) await waitForWorkflows(def, log, controller.signal);
+
   // Discover + freeze the selected roots now that the row exists and is visibly
   // `running`. A throw (inputKeys() rejecting on a live API call) fails THIS row —
   // no separate pre-row row needed anymore — and returns. The run is also
@@ -428,7 +468,7 @@ async function runWorkflowInner(
   let emptySelectionWarning: string | null = null;
   if (resumed && resumedRoots) {
     limitNote = ` · limited to the ${resumedRoots.length} originating input(s) of the run it resumes`;
-  } else if (runLimit) {
+  } else if (runLimit && !controller.signal.aborted) {
     const rootStage = findRootStage(dag)!;
     log(`Discovering originating inputs for a limited run (limit ${runLimit}) via "${rootStage}"…`);
     try {

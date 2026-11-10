@@ -120,6 +120,8 @@ export interface Workflow {
   stuck: number;
   /** True when a member declares input keys — only then can a manual run be limited (T094). */
   limitable?: boolean;
+  /** Workflows this one waits for before it starts (they must not be mid-run). */
+  after?: string[];
   /** Structural gates derived from member job contracts; present on the detail endpoint. */
   gates?: StructuralGate[];
   runs?: WorkflowRun[];

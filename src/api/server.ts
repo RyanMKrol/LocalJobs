@@ -394,6 +394,8 @@ function workflowView(name: string) {
     jobs: members,
     stuck: members.reduce((sum, m) => sum + stuckCount(m.job_name), 0),
     limitable: members.some((m) => !!getJobDefinition(m.job_name)?.inputKeys),
+    // The workflows this one waits for before starting (manifest-owned).
+    after: getWorkflowDefinition(name)?.after ?? [],
   };
 }
 

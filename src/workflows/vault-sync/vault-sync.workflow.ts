@@ -12,7 +12,10 @@ import type { WorkflowDefinition } from '../../core/types.js';
  *
  * Daily at 07:30, after the nightly perfumes (02:00), places (03:00), and
  * media-reviews (04:00) runs, so new profiles and reviews reach the vault the
- * same morning they're built.
+ * same morning they're built. The clock is only the usual case: `after` names
+ * the six sources, so if one of them is still running at 07:30 (a long places
+ * night, the Saturday plex-profiles rebuild) this run waits for it to finish
+ * instead of copying a folder that is half-way through being rewritten.
  */
 const workflow: WorkflowDefinition = {
   name: 'vault-sync',
@@ -20,6 +23,7 @@ const workflow: WorkflowDefinition = {
   description: 'Mirrors the markdown output of the places, perfumes, plex-profiles, listening-digest, workouts-sync, and media-reviews workflows into a second-brain vault folder on disk (~/SecondBrain by default), one folder per source with human-friendly filenames. Copy-only: source files stay in each workflow\'s data/out, and nothing is ever deleted from the vault. Daily.',
   idempotencyNote: 'Each source item is tracked by its source ledger row\'s last-updated marker: a vault copy is only (re)written when the source item has been re-recorded since the last sync, or when the vault copy has been deleted by hand. Re-running when nothing changed writes nothing, so the sync is safe to trigger any time.',
   schedule: '30 7 * * *',
+  after: ['places', 'perfumes', 'plex-profiles', 'listening-digest', 'workouts-sync', 'media-reviews'],
   jobs: [{ job: 'vault-sync-export' }],
 };
 

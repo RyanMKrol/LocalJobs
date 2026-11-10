@@ -1453,7 +1453,7 @@ function fixtureForRaw(pathname, searchParams) {
     return { workflow: workflow({ name: 'perfumes', category: 'second-brain', jobs: perfumesMembers, gates: perfumesGates.map(({ state, ...g }) => g) }) };
   }
   if (pathname === '/api/workflows/vault-sync') {
-    return { workflow: workflow({ name: 'vault-sync', category: 'second-brain', jobs: vaultSyncMembers, gates: [] }) };
+    return { workflow: workflow({ name: 'vault-sync', category: 'second-brain', jobs: vaultSyncMembers, gates: [], after: ['places', 'perfumes', 'plex-profiles', 'listening-digest', 'workouts-sync', 'media-reviews'] }) };
   }
   if (pathname === '/api/workflows/plex-library-guard') {
     return { workflow: workflow({ name: 'plex-library-guard', category: 'regular-maintenance', jobs: plexLibraryGuardMembers, gates: [] }) };
@@ -1597,6 +1597,8 @@ export const PAGES = [
   // A ports workflow's page: its Output section leads with the product artifact card.
   { name: 'workflow-perfumes-ports-output', path: '/workflows/perfumes',       waitFor: ['.rf-dag-node', '.stage-io-artifact'] },
   { name: 'workflow-missing-tv-seasons', path: '/workflows/missing-tv-seasons', waitFor: ['.rf-dag-node'] },
+  // A workflow that waits for others (`after`): its "Waits for" row.
+  { name: 'workflow-vault-sync-waits-for', path: '/workflows/vault-sync',   waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run',            path: '/workflow-runs/1',                waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-movie-recs', path: '/workflow-runs/movie-recs-run',   waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-missing-movies', path: '/workflow-runs/missing-movies-run', waitFor: ['.rf-dag-node'] },

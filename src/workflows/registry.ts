@@ -231,6 +231,45 @@ export function sharedJobNames(
   return [...owners.entries()].filter(([, w]) => w.length > 1).map(([job, w]) => ({ job, workflows: w }));
 }
 
+/**
+ * Problems with the workflows' `after` lists: a name that is not a workflow, a
+ * workflow waiting for itself, and a cycle (A waits for B, B waits for A: started
+ * together, each would hold the other up until the wait timed out). Pure +
+ * exported for unit tests.
+ */
+export function afterProblems(workflowDefs: ReadonlyArray<{ name: string; after?: string[] }>): string[] {
+  const problems: string[] = [];
+  const byName = new Map(workflowDefs.map((w) => [w.name, w]));
+  for (const wf of workflowDefs) {
+    for (const other of wf.after ?? []) {
+      if (other === wf.name) problems.push(`workflow "${wf.name}" lists itself in \`after\``);
+      else if (!byName.has(other)) problems.push(`workflow "${wf.name}" waits for "${other}" (\`after\`), which is not a known workflow`);
+    }
+  }
+  if (problems.length > 0) return problems;
+  // Depth-first search for a cycle, reporting each one once (from its smallest name).
+  const reported = new Set<string>();
+  const walk = (name: string, path: string[]): void => {
+    for (const next of byName.get(name)?.after ?? []) {
+      const at = path.indexOf(next);
+      if (at >= 0) {
+        const cycle = path.slice(at);
+        const key = [...cycle].sort().join(' ');
+        if (!reported.has(key)) {
+          reported.add(key);
+          problems.push(`workflows wait for each other in a circle (\`after\`): ${[...cycle, next].join(' → ')}`);
+        }
+      } else walk(next, [...path, next]);
+    }
+  };
+  for (const wf of workflowDefs) walk(wf.name, [wf.name]);
+  return problems;
+}
+
+// Only when nothing else is wrong: a workflow that failed to load above would
+// otherwise be reported a second time here as "not a known workflow".
+if (loadErrors.length === 0) for (const p of afterProblems(workflows)) loadErrors.push(p);
+
 for (const { job, workflows: owners } of sharedJobNames(workflows)) {
   loadErrors.push(`job "${job}" is a member of ${owners.length} workflows (${owners.join(', ')}); a job belongs to exactly one`);
 }

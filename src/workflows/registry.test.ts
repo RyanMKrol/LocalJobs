@@ -34,3 +34,22 @@ console.log(`  ✓ registry loads cleanly (${jobs.length} jobs, ${services.lengt
     console.log('  ✓ loading the registry installs the engine host (job lookup + notifier)');
   }
 }
+
+// `after`: a workflow may wait for others, but only for ones that exist, never for
+// itself, and never in a circle.
+{
+  const { afterProblems } = await import('./registry.js');
+  const check = (label: string, got: string[], want: RegExp[]) => {
+    const ok = got.length === want.length && want.every((re, i) => re.test(got[i]));
+    if (ok) console.log(`  ✓ after: ${label}`);
+    else {
+      console.error(`  ✗ after: ${label}\n    got ${JSON.stringify(got)}`);
+      process.exitCode = 1;
+    }
+  };
+  check('a chain is fine', afterProblems([{ name: 'a', after: ['b'] }, { name: 'b', after: ['c'] }, { name: 'c' }]), []);
+  check('an unknown workflow is reported', afterProblems([{ name: 'a', after: ['nope'] }]), [/"a" waits for "nope".*not a known workflow/]);
+  check('a workflow cannot wait for itself', afterProblems([{ name: 'a', after: ['a'] }]), [/"a" lists itself/]);
+  check('a circle is reported once', afterProblems([{ name: 'a', after: ['b'] }, { name: 'b', after: ['c'] }, { name: 'c', after: ['a'] }]), [/in a circle.*a → b → c → a/]);
+  check('the real workflows have no problems', afterProblems(workflows), []);
+}

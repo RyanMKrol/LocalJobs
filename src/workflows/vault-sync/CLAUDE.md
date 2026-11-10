@@ -75,7 +75,10 @@ dataDir gets). The stage also takes an injectable `vaultDir` opt for tests.
 ## Limits / schedule
 
 Daily 07:30 (`30 7 * * *`), after the nightly perfumes (02:00) / places (03:00) /
-media-reviews (04:00) runs. No
+media-reviews (04:00) runs. The clock is only the usual case. The manifest also lists the
+six source workflows in `after`, so if one of them is still running when this starts (a
+long places night, the Saturday plex-profiles rebuild), the run waits for it to finish
+before copying anything. The wait shows in the run's log and can be cancelled. No
 `inputKeys()` → not limitable: enumeration is a DB read of other jobs' ledgers, not a live
 external source, so there is no `inputKeysService` to name (T583) and a run-limit has
 nothing meaningful to bound. No paid calls, no services — pure local file copies.

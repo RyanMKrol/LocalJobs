@@ -384,6 +384,17 @@ export default function WorkflowDetail({ params }: { params: Promise<{ name: str
               </span>
             )}
           </div>
+          {p?.after?.length ? (
+            <>
+              <div className="k">Waits for</div>
+              <div>
+                {p.after.map((w, i) => (
+                  <span key={w}>{i > 0 ? ', ' : ''}<Link href={`/workflows/${w}`}>{w}</Link></span>
+                ))}
+                <span className="muted"> (a run holds back until these have finished)</span>
+              </div>
+            </>
+          ) : null}
           <div className="k">Enabled</div>
           <div>
             <span

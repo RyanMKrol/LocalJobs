@@ -5,7 +5,7 @@
 // The simplest shape: each stage reads the one before. Used to check the basics
 // in isolation: data flows down the chain, a bad output stops it at the source, a
 // failure mid-chain skips what follows, retries, and cancelling.
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { acceptAny, defineStage, fileArtifact, fromChecks, inlineArtifact, jsonArtifact } from '../ports.js';
 import { inScenario as at, scenarioMode as mode } from '../testing/scenario.js';
 import type { JobDefinition, WorkflowDefinition } from '../types.js';
@@ -65,9 +65,27 @@ const publish = defineStage({
   },
 });
 
-export const jobs: JobDefinition[] = [fetch, transform, publish];
+// A second, one-stage workflow that reads what the pipeline published, so it
+// must not start while the pipeline is mid-run (`after`).
+const mirrored = inlineArtifact<string>({ key: 'ln-mirrored', description: 'The report as the mirror found it.', check: acceptAny });
+const mirror = defineStage({
+  name: 'ln-mirror',
+  outputs: { mirrored: { artifact: mirrored } },
+  async run(ctx) {
+    ctx.output('mirrored').write(existsSync(at('report.md')()) ? readFileSync(at('report.md')(), 'utf8') : '(no report yet)');
+  },
+});
+
+export const jobs: JobDefinition[] = [fetch, transform, publish, mirror];
 
 export const linearWorkflow: WorkflowDefinition = {
   name: 'ln-linear',
   jobs: [{ job: 'ln-fetch' }, { job: 'ln-transform', dependsOn: ['ln-fetch'] }, { job: 'ln-publish', dependsOn: ['ln-transform'] }],
+};
+
+/** Reads the pipeline's report, so it waits for a pipeline run to finish first. */
+export const mirrorWorkflow: WorkflowDefinition = {
+  name: 'ln-mirror-wf',
+  after: ['ln-linear'],
+  jobs: [{ job: 'ln-mirror' }],
 };

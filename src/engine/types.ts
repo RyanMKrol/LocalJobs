@@ -299,6 +299,15 @@ export interface WorkflowDefinition {
    * exactly as before.
    */
   outputJob?: string;
+  /**
+   * Workflows this one reads the results of. If any of them has a run in
+   * progress when this workflow starts, the run waits (visibly, and cancellably)
+   * until they have finished, so it never works from output that is half-way
+   * through being rebuilt. It is NOT a trigger: this workflow still starts on its
+   * own schedule, and does not care whether the other run succeeded. After
+   * `LOCALJOBS_AFTER_MAX_WAIT_MS` it stops waiting and starts anyway.
+   */
+  after?: string[];
   /** Re-run the whole pass in cycles until no retryable work remains. Default false. */
   repeatUntilStable?: boolean;
   /** Max cycles when repeatUntilStable. Default 1. */

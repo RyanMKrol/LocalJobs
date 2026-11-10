@@ -267,6 +267,19 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   run's limit and frozen roots. Not offered for a `repeatUntilStable` workflow (re-running
   it already skips finished items). So eight LLM branches that succeeded are not paid for
   again because the merge after them failed.
+- **A workflow can wait for others (`after`).** `WorkflowDefinition.after` names the
+  workflows this one reads the output of. When a run starts (scheduled or manual) and any
+  of them has a run in progress, the new run holds back before its first stage, discovery
+  included, until they have finished: `waitForWorkflows` in
+  `src/engine/workflow-executor.ts`. The run row already exists, so the wait shows on the
+  run page as log lines ("Waiting for places to finish…") and can be cancelled like any
+  run. It is a guard, not a trigger: the workflow still starts on its own schedule, and it
+  does not look at how the other run ended. It checks every `LOCALJOBS_AFTER_POLL_MS`
+  (15s) and after `LOCALJOBS_AFTER_MAX_WAIT_MS` (3 hours) logs a warning and starts
+  anyway. The registry refuses an `after` that names an unknown workflow, the workflow
+  itself, or a circle (`afterProblems`). `vault-sync` uses it for its six sources, so a
+  long places night can no longer be copied half-way through. The workflow page shows a
+  "Waits for" row.
 - **One active run per workflow (T105).** A given workflow may have only ONE run
   active at a time — but DIFFERENT workflows still run concurrently (this is
   per-workflow, NOT a global lock). The executor is the **authoritative, race-safe

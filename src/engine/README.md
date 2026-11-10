@@ -22,6 +22,8 @@ it produces. The engine:
   why
 - can resume a failed run: a new run that reuses the stages that succeeded, as long as
   what they wrote has not changed, and runs only the rest
+- can hold a workflow back while another one it reads from is still running (`after`
+  on the workflow), so it never reads output that is half rebuilt
 
 The run page in the dashboard is drawn from that record. A stage does not write
 anything for the dashboard's benefit.
