@@ -111,8 +111,17 @@ for (const suffix of ['', '-wal', '-shm']) rmSync(dbPath + suffix, { force: true
       ts TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX idx_service_usage ON service_usage(service, ts);
+    -- work_item_runs: PRE-engine-v2 shape (linkage only: no run_id/status/detail
+    -- snapshot columns, no idx_work_item_runs_runid).
+    CREATE TABLE work_item_runs (
+      workflow_run_id TEXT NOT NULL, job_name TEXT NOT NULL, item_key TEXT NOT NULL,
+      root_key TEXT, at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(workflow_run_id, job_name, item_key)
+    );
+    CREATE INDEX idx_work_item_runs_run ON work_item_runs(workflow_run_id);
   `);
   legacy.exec(`
+    INSERT INTO work_item_runs (workflow_run_id, job_name, item_key, root_key) VALUES ('wr-1', 'resolve', 'cid-1', 'cid-1');
     INSERT INTO jobs (name, description, schedule, enabled) VALUES ('resolve', 'r', '0 3 * * *', 1);
     INSERT INTO workflows (name, schedule) VALUES ('places', '0 3 * * *');
     INSERT INTO workflow_jobs (workflow_name, job_name) VALUES ('places', 'resolve');
@@ -335,6 +344,40 @@ test('movies workflow is renamed to movie-recommendations, run history + member 
     .get() as { workflow_name: string; status: string } | undefined;
   assert.equal(run?.workflow_name, 'movie-recommendations', 'historical run re-pointed to the new name');
   assert.equal(run?.status, 'success', 'historical run status preserved');
+});
+
+test('engine v2: runs / workflow_runs / work_item_runs gain their columns, existing rows untouched (NULL)', () => {
+  for (const c of ['cycle', 'outcome_reason', 'queued_at_ms', 'started_at_ms', 'finished_at_ms', 'gate_ms']) {
+    assert.ok(cols('runs').includes(c), `runs.${c} added`);
+  }
+  for (const c of ['end_reason', 'cycles', 'resumed_from']) {
+    assert.ok(cols('workflow_runs').includes(c), `workflow_runs.${c} added`);
+  }
+  for (const c of ['run_id', 'cycle', 'status', 'attempts', 'detail', 'title', 'input_job', 'input_key', 'at_ms']) {
+    assert.ok(cols('work_item_runs').includes(c), `work_item_runs.${c} added`);
+  }
+  const link = migrated.prepare("SELECT run_id, status, detail FROM work_item_runs WHERE workflow_run_id = 'wr-1'").get() as {
+    run_id: string | null; status: string | null; detail: string | null;
+  };
+  assert.deepEqual(link, { run_id: null, status: null, detail: null }, 'a pre-v2 linkage row keeps NULL snapshot columns');
+  const run = migrated.prepare("SELECT cycle, outcome_reason FROM runs WHERE id = 'run-1'").get() as {
+    cycle: number | null; outcome_reason: string | null;
+  };
+  assert.deepEqual(run, { cycle: null, outcome_reason: null });
+});
+
+test('engine v2: the run_id index is created by the migration (partial), and the new tables exist', () => {
+  const idx = migrated.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_work_item_runs_runid'").get() as
+    | { sql: string }
+    | undefined;
+  assert.ok(idx, 'idx_work_item_runs_runid exists');
+  assert.match(idx!.sql, /WHERE run_id IS NOT NULL/, 'it is a partial index (pre-v2 NULL rows cost nothing)');
+  for (const t of ['run_artifacts', 'run_inputs']) {
+    assert.ok(
+      migrated.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(t),
+      `${t} table created`,
+    );
+  }
 });
 
 test('all seeded rows are preserved (no data loss across the bootstrap+migration)', () => {

@@ -27,6 +27,14 @@ CREATE TABLE IF NOT EXISTS runs (
   exit_code    INTEGER,
   error        TEXT,
   workflow_run_id TEXT,                    -- set when this run is a workflow member
+  -- Engine v2 (added to existing DBs by migrateEngineV2 in index.ts; NO index on
+  -- any of these here, per the T098 rule):
+  cycle          INTEGER,                  -- repeatUntilStable cycle this run belongs to (1-based); NULL = pre-v2 run
+  outcome_reason TEXT,                     -- WHY a non-success/skipped row ended as it did: noop | stalled | upstream-skipped | overlap | gate-failed | not-started-cancelled | orphaned
+  queued_at_ms   INTEGER,                  -- epoch ms the stage became ready (all deps settled)
+  started_at_ms  INTEGER,                  -- epoch ms this attempt's process was spawned
+  finished_at_ms INTEGER,                  -- epoch ms this attempt settled
+  gate_ms        INTEGER,                  -- time spent checking inbound gates/inputs before spawn
   FOREIGN KEY (job_name) REFERENCES jobs(name)
 );
 
@@ -86,6 +94,20 @@ CREATE TABLE IF NOT EXISTS work_item_runs (
   item_key        TEXT NOT NULL,
   root_key        TEXT,
   at              TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Engine v2 per-run SNAPSHOT (added to existing DBs by migrateEngineV2; its
+  -- run_id index is created in that migration, NOT here, per the T098 rule).
+  -- work_items is an upsert, so on its own it only ever knows an item's CURRENT
+  -- state. These columns freeze what THIS run recorded, so an old run's page
+  -- shows what that run did rather than today's state.
+  run_id          TEXT,                    -- the member run (stage attempt) that wrote this row
+  cycle           INTEGER,
+  status          TEXT,                    -- the status this run recorded
+  attempts        INTEGER,
+  detail          TEXT,                    -- the detail JSON this run recorded (capped)
+  title           TEXT,                    -- display title, when the writer supplied one
+  input_job       TEXT,                    -- upstream ledger job this item was read from
+  input_key       TEXT,                    -- upstream item key (defaults to item_key)
+  at_ms           INTEGER,
   UNIQUE(workflow_run_id, job_name, item_key)
 );
 CREATE INDEX IF NOT EXISTS idx_work_item_runs_run ON work_item_runs(workflow_run_id);
@@ -162,6 +184,10 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
   started_at     TEXT,
   finished_at    TEXT,
   duration_ms    INTEGER,
+  -- Engine v2 (added to existing DBs by migrateEngineV2; no index here, T098):
+  end_reason     TEXT,                      -- why the run ended when that is not obvious from status (e.g. 'orphaned by daemon restart', 'cancelled by user', 'unhandled error: …')
+  cycles         INTEGER,                   -- how many repeatUntilStable cycles actually ran
+  resumed_from   TEXT,                      -- workflow run id this run resumed from (reusing its succeeded stages' artifacts)
   FOREIGN KEY (workflow_name) REFERENCES workflows(name)
 );
 
@@ -236,3 +262,57 @@ CREATE TABLE IF NOT EXISTS service_cache (
   cached_at       TEXT NOT NULL,
   PRIMARY KEY (service_name, cache_key)
 );
+
+-- ───────────────── Engine v2: run-scoped artifacts and resolved inputs ─────────────────
+-- Both tables are BRAND NEW (columns exist on creation for fresh AND existing DBs),
+-- so their indexes may live here without hitting the T098 trap.
+
+-- One row per OUTPUT a stage committed during one run attempt. This is the record
+-- that makes "this run wrote it" checkable: a downstream stage's input resolves to
+-- a row here from the SAME workflow run, never to "whatever file is on disk".
+CREATE TABLE IF NOT EXISTS run_artifacts (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  workflow_run_id TEXT NOT NULL,
+  run_id          TEXT NOT NULL,             -- the member run (attempt) that committed it
+  cycle           INTEGER NOT NULL DEFAULT 1,
+  job_name        TEXT NOT NULL,             -- the producing stage (DAG member name)
+  port            TEXT NOT NULL,             -- the stage's output port name
+  artifact_key    TEXT NOT NULL,             -- the ArtifactType key (what consumers bind to)
+  storage         TEXT NOT NULL,             -- json | file | dir | ledger | inline
+  path            TEXT,                      -- stored like detail paths (relative to the workflows root); NULL for ledger/inline
+  sha256          TEXT,                      -- content hash at commit (file/json; a listing hash for dir)
+  bytes           INTEGER,
+  mtime_ms        INTEGER,
+  item_count      INTEGER,
+  fresh           INTEGER NOT NULL DEFAULT 1, -- 1 = written this run; 0 = explicitly carried forward unchanged
+  ok              INTEGER NOT NULL DEFAULT 1, -- the artifact's own check() verdict at commit
+  check_json      TEXT,                      -- the GateResult recorded at commit (checks, violations, sample)
+  summary_json    TEXT,                      -- { summary, items: IoItem[] (capped sample) }
+  inline_json     TEXT,                      -- the value itself, for storage = inline
+  note            TEXT,                      -- e.g. the reason given to output.unchanged()
+  created_at_ms   INTEGER NOT NULL,
+  UNIQUE(run_id, port)
+);
+CREATE INDEX IF NOT EXISTS idx_run_artifacts_wf ON run_artifacts(workflow_run_id, cycle, job_name, port);
+
+-- One row per INPUT a stage was handed (per producer, for a fan-in port), written
+-- by the engine before the stage spawns. This is the gate record: what was checked
+-- at that boundary, when, and the verdict, as the engine saw it AT RUN TIME.
+CREATE TABLE IF NOT EXISTS run_inputs (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  workflow_run_id TEXT NOT NULL,
+  cycle           INTEGER NOT NULL DEFAULT 1,
+  job_name        TEXT NOT NULL,             -- the consuming stage
+  port            TEXT NOT NULL,             -- the consumer's input port (the artifact key for a legacy gate)
+  producer_job    TEXT NOT NULL,
+  artifact_key    TEXT NOT NULL,
+  artifact_id     INTEGER,                   -- run_artifacts.id it resolved to; NULL for a legacy gate or an unresolved input
+  ok              INTEGER NOT NULL,
+  reason          TEXT,                      -- why it failed, when ok = 0
+  check_json      TEXT,                      -- recorded check detail (legacy gates: both sides' GateResult)
+  used_json       TEXT,                      -- IoItem[] the stage reported it actually used (ctx.input().used())
+  duration_ms     INTEGER,
+  checked_at_ms   INTEGER NOT NULL,
+  UNIQUE(workflow_run_id, cycle, job_name, port, producer_job)
+);
+CREATE INDEX IF NOT EXISTS idx_run_inputs_wf ON run_inputs(workflow_run_id, job_name);

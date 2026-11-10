@@ -174,6 +174,7 @@ export function openDb(dbPath: string = config.dbPath): Database.Database {
 
   migrateDropJobColumns(db);
   migrateRunLimitLineage(db);
+  migrateEngineV2(db);
   migrateRenamePlexWorkflow(db);
   migrateRenameMoviesWorkflow(db);
 
@@ -275,6 +276,65 @@ export function migrateRunLimitLineage(db: Database.Database): void {
     if (!wrCols.some((c) => c.name === 'run_limit')) db.exec('ALTER TABLE workflow_runs ADD COLUMN run_limit INTEGER');
     if (!wrCols.some((c) => c.name === 'selected_roots')) db.exec('ALTER TABLE workflow_runs ADD COLUMN selected_roots TEXT');
   }
+}
+
+/**
+ * Engine v2 additive columns: run identity/timing/outcome on `runs`, end reason on
+ * `workflow_runs`, and the per-run snapshot on `work_item_runs`. Every column is
+ * nullable with no default, so each `ALTER TABLE ADD COLUMN` is O(1) even on the
+ * multi-million-row `work_item_runs` table (SQLite does not rewrite the table).
+ *
+ * The WHOLE migration runs inside one `BEGIN IMMEDIATE` transaction, with every
+ * `hasColumn` guard evaluated INSIDE it. That matters because this code is run by
+ * every process that opens the DB, not just the daemon: each child job process
+ * imports `src/db/index.ts` too, and a workflow's parallel wave spawns several at
+ * once. With the guard outside a write lock, two children could both see "column
+ * missing" and the loser's ALTER would die on "duplicate column name". Taking the
+ * write lock first makes check-then-alter atomic across processes; the loser waits
+ * (busy_timeout), then sees the columns already present and does nothing.
+ *
+ * The `work_item_runs.run_id` index is created HERE, after its ALTER, never in
+ * schema.sql (the T098 rule). It is a PARTIAL index (`WHERE run_id IS NOT NULL`)
+ * so the millions of pre-v2 rows, whose run_id is NULL, cost it nothing.
+ */
+export function migrateEngineV2(db: Database.Database): void {
+  const additions: Array<[table: string, column: string, type: string]> = [
+    ['runs', 'cycle', 'INTEGER'],
+    ['runs', 'outcome_reason', 'TEXT'],
+    ['runs', 'queued_at_ms', 'INTEGER'],
+    ['runs', 'started_at_ms', 'INTEGER'],
+    ['runs', 'finished_at_ms', 'INTEGER'],
+    ['runs', 'gate_ms', 'INTEGER'],
+    ['workflow_runs', 'end_reason', 'TEXT'],
+    ['workflow_runs', 'cycles', 'INTEGER'],
+    ['workflow_runs', 'resumed_from', 'TEXT'],
+    ['work_item_runs', 'run_id', 'TEXT'],
+    ['work_item_runs', 'cycle', 'INTEGER'],
+    ['work_item_runs', 'status', 'TEXT'],
+    ['work_item_runs', 'attempts', 'INTEGER'],
+    ['work_item_runs', 'detail', 'TEXT'],
+    ['work_item_runs', 'title', 'TEXT'],
+    ['work_item_runs', 'input_job', 'TEXT'],
+    ['work_item_runs', 'input_key', 'TEXT'],
+    ['work_item_runs', 'at_ms', 'INTEGER'],
+  ];
+  const tableExists = (name: string): boolean =>
+    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name);
+
+  // Fast path: nothing to do (every start after the first), so no write lock is taken.
+  const pending = () => additions.filter(([t, c]) => tableExists(t) && !hasColumn(db, t, c));
+  const indexExists = () =>
+    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name = 'idx_work_item_runs_runid'").get();
+  if (pending().length === 0 && indexExists()) return;
+
+  db.transaction(() => {
+    for (const [table, column, type] of pending()) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    }
+    if (tableExists('work_item_runs')) {
+      db.exec('CREATE INDEX IF NOT EXISTS idx_work_item_runs_runid ON work_item_runs(run_id) WHERE run_id IS NOT NULL');
+    }
+  }).immediate();
 }
 
 /**
