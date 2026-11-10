@@ -1,102 +1,95 @@
-// Typed-artifact contracts for the plex-language-fix DAG (T453):
-// plex-language-discover → plex-language-resolve → plex-language-evaluate → plex-language-apply.
-// Unlike places/perfumes, this workflow's stages chain through the per-item
-// `work_items` ledger, not a shared JSON file — each `check()` below is a
-// deliberately trivial "did the producer record anything" gate (an acceptable
-// minimum per this repo's gate-coverage rule), reading the ledger read-only via
-// `stages/ledger.ts` (never a paid/remote call).
-import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
-import type { EvaluateDetail } from './types.js';
-import { ledgerSuccessCount, ledgerSuccessRows } from './stages/ledger.js';
+// The data the plex-language-fix stages hand to each other. It all travels in the
+// work_items ledger: each stage's rows ARE its output, one per media file, so the
+// artifacts here are ledger artifacts (no hand-off files).
+//
+//   discover ──files──▶ resolve ──languages──▶ evaluate ──decisions──▶ apply
+//      ├──────────────files──────────────────────▲                       ▲
+//      └──────────────────────────files──────────────────────────────────┘
+//
+// evaluate and apply both read the discover rows as well (for each file's Plex
+// ids), so they depend on discover directly.
+import { fromChecks, ledgerArtifact, successRows } from '../../engine/index.js';
+import type { LedgerRowValue } from '../../engine/index.js';
+import type { DiscoverDetail, EvaluateDetail, ResolveDetail } from './types.js';
 
-function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
-  const failed = checks.filter((c) => !c.ok);
-  const ok = failed.length === 0;
-  return {
-    ok,
-    violations: ok ? undefined : failed.map((c) => `${c.label}: ${c.actual ?? 'failed'}`),
-    checks,
-    sample,
-    detail: sample,
-  };
-}
+const READABLE = 'The ledger is readable (the library may legitimately be empty).';
+const named = (r: LedgerRowValue) => String((r.detail as { name?: unknown } | null)?.name ?? r.itemKey);
 
-const EXP_RECORDED = 'The ledger is readable (the library may legitimately be empty).';
+/** Every media file discovered across the configured Plex sections. */
+export const discoveredFiles = ledgerArtifact({
+  key: 'plex-language-discover',
+  description: 'Every media file (movie or episode) known across the configured Plex sections, one ledger row each.',
+  shape: {
+    summary: 'Every file discovered across the configured Plex library sections.',
+    format: 'work_items ledger rows for job "plex-language-discover"',
+    expectations: [{ label: READABLE, detail: 'The ledger for this job is queryable.' }],
+  },
+  readRows: successRows,
+  check: (rows) => fromChecks([{ label: READABLE, ok: true, actual: `${rows.length} file(s) known` }], `${rows.length} file(s)`),
+  summary: (rows) => `${rows.length} file(s)`,
+  items: (rows) => rows.map((r) => {
+    const d = r.detail as DiscoverDetail | null;
+    return { id: r.itemKey, title: named(r), fields: d ? [{ label: 'Kind', value: d.type }, { label: 'TMDB', value: String(d.tmdbId) }] : [] };
+  }),
+});
 
-/** discover → resolve / discover → evaluate boundary: every discovered file. */
-export function plexLanguageDiscoverContract(): ArtifactContract {
-  return {
-    key: 'plex-language-discover',
-    description: 'discover output: one work_items row per known file, keyed by "<itemRatingKey>::part<partId>", detail { name, file, itemRatingKey, partId, type, tmdbId, seasonEpisode? }.',
-    shape: {
-      summary: 'Every file (movie or TV episode) discovered across the configured Plex library sections.',
-      format: 'work_items ledger rows for job "plex-language-discover"',
-      expectations: [{ label: EXP_RECORDED, detail: 'The ledger for this job is queryable.' }],
-    },
-    check(): GateResult {
-      const n = ledgerSuccessCount('plex-language-discover');
-      return fromChecks([{ label: EXP_RECORDED, ok: true, actual: `${n} file(s) known` }], `${n} file(s)`);
-    },
-  };
-}
+/** The original language of each file's title, resolved through TMDB. */
+export const resolvedLanguages = ledgerArtifact({
+  key: 'plex-language-resolve',
+  description: 'Each file\'s true original language, resolved through TMDB, one ledger row per file.',
+  shape: {
+    summary: 'Every discovered file whose title\'s original language has been resolved via TMDB.',
+    format: 'work_items ledger rows for job "plex-language-resolve"',
+    expectations: [{ label: READABLE, detail: 'The ledger for this job is queryable.' }],
+  },
+  readRows: successRows,
+  check: (rows) => fromChecks([{ label: READABLE, ok: true, actual: `${rows.length} file(s) resolved` }], `${rows.length} file(s)`),
+  summary: (rows) => `${rows.length} file(s) resolved`,
+  items: (rows) => rows.map((r) => {
+    const d = r.detail as ResolveDetail | null;
+    return { id: r.itemKey, title: named(r), fields: d?.originalLanguage ? [{ label: 'Original language', value: d.originalLanguage }] : [] };
+  }),
+});
 
-/** resolve → evaluate boundary: every file with a resolved candidate-language list. */
-export function plexLanguageResolveContract(): ArtifactContract {
-  return {
-    key: 'plex-language-resolve',
-    description: 'resolve output: one work_items row per resolved file, detail { name, originalLanguage?, candidateLanguages[] }.',
-    shape: {
-      summary: 'Every discovered file whose show/movie true original language has been resolved via TMDB.',
-      format: 'work_items ledger rows for job "plex-language-resolve"',
-      expectations: [{ label: EXP_RECORDED, detail: 'The ledger for this job is queryable.' }],
-    },
-    check(): GateResult {
-      const n = ledgerSuccessCount('plex-language-resolve');
-      return fromChecks([{ label: EXP_RECORDED, ok: true, actual: `${n} file(s) resolved` }], `${n} file(s)`);
-    },
-  };
-}
-
-const EXP_CHANGE_ROWS_APPLIABLE =
-  'Every "change" decision has a numeric proposed audio stream id and a recorded current audio selection.';
+const APPLIABLE = 'Every "change" decision has a numeric proposed audio stream id and a recorded current audio selection.';
 
 /**
- * evaluate → apply boundary: this is the ONE real (non-trivial) gate in this
- * workflow, since `plex-language-apply` is the repo's only externally-mutating
- * stage. It asserts exactly the malformation `apply.ts` currently skips at
- * runtime (`!discover || typeof evalDetail.proposedAudio?.streamId !== 'number'`)
- * — every 'change' row must carry a numeric `proposedAudio.streamId` AND a
- * non-null `currentAudio`, so a drift in evaluate's own logic fails LOUD at the
- * gate instead of silently being skipped one stage later, right before a
- * mutating Plex call. An empty ledger, or one with only 'skip' rows, passes
- * trivially (nothing to apply).
+ * Each file's change-or-skip decision. The check is the bar the apply stage
+ * relies on before it PUTs a track selection to Plex: a malformed "change" row
+ * stops the run here, before anything is touched.
  */
-export function plexLanguageEvaluateContract(): ArtifactContract {
-  return {
-    key: 'plex-language-evaluate',
-    description:
-      'evaluate output: one work_items row per evaluated file, detail { name, status: "change"|"skip", currentAudio, currentSubtitle, proposedAudio?, proposedSubtitle? }. ' +
-      'Every "change" row must carry a numeric proposedAudio.streamId and a non-null currentAudio — the pre-mutation bar plex-language-apply relies on before it PUTs a track selection to Plex.',
-    shape: {
-      summary: 'Every resolved file\'s change/skip decision, with the current + proposed stream selection.',
-      format: 'work_items ledger rows for job "plex-language-evaluate"',
-      expectations: [{ label: EXP_CHANGE_ROWS_APPLIABLE, detail: 'Every "change" row is well-formed enough for apply to act on safely.' }],
-    },
-    check(): GateResult {
-      const rows = ledgerSuccessRows('plex-language-evaluate');
-      const offenders: string[] = [];
-      for (const row of rows) {
-        const detail = row.detail as EvaluateDetail;
-        if (detail?.status !== 'change') continue;
-        const hasStreamId = typeof detail.proposedAudio?.streamId === 'number';
-        const hasCurrentAudio = detail.currentAudio != null;
-        if (!hasStreamId || !hasCurrentAudio) offenders.push(row.itemKey);
-      }
-      const ok = offenders.length === 0;
-      const actual = ok
-        ? `${rows.length} file(s) evaluated, all "change" rows applicable`
-        : `${offenders.length} malformed "change" row(s): ${offenders.join(', ')}`;
-      return fromChecks([{ label: EXP_CHANGE_ROWS_APPLIABLE, ok, actual }], `${rows.length} file(s)`);
-    },
-  };
-}
+export const languageDecisions = ledgerArtifact({
+  key: 'plex-language-evaluate',
+  description: 'Each file\'s decision: change its default audio and subtitle tracks, or leave it. One ledger row per file.',
+  shape: {
+    summary: 'Every resolved file\'s change/skip decision, with the current and proposed stream selection.',
+    format: 'work_items ledger rows for job "plex-language-evaluate"',
+    expectations: [{ label: APPLIABLE, detail: 'Every "change" row is well-formed enough for apply to act on safely.' }],
+  },
+  readRows: successRows,
+  check(rows) {
+    const offenders: string[] = [];
+    for (const row of rows) {
+      const detail = row.detail as EvaluateDetail | null;
+      if (detail?.status !== 'change') continue;
+      if (typeof detail.proposedAudio?.streamId !== 'number' || detail.currentAudio == null) offenders.push(row.itemKey);
+    }
+    const ok = offenders.length === 0;
+    return fromChecks(
+      [{ label: APPLIABLE, ok, actual: ok ? `${rows.length} file(s) evaluated, all "change" rows applicable` : `${offenders.length} malformed "change" row(s): ${offenders.slice(0, 20).join(', ')}` }],
+      `${rows.length} file(s)`,
+    );
+  },
+  summary: (rows) => `${rows.length} file(s) evaluated, ${rows.filter((r) => (r.detail as EvaluateDetail | null)?.status === 'change').length} to change`,
+  items: (rows) => rows.map((r) => ({ id: r.itemKey, title: named(r), fields: [{ label: 'Decision', value: String((r.detail as EvaluateDetail | null)?.status ?? '?') }] })),
+});
+
+/** The files whose track selection has been changed in Plex, ever. Each is applied exactly once. */
+export const appliedChanges = ledgerArtifact({
+  key: 'plex-language-applied',
+  description: 'Every file whose default tracks have been changed in Plex, one ledger row each. A file is applied once, ever.',
+  readRows: successRows,
+  check: (rows) => fromChecks([{ label: READABLE, ok: true, actual: `${rows.length} file(s) applied` }], `${rows.length} file(s)`),
+  summary: (rows) => `${rows.length} file(s) applied`,
+  items: (rows) => rows.map((r) => ({ id: r.itemKey, title: named(r) })),
+});

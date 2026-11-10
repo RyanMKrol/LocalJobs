@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { plexLanguageDiscoverContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { discoveredFiles } from '../contracts.js';
 import { discoverInputKeys, runDiscover } from './discover.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-language-discover',
   description:
     'Root stage of the plex-language-fix workflow. Walks every configured Plex library section (movie ' +
@@ -16,12 +16,11 @@ const job: JobDefinition = {
     'workflow\'s limitable root — a manual run-limit selects among files this ledger already knows about.',
   timeoutMs: 3_600_000,
   maxRetries: 3,
-  produces: [plexLanguageDiscoverContract()],
+  // The stage's ledger rows are its output: one per file, added to as the library grows.
+  outputs: { files: { artifact: discoveredFiles } },
   inputKeysService: 'plex',
   inputKeys: discoverInputKeys,
   async run(ctx) {
     await runDiscover(ctx);
   },
-};
-
-export default job;
+});

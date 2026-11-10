@@ -35,7 +35,8 @@ const workflow: WorkflowDefinition = {
     { job: 'plex-language-discover' },
     { job: 'plex-language-resolve', dependsOn: ['plex-language-discover'] },
     { job: 'plex-language-evaluate', dependsOn: ['plex-language-discover', 'plex-language-resolve'] },
-    { job: 'plex-language-apply', dependsOn: ['plex-language-evaluate'] },
+    // apply reads the discover rows too (each file's Plex ids), so it depends on discover directly.
+    { job: 'plex-language-apply', dependsOn: ['plex-language-discover', 'plex-language-evaluate'] },
   ],
 };
 

@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { plexLanguageDiscoverContract, plexLanguageResolveContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { discoveredFiles, resolvedLanguages } from '../contracts.js';
 import { runResolve } from './resolve.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-language-resolve',
   description:
     'For every file plex-language-discover recorded that has not yet been resolved, looks up its ' +
@@ -14,11 +14,9 @@ const job: JobDefinition = {
     'run gracefully; the file is left un-done and retried automatically on the next run once the quota resets.',
   timeoutMs: 3_600_000,
   maxRetries: 3,
-  consumes: [plexLanguageDiscoverContract()],
-  produces: [plexLanguageResolveContract()],
+  inputs: { files: { artifact: discoveredFiles } },
+  outputs: { languages: { artifact: resolvedLanguages } },
   async run(ctx) {
     await runResolve(ctx);
   },
-};
-
-export default job;
+});

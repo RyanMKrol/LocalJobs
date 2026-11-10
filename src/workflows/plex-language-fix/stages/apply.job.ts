@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { plexLanguageEvaluateContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { appliedChanges, discoveredFiles, languageDecisions } from '../contracts.js';
 import { runApply } from './apply.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-language-apply',
   description:
     'Reads every file plex-language-evaluate flagged status="change" and, for each not already applied by ' +
@@ -21,10 +21,18 @@ const job: JobDefinition = {
     'with any failed file fails the run itself so it does not silently look clean.',
   timeoutMs: 3_600_000,
   maxRetries: 3,
-  consumes: [plexLanguageEvaluateContract()],
+  // The decisions from evaluate, and the files from discover (each file's Plex ids),
+  // which is why the manifest gives this stage an edge from discover as well. The
+  // decisions are checked before this stage starts: a malformed "change" row stops
+  // the run before anything in Plex is touched.
+  inputs: {
+    decisions: { artifact: languageDecisions },
+    files: { artifact: discoveredFiles },
+  },
+  outputs: { applied: { artifact: appliedChanges } },
+  // What this workflow is for: the files it has fixed.
+  product: true,
   async run(ctx) {
     await runApply(ctx);
   },
-};
-
-export default job;
+});

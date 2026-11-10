@@ -10,8 +10,23 @@ SHOULD be selected by default per file versus what's currently selected.
 ## Four members (T453) — read-only → read-only → read-only → mutating
 
 ```
-plex-language-discover → plex-language-resolve → plex-language-evaluate → plex-language-apply
+discover ──files──▶ resolve ──languages──▶ evaluate ──decisions──▶ apply
+   ├──────────────files──────────────────────▲                       ▲
+   └──────────────────────────files──────────────────────────────────┘
 ```
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`). The data travels in the `work_items`
+ledger, so every artifact in `contracts.ts` is a `ledgerArtifact`: a stage's rows ARE its output.
+
+| Stage | Inputs | Output |
+|---|---|---|
+| `plex-language-discover` | none (root: `inputKeys()`) | `files` (`plex-language-discover`) |
+| `plex-language-resolve` | `files` | `languages` (`plex-language-resolve`) |
+| `plex-language-evaluate` | `files`, `languages` | `decisions` (`plex-language-evaluate`) |
+| `plex-language-apply` | `decisions`, `files` | `applied` (`plex-language-applied`, the workflow's product) |
+
+`plex-language-apply` depends on `plex-language-discover` directly: it reads the discover rows
+for each file's Plex ids. That read used to have no edge and no gate.
 
 - **`plex-language-discover`** (read-only, the DAG's ROOT — declares `inputKeys()` with
   `inputKeysService: 'plex'`, so this workflow is limitable for the first time) walks every configured
@@ -118,10 +133,9 @@ the item-loop rule:
 
 ## The evaluate → apply gate is a REAL pre-mutation check, not the trivial minimum (T574)
 
-`contracts.ts`'s three gates all read the ledger via `stages/ledger.ts`, but they are NOT uniformly
-trivial. `plexLanguageDiscoverContract`/`plexLanguageResolveContract` stay the sanctioned trivial
-"the ledger is readable" minimum (per `src/workflows/CLAUDE.md`'s gate rule) — there's no meaningful
-artifact shape to assert before those read-only stages. `plexLanguageEvaluateContract`, however, sits
+The artifact checks in `contracts.ts` are NOT uniformly trivial. `discoveredFiles` and
+`resolvedLanguages` stay at the "the ledger is readable" minimum: there is no meaningful shape to
+assert before those read-only stages. `languageDecisions`, however, sits
 directly in front of `plex-language-apply` — the repo's ONLY externally-mutating stage — so it asserts
 something real: every `plex-language-evaluate` ledger row with `detail.status === 'change'` must carry
 a numeric `detail.proposedAudio.streamId` AND a non-null `detail.currentAudio`. This is exactly the
