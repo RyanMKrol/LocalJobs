@@ -29,7 +29,9 @@ const workflow: WorkflowDefinition = {
     { job: 'places-ingest' },
     { job: 'cid-to-place-id-resolver', dependsOn: ['places-ingest'] },
     { job: 'places-enrich', dependsOn: ['cid-to-place-id-resolver'] },
-    { job: 'enrich-with-llm', dependsOn: ['places-enrich'] },
+    // The last stage also reads the normalized places (each place's lists and the
+    // owner's notes), so it depends on the ingest stage directly as well.
+    { job: 'enrich-with-llm', dependsOn: ['places-ingest', 'places-enrich'] },
   ],
 };
 

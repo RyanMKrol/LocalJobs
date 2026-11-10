@@ -1,221 +1,127 @@
-// Typed-artifact contracts for the places workflow stage boundaries.
+// The data the places stages hand to each other.
 //
-// Each factory returns an ArtifactContract whose `check()` inspects the REAL
-// artifact left on disk and reports SHAPE + NON-EMPTY drift — enough to catch a
-// Takeout/Places/Resolver format change or an empty hand-off without brittle
-// full-schema validation. The factories take an optional path so they can be
-// unit-tested against synthetic fixtures (the jobs use the default data paths).
+//   places-ingest ──places──▶ cid-to-place-id-resolver ──resolved──▶ places-enrich ──enriched──▶ enrich-with-llm ──▶ profiles
+//         └──────────────────────────places───────────────────────────────────────────────────▲
 //
-// Each contract ALSO declares a machine-readable `shape` (plain-English
-// expectations for a non-expert reader) and its `check()` reports per-expectation
-// pass/fail in `checks` plus a small `sample` of what actually flowed, so the
-// dashboard gate page can show expected-vs-actual without anyone reading code.
+// The last stage reads the normalized places as well (for each place's list
+// memberships and the owner's notes), so it depends on the ingest stage directly.
 //
-// Keys are shared across the producing job's `produces` and the consuming job's
-// `consumes` so the workflow executor derives a gate at each edge:
-//   ingest ──places-normalized──▶ resolve ──resolved-place-ids──▶ enrich
-//          ──enriched-places──▶ enrich-with-llm
-import { existsSync, readFileSync } from 'node:fs';
-import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
-import { placesConfig } from './config.js';
+// The checks are SHAPE + NON-EMPTY: enough to catch a Takeout CSV layout change
+// or an empty hand-off without brittle full-schema validation.
+import { statSync } from 'node:fs';
+import { join } from 'node:path';
+import { dirArtifact, fromChecks, jsonArtifact } from '../../engine/index.js';
+import type { EnrichedFile, IngestOutput, ResolvedFile, ValidationReport } from './types.js';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** ingest's output: every saved place, normalized from the Takeout CSVs. Rebuilt every run. */
+export const normalizedPlaces = jsonArtifact<IngestOutput>({
+  key: 'places-normalized',
+  description: 'Every saved place, normalized from the Google Takeout CSVs: name, CID, the lists it is on, the owner\'s notes.',
+  shape: {
+    summary: 'The saved places, normalized from Google Takeout.',
+    format: 'JSON object { generatedAt, source, places[] }',
+    expectations: [
+      { label: 'Sourced from Google Takeout', detail: 'The file declares source: "google-takeout".' },
+      { label: 'Contains at least one place', detail: 'A non-empty places array. A Takeout layout change that breaks parsing shows up here as zero places.' },
+      { label: 'Every place has a name', detail: 'Each place carries a text name.' },
+    ],
+  },
+  check(v) {
+    const places = Array.isArray(v?.places) ? v.places : null;
+    const bad = places?.find((p) => !p || typeof p.name !== 'string');
+    return fromChecks([
+      { label: 'Sourced from Google Takeout', ok: v?.source === 'google-takeout', actual: `source = ${JSON.stringify(v?.source)}` },
+      { label: 'Contains at least one place', ok: !!places && places.length > 0, actual: places ? `${places.length} place(s)` : 'no "places" array' },
+      { label: 'Every place has a name', ok: !!places && !bad, actual: bad ? 'a place is missing a text name' : 'all places named' },
+    ], places ? `${places.length} place(s)${places.length ? ` · e.g. ${places.slice(0, 3).map((p) => JSON.stringify(p?.name)).join(', ')}` : ''}` : undefined);
+  },
+  summary: (v) => `${v.places.length} place(s)`,
+  items: (v) => v.places.map((p, i) => ({ id: p.cid ?? String(i), title: p.name, fields: p.cid ? [{ label: 'CID', value: p.cid }] : [] })),
+});
 
-function readJson(file: string): { obj?: unknown; violation?: string } {
-  if (!existsSync(file)) return { violation: `file missing: ${file}` };
-  try {
-    return { obj: JSON.parse(readFileSync(file, 'utf8')) };
-  } catch (e) {
-    return { violation: `not valid JSON — ${errMsg(e)}` };
-  }
-}
+/** ingest's second output: what it made of the CSVs. */
+export const validationReport = jsonArtifact<ValidationReport>({
+  key: 'places-validation-report',
+  description: 'What the ingest made of the Takeout CSVs: counts per list, and anything it had to warn about.',
+  check: (v) => fromChecks([{ label: 'lists the issues it found', ok: Array.isArray(v?.issues), actual: Array.isArray(v?.issues) ? `${v.issues.length} issue(s)` : 'no issues list' }]),
+  summary: (v) => `${v.perList?.length ?? 0} list(s), ${v.issues.length} issue(s)`,
+});
 
-/**
- * Build a GateResult from per-expectation results: `ok` iff every expectation
- * passed, with `violations` derived from the failures so the executor's gate
- * enforcement (which reads `ok`/`violations`) is unchanged.
- */
-function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
-  const failed = checks.filter((c) => !c.ok);
-  const ok = failed.length === 0;
-  return {
-    ok,
-    violations: ok ? undefined : failed.map((c) => `${c.label}: ${c.actual ?? 'failed'}`),
-    checks,
-    sample,
-    detail: sample,
-  };
-}
+/** The resolver's store: CID to Google place_id. Grows as places are resolved. */
+export const resolvedPlaces = jsonArtifact<ResolvedFile>({
+  key: 'resolved-place-ids',
+  description: 'Each place\'s CID resolved to a Google place_id (or recorded as unresolvable). Grows as places are resolved.',
+  shape: {
+    summary: 'CID to place_id lookup.',
+    format: 'JSON object { generatedAt, resolved: { cid: {...} } }',
+    expectations: [
+      { label: 'Has a "resolved" lookup map', detail: 'The file carries a resolved map keyed by CID.' },
+      { label: 'The map is not empty', detail: 'At least one entry.' },
+      { label: 'At least one place resolved to a place_id', detail: 'At least one entry has a real place_id, which the enrich stage needs.' },
+    ],
+  },
+  check(v) {
+    const map = v?.resolved;
+    const isMap = !!map && typeof map === 'object' && !Array.isArray(map);
+    if (!isMap) return fromChecks([{ label: 'Has a "resolved" lookup map', ok: false, actual: 'missing "resolved" map' }]);
+    const entries = Object.values(map);
+    const withId = entries.filter((e) => e && typeof e.placeId === 'string' && e.placeId).length;
+    return fromChecks([
+      { label: 'Has a "resolved" lookup map', ok: true, actual: 'present' },
+      { label: 'The map is not empty', ok: entries.length > 0, actual: `${entries.length} entry(ies)` },
+      { label: 'At least one place resolved to a place_id', ok: withId > 0, actual: `${withId}/${entries.length} with a place_id` },
+    ], `${withId}/${entries.length} entry(ies) resolved to a place_id`);
+  },
+  summary: (v) => { const e = Object.values(v.resolved); return `${e.filter((x) => x.placeId).length}/${e.length} resolved to a place_id`; },
+  items: (v) => Object.values(v.resolved).map((r) => ({
+    id: r.cid, title: r.name, status: r.placeId ? 'success' : 'failed',
+    fields: [{ label: 'Status', value: r.status }, ...(r.placeId ? [{ label: 'place_id', value: r.placeId }] : [])],
+  })),
+});
 
-const NORMALIZED_EXP = {
-  json: 'A readable JSON file',
-  source: 'Sourced from Google Takeout',
-  nonEmpty: 'Contains at least one place',
-  names: 'Every place has a name',
-};
+/** The enrich stage's store: Google Places details per place. Grows as places are enriched. */
+export const enrichedPlaces = jsonArtifact<EnrichedFile>({
+  key: 'enriched-places',
+  description: 'The Google Places details fetched for each resolved place. Grows as places are enriched.',
+  shape: {
+    summary: 'Places details per place_id.',
+    format: 'JSON object { generatedAt, enriched: { placeId: {...} } }',
+    expectations: [
+      { label: 'Has an "enriched" lookup map', detail: 'The file carries an enriched map.' },
+      { label: 'The map is not empty', detail: 'At least one entry.' },
+      { label: 'At least one enriched place has a place_id', detail: 'At least one entry carries its place_id.' },
+    ],
+  },
+  check(v) {
+    const map = v?.enriched;
+    const isMap = !!map && typeof map === 'object' && !Array.isArray(map);
+    if (!isMap) return fromChecks([{ label: 'Has an "enriched" lookup map', ok: false, actual: 'missing "enriched" map' }]);
+    const entries = Object.values(map);
+    const withId = entries.filter((e) => e && typeof e.placeId === 'string' && e.placeId).length;
+    return fromChecks([
+      { label: 'Has an "enriched" lookup map', ok: true, actual: 'present' },
+      { label: 'The map is not empty', ok: entries.length > 0, actual: `${entries.length} entry(ies)` },
+      { label: 'At least one enriched place has a place_id', ok: withId > 0, actual: `${withId}/${entries.length} with a place_id` },
+    ], `${withId}/${entries.length} enriched place(s)`);
+  },
+  summary: (v) => { const e = Object.values(v.enriched); return `${e.filter((x) => x.status === 'success').length}/${e.length} enriched`; },
+  items: (v) => Object.values(v.enriched).map((e) => ({
+    id: e.placeId, title: typeof e.data?.displayName === 'object' && e.data.displayName ? String((e.data.displayName as { text?: unknown }).text ?? e.placeId) : e.placeId,
+    status: e.status, fields: [{ label: 'CID', value: e.cid }],
+  })),
+});
 
-/**
- * ingest → resolve boundary: the normalized places.json. Must parse, declare
- * `source: "google-takeout"`, and carry a non-empty `places[]` whose records
- * have a `name` (a Takeout CSV layout change that breaks normalization fails
- * here instead of feeding empty/garbage downstream).
- */
-export function normalizedPlacesContract(file: string = placesConfig.placesOut): ArtifactContract {
-  return {
-    key: 'places-normalized',
-    description: 'ingest output: places.json — source google-takeout, non-empty places[] with names.',
-    shape: {
-      summary: 'The normalized list of your places to look up, read from Google Takeout.',
-      format: 'JSON file (places.json)',
-      expectations: [
-        { label: NORMALIZED_EXP.json, detail: 'The hand-off file exists and parses as JSON.' },
-        { label: NORMALIZED_EXP.source, detail: 'Marked source = "google-takeout", proving it came from the right export.' },
-        { label: NORMALIZED_EXP.nonEmpty, detail: 'A non-empty "places" list — otherwise there is nothing to resolve.' },
-        { label: NORMALIZED_EXP.names, detail: 'Each place record carries a text name.' },
-      ],
-    },
-    check(): GateResult {
-      const checks: ExpectationResult[] = [];
-      const { obj, violation } = readJson(file);
-      if (violation) {
-        checks.push({ label: NORMALIZED_EXP.json, ok: false, actual: violation });
-        return fromChecks(checks);
-      }
-      checks.push({ label: NORMALIZED_EXP.json, ok: true, actual: 'valid JSON' });
-      const rec = (obj ?? {}) as Record<string, unknown>;
-      checks.push({
-        label: NORMALIZED_EXP.source,
-        ok: rec.source === 'google-takeout',
-        actual: `source = ${JSON.stringify(rec.source)}`,
-      });
-      const places = rec.places;
-      const isArr = Array.isArray(places);
-      const nonEmpty = isArr && (places as unknown[]).length > 0;
-      checks.push({
-        label: NORMALIZED_EXP.nonEmpty,
-        ok: nonEmpty,
-        actual: isArr ? `${(places as unknown[]).length} place(s)` : 'no "places" array',
-      });
-      let sample: string | undefined;
-      if (nonEmpty) {
-        const arr = places as Record<string, unknown>[];
-        const bad = arr.find((p) => !p || typeof p.name !== 'string');
-        checks.push({
-          label: NORMALIZED_EXP.names,
-          ok: !bad,
-          actual: bad ? 'a place is missing a text name' : 'all places named',
-        });
-        const names = arr.slice(0, 3).map((p) => JSON.stringify(p?.name)).join(', ');
-        sample = `${arr.length} place(s)${names ? ` · e.g. ${names}` : ''}`;
-      }
-      return fromChecks(checks, sample);
-    },
-  };
-}
-
-const RESOLVED_EXP = {
-  json: 'A readable JSON file',
-  map: 'Has a "resolved" lookup map',
-  nonEmpty: 'The map is not empty',
-  placeId: 'At least one place resolved to a place_id',
-};
-
-/**
- * resolve → enrich boundary: resolved.json. Must parse, carry a non-empty
- * `resolved` map, and have at least one entry that actually resolved to a
- * `placeId` (the Places API needs a place_id; a run that resolved nothing has
- * nothing to enrich).
- */
-export function resolvedPlacesContract(file: string = placesConfig.resolvedOut): ArtifactContract {
-  return {
-    key: 'resolved-place-ids',
-    description: 'resolve output: resolved.json — non-empty map, at least one entry with a place_id.',
-    shape: {
-      summary: 'The result of looking up each place\'s Google place_id by its CID.',
-      format: 'JSON file (resolved.json)',
-      expectations: [
-        { label: RESOLVED_EXP.json, detail: 'The hand-off file exists and parses as JSON.' },
-        { label: RESOLVED_EXP.map, detail: 'A "resolved" object keyed by CID.' },
-        { label: RESOLVED_EXP.nonEmpty, detail: 'At least one entry — otherwise nothing resolved.' },
-        { label: RESOLVED_EXP.placeId, detail: 'At least one entry has a real place_id, which the enrich stage needs.' },
-      ],
-    },
-    check(): GateResult {
-      const checks: ExpectationResult[] = [];
-      const { obj, violation } = readJson(file);
-      if (violation) {
-        checks.push({ label: RESOLVED_EXP.json, ok: false, actual: violation });
-        return fromChecks(checks);
-      }
-      checks.push({ label: RESOLVED_EXP.json, ok: true, actual: 'valid JSON' });
-      const resolved = (obj as Record<string, unknown>)?.resolved;
-      const isMap = !!resolved && typeof resolved === 'object' && !Array.isArray(resolved);
-      checks.push({ label: RESOLVED_EXP.map, ok: isMap, actual: isMap ? 'present' : 'missing "resolved" map' });
-      if (!isMap) return fromChecks(checks);
-      const entries = Object.values(resolved as Record<string, unknown>);
-      checks.push({ label: RESOLVED_EXP.nonEmpty, ok: entries.length > 0, actual: `${entries.length} entry(ies)` });
-      const withPlaceId = entries.filter(
-        (e) => e && typeof (e as Record<string, unknown>).placeId === 'string' && (e as Record<string, unknown>).placeId,
-      );
-      checks.push({
-        label: RESOLVED_EXP.placeId,
-        ok: withPlaceId.length > 0,
-        actual: `${withPlaceId.length}/${entries.length} with a place_id`,
-      });
-      return fromChecks(checks, `${withPlaceId.length}/${entries.length} entry(ies) resolved to a place_id`);
-    },
-  };
-}
-
-const ENRICHED_EXP = {
-  json: 'A readable JSON file',
-  map: 'Has an "enriched" lookup map',
-  nonEmpty: 'The map is not empty',
-  placeId: 'At least one enriched place has a place_id',
-};
-
-/**
- * enrich → enrich-with-llm boundary: enriched.json. Must parse, carry a
- * non-empty `enriched` map, and have at least one entry with a `placeId` (the
- * LLM stage keys its research by place_id).
- */
-export function enrichedPlacesContract(file: string = placesConfig.enrichedOut): ArtifactContract {
-  return {
-    key: 'enriched-places',
-    description: 'enrich output: enriched.json — non-empty map, at least one entry with a place_id.',
-    shape: {
-      summary: 'Places enriched with Google Places API details, ready for LLM summaries.',
-      format: 'JSON file (enriched.json)',
-      expectations: [
-        { label: ENRICHED_EXP.json, detail: 'The hand-off file exists and parses as JSON.' },
-        { label: ENRICHED_EXP.map, detail: 'An "enriched" object keyed by CID.' },
-        { label: ENRICHED_EXP.nonEmpty, detail: 'At least one entry — otherwise nothing was enriched.' },
-        { label: ENRICHED_EXP.placeId, detail: 'At least one entry has a place_id, which the LLM stage keys research by.' },
-      ],
-    },
-    check(): GateResult {
-      const checks: ExpectationResult[] = [];
-      const { obj, violation } = readJson(file);
-      if (violation) {
-        checks.push({ label: ENRICHED_EXP.json, ok: false, actual: violation });
-        return fromChecks(checks);
-      }
-      checks.push({ label: ENRICHED_EXP.json, ok: true, actual: 'valid JSON' });
-      const enriched = (obj as Record<string, unknown>)?.enriched;
-      const isMap = !!enriched && typeof enriched === 'object' && !Array.isArray(enriched);
-      checks.push({ label: ENRICHED_EXP.map, ok: isMap, actual: isMap ? 'present' : 'missing "enriched" map' });
-      if (!isMap) return fromChecks(checks);
-      const entries = Object.values(enriched as Record<string, unknown>);
-      checks.push({ label: ENRICHED_EXP.nonEmpty, ok: entries.length > 0, actual: `${entries.length} entry(ies)` });
-      const withPlaceId = entries.filter(
-        (e) => e && typeof (e as Record<string, unknown>).placeId === 'string' && (e as Record<string, unknown>).placeId,
-      );
-      checks.push({
-        label: ENRICHED_EXP.placeId,
-        ok: withPlaceId.length > 0,
-        actual: `${withPlaceId.length}/${entries.length} with a place_id`,
-      });
-      return fromChecks(checks, `${withPlaceId.length}/${entries.length} enriched place(s)`);
-    },
-  };
-}
+/** The workflow's product: one markdown profile per place. */
+export const placeProfiles = dirArtifact({
+  key: 'place-profiles',
+  description: 'The finished markdown profile of each place.',
+  format: 'markdown',
+  files: (name) => name.endsWith('.md'),
+  check(d) {
+    const empty = d.files.filter((f) => statSync(join(d.path, f)).size === 0);
+    return fromChecks([{ label: 'no profile is empty', ok: empty.length === 0, actual: empty.length ? `empty: ${empty.slice(0, 5).join(', ')}` : `${d.files.length} profile(s)` }], `${d.files.length} profile(s)`);
+  },
+  count: (d) => d.files.length,
+  summary: (d) => `${d.files.length} profile(s)`,
+  items: (d) => d.files.map((f) => ({ id: f, title: f.replace(/\.md$/, ''), preview: { path: join(d.path, f), format: 'markdown' } })),
+});

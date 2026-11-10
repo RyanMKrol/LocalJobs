@@ -1,5 +1,6 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { normalizedPlacesContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { placesConfig } from '../config.js';
+import { normalizedPlaces, validationReport } from '../contracts.js';
 import { runIngest } from './ingest.js';
 
 /**
@@ -7,7 +8,7 @@ import { runIngest } from './ingest.js';
  * places.json (+ validation report). The foundation step of the places
  * workflow — later jobs resolve CIDs to place_ids and enrich via the Places API.
  */
-const job: JobDefinition = {
+export default defineStage({
   name: 'places-ingest',
   description:
     'The first stage of the places workflow. It reads every Google Takeout saved-place CSV under data/raw/Saved/ (the ' +
@@ -20,7 +21,11 @@ const job: JobDefinition = {
     'blocking cid-to-place-id-resolver from starting.',
   timeoutMs: 120_000,
   maxRetries: 3,
-  produces: [normalizedPlacesContract()],
+  // Both are rebuilt from the Takeout CSVs on every run.
+  outputs: {
+    places: { artifact: normalizedPlaces, location: () => placesConfig.placesOut },
+    report: { artifact: validationReport, location: () => placesConfig.reportOut },
+  },
   async run(ctx) {
     const report = await runIngest(ctx);
     if (!report.ok) {
@@ -30,6 +35,4 @@ const job: JobDefinition = {
       );
     }
   },
-};
-
-export default job;
+});

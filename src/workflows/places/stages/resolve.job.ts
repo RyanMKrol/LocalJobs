@@ -1,5 +1,6 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { normalizedPlacesContract, resolvedPlacesContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { placesConfig } from '../config.js';
+import { normalizedPlaces, resolvedPlaces } from '../contracts.js';
 import { resolveInputKeys, runResolve } from './resolve.js';
 
 /**
@@ -7,7 +8,7 @@ import { resolveInputKeys, runResolve } from './resolve.js';
  * Knowledge-Graph MID) using a headless browser. Reads places.json (from
  * places-ingest) and writes resolved.json. Resumable and rate-limited.
  */
-const job: JobDefinition = {
+export default defineStage({
   name: 'cid-to-place-id-resolver',
   description:
     'The second stage of the places workflow. It reads data/out/places.json (written by places-ingest) and, for each not-yet-' +
@@ -20,8 +21,11 @@ const job: JobDefinition = {
     'here, and every later stage inherits the CID as its lineage root even after re-keying to place_id.',
   timeoutMs: 0, // no job-level timeout; each place is internally bounded + resumable
   maxRetries: 3,
-  consumes: [normalizedPlacesContract()],
-  produces: [resolvedPlacesContract()],
+  inputs: { places: { artifact: normalizedPlaces } },
+  // The CID to place_id store grows as places are resolved.
+  outputs: {
+    resolved: { artifact: resolvedPlaces, location: () => placesConfig.resolvedOut, cumulative: true },
+  },
   inputKeysService: 'fs',
   // Root stage (T094): each saved-place CID is an originating input. A manual
   // run-limit selects the first N CIDs; downstream stages change the key to
@@ -30,6 +34,4 @@ const job: JobDefinition = {
   async run(ctx) {
     await runResolve(ctx);
   },
-};
-
-export default job;
+});

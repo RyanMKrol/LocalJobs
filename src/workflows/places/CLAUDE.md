@@ -72,14 +72,36 @@ keys by `place_id`, so it must explicitly pass the CID lineage back — the one
 place in this workflow where `rootKey` isn't implicit). Credential:
 `GEMINI_API_KEY`.
 
+## How the stages hand data to each other (ports)
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `places-ingest` | none | `places` (`places-normalized`, `places.json`), `report` (`places-validation-report`) |
+| `cid-to-place-id-resolver` | `places` | `resolved` (`resolved-place-ids`, `resolved.json`, cumulative) |
+| `places-enrich` | `resolved` | `enriched` (`enriched-places`, `enriched.json`, cumulative) |
+| `enrich-with-llm` | `enriched`, `places` | `profiles` (`place-profiles`, the `markdown/` folder, cumulative), the workflow's product |
+
+- **The last stage depends on `places-ingest` directly.** It reads `places.json` for each
+  place's list memberships and the owner's notes. That was a hidden read two stages back; it
+  is now an edge in the manifest and an input on the stage.
+- The checks are the same shape and non-empty checks as before: Takeout-sourced with at least
+  one named place; a resolved map with at least one real place_id; an enriched map with at
+  least one place_id.
+- The three stores are cumulative, so a run with nothing left to do in a stage, or one stopped
+  by a quota, carries its store forward.
+- The stage functions still read and write the configured paths themselves (`placesConfig`);
+  the engine checks that each input is what the previous stage committed in this run before the
+  stage starts. Each stage keeps its ledger, which is what makes the pipeline incremental.
+
 ## Files
 
 - `config.ts` — `placesConfig` (all `data/` paths), `enrichConfig` (Places API
   knobs — spend caps live on the `google-places` service, NOT here),
   `llmConfig` (Gemini knobs — spend caps live on the `gemini` service),
   `resolveConfig` (resolver knobs + its own free-tier `job_usage` caps).
-- `contracts.ts` — 3 gates: `places-normalized` (ingest→resolver),
-  `resolved-place-ids` (resolver→enrich), `enriched-places` (enrich→llm).
+- `contracts.ts`: the artifact types the stages exchange (see the ports table below).
 - `parse.ts` — CSV parsing helpers (`parseListFile`, CID/name extraction, plus
   `listSavedCsvFiles`/`collectResolvableCids` — the shared CSV-walk + CID-list
   helpers used by both `places-ingest` and `resolveInputKeys`).

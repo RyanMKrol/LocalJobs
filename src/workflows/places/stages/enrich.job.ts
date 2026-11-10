@@ -1,5 +1,6 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { enrichedPlacesContract, resolvedPlacesContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { placesConfig } from '../config.js';
+import { enrichedPlaces, resolvedPlaces } from '../contracts.js';
 import { runEnrich } from './enrich.js';
 
 /**
@@ -7,7 +8,7 @@ import { runEnrich } from './enrich.js';
  * price, reviews, summary…). Incremental, budget-capped to the free tier, and
  * scheduled weekly to chip away at the backlog without ever incurring charges.
  */
-const job: JobDefinition = {
+export default defineStage({
   name: 'places-enrich',
   description:
     'The third stage of the places workflow. It reads data/out/resolved.json (written by cid-to-place-id-resolver) and, for ' +
@@ -20,11 +21,13 @@ const job: JobDefinition = {
     'exactly fits the monthly ceiling without ever overspending.',
   timeoutMs: 0, // budget-capped + each call bounded; no job-level timeout
   maxRetries: 3,
-  consumes: [resolvedPlacesContract()],
-  produces: [enrichedPlacesContract()],
+  inputs: { resolved: { artifact: resolvedPlaces } },
+  // The details store grows as places are enriched: a run with nothing left to
+  // enrich, or one stopped by the quota, carries it forward.
+  outputs: {
+    enriched: { artifact: enrichedPlaces, location: () => placesConfig.enrichedOut, cumulative: true },
+  },
   async run(ctx) {
     await runEnrich(ctx);
   },
-};
-
-export default job;
+});
