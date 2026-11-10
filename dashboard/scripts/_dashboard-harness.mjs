@@ -122,6 +122,9 @@ const gateInspection = {
     { label: 'every row has a place_id', ok: true, actual: '42/42 rows' },
   ], sample: '[{"cid":"' + LONG + '","place_id":"ChIJ123"}]' } },
   identical: true,
+  // The result the engine RECORDED when it checked this boundary during the run
+  // (not a re-check of whatever is on disk today).
+  recorded: { at: 1780300800000, source: 'gate' },
 };
 const structuralGateDetail = {
   gate: structuralGates[0],
@@ -136,8 +139,12 @@ const structuralGateDetail = {
 const workflowRunSkipped = workflowRun({
   id: 'skipped', status: 'skipped', progress: 100, progress_msg: 'nothing to do',
 });
+// A noop run: every stage ran and had nothing to do. Each member row carries the
+// machine-readable `outcome_reason` the run page explains under the stage name.
 const membersSkipped = members.map((m, i) => run({
   id: `skipped-${i}`, job_name: m.job_name, status: 'skipped', workflow_run_id: 'skipped',
+  outcome_reason: i === 0 ? 'noop' : 'upstream-skipped', cycle: 1,
+  error: i === 0 ? null : `skipped: upstream ${members[0].job_name} did not succeed (skipped)`,
 }));
 
 const stocksMembers = [
@@ -673,7 +680,9 @@ const tvRecommendationsMembers = [
   { job_name: 'tv-rec-world', depends_on: ['tv-snapshot'] },
   {
     job_name: 'tv-rec-merge',
-    depends_on: ['tv-rec-random-1', 'tv-rec-random-2', 'tv-rec-random-3', 'tv-rec-creator', 'tv-rec-canon', 'tv-rec-thin-genre', 'tv-rec-older-era', 'tv-rec-world'],
+    // The merge also reads the snapshot directly (to verify against the owned
+    // library), so that is a real edge, not a hidden read two stages back.
+    depends_on: ['tv-snapshot', 'tv-rec-random-1', 'tv-rec-random-2', 'tv-rec-random-3', 'tv-rec-creator', 'tv-rec-canon', 'tv-rec-thin-genre', 'tv-rec-older-era', 'tv-rec-world'],
   },
   { job_name: 'tv-recs-notify', depends_on: ['tv-rec-merge'] },
 ];
@@ -681,39 +690,90 @@ const tvRecommendationsWorkflowRun = workflowRun({ id: 'tv-recommendations-run',
 const tvRecommendationsRunJobs = tvRecommendationsMembers.map((m, i) => run({
   id: `tv-recommendations-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'tv-recommendations-run',
 }));
-// T571: snapshot / each branch / merge now record ONE combined visibility row per run,
-// keyed by the run's ISO date, describing the artifact each produced (count + path/format).
-const tvSnapshotOutput = { jobName: 'tv-snapshot', itemKey: '2026-06-01', status: 'success', detail: { name: 'TV library snapshot', shows: 214, path: 'tv-recs/data/out/snapshot.json', format: 'json' } };
-const tvRecBranchOutput = {
-  'tv-rec-random-1': { jobName: 'tv-rec-random-1', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-random-1 suggestions', suggestions: 9, path: 'tv-recs/data/out/recs/tv-rec-random-1.json' } },
-  'tv-rec-random-2': { jobName: 'tv-rec-random-2', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-random-2 suggestions', suggestions: 8, path: 'tv-recs/data/out/recs/tv-rec-random-2.json' } },
-  'tv-rec-random-3': { jobName: 'tv-rec-random-3', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-random-3 suggestions', suggestions: 9, path: 'tv-recs/data/out/recs/tv-rec-random-3.json' } },
-  'tv-rec-creator': { jobName: 'tv-rec-creator', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-creator suggestions', suggestions: 7, path: 'tv-recs/data/out/recs/tv-rec-creator.json' } },
-  'tv-rec-canon': { jobName: 'tv-rec-canon', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-canon suggestions', suggestions: 9, path: 'tv-recs/data/out/recs/tv-rec-canon.json' } },
-  'tv-rec-thin-genre': { jobName: 'tv-rec-thin-genre', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-thin-genre suggestions', suggestions: 6, path: 'tv-recs/data/out/recs/tv-rec-thin-genre.json' } },
-  'tv-rec-older-era': { jobName: 'tv-rec-older-era', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-older-era suggestions', suggestions: 8, path: 'tv-recs/data/out/recs/tv-rec-older-era.json' } },
-  'tv-rec-world': { jobName: 'tv-rec-world', itemKey: '2026-06-01', status: 'success', detail: { name: 'tv-rec-world suggestions', suggestions: 9, path: 'tv-recs/data/out/recs/tv-rec-world.json' } },
-};
-const tvRecMergeOutput = { jobName: 'tv-rec-merge', itemKey: '2026-06-01', status: 'success', detail: { name: 'Balanced recommendations', balanced: 12, path: 'tv-recs/data/out/recommendations.json', format: 'json' } };
-const tvRecsNotifyOutput = { jobName: 'tv-recs-notify', itemKey: '2026-06', status: 'success', detail: { name: 'TV recs digest — June 2026' } };
+// tv-recommendations is a PORTS workflow: its run page is derived from what the engine
+// recorded. Each stage shows the ARTIFACTS it was handed / committed (cards) and the
+// ledger ITEMS it changed. No stage writes a row just to be visible.
+const TV_BRANCHES = ['tv-rec-random-1', 'tv-rec-random-2', 'tv-rec-random-3', 'tv-rec-creator', 'tv-rec-canon', 'tv-rec-thin-genre', 'tv-rec-older-era', 'tv-rec-world'];
+let tvArtifactSeq = 100;
+const tvArtifact = (over) => ({
+  id: tvArtifactSeq++, job: 'tv-snapshot', port: 'snapshot', artifactKey: 'tv-snapshot', description: null,
+  storage: 'json', format: 'json', ok: true, fresh: true, note: null, summary: null, itemCount: null, bytes: null,
+  committedAtMs: 1780300800000, preview: null, sample: [], check: { ok: true }, ...over,
+});
+const tvShowsSample = [
+  { id: '100088', title: 'The Last of Us', fields: [{ label: 'Year', value: '2023' }] },
+  { id: '102540', title: 'The Shrink Next Door', fields: [{ label: 'Year', value: '2021' }] },
+  { id: '102619', title: 'I May Destroy You', fields: [{ label: 'Year', value: '2020' }] },
+];
+const tvSnapshotArtifact = tvArtifact({
+  description: 'The Plex TV library snapshot: every show with its TMDB id and taste metadata.',
+  summary: '650 shows, 612 with a TMDB id', itemCount: 650, bytes: 412_000,
+  preview: { path: 'tv-recs/data/out/snapshot.json', format: 'json' }, sample: tvShowsSample,
+});
+const tvTasteArtifact = tvArtifact({
+  port: 'taste', artifactKey: 'tv-taste-profile', description: 'Genres, creators, decades and countries the library leans towards.',
+  summary: '18 genres, 40 creators', bytes: 9_800, preview: { path: 'tv-recs/data/out/taste-profile.json', format: 'json' },
+});
+const tvBranchArtifact = Object.fromEntries(TV_BRANCHES.map((branch, i) => [branch, tvArtifact({
+  job: branch, port: 'suggestions', artifactKey: 'tv-branch-suggestions',
+  description: 'Raw suggestions from one recommender branch, before verification.',
+  summary: `${9 - (i % 4)} suggestions`, itemCount: 9 - (i % 4), bytes: 2_400,
+  preview: { path: `tv-recs/data/out/recs/${branch}.json`, format: 'json' },
+  sample: [{ id: '0', title: 'Severance (2022)', subtitle: 'A workplace thriller that matches your sci-fi lean.', fields: [{ label: 'Lens', value: branch.replace('tv-rec-', '') }] }],
+})]));
+const tvRecsArtifact = tvArtifact({
+  job: 'tv-rec-merge', port: 'recommendations', artifactKey: 'tv-recommendations',
+  description: 'The TMDB-verified, deduped, balanced recommendation list.',
+  summary: '15 recommendations (pooled 65)', itemCount: 15, bytes: 6_100,
+  preview: { path: 'tv-recs/data/out/recommendations.json', format: 'json' },
+  sample: [{ id: '111110', title: 'ONE PIECE (2023)', fields: [{ label: 'Lens', value: 'serendipity' }, { label: 'Genre', value: 'Action & Adventure' }, { label: 'TMDB', value: '8.1' }] }],
+});
+const tvDigestArtifact = tvArtifact({
+  job: 'tv-recs-notify', port: 'digest', artifactKey: 'tv-recs-digest', storage: 'inline',
+  description: 'What this run announced.', inline: { announced: 2, alreadyAnnounced: 13, ignored: 0 }, bytes: 48,
+});
+const asInput = (artifact, consumerPort, extra = {}) => ({ ...artifact, consumerPort, resolved: { ok: true, reason: null }, ...extra });
+const tvAnnounced = [
+  { id: 'tv-recs:111110', jobName: 'tv-recs', itemKey: '111110', status: 'success', title: 'ONE PIECE (2023)', fields: [{ label: 'Lens', value: 'serendipity' }, { label: 'Genre', value: 'Action & Adventure' }], preview: { path: 'tv-recs/data/out/reports/tv-recommendations.md', format: 'markdown' } },
+  { id: 'tv-recs:1678', jobName: 'tv-recs', itemKey: '1678', status: 'success', title: 'The Golden Girls (1985)', fields: [{ label: 'Lens', value: 'older-era' }, { label: 'Genre', value: 'Comedy' }], preview: { path: 'tv-recs/data/out/reports/tv-recommendations.md', format: 'markdown' } },
+];
+const tvPortsIo = (job, over) => ({
+  job, mode: 'ports', limit: 100, predecessorJobs: [], outputJobs: [job], inputs: [], outputs: [], inputTotal: 0, outputTotal: 0,
+  inputArtifacts: [], outputArtifacts: [], outputsUnchanged: 0, ...over,
+});
 const tvRecommendationsStageIo = {
-  'tv-snapshot': { inputs: [], outputs: [tvSnapshotOutput], predecessorJobs: [], job: 'tv-snapshot' },
-  ...Object.fromEntries(
-    Object.keys(tvRecBranchOutput).map((branch) => [
-      branch,
-      { inputs: [tvSnapshotOutput], outputs: [tvRecBranchOutput[branch]], predecessorJobs: ['tv-snapshot'], job: branch },
-    ]),
-  ),
-  'tv-rec-merge': {
-    inputs: Object.values(tvRecBranchOutput), outputs: [tvRecMergeOutput],
-    predecessorJobs: Object.keys(tvRecBranchOutput), job: 'tv-rec-merge',
-  },
-  'tv-recs-notify': { inputs: [tvRecMergeOutput], outputs: [tvRecsNotifyOutput], predecessorJobs: ['tv-rec-merge'], job: 'tv-recs-notify' },
+  'tv-snapshot': tvPortsIo('tv-snapshot', { outputArtifacts: [tvSnapshotArtifact, tvTasteArtifact] }),
+  ...Object.fromEntries(TV_BRANCHES.map((branch) => [branch, tvPortsIo(branch, {
+    predecessorJobs: ['tv-snapshot'],
+    // A branch reports the 40-show sample its prompt actually used, not all 650.
+    inputArtifacts: [asInput(tvSnapshotArtifact, 'snapshot', { used: { total: 40, items: tvShowsSample } }), asInput(tvTasteArtifact, 'taste')],
+    outputArtifacts: [tvBranchArtifact[branch]],
+  })])),
+  'tv-rec-merge': tvPortsIo('tv-rec-merge', {
+    predecessorJobs: ['tv-snapshot', ...TV_BRANCHES],
+    // The fan-in: one input per branch, plus the snapshot it verifies against.
+    inputArtifacts: [asInput(tvSnapshotArtifact, 'snapshot'), ...TV_BRANCHES.map((b) => asInput(tvBranchArtifact[b], 'branches'))],
+    outputArtifacts: [tvRecsArtifact],
+  }),
+  'tv-recs-notify': tvPortsIo('tv-recs-notify', {
+    predecessorJobs: ['tv-rec-merge'],
+    inputArtifacts: [asInput(tvRecsArtifact, 'recommendations')],
+    outputArtifacts: [tvDigestArtifact], outputs: tvAnnounced, outputTotal: tvAnnounced.length,
+  }),
 };
-const tvRecommendationsStageIoOverall = {
-  inputs: [tvSnapshotOutput], outputs: [tvRecsNotifyOutput],
-  predecessorJobs: ['tv-snapshot'], outputJobs: ['tv-recs-notify'], job: '__overall__',
-};
+const tvRecommendationsStageIoOverall = tvPortsIo('__overall__', {
+  predecessorJobs: ['tv-snapshot'], outputJobs: ['tv-recs-notify'],
+  inputArtifacts: [tvSnapshotArtifact, tvTasteArtifact],
+  outputArtifacts: [tvDigestArtifact], outputs: tvAnnounced, outputTotal: tvAnnounced.length,
+});
+const tvRecommendationsGates = [
+  ...TV_BRANCHES.flatMap((b) => [
+    { key: 'tv-snapshot', producer: 'tv-snapshot', consumer: b, state: 'passed' },
+    { key: 'tv-branch-suggestions', producer: b, consumer: 'tv-rec-merge', state: 'passed' },
+  ]),
+  { key: 'tv-snapshot', producer: 'tv-snapshot', consumer: 'tv-rec-merge', state: 'passed' },
+  { key: 'tv-recommendations', producer: 'tv-rec-merge', consumer: 'tv-recs-notify', state: 'passed' },
+];
 
 // missing-movies — the gaps-only workflow (after T468 split movie-recommendations into recs-only + gaps-only).
 // Simple linear: movie-snapshot -> franchise-gaps -> movie-gaps-notify (T469).
@@ -909,7 +969,69 @@ const mediaReviewsStageIoOverall = {
 };
 
 // Map an /api/* pathname (+ optional search params) to a fixture body.
+/**
+ * The stage-io wire shape carries EXPLICIT display rows (`title`, `fields`,
+ * `preview`) that the server builds. Most fixtures in this file were written as
+ * raw ledger rows (`{ jobName, itemKey, status, detail }`), which is what a
+ * LEGACY (pre-ports) run looks like before the server maps it. This applies the
+ * same frozen legacy mapping the API does (`legacyRow` in src/api/stage-io.ts),
+ * so those fixtures stay honest: title from `detail.name`, up to four scalar
+ * keys as fields, preview from `detail.markdown` / `detail.path`. A fixture that
+ * already declares `mode` (a ports fixture) passes through untouched.
+ */
+function legacyStageIoWire(body) {
+  if (!body || body.mode) return body;
+  const humanize = (k) => k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase());
+  const skip = new Set(['name', 'markdown', 'path', 'format', 'attempts']);
+  const row = (it) => {
+    if (it.title !== undefined) return it;
+    const d = it.detail && typeof it.detail === 'object' ? it.detail : null;
+    const fields = [];
+    for (const k of Object.keys(d ?? {})) {
+      if (fields.length >= 4) break;
+      const v = d[k];
+      if (skip.has(k) || v == null || !['string', 'number', 'boolean'].includes(typeof v)) continue;
+      fields.push({ label: humanize(k), value: String(v).slice(0, 80) });
+    }
+    const format = d && typeof d.format === 'string' && d.format ? d.format : 'markdown';
+    const path = d ? (format === 'markdown' ? (d.markdown ?? d.path) : (d.path ?? d.markdown)) : undefined;
+    return {
+      id: `${it.jobName}:${it.itemKey}`, jobName: it.jobName, itemKey: it.itemKey, status: it.status,
+      title: (d && typeof d.name === 'string' && d.name) || it.itemKey, fields,
+      ...(typeof path === 'string' && path ? { preview: { path, format } } : {}),
+    };
+  };
+  return { mode: 'legacy', inputArtifacts: [], outputArtifacts: [], outputsUnchanged: 0, ...body, inputs: (body.inputs ?? []).map(row), outputs: (body.outputs ?? []).map(row) };
+}
+
+/**
+ * A preview fetched by recorded path (GET /api/output-file): how every row and
+ * artifact preview on the run page is loaded. Returns the SAME content fixtures
+ * the per-item output endpoint serves, chosen by the declared format, so each
+ * renderer (markdown, json, the size table, the library snapshot browser) is
+ * still exercised through the run page.
+ */
+function outputFileFixture(searchParams) {
+  const format = searchParams?.get('format') || 'markdown';
+  const path = searchParams?.get('path') ?? '';
+  const as = (fixture) => ({ ...fixture, format, file: path });
+  if (format === 'size-table') return as(plexSpaceSaverOutputFixture);
+  if (format === 'library-snapshot') return as(plexLibraryGuardSnapshotFixture);
+  if (format === 'json') return path.includes('tv-recs/')
+    ? { found: true, format, file: path, bytes: 64, truncated: false, content: JSON.stringify({ generatedAt: '2026-06-01T09:00:00Z', recommendations: [{ tmdbId: 111110, title: 'ONE PIECE', year: 2023 }] }) }
+    : as(placesJsonOutputFixture);
+  if (format === 'text') return { found: true, format, file: path, bytes: 32, truncated: false, content: 'Fragrantica page capture…\nTop notes: bergamot' };
+  return { found: true, format: 'markdown', file: path, bytes: 1234, truncated: false, content: '---\nname: A Resolved Place\n---\n\n# A Resolved Place\n\nA short synthetic profile body for the output preview popover.\n\n| Ticker | Account | Quantity |\n| --- | --- | --- |\n| AAPL | invest | 10 |\n| VUSA | isa | 5 |\n' };
+}
+
 export function fixtureFor(pathname, searchParams) {
+  if (pathname === '/api/output-file') return outputFileFixture(searchParams);
+  if (pathname.endsWith('/stage-io')) return legacyStageIoWire(fixtureForRaw(pathname, searchParams));
+  return fixtureForRaw(pathname, searchParams);
+}
+
+function fixtureForRaw(pathname, searchParams) {
+
   if (pathname === '/api/stuck') return { stuck: [stuckItem(), stuckItem({ item_key: LONG + '-2' })] };
   if (pathname === '/api/ignored') return { ignored: [stuckItem({ item_key: LONG + '-ign' })] };
   if (pathname === '/api/workflows') return { workflows: [
@@ -1024,7 +1146,13 @@ export function fixtureFor(pathname, searchParams) {
     const job = searchParams?.get('job');
     return tvRecommendationsStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
-  if (pathname === '/api/workflow-runs/tv-recommendations-run') return { run: tvRecommendationsWorkflowRun, jobs: tvRecommendationsRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/tv-recommendations-run/artifact-items') {
+    // The full item list of one artifact, paged on demand (here: the 650-show snapshot).
+    const offset = Number(searchParams?.get('offset') ?? 0);
+    const items = Array.from({ length: 100 }, (_, i) => ({ id: String(offset + i + 1), title: `Show ${offset + i + 1}`, fields: [{ label: 'Year', value: String(1990 + ((offset + i) % 35)) }] }));
+    return { found: true, items, total: 650, changedSinceRun: false, sampleOnly: false, limit: 100 };
+  }
+  if (pathname === '/api/workflow-runs/tv-recommendations-run') return { run: tvRecommendationsWorkflowRun, jobs: tvRecommendationsRunJobs, logs, gates: tvRecommendationsGates };
   if (pathname === '/api/workflow-runs/perfumes-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return perfumesStageIoOverall;
     const job = searchParams?.get('job');
@@ -1313,6 +1441,40 @@ export const PAGES = [
 // ⚠️ LIVING ARTIFACT: when a UI change adds/removes an interactive state worth seeing
 // (a new collapsible section, a new menu), add/adjust a flow here in the SAME change.
 export const FLOWS = [
+  {
+    // Ports run page: the fan-in stage's Inputs are one ARTIFACT CARD per branch
+    // plus the snapshot, its Output the recommendations artifact. Nothing here is
+    // a ledger row written for display.
+    name: 'workflow-run-ports-fan-in-stage',
+    path: '/workflow-runs/tv-recommendations-run',
+    waitFor: ['.io-job-filter-chip'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:has-text("tv-rec-merge")');
+      await page.waitForSelector('.stage-io-artifact', { timeout: 5000 });
+    },
+  },
+  {
+    // A branch stage reports the SAMPLE of its input it actually used (40 of 650
+    // shows), shown inside the snapshot's input card.
+    name: 'workflow-run-ports-used-sample',
+    path: '/workflow-runs/tv-recommendations-run',
+    waitFor: ['.io-job-filter-chip'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:has-text("tv-rec-canon")');
+      await page.waitForSelector('.stage-io-artifact-used', { timeout: 5000 });
+    },
+  },
+  {
+    // "Browse N items" on an artifact card opens its full item list, paged from
+    // the server on demand (never the whole artifact up front).
+    name: 'workflow-run-ports-browse-artifact-items',
+    path: '/workflow-runs/tv-recommendations-run',
+    waitFor: ['.stage-io-artifact'],
+    actions: async (page) => {
+      await page.click('button:has-text("Browse 650 items")');
+      await page.waitForSelector('.db-modal .stage-io-list-tall .stage-io-item', { timeout: 5000 });
+    },
+  },
   {
     // Stage-I/O lazy paging (2026-08): the plex-rename-discover tab's fixture
     // reports outputTotal 27251 against a 1-row list, so this shot paints the

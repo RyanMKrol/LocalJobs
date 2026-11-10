@@ -184,6 +184,8 @@ tbody tr:hover { background: var(--panel-2); }
 .io-job-filter-chip.active { background: rgba(88,166,255,.12); border-color: var(--accent); color: var(--accent); }
 /* Decoupled per-stage inputs/outputs lists (stock-digest workflow-run page, now the
    default panel every workflow's run page uses). */
+/* Why a stage ended as it did, under its name in the member-runs table. */
+.run-why { font-size: 0.8em; color: var(--muted); font-weight: 400; margin-top: 2px; overflow-wrap: anywhere; }
 .stage-io-block { padding: 14px; margin-bottom: 12px; }
 .stage-io-block:last-child { margin-bottom: 0; }
 .stage-io-stage-name { margin: 0 0 10px; font-family: var(--font-mono, monospace); font-size: 0.95em; }
@@ -200,6 +202,21 @@ tbody tr:hover { background: var(--panel-2); }
 .stage-io-item-link:hover { text-decoration: underline; }
 .stage-io-item-hints { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .stage-io-item-hint { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+/* Artifact cards in the Inputs & Outputs panel: what a stage was handed or committed. */
+.stage-io-artifacts { max-height: none; margin-bottom: 8px; }
+.stage-io-artifact { border-left: 3px solid var(--accent); }
+.stage-io-artifact-failed { border-left-color: var(--err, #d9534f); }
+.stage-io-artifact-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.stage-io-artifact-port { font-family: var(--font-mono, monospace); font-size: 0.9em; font-weight: 600; overflow-wrap: anywhere; }
+.stage-io-artifact-summary { font-size: 0.85em; margin-top: 2px; }
+.stage-io-artifact-problem { font-size: 0.85em; margin-top: 4px; color: var(--err, #d9534f); overflow-wrap: anywhere; }
+.stage-io-artifact-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.stage-io-artifact-used { margin-top: 6px; }
+.stage-io-hint-carried { border-style: dashed; }
+.stage-io-sub-heading { margin: 4px 0 6px; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+.stage-io-list-nested { max-height: 160px; margin-top: 4px; }
+.stage-io-list-tall { max-height: 60vh; }
+.stage-io-inline { margin: 4px 0 0; padding: 6px 8px; font-size: 0.78em; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; overflow-x: auto; max-height: 160px; }
 /* Recent workflow runs scroll container (T185) — bounded height ~12 rows, sticky header. */
 .recent-runs-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
 .recent-runs-scroll thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }

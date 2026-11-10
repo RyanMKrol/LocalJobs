@@ -25,7 +25,31 @@ export interface Run {
   exit_code: number | null;
   error: string | null;
   workflow_run_id?: string | null;
+  /** repeatUntilStable cycle (1-based) this run belongs to. */
+  cycle?: number | null;
+  /**
+   * Machine-readable reason the run ended as it did, when it is not a plain
+   * success or failure of its own process: noop | stalled | upstream-skipped |
+   * overlap | gate-failed | not-started-cancelled | orphaned.
+   */
+  outcome_reason?: string | null;
+  queued_at_ms?: number | null;
+  started_at_ms?: number | null;
+  finished_at_ms?: number | null;
+  /** ms spent checking inbound gates / resolving inputs before the stage spawned. */
+  gate_ms?: number | null;
 }
+
+/** Plain-language explanation of a member run's `outcome_reason`. */
+export const OUTCOME_REASON_LABEL: Record<string, string> = {
+  noop: 'Ran, but had nothing to do',
+  stalled: 'Stalled: had work queued and completed none of it',
+  'upstream-skipped': 'Not run',
+  overlap: 'Not run',
+  'gate-failed': 'Not run, an input check failed',
+  'not-started-cancelled': 'Not started',
+  orphaned: 'Interrupted by a daemon restart',
+};
 
 // A job is only ever a workflow member (T070): schedule, the enable toggle, the
 // next-run and run-now all live on the workflow, never the job. The job view is
@@ -163,6 +187,13 @@ export interface GateInspection {
    *  asymmetric gate (different produces[key] vs consumes[key] shapes) or when a
    *  side has no declared shape. */
   identical: boolean;
+  /**
+   * Set when the result shown is what the engine RECORDED when it checked this
+   * boundary during the run. Null means there was no record (an older run, or a
+   * boundary the run never reached) and the artifact was checked as it is on disk
+   * now, which may reflect a later run.
+   */
+  recorded?: { at: number; source: 'ports' | 'gate'; fresh?: boolean; note?: string | null } | null;
 }
 
 /** One side (produced/consumed) of a gate's DEFINITION-level view: declared shape
@@ -183,21 +214,74 @@ export interface StructuralGateDetail {
   identical: boolean;
 }
 
-/** One row in a decoupled stage inputs/outputs list (GET /api/workflow-runs/:id/stage-io). */
-export interface StageIoItem {
+/**
+ * One display row: an item a stage read or wrote. The SERVER decides the title,
+ * the fields worth showing and the file to preview (from the stage's own
+ * `describeItem`, or its artifact type's `items`); the dashboard renders it as
+ * given and infers nothing from raw ledger detail.
+ */
+export interface IoItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  status?: string;
+  fields?: { label: string; value: string }[];
+  preview?: { path: string; format: string };
+}
+
+/** A ledger item row in a stage's Inputs or Outputs list. */
+export interface StageIoItem extends IoItem {
   jobName: string;
   itemKey: string;
-  status: string;
-  detail: Record<string, unknown> | null;
+}
+
+/** The recorded result of a check (a gate, or an artifact's own check at commit). */
+export interface RecordedCheck {
+  ok: boolean;
+  violations?: string[];
+  detail?: string;
+  sample?: string;
+  checks?: { label: string; ok: boolean; actual?: string }[];
 }
 
 /**
- * Response from GET /api/workflow-runs/:id/stage-io?job=<job> — two independent,
- * un-paired lists (a stage's own rows this run as `outputs`, its direct
- * predecessor(s)' rows this run as `inputs`). Added for stock-digest's
- * workflow-run page, which has a genuine many-to-one aggregation stage a single
- * joined row can't represent honestly, and is now the panel every workflow's
- * run page uses.
+ * One artifact a stage was handed (an input) or committed (an output) during a
+ * run: a file, a directory, ledger rows, or a small inline value. Recorded by the
+ * engine when it happened, so it describes THIS run.
+ */
+export interface StageIoArtifact {
+  id: number;
+  /** The stage that committed it. */
+  job: string;
+  port: string;
+  artifactKey: string;
+  description: string | null;
+  storage: string;
+  format: string | null;
+  ok: boolean;
+  /** False when the producer carried the previous artifact forward unchanged. */
+  fresh: boolean;
+  note: string | null;
+  summary: string | null;
+  itemCount: number | null;
+  bytes: number | null;
+  committedAtMs: number;
+  preview: { path: string; format: string } | null;
+  inline?: unknown;
+  sample: IoItem[];
+  check: RecordedCheck | null;
+  /** Inputs only. */
+  consumerPort?: string;
+  resolved?: { ok: boolean; reason: string | null };
+  used?: { total: number; items: IoItem[] };
+}
+
+/**
+ * Response from GET /api/workflow-runs/:id/stage-io?job=<job> (or `overall=true`).
+ * Two independent, un-paired sides. Each side has the ARTIFACTS the stage was
+ * handed / committed (ports runs) and the ledger ITEMS it worked on / changed.
+ * `mode` says how the run was recorded: 'ports' is derived from the engine's own
+ * record; 'legacy' is the older ledger-only view (no artifacts).
  */
 export interface StageIo {
   inputs: StageIoItem[];
@@ -206,7 +290,14 @@ export interface StageIo {
   inputTotal?: number;
   outputTotal?: number;
   predecessorJobs: string[];
+  /** The stages (or legacy ledger names) whose rows are the outputs. */
+  outputJobs?: string[];
   job: string;
+  mode?: 'ports' | 'legacy';
+  inputArtifacts?: StageIoArtifact[];
+  outputArtifacts?: StageIoArtifact[];
+  /** Items the stage re-recorded this run without changing (counted, not listed). */
+  outputsUnchanged?: number;
 }
 
 /** Paging for the stage-io endpoint — the panel lazy-loads pages of PAGE_SIZE per side. */
@@ -216,21 +307,19 @@ export interface StageIoPageParams {
   outputsOffset?: number;
 }
 
-/**
- * Response from GET /api/workflow-runs/:id/stage-io?overall=true (T384) — the
- * workflow-wide analog of `StageIo`: `inputs` are the root-wave job(s)' ledger
- * rows this run, `outputs` are the effective terminal-wave (or `outputJob`
- * override) job(s)' ledger rows this run.
- */
-export interface StageIoOverall {
-  inputs: StageIoItem[];
-  outputs: StageIoItem[];
-  /** Per-side totals independent of paging (optional: absent from pre-paging fixtures). */
-  inputTotal?: number;
-  outputTotal?: number;
-  predecessorJobs: string[];
-  outputJobs: string[];
-  job: string;
+/** The workflow-wide ("Overall") variant: same shape as `StageIo`. */
+export type StageIoOverall = StageIo;
+
+/** Response from GET /api/workflow-runs/:id/artifact-items: one page of an artifact's items. */
+export interface ArtifactItemsPage {
+  found: boolean;
+  items: IoItem[];
+  total: number;
+  /** The file behind the artifact was rewritten after this run committed it. */
+  changedSinceRun: boolean;
+  /** Only the sample stored at commit time is available (not the full list). */
+  sampleOnly: boolean;
+  limit: number;
 }
 
 /** Response from GET /api/workflow-runs/:id/output (T110) — a job's produced
@@ -238,8 +327,9 @@ export interface StageIoOverall {
  *  recorded/accessible markdown (so the UI falls back to showing the key). */
 export interface WorkflowRunOutput {
   found: boolean;
-  job: string;
-  key: string;
+  /** Present when fetched for a ledger item; absent for a preview by path. */
+  job?: string;
+  key?: string;
   /** The item's declared render form (T262/T282) — 'markdown' when unset. */
   format?: string;
   file?: string;
@@ -575,6 +665,13 @@ export const api = {
     get<StageIo>(`/api/workflow-runs/${id}/stage-io?job=${encodeURIComponent(job)}${stageIoPageQuery(page)}`),
   workflowRunStageIoOverall: (id: string, page?: StageIoPageParams) =>
     get<StageIoOverall>(`/api/workflow-runs/${id}/stage-io?overall=true${stageIoPageQuery(page)}`),
+  workflowRunArtifactItems: (id: string, artifactId: number, page?: { limit?: number; offset?: number }) =>
+    get<ArtifactItemsPage>(
+      `/api/workflow-runs/${id}/artifact-items?artifact=${artifactId}&limit=${page?.limit ?? 100}&offset=${page?.offset ?? 0}`,
+    ),
+  // Preview ONE produced file by its recorded path (server-side guarded to data/out/).
+  outputFile: (path: string, format: string) =>
+    get<WorkflowRunOutput>(`/api/output-file?path=${encodeURIComponent(path)}&format=${encodeURIComponent(format)}`),
   workflowRunOutput: (id: string, job: string, key: string) =>
     get<WorkflowRunOutput>(
       `/api/workflow-runs/${id}/output?job=${encodeURIComponent(job)}&key=${encodeURIComponent(key)}`,

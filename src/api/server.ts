@@ -4,9 +4,10 @@ import { dirname, isAbsolute, join as joinPath, relative as relativePath, resolv
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
-import { type Gate, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
+import { type Gate, type GateStatus, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
 import { portGates, workflowMode } from '../core/ports.js';
-import type { GateResult } from '../core/types.js';
+import { OVERALL, artifactItems, stageIo } from './stage-io.js';
+import type { GateResult, RunRow } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, isWorkflowStarting, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../core/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import { getServiceDef } from '../core/services.js';
@@ -77,6 +78,8 @@ import {
   bulkUnstickItems,
   bulkIgnoreItems,
   type BulkStuckScope,
+  runInputsForWorkflowRun,
+  getRunArtifact,
 } from '../db/store.js';
 
 /** Parse an integer query param with clamping — NaN/absent/garbage yields the default. */
@@ -430,6 +433,41 @@ function gatesForWorkflow(name: string): Gate[] {
     const cd = getJobDefinition(g.consumer)?.consumes?.find((c) => c.key === g.key)?.description;
     const parts = [pd && `produced: ${pd}`, cd && `consumed: ${cd}`].filter(Boolean) as string[];
     return parts.length ? { ...g, description: parts.join(' · ') } : g;
+  });
+}
+
+const safeParse = <T>(raw: string | null | undefined): T | null => {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
+
+/** The most recent recorded verdict for one boundary of a run (latest cycle wins). */
+function latestRunInput(workflowRunId: string, consumer: string, producer: string, key: string) {
+  return runInputsForWorkflowRun(workflowRunId)
+    .filter((i) => i.job_name === consumer && i.producer_job === producer && i.artifact_key === key)
+    .at(-1);
+}
+
+/**
+ * Each gate's state for one run. Where the engine RECORDED a verdict for the
+ * boundary (`run_inputs`), that is the state: passed or failed, exactly as
+ * checked. Only boundaries with no recorded verdict (an older run, or one the run
+ * never reached) are inferred from the member runs by `classifyGates`.
+ */
+function gateStatesForRun(workflowRunId: string, workflowName: string, memberRuns: RunRow[]): GateStatus[] {
+  const inferred = classifyGates(gatesForWorkflow(workflowName), memberRuns);
+  const recorded = runInputsForWorkflowRun(workflowRunId);
+  if (recorded.length === 0) return inferred;
+  return inferred.map((g) => {
+    const rec = recorded.filter((i) => i.job_name === g.consumer && i.producer_job === g.producer && i.artifact_key === g.key).at(-1);
+    if (!rec) return g.state === 'failed' ? g : { ...g, state: 'pending' as const, failureRunId: undefined };
+    if (rec.ok === 1) return { ...g, state: 'passed' as const, failureRunId: undefined };
+    const failedRun = memberRuns.filter((r) => r.job_name === g.consumer && r.status === 'failed').at(-1);
+    return { ...g, state: 'failed' as const, failureRunId: failedRun?.id };
   });
 }
 
@@ -1652,7 +1690,7 @@ const routes: Route[] = [
       // Gates are run-scoped: derive the workflow's gate structure, then classify
       // each against THIS run's member runs (passed / failed / pending). The
       // structure-only /workflows/:name view gets structural gates (no run state).
-      const gates = classifyGates(gatesForWorkflow(run.workflow_name), memberRuns);
+      const gates = gateStatesForRun(run.id, run.workflow_name, memberRuns);
       return json(res, 200, { run, jobs: memberRuns, logs: getWorkflowLogs(params.id, after), gates });
     },
   },
@@ -1694,9 +1732,69 @@ const routes: Route[] = [
       const producer = decodeURIComponent(params.producer);
       const key = decodeURIComponent(params.key);
       const memberRuns = listRunsForWorkflowRun(params.id);
-      const gates = classifyGates(gatesForWorkflow(run.workflow_name), memberRuns);
+      const gates = gateStatesForRun(run.id, run.workflow_name, memberRuns);
       const gate = gates.find((g) => g.producer === producer && g.key === key);
       if (!gate) return json(res, 404, { error: 'gate not found' });
+
+      // What the engine RECORDED when it checked this boundary during the run, if
+      // it did (runs since gate verdicts started being recorded). That is the
+      // truthful answer to "what did this gate see": the files on disk today may
+      // belong to a later run.
+      const recordedInput = latestRunInput(run.id, gate.consumer, gate.producer, gate.key);
+      if (recordedInput) {
+        const artifact = recordedInput.artifact_id == null ? undefined : getRunArtifact(recordedInput.artifact_id);
+        const at = recordedInput.checked_at_ms;
+        if (artifact) {
+          // Ports: the producer's own check at commit, and the engine's resolution.
+          const type = getJobDefinition(artifact.job_name)?.outputs?.[artifact.port]?.artifact;
+          const shape = type?.shape ?? null;
+          const producedResult = safeParse<GateResult>(artifact.check_json) ?? { ok: artifact.ok === 1 };
+          const resolution: GateResult = recordedInput.ok === 1
+            ? { ok: true, detail: artifact.fresh === 1 ? 'committed in this run' : 'carried forward unchanged in this run' }
+            : { ok: false, violations: [recordedInput.reason ?? 'could not be resolved'] };
+          return json(res, 200, {
+            gate,
+            produced: { shape, result: producedResult },
+            consumed: { shape, result: resolution },
+            identical: recordedInput.ok === 1, // one panel unless the resolution itself is the news
+            recorded: { at, source: 'ports', artifactId: artifact.id, fresh: artifact.fresh === 1, note: artifact.note },
+          });
+        }
+        const sides = safeParse<{ sides?: { side: 'output' | 'input'; ok: boolean; result?: GateResult; error?: string }[] }>(recordedInput.check_json)?.sides ?? [];
+        const recordedSide = (side: 'output' | 'input', jobName: string, field: 'produces' | 'consumes') => {
+          const contract = getJobDefinition(jobName)?.[field]?.find((c) => c.key === key);
+          const rec = sides.find((sd) => sd.side === side);
+          if (!contract && !rec) return null;
+          const result: GateResult = rec?.result ?? { ok: rec?.ok ?? false, violations: rec?.error ? [rec.error] : undefined };
+          return { shape: contract?.shape ?? null, result };
+        };
+        const producedRec = recordedSide('output', gate.producer, 'produces');
+        const consumedRec = recordedSide('input', gate.consumer, 'consumes');
+        if (producedRec || consumedRec) {
+          return json(res, 200, {
+            gate,
+            produced: producedRec,
+            consumed: consumedRec,
+            identical: shapesIdentical(producedRec?.shape ?? null, consumedRec?.shape ?? null),
+            recorded: { at, source: 'gate' },
+          });
+        }
+        // An unresolved ports input (no artifact was ever committed for it).
+        if (recordedInput.ok !== 1) {
+          const type = getJobDefinition(gate.consumer)?.inputs?.[recordedInput.port]?.artifact;
+          const result: GateResult = { ok: false, violations: [recordedInput.reason ?? 'could not be resolved'] };
+          return json(res, 200, {
+            gate,
+            produced: { shape: type?.shape ?? null, result },
+            consumed: { shape: type?.shape ?? null, result },
+            identical: true,
+            recorded: { at, source: 'ports' },
+          });
+        }
+      }
+
+      // No recorded verdict (an older run, or a boundary the run never reached):
+      // fall back to checking the artifact as it is on disk NOW, and say so.
       const inspectSide = async (jobName: string, field: 'produces' | 'consumes') => {
         const contract = getJobDefinition(jobName)?.[field]?.find((c) => c.key === key);
         if (!contract) return null;
@@ -1708,13 +1806,21 @@ const routes: Route[] = [
         }
         return { shape: contract.shape ?? null, result };
       };
-      const produced = await inspectSide(gate.producer, 'produces');
-      const consumed = await inspectSide(gate.consumer, 'consumes');
+      let produced = await inspectSide(gate.producer, 'produces');
+      let consumed = await inspectSide(gate.consumer, 'consumes');
+      if (!produced && !consumed) {
+        // A ports boundary this run never reached: show the declared shape only.
+        const outPort = Object.values(getJobDefinition(gate.producer)?.outputs ?? {}).find((o) => o.artifact.key === key);
+        const shape = outPort?.artifact.shape ?? null;
+        const pending: GateResult = { ok: true, detail: 'not checked in this run' };
+        produced = { shape, result: pending };
+        consumed = { shape, result: pending };
+      }
       // `identical` is a deep compare of the DECLARED shapes only (not the live
       // actuals), so the page can collapse the duplicated producer/consumer
       // panels when both sides assert the same contract (the normal case).
       const identical = shapesIdentical(produced?.shape ?? null, consumed?.shape ?? null);
-      return json(res, 200, { gate, produced, consumed, identical });
+      return json(res, 200, { gate, produced, consumed, identical, recorded: null });
     },
   },
 
@@ -1739,55 +1845,82 @@ const routes: Route[] = [
         inputsOffset: clampIntParam(url.searchParams.get('inputsOffset'), 0, Number.MAX_SAFE_INTEGER, 0),
         outputsOffset: clampIntParam(url.searchParams.get('outputsOffset'), 0, Number.MAX_SAFE_INTEGER, 0),
       };
-      const empty = { inputs: [], outputs: [], inputTotal: 0, outputTotal: 0, limit: page.limit };
-      const refs = getWorkflowJobs(run.workflow_name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
       // `overall=true` takes precedence over `job` when both are present (T384).
-      if (url.searchParams.get('overall') === 'true') {
-        if (refs.length === 0) {
-          return json(res, 200, { ...empty, predecessorJobs: [], outputJobs: [], job: '__overall__' });
-        }
-        let rootWave: string[] = [];
-        let lastWave: string[] = [];
-        try {
-          const dag = buildDag(refs);
-          rootWave = dag.waves[0] ?? [];
-          lastWave = dag.waves[dag.waves.length - 1] ?? [];
-        } catch {
-          return json(res, 200, { ...empty, predecessorJobs: [], outputJobs: [], job: '__overall__' });
-        }
-        const def = getWorkflowDefinition(run.workflow_name);
-        // T603: outputJob may name a decoupled ledger job_name (not necessarily an
-        // actual DAG member — see the per-job branch below) — just use it directly.
-        const outputJobs = def?.outputJob ? [def.outputJob] : lastWave;
-        const inputJobs = rootWave.filter((j) => !outputJobs.includes(j));
-        const { inputs, outputs, inputTotal, outputTotal } = stageIoLists(outputJobs, inputJobs, run.id, page);
-        return json(res, 200, { inputs, outputs, inputTotal, outputTotal, limit: page.limit, predecessorJobs: inputJobs, outputJobs, job: '__overall__' });
-      }
+      const overall = url.searchParams.get('overall') === 'true';
       const jobParam = url.searchParams.get('job');
-      if (!jobParam) return json(res, 400, { error: 'job query param is required' });
-      if (!refs.some((r) => r.job === jobParam)) {
-        return json(res, 400, { error: `unknown job "${jobParam}" for this workflow` });
-      }
-      let predecessors: string[] = [];
-      let terminalWave: string[] = [];
+      if (!overall && !jobParam) return json(res, 400, { error: 'job query param is required' });
+      const io = stageIo(getJobDefinition, run, getWorkflowDefinition(run.workflow_name), overall ? OVERALL : jobParam!, page);
+      if (!io) return json(res, 400, { error: `unknown job "${jobParam}" for this workflow` });
+      // Item rows stay at the top level (`inputs` / `outputs` + totals) as they
+      // always were; the artifacts a stage was handed and committed sit beside them.
+      return json(res, 200, {
+        job: io.job,
+        mode: io.mode,
+        limit: io.limit,
+        predecessorJobs: io.predecessorJobs,
+        outputJobs: io.outputJobs,
+        inputs: io.inputs.items,
+        outputs: io.outputs.items,
+        inputTotal: io.inputs.itemTotal,
+        outputTotal: io.outputs.itemTotal,
+        inputArtifacts: io.inputs.artifacts,
+        outputArtifacts: io.outputs.artifacts,
+        outputsUnchanged: io.outputs.unchangedCount ?? 0,
+      });
+    },
+  },
+
+  // GET /api/workflow-runs/:id/artifact-items?artifact=<id>&limit=&offset=
+  // The full item list of ONE artifact a stage committed in this run, computed on
+  // demand from the file (or ledger) behind it. If that file has changed since the
+  // run committed it, the stored sample is returned instead, flagged
+  // `changedSinceRun`, rather than passing a later run's contents off as this
+  // run's. Local reads only.
+  {
+    method: 'GET',
+    pattern: '/api/workflow-runs/:id/artifact-items',
+    handler: ({ res, url, params }) => {
+      const run = getWorkflowRun(params.id);
+      if (!run) return json(res, 404, { error: 'workflow run not found' });
+      const id = Number(url.searchParams.get('artifact'));
+      if (!Number.isInteger(id)) return json(res, 400, { error: 'artifact query param (an id) is required' });
+      const limit = clampIntParam(url.searchParams.get('limit'), 1, 500, 100);
+      const offset = clampIntParam(url.searchParams.get('offset'), 0, Number.MAX_SAFE_INTEGER, 0);
+      return json(res, 200, { ...artifactItems(getJobDefinition, run.id, id, limit, offset), limit });
+    },
+  },
+
+  // GET /api/output-file?path=<stored path>&format=<format>
+  // Read-only preview of ONE file a stage produced, by its recorded path (as it
+  // appears on an Inputs & Outputs row or artifact). The path is NOT trusted: it
+  // goes through the same guard as every other output preview (resolved, symlinks
+  // followed, must stay inside the workflows tree AND inside a `data/out/`
+  // directory, must be a regular file; the markdown form must end in `.md`).
+  {
+    method: 'GET',
+    pattern: '/api/output-file',
+    handler: ({ res, url }) => {
+      const candidate = url.searchParams.get('path');
+      const format = url.searchParams.get('format') || 'markdown';
+      if (!candidate) return json(res, 400, { error: 'path query param is required' });
+      const safe = format === 'markdown' ? safeOutputMarkdown(candidate) : safeOutputFile(candidate);
+      if (!safe) return json(res, 200, { found: false, format });
+      let content: string;
       try {
-        const dag = buildDag(refs);
-        predecessors = dag.dependencies.get(jobParam) ?? [];
-        terminalWave = dag.waves[dag.waves.length - 1] ?? [];
+        content = readFileSync(safe, 'utf8');
       } catch {
-        return json(res, 200, { ...empty, predecessorJobs: [], job: jobParam });
+        return json(res, 200, { found: false, format });
       }
-      // T603: a DAG member's `outputJob` (T348) may record its ledger rows under a
-      // DIFFERENT job_name than its own DAG member name (e.g. movie-recs-notify's
-      // notify stage marks work_items as 'movie-recs', the decoupled recommender
-      // ledger keyspace) — querying stageIoLists with the literal member name would
-      // always come back empty. When this member is the workflow's outputJob-
-      // governed terminal stage, look its ledger rows up under `outputJob` instead.
-      const def = getWorkflowDefinition(run.workflow_name);
-      const ledgerJob =
-        def?.outputJob && terminalWave.includes(jobParam) ? def.outputJob : jobParam;
-      const { inputs, outputs, inputTotal, outputTotal } = stageIoLists([ledgerJob], predecessors, run.id, page);
-      return json(res, 200, { inputs, outputs, inputTotal, outputTotal, limit: page.limit, predecessorJobs: predecessors, job: jobParam });
+      const MAX = outputPayloadMax(format);
+      const truncated = content.length > MAX;
+      return json(res, 200, {
+        found: true,
+        format,
+        file: relativePath(WORKFLOWS_ROOT, safe),
+        bytes: Buffer.byteLength(content),
+        truncated,
+        content: truncated ? content.slice(0, MAX) : content,
+      });
     },
   },
 

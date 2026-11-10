@@ -4,9 +4,41 @@ import React, { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DagFlow } from '../../components/DagFlow';
 import { StageIoPanel } from '../../components/StageIoLists';
-import { api } from '../../lib/api';
+import { OUTCOME_REASON_LABEL, api } from '../../lib/api';
 import type { Run } from '../../lib/api';
 import { CopyLogsButton, StatusBadge, fmtAbsolute, fmtDuration, fmtRelative, usePoll } from '../../ui';
+
+/**
+ * WHY a stage ended as it did, in a sentence, under its name: the recorded
+ * outcome reason in plain words, plus the first line of the recorded detail
+ * (which names the upstream stage, the failed input, or the run holding the job).
+ * A plain success shows nothing.
+ */
+function RunWhy({ run }: { run: Run }) {
+  const label = run.outcome_reason ? OUTCOME_REASON_LABEL[run.outcome_reason] ?? run.outcome_reason : null;
+  const failed = run.status === 'failed' || run.status === 'timeout';
+  // The recorded detail names the upstream stage / failed input / holding run. Its
+  // own "skipped:" / "not started:" lead-in repeats the label, so drop it.
+  const detail = (label || failed) && run.error ? run.error.split('\n')[0].replace(/^(skipped|not started):\s*/i, '') : null;
+  if (!label && !detail) return null;
+  return (
+    <div className="run-why">
+      {label}
+      {label && detail ? ': ' : ''}
+      {detail && <span title={run.error ?? undefined}>{detail.length > 220 ? `${detail.slice(0, 220)}…` : detail}</span>}
+    </div>
+  );
+}
+
+/** How long the stage waited for a free slot and spent on its input checks, when either is noticeable. */
+function RunTimings({ run }: { run: Run }) {
+  const waited = run.queued_at_ms != null && run.started_at_ms != null ? run.started_at_ms - run.queued_at_ms - (run.gate_ms ?? 0) : null;
+  const bits: string[] = [];
+  if (waited != null && waited >= 1000) bits.push(`waited ${fmtDuration(waited)}`);
+  if (run.gate_ms != null && run.gate_ms >= 1000) bits.push(`checks ${fmtDuration(run.gate_ms)}`);
+  if (bits.length === 0) return null;
+  return <div className="run-why">{bits.join(' · ')}</div>;
+}
 
 function latestByStage(members: Run[]): Run[] {
   const latest = new Map<string, Run>();
@@ -122,10 +154,13 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
               return (
                 <React.Fragment key={r.id}>
                   <tr>
-                    <td><strong>{r.job_name}</strong></td>
+                    <td>
+                      <strong>{r.job_name}</strong>
+                      <RunWhy run={r} />
+                    </td>
                     <td><StatusBadge status={r.status} /></td>
                     <td className="muted">{fmtAbsolute(r.started_at)}</td>
-                    <td className="mono">{fmtDuration(r.duration_ms)}</td>
+                    <td className="mono">{fmtDuration(r.duration_ms)}<RunTimings run={r} /></td>
                     <td><Link href={`/runs/${r.id}`}>logs →</Link></td>
                   </tr>
                   {earlier.length > 0 && (
@@ -151,7 +186,11 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
                   )}
                   {expanded && earlier.map((e) => (
                     <tr key={e.id}>
-                      <td className="muted" style={{ paddingLeft: 24 }}>{r.job_name}</td>
+                      <td className="muted" style={{ paddingLeft: 24 }}>
+                        {r.job_name}
+                        <span className="run-why"> · attempt {e.attempt}{e.cycle ? `, cycle ${e.cycle}` : ''}</span>
+                        <RunWhy run={e} />
+                      </td>
                       <td><StatusBadge status={e.status} /></td>
                       <td className="muted">{fmtAbsolute(e.started_at)}</td>
                       <td className="mono">{fmtDuration(e.duration_ms)}</td>

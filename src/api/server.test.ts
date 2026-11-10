@@ -1308,7 +1308,7 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
         await fetch(`${base}/api/workflow-runs/${t603Run}/stage-io?job=t603-notify`)
       ).json()) as {
         inputs: { jobName: string; itemKey: string }[];
-        outputs: { jobName: string; itemKey: string; detail: { title?: string } | null }[];
+        outputs: { jobName: string; itemKey: string; fields: { label: string; value: string }[] }[];
         predecessorJobs: string[];
         job: string;
       };
@@ -1321,7 +1321,8 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
       assert.equal(body.outputs.length, 1, 'outputs must not be empty — this is the T603 bug');
       assert.equal(body.outputs[0].jobName, 't603-recs');
       assert.equal(body.outputs[0].itemKey, 'tmdb-42');
-      assert.equal(body.outputs[0].detail?.title, 'A Movie');
+      // Rows carry explicit display fields now, not the raw ledger detail.
+      assert.deepEqual(body.outputs[0].fields, [{ label: 'Title', value: 'A Movie' }]);
     });
   });
 

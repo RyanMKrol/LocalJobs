@@ -463,6 +463,7 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `missing-movies/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-library-guard/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`, `vault-sync/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
 | `src/workflows/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/workflows/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the workflow-folder root |
+| `src/api/stage-io.ts` | Derives a stage's (or the whole workflow's) Inputs & Outputs for one run from what the engine recorded: `stageIo` and `artifactItems`. For a ports run: the artifacts the stage was handed (`run_inputs`) and committed (`run_artifacts`), plus the ledger items its own attempts changed and the upstream items they were made from. For a legacy run: the old predecessor-rows rule, through a frozen mapping (`legacyRow`). Both return the same wire shape with explicit display rows |
 | `src/api/server.ts` | Node `http` API (no framework). Routing is a declarative `routes: Route[]` table (`{ method, pattern, handler }`) matched by `matchRoute` — a small exact-segment-length matcher (T530) that replaced the old sequential `if (method === … && parts[N] === '…')` chain. A `:name`-style pattern segment matches any literal path segment and is captured into `ctx.params`; every other segment must match literally; the pattern and the path must have the SAME segment count. That length-exact requirement is the actual fix: the old chain had a real bug class where a check like `parts[3] === 'runs'` matched ANY path with `'runs'` at that position regardless of what followed, so `GET /api/workflows/foo/runs/extra` incorrectly matched the `:name/runs` handler instead of 404ing — `matchRoute` can't do that. Route order is otherwise irrelevant (no two routes share the same method + segment count with a possible overlap). Add a new endpoint by appending a `{ method, pattern, handler }` entry to `routes` |
 | `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`); all responsive CSS lives in `app/globals.css`. `dashboard/app/admin/page.tsx` (route `/admin`) is the single admin page, hosting a "Delete all workflow output" action (`POST /api/workflows/reset-output-all`) with TWO buttons — the plain one skips certified workflows, the "including certified" one posts `{ force: true }` to bypass the certification guard and reset certified workflows too (the active-run guard is NEVER bypassable; force never resets a running workflow) — and a "Cached responses" section + "Clear all cached responses" action (`POST /api/cache/clear`) for the per-service `service_cache` (T451) table — the destructive actions are functionally distinct (separate API calls), neither touches the other's data |
 | `dashboard/scripts/_dashboard-harness.mjs` | Shared hermetic test harness (the SINGLE living artifact): `PAGES` list + synthetic API fixtures + `next start` spawn + `/api/**` interception + theme seeding; imported by both checks below. Update it when the UI surface changes |
@@ -1562,8 +1563,22 @@ doubt, log it.
     `parseFrontmatter` plus the frontmatter value helpers `isFmEmpty`/`renderFmValue` (highlights
     an empty/null frontmatter value with `.md-fm-null` and joins a JSON-array value into
     comma-separated text) — these live only here, not in a separate component (T582).
-  - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`, T382 →
-    T386 → T389 → T458) — the workflow-run page's ONLY Inputs & Outputs panel.
+  - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`) — the
+    workflow-run page's ONLY Inputs & Outputs panel. **It renders what the server sends
+    and infers nothing** (2026-11): each side of a stage has ARTIFACT CARDS (what the
+    stage was handed or committed: description, summary, size, whether it was carried
+    forward, whether it passed its check or could not be resolved, the items it said it
+    `used`, a "View file" and a paged "Browse N items") and ITEM ROWS with a server-built
+    title, explicit fields and a preview. The data comes from `src/api/stage-io.ts`. Rows
+    are attributed to the stage ATTEMPT that wrote them (`work_item_runs.run_id`), only
+    items a run changed are listed (unchanged re-records are counted), and an old run
+    shows what it recorded, not today's ledger. A stage shows its fields by declaring
+    `describeItem(detail, key)` on its job, and its artifact's items via the artifact
+    type's `items(value)`. Previews are fetched by recorded path through
+    `GET /api/output-file` (guarded to `data/out/`). The history below describes how the
+    LEGACY ledger-only view came about; it still applies to runs of workflows not yet
+    migrated to ports, which the server maps into the same shape.
+    Originally (T382 → T386 → T389 → T458):
     Originally built for workflows with a genuine fan-out/fan-in shape a single
     "input → output" row can't represent honestly (see `stock-digest.workflow.ts`'s
     file comment), **T386 made it the default for EVERY workflow's run page**, not

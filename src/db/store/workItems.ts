@@ -429,7 +429,13 @@ export function stageIoLists(
     const total = (db.prepare(`SELECT COUNT(*) AS n ${base}`).get(workflowRunId, ...whereArgs) as { n: number }).n;
     const paging = page ? ` LIMIT ${Math.max(1, Math.floor(page.limit))} OFFSET ${Math.max(0, Math.floor(offset))}` : '';
     const rows = db.prepare(
-      `SELECT wi.job_name, wi.item_key, wi.status, wi.detail, wi.root_key ${base} ORDER BY wi.job_name, wi.item_key${paging}`,
+      // Prefer what THIS run recorded (the per-run snapshot) over the ledger's
+      // current state, so an old run's page is not rewritten by later runs. The
+      // snapshot holds a detail only when the run changed the item; rows from
+      // before the snapshot existed fall back to the ledger.
+      `SELECT wi.job_name, wi.item_key, COALESCE(wr.status, wi.status) AS status,
+              CASE WHEN wr.changed = 1 THEN wr.detail ELSE wi.detail END AS detail, wi.root_key
+       ${base} ORDER BY wi.job_name, wi.item_key${paging}`,
     ).all(workflowRunId, ...whereArgs) as LedgerRow[];
     return { rows, total };
   };

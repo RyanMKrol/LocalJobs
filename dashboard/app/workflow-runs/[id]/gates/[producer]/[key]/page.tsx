@@ -161,6 +161,16 @@ export default function GateDetail({
             Checks the <span className="mono">{gate.key}</span> artifact handed from{' '}
             <strong>{gate.producer}</strong> to <strong>{gate.consumer}</strong>.
           </p>
+          {/* Say WHICH result this is: the one the engine recorded when it checked
+              this boundary during the run, or (no record) a check of whatever is on
+              disk right now, which a later run may have rewritten. */}
+          {inspect && (
+            <p className="sub">
+              {inspect.recorded
+                ? `Showing the result recorded during this run, at ${new Date(inspect.recorded.at).toLocaleString()}.${inspect.recorded.fresh === false ? ' The artifact was carried forward unchanged by this run.' : ''}`
+                : 'This run has no recorded result for this gate. Showing a check of the artifact as it is on disk now, which may reflect a later run.'}
+            </p>
+          )}
 
           {/* Gate center block — key + description + state + violation link. Shared
               by both the two-sided and the collapsed (identical-contract) layouts. */}
