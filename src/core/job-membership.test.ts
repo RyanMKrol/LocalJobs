@@ -4,7 +4,7 @@
 // Pure function, so we test it directly with synthetic job/workflow shapes rather
 // than importing the live (filesystem-discovered) registry.
 import assert from 'node:assert/strict';
-import { orphanJobNames } from '../workflows/registry.js';
+import { orphanJobNames, sharedJobNames } from '../workflows/registry.js';
 
 let passed = 0;
 function ok(name: string, fn: () => void) {
@@ -39,6 +39,21 @@ ok('a job claimed by more than one workflow is still not an orphan', () => {
   const jobs = [{ name: 'shared' }];
   const workflows = [{ jobs: [{ job: 'shared' }] }, { jobs: [{ job: 'shared' }] }];
   assert.deepEqual(orphanJobNames(jobs, workflows), []);
+});
+
+// A job belongs to exactly ONE workflow. Sharing one is a load error, because the
+// overlap guard, the ledger and a stage's inputs are all keyed by job name.
+ok('sharedJobNames: a job in exactly one workflow is not shared', () => {
+  const workflows = [{ name: 'w1', jobs: [{ job: 'a' }, { job: 'b' }] }, { name: 'w2', jobs: [{ job: 'c' }] }];
+  assert.deepEqual(sharedJobNames(workflows), []);
+});
+
+ok('sharedJobNames: a job claimed by two workflows is reported with both owners', () => {
+  const workflows = [
+    { name: 'w1', jobs: [{ job: 'shared' }, { job: 'a' }] },
+    { name: 'w2', jobs: [{ job: 'shared' }] },
+  ];
+  assert.deepEqual(sharedJobNames(workflows), [{ job: 'shared', workflows: ['w1', 'w2'] }]);
 });
 
 console.log(`\n${passed} job-membership test(s) passed.`);

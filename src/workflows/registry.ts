@@ -64,23 +64,38 @@ async function loadDefault<T>(file: string): Promise<T | undefined> {
   return mod.default;
 }
 
+/**
+ * A broken definition is FATAL: the registry throws and the daemon refuses to
+ * start, naming every problem at once. It used to `console.warn` and skip the
+ * offending file. That was never really "skip": an invalid workflow's member jobs
+ * then usually tripped the orphan check below and crashed the process anyway,
+ * with a message about orphans rather than the actual mistake; and where it did
+ * not crash, a workflow quietly vanished from the schedule with nothing but a
+ * line in the daemon log. A configuration error should stop the daemon at the
+ * door with the real reason.
+ *
+ * Problems are collected and thrown together so one start shows all of them.
+ */
+const loadErrors: string[] = [];
+
 // ──────────────────────────────── jobs ────────────────────────────────
 const loadedJobs: JobDefinition[] = [];
-const seenJobNames = new Set<string>();
+const jobFileByName = new Map<string, string>();
 for (const file of findFiles(__dirname, isJobFile).sort()) {
   const def = await loadDefault<JobDefinition>(file);
   if (!def || typeof def.name !== 'string' || typeof def.run !== 'function') {
-    console.warn(`[registry] ${file} has no valid default JobDefinition export — skipped`);
+    loadErrors.push(`${file} has no valid default JobDefinition export (needs a string \`name\` and a \`run\` function)`);
     continue;
   }
-  // Mirrors the workflow duplicate-name guard below — a job name collision (e.g.
-  // a stray copy discovered from a workflow's own generated output) fails LOUD
-  // and keeps the first-discovered definition, rather than silently shadowing.
-  if (seenJobNames.has(def.name)) {
-    console.warn(`[registry] job "${def.name}" (${file}) is invalid — skipped: duplicate job name "${def.name}"`);
+  // Job lookup is by NAME, so two files declaring the same name means one silently
+  // shadows the other (this has happened: a stray copy discovered inside a
+  // workflow's own generated output served stale code for four workflows).
+  const first = jobFileByName.get(def.name);
+  if (first) {
+    loadErrors.push(`duplicate job name "${def.name}": declared by both ${first} and ${file}`);
     continue;
   }
-  seenJobNames.add(def.name);
+  jobFileByName.set(def.name, file);
   loadedJobs.push(def);
 }
 
@@ -118,12 +133,12 @@ const seenWorkflowNames = new Set<string>();
 for (const file of findFiles(__dirname, isWorkflowFile).sort()) {
   const def = await loadDefault<WorkflowDefinition>(file);
   if (!def || typeof def.name !== 'string' || !Array.isArray(def.jobs)) {
-    console.warn(`[registry] ${file} has no valid default WorkflowDefinition export — skipped`);
+    loadErrors.push(`${file} has no valid default WorkflowDefinition export (needs a string \`name\` and a \`jobs\` array)`);
     continue;
   }
   const err = validateWorkflow(def, jobNameSet, seenWorkflowNames);
   if (err) {
-    console.warn(`[registry] workflow "${def.name}" (${file}) is invalid — skipped: ${err}`);
+    loadErrors.push(`workflow "${def.name}" (${file}) is invalid: ${err}`);
     continue;
   }
   seenWorkflowNames.add(def.name);
@@ -161,14 +176,47 @@ export function orphanJobNames(
   return jobDefs.filter((j) => !members.has(j.name)).map((j) => j.name);
 }
 
-// Fail LOUD at load if any discovered job belongs to no workflow. A job with no
-// manifest is a config error — better to refuse to start than to silently host an
-// orphan that can never be scheduled or composed.
-const orphans = orphanJobNames(jobs, workflows);
-if (orphans.length > 0) {
+/**
+ * Job names that are a member of MORE than one workflow, with the workflows that
+ * claim them. A job belongs to exactly one workflow: its ledger rows, its
+ * overlap guard (`runJobForWorkflow` skips a job that is already running
+ * anywhere, and that skip cascades to its dependents) and its inputs are all
+ * keyed by job name, so sharing one between two workflows makes whichever runs
+ * second silently skip a stage. Share the IMPLEMENTATION instead (a function two
+ * job files both call). Pure + exported for unit tests.
+ */
+export function sharedJobNames(
+  workflowDefs: ReadonlyArray<{ name: string; jobs: ReadonlyArray<{ job: string }> }>,
+): { job: string; workflows: string[] }[] {
+  const owners = new Map<string, string[]>();
+  for (const wf of workflowDefs) {
+    for (const ref of wf.jobs) (owners.get(ref.job) ?? owners.set(ref.job, []).get(ref.job)!).push(wf.name);
+  }
+  return [...owners.entries()].filter(([, w]) => w.length > 1).map(([job, w]) => ({ job, workflows: w }));
+}
+
+for (const { job, workflows: owners } of sharedJobNames(workflows)) {
+  loadErrors.push(`job "${job}" is a member of ${owners.length} workflows (${owners.join(', ')}); a job belongs to exactly one`);
+}
+
+// A job that belongs to no workflow is a config error — it can never be scheduled
+// or composed. Only reported when nothing else is wrong: an invalid workflow
+// above would otherwise list all of ITS members here as orphans and bury the
+// real cause.
+if (loadErrors.length === 0) {
+  const orphans = orphanJobNames(jobs, workflows);
+  if (orphans.length > 0) {
+    loadErrors.push(
+      `standalone jobs are not allowed — every job must be declared in a *.workflow.ts manifest ` +
+        `(a single job = a one-stage workflow). Orphaned job(s) with no workflow: ${orphans.join(', ')}`,
+    );
+  }
+}
+
+if (loadErrors.length > 0) {
   throw new Error(
-    `[registry] standalone jobs are not allowed — every job must be declared in a *.workflow.ts manifest ` +
-      `(a single job = a one-stage workflow). Orphaned job(s) with no workflow: ${orphans.join(', ')}`,
+    `[registry] ${loadErrors.length} definition problem(s) — refusing to load:\n` +
+      loadErrors.map((e) => `  • ${e}`).join('\n'),
   );
 }
 
