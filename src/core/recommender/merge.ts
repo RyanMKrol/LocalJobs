@@ -4,8 +4,9 @@
 // A domain supplies the TMDB search/genre mapping + config/paths; this module
 // owns the verify/dedup/balance/top-up mechanics (byte-identical across
 // movies/tv-recs before this extraction).
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { writeJsonFile } from '../fsjson.js';
 import { QuotaExceededError } from '../services.js';
 import type { JobContext } from '../types.js';
 import { runClaude } from '../../services/claude.js';
@@ -386,8 +387,4 @@ export async function runMerge<M, P>(
   if (counters.searchFailed > 0) {
     throw new Error(`TMDB search failed for ${counters.searchFailed} suggestion(s) this run — see warn logs above for titles.`);
   }
-}
-
-function writeJsonFile(path: string, data: unknown): void {
-  writeFileSync(path, JSON.stringify(data, null, 2));
 }

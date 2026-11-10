@@ -3,8 +3,9 @@
 // specs (see movies/tv-recs `stages/branches.ts`); this module owns the
 // mechanics: loading the snapshot/taste/history, building the branch context,
 // calling Claude, parsing its reply, and writing the per-branch output file.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { writeJsonFile } from '../fsjson.js';
 import type { ArtifactContract, JobContext, JobDefinition } from '../types.js';
 import { extractJsonObject, runClaude } from '../../services/claude.js';
 import type { ClaudeResult } from '../../services/claude.js';
@@ -108,7 +109,7 @@ export function ignoredSuggestionTitles(jobName: string): string[] {
 /** Write a branch's output file (raw suggestions, or empty + error on skip/fail). */
 function writeBranchFile(recsDir: string, file: BranchOutputFile): string {
   const path = join(recsDir, `${file.branchId}.json`);
-  writeFileSync(path, JSON.stringify(file, null, 2));
+  writeJsonFile(path, file);
   return path;
 }
 

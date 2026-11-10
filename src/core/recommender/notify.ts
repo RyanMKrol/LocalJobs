@@ -9,8 +9,9 @@
 // ledger row is written or history appended, and a failed push THROWS instead
 // of marking anything — so a retried run re-sends instead of silently losing
 // recommendations.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import { writeFileAtomic, writeJsonFile } from '../fsjson.js';
 import { push } from '../notifier.js';
 import { ignoredItemKeys, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import type { JobContext } from '../types.js';
@@ -156,7 +157,7 @@ function writeReport<M, P>(
   }
 
   const path = join(reportDir, domain.reportFilename);
-  writeFileSync(path, lines.join('\n'));
+  writeFileAtomic(path, lines.join('\n'));
   return path;
 }
 
@@ -167,10 +168,15 @@ function appendHistory(historyFile: string, newRecs: Recommendation[], now: Date
     try {
       const parsed = JSON.parse(readFileSync(historyFile, 'utf8')) as RecsHistoryFile;
       if (Array.isArray(parsed.recommended)) hist = parsed;
-    } catch { /* corrupt history → start fresh */ }
+    } catch {
+      // A corrupt history must not be silently erased: it is the only record of
+      // what has already been recommended. Keep the bad file beside the new one
+      // so it can be inspected or repaired, then start a fresh history.
+      renameSync(historyFile, `${historyFile}.corrupt-${now.getTime()}`);
+    }
   }
   for (const r of newRecs) {
     hist.recommended.push({ tmdbId: r.tmdbId, title: r.title, year: r.year, at: now.toISOString() });
   }
-  writeFileSync(historyFile, JSON.stringify(hist, null, 2));
+  writeJsonFile(historyFile, hist);
 }
