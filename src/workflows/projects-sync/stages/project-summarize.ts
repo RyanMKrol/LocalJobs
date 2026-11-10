@@ -43,7 +43,7 @@ const FALLBACK_TEMPLATE = [
   '',
 ].join('\n');
 
-import { runClaudeWithRepoAccess } from '../../../services/claude.js';
+import { runClaudeWithRepoAccess, salvageFrontmatterMarkdown } from '../../../services/claude.js';
 import { callService } from '../../../core/services.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
 import { writeFileAtomic, type JobContext } from '../../../engine/index.js';
@@ -163,6 +163,23 @@ export function templateShapeViolations(md: string): string[] {
   return missing;
 }
 
+/**
+ * Save a reply that failed the shape check to data/rejected-summaries/<repo>.txt
+ * (outside data/out, so it is never mistaken for a profile). Best effort: failing
+ * to save it must not hide the failure it is evidence of.
+ */
+function saveRejectedSummary(ctx: JobContext, repoName: string, raw: string): void {
+  try {
+    const dir = resolve(projectsSyncConfig.outDir, '..', 'rejected-summaries');
+    mkdirSync(dir, { recursive: true });
+    const file = resolve(dir, `${repoName}.txt`);
+    writeFileAtomic(file, raw);
+    ctx.log(`warn: saved the rejected reply to ${file} (${raw.length} chars; starts: ${JSON.stringify(raw.slice(0, 120))})`, 'warn');
+  } catch (e) {
+    ctx.log(`warn: could not save the rejected reply for ${repoName}: ${String(e)}`, 'warn');
+  }
+}
+
 export function repoMarkdownPath(repoName: string): string {
   return resolve(projectsSyncConfig.outDir, `${repoName}.md`);
 }
@@ -249,13 +266,18 @@ export async function runProjectSummarize(
         throw new Error(`claude summarize failed: ${result.error ?? 'unknown error'}`);
       }
 
-      const violations = templateShapeViolations(result.text);
+      // Claude sometimes puts a line of commentary before the frontmatter, or wraps
+      // the file in a code fence. Neither is a reason to throw the summary away.
+      const summary = salvageFrontmatterMarkdown(result.text);
+      const violations = templateShapeViolations(summary);
       if (violations.length > 0) {
+        // Keep what came back, so a reply that is still the wrong shape can be looked at.
+        saveRejectedSummary(ctx, entry.name, result.text);
         throw new Error(`summary output missing template shape: ${violations.join(', ')}`);
       }
 
       const mdPath = repoMarkdownPath(entry.name);
-      writeMarkdown(mdPath, result.text);
+      writeMarkdown(mdPath, summary);
       ctx.log(`info: wrote summary for ${entry.fullName} -> ${mdPath}`);
 
       markWorkItem(JOB_NAME, entry.repoId, 'success', {

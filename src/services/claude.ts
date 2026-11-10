@@ -167,3 +167,19 @@ export function unfenceMarkdown(text: string): string {
   const m = t.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/);
   return (m ? m[1] : t).trim() + '\n';
 }
+
+/**
+ * Clean a Claude reply that should be a markdown file starting with YAML
+ * frontmatter. Unwraps a code fence, and drops any line of commentary Claude put
+ * before the opening `---` ("Here is the profile:") despite being told to reply
+ * with the file only. A reply with no `---` line at all is returned as it is, for
+ * the caller's shape check to reject: a truncated reply is not rescued.
+ */
+export function salvageFrontmatterMarkdown(text: string): string {
+  const md = unfenceMarkdown(text);
+  if (md.startsWith('---')) return md;
+  const lines = md.split('\n');
+  const opener = lines.findIndex((l) => l.trim() === '---');
+  if (opener === -1) return md;
+  return lines.slice(opener).join('\n').trim() + '\n';
+}

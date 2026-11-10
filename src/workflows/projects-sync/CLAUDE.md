@@ -74,9 +74,13 @@ Approaches`/`Sources`), designed so the whole corpus is queryable for cross-proj
 kind of work am I interested in", "what have I built in domain X"). Each section is expected to be a
 couple of substantive paragraphs grounded in real repo exploration, not a one-line restatement of the
 catalog metadata — while keeping the "never invent facts" honesty rule intact (a small/dormant project
-may honestly say a section has little to add). `templateShapeViolations` validates the response post-hoc
-(leading `---` + every required heading); a shape mismatch throws with the missing pieces named, routing
-through the existing `catch` → `markWorkItem(..., 'failed', ...)` path.
+may honestly say a section has little to add). The reply is first cleaned with
+`salvageFrontmatterMarkdown` (`src/services/claude.ts`): a code fence is unwrapped and any line of
+commentary before the opening `---` is dropped. Without it, a real run on 2026-11-10 failed 5 of 7
+attempts on the leading-`---` check alone, with every required section present. `templateShapeViolations`
+then validates what is left (leading `---` + every required heading); a reply that is still the wrong
+shape is saved to `data/rejected-summaries/<repo>.txt` for inspection and throws with the missing pieces
+named, routing through the existing `catch` → `markWorkItem(..., 'failed', ...)` path.
 
 Idempotent per repo via a commit-sha-equivalent marker (the catalog's `pushedAt`): a repo whose stored
 marker already matches the catalog's current value is skipped entirely (no clone, no Claude call) — no

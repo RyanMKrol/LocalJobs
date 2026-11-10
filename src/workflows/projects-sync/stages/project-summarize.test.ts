@@ -153,6 +153,26 @@ describe('project-summarize', () => {
     assert.equal(row!.status, 'success');
   });
 
+  it('keeps a summary that Claude prefixed with commentary or wrapped in a code fence, writing only the file itself', async () => {
+    for (const wrap of [
+      (md: string) => `Here is the profile you asked for:\n\n${md}`,
+      (md: string) => '```markdown\n' + md.trim() + '\n```',
+    ]) {
+      const entry = makeEntry({ repoId: `salvage-${Math.random()}`, pushedAt: '2026-06-02T00:00:00Z' });
+      const writtenFiles: Array<[string, string]> = [];
+      await runProjectSummarize(fakeCtx(), {
+        readCatalog: () => [entry],
+        cloneOrPull: async () => {},
+        summarizeWithRepoAccess: async () => ({ ok: true, text: wrap(conformantSummary(entry)) }),
+        writeMarkdown: (path, content) => { writtenFiles.push([path, content]); },
+      });
+      assert.equal(writtenFiles.length, 1, 'the summary is kept, not thrown away over a stray line');
+      assert.ok(writtenFiles[0][1].startsWith('---'), 'and what is written starts at the frontmatter');
+      assert.ok(!writtenFiles[0][1].includes('Here is the profile'), 'the commentary is gone');
+      assert.equal(getWorkItem('project-summarize', entry.repoId)!.status, 'success');
+    }
+  });
+
   it('rejects a summary missing a required section — marks failed, writes no markdown', async () => {
     const entry = makeEntry();
     const nonConformant = [
