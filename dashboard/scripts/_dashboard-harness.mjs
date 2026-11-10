@@ -248,18 +248,37 @@ const placesStageIoOverall = {
 // T386: a SINGLE-STAGE workflow (self-pairing — root wave AND terminal wave are the
 // SAME single job) — proves StageIoPanel doesn't crash/render nonsense when a stage is
 // simultaneously its own predecessor-less root and its own terminal output.
+// Builders for PORTS fixtures (a run page derived from what the engine recorded):
+// an artifact card, an input card, and one stage's Inputs & Outputs.
+let artifactSeq = 100;
+const portsArtifact = (over) => ({
+  id: artifactSeq++, job: '', port: '', artifactKey: '', description: null,
+  storage: 'json', format: 'json', ok: true, fresh: true, note: null, summary: null, itemCount: null, bytes: null,
+  committedAtMs: 1780300800000, preview: null, sample: [], check: { ok: true }, ...over,
+});
+const asInput = (artifact, consumerPort, extra = {}) => ({ ...artifact, consumerPort, resolved: { ok: true, reason: null }, ...extra });
+const portsIo = (job, over) => ({
+  job, mode: 'ports', limit: 100, predecessorJobs: [], outputJobs: [job], inputs: [], outputs: [], inputTotal: 0, outputTotal: 0,
+  inputArtifacts: [], outputArtifacts: [], outputsUnchanged: 0, ...over,
+});
+const singleOutputIo = (job, artifacts, rows = []) => ({
+  stage: { [job]: portsIo(job, { outputArtifacts: artifacts, outputs: rows, outputTotal: rows.length }) },
+  overall: portsIo('__overall__', { outputJobs: [job], outputArtifacts: artifacts, outputs: rows, outputTotal: rows.length }),
+});
 const singleStageMembers = [{ job_name: 'claude-warm', depends_on: [] }];
 const singleStageWorkflowRun = workflowRun({ id: 'claude-warmer-run', workflow_name: 'claude-warmer', progress: 100 });
 const singleStageRunJobs = singleStageMembers.map((m, i) => run({
   id: `claude-warmer-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'claude-warmer-run',
 }));
-const singleStageOutput = { jobName: 'claude-warm', itemKey: NOW, status: 'success', detail: { name: 'Warm ping sent' } };
-const singleStageStageIo = {
-  'claude-warm': { inputs: [], outputs: [singleStageOutput], predecessorJobs: [], job: 'claude-warm' },
-};
-const singleStageStageIoOverall = {
-  inputs: [], outputs: [singleStageOutput], predecessorJobs: [], outputJobs: ['claude-warm'], job: '__overall__',
-};
+// claude-warm is a ports stage with one INLINE output: how the warm attempt went.
+const claudeWarmIo = singleOutputIo('claude-warm', [portsArtifact({
+  job: 'claude-warm', port: 'result', artifactKey: 'claude-warm-result', storage: 'inline',
+  description: 'How this warm attempt went: warmed, already active (a limit was hit), or failed.',
+  summary: 'warmed (claude-haiku-4-5-20251001)', bytes: 86,
+  inline: { outcome: 'warmed', model: 'claude-haiku-4-5-20251001', at: '2026-06-22T09:00:02.000Z' },
+})]);
+const singleStageStageIo = claudeWarmIo.stage;
+const singleStageStageIoOverall = claudeWarmIo.overall;
 
 const rec = (over) => ({
   tmdbId: 100, title: 'Inception', year: 2010, reason: 'A deeply layered thriller.', lens: 'cerebral',
@@ -480,13 +499,20 @@ const listeningDigestWorkflowRun = workflowRun({ id: 'listening-digest-run', wor
 const listeningDigestRunJobs = listeningDigestMembers.map((m, i) => run({
   id: `listening-digest-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'listening-digest-run',
 }));
-const listeningDigestOutput = { jobName: 'lastfm-digest', itemKey: '2026-06', status: 'success', detail: { name: 'Listening digest — June 2026', markdown: '/abs/data/out/listening-digest-2026-06.md' } };
-const listeningDigestStageIo = {
-  'lastfm-digest': { inputs: [], outputs: [listeningDigestOutput], predecessorJobs: [], job: 'lastfm-digest' },
-};
-const listeningDigestStageIoOverall = {
-  inputs: [], outputs: [listeningDigestOutput], predecessorJobs: [], outputJobs: ['lastfm-digest'], job: '__overall__',
-};
+// A ports stage: the folder of digests is its declared output, and the two digests
+// a run writes are its items (each previews its markdown file).
+const listeningDigestRows = [
+  { id: 'lastfm-digest:2026-06', jobName: 'lastfm-digest', itemKey: '2026-06', status: 'success', title: 'Listening digest — June 2026', fields: [], preview: { path: 'listening-digest/data/out/listening-digest-2026-06.md', format: 'markdown' } },
+  { id: 'lastfm-digest:2026-06-3month', jobName: 'lastfm-digest', itemKey: '2026-06-3month', status: 'success', title: 'Listening digest (trailing 3 months) — June 2026', fields: [], preview: { path: 'listening-digest/data/out/listening-digest-2026-06-3month.md', format: 'markdown' } },
+];
+const listeningDigestIo = singleOutputIo('lastfm-digest', [portsArtifact({
+  job: 'lastfm-digest', port: 'digests', artifactKey: 'listening-digests', storage: 'dir', format: 'markdown',
+  description: 'The monthly listening digests: listening-digest-<YYYY-MM>.md and its trailing three month companion.',
+  summary: '14 digest(s)', itemCount: 14,
+  sample: [{ id: 'listening-digest-2026-06.md', title: '2026-06', preview: { path: 'listening-digest/data/out/listening-digest-2026-06.md', format: 'markdown' } }],
+})], listeningDigestRows);
+const listeningDigestStageIo = listeningDigestIo.stage;
+const listeningDigestStageIoOverall = listeningDigestIo.overall;
 
 // projects-sync — github-sync -> project-summarize (linear, 2 stages).
 const projectsSyncMembers = [
@@ -514,13 +540,18 @@ const plexSpaceSaverWorkflowRun = workflowRun({ id: 'plex-space-saver-run', work
 const plexSpaceSaverRunJobs = plexSpaceSaverMembers.map((m, i) => run({
   id: `plex-space-saver-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-space-saver-run',
 }));
-const plexSpaceSaverOutput = { jobName: 'plex-space-saver-scan', itemKey: '2026-W25', status: 'success', detail: { name: 'Disk-size breakdown — Week 25, 2026', path: '/abs/data/out/size-breakdown-2026-W25.json', format: 'size-table' } };
-const plexSpaceSaverStageIo = {
-  'plex-space-saver-scan': { inputs: [], outputs: [plexSpaceSaverOutput], predecessorJobs: [], job: 'plex-space-saver-scan' },
-};
-const plexSpaceSaverStageIoOverall = {
-  inputs: [], outputs: [plexSpaceSaverOutput], predecessorJobs: [], outputJobs: ['plex-space-saver-scan'], job: '__overall__',
-};
+// A ports stage with one declared output and no ledger: the breakdown file, whose
+// declared format ('size-table') picks the dashboard's bar-chart viewer.
+const plexSpaceSaverArtifact = portsArtifact({
+  job: 'plex-space-saver-scan', port: 'breakdown', artifactKey: 'plex-size-breakdown', format: 'size-table',
+  description: 'Where the Plex library\'s disk space goes: one row per movie and per TV show, biggest first.',
+  summary: '812 movie(s) + 214 show(s), 17.5 TB', itemCount: 1026, bytes: 184_000,
+  preview: { path: 'plex-space-saver/data/out/size-breakdown.json', format: 'size-table' },
+  sample: [{ id: 'movie:1', title: 'A Very Long Movie Title That Might Wrap On Narrow Screens (2019)', fields: [{ label: 'Size', value: '40.0 GB' }, { label: 'Kind', value: 'movie' }] }],
+});
+const plexSpaceSaverIo = singleOutputIo('plex-space-saver-scan', [plexSpaceSaverArtifact]);
+const plexSpaceSaverStageIo = plexSpaceSaverIo.stage;
+const plexSpaceSaverStageIoOverall = plexSpaceSaverIo.overall;
 // T617: the GET .../output(-items) response body for `plexSpaceSaverOutput` — a real
 // SizeBreakdownFile JSON string (biggest-first) so the OutputRenderer's 'size-table'
 // bar-chart renderer has real varied-`bytes` rows to paint, in both the workflow
@@ -635,17 +666,6 @@ const tvRecommendationsRunJobs = tvRecommendationsMembers.map((m, i) => run({
 // recorded. Each stage shows the ARTIFACTS it was handed / committed (cards) and the
 // ledger ITEMS it changed. No stage writes a row just to be visible. The two workflows
 // share their stages (src/core/recommender/stages.ts), so one generator builds both.
-let artifactSeq = 100;
-const portsArtifact = (over) => ({
-  id: artifactSeq++, job: '', port: '', artifactKey: '', description: null,
-  storage: 'json', format: 'json', ok: true, fresh: true, note: null, summary: null, itemCount: null, bytes: null,
-  committedAtMs: 1780300800000, preview: null, sample: [], check: { ok: true }, ...over,
-});
-const asInput = (artifact, consumerPort, extra = {}) => ({ ...artifact, consumerPort, resolved: { ok: true, reason: null }, ...extra });
-const portsIo = (job, over) => ({
-  job, mode: 'ports', limit: 100, predecessorJobs: [], outputJobs: [job], inputs: [], outputs: [], inputTotal: 0, outputTotal: 0,
-  inputArtifacts: [], outputArtifacts: [], outputsUnchanged: 0, ...over,
-});
 function recommenderPortsFixtures({ prefix, noun, dir, snapshotJob, branches, mergeJob, notifyJob, ledgerJob, librarySample, total, suggestion, announced }) {
   const snapshot = portsArtifact({
     job: snapshotJob, port: 'snapshot', artifactKey: `${prefix}-snapshot`,
@@ -976,14 +996,19 @@ const mountKeeperWorkflowRun = workflowRun({ id: 'mount-keeper-run', workflow_na
 const mountKeeperRunJobs = mountKeeperMembers.map((m, i) => run({
   id: `mount-keeper-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'mount-keeper-run',
 }));
-const mountKeeperHealthyOutput = { jobName: 'mount-keeper-check', itemKey: '/Volumes/Share A', status: 'success', detail: { name: 'Share A', mountPoint: '/Volumes/Share A', action: 'already-mounted', stateBefore: 'healthy' } };
-const mountKeeperRemountOutput = { jobName: 'mount-keeper-check', itemKey: '/Volumes/Share B', status: 'success', detail: { name: 'Share B', mountPoint: '/Volumes/Share B', action: 'remounted', stateBefore: 'absent' } };
-const mountKeeperStageIo = {
-  'mount-keeper-check': { inputs: [], outputs: [mountKeeperHealthyOutput, mountKeeperRemountOutput], predecessorJobs: [], job: 'mount-keeper-check' },
-};
-const mountKeeperStageIoOverall = {
-  inputs: [], outputs: [mountKeeperHealthyOutput, mountKeeperRemountOutput], predecessorJobs: [], outputJobs: ['mount-keeper-check'], job: '__overall__',
-};
+// A ports stage with one INLINE output: the state of every share after the run.
+const mountKeeperIo = singleOutputIo('mount-keeper-check', [portsArtifact({
+  job: 'mount-keeper-check', port: 'status', artifactKey: 'mount-status', storage: 'inline',
+  description: 'Every configured network share after this run: already mounted, remounted, or failed.',
+  summary: '1 healthy, 1 remounted, 0 failed', itemCount: 2, bytes: 410,
+  inline: { checkedAt: '2026-06-22T09:45:03.000Z', healthy: 1, remounted: 1, failed: 0 },
+  sample: [
+    { id: '/Volumes/Share A', title: 'Share A', status: 'success', fields: [{ label: 'Mount point', value: '/Volumes/Share A' }, { label: 'Action', value: 'already-mounted' }, { label: 'Was', value: 'healthy' }] },
+    { id: '/Volumes/Share B', title: 'Share B', status: 'success', fields: [{ label: 'Mount point', value: '/Volumes/Share B' }, { label: 'Action', value: 'remounted' }, { label: 'Was', value: 'absent' }] },
+  ],
+})]);
+const mountKeeperStageIo = mountKeeperIo.stage;
+const mountKeeperStageIoOverall = mountKeeperIo.overall;
 
 // media-reviews — four INDEPENDENT single-stage members (books/movies/tv/albums),
 // no dependsOn edges: exercises a 4-node, zero-edge DAG render.
@@ -1328,15 +1353,10 @@ function fixtureForRaw(pathname, searchParams) {
         terminalJobs: ['places-enrich-with-llm'],
       };
     }
-    // T617: plex-space-saver's terminal-stage output item, so the workflow-definition
-    // Output section has a real row to click "View" on (exercises the size-table renderer).
+    // T617: plex-space-saver is a ports workflow, so its Output section shows the
+    // breakdown as an artifact card ("View file" opens the size-table renderer).
     if (pathname === '/api/workflows/plex-space-saver/output-items') {
-      return {
-        items: [
-          { jobName: 'plex-space-saver-scan', itemKey: '2026-W25', name: 'Disk-size breakdown — Week 25, 2026', hasMarkdown: true, viewable: true, updatedAt: NOW },
-        ],
-        terminalJobs: ['plex-space-saver-scan'],
-      };
+      return { items: [], total: 0, terminalJobs: ['plex-space-saver-scan'], artifacts: [{ ...plexSpaceSaverArtifact, workflowRunId: 'plex-space-saver-run' }] };
     }
     // plex-library-guard's daily ledger row, so the workflow-definition Output
     // section has a real row to click "View" on (exercises the json renderer).
@@ -1616,9 +1636,9 @@ export const FLOWS = [
     name: 'workflow-output-section-size-table',
     path: '/workflows/plex-space-saver',
     viewport: true,
-    waitFor: ['.output-section button.btn.btn-sm'],
+    waitFor: ['.output-section .stage-io-item-link'],
     actions: async (page) => {
-      await page.click('.output-section button.btn.btn-sm');
+      await page.click('.output-section .stage-io-item-link:has-text("View file")');
       await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
       await page.waitForSelector('.size-bar-list', { state: 'visible', timeout: 5000 });
       await page.waitForTimeout(300);
@@ -1633,7 +1653,7 @@ export const FLOWS = [
     viewport: true,
     waitFor: ['.stage-io-item-link'],
     actions: async (page) => {
-      await page.click('.stage-io-item-link');
+      await page.click('.stage-io-item-link:has-text("View file")');
       await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
       await page.waitForSelector('.size-bar-list', { state: 'visible', timeout: 5000 });
       await page.waitForTimeout(300);
