@@ -904,6 +904,15 @@ doubt, log it.
   read-only MEMBER view (status · run history · logs); you run + enable a WORKFLOW.
   Don't add any of these back to `JobDefinition` or the job page.
 - All SQL goes through `src/db/store.ts`. Don't scatter `db.prepare` calls.
+- **A transaction that reads before it writes must be `.immediate()`.** Several job
+  processes and the daemon write the same SQLite file at once. better-sqlite3's default
+  transaction is deferred: it starts as a reader, and if any other process commits before
+  its first write, the upgrade to a writer fails at once with "database is locked". That
+  is `SQLITE_BUSY_SNAPSHOT`; waiting cannot fix a stale snapshot, so the 5s busy timeout
+  does not apply. `db.transaction(fn).immediate()` takes the write lock up front, where
+  the timeout does apply. `markWorkItem`, the service rate-limit reservations and the
+  schema migration all do this. `src/db/concurrent-writers.test.ts` hammers the ledger
+  from five processes at once to keep it true.
 - **Schema bootstrap must NEVER reference a migration-added column (T098).**
   `openDb()` (in `src/db/index.ts`) runs `db.exec(schema.sql)` FIRST, then the
   additive migrations. On a **fresh** DB `schema.sql`'s `CREATE TABLE` already

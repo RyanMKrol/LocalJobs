@@ -377,7 +377,7 @@ export function reapOrphanWorkflowRuns(): number {
       'warn',
     );
   });
-  for (const run of orphans) reap(run);
+  for (const run of orphans) reap.immediate(run);
   return orphans.length;
 }
 

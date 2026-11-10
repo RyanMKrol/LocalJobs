@@ -155,6 +155,14 @@ export function markWorkItem(
   // killed between the two used to leave an item the ledger said was done but no
   // run was credited with, which the run page and the noop/stall checks then read
   // as "this run did nothing".
+  //
+  // IMMEDIATE, not the default deferred: this transaction reads the item's prior
+  // state before writing. A deferred transaction starts as a reader, and if any
+  // other process commits before its first write, the upgrade to a writer fails at
+  // once with "database is locked" (a stale snapshot cannot be waited out, so the
+  // busy timeout does not apply). Several job processes and the daemon write this
+  // file at the same time, so that is a certainty, not an edge case. Taking the
+  // write lock up front makes the busy timeout apply. See concurrent-writers.test.ts.
   db.transaction(() => {
     const prior = workflowRunId
       ? (db.prepare('SELECT status, attempts, detail FROM work_items WHERE job_name = ? AND item_key = ?')
@@ -215,7 +223,7 @@ export function markWorkItem(
       at: Date.now(),
       changed: changed ? 1 : 0,
     });
-  })();
+  }).immediate();
 }
 
 /**

@@ -336,6 +336,6 @@ export function pruneRunHistoryChunk(opts: RunHistoryRetention = {}): { deleted:
       n += db.prepare('DELETE FROM run_inputs WHERE workflow_run_id = ?').run(target.id).changes;
     }
     return n;
-  })();
+  }).immediate();
   return { deleted, done: false };
 }
