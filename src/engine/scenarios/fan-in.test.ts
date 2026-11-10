@@ -193,6 +193,33 @@ try {
     assert.match(logText(id), /carried forward unchanged/);
   });
 
+  await test('resume after one branch failed: the branches that succeeded are reused, the failed one runs, and the fan-in gets all of them', async () => {
+    control({ 'px-b2': 'fail' });
+    const failed = await scenario.run(fanInWorkflow);
+    assert.equal(failed.status, 'partial');
+    assert.equal(failed.stage('px-b2')?.status, 'failed');
+    assert.equal(failed.stage('px-merge')?.outcome_reason, 'upstream-skipped');
+
+    control({});
+    const r = await scenario.run(fanInWorkflow, { resumeFrom: failed.id });
+    assert.equal(r.status, 'success', r.log);
+    // The source and the two good branches were not run again.
+    for (const reused of ['px-src', 'px-b1', 'px-b3']) {
+      assert.equal(r.stage(reused)?.outcome_reason, 'resumed', `${reused} is reused`);
+      assert.equal(r.artifact(reused, reused === 'px-src' ? 'data' : 'part')?.fresh, 0);
+    }
+    // The failed branch ran, reading the source the earlier run committed.
+    assert.equal(r.stage('px-b2')?.outcome_reason ?? null, null);
+    assert.deepEqual(r.inputsOf('px-b2'), ['data<-px-src']);
+    assert.equal(readJson<{ from: string }>('px-b2.json').from, failed.id, 'it read the reused source, written by the run being resumed');
+    // The fan-in got every branch: two reused, one fresh.
+    assert.deepEqual(r.inputsOf('px-merge'), ['data<-px-src', 'parts<-px-b1', 'parts<-px-b2', 'parts<-px-b3']);
+    const merged = readJson<MergedData>('merged.json');
+    assert.deepEqual(Object.keys(merged.parts).sort(), ['px-b1', 'px-b2', 'px-b3']);
+    assert.equal(merged.run, failed.id);
+    assert.equal(r.stage('px-report')?.status, 'success');
+  });
+
   await test('a ports stage refuses to run under a daemon too old to resolve its inputs', async () => {
     assert.throws(() => assertDaemonSupportsPorts('some-stage', { LOCALJOBS_ENGINE: '2' }), /Restart it \(scripts\/safe-restart\.sh\)/);
     assert.throws(() => assertDaemonSupportsPorts('some-stage', {}), /the daemon is running older code/);
