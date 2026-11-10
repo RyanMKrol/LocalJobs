@@ -317,6 +317,7 @@ export function migrateEngineV2(db: Database.Database): void {
     ['work_item_runs', 'input_job', 'TEXT'],
     ['work_item_runs', 'input_key', 'TEXT'],
     ['work_item_runs', 'at_ms', 'INTEGER'],
+    ['work_item_runs', 'changed', 'INTEGER'],
   ];
   const tableExists = (name: string): boolean =>
     !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name);

@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildDag, DagError } from '../core/dag.js';
+import { validateWorkflowContracts } from '../core/ports.js';
 import { registerService } from '../core/services.js';
 import type { JobDefinition, WorkflowDefinition, ServiceDefinition } from '../core/types.js';
 
@@ -140,6 +141,18 @@ for (const file of findFiles(__dirname, isWorkflowFile).sort()) {
   if (err) {
     loadErrors.push(`workflow "${def.name}" (${file}) is invalid: ${err}`);
     continue;
+  }
+  // The contract between stages is checked HERE, at load: every edge of a ports
+  // workflow must carry a declared input that the upstream stage really outputs,
+  // and every edge of a legacy workflow must have a produces/consumes gate. This
+  // used to be asserted only by a unit test, so a daemon could start with a
+  // workflow whose stages did not line up.
+  const contractErrors = validateWorkflowContracts(def, (n) => loadedJobs.find((j) => j.name === n));
+  for (const e of contractErrors) loadErrors.push(`workflow "${def.name}" (${file}): ${e}`);
+  for (const ref of def.jobs) {
+    for (const other of loadedJobs.find((j) => j.name === ref.job)?.reads ?? []) {
+      if (!jobNameSet.has(other)) loadErrors.push(`workflow "${def.name}": "${ref.job}" declares it reads "${other}", which is not a known job`);
+    }
   }
   seenWorkflowNames.add(def.name);
   loadedWorkflows.push(def);

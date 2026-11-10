@@ -39,7 +39,7 @@ cleanup();
   openDb(dbPath).close();
   const db = new Database(dbPath);
   db.exec('DROP INDEX IF EXISTS idx_work_item_runs_runid');
-  for (const c of ['run_id', 'cycle', 'status', 'attempts', 'detail', 'title', 'input_job', 'input_key', 'at_ms']) {
+  for (const c of ['run_id', 'cycle', 'status', 'attempts', 'detail', 'title', 'input_job', 'input_key', 'at_ms', 'changed']) {
     db.exec(`ALTER TABLE work_item_runs DROP COLUMN ${c}`);
   }
   for (const c of ['cycle', 'outcome_reason', 'queued_at_ms', 'started_at_ms', 'finished_at_ms', 'gate_ms']) {

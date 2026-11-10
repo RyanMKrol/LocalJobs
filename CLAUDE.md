@@ -338,6 +338,94 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   **visibility** upgrade (dashboard-queryable the same way `failed` is), not a new calibration
   mechanism.
 
+## Ports: how stages hand data to each other
+
+A stage declares named **inputs** and **outputs**. The engine binds them, passes inputs
+in, records outputs, and derives gates and the run page's Inputs & Outputs from that
+record. `src/core/ports.ts` is the declarative half, `src/core/stage-runtime.ts` runs
+inside the stage's process, `src/core/resolve-inputs.ts` is the daemon side.
+
+```ts
+// contracts.ts: what the data IS, how to check it, how to show it
+export const tvSnapshot = jsonArtifact<TvSnapshotFile>({
+  key: 'tv-snapshot',
+  description: 'The Plex TV library snapshot.',
+  check: (v) => fromChecks([{ label: 'has shows', ok: Array.isArray(v?.shows), actual: `${v?.shows?.length} show(s)` }]),
+  summary: (v) => `${v.shows.length} show(s)`,
+  items: (v) => v.shows.map((s) => ({ id: String(s.tmdbId), title: s.title })),
+});
+
+// stages/merge.job.ts
+export default defineStage({
+  name: 'tv-rec-merge',
+  inputs: {
+    snapshot: { artifact: tvSnapshot },                    // one producer
+    branches: { artifact: tvBranchSuggestions, many: true }, // fan-in: every producer
+  },
+  outputs: { recommendations: { artifact: tvRecommendations, location: () => cfg.recsOut } },
+  async run(ctx) {
+    const snapshot = ctx.input('snapshot').read();
+    const files = ctx.inputs('branches').map((b) => b.path);
+    ctx.output('recommendations').write(merge(snapshot, files));
+  },
+});
+```
+
+The rules, all checked when the registry loads (a violation stops the daemon):
+
+- **An input binds to a DIRECT dependency that outputs the same artifact key.** Exactly
+  one for a plain input, every one for a `many` (fan-in) input. `from` is only for
+  picking between several. To read something from further back, add the edge to the
+  manifest: the DAG on the dashboard is then the real data flow, with no hidden reads.
+- **Every edge carries data.** A `dependsOn` entry that feeds none of the stage's inputs
+  is an error.
+- **A workflow is all ports or all legacy** (`produces` / `consumes`). Both kinds run
+  side by side while workflows are migrated one at a time; a mix inside one is an error.
+
+What the engine then guarantees at run time:
+
+- **Inputs come from THIS run.** Before a stage is spawned, each input is resolved to
+  the artifact its producer committed in this workflow run and cycle (`run_artifacts`),
+  taken from the producer's final successful attempt only. A file left over from an
+  earlier run is never accepted in its place. The artifact must also still be what is on
+  disk (size and mtime, falling back to SHA-256): something else writing the file between
+  two stages fails the gate. Each verdict is recorded in `run_inputs`.
+- **"Succeeded" means "its outputs are committed".** Every declared output must be
+  committed on every run. `ctx.output(p).write(value)` checks the value first and writes
+  nothing if it fails; a stage that writes a file or directory itself is committed by an
+  end-of-run sweep; a declared output that was not written since the stage became ready
+  fails the stage. The daemon verifies the same thing again before recording success.
+- **Carrying forward is explicit.** An output marked `cumulative: true` is a store the
+  stage adds to over many runs (resolved ids, fetched pages); on a run with nothing new
+  it is recorded as carried forward (`fresh = 0`, shown as such). Any other output that
+  is deliberately left alone needs `ctx.output(p).unchanged(reason)`.
+- **A fan-in waits for everyone and gets everyone.** A stage runs only when every
+  dependency settled `success`; `ctx.inputs(port)` then returns one handle per producer,
+  in manifest order.
+
+Storage kinds: `jsonArtifact` (one JSON file), `fileArtifact` (any other file),
+`dirArtifact` (a directory of per-item files), `ledgerArtifact` (the data travels in
+the `work_items` ledger itself), `inlineArtifact` (a small value kept in the run record:
+use it for a stage whose only product is a count or a verdict, instead of writing a
+ledger row just to be visible).
+
+`ctx.run` gives the stage its identity (`runId`, `workflowRunId`, `workflowName`,
+`attempt`, `cycle`, `trigger`). `ctx.input(p).used(items)` reports which items of an
+input the stage actually used, when that is a subset worth showing.
+
+Testing a ports stage: `makeTestContext(def, { inputs })` from
+`src/core/testing/context.ts` builds a context with the inputs you give it and returns
+what the stage committed, with no workflow run, child process or database. The
+end-to-end behaviour is covered by `src/core/ports-e2e.test.ts`, which runs fixture
+stages in real child processes.
+
+**The ledger records what each run did, not just the latest state.** `markWorkItem`
+writes the cumulative `work_items` row and, in the same transaction, a per-run snapshot
+in `work_item_runs`: the status, attempts and detail THIS run recorded, which stage
+attempt wrote it (`run_id`), what it was made `from`, and whether it `changed` anything
+or merely re-recorded an identical row (in which case the detail is not stored again).
+Pass `from: { job, key? }` on a stage that turns one ledger item into another.
+
 ## File map
 
 | Path | Responsibility |
@@ -348,6 +436,13 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
 | `src/core/types.ts` | `JobDefinition`, `WorkflowDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
 | `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
 | `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled`; registers each cron from the **effective** (DB) schedule, and `rescheduleWorkflow(name, schedule)` re-registers it LIVE after a dashboard edit — no restart (T135) |
+| `src/core/ports.ts` | The stage contract: `ArtifactType` + its constructors (`jsonArtifact` / `fileArtifact` / `dirArtifact` / `ledgerArtifact` / `inlineArtifact`), `defineStage`, `StageContext`, and the pure binding + validation (`bindWorkflowPorts`, `validateWorkflowContracts`, `portGates`, `workflowMode`). No database, no I/O beyond an artifact's own `read` |
+| `src/core/stage-runtime.ts` | Child side of ports: builds a stage's context (`ctx.run` / `input` / `inputs` / `output`), records what it commits, and the end-of-run sweep that fails a stage with an uncommitted output |
+| `src/core/resolve-inputs.ts` | Daemon side of ports: `resolveInput` (this run's artifact, still intact on disk) and `uncommittedOutputs` |
+| `src/core/child-main.ts` | The body of the child process (`runJobProcess`); `src/runJob.ts` only supplies the registry lookup, so tests can run fixture stages through the same code |
+| `src/core/protocol.ts` | `ENGINE_PROTOCOL`: the child-protocol version the daemon passes to children |
+| `src/core/hash.ts` | SHA-256 of a file, and a listing fingerprint for a directory |
+| `src/core/testing/` | `context.ts` (`makeTestContext` for unit-testing a ports stage), `ports-fixtures.ts` + `fixture-runner.ts` (the fan-out / fan-in fixture workflow the end-to-end tests run in real child processes) |
 | `src/core/checkpoint.ts` | `createCheckpoint(save, { every })`: "save, then mark done". Holds an item-loop stage's ledger marks back until the hand-off file that carries those items' data has been saved, so a kill can never leave an item marked done whose data never reached the next stage. Used by the places stages |
 | `src/core/retention.ts` | Daily background sweep (daemon only) that trims per-run I/O detail of old runs via `pruneRunHistoryChunk` |
 | `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
@@ -1201,9 +1296,12 @@ doubt, log it.
   `src/workflows/CLAUDE.md` for the short, hard-requirement statement of this rule
   (every DAG edge needs a gate; a trivial `check(): { ok: true }` is an
   acceptable minimum) — it's the one that surfaces automatically when working
-  inside `src/workflows/`. This is now **mechanically enforced**:
-  `src/core/gate-coverage.test.ts` walks every workflow the registry loads and
-  fails `npm test` if any DAG edge is missing a matching gate. A job may
+  inside `src/workflows/`. This is **enforced at load**: the registry runs
+  `validateWorkflowContracts` on every workflow and refuses to start if a DAG edge has
+  no contract (for a ports workflow, an input fed by that edge; for a legacy one, a
+  shared `produces`/`consumes` key). `src/core/gate-coverage.test.ts` asserts the same
+  thing in the suite. The rest of this bullet describes the LEGACY `produces` /
+  `consumes` contracts; new and migrated workflows use ports (see "Ports" above). A job may
   declare `produces` and/or `consumes` — arrays of `ArtifactContract`
   (`{ key, description?, shape?, check() }`) in `src/core/types.ts`. For every workflow
   **edge** where the upstream `produces` a key the downstream `consumes`, the

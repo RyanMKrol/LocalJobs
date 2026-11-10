@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { buildDag, deriveGates } from './dag.js';
 import type { Dag } from './dag.js';
 import { jobs, workflows } from '../workflows/registry.js';
+import { validateWorkflowContracts } from './ports.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -46,29 +47,21 @@ function missingGateEdges(
 
 // ─────────────────────────── real-registry walk ───────────────────────────
 
-test('every workflow in the registry has a validation gate on every DAG edge', () => {
+test('every workflow in the registry has a contract on every DAG edge (ports binding, or a legacy gate)', () => {
+  // The SAME check the registry runs at load (`validateWorkflowContracts`): for a
+  // ports workflow every edge must carry a declared input the upstream stage
+  // really outputs; for a legacy one every edge needs a shared produces/consumes
+  // key. Asserted here too so a contract hole fails the suite with every problem
+  // listed, not just the first.
   const jobsByName = new Map(jobs.map((j) => [j.name, j]));
-
+  const problems: string[] = [];
   for (const workflow of workflows) {
-    const dag = buildDag(workflow.jobs);
-
-    const produces = new Map<string, string[]>();
-    const consumes = new Map<string, string[]>();
-    for (const name of dag.nodes) {
-      const job = jobsByName.get(name);
-      assert.ok(job, `workflow '${workflow.name}': member job '${name}' not found in registry`);
-      produces.set(name, (job.produces ?? []).map((c) => c.key));
-      consumes.set(name, (job.consumes ?? []).map((c) => c.key));
+    for (const ref of workflow.jobs) {
+      assert.ok(jobsByName.get(ref.job), `workflow '${workflow.name}': member job '${ref.job}' not found in registry`);
     }
-
-    const missing = missingGateEdges(dag, produces, consumes);
-    for (const { producer, consumer } of missing) {
-      assert.fail(
-        `workflow '${workflow.name}': edge ${producer} -> ${consumer} has NO matching produces/consumes ` +
-          `key — add a validation gate (see src/workflows/CLAUDE.md)`,
-      );
-    }
+    for (const e of validateWorkflowContracts(workflow, (n) => jobsByName.get(n))) problems.push(`workflow '${workflow.name}': ${e}`);
   }
+  assert.deepEqual(problems, [], `contract problems:\n${problems.join('\n')}\n(see src/workflows/CLAUDE.md)`);
 });
 
 // ─────────────────────────── synthetic trivial-minimum-bar test ───────────────────────────

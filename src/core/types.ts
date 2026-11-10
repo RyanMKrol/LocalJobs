@@ -1,3 +1,5 @@
+import type { InputPort, IoItem, OutputPort, StateDecl } from './ports.js';
+
 export type RunStatus =
   | 'running'
   | 'success'
@@ -155,6 +157,32 @@ export interface JobDefinition {
    * has no inputKeys() or if inputKeys() doesn't route through a service.
    */
   inputKeysService?: string;
+  /**
+   * PORTS (see `src/core/ports.ts`). Present, even when empty, on a job made by
+   * `defineStage`: that is how the engine tells a ports stage from a legacy one
+   * that uses `produces` / `consumes`. A workflow's stages are all one or the other.
+   *
+   * `inputs`: what this stage needs, by name. Each is bound at load to the direct
+   * dependency (or, for a `many` port, dependencies) that outputs the same artifact.
+   * `outputs`: what this stage commits, by name. Each must be committed every run.
+   */
+  inputs?: Record<string, InputPort>;
+  outputs?: Record<string, OutputPort>;
+  /** Persistent cross-run state this stage reads or writes: declared for visibility. */
+  state?: StateDecl[];
+  /** Ledger job names of OTHER workflows this stage reads (declared, checked to exist). */
+  reads?: string[];
+  /**
+   * How to show one of this stage's ledger items on the run page: its title, the
+   * fields worth seeing, and a file to preview. Given the item's recorded detail.
+   * Without it the row shows `detail.name` and nothing else.
+   */
+  describeItem?(detail: Record<string, unknown>, itemKey: string): Omit<IoItem, 'id'>;
+  /**
+   * Marks the stage whose items are the workflow's PRODUCT (what the workflow
+   * page's Output section lists) when that is not simply the final stage.
+   */
+  product?: boolean;
   run(ctx: JobContext): Promise<void>;
 }
 

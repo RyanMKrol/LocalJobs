@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS work_item_runs (
   input_job       TEXT,                    -- upstream ledger job this item was read from
   input_key       TEXT,                    -- upstream item key (defaults to item_key)
   at_ms           INTEGER,
+  changed         INTEGER,                 -- 1 = this run changed the item (new, or status/detail differ); 0 = re-recorded identical
   UNIQUE(workflow_run_id, job_name, item_key)
 );
 CREATE INDEX IF NOT EXISTS idx_work_item_runs_run ON work_item_runs(workflow_run_id);

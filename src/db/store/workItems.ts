@@ -77,70 +77,144 @@ function resolveRootKey(
   return itemKey;
 }
 
+/** The largest per-run detail snapshot kept verbatim; bigger ones keep only their display keys. */
+const SNAPSHOT_DETAIL_MAX = 16 * 1024;
+
+/** The detail to freeze on the per-run snapshot row (capped: see SNAPSHOT_DETAIL_MAX). */
+function snapshotDetail(detailJson: string | null, normalized: unknown): string | null {
+  if (detailJson === null || detailJson.length <= SNAPSHOT_DETAIL_MAX) return detailJson;
+  const d = (normalized && typeof normalized === 'object' && !Array.isArray(normalized) ? normalized : {}) as Record<string, unknown>;
+  const kept: Record<string, unknown> = { _truncated: true };
+  for (const k of ['name', 'title', 'markdown', 'path', 'format', 'error']) if (k in d) kept[k] = d[k];
+  return JSON.stringify(kept);
+}
+
+export interface MarkWorkItemOptions {
+  attempts?: number;
+  detail?: unknown;
+  rootKey?: string;
+  parentKey?: string;
+  parentJob?: string;
+  /**
+   * The upstream ledger item this item was made FROM: the job that recorded it
+   * and its key there (defaults to this item's own key). Recorded on the per-run
+   * snapshot so the run page can show, as this stage's inputs, exactly the
+   * upstream items it worked on this run, whenever those were themselves written.
+   */
+  from?: { job: string; key?: string };
+  /** Display title for the run page. Defaults to `detail.name` when that is a string. */
+  title?: string;
+  /**
+   * The workflow run advancing this item (T139). Defaults to the child's
+   * `LOCALJOBS_WORKFLOW_RUN_ID` env (set by the executor for every workflow
+   * member), so existing job call sites need no change. When present, a
+   * `work_item_runs` row is recorded so the run page can show what THIS run did;
+   * `null` (a standalone run) records nothing. Pass explicitly only for testing.
+   */
+  workflowRunId?: string | null;
+  /** The member run (stage attempt) writing this. Defaults to `LOCALJOBS_RUN_ID`. Tests only. */
+  runId?: string | null;
+}
+
 /**
  * Record (upsert) the outcome of processing a work item. `detail` is JSON-serialized.
  * Lineage opts (T094) are all optional + back-compatible: with none given the item
  * is its own root (`root_key = item_key`). Pass `rootKey` (or `parentKey`/`parentJob`
  * to inherit) only on a stage that changes keys or fans out, so a run-limit can
  * bound originating inputs and still run all their descendants.
+ *
+ * Two rows are written, in one transaction:
+ *  - `work_items`: the CUMULATIVE ledger, one row per (job, item), overwritten in
+ *    place. It answers "is this item done?".
+ *  - `work_item_runs`: a per-run SNAPSHOT, one row per (workflow run, job, item),
+ *    freezing what this run recorded (status, attempts, detail), which stage
+ *    attempt wrote it, what it was made from, and whether it `changed` anything
+ *    (a brand-new item, or a different status / attempts / detail) as opposed to
+ *    re-recording an identical row. It answers "what did THIS run do?", and stays
+ *    true after later runs overwrite the ledger row. The detail is stored only
+ *    when the row changed, so a stage that re-records a large unchanged catalogue
+ *    every run costs almost nothing.
  */
 export function markWorkItem(
   jobName: string,
   itemKey: string,
   status: WorkStatus,
-  opts: {
-    attempts?: number;
-    detail?: unknown;
-    rootKey?: string;
-    parentKey?: string;
-    parentJob?: string;
-    /**
-     * The workflow run advancing this item (T139). Defaults to the child's
-     * `LOCALJOBS_WORKFLOW_RUN_ID` env (set by the executor for every workflow
-     * member), so existing job call sites need no change. When present, a
-     * `work_item_runs` linkage row is recorded so the run page can scope its
-     * Input→Output panel to this run; `null` (a standalone run) records nothing.
-     * Pass explicitly only for testing.
-     */
-    workflowRunId?: string | null;
-  } = {},
+  opts: MarkWorkItemOptions = {},
 ): void {
   const normalizedDetail = normalizeDetailPaths(opts.detail);
   const detail = normalizedDetail === undefined ? null : JSON.stringify(normalizedDetail);
   const rootKey = resolveRootKey(jobName, itemKey, opts);
   const parentKey = opts.parentKey ?? null;
-  // The ledger row and its run-attribution row are written in ONE transaction: a
-  // process killed between the two used to leave an item the ledger said was done
-  // but no run was credited with, which the run page and the noop/stall checks
-  // then read as "this run did nothing".
-  db.transaction(() => {
-  db.prepare(`
-    INSERT INTO work_items (job_name, item_key, status, attempts, detail, root_key, parent_key)
-    VALUES (@job, @key, @status, @attempts, @detail, @root, @parent)
-    ON CONFLICT(job_name, item_key) DO UPDATE SET
-      status = excluded.status,
-      attempts = excluded.attempts,
-      detail = excluded.detail,
-      root_key = excluded.root_key,
-      parent_key = excluded.parent_key,
-      updated_at = datetime('now')
-  `).run({ job: jobName, key: itemKey, status, attempts: opts.attempts ?? 1, detail, root: rootKey, parent: parentKey });
+  const attempts = opts.attempts ?? 1;
+  const fromEnv = opts.workflowRunId === undefined;
+  const workflowRunId = fromEnv ? (process.env.LOCALJOBS_WORKFLOW_RUN_ID || null) : opts.workflowRunId;
+  const runId = opts.runId !== undefined ? opts.runId : fromEnv ? (process.env.LOCALJOBS_RUN_ID || null) : null;
+  const cycle = fromEnv && process.env.LOCALJOBS_RUN_CYCLE ? Number(process.env.LOCALJOBS_RUN_CYCLE) || null : null;
 
-  // Run→work-item attribution (T139): when this item was advanced inside a
-  // workflow run, record which run touched it (idempotent per run+item) so the
-  // run-page IO panel can be scoped to THIS run rather than the global ledger.
-  const workflowRunId = opts.workflowRunId === undefined
-    ? (process.env.LOCALJOBS_WORKFLOW_RUN_ID || null)
-    : opts.workflowRunId;
-  if (workflowRunId) {
+  // The ledger row and its per-run row are written in ONE transaction: a process
+  // killed between the two used to leave an item the ledger said was done but no
+  // run was credited with, which the run page and the noop/stall checks then read
+  // as "this run did nothing".
+  db.transaction(() => {
+    const prior = workflowRunId
+      ? (db.prepare('SELECT status, attempts, detail FROM work_items WHERE job_name = ? AND item_key = ?')
+          .get(jobName, itemKey) as { status: string; attempts: number; detail: string | null } | undefined)
+      : undefined;
+
     db.prepare(`
-      INSERT INTO work_item_runs (workflow_run_id, job_name, item_key, root_key)
-      VALUES (@run, @job, @key, @root)
+      INSERT INTO work_items (job_name, item_key, status, attempts, detail, root_key, parent_key)
+      VALUES (@job, @key, @status, @attempts, @detail, @root, @parent)
+      ON CONFLICT(job_name, item_key) DO UPDATE SET
+        status = excluded.status,
+        attempts = excluded.attempts,
+        detail = excluded.detail,
+        root_key = excluded.root_key,
+        parent_key = excluded.parent_key,
+        updated_at = datetime('now')
+    `).run({ job: jobName, key: itemKey, status, attempts, detail, root: rootKey, parent: parentKey });
+
+    if (!workflowRunId) return;
+    const changed = !prior || prior.status !== status || prior.attempts !== attempts || prior.detail !== detail;
+    const d = normalizedDetail as Record<string, unknown> | null | undefined;
+    const title = opts.title ?? (d && typeof d === 'object' && typeof d.name === 'string' ? d.name : null);
+    const inputJob = opts.from?.job ?? (opts.parentKey ? (opts.parentJob ?? jobName) : null);
+    const inputKey = opts.from ? (opts.from.key ?? itemKey) : (opts.parentKey ?? null);
+    // Within one run a later identical re-mark must not erase an earlier real
+    // change: `changed` only ever goes up, and the frozen detail is replaced only
+    // by a mark that itself changed something.
+    db.prepare(`
+      INSERT INTO work_item_runs (workflow_run_id, job_name, item_key, root_key, run_id, cycle, status, attempts,
+                                  detail, title, input_job, input_key, at_ms, changed)
+      VALUES (@wf, @job, @key, @root, @run, @cycle, @status, @attempts, @detail, @title, @inputJob, @inputKey, @at, @changed)
       ON CONFLICT(workflow_run_id, job_name, item_key) DO UPDATE SET
         root_key = excluded.root_key,
-        at = datetime('now')
-    `).run({ run: workflowRunId, job: jobName, key: itemKey, root: rootKey });
-  }
+        at = datetime('now'),
+        run_id = COALESCE(excluded.run_id, run_id),
+        cycle = COALESCE(excluded.cycle, cycle),
+        status = excluded.status,
+        attempts = excluded.attempts,
+        detail = CASE WHEN excluded.changed = 1 THEN excluded.detail ELSE detail END,
+        title = COALESCE(excluded.title, title),
+        input_job = COALESCE(excluded.input_job, input_job),
+        input_key = COALESCE(excluded.input_key, input_key),
+        at_ms = excluded.at_ms,
+        changed = MAX(COALESCE(changed, 0), excluded.changed)
+    `).run({
+      wf: workflowRunId,
+      job: jobName,
+      key: itemKey,
+      root: rootKey,
+      run: runId,
+      cycle,
+      status,
+      attempts,
+      detail: changed ? snapshotDetail(detail, normalizedDetail) : null,
+      title,
+      inputJob,
+      inputKey,
+      at: Date.now(),
+      changed: changed ? 1 : 0,
+    });
   })();
 }
 

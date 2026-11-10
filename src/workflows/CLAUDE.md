@@ -1,5 +1,25 @@
 # CLAUDE.md — src/workflows/
 
+## ✅ New and migrated stages use ports (2026-11)
+
+A stage declares what it reads and writes with `defineStage({ inputs, outputs, run })`
+(`src/core/ports.ts`), and the engine passes its inputs in, records its outputs, and
+checks both. See "Ports" in the root `CLAUDE.md` for the rules and the guarantees. In
+short:
+
+- Artifact types live in the workflow's `contracts.ts` (`jsonArtifact`, `dirArtifact`,
+  `ledgerArtifact`, `inlineArtifact`, …): the key, a `check(value)`, and `items(value)`
+  for display.
+- An input binds to the DIRECT dependency that outputs the same artifact key. Reading
+  something from further back means adding that edge to the manifest.
+- Every declared output must be committed every run. Mark a store that grows across runs
+  `cumulative: true`; otherwise an output that was not written this run fails the stage.
+- Never write a ledger row only so the run page has something to show. Declare an
+  `inlineArtifact` output instead.
+- A workflow is all ports or all legacy. The sections below about `produces` /
+  `consumes` gates describe the legacy form, which remains only until each workflow is
+  migrated.
+
 ## ✅ Every adjacent job pair needs a validation gate (non-negotiable)
 
 Every pair of adjacent jobs in every workflow's DAG — every `dependsOn` edge —

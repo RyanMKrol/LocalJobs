@@ -15,6 +15,7 @@ import {
   recordSettledRun,
   recordSkippedRun,
   rollUpWorkflowProgress,
+  runCommittedFreshArtifact,
   selectPendingRoots,
   setRunNoop,
   workflowProgressSignature,
@@ -24,6 +25,8 @@ import {
 } from '../db/store.js';
 import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
 import { config } from '../config.js';
+import { bindWorkflowPorts, isPortsJob, workflowMode, type PortBinding } from './ports.js';
+import { describeArtifact, resolveInput } from './resolve-inputs.js';
 import { abortableSleep, runJobForWorkflow } from './executor.js';
 import { notifyWorkflow } from './notifier.js';
 import type { GateResult, LogLevel, WorkflowDefinition, RunStatus } from './types.js';
@@ -341,6 +344,23 @@ async function runWorkflowInner(
   const inboundGates = new Map<string, Gate[]>();
   for (const g of gates) (inboundGates.get(g.consumer) ?? inboundGates.set(g.consumer, []).get(g.consumer)!).push(g);
 
+  // A PORTS workflow has no produces/consumes gates. Its boundaries are the port
+  // bindings: for each input of each stage, which upstream stage feeds it. Each is
+  // resolved (against what that producer committed in THIS run) just before the
+  // consumer runs. The registry validates the bindings at load; this is the same
+  // check again for a definition handed to runWorkflow directly (tests).
+  const mode = workflowMode(def, getJobDefinition);
+  const bound = mode === 'ports' ? bindWorkflowPorts(def, getJobDefinition) : null;
+  if (bound && bound.errors.length > 0) {
+    const id = createWorkflowRun(def.name, trigger);
+    addWorkflowLog(id, `Invalid workflow ports:\n${bound.errors.map((e) => `  • ${e}`).join('\n')}`, 'error');
+    finishWorkflowRun(id, 'failed', { endReason: `invalid workflow ports: ${bound.errors[0]}` });
+    return { workflowRunId: id };
+  }
+  const inboundBindings = new Map<string, PortBinding[]>();
+  for (const b of bound?.bindings ?? []) (inboundBindings.get(b.consumer) ?? inboundBindings.set(b.consumer, []).get(b.consumer)!).push(b);
+  const boundaryCount = bound ? bound.bindings.length : gates.length;
+
   const total = dag.nodes.length;
   const memberNames = def.jobs.map((j) => j.job);
   const minAttempts = def.minAttempts ?? 4;
@@ -408,7 +428,7 @@ async function runWorkflowInner(
   }
 
   try {
-  log(`Workflow "${def.name}" started · ${total} job(s) · ${gates.length} gate(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
+  log(`Workflow "${def.name}" started · ${total} job(s) · ${boundaryCount} ${bound ? 'input(s)' : 'gate(s)'} · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
   if (emptySelectionWarning) log(emptySelectionWarning, 'warn');
 
   // No-forward-progress detection across repeatUntilStable cycles (T112).
@@ -498,6 +518,34 @@ async function runWorkflowInner(
           const sample = verdict.sides.map((sd) => sd.result?.sample ?? sd.result?.detail).find(Boolean);
           log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${sample ? ` (${sample})` : ''}${suffix}`);
         }
+        // Ports: resolve every input to what its producer committed in THIS run and
+        // cycle, check it is still what is on disk, and record the verdict. All of
+        // them, even after one fails, for the same reason as the gates above.
+        for (const b of inboundBindings.get(job) ?? []) {
+          const gate: Gate = { key: b.artifactKey, producer: b.producer, consumer: b.consumer };
+          const t0 = Date.now();
+          const r = resolveInput(workflowRunId, cycle, b);
+          recordRunInput({
+            workflowRunId,
+            cycle,
+            jobName: job,
+            port: b.port,
+            producerJob: b.producer,
+            artifactKey: b.artifactKey,
+            artifactId: r.artifact?.id ?? null,
+            ok: r.ok,
+            reason: r.reason ?? null,
+            durationMs: Date.now() - t0,
+          });
+          if (!r.ok) {
+            const detail = `${gateFailurePrefix(gate)}: ${r.reason}`;
+            log(`⨯ input "${b.port}" of ${job} — ${detail}`, 'error');
+            failures.push({ gate, detail });
+            continue;
+          }
+          const what = r.artifact ? describeArtifact(r.artifact) : '';
+          log(`✓ input "${b.port}" of ${job} ← ${b.producer} · artifact "${b.artifactKey}"${what ? ` (${what})` : ''}`);
+        }
         const gateMs = Date.now() - gateStart;
         if (controller.signal.aborted) {
           recordNotStarted(job, workflowRunId, 'not started: the workflow run was cancelled during its gate checks', 'not-started-cancelled', { ...meta, gateMs });
@@ -522,7 +570,11 @@ async function runWorkflowInner(
         // instead of "success". The return value stays 'success' so executeDag
         // doesn't cascade-skip dependents — the noop is a per-stage annotation,
         // not a workflow-level failure.
-        if (status === 'success' && runId && isLimitableWorkflow && !hasJobAdvancedAnyItem(workflowRunId, job)) {
+        // A ports stage that committed an output with NEW content did something,
+        // whether or not it touched the ledger: nothing has to write a ledger row
+        // just to avoid being called a noop.
+        const producedSomething = isPortsJob(jd) && runCommittedFreshArtifact(runId ?? '');
+        if (status === 'success' && runId && isLimitableWorkflow && !producedSomething && !hasJobAdvancedAnyItem(workflowRunId, job)) {
           const stalledNow = jobSoftStoppedThisRun(workflowRunId, job);
           setRunNoop(runId, stalledNow ? 'stalled' : 'noop');
           noopJobs.add(job);

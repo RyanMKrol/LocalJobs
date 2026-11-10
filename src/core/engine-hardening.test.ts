@@ -28,6 +28,7 @@ import {
 } from '../db/store.js';
 import { cancelWorkflowRun, isWorkflowRunActive, runWorkflow } from './workflow-executor.js';
 import { retryDelayMs, runJobForWorkflow } from './executor.js';
+import { ENGINE_PROTOCOL } from './protocol.js';
 import type { JobDefinition, RunRow, WorkflowDefinition } from './types.js';
 
 let passed = 0;
@@ -315,7 +316,7 @@ try {
     const envRun = byJob(listRunsForWorkflowRun(workflowRunId!), 'env-rt')[0];
     const line = getLogs(envRun.id).map((l) => l.message).find((m) => m.startsWith('ENV '))!;
     assert.deepEqual(JSON.parse(line.slice(4)), {
-      engine: '2', runId: envRun.id, attempt: '1', cycle: '1', wf: 'eh-retry', wfRun: workflowRunId, trigger: 'manual',
+      engine: String(ENGINE_PROTOCOL), runId: envRun.id, attempt: '1', cycle: '1', wf: 'eh-retry', wfRun: workflowRunId, trigger: 'manual',
     });
   });
 

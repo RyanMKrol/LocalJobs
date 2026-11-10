@@ -353,7 +353,7 @@ test('engine v2: runs / workflow_runs / work_item_runs gain their columns, exist
   for (const c of ['end_reason', 'cycles', 'resumed_from']) {
     assert.ok(cols('workflow_runs').includes(c), `workflow_runs.${c} added`);
   }
-  for (const c of ['run_id', 'cycle', 'status', 'attempts', 'detail', 'title', 'input_job', 'input_key', 'at_ms']) {
+  for (const c of ['run_id', 'cycle', 'status', 'attempts', 'detail', 'title', 'input_job', 'input_key', 'at_ms', 'changed']) {
     assert.ok(cols('work_item_runs').includes(c), `work_item_runs.${c} added`);
   }
   const link = migrated.prepare("SELECT run_id, status, detail FROM work_item_runs WHERE workflow_run_id = 'wr-1'").get() as {

@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { type Gate, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
+import { portGates, workflowMode } from '../core/ports.js';
 import type { GateResult } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, isWorkflowStarting, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../core/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
@@ -400,6 +401,14 @@ function workflowView(name: string) {
  */
 function gatesForWorkflow(name: string): Gate[] {
   const refs = getWorkflowJobs(name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
+  // A ports workflow's gates are its input bindings (one per producer → consumer input).
+  if (workflowMode({ jobs: refs }, getJobDefinition) === 'ports') {
+    try {
+      return portGates({ name, jobs: refs }, getJobDefinition);
+    } catch {
+      return [];
+    }
+  }
   let dag;
   try {
     dag = buildDag(refs);

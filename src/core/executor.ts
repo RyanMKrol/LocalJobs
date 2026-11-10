@@ -12,17 +12,10 @@ import {
   setProgress,
   type RunMeta,
 } from '../db/store.js';
+import { isPortsJob } from './ports.js';
+import { ENGINE_PROTOCOL } from './protocol.js';
+import { uncommittedOutputs } from './resolve-inputs.js';
 import type { JobDefinition, JobEvent, RunStatus, RunTrigger } from './types.js';
-
-/**
- * The child-protocol version this daemon speaks. Passed to every child as
- * `LOCALJOBS_ENGINE`. Children are spawned with `tsx` straight from disk, so a
- * child always runs the code currently checked out, while the daemon keeps the
- * code it was started with until it is restarted. A stage that needs engine
- * support the running daemon does not have (it reads this) can therefore fail
- * with a clear "restart the daemon" message instead of half-working.
- */
-export const ENGINE_PROTOCOL = 2;
 
 /** Identity of the workflow run a member attempt belongs to, threaded to the child. */
 export interface MemberRunContext extends RunMeta {
@@ -90,7 +83,25 @@ async function runAttempts(
       gateMs: attempt === 1 ? ctx.gateMs : null,
     });
     lastRunId = runId;
-    const outcome = await executeAttempt(def.name, runId, timeoutMs, signal, workflowRunId, { ...ctx, attempt });
+    let outcome = await executeAttempt(def.name, runId, timeoutMs, signal, workflowRunId, { ...ctx, attempt });
+
+    // A ports stage commits every declared output before it exits, and its own
+    // process fails it if it did not. Checked again here, by the daemon, because
+    // this is the promise the next stage relies on: "succeeded" must mean "its
+    // outputs are recorded for this attempt".
+    if (outcome.status === 'success' && isPortsJob(def)) {
+      const missing = uncommittedOutputs(runId, def);
+      if (missing.length > 0) {
+        outcome = {
+          status: 'failed',
+          exitCode: outcome.exitCode,
+          error:
+            `stage reported success but recorded no committed artifact for its declared output(s): ${missing.join(', ')}. ` +
+            `If the stage's code changed since the daemon started, restart the daemon (scripts/safe-restart.sh).`,
+        };
+        addLog(runId, outcome.error!, 'error');
+      }
+    }
 
     if (outcome.status === 'success') {
       finishRun(runId, 'success', { exitCode: 0 });
@@ -179,6 +190,10 @@ function executeAttempt(
       LOCALJOBS_RUN_ID: runId,
       LOCALJOBS_RUN_ATTEMPT: String(ctx.attempt ?? 1),
       LOCALJOBS_RUN_CYCLE: String(ctx.cycle ?? 1),
+      // When the stage became ready this cycle: "written this run" for an output
+      // means written since then (so a retry attempt still counts the first
+      // attempt's writes).
+      LOCALJOBS_RUN_QUEUED_MS: String(ctx.queuedAtMs ?? Date.now()),
     };
     if (workflowRunId) env.LOCALJOBS_WORKFLOW_RUN_ID = workflowRunId;
     if (ctx.workflowName) env.LOCALJOBS_WORKFLOW_NAME = ctx.workflowName;
