@@ -1,8 +1,10 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stockDigestPortfolioContract, stockSectorsContract } from '../contracts.js';
+import { existsSync } from 'node:fs';
+import { defineStage } from '../../../engine/index.js';
+import { sectorsJsonPath } from '../config.js';
+import { digestPortfolio, sectors } from '../contracts.js';
 import { runStockSectorLookup } from './stock-sector-lookup.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stock-sector-lookup',
   description:
     'Resolves each currently-held ticker\'s industry classification via the Finnhub company-profile ' +
@@ -17,11 +19,27 @@ const job: JobDefinition = {
     'warning, and that run\'s digest simply omits the diversification section.',
   timeoutMs: 120_000,
   maxRetries: 3,
-  consumes: [stockDigestPortfolioContract()],
-  produces: [stockSectorsContract()],
+  inputs: { portfolio: { artifact: digestPortfolio } },
+  // A ticker is looked up once, so the map grows over many runs and a week with
+  // no new ticker carries it forward.
+  outputs: { sectors: { artifact: sectors, location: () => sectorsJsonPath, cumulative: true } },
+  describeItem: (d) => ({
+    title: String(d.name ?? ''),
+    fields: [
+      ...(typeof d.industry === 'string' ? [{ label: 'Industry', value: d.industry }] : []),
+      ...(typeof d.queriedSymbol === 'string' ? [{ label: 'Looked up as', value: d.queriedSymbol }] : []),
+      ...(typeof d.error === 'string' ? [{ label: 'Error', value: d.error.slice(0, 160) }] : []),
+    ],
+  }),
   async run(ctx) {
-    await runStockSectorLookup(ctx);
+    const out = ctx.output('sectors');
+    try {
+      await runStockSectorLookup(ctx, { portfolioPath: ctx.input('portfolio').path, outPath: out.path });
+    } finally {
+      // The stage returns early without writing when there is no FINNHUB_API_KEY
+      // or nothing is held. The map is still its output: with nothing ever
+      // resolved it is an empty one, which the digest reads as "no sector data".
+      if (!existsSync(out.path)) out.write({});
+    }
   },
-};
-
-export default job;
+});

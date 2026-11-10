@@ -147,107 +147,6 @@ const membersSkipped = members.map((m, i) => run({
   error: i === 0 ? null : `skipped: upstream ${members[0].job_name} did not succeed (skipped)`,
 }));
 
-const stocksMembers = [
-  { job_name: 'stocks-snapshot', depends_on: [] },
-  { job_name: 'stocks-watch', depends_on: ['stocks-snapshot'] },
-  { job_name: 'stocks-notify', depends_on: ['stocks-watch'] },
-];
-const stocksWorkflowRun = workflowRun({ id: 'stocks', workflow_name: 'stocks-sync' });
-const stocksRunJobs = stocksMembers.map((m, i) => run({
-  id: `stocks-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'stocks',
-}));
-
-// stock-digest — exercises StageIoPanel (decoupled inputs/outputs, T382 follow-up).
-// StageIoPanel is now (T386) the default for EVERY workflow's run-detail page, so this
-// fixture set proves the genuine fan-in shape it was originally built for.
-// A 3-stage fan-in DAG: stock-portfolio-snapshot -> both stock-sector-lookup AND
-// stock-digest-build. stock-sector-lookup's fixture deliberately has 3 output rows
-// (one failed) so the "no root_key collapsing" behaviour is actually visible.
-const stockDigestMembers = [
-  { job_name: 'stock-portfolio-snapshot', depends_on: [] },
-  { job_name: 'stock-sector-lookup', depends_on: ['stock-portfolio-snapshot'] },
-  { job_name: 'stock-digest-build', depends_on: ['stock-portfolio-snapshot', 'stock-sector-lookup'] },
-];
-const stockDigestWorkflowRun = workflowRun({ id: 'stock-digest-run', workflow_name: 'stock-digest' });
-const stockDigestRunJobs = stockDigestMembers.map((m, i) => run({
-  id: `stock-digest-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'stock-digest-run',
-}));
-const stockDigestSnapshotOutput = {
-  jobName: 'stock-portfolio-snapshot', itemKey: '2026-W27', status: 'success',
-  detail: { name: 'Portfolio snapshot — Week 27, 2026', positionCount: 9, totalValue: 307129.77, resolvedCount: 9 },
-};
-const stockDigestSectorOutputs = [
-  { jobName: 'stock-sector-lookup', itemKey: 'AMD_US_EQ', status: 'success', detail: { name: 'AMD_US_EQ', industry: 'Semiconductors', queriedSymbol: 'AMD' } },
-  { jobName: 'stock-sector-lookup', itemKey: 'AMZN_US_EQ', status: 'success', detail: { name: 'AMZN_US_EQ', industry: 'Retail', queriedSymbol: 'AMZN' } },
-  { jobName: 'stock-sector-lookup', itemKey: 'BRK_B_US_EQ', status: 'failed', detail: { name: 'BRK_B_US_EQ', queriedSymbol: 'BRK/B', error: 'Finnhub returned no finnhubIndustry field' } },
-];
-const stockDigestStageIo = {
-  'stock-portfolio-snapshot': { inputs: [], outputs: [stockDigestSnapshotOutput], predecessorJobs: [], job: 'stock-portfolio-snapshot' },
-  'stock-sector-lookup': { inputs: [stockDigestSnapshotOutput], outputs: stockDigestSectorOutputs, predecessorJobs: ['stock-portfolio-snapshot'], job: 'stock-sector-lookup' },
-  'stock-digest-build': {
-    inputs: [stockDigestSnapshotOutput, ...stockDigestSectorOutputs],
-    outputs: [{ jobName: 'stock-digest-build', itemKey: '2026-W27', status: 'success', detail: { name: 'Stock digest — Week 27, 2026', markdown: '/abs/data/out/stock-digest-2026-W27.md' } }],
-    predecessorJobs: ['stock-portfolio-snapshot', 'stock-sector-lookup'],
-    job: 'stock-digest-build',
-  },
-};
-// T385: the `overall=true` mode (T384) — root-wave inputs (stock-portfolio-snapshot's
-// own output, since it has no predecessor) and effective terminal-wave outputs
-// (stock-digest-build's report), independent of any single stage tab.
-const stockDigestStageIoOverall = {
-  inputs: [stockDigestSnapshotOutput],
-  outputs: [{ jobName: 'stock-digest-build', itemKey: '2026-W27', status: 'success', detail: { name: 'Stock digest — Week 27, 2026', markdown: '/abs/data/out/stock-digest-2026-W27.md' } }],
-  predecessorJobs: ['stock-portfolio-snapshot'],
-  outputJobs: ['stock-digest-build'],
-  job: '__overall__',
-};
-
-// T386: `places` — a STRICTLY-LINEAR 3-stage chain (places-resolve -> places-enrich ->
-// places-enrich-with-llm, no fan-out/fan-in at all), proving StageIoPanel against the
-// simplest multi-stage shape now that it's the default for every workflow. Reuses the
-// existing `/workflow-runs/1` run (workflow_name: 'places', `members` above).
-// T457: detail carries fields beyond `name` (mirroring the real resolve.ts/enrich.ts
-// `markWorkItem` calls) so the dashboard's per-item detail-hint pills are exercised.
-const placesResolveOutput = { jobName: 'places-resolve', itemKey: 'cid:' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', placeId: 'ChIJN1t_tDeuEmsRUsoyG83frY4' } };
-const placesEnrichOutput = { jobName: 'places-enrich', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name — enriched fields only', rating: 4.6, type: 'Restaurant', address: '221B Baker Street, London' } };
-const placesLlmOutput = { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', markdown: '/abs/data/out/' + LONG + '.md' } };
-// T458: a JSON-format (detail.path + format:'json', not detail.markdown) output item, so
-// visual-check exercises the OutputRenderer's real json renderer (pretty-printed, not
-// collapsed through the markdown viewer) on the Stage I/O popover.
-const PLACES_JSON_ITEM_KEY = 'place:json-summary';
-const placesLlmJsonOutput = {
-  jobName: 'places-enrich-with-llm', itemKey: PLACES_JSON_ITEM_KEY, status: 'success',
-  detail: { name: 'Enrichment summary (JSON)', path: '/abs/data/out/place-summary.json', format: 'json' },
-};
-// The GET .../output(-items)?...&key=<PLACES_JSON_ITEM_KEY> response body — a real
-// (unformatted) JSON string so the OutputRenderer json path's own pretty-printing
-// (JSON.stringify(..., null, 2)) is what's actually visible in the screenshot.
-const placesJsonOutputFixture = {
-  found: true, job: 'places-enrich-with-llm', key: PLACES_JSON_ITEM_KEY, format: 'json',
-  file: '/abs/data/out/place-summary.json', bytes: 256, truncated: false,
-  content: JSON.stringify({
-    name: 'A Resolved Place With A Long Name',
-    rating: 4.6,
-    tags: ['restaurant', 'italian'],
-    location: { lat: 51.5237, lng: -0.1586 },
-  }),
-};
-const placesStageIo = {
-  'places-resolve': { inputs: [], outputs: [placesResolveOutput], predecessorJobs: [], job: 'places-resolve' },
-  'places-enrich': { inputs: [placesResolveOutput], outputs: [placesEnrichOutput], predecessorJobs: ['places-resolve'], job: 'places-enrich' },
-  'places-enrich-with-llm': { inputs: [placesEnrichOutput], outputs: [placesLlmOutput, placesLlmJsonOutput], predecessorJobs: ['places-enrich'], job: 'places-enrich-with-llm' },
-};
-const placesStageIoOverall = {
-  inputs: [placesResolveOutput],
-  outputs: [placesLlmOutput, placesLlmJsonOutput],
-  predecessorJobs: ['places-resolve'],
-  outputJobs: ['places-enrich-with-llm'],
-  job: '__overall__',
-};
-
-// T386: a SINGLE-STAGE workflow (self-pairing — root wave AND terminal wave are the
-// SAME single job) — proves StageIoPanel doesn't crash/render nonsense when a stage is
-// simultaneously its own predecessor-less root and its own terminal output.
 // Builders for PORTS fixtures (a run page derived from what the engine recorded):
 // an artifact card, an input card, and one stage's Inputs & Outputs.
 let artifactSeq = 100;
@@ -305,6 +204,153 @@ function twoStagePortsFixtures({ stages: [first, second], firstArtifact, firstRo
     gates: [{ key: a.artifactKey, producer: first, consumer: second, state: 'passed' }],
   };
 }
+const stocksMembers = [
+  { job_name: 'stocks-fetch', depends_on: [] },
+  { job_name: 'stocks-resolve-names', depends_on: ['stocks-fetch'] },
+  { job_name: 'stocks-snapshot', depends_on: ['stocks-resolve-names'] },
+  { job_name: 'stocks-watch', depends_on: ['stocks-snapshot'] },
+  { job_name: 'stocks-notify', depends_on: ['stocks-watch'] },
+];
+const stocksWorkflowRun = workflowRun({ id: 'stocks', workflow_name: 'stocks-sync' });
+const stocksRunJobs = stocksMembers.map((m, i) => run({
+  id: `stocks-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'stocks',
+}));
+// stocks-sync on ports: five stages in a line. Its PRODUCT is the portfolio the third
+// stage writes (the stage is marked `product`), not anything the final notify stage does,
+// so the Overall tab's outputs are the snapshot's.
+const positionSample = [
+  { id: 'invest:AAPL_US_EQ', title: 'Apple Inc.', fields: [{ label: 'Ticker', value: 'AAPL_US_EQ' }, { label: 'Account', value: 'invest' }, { label: 'Value', value: '1983.20' }] },
+  { id: 'isa:VUSA_EQ', title: 'Vanguard S&P 500', fields: [{ label: 'Ticker', value: 'VUSA_EQ' }, { label: 'Account', value: 'isa' }, { label: 'Value', value: '4105.00' }] },
+];
+const stocksArt = {
+  raw: portsArtifact({ job: 'stocks-fetch', port: 'raw', artifactKey: 'stocks-raw-positions', description: 'The open positions as fetched from Trading212, tagged by account, before any name is resolved.', summary: '9 position(s)', itemCount: 9, bytes: 1_900, preview: { path: 'stocks-sync/data/out/raw-positions.json', format: 'json' }, sample: positionSample }),
+  named: portsArtifact({ job: 'stocks-resolve-names', port: 'named', artifactKey: 'stocks-named-positions', description: 'The positions with each company name filled in where Trading212 knows it. A missing name is allowed.', summary: '9 position(s), 9 named', itemCount: 9, bytes: 2_200, preview: { path: 'stocks-sync/data/out/named-positions.json', format: 'json' }, sample: positionSample }),
+  portfolio: portsArtifact({ job: 'stocks-snapshot', port: 'portfolio', artifactKey: 'stocks-portfolio', description: 'The portfolio snapshot: every open position with its quantity, prices and value.', summary: '9 position(s), total value 307129.77', itemCount: 9, bytes: 2_200, preview: { path: 'stocks-sync/data/out/portfolio.json', format: 'json' }, sample: positionSample }),
+  report: portsArtifact({ job: 'stocks-snapshot', port: 'report', artifactKey: 'stocks-portfolio-report', storage: 'file', format: 'markdown', description: 'The portfolio as a markdown table, one row per position with its gain since purchase.', bytes: 1_100, preview: { path: 'stocks-sync/data/out/portfolio.md', format: 'markdown' } }),
+  breaches: portsArtifact({ job: 'stocks-watch', port: 'breaches', artifactKey: 'stocks-fresh-breaches', description: 'The positions that newly crossed the gain threshold this run. Empty on a normal day.', summary: '1 fresh breach(es)', itemCount: 1, bytes: 140, preview: { path: 'stocks-sync/data/out/fresh-breaches.json', format: 'json' }, sample: [{ id: 'invest:AAPL_US_EQ', title: 'AAPL_US_EQ', fields: [{ label: 'Account', value: 'invest' }, { label: 'Gain', value: '32.2%' }] }] }),
+  digest: portsArtifact({ job: 'stocks-notify', port: 'digest', artifactKey: 'stocks-breach-digest', storage: 'inline', description: 'What this run announced: how many newly breaching positions were pushed, and which.', summary: '1 announced: AAPL_US_EQ', inline: { notified: 1, tickers: ['AAPL_US_EQ'] }, bytes: 44 }),
+};
+const stocksWatchRows = [
+  { id: 'stocks-watch:invest:AAPL_US_EQ', jobName: 'stocks-watch', itemKey: 'invest:AAPL_US_EQ', status: 'success', title: '[invest] AAPL_US_EQ', fields: [{ label: 'Gain', value: '32.2%' }, { label: 'Above threshold', value: 'yes' }] },
+  { id: 'stocks-watch:isa:VUSA_EQ', jobName: 'stocks-watch', itemKey: 'isa:VUSA_EQ', status: 'success', title: '[isa] VUSA_EQ', fields: [{ label: 'Gain', value: '-9.3%' }] },
+];
+const stocksStageIo = {
+  'stocks-fetch': portsIo('stocks-fetch', { outputArtifacts: [stocksArt.raw] }),
+  'stocks-resolve-names': portsIo('stocks-resolve-names', { predecessorJobs: ['stocks-fetch'], inputArtifacts: [asInput(stocksArt.raw, 'raw')], outputArtifacts: [stocksArt.named] }),
+  'stocks-snapshot': portsIo('stocks-snapshot', { predecessorJobs: ['stocks-resolve-names'], inputArtifacts: [asInput(stocksArt.named, 'named')], outputArtifacts: [stocksArt.portfolio, stocksArt.report] }),
+  'stocks-watch': portsIo('stocks-watch', { predecessorJobs: ['stocks-snapshot'], inputArtifacts: [asInput(stocksArt.portfolio, 'portfolio')], outputArtifacts: [stocksArt.breaches], outputs: stocksWatchRows, outputTotal: 2 }),
+  'stocks-notify': portsIo('stocks-notify', { predecessorJobs: ['stocks-watch'], inputArtifacts: [asInput(stocksArt.breaches, 'breaches')], outputArtifacts: [stocksArt.digest] }),
+};
+const stocksStageIoOverall = portsIo('__overall__', {
+  predecessorJobs: ['stocks-fetch'], outputJobs: ['stocks-snapshot'],
+  inputArtifacts: [stocksArt.raw], outputArtifacts: [stocksArt.portfolio, stocksArt.report],
+});
+const stocksGates = [
+  { key: 'stocks-raw-positions', producer: 'stocks-fetch', consumer: 'stocks-resolve-names', state: 'passed' },
+  { key: 'stocks-named-positions', producer: 'stocks-resolve-names', consumer: 'stocks-snapshot', state: 'passed' },
+  { key: 'stocks-portfolio', producer: 'stocks-snapshot', consumer: 'stocks-watch', state: 'passed' },
+  { key: 'stocks-fresh-breaches', producer: 'stocks-watch', consumer: 'stocks-notify', state: 'passed' },
+];
+
+// stock-digest — exercises StageIoPanel (decoupled inputs/outputs, T382 follow-up).
+// StageIoPanel is now (T386) the default for EVERY workflow's run-detail page, so this
+// fixture set proves the genuine fan-in shape it was originally built for.
+// A 4-stage diamond: stock-portfolio-snapshot feeds both stock-sector-lookup AND
+// stock-digest-build, and the build also takes the lookup's sector map.
+const stockDigestMembers = [
+  { job_name: 'stock-portfolio-fetch', depends_on: [] },
+  { job_name: 'stock-portfolio-snapshot', depends_on: ['stock-portfolio-fetch'] },
+  { job_name: 'stock-sector-lookup', depends_on: ['stock-portfolio-snapshot'] },
+  { job_name: 'stock-digest-build', depends_on: ['stock-portfolio-snapshot', 'stock-sector-lookup'] },
+];
+const stockDigestWorkflowRun = workflowRun({ id: 'stock-digest-run', workflow_name: 'stock-digest' });
+const stockDigestRunJobs = stockDigestMembers.map((m, i) => run({
+  id: `stock-digest-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'stock-digest-run',
+}));
+// On ports: the build stage shows TWO input cards from two different stages (the
+// portfolio from the snapshot, the sector map from the lookup). The lookup's items
+// include a failed one, with its error.
+const stockDigestArt = {
+  raw: portsArtifact({ job: 'stock-portfolio-fetch', port: 'raw', artifactKey: 'stock-raw-portfolio', description: 'The open positions as fetched from Trading212, before any ticker is resolved.', summary: '9 position(s)', itemCount: 9, bytes: 1_900, preview: { path: 'stock-digest/data/out/raw-portfolio.json', format: 'json' }, sample: positionSample }),
+  portfolio: portsArtifact({ job: 'stock-portfolio-snapshot', port: 'portfolio', artifactKey: 'stock-digest-portfolio', description: 'The positions with each real-world ticker resolved where possible. This is what the digest is written from.', summary: '9 position(s), 9 with a resolved ticker', itemCount: 9, bytes: 2_600, preview: { path: 'stock-digest/data/out/portfolio.json', format: 'json' }, sample: positionSample }),
+  sectors: portsArtifact({ job: 'stock-sector-lookup', port: 'sectors', artifactKey: 'stock-sectors', description: 'Each held ticker mapped to its industry, or null where none could be found. Grows as tickers are looked up.', summary: '9 ticker(s), 8 with an industry', itemCount: 9, bytes: 410, preview: { path: 'stock-digest/data/out/sectors.json', format: 'json' }, sample: [{ id: 'AMD_US_EQ', title: 'AMD_US_EQ', fields: [{ label: 'Industry', value: 'Semiconductors' }] }] }),
+  digests: portsArtifact({ job: 'stock-digest-build', port: 'digests', artifactKey: 'stock-digests', storage: 'dir', format: 'markdown', description: 'The weekly digests: stock-digest-<YYYY-Www>.md.', summary: '19 digest(s)', itemCount: 19 }),
+};
+const stockDigestSectorRows = [
+  { id: 'stock-sector-lookup:AMD_US_EQ', jobName: 'stock-sector-lookup', itemKey: 'AMD_US_EQ', status: 'success', title: 'AMD_US_EQ', fields: [{ label: 'Industry', value: 'Semiconductors' }, { label: 'Looked up as', value: 'AMD' }] },
+  { id: 'stock-sector-lookup:AMZN_US_EQ', jobName: 'stock-sector-lookup', itemKey: 'AMZN_US_EQ', status: 'success', title: 'AMZN_US_EQ', fields: [{ label: 'Industry', value: 'Retail' }, { label: 'Looked up as', value: 'AMZN' }] },
+  { id: 'stock-sector-lookup:BRK_B_US_EQ', jobName: 'stock-sector-lookup', itemKey: 'BRK_B_US_EQ', status: 'failed', title: 'BRK_B_US_EQ', fields: [{ label: 'Looked up as', value: 'BRK/B' }, { label: 'Error', value: 'Finnhub returned no finnhubIndustry field' }] },
+];
+const stockDigestBuildRows = [
+  { id: 'stock-digest-build:2026-W27', jobName: 'stock-digest-build', itemKey: '2026-W27', status: 'success', title: 'Stock digest — Week 27, 2026', fields: [], preview: { path: 'stock-digest/data/out/stock-digest-2026-W27.md', format: 'markdown' } },
+];
+const stockDigestStageIo = {
+  'stock-portfolio-fetch': portsIo('stock-portfolio-fetch', { outputArtifacts: [stockDigestArt.raw] }),
+  'stock-portfolio-snapshot': portsIo('stock-portfolio-snapshot', { predecessorJobs: ['stock-portfolio-fetch'], inputArtifacts: [asInput(stockDigestArt.raw, 'raw')], outputArtifacts: [stockDigestArt.portfolio] }),
+  'stock-sector-lookup': portsIo('stock-sector-lookup', { predecessorJobs: ['stock-portfolio-snapshot'], inputArtifacts: [asInput(stockDigestArt.portfolio, 'portfolio')], outputArtifacts: [stockDigestArt.sectors], outputs: stockDigestSectorRows, outputTotal: 3 }),
+  'stock-digest-build': portsIo('stock-digest-build', {
+    predecessorJobs: ['stock-portfolio-snapshot', 'stock-sector-lookup'],
+    inputArtifacts: [asInput(stockDigestArt.portfolio, 'portfolio'), asInput(stockDigestArt.sectors, 'sectors')],
+    outputArtifacts: [stockDigestArt.digests], outputs: stockDigestBuildRows, outputTotal: 1,
+  }),
+};
+const stockDigestStageIoOverall = portsIo('__overall__', {
+  predecessorJobs: ['stock-portfolio-fetch'], outputJobs: ['stock-digest-build'],
+  inputArtifacts: [stockDigestArt.raw], outputArtifacts: [stockDigestArt.digests], outputs: stockDigestBuildRows, outputTotal: 1,
+});
+const stockDigestGates = [
+  { key: 'stock-raw-portfolio', producer: 'stock-portfolio-fetch', consumer: 'stock-portfolio-snapshot', state: 'passed' },
+  { key: 'stock-digest-portfolio', producer: 'stock-portfolio-snapshot', consumer: 'stock-sector-lookup', state: 'passed' },
+  { key: 'stock-digest-portfolio', producer: 'stock-portfolio-snapshot', consumer: 'stock-digest-build', state: 'passed' },
+  { key: 'stock-sectors', producer: 'stock-sector-lookup', consumer: 'stock-digest-build', state: 'passed' },
+];
+
+// T386: `places` — a STRICTLY-LINEAR 3-stage chain (places-resolve -> places-enrich ->
+// places-enrich-with-llm, no fan-out/fan-in at all), proving StageIoPanel against the
+// simplest multi-stage shape now that it's the default for every workflow. Reuses the
+// existing `/workflow-runs/1` run (workflow_name: 'places', `members` above).
+// T457: detail carries fields beyond `name` (mirroring the real resolve.ts/enrich.ts
+// `markWorkItem` calls) so the dashboard's per-item detail-hint pills are exercised.
+const placesResolveOutput = { jobName: 'places-resolve', itemKey: 'cid:' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', placeId: 'ChIJN1t_tDeuEmsRUsoyG83frY4' } };
+const placesEnrichOutput = { jobName: 'places-enrich', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name — enriched fields only', rating: 4.6, type: 'Restaurant', address: '221B Baker Street, London' } };
+const placesLlmOutput = { jobName: 'places-enrich-with-llm', itemKey: 'place:ChIJ' + LONG, status: 'success', detail: { name: 'A Resolved Place With A Long Name', markdown: '/abs/data/out/' + LONG + '.md' } };
+// T458: a JSON-format (detail.path + format:'json', not detail.markdown) output item, so
+// visual-check exercises the OutputRenderer's real json renderer (pretty-printed, not
+// collapsed through the markdown viewer) on the Stage I/O popover.
+const PLACES_JSON_ITEM_KEY = 'place:json-summary';
+const placesLlmJsonOutput = {
+  jobName: 'places-enrich-with-llm', itemKey: PLACES_JSON_ITEM_KEY, status: 'success',
+  detail: { name: 'Enrichment summary (JSON)', path: '/abs/data/out/place-summary.json', format: 'json' },
+};
+// The GET .../output(-items)?...&key=<PLACES_JSON_ITEM_KEY> response body — a real
+// (unformatted) JSON string so the OutputRenderer json path's own pretty-printing
+// (JSON.stringify(..., null, 2)) is what's actually visible in the screenshot.
+const placesJsonOutputFixture = {
+  found: true, job: 'places-enrich-with-llm', key: PLACES_JSON_ITEM_KEY, format: 'json',
+  file: '/abs/data/out/place-summary.json', bytes: 256, truncated: false,
+  content: JSON.stringify({
+    name: 'A Resolved Place With A Long Name',
+    rating: 4.6,
+    tags: ['restaurant', 'italian'],
+    location: { lat: 51.5237, lng: -0.1586 },
+  }),
+};
+const placesStageIo = {
+  'places-resolve': { inputs: [], outputs: [placesResolveOutput], predecessorJobs: [], job: 'places-resolve' },
+  'places-enrich': { inputs: [placesResolveOutput], outputs: [placesEnrichOutput], predecessorJobs: ['places-resolve'], job: 'places-enrich' },
+  'places-enrich-with-llm': { inputs: [placesEnrichOutput], outputs: [placesLlmOutput, placesLlmJsonOutput], predecessorJobs: ['places-enrich'], job: 'places-enrich-with-llm' },
+};
+const placesStageIoOverall = {
+  inputs: [placesResolveOutput],
+  outputs: [placesLlmOutput, placesLlmJsonOutput],
+  predecessorJobs: ['places-resolve'],
+  outputJobs: ['places-enrich-with-llm'],
+  job: '__overall__',
+};
+
+// T386: a SINGLE-STAGE workflow (self-pairing — root wave AND terminal wave are the
+// SAME single job) — proves StageIoPanel doesn't crash/render nonsense when a stage is
+// simultaneously its own predecessor-less root and its own terminal output.
 const singleStageMembers = [{ job_name: 'claude-warm', depends_on: [] }];
 const singleStageWorkflowRun = workflowRun({ id: 'claude-warmer-run', workflow_name: 'claude-warmer', progress: 100 });
 const singleStageRunJobs = singleStageMembers.map((m, i) => run({
@@ -414,35 +460,6 @@ const movieRecsRunJobs = movieRecsMembers.map((m, i) => run({
   id: `movie-recs-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'movie-recs-run',
 }));
 
-// T387: `stocks-sync` StageIoPanel fixtures — proves the dashboard renders the `outputJob`
-// manifest-override (T348/T384) end to end: the DAG's true terminal stage `stocks-notify`
-// never records `work_items` rows (pure notify-trigger), so the "Overall" tab must show
-// `stocks-snapshot`'s ledger rows as Outputs, NOT an empty result from `stocks-notify`.
-const stocksSnapshotOutputs = [
-  { jobName: 'stocks-snapshot', itemKey: 'invest:AAPL', status: 'success', detail: { name: 'AAPL', currentPrice: 198.32, averageBuyPrice: 150.0 } },
-  { jobName: 'stocks-snapshot', itemKey: 'isa:VUSA', status: 'success', detail: { name: 'VUSA', currentPrice: 82.1, averageBuyPrice: 90.5 } },
-];
-const stocksWatchOutputs = [
-  { jobName: 'stocks-watch', itemKey: 'invest:AAPL', status: 'success', detail: { name: 'AAPL', gainPct: 32.2 } },
-  { jobName: 'stocks-watch', itemKey: 'isa:VUSA', status: 'success', detail: { name: 'VUSA', gainPct: -9.3 } },
-];
-const stocksNotifyOutputs = [
-  { jobName: 'stocks-notify', itemKey: 'invest:AAPL', status: 'success', detail: { name: 'AAPL — fresh breach notified' } },
-];
-const stocksStageIo = {
-  'stocks-snapshot': { inputs: [], outputs: stocksSnapshotOutputs, predecessorJobs: [], job: 'stocks-snapshot' },
-  'stocks-watch': { inputs: stocksSnapshotOutputs, outputs: stocksWatchOutputs, predecessorJobs: ['stocks-snapshot'], job: 'stocks-watch' },
-  'stocks-notify': { inputs: stocksWatchOutputs, outputs: stocksNotifyOutputs, predecessorJobs: ['stocks-watch'], job: 'stocks-notify' },
-};
-// `outputJob: 'stocks-snapshot'` (T348) — the Overall tab's outputs come from
-// stocks-snapshot, NOT the true terminal stocks-notify.
-const stocksStageIoOverall = {
-  inputs: stocksSnapshotOutputs,
-  outputs: stocksSnapshotOutputs,
-  predecessorJobs: ['stocks-snapshot'],
-  outputJobs: ['stocks-snapshot'],
-  job: '__overall__',
-};
 
 // T333: bumped to ~15 active rows too (same shared .movie-gaps-scroll/.panel CSS as movieRecs).
 const tvRecs = {
@@ -1208,13 +1225,13 @@ function fixtureForRaw(pathname, searchParams) {
     const job = searchParams?.get('job');
     return stocksStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
-  if (pathname === '/api/workflow-runs/stocks') return { run: stocksWorkflowRun, jobs: stocksRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/stocks') return { run: stocksWorkflowRun, jobs: stocksRunJobs, logs, gates: stocksGates };
   if (pathname === '/api/workflow-runs/stock-digest-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return stockDigestStageIoOverall;
     const job = searchParams?.get('job');
     return stockDigestStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
-  if (pathname === '/api/workflow-runs/stock-digest-run') return { run: stockDigestWorkflowRun, jobs: stockDigestRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/stock-digest-run') return { run: stockDigestWorkflowRun, jobs: stockDigestRunJobs, logs, gates: stockDigestGates };
   if (pathname === '/api/workflow-runs/1/stage-io') {
     if (searchParams?.get('overall') === 'true') return placesStageIoOverall;
     const job = searchParams?.get('job');
@@ -1889,8 +1906,8 @@ export const FLOWS = [
     path: '/workflow-runs/stock-digest-run',
     waitFor: ['.io-job-filter-bar'],
     actions: async (page) => {
-      await page.click('.io-job-filter-chip:text-is("stock-portfolio-snapshot")');
-      await page.waitForTimeout(400);
+      await page.click('.io-job-filter-chip:text-is("stock-digest-build")');
+      await page.waitForSelector('.stage-io-artifact', { timeout: 5000 });
     },
   },
   {
@@ -1952,11 +1969,10 @@ export const FLOWS = [
     },
   },
   {
-    // T387: stocks-sync's `outputJob` override (T348/T384) — confirms the "Overall" tab
-    // (StageIoPanel's default) shows stocks-snapshot's ledger rows as Outputs, not an
-    // empty result from the true terminal stocks-notify. This is also the PAGES baseline
-    // for /workflow-runs/stocks, captured again explicitly here for clarity.
-    name: 'stage-io-outputjob-override-overall',
+    // stocks-sync's product is its portfolio snapshot (the stage is marked `product`),
+    // not its final notify stage: the "Overall" tab shows the portfolio and its report
+    // as the workflow's outputs. (Before ports this was the `outputJob` override.)
+    name: 'stage-io-product-stage-overall',
     path: '/workflow-runs/stocks',
     waitFor: ['.io-job-filter-bar'],
   },

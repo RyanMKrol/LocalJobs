@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stocksFreshBreachesContract, stocksPortfolioContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { stocksSyncConfig } from '../config.js';
+import { freshBreaches, portfolio } from '../contracts.js';
 import { runStocksWatch } from './stocks-watch.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stocks-watch',
   description:
     'Reads the portfolio.json snapshot written by stocks-snapshot and, every run, computes each ' +
@@ -17,11 +18,17 @@ const job: JobDefinition = {
     'and push.',
   timeoutMs: 60_000,
   maxRetries: 3,
-  consumes: [stocksPortfolioContract()],
-  produces: [stocksFreshBreachesContract()],
+  inputs: { portfolio: { artifact: portfolio } },
+  // Written every run, and empty on a normal day.
+  outputs: { breaches: { artifact: freshBreaches, location: () => stocksSyncConfig.freshBreachesJsonPath } },
+  describeItem: (d) => ({
+    title: String(d.name ?? ''),
+    fields: [
+      ...(typeof d.gainPct === 'number' ? [{ label: 'Gain', value: `${d.gainPct.toFixed(1)}%` }] : []),
+      ...(d.breaching === true ? [{ label: 'Above threshold', value: 'yes' }] : []),
+    ],
+  }),
   async run(ctx) {
-    await runStocksWatch(ctx);
+    await runStocksWatch(ctx, { portfolioPath: ctx.input('portfolio').path, freshBreachesPath: ctx.output('breaches').path });
   },
-};
-
-export default job;
+});

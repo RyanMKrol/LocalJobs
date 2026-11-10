@@ -1,19 +1,18 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stocksNamedPositionsContract, stocksRawPositionsContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { stocksSyncConfig } from '../config.js';
+import { namedPositions, rawPositions } from '../contracts.js';
 import { runStocksResolveNames } from './stocks-resolve-names.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stocks-resolve-names',
   description:
     'Resolve each fetched position\'s company name from Trading212\'s own instruments-metadata ' +
     'endpoint (no OpenFIGI), then write data/out/named-positions.json for stocks-snapshot to read.',
   timeoutMs: 60_000,
   maxRetries: 3,
-  consumes: [stocksRawPositionsContract()],
-  produces: [stocksNamedPositionsContract()],
+  inputs: { raw: { artifact: rawPositions } },
+  outputs: { named: { artifact: namedPositions, location: () => stocksSyncConfig.namedPositionsJsonPath } },
   async run(ctx) {
-    await runStocksResolveNames(ctx);
+    await runStocksResolveNames(ctx, { readRawPositions: () => ctx.input('raw').read() });
   },
-};
-
-export default job;
+});

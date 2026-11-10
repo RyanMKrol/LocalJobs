@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stocksNamedPositionsContract, stocksPortfolioContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { stocksSyncConfig } from '../config.js';
+import { namedPositions, portfolio, portfolioReport } from '../contracts.js';
 import { runStocksSnapshot } from './stocks-snapshot.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stocks-snapshot',
   description:
     'Builds the human-readable portfolio snapshot from the named positions ' +
@@ -17,11 +18,15 @@ const job: JobDefinition = {
     'limitable from the dashboard\'s run-limit box.',
   timeoutMs: 60_000,
   maxRetries: 3,
-  consumes: [stocksNamedPositionsContract()],
-  produces: [stocksPortfolioContract()],
-  async run(ctx) {
-    await runStocksSnapshot(ctx);
+  inputs: { named: { artifact: namedPositions } },
+  outputs: {
+    portfolio: { artifact: portfolio, location: () => stocksSyncConfig.portfolioJsonPath },
+    report: { artifact: portfolioReport, location: () => stocksSyncConfig.portfolioMdPath },
   },
-};
-
-export default job;
+  // The portfolio is what this workflow is for. The two stages after it only
+  // watch it and, rarely, send a push.
+  product: true,
+  async run(ctx) {
+    await runStocksSnapshot(ctx, { readNamedPositions: () => ctx.input('named').read() });
+  },
+});

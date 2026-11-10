@@ -75,6 +75,26 @@ stoplist, e.g. `ISA`/`USD`/`ETF`) — logs one `warn:` line naming any found; ne
 outcome. Output: `data/out/stock-digest-<weekKey>.md` (ISO week key, e.g. `2026-W27`). Idempotent per
 ISO week via the `work_items` ledger — a manual re-run the same week regenerates that week's file.
 
+## How the stages hand data to each other (ports)
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `stock-portfolio-fetch` | none | `raw` (`stock-raw-portfolio`) |
+| `stock-portfolio-snapshot` | `raw` | `portfolio` (`stock-digest-portfolio`) |
+| `stock-sector-lookup` | `portfolio` | `sectors` (`stock-sectors`, cumulative) |
+| `stock-digest-build` | `portfolio` (from the snapshot), `sectors` (from the lookup) | `digests` (`stock-digests`, the folder of weekly markdown digests, cumulative) |
+
+The build stage is the fan-in: two inputs from two different stages, and it starts only when
+both have succeeded. The sector map is a store that grows (a ticker is looked up once); with
+no `FINNHUB_API_KEY`, or nothing resolved, the lookup stage commits an EMPTY map rather than
+writing nothing, and the digest reads that as "no sector data". It used to return without
+writing, and the build stage quietly used whatever file was there. The digests folder shares
+`data/out` with the other files, so its artifact type names its own files (`files`). Still to
+do: the per-week rows `stock-portfolio-fetch` and `stock-portfolio-snapshot` write are
+display-only and can go (their tests assert them, so they were left for a follow-up).
+
 ## Ledger lineage — all 4 stages share the same root key
 
 Every stage's `markWorkItem` call passes the **same** `weekKey(now)` (`lib.ts`) as `rootKey` — stages 1
@@ -94,7 +114,7 @@ the generic joined `IoPanel` this workflow was originally built to avoid is no l
 ## Files
 
 `config.ts` (`stockDigestConfig`, `reportPathFor`/`factsPathFor`/`sectorsJsonPath`/`portfolioJsonPath`/
-`rawPortfolioJsonPath`), `contracts.ts` (gate contracts for the 4 stage boundaries), `lib.ts`
+`rawPortfolioJsonPath`), `contracts.ts` (the artifact types the stages exchange), `lib.ts`
 (`weekLabel`; re-exports `weekKey` from the shared `src/core/dates.ts`, the single definition also
 used by `plex-space-saver`/`overrides-audit`). Credentials: `TRADING212_API_KEY_ID`/`_SECRET_KEY` (+ optional ISA pair),
 `FINNHUB_API_KEY`. Model: `STOCK_DIGEST_CLAUDE_MODEL` (default a Sonnet 5 id) at effort

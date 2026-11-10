@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stockDigestPortfolioContract, stockSectorsContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { stockDigestConfig } from '../config.js';
+import { digestPortfolio, digests, sectors } from '../contracts.js';
 import { runStockDigestBuild } from './stock-digest-build.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stock-digest-build',
   description:
     'Builds the weekly Claude-narrated markdown digest that is stock-digest\'s final output, fanning ' +
@@ -20,10 +21,16 @@ const job: JobDefinition = {
     'ledger, reading stock-digest\'s own portfolio snapshot independent of stocks-sync.',
   timeoutMs: 300_000,
   maxRetries: 3,
-  consumes: [stockDigestPortfolioContract(), stockSectorsContract()],
-  async run(ctx) {
-    await runStockDigestBuild(ctx);
+  // Two inputs from two different stages. This stage starts only when both the
+  // snapshot and the sector lookup have succeeded.
+  inputs: {
+    portfolio: { artifact: digestPortfolio },
+    sectors: { artifact: sectors },
   },
-};
-
-export default job;
+  // One digest per week. A run with nothing held, or one that hit a Claude usage
+  // limit, writes none and carries the folder forward.
+  outputs: { digests: { artifact: digests, location: () => stockDigestConfig.outDir, cumulative: true } },
+  async run(ctx) {
+    await runStockDigestBuild(ctx, { portfolioPath: ctx.input('portfolio').path, sectorsPath: ctx.input('sectors').path });
+  },
+});

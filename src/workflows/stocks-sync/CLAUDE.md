@@ -67,9 +67,28 @@ Runs daily (schedule editable from the dashboard). Services:
 `src/services/trading212.service.ts` (portfolio fetch) and
 `src/services/trading212-instruments.service.ts` (instruments-metadata lookup, T425).
 Credentials: `TRADING212_API_KEY_ID`, `TRADING212_API_SECRET_KEY` (+ optional
-`TRADING212_ISA_API_KEY_ID`/`_SECRET_KEY`). **`outputJob: 'stocks-snapshot'`**: the DAG's true terminal
-stage, `stocks-notify`, is a pure notify-trigger with no ledger rows of its own, so the workflow
-manifest points the unified Output section at `stocks-snapshot`'s ledger instead.
+`TRADING212_ISA_API_KEY_ID`/`_SECRET_KEY`). **The product stage is `stocks-snapshot`** (`product: true`): the DAG's final stage,
+`stocks-notify`, only sends a push now and then, so the dashboard's Output section shows what
+`stocks-snapshot` writes (the portfolio and its markdown report) instead.
+
+## How the stages hand data to each other (ports)
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `stocks-fetch` | none | `raw` (`stocks-raw-positions`) |
+| `stocks-resolve-names` | `raw` | `named` (`stocks-named-positions`) |
+| `stocks-snapshot` | `named` | `portfolio` (`stocks-portfolio`), `report` (`stocks-portfolio-report`, markdown) |
+| `stocks-watch` | `portfolio` | `breaches` (`stocks-fresh-breaches`, empty on a normal day) |
+| `stocks-notify` | `breaches` | `digest` (`stocks-breach-digest`, inline: what was announced) |
+
+Every output is rebuilt on every run, so each stage reads what the previous one committed in
+the same run, and a stage that returned without writing its file fails. An empty position list
+and an empty breach list are both valid. Still to do: the per-day ledger rows that
+`stocks-fetch`, `stocks-resolve-names` and `stocks-snapshot` write exist only for display and
+can go now that their outputs are declared (their tests assert them, so they were left for a
+follow-up). The `stocks-watch` ledger is real state (which positions have been announced).
 
 ## Distinct from `stock-digest`
 

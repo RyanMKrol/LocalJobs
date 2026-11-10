@@ -179,7 +179,11 @@ function ArtifactCardView(
           <span className="stage-io-artifact-port">{name}</span>
           <span className="stage-io-item-hint">{artifact.artifactKey}</span>
           {side === 'input' && <span className="stage-io-item-name">from {artifact.job}</span>}
-          {!committed && !artifact.fresh && !unresolved && <span className="stage-io-item-hint stage-io-hint-carried" title={artifact.note ?? undefined}>carried forward</span>}
+          {!committed && !artifact.fresh && !unresolved && (
+            artifact.note
+              ? <span className="stage-io-item-hint stage-io-hint-carried" title={artifact.note}>carried forward</span>
+              : <span className="stage-io-item-hint stage-io-hint-carried" title="Written this run, and identical to what it was before.">unchanged</span>
+          )}
           {committed && (
             <span className="stage-io-item-name">
               {artifact.job} · {artifact.fresh ? 'written' : 'last checked'} {new Date(artifact.committedAtMs).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}

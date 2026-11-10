@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stocksRawPositionsContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { stocksSyncConfig } from '../config.js';
+import { rawPositions } from '../contracts.js';
 import { runStocksFetch } from './stocks-fetch.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stocks-fetch',
   description:
     'The first stage of the stocks-sync workflow: calls the Trading212 Invest portfolio ' +
@@ -18,10 +19,9 @@ const job: JobDefinition = {
     'stale no-op.',
   timeoutMs: 60_000,
   maxRetries: 3,
-  produces: [stocksRawPositionsContract()],
+  // Fetched afresh from Trading212 (read-only) on every run.
+  outputs: { raw: { artifact: rawPositions, location: () => stocksSyncConfig.rawPositionsJsonPath } },
   async run(ctx) {
     await runStocksFetch(ctx);
   },
-};
-
-export default job;
+});

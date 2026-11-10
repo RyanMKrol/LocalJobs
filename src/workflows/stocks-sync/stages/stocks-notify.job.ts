@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stocksFreshBreachesContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { breachDigest, freshBreaches } from '../contracts.js';
 import { runStocksNotify } from './stocks-notify.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stocks-notify',
   description:
     'The terminal stage of the stocks-sync DAG: reads data/out/fresh-breaches.json written by ' +
@@ -16,10 +16,13 @@ const job: JobDefinition = {
     '(outputJob).',
   timeoutMs: 60_000,
   maxRetries: 3,
-  consumes: [stocksFreshBreachesContract()],
+  inputs: { breaches: { artifact: freshBreaches } },
+  outputs: { digest: { artifact: breachDigest } },
   async run(ctx) {
-    await runStocksNotify(ctx);
+    const breaches = ctx.input('breaches');
+    await runStocksNotify(ctx, { freshBreachesPath: breaches.path });
+    // Reaching here means the push (if there was anything to push) went out.
+    const sent = breaches.read();
+    ctx.output('digest').write({ notified: sent.length, tickers: sent.map((b) => (b.account === 'isa' ? `${b.ticker} (ISA)` : b.ticker)) });
   },
-};
-
-export default job;
+});

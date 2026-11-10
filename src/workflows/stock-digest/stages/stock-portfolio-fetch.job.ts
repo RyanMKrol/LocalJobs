@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stockRawPortfolioContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { rawPortfolioJsonPath } from '../config.js';
+import { rawPortfolio } from '../contracts.js';
 import { runStockPortfolioFetch } from './stock-portfolio-fetch.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stock-portfolio-fetch',
   description:
     'Fetch stock-digest\'s OWN current open equity positions from Trading212 Invest (and ISA, ' +
@@ -10,10 +11,9 @@ const job: JobDefinition = {
     'stock-portfolio-snapshot to resolve. No ISIN/OpenFIGI resolution here.',
   timeoutMs: 60_000,
   maxRetries: 3,
-  produces: [stockRawPortfolioContract()],
+  // Fetched afresh from Trading212 (read-only) on every run.
+  outputs: { raw: { artifact: rawPortfolio, location: () => rawPortfolioJsonPath } },
   async run(ctx) {
     await runStockPortfolioFetch(ctx);
   },
-};
-
-export default job;
+});

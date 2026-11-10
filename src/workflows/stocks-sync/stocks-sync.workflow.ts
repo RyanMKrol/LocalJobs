@@ -47,12 +47,9 @@ import type { WorkflowDefinition } from '../../core/types.js';
  *
  * Runs daily (schedule editable from the dashboard).
  *
- * `outputJob: 'stocks-snapshot'` (T348, unaffected by the fetch/resolve split below since the
- * name didn't move): the DAG's terminal stage, `stocks-notify`, is a pure notify-trigger that
- * structurally never records work_items rows, so the unified Output section (T205, which by
- * default reads the terminal wave) would always show empty. `stocks-snapshot` is the stage with
- * real per-item output (the resolved-ticker positions — the genuinely user-facing "snapshot"),
- * so the Output section is overridden to read from it instead.
+ * The workflow's PRODUCT is the portfolio `stocks-snapshot` writes, not anything the final
+ * notify stage does, so that stage is marked `product: true` and the dashboard's Output
+ * section shows the portfolio and its report. (This replaced the `outputJob` override.)
  */
 const workflow: WorkflowDefinition = {
   name: 'stocks-sync',
@@ -64,7 +61,6 @@ const workflow: WorkflowDefinition = {
   idempotencyNote: 'This workflow re-checks your full portfolio fresh every run (nothing is skipped) and only tracks which price-breach alerts have already been sent, so you\'re never re-alerted about the same breach until it resets by dropping back below the threshold first.',
   schedule: '0 7 * * *',
   maxConcurrency: 1,
-  outputJob: 'stocks-snapshot',
   jobs: [
     { job: 'stocks-fetch' },
     { job: 'stocks-resolve-names', dependsOn: ['stocks-fetch'] },

@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { stockDigestPortfolioContract, stockRawPortfolioContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { portfolioJsonPath } from '../config.js';
+import { digestPortfolio, rawPortfolio } from '../contracts.js';
 import { runStockPortfolioSnapshot } from './stock-portfolio-snapshot.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'stock-portfolio-snapshot',
   description:
     'The second of stock-digest\'s two Trading212 stages, reading the raw combined Invest+ISA ' +
@@ -17,11 +18,9 @@ const job: JobDefinition = {
     'when the upstream fetch returned no positions or credentials are unset.',
   timeoutMs: 60_000,
   maxRetries: 3,
-  consumes: [stockRawPortfolioContract()],
-  produces: [stockDigestPortfolioContract()],
+  inputs: { raw: { artifact: rawPortfolio } },
+  outputs: { portfolio: { artifact: digestPortfolio, location: () => portfolioJsonPath } },
   async run(ctx) {
-    await runStockPortfolioSnapshot(ctx);
+    await runStockPortfolioSnapshot(ctx, { readRawPortfolio: () => ctx.input('raw').read() });
   },
-};
-
-export default job;
+});
