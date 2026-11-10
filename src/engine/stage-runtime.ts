@@ -208,7 +208,10 @@ export function createStageRuntime(
     let fresh: boolean;
     if (extra.carried) fresh = false;
     else if (artifact.storage === 'ledger') {
-      fresh = !!db.prepare('SELECT 1 FROM work_item_runs WHERE run_id = ? AND job_name = ? AND changed = 1 LIMIT 1').get(identity.runId, location);
+      // (A `skipped` row is a soft stop, not new content.)
+      fresh = !!db.prepare(
+        "SELECT 1 FROM work_item_runs WHERE run_id = ? AND job_name = ? AND changed = 1 AND COALESCE(status, '') <> 'skipped' LIMIT 1",
+      ).get(identity.runId, location);
     } else {
       const prev = previousArtifactSha(def.name, port, identity.runId);
       fresh = prev === null || prev !== sha256;

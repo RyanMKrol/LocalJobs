@@ -240,6 +240,33 @@ export function runCommittedFreshArtifact(runId: string): boolean {
   return !!db.prepare('SELECT 1 FROM run_artifacts WHERE run_id = ? AND fresh = 1 AND ok = 1 LIMIT 1').get(runId);
 }
 
+/**
+ * Did this attempt CHANGE any ledger item (a new item, or a different status /
+ * attempts / detail), other than recording a soft stop? Re-recording an
+ * unchanged row is not work, and neither is a `skipped` row (the stage saying it
+ * could not start an item).
+ */
+export function runChangedAnyItem(runId: string): boolean {
+  return !!db.prepare(
+    "SELECT 1 FROM work_item_runs WHERE run_id = ? AND changed = 1 AND COALESCE(status, '') <> 'skipped' LIMIT 1",
+  ).get(runId);
+}
+
+/** Did this attempt record a soft stop (a `skipped` item: it had work it could not start)? */
+export function runSoftStopped(runId: string): boolean {
+  return !!db.prepare("SELECT 1 FROM work_item_runs WHERE run_id = ? AND status = 'skipped' LIMIT 1").get(runId);
+}
+
+/** Did any stage of this workflow run do anything: commit new content, or change a ledger item? */
+export function workflowRunDidWork(workflowRunId: string): boolean {
+  return (
+    !!db.prepare('SELECT 1 FROM run_artifacts WHERE workflow_run_id = ? AND fresh = 1 AND ok = 1 LIMIT 1').get(workflowRunId) ||
+    !!db.prepare(
+      "SELECT 1 FROM work_item_runs WHERE workflow_run_id = ? AND changed = 1 AND COALESCE(status, '') <> 'skipped' LIMIT 1",
+    ).get(workflowRunId)
+  );
+}
+
 /** Record which items of an input a stage reported it actually used. */
 export function setRunInputUsed(
   workflowRunId: string,

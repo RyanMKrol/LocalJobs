@@ -14,15 +14,15 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { acceptAny, defineStage, inlineArtifact, jsonArtifact } from '../engine/ports.js';
-import type { JobDefinition, WorkflowDefinition } from '../core/types.js';
+import { acceptAny, defineStage, inlineArtifact, jsonArtifact } from './ports.js';
+import type { JobDefinition, WorkflowDefinition } from './types.js';
 import {
   createRun, createWorkflowRun, finishRun, getWorkflowRun, markWorkItem, recordRunArtifact, recordRunInput,
   setRunInputUsed, syncJob, syncWorkflow,
 } from '../db/store.js';
-import { sha256File } from '../engine/hash.js';
+import { sha256File } from './hash.js';
 import { statSync } from 'node:fs';
-import { OVERALL, artifactItems, stageIo } from './stage-io.js';
+import { OVERALL, artifactItems, stageIo } from './reporting.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'lj-stageio-'));
 const page = { limit: 100, inputsOffset: 0, outputsOffset: 0 };

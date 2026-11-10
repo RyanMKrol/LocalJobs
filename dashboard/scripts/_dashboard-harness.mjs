@@ -974,7 +974,7 @@ const mediaReviewsStageIoOverall = {
  * `preview`) that the server builds. Most fixtures in this file were written as
  * raw ledger rows (`{ jobName, itemKey, status, detail }`), which is what a
  * LEGACY (pre-ports) run looks like before the server maps it. This applies the
- * same frozen legacy mapping the API does (`legacyRow` in src/api/stage-io.ts),
+ * same frozen legacy mapping the API does (`legacyRow` in src/engine/reporting.ts),
  * so those fixtures stay honest: title from `detail.name`, up to four scalar
  * keys as fields, preview from `detail.markdown` / `detail.path`. A fixture that
  * already declares `mode` (a ports fixture) passes through untouched.

@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { type Gate, type GateStatus, buildDag, classifyGates, deriveGates, shapesIdentical } from '../engine/dag.js';
 import { portGates, workflowMode } from '../engine/ports.js';
-import { OVERALL, artifactItems, stageIo } from './stage-io.js';
+import { OVERALL, artifactItems, stageIo } from '../engine/reporting.js';
 import type { GateResult, RunRow } from '../core/types.js';
 import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, isWorkflowStarting, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../engine/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';

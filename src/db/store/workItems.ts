@@ -141,6 +141,39 @@ export function markWorkItem(
   status: WorkStatus,
   opts: MarkWorkItemOptions = {},
 ): void {
+  db.transaction(() => { writeWorkItem(jobName, itemKey, status, opts); }).immediate();
+}
+
+/** What one ledger write did, for callers that tally (`markWorkItems`). */
+export type WorkItemWrite = 'added' | 'changed' | 'unchanged';
+
+/**
+ * Record MANY items for one job in batched transactions (one write lock per
+ * `chunk` items, not one per item). For a stage that re-records a whole snapshot
+ * every run (tens of thousands of rows), this is the difference between tens of
+ * thousands of separate commits and a few dozen. Same semantics per item as
+ * `markWorkItem`. Returns how many rows were new, changed, or identical.
+ */
+export function markWorkItems(
+  jobName: string,
+  entries: Array<{ key: string; status: WorkStatus } & MarkWorkItemOptions>,
+  chunk = 500,
+): { added: number; changed: number; unchanged: number } {
+  const tally = { added: 0, changed: 0, unchanged: 0 };
+  const write = db.transaction((batch: typeof entries) => {
+    for (const { key, status, ...opts } of batch) tally[writeWorkItem(jobName, key, status, opts)]++;
+  });
+  for (let i = 0; i < entries.length; i += chunk) write.immediate(entries.slice(i, i + chunk));
+  return tally;
+}
+
+/** The body of a ledger write. MUST be called inside an IMMEDIATE transaction. */
+function writeWorkItem(
+  jobName: string,
+  itemKey: string,
+  status: WorkStatus,
+  opts: MarkWorkItemOptions,
+): WorkItemWrite {
   const normalizedDetail = normalizeDetailPaths(opts.detail);
   const detail = normalizedDetail === undefined ? null : JSON.stringify(normalizedDetail);
   const rootKey = resolveRootKey(jobName, itemKey, opts);
@@ -156,18 +189,19 @@ export function markWorkItem(
   // run was credited with, which the run page and the noop/stall checks then read
   // as "this run did nothing".
   //
-  // IMMEDIATE, not the default deferred: this transaction reads the item's prior
-  // state before writing. A deferred transaction starts as a reader, and if any
-  // other process commits before its first write, the upgrade to a writer fails at
-  // once with "database is locked" (a stale snapshot cannot be waited out, so the
-  // busy timeout does not apply). Several job processes and the daemon write this
-  // file at the same time, so that is a certainty, not an edge case. Taking the
-  // write lock up front makes the busy timeout apply. See concurrent-writers.test.ts.
-  db.transaction(() => {
-    const prior = workflowRunId
-      ? (db.prepare('SELECT status, attempts, detail FROM work_items WHERE job_name = ? AND item_key = ?')
-          .get(jobName, itemKey) as { status: string; attempts: number; detail: string | null } | undefined)
-      : undefined;
+  // IMMEDIATE, not the default deferred (see the callers): this reads the item's
+  // prior state before writing. A deferred transaction starts as a reader, and if
+  // any other process commits before its first write, the upgrade to a writer
+  // fails at once with "database is locked" (a stale snapshot cannot be waited
+  // out, so the busy timeout does not apply). Several job processes and the daemon
+  // write this file at the same time, so that is a certainty, not an edge case.
+  // Taking the write lock up front makes the busy timeout apply. See
+  // concurrent-writers.test.ts.
+  {
+    const prior = db.prepare('SELECT status, attempts, detail FROM work_items WHERE job_name = ? AND item_key = ?')
+      .get(jobName, itemKey) as { status: string; attempts: number; detail: string | null } | undefined;
+    const changed = !prior || prior.status !== status || prior.attempts !== attempts || prior.detail !== detail;
+    const outcome: WorkItemWrite = !prior ? 'added' : changed ? 'changed' : 'unchanged';
 
     db.prepare(`
       INSERT INTO work_items (job_name, item_key, status, attempts, detail, root_key, parent_key)
@@ -181,8 +215,7 @@ export function markWorkItem(
         updated_at = datetime('now')
     `).run({ job: jobName, key: itemKey, status, attempts, detail, root: rootKey, parent: parentKey });
 
-    if (!workflowRunId) return;
-    const changed = !prior || prior.status !== status || prior.attempts !== attempts || prior.detail !== detail;
+    if (!workflowRunId) return outcome;
     const d = normalizedDetail as Record<string, unknown> | null | undefined;
     const title = opts.title ?? (d && typeof d === 'object' && typeof d.name === 'string' ? d.name : null);
     const inputJob = opts.from?.job ?? (opts.parentKey ? (opts.parentJob ?? jobName) : null);
@@ -223,7 +256,8 @@ export function markWorkItem(
       at: Date.now(),
       changed: changed ? 1 : 0,
     });
-  }).immediate();
+    return outcome;
+  }
 }
 
 /**

@@ -1,32 +1,18 @@
-// Fixture stages for the ports end-to-end tests: a small fan-out / fan-in
-// workflow whose stages REALLY run, in real child processes, through the same
-// runtime as production stages (see fixture-runner.ts).
+// SCENARIO: fan-out and fan-in, plus a cumulative store.
 //
 //   px-src ──▶ px-b1 ─┐
 //          ──▶ px-b2 ─┼──▶ px-merge ──▶ px-report
 //          ──▶ px-b3 ─┘        ▲
 //          └───────────────────┘   (merge also reads the source directly)
 //
-// All files live under the directory in LJ_FIXTURE_DIR. A stage's behaviour for a
-// run is steered by `control.json` there ({ "<stage>": "<mode>" }), so a test can
-// make one branch misbehave without different code.
+// Three branches each transform the source; the merge takes all three through
+// ONE fan-in port and the source through a second port; the report reads the
+// merge and commits a small inline value. A branch can be made to misbehave for a
+// run through the scenario control file.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { acceptAny, defineStage, fromChecks, inlineArtifact, jsonArtifact } from '../ports.js';
+import { inScenario as at, scenarioMode as mode } from '../testing/scenario.js';
 import type { JobDefinition, WorkflowDefinition } from '../types.js';
-
-const dir = (): string => {
-  const d = process.env.LJ_FIXTURE_DIR;
-  if (!d) throw new Error('LJ_FIXTURE_DIR is not set');
-  return d;
-};
-const at = (name: string) => () => join(dir(), name);
-/** What a stage should do this run: 'ok' unless control.json says otherwise. */
-const mode = (stage: string): string => {
-  const f = join(dir(), 'control.json');
-  if (!existsSync(f)) return 'ok';
-  return (JSON.parse(readFileSync(f, 'utf8')) as Record<string, string>)[stage] ?? 'ok';
-};
 
 export interface SourceData { run: string; items: string[] }
 export interface PartData { branch: string; from: string; upper: string[] }
@@ -164,7 +150,7 @@ const reader = defineStage({
   },
 });
 
-export const fixtureJobs: JobDefinition[] = [src, branch('px-b1'), branch('px-b2'), branch('px-b3'), merge, report, store, reader];
+export const jobs: JobDefinition[] = [src, branch('px-b1'), branch('px-b2'), branch('px-b3'), merge, report, store, reader];
 
 export const fanInWorkflow: WorkflowDefinition = {
   name: 'px-fan-in',

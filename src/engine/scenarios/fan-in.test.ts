@@ -1,6 +1,5 @@
-// Ports, end to end: a fan-out / fan-in workflow whose stages REALLY run, each in
-// its own child process, through the production child runtime. These are the
-// guarantees the ports model exists to give.
+// SCENARIO: fan-out and fan-in. Stages REALLY run, each in its own child process,
+// through the production child runtime. These are the guarantees ports give:
 //
 //   1. Inputs are passed in: each stage reads what its producer committed.
 //   2. A fan-in receives every branch, and waits for all of them.
@@ -12,22 +11,19 @@
 //   7. A cumulative store with nothing new is carried forward, visibly.
 //   8. Everything a stage read and wrote is recorded for the run.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { config } from '../config.js';
-import { jobs, notifications } from './testing/fixture-host.js';
 import {
   artifactsForRun, artifactsForWorkflowRun, getWorkflowLogs, getWorkflowRun, listRunsForWorkflowRun,
-  producedArtifact, resolvedInputsForStage, syncJob, syncWorkflow,
-} from '../db/store.js';
-import { bindWorkflowPorts } from './ports.js';
-import { resolveInput, uncommittedOutputs } from './resolve-inputs.js';
-import { assertDaemonSupportsPorts } from './stage-runtime.js';
-import { fanInWorkflow, fixtureJobs, storeWorkflow, type MergedData } from './testing/ports-fixtures.js';
-import { runWorkflow } from './workflow-executor.js';
-import type { RunRow } from './types.js';
+  producedArtifact, resolvedInputsForStage,
+} from '../../db/store.js';
+import { bindWorkflowPorts } from '../ports.js';
+import { resolveInput, uncommittedOutputs } from '../resolve-inputs.js';
+import { assertDaemonSupportsPorts } from '../stage-runtime.js';
+import { setupScenario } from '../testing/scenario.js';
+import { runWorkflow } from '../workflow-executor.js';
+import type { RunRow } from '../types.js';
+import { fanInWorkflow, jobs as fixtureJobs, storeWorkflow, type MergedData } from './fan-in.scenario.js';
 
 let passed = 0;
 async function test(name: string, fn: () => Promise<void>) {
@@ -41,23 +37,10 @@ async function test(name: string, fn: () => Promise<void>) {
   }
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'lj-ports-'));
-const orig = { script: config.runJobScript, topic: config.ntfyTopic };
-config.runJobScript = fileURLToPath(new URL('./testing/fixture-runner.ts', import.meta.url));
-config.ntfyTopic = '';
-// The fixture children must open THIS process's scratch DB and find the fixture dir.
-process.env.LOCALJOBS_DB = config.dbPath;
-process.env.LJ_FIXTURE_DIR = dir;
-
-for (const d of fixtureJobs) {
-  syncJob(d);
-  jobs.push(d);
-}
-syncWorkflow(fanInWorkflow);
-syncWorkflow(storeWorkflow);
-
-const control = (c: Record<string, string>) => writeFileSync(join(dir, 'control.json'), JSON.stringify(c));
-const readJson = <T>(name: string): T => JSON.parse(readFileSync(join(dir, name), 'utf8')) as T;
+const scenario = setupScenario({ moduleUrl: new URL('./fan-in.scenario.ts', import.meta.url).href, jobs: fixtureJobs, workflows: [fanInWorkflow, storeWorkflow] });
+const dir = scenario.dir;
+const control = scenario.control;
+const readJson = scenario.readJson;
 const latest = (runs: RunRow[], job: string) => runs.filter((r) => r.job_name === job).at(-1);
 const logText = (id: string) => getWorkflowLogs(id).map((l) => l.message).join('\n');
 
@@ -216,13 +199,7 @@ try {
     assert.doesNotThrow(() => assertDaemonSupportsPorts('some-stage', { LOCALJOBS_ENGINE: '3' }));
   });
 } finally {
-  config.runJobScript = orig.script;
-  config.ntfyTopic = orig.topic;
-  for (const d of fixtureJobs) {
-    const i = jobs.indexOf(d);
-    if (i >= 0) jobs.splice(i, 1);
-  }
-  rmSync(dir, { recursive: true, force: true });
+  scenario.cleanup();
 }
 
-console.log(`\n${passed} ports end-to-end test(s) passed.`);
+console.log(`\n${passed} fan-in scenario test(s) passed.`);

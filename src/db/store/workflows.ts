@@ -301,18 +301,29 @@ export function getWorkflowRun(id: string): WorkflowRunRow | undefined {
   return db.prepare('SELECT * FROM workflow_runs WHERE id = ?').get(id) as WorkflowRunRow | undefined;
 }
 
+// "Newest first" is `started_at DESC, rowid DESC`. `started_at` has one-second
+// resolution, so two runs of a workflow started within the same second tie on it,
+// and without the rowid tiebreaker "the latest run" could come back as the OLDER
+// of the two (the same trap as `listRunsForWorkflowRun`, T112). A manual run
+// started right after another finishes is exactly that case.
 export function listWorkflowRunsForWorkflow(name: string, limit = 50): WorkflowRunRow[] {
-  return db.prepare('SELECT * FROM workflow_runs WHERE workflow_name = ? ORDER BY started_at DESC LIMIT ?')
+  return db.prepare('SELECT * FROM workflow_runs WHERE workflow_name = ? ORDER BY started_at DESC, rowid DESC LIMIT ?')
     .all(name, limit) as WorkflowRunRow[];
 }
 
 export function listRecentWorkflowRuns(limit = 50): WorkflowRunRow[] {
-  return db.prepare('SELECT * FROM workflow_runs ORDER BY started_at DESC LIMIT ?').all(limit) as WorkflowRunRow[];
+  return db.prepare('SELECT * FROM workflow_runs ORDER BY started_at DESC, rowid DESC LIMIT ?').all(limit) as WorkflowRunRow[];
 }
 
 export function lastWorkflowRunForWorkflow(name: string): WorkflowRunRow | undefined {
-  return db.prepare('SELECT * FROM workflow_runs WHERE workflow_name = ? ORDER BY started_at DESC LIMIT 1')
+  return db.prepare('SELECT * FROM workflow_runs WHERE workflow_name = ? ORDER BY started_at DESC, rowid DESC LIMIT 1')
     .get(name) as WorkflowRunRow | undefined;
+}
+
+/** The id of a workflow's currently-running run, if it has one. */
+export function activeWorkflowRunId(name: string): string | undefined {
+  return (db.prepare(`SELECT id FROM workflow_runs WHERE workflow_name = ? AND status = 'running' ORDER BY rowid DESC LIMIT 1`)
+    .get(name) as { id: string } | undefined)?.id;
 }
 
 /**

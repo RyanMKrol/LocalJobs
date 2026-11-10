@@ -1,3 +1,4 @@
+import { SoftStopError } from '../engine/items.js';
 import {
   getCachedServiceResponse,
   getServiceRow,
@@ -77,8 +78,10 @@ export function effectiveServiceTimeoutMs(name: string, fallbackMs: number): num
 }
 
 /** Thrown when a service's day/month quota is exhausted. A retryable soft-fail:
- *  the caller leaves the item un-done and the next run resumes when it resets. */
-export class QuotaExceededError extends Error {
+ *  the caller leaves the item un-done and the next run resumes when it resets.
+ *  It is a `SoftStopError`, so inside an engine item loop (`eachItem`) it stops the
+ *  loop gracefully with no handling needed in the stage. */
+export class QuotaExceededError extends SoftStopError {
   readonly retryable = true;
   constructor(
     public service: string,

@@ -360,8 +360,16 @@ tested, on their own:
 - **Tested with fixture stages, not real workflows.** Engine tests import
   `src/engine/testing/fixture-host.ts`, which installs a host backed by an array of
   fixture jobs and captures notifications, so nothing of the real application is loaded.
-  The end-to-end tests run fixture stages in real child processes through the production
-  child runtime (`src/engine/testing/fixture-runner.ts`).
+- **Scenarios prove the capabilities.** `src/engine/scenarios/` holds small made-up
+  workflows (`*.scenario.ts`, exporting `jobs`) and the tests that run them for real:
+  the executor in the test process, each stage in its own child process through the
+  production child runtime (`testing/fixture-runner.ts` loads the scenario module named
+  in `LJ_SCENARIO_MODULE`). One scenario per workflow SHAPE: `linear`, `fan-in`,
+  `diamond`, `item-pipeline` (incremental items, failures, limited runs, quota stops,
+  cycles). `testing/scenario.ts` is the harness (`setupScenario`, `run`, `start` /
+  `until` for mid-run assertions, a `RunReport` to assert on, a control file to make a
+  stage misbehave for one run). **When the engine gains a capability, add or extend a
+  scenario for it.** `src/engine/README.md` describes the package for a reader new to it.
 
 What stays outside, in `src/core/`: things the application's workflows share that are
 not about running workflows (`plex-client`, `browser`, `services`, `notifier`,
@@ -473,6 +481,8 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/engine/protocol.ts` | `ENGINE_PROTOCOL`: the child-protocol version the daemon passes to children |
 | `src/engine/hash.ts` | SHA-256 of a file, and a listing fingerprint for a directory |
 | `src/engine/testing/` | `context.ts` (`makeTestContext` for unit-testing a ports stage), `ports-fixtures.ts` + `fixture-runner.ts` (the fan-out / fan-in fixture workflow the end-to-end tests run in real child processes) |
+| `src/engine/items.ts` | `eachItem` (the item loop: skip done, run-limit roots, attempts, per-item failure, soft stop, fatal stop, progress, save-then-mark, throw at the end if any failed), `softStop` / `SoftStopError` / `FatalStageError`, `snapshotLedger` (batched re-record of a whole snapshot ledger, reporting new / changed / unchanged, optional prune), `successRows` |
+| `src/engine/scenarios/` | Fixture workflows and the tests that run them end to end, one per workflow shape (see `src/engine/README.md`) |
 | `src/engine/checkpoint.ts` | `createCheckpoint(save, { every })`: "save, then mark done". Holds an item-loop stage's ledger marks back until the hand-off file that carries those items' data has been saved, so a kill can never leave an item marked done whose data never reached the next stage. Used by the places stages |
 | `src/engine/retention.ts` | Daily background sweep (daemon only) that trims per-run I/O detail of old runs via `pruneRunHistoryChunk` |
 | `src/engine/index.ts` | The engine's public surface: what workflows import |
@@ -496,7 +506,7 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `missing-movies/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-library-guard/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`, `vault-sync/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
 | `src/workflows/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
 | `src/workflows/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the workflow-folder root |
-| `src/api/stage-io.ts` | Derives a stage's (or the whole workflow's) Inputs & Outputs for one run from what the engine recorded: `stageIo` and `artifactItems`. For a ports run: the artifacts the stage was handed (`run_inputs`) and committed (`run_artifacts`), plus the ledger items its own attempts changed and the upstream items they were made from. For a legacy run: the old predecessor-rows rule, through a frozen mapping (`legacyRow`). Both return the same wire shape with explicit display rows |
+| `src/engine/reporting.ts` | Derives a stage's (or the whole workflow's) Inputs & Outputs for one run from what the engine recorded: `stageIo` and `artifactItems`. For a ports run: the artifacts the stage was handed (`run_inputs`) and committed (`run_artifacts`), plus the ledger items its own attempts changed and the upstream items they were made from. For a legacy run: the old predecessor-rows rule, through a frozen mapping (`legacyRow`). Both return the same wire shape with explicit display rows |
 | `src/api/server.ts` | Node `http` API (no framework). Routing is a declarative `routes: Route[]` table (`{ method, pattern, handler }`) matched by `matchRoute` — a small exact-segment-length matcher (T530) that replaced the old sequential `if (method === … && parts[N] === '…')` chain. A `:name`-style pattern segment matches any literal path segment and is captured into `ctx.params`; every other segment must match literally; the pattern and the path must have the SAME segment count. That length-exact requirement is the actual fix: the old chain had a real bug class where a check like `parts[3] === 'runs'` matched ANY path with `'runs'` at that position regardless of what followed, so `GET /api/workflows/foo/runs/extra` incorrectly matched the `:name/runs` handler instead of 404ing — `matchRoute` can't do that. Route order is otherwise irrelevant (no two routes share the same method + segment count with a possible overlap). Add a new endpoint by appending a `{ method, pattern, handler }` entry to `routes` |
 | `dashboard/app/*` | Next.js App Router dashboard (client components, poll via `app/lib/api.ts`); all responsive CSS lives in `app/globals.css`. `dashboard/app/admin/page.tsx` (route `/admin`) is the single admin page, hosting a "Delete all workflow output" action (`POST /api/workflows/reset-output-all`) with TWO buttons — the plain one skips certified workflows, the "including certified" one posts `{ force: true }` to bypass the certification guard and reset certified workflows too (the active-run guard is NEVER bypassable; force never resets a running workflow) — and a "Cached responses" section + "Clear all cached responses" action (`POST /api/cache/clear`) for the per-service `service_cache` (T451) table — the destructive actions are functionally distinct (separate API calls), neither touches the other's data |
 | `dashboard/scripts/_dashboard-harness.mjs` | Shared hermetic test harness (the SINGLE living artifact): `PAGES` list + synthetic API fixtures + `next start` spawn + `/api/**` interception + theme seeding; imported by both checks below. Update it when the UI surface changes |
@@ -964,6 +974,18 @@ doubt, log it.
   doesn't throw and ends correctly migrated — it FAILS if pointed at the pre-fix
   buggy `schema.sql`. (`openDb(dbPath?)` takes an optional path solely so this test
   can drive it; the daemon uses the default.)
+- **Item loops use `eachItem` (`src/engine/items.ts`).** A stage that works through a
+  list does not write the loop by hand. `eachItem(ctx, jobName, items, { key, title,
+  maxAttempts, from?, root?, limit?, save? }, handler)` does, in order: leave out items
+  outside a limited run's roots, skip items the ledger has done, attempt each with an
+  `i/N` log line and progress, record what the handler returns as the item's detail,
+  record a thrown error as a failed item with a counted attempt and carry on, stop
+  gracefully on `softStop(reason)` or a `SoftStopError` (a service's
+  `QuotaExceededError` is one, so it needs no handling), fail the run at once on a
+  `FatalStageError` (a revoked key, depleted credits), and throw at the end if any item
+  failed. The handler writes the item's data BEFORE returning; for one shared file,
+  pass `save` and marks are held until a save covers them. A stage that re-records a
+  whole snapshot every run uses `snapshotLedger` instead.
 - **Idempotency — per-item work ledger (the standard).** For jobs that process
   many items, record each item's outcome in the `work_items` SQLite table via
   `src/db/store.ts` (`isWorkItemDone`, `markWorkItem`, `workItemCounts`), keyed by
@@ -1602,7 +1624,7 @@ doubt, log it.
     stage was handed or committed: description, summary, size, whether it was carried
     forward, whether it passed its check or could not be resolved, the items it said it
     `used`, a "View file" and a paged "Browse N items") and ITEM ROWS with a server-built
-    title, explicit fields and a preview. The data comes from `src/api/stage-io.ts`. Rows
+    title, explicit fields and a preview. The data comes from `src/engine/reporting.ts`. Rows
     are attributed to the stage ATTEMPT that wrote them (`work_item_runs.run_id`), only
     items a run changed are listed (unchanged re-records are counted), and an old run
     shows what it recorded, not today's ledger. A stage shows its fields by declaring

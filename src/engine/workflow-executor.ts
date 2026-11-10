@@ -15,7 +15,10 @@ import {
   recordSettledRun,
   recordSkippedRun,
   rollUpWorkflowProgress,
+  runChangedAnyItem,
   runCommittedFreshArtifact,
+  runSoftStopped,
+  workflowRunDidWork,
   selectPendingRoots,
   setRunNoop,
   workflowProgressSignature,
@@ -569,12 +572,17 @@ async function runWorkflowInner(
         // instead of "success". The return value stays 'success' so executeDag
         // doesn't cascade-skip dependents — the noop is a per-stage annotation,
         // not a workflow-level failure.
-        // A ports stage that committed an output with NEW content did something,
-        // whether or not it touched the ledger: nothing has to write a ledger row
-        // just to avoid being called a noop.
-        const producedSomething = isPortsJob(jd) && runCommittedFreshArtifact(runId ?? '');
-        if (status === 'success' && runId && isLimitableWorkflow && !producedSomething && !hasJobAdvancedAnyItem(workflowRunId, job)) {
-          const stalledNow = jobSoftStoppedThisRun(workflowRunId, job);
+        // Did the stage DO anything? A ports stage is judged on what its own
+        // attempt recorded: it committed an output with new content, or changed a
+        // ledger item. So nothing has to write a row just to avoid being called a
+        // noop, and re-recording an unchanged catalogue does not count as work. A
+        // legacy stage is judged the old way (any ledger row touched this run).
+        const ports = isPortsJob(jd);
+        const didWork = !runId ? true
+          : ports ? runCommittedFreshArtifact(runId) || runChangedAnyItem(runId)
+          : hasJobAdvancedAnyItem(workflowRunId, job);
+        if (status === 'success' && runId && isLimitableWorkflow && !didWork) {
+          const stalledNow = ports ? runSoftStopped(runId) : jobSoftStoppedThisRun(workflowRunId, job);
           setRunNoop(runId, stalledNow ? 'stalled' : 'noop');
           noopJobs.add(job);
           // Two very different shapes of "advanced nothing", and conflating them is
@@ -674,7 +682,7 @@ async function runWorkflowInner(
   // appear as 'success' in lastStatuses (the runOne return value is unchanged);
   // workflowRunAdvancedAnyItem is the authoritative check.
   const statuses = [...lastStatuses.values()];
-  const anyRealWork = !isLimitableWorkflow || workflowRunAdvancedAnyItem(workflowRunId);
+  const anyRealWork = !isLimitableWorkflow || (bound ? workflowRunDidWork(workflowRunId) : workflowRunAdvancedAnyItem(workflowRunId));
   // A STALLED stage (soft-stopped having completed zero items) downgrades an
   // otherwise-clean run to 'partial'. Every member job genuinely returned
   // 'success' — it caught its own quota/refusal error and stopped politely — so

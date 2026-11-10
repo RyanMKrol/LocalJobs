@@ -24,10 +24,10 @@ import {
   artifactsForWorkflowRun, fromStoredPath, getRunArtifact, getWorkflowJobs, getWorkItem, listRunsForWorkflowRun,
   runInputsForWorkflowRun, stageIoLists, type RunArtifactRow, type RunInputRow, type StageIoItem,
 } from '../db/store.js';
-import { buildDag } from '../engine/dag.js';
-import { dirStats } from '../engine/hash.js';
-import type { ArtifactType, IoItem } from '../engine/ports.js';
-import type { GateResult, JobDefinition, WorkflowDefinition, WorkflowRunRow } from '../core/types.js';
+import { buildDag } from './dag.js';
+import { dirStats } from './hash.js';
+import type { ArtifactType, IoItem } from './ports.js';
+import type { GateResult, JobDefinition, WorkflowDefinition, WorkflowRunRow } from './types.js';
 
 export const OVERALL = '__overall__';
 
