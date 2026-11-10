@@ -204,6 +204,36 @@ function twoStagePortsFixtures({ stages: [first, second], firstArtifact, firstRo
     gates: [{ key: a.artifactKey, producer: first, consumer: second, state: 'passed' }],
   };
 }
+// A workflow whose data travels in the LEDGER (plex-language-fix, plex-rename): every
+// stage's output is a ledger artifact, and its items are the rows it changed this run.
+// `stages` are in DAG order; each names the stages it depends on.
+function ledgerPipelineFixtures(stages, { product } = {}) {
+  const art = Object.fromEntries(stages.map((st) => [st.job, portsArtifact({
+    job: st.job, port: st.port, artifactKey: st.key, storage: 'ledger', format: null, description: st.description,
+    summary: st.summary, itemCount: st.count, sample: st.rows.map((r) => ({ id: r.itemKey, title: r.title, fields: r.fields ?? [] })),
+  })]));
+  const rowsOf = Object.fromEntries(stages.map((st) => [st.job, st.rows.map((r) => ({ id: `${st.job}:${r.itemKey}`, jobName: st.job, status: 'success', fields: [], ...r }))]));
+  const portOf = Object.fromEntries(stages.map((st) => [st.job, st.port]));
+  const stageIo = Object.fromEntries(stages.map((st) => {
+    const deps = st.deps ?? [];
+    const inputs = deps.length ? rowsOf[deps[deps.length - 1]] : [];
+    return [st.job, portsIo(st.job, {
+      predecessorJobs: deps,
+      inputArtifacts: deps.map((d) => asInput(art[d], portOf[d])),
+      inputs, inputTotal: inputs.length,
+      outputArtifacts: [art[st.job]],
+      outputs: rowsOf[st.job], outputTotal: st.outputTotal ?? rowsOf[st.job].length,
+    })];
+  }));
+  const first = stages[0].job;
+  const out = product ?? stages[stages.length - 1].job;
+  const overall = portsIo('__overall__', {
+    predecessorJobs: [first], outputJobs: [out], inputs: rowsOf[first], inputTotal: rowsOf[first].length,
+    outputArtifacts: [art[out]], outputs: rowsOf[out], outputTotal: rowsOf[out].length,
+  });
+  const gates = stages.flatMap((st) => (st.deps ?? []).map((d) => ({ key: art[d].artifactKey, producer: d, consumer: st.job, state: 'passed' })));
+  return { stageIo, overall, gates };
+}
 const stocksMembers = [
   { job_name: 'stocks-fetch', depends_on: [] },
   { job_name: 'stocks-resolve-names', depends_on: ['stocks-fetch'] },
@@ -637,42 +667,29 @@ const plexLanguageFixMembers = [
   { job_name: 'plex-language-discover', depends_on: [] },
   { job_name: 'plex-language-resolve', depends_on: ['plex-language-discover'] },
   { job_name: 'plex-language-evaluate', depends_on: ['plex-language-discover', 'plex-language-resolve'] },
-  { job_name: 'plex-language-apply', depends_on: ['plex-language-evaluate'] },
+  // apply reads the discover rows too, so it depends on discover directly.
+  { job_name: 'plex-language-apply', depends_on: ['plex-language-discover', 'plex-language-evaluate'] },
 ];
-// T592: real gate rows exercising the same-row 'skip-column' padlock-collision case —
-// plex-language-evaluate depends on BOTH its immediate predecessor (resolve) AND an earlier
-// ancestor (discover), so discover -> evaluate is a two-wave-gap edge that shares a row with
-// discover -> resolve -> evaluate. Without these, the workflow-run-plex-language-fix visual-check
-// screenshot never paints any padlocks and can't guard the DagFlow collision fix.
-const plexLanguageFixGates = [
-  { key: 'discovered-files.json', producer: 'plex-language-discover', consumer: 'plex-language-resolve', state: 'passed', description: 'produces — discovered files with GUIDs · consumes — resolve looks up each title\'s true original language' },
-  { key: 'discovered-files.json', producer: 'plex-language-discover', consumer: 'plex-language-evaluate', state: 'passed', description: 'produces — discovered files with GUIDs · consumes — evaluate cross-checks each file against its resolved language' },
-  { key: 'resolved-languages.json', producer: 'plex-language-resolve', consumer: 'plex-language-evaluate', state: 'passed', description: 'produces — resolved original languages per title · consumes — evaluate decides per-file audio/subtitle defaults' },
-  { key: 'evaluated-decisions.json', producer: 'plex-language-evaluate', consumer: 'plex-language-apply', state: 'passed', description: 'produces — per-file audio/subtitle decisions · consumes — apply pushes the decided defaults to Plex' },
-];
+// On ports, with the data in the ledger. The gates include two same-row edges that skip a
+// column (discover -> evaluate, discover -> apply): the DAG routes each around the nodes in
+// between (T592's padlock-collision case, now drawn as a detour).
+const plexLanguageFixPorts = ledgerPipelineFixtures([
+  { job: 'plex-language-discover', port: 'files', key: 'plex-language-discover', description: 'Every media file (movie or episode) known across the configured Plex sections, one ledger row each.', summary: '55643 file(s)', count: 55643,
+    rows: [{ itemKey: '12345::part678', title: 'Amélie', fields: [{ label: 'Kind', value: 'movie' }, { label: 'TMDB', value: '194' }] }] },
+  { job: 'plex-language-resolve', port: 'languages', key: 'plex-language-resolve', description: 'Each file\'s true original language, resolved through TMDB, one ledger row per file.', summary: '55643 file(s) resolved', count: 55643, deps: ['plex-language-discover'],
+    rows: [{ itemKey: '12345::part678', title: 'Amélie', fields: [{ label: 'Original language', value: 'fr' }] }] },
+  { job: 'plex-language-evaluate', port: 'decisions', key: 'plex-language-evaluate', description: 'Each file\'s decision: change its default audio and subtitle tracks, or leave it. One ledger row per file.', summary: '55643 file(s) evaluated, 2021 to change', count: 55643, deps: ['plex-language-discover', 'plex-language-resolve'],
+    rows: [{ itemKey: '12345::part678', title: 'Amélie', fields: [{ label: 'Decision', value: 'change' }] }] },
+  { job: 'plex-language-apply', port: 'applied', key: 'plex-language-applied', description: 'Every file whose default tracks have been changed in Plex, one ledger row each. A file is applied once, ever.', summary: '2021 file(s) applied', count: 2021, deps: ['plex-language-discover', 'plex-language-evaluate'],
+    rows: [{ itemKey: '12345::part678', title: 'Amélie — applied', preview: { path: 'plex-language-fix/data/out/applied-log.json', format: 'json' } }] },
+]);
+const plexLanguageFixGates = plexLanguageFixPorts.gates;
 const plexLanguageFixWorkflowRun = workflowRun({ id: 'plex-language-fix-run', workflow_name: 'plex-language-fix' });
 const plexLanguageFixRunJobs = plexLanguageFixMembers.map((m, i) => run({
   id: `plex-language-fix-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-language-fix-run',
 }));
-const plexLanguageFixDiscoverOutput = { jobName: 'plex-language-discover', itemKey: 'file:12345', status: 'success', detail: { name: 'Amélie — /movies/Amelie.mkv' } };
-const plexLanguageFixResolveOutput = { jobName: 'plex-language-resolve', itemKey: 'tmdb:194', status: 'success', detail: { name: 'Amélie', originalLanguage: 'fr' } };
-const plexLanguageFixEvaluateOutput = { jobName: 'plex-language-evaluate', itemKey: 'file:12345', status: 'success', detail: { name: 'Amélie — audio should be French, currently English' } };
-const plexLanguageFixApplyOutput = { jobName: 'plex-language-apply', itemKey: 'file:12345', status: 'success', detail: { name: 'Amélie — audio track switched to French' } };
-const plexLanguageFixStageIo = {
-  'plex-language-discover': { inputs: [], outputs: [plexLanguageFixDiscoverOutput], predecessorJobs: [], job: 'plex-language-discover' },
-  'plex-language-resolve': { inputs: [plexLanguageFixDiscoverOutput], outputs: [plexLanguageFixResolveOutput], predecessorJobs: ['plex-language-discover'], job: 'plex-language-resolve' },
-  'plex-language-evaluate': {
-    inputs: [plexLanguageFixDiscoverOutput, plexLanguageFixResolveOutput],
-    outputs: [plexLanguageFixEvaluateOutput],
-    predecessorJobs: ['plex-language-discover', 'plex-language-resolve'],
-    job: 'plex-language-evaluate',
-  },
-  'plex-language-apply': { inputs: [plexLanguageFixEvaluateOutput], outputs: [plexLanguageFixApplyOutput], predecessorJobs: ['plex-language-evaluate'], job: 'plex-language-apply' },
-};
-const plexLanguageFixStageIoOverall = {
-  inputs: [plexLanguageFixDiscoverOutput], outputs: [plexLanguageFixApplyOutput],
-  predecessorJobs: ['plex-language-discover'], outputJobs: ['plex-language-apply'], job: '__overall__',
-};
+const plexLanguageFixStageIo = plexLanguageFixPorts.stageIo;
+const plexLanguageFixStageIoOverall = plexLanguageFixPorts.overall;
 
 // plex-profiles — single stage: plex-profiles-build.
 const plexProfilesMembers = [{ job_name: 'plex-profiles-build', depends_on: [] }];
@@ -1049,32 +1066,34 @@ const plexLibraryGuardSnapshotFixture = {
 const plexRenameMembers = [
   { job_name: 'plex-rename-discover', depends_on: [] },
   { job_name: 'plex-rename-plan', depends_on: ['plex-rename-discover'] },
-  { job_name: 'plex-rename-verify', depends_on: ['plex-rename-plan'] },
-  { job_name: 'plex-rename-apply', depends_on: ['plex-rename-verify'] },
-  { job_name: 'plex-rename-confirm', depends_on: ['plex-rename-apply'] },
+  // verify, apply and confirm each read the discover rows as well as the stage before them.
+  { job_name: 'plex-rename-verify', depends_on: ['plex-rename-discover', 'plex-rename-plan'] },
+  { job_name: 'plex-rename-apply', depends_on: ['plex-rename-discover', 'plex-rename-verify'] },
+  { job_name: 'plex-rename-confirm', depends_on: ['plex-rename-discover', 'plex-rename-apply'] },
 ];
 const plexRenameWorkflowRun = workflowRun({ id: 'plex-rename-run', workflow_name: 'plex-rename' });
 const plexRenameRunJobs = plexRenameMembers.map((m, i) => run({
   id: `plex-rename-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-rename-run',
 }));
-const plexRenameDiscoverOutput = { jobName: 'plex-rename-discover', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', file: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv' } };
-const plexRenamePlanOutput = { jobName: 'plex-rename-plan', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', decision: 'rename', from: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv', to: '/volume1/Share/TV/Mob Psycho 100 (2016) {tvdb-305074}/Season 02/Mob Psycho 100 (2016) - s02e05 - Discord.mkv' } };
-const plexRenameVerifyOutput = { jobName: 'plex-rename-verify', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', eligible: true, sidecars: [], bytes: 1073741824 } };
-const plexRenameApplyOutput = { jobName: 'plex-rename-apply', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05', from: '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv', to: '/volume1/Share/TV/Mob Psycho 100 (2016) {tvdb-305074}/Season 02/Mob Psycho 100 (2016) - s02e05 - Discord.mkv', sha256: 'ab12cd34ef56', sidecarCount: 1, markdown: '/abs/data/out/reports/rename-report.md' } };
-const plexRenameConfirmOutput = { jobName: 'plex-rename-confirm', itemKey: '1001::part501', status: 'success', detail: { name: 'Mob Psycho 100 — s02e05 — confirmed', confirmed: true } };
-const plexRenameStageIo = {
-  // discover carries totals far above the list length — exercises the paged
-  // "X of Y" heading + the in-list LoadMoreSentinel (the 27k-item lazy-load fix).
-  'plex-rename-discover': { inputs: [], outputs: [plexRenameDiscoverOutput], inputTotal: 0, outputTotal: 27251, predecessorJobs: [], job: 'plex-rename-discover' },
-  'plex-rename-plan': { inputs: [plexRenameDiscoverOutput], outputs: [plexRenamePlanOutput], predecessorJobs: ['plex-rename-discover'], job: 'plex-rename-plan' },
-  'plex-rename-verify': { inputs: [plexRenamePlanOutput], outputs: [plexRenameVerifyOutput], predecessorJobs: ['plex-rename-plan'], job: 'plex-rename-verify' },
-  'plex-rename-apply': { inputs: [plexRenameVerifyOutput], outputs: [plexRenameApplyOutput], predecessorJobs: ['plex-rename-verify'], job: 'plex-rename-apply' },
-  'plex-rename-confirm': { inputs: [plexRenameApplyOutput], outputs: [plexRenameConfirmOutput], predecessorJobs: ['plex-rename-apply'], job: 'plex-rename-confirm' },
-};
-const plexRenameStageIoOverall = {
-  inputs: [plexRenameDiscoverOutput], outputs: [plexRenameApplyOutput],
-  predecessorJobs: ['plex-rename-discover'], outputJobs: ['plex-rename-apply'], job: '__overall__',
-};
+const MOB = 'Mob Psycho 100 — s02e05';
+const MOB_FROM = '/volume1/Share/TV/[Erai-raws] Mob Psycho 100 II - 05.mkv';
+const MOB_TO = '/volume1/Share/TV/Mob Psycho 100 (2016) {tvdb-307375}/Season 02/Mob Psycho 100 (2016) - s02e05.mkv';
+// On ports, with the data in the ledger. discover's total is far above its list length,
+// which exercises the paged "X of Y" heading and the in-list load-more (the 27k-item fix).
+const plexRenamePorts = ledgerPipelineFixtures([
+  { job: 'plex-rename-discover', port: 'files', key: 'plex-rename-discover', description: 'Every physical library file (movie or episode) as Plex sees it: path, size, ids and naming metadata. One ledger row per file, re-recorded every run.', summary: '27251 file(s)', count: 27251, outputTotal: 27251,
+    rows: [{ itemKey: '1001::part501', title: MOB, fields: [{ label: 'Kind', value: 'episode' }, { label: 'File', value: MOB_FROM }] }] },
+  { job: 'plex-rename-plan', port: 'plan', key: 'plex-rename-plan', description: 'Each file\'s decision: rename (with the exact from and to), already canonical, or skip. One ledger row per file.', summary: '27251 decision(s), 312 to rename', count: 27251, deps: ['plex-rename-discover'],
+    rows: [{ itemKey: '1001::part501', title: MOB, fields: [{ label: 'Decision', value: 'rename' }, { label: 'To', value: MOB_TO }] }] },
+  { job: 'plex-rename-verify', port: 'verdicts', key: 'plex-rename-verify', description: 'Each rename candidate checked against the local disk: eligible or not, with the verified size and the sidecar files that move with it.', summary: '312 verdict(s), 301 eligible', count: 312, deps: ['plex-rename-discover', 'plex-rename-plan'],
+    rows: [{ itemKey: '1001::part501', title: MOB, fields: [{ label: 'Eligible', value: 'yes' }] }] },
+  { job: 'plex-rename-apply', port: 'applied', key: 'plex-rename-apply', description: 'Every file that has been moved to its canonical path and checksum-verified, with its final path and hash. A file is moved once, ever.', summary: '26004 file(s) moved', count: 26004, deps: ['plex-rename-discover', 'plex-rename-verify'],
+    rows: [{ itemKey: '1001::part501', title: MOB, fields: [{ label: 'Now at', value: MOB_TO }] }] },
+  { job: 'plex-rename-confirm', port: 'confirmed', key: 'plex-rename-confirm', description: 'Each moved file that Plex has been confirmed to see at its new path. One ledger row per confirmed file.', summary: '25990 confirmed', count: 25990, deps: ['plex-rename-discover', 'plex-rename-apply'],
+    rows: [{ itemKey: '1001::part501', title: `${MOB} — confirmed` }] },
+], { product: 'plex-rename-apply' });
+const plexRenameStageIo = plexRenamePorts.stageIo;
+const plexRenameStageIoOverall = plexRenamePorts.overall;
 
 // mount-keeper — single stage: mount-keeper-check (hourly NAS SMB share remounter).
 const mountKeeperMembers = [{ job_name: 'mount-keeper-check', depends_on: [] }];
@@ -1334,7 +1353,7 @@ function fixtureForRaw(pathname, searchParams) {
     const job = searchParams?.get('job');
     return plexRenameStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
-  if (pathname === '/api/workflow-runs/plex-rename-run') return { run: plexRenameWorkflowRun, jobs: plexRenameRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/plex-rename-run') return { run: plexRenameWorkflowRun, jobs: plexRenameRunJobs, logs, gates: plexRenamePorts.gates };
   if (pathname === '/api/workflow-runs/media-reviews-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return mediaReviewsStageIoOverall;
     const job = searchParams?.get('job') ?? '';
@@ -1423,7 +1442,7 @@ function fixtureForRaw(pathname, searchParams) {
     return { workflow: workflow({ name: 'plex-library-guard', category: 'regular-maintenance', jobs: plexLibraryGuardMembers, gates: [] }) };
   }
   if (pathname === '/api/workflows/plex-rename') {
-    return { workflow: workflow({ name: 'plex-rename', category: 'regular-maintenance', jobs: plexRenameMembers, gates: [] }) };
+    return { workflow: workflow({ name: 'plex-rename', category: 'regular-maintenance', jobs: plexRenameMembers, gates: plexRenamePorts.gates.map(({ state, ...g }) => g) }) };
   }
   if (pathname === '/api/workflows/mount-keeper') {
     return { workflow: workflow({ name: 'mount-keeper', category: 'regular-maintenance', schedule: '45 * * * *', jobs: mountKeeperMembers, gates: [] }) };
