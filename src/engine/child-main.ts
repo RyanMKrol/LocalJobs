@@ -4,6 +4,7 @@
 // registry) so a test can run fixture stages through exactly the same code with
 // its own lookup, in a real child process, without loading every workflow.
 import { getWorkflowRunRoots } from '../db/store.js';
+import { takeFault } from './faults.js';
 import { isPortsJob } from './ports.js';
 import { assertDaemonSupportsPorts, createStageRuntime, readRunIdentity } from './stage-runtime.js';
 import type { JobContext, JobDefinition, JobEvent } from './types.js';
@@ -49,6 +50,12 @@ export async function runJobProcess(
   };
 
   try {
+    // A fault written to the faults file for this stage (see faults.ts): used to
+    // prove failure handling on a real run. Nothing happens without that file.
+    const fault = takeFault(def.name);
+    if (fault) ctx.log(`⚠ INJECTED FAULT "${fault}" for this attempt (from the engine faults file). This is a deliberate test, not a real failure.`, 'warn');
+    if (fault === 'fail') throw new Error(`injected fault: stage "${def.name}" was made to fail for a test`);
+
     if (isPortsJob(def)) {
       // A ports stage: hand it its resolved inputs, and when it returns make sure
       // every output it declares was committed this run (see stage-runtime.ts).
@@ -60,9 +67,9 @@ export async function runJobProcess(
       const runtime = createStageRuntime(def, identity, ctx, {
         writtenSinceMs: Number(process.env.LOCALJOBS_RUN_QUEUED_MS) || Date.now(),
       });
-      await def.run(runtime.ctx);
+      if (fault !== 'skip-outputs') await def.run(runtime.ctx);
       runtime.finalize();
-    } else {
+    } else if (fault !== 'skip-outputs') {
       await def.run(ctx);
     }
     emitResultAndExit({ type: 'result', status: 'success' }, 0);

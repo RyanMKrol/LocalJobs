@@ -1,6 +1,6 @@
 // SCENARIO: a linear pipeline, run for real with fixture stages.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { getLogs } from '../../db/store.js';
 import { setupScenario } from '../testing/scenario.js';
 import { cancelWorkflowRun } from '../workflow-executor.js';
@@ -60,6 +60,27 @@ try {
     s.control({});
     const ok = await s.run(linearWorkflow);
     assert.equal(ok.status, 'success', ok.log);
+  });
+
+  await test('an injected fault makes a real stage misbehave for exactly the attempts asked for (faults.ts)', async () => {
+    // The stage returns without running, so its declared output is not written: the
+    // failure the engine reports is its own, not something the fixture staged.
+    const faults = s.path('engine-faults.json');
+    process.env.LOCALJOBS_FAULTS_FILE = faults;
+    try {
+      writeFileSync(faults, JSON.stringify([{ job: 'ln-fetch', fault: 'skip-outputs' }]));
+      const r = await s.run(linearWorkflow);
+      assert.equal(r.stage('ln-fetch')?.status, 'failed');
+      assert.match(r.stage('ln-fetch')?.error ?? '', /finished without writing its declared output "fetched"/);
+      assert.equal(r.stage('ln-transform')?.outcome_reason, 'upstream-skipped');
+      assert.match(getLogs(r.stage('ln-fetch')!.id).map((l) => l.message).join('\n'), /INJECTED FAULT "skip-outputs"/);
+      assert.equal(existsSync(faults), false, 'the fault was used up and the file removed');
+
+      const ok = await s.run(linearWorkflow);
+      assert.equal(ok.status, 'success', 'the next run is unaffected');
+    } finally {
+      delete process.env.LOCALJOBS_FAULTS_FILE;
+    }
   });
 
   await test('cancelling mid-run kills the running stage and records the rest as not started; a later run is unaffected', async () => {

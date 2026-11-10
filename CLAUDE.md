@@ -478,6 +478,7 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/engine/stage-runtime.ts` | Child side of ports: builds a stage's context (`ctx.run` / `input` / `inputs` / `output`), records what it commits, and the end-of-run sweep that fails a stage with an uncommitted output |
 | `src/engine/resolve-inputs.ts` | Daemon side of ports: `resolveInput` (this run's artifact, still intact on disk) and `uncommittedOutputs` |
 | `src/engine/child-main.ts` | The body of the child process (`runJobProcess`); `src/runJob.ts` only supplies the registry lookup, so tests can run fixture stages through the same code |
+| `src/engine/faults.ts` | Fault injection for proving failure handling on a REAL run: a list in `data/engine-faults.json` (`{ job, fault: 'fail' \| 'skip-outputs', attempts }`) makes the named stage misbehave for that many attempts, then removes itself. Does nothing when the file is absent. See `src/engine/README.md` |
 | `src/engine/protocol.ts` | `ENGINE_PROTOCOL`: the child-protocol version the daemon passes to children |
 | `src/engine/hash.ts` | SHA-256 of a file, and a listing fingerprint for a directory |
 | `src/engine/testing/` | `context.ts` (`makeTestContext` for unit-testing a ports stage), `ports-fixtures.ts` + `fixture-runner.ts` (the fan-out / fan-in fixture workflow the end-to-end tests run in real child processes) |

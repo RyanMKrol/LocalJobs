@@ -81,6 +81,23 @@ Nothing from the rest of the repo is loaded.
 | `diamond` | Two different inputs joining, the two sides running at once, the join waiting for both |
 | `item-pipeline` | Items done once each, a failed item not blocking the rest, picking up where it left off, a run capped to a few items, a quota stop, repeating until settled |
 
+## Proving a failure on a real run
+
+The scenarios use made-up stages. To watch the engine handle a failure in a real
+workflow, with that run's page as the evidence, write a faults file next to the
+database (`data/engine-faults.json`) and start the run:
+
+```json
+[{ "job": "tv-snapshot", "fault": "skip-outputs", "attempts": 3 }]
+```
+
+`fail` makes the stage throw before doing anything. `skip-outputs` makes it return
+without running, so it writes none of its outputs. `attempts` is how many attempts
+to affect (default 1); set it to the stage's `maxRetries + 1` to fail the whole
+stage rather than have a retry recover. Each attempt uses one up and the file is
+deleted when nothing is left, so a fault cannot outlive its run. The affected
+attempt logs `INJECTED FAULT`. See `faults.ts`.
+
 To add a case, write a `*.scenario.ts` that exports `jobs`, then a test that calls
 `setupScenario` and runs it. `testing/scenario.ts` has the helpers.
 
