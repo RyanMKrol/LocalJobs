@@ -446,8 +446,7 @@ The rules, all checked when the registry loads (a violation stops the daemon):
   registry now refuses a workflow whose stages do not declare inputs and outputs. The older
   `produces` / `consumes` form still exists inside the engine only for its own tests and so
   that pages of runs recorded before the migration keep rendering; do not write new stages
-  that way. (Still to do: delete that legacy code, and the display-only day/week ledger rows
-  a few stock stages still write.)
+  that way. (Still to do: delete that legacy code.)
 
 What the engine then guarantees at run time:
 
@@ -1723,6 +1722,14 @@ doubt, log it.
     column's own 320px scroll container) — a 27k-item run (plex-rename) used to ship
     both full lists in one response and hard-froze the tab. The T615 input-sample
     routing is applied IN SQL (`stageIoLists`) so paging offsets never skip rows.
+  - **`<RunTimeline>`** (`dashboard/app/components/RunTimeline.tsx`) — the Timeline panel
+    on the workflow-run page: one row per stage, one bar per attempt, on a shared time
+    axis. The pale part of a bar is the time between the stage becoming ready and its
+    process starting (waiting for a slot, checking inputs); the solid part is the attempt,
+    coloured by how it ended, and links to that attempt's logs. It reads only the
+    `queued_at_ms` / `started_at_ms` / `finished_at_ms` / `gate_ms` the engine records on
+    each member run, and draws nothing for a run with fewer than two timed rows (a
+    one-stage workflow, or a run from before those columns existed).
   - **`<IgnoredSection>`** (`dashboard/app/components/IgnoredSection.tsx`, T390) —
     the "Ignored (N)" panel used by `RecsManager`/`GroupedManager` (below) on
     `workflows/[name]/page.tsx`. Owns only the panel chrome (padding + heading/subtitle

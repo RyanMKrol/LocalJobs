@@ -745,9 +745,28 @@ const tvRecommendationsMembers = [
   { job_name: 'tv-recs-notify', depends_on: ['tv-rec-merge'] },
 ];
 const tvRecommendationsWorkflowRun = workflowRun({ id: 'tv-recommendations-run', workflow_name: 'tv-recommendations' });
-const tvRecommendationsRunJobs = tvRecommendationsMembers.map((m, i) => run({
-  id: `tv-recommendations-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'tv-recommendations-run',
-}));
+// Real timings, so the run page's Timeline has something to draw: the snapshot, then
+// eight branches four at a time (the second four wait for a slot), one of them retried,
+// then the merge and the digest.
+const TV_T0 = Date.UTC(2026, 5, 22, 9, 0, 0);
+const tvTiming = (queued, started, finished) => ({
+  queued_at_ms: TV_T0 + queued * 1000, started_at_ms: TV_T0 + started * 1000, finished_at_ms: TV_T0 + finished * 1000,
+  duration_ms: (finished - started) * 1000, gate_ms: 40, cycle: 1,
+});
+const TV_TIMINGS = {
+  'tv-snapshot': [0, 0, 21], 'tv-rec-random-1': [21, 21, 96], 'tv-rec-random-2': [21, 21, 110], 'tv-rec-random-3': [21, 21, 84],
+  'tv-rec-creator': [21, 21, 131], 'tv-rec-canon': [21, 131, 205], 'tv-rec-thin-genre': [21, 84, 160],
+  'tv-rec-older-era': [21, 96, 171], 'tv-rec-world': [21, 110, 190], 'tv-rec-merge': [205, 205, 214], 'tv-recs-notify': [214, 214, 217],
+};
+const tvRecommendationsRunJobs = [
+  // An earlier, failed attempt of one branch (it was retried and then succeeded).
+  run({ id: 'tv-recommendations-canon-a1', job_name: 'tv-rec-canon', status: 'failed', attempt: 1, workflow_run_id: 'tv-recommendations-run', error: 'Claude returned no JSON', ...tvTiming(21, 96, 126) }),
+  ...tvRecommendationsMembers.map((m, i) => run({
+    id: `tv-recommendations-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'tv-recommendations-run',
+    ...(m.job_name === 'tv-rec-canon' ? { attempt: 2 } : {}),
+    ...(TV_TIMINGS[m.job_name] ? tvTiming(...TV_TIMINGS[m.job_name]) : {}),
+  })),
+];
 // Both recommenders are PORTS workflows: the run page is derived from what the engine
 // recorded. Each stage shows the ARTIFACTS it was handed / committed (cards) and the
 // ledger ITEMS it changed. No stage writes a row just to be visible. The two workflows

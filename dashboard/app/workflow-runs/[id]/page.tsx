@@ -3,6 +3,7 @@
 import React, { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DagFlow } from '../../components/DagFlow';
+import { RunTimeline } from '../../components/RunTimeline';
 import { StageIoPanel } from '../../components/StageIoLists';
 import { OUTCOME_REASON_LABEL, api } from '../../lib/api';
 import type { Run } from '../../lib/api';
@@ -170,6 +171,8 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
       )}
 
       {workflow && <StageIoPanel runId={id} members={workflow.jobs} />}
+
+      <RunTimeline members={members} stageOrder={workflow?.jobs.map((j) => j.job_name) ?? []} />
 
       <h2>Member runs</h2>
       <div className="panel">

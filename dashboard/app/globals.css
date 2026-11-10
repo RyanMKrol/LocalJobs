@@ -185,6 +185,24 @@ tbody tr:hover { background: var(--panel-2); }
 /* Decoupled per-stage inputs/outputs lists (stock-digest workflow-run page, now the
    default panel every workflow's run page uses). */
 /* Why a stage ended as it did, under its name in the member-runs table. */
+/* Run timeline: one row per stage, one bar per attempt, on a shared time axis. */
+.run-timeline { padding: 12px 16px; }
+.run-timeline-axis { display: flex; justify-content: space-between; margin: 0 136px 6px 180px; font-size: 0.75em; color: var(--muted); font-family: var(--mono); }
+.run-timeline-row { display: grid; grid-template-columns: 172px minmax(0, 1fr) 128px; column-gap: 8px; align-items: center; min-height: 22px; }
+.run-timeline-label { font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-timeline-track { position: relative; height: 12px; background: var(--panel-2, rgba(128,128,128,.08)); border-radius: 3px; overflow: hidden; }
+.run-timeline-wait, .run-timeline-bar { position: absolute; top: 0; bottom: 0; }
+.run-timeline-wait { top: 4px; bottom: 4px; background: var(--grey); opacity: .45; }
+.run-timeline-bar { min-width: 3px; border-radius: 2px; background: var(--grey); }
+.run-timeline-bar.success, .run-timeline-swatch.success { background: var(--green); }
+.run-timeline-bar.failed, .run-timeline-bar.timeout, .run-timeline-swatch.failed { background: var(--red); }
+.run-timeline-bar.running, .run-timeline-swatch.running { background: var(--run); }
+.run-timeline-bar:hover { filter: brightness(1.2); }
+.run-timeline-total { font-size: 0.75em; color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-timeline-key { margin: 10px 0 0; font-size: 0.75em; }
+.run-timeline-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 12px; vertical-align: -1px; background: var(--grey); }
+.run-timeline-swatch.wait { opacity: .45; margin-left: 0; }
+
 .run-why { font-size: 0.8em; color: var(--muted); font-weight: 400; margin-top: 2px; overflow-wrap: anywhere; }
 .stage-io-block { padding: 14px; margin-bottom: 12px; }
 .stage-io-block:last-child { margin-bottom: 0; }
@@ -582,6 +600,9 @@ select:focus { border-color: var(--accent); }
    scrolls sideways); dense grids collapse to fewer columns.
    ────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
+  .run-timeline-axis { margin: 0 0 6px 0; }
+  .run-timeline-row { grid-template-columns: minmax(0, 1fr); row-gap: 2px; margin-bottom: 8px; }
+  .run-timeline-total { text-align: left; }
   .container { padding: 16px 12px 48px; }
 
   /* Header: let the brand + nav wrap instead of forcing a single wide row. */
