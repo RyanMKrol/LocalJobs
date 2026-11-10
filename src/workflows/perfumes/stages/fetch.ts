@@ -1,13 +1,11 @@
-import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BrowserContext } from 'playwright';
-import type { JobContext } from '../../../core/types.js';
+import { FatalStageError, ItemFailure, eachItem, type ItemTally, type JobContext } from '../../../engine/index.js';
 import { launchPersistentBrowser } from '../../../core/browser.js';
-import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { callService } from '../../../core/services.js';
 import { perfumesConfig } from '../config.js';
-import { ensureDirs, label, loadPerfumes, readJsonFile, reportItemProgress } from '../lib.js';
-import type { StageResult } from '../types.js';
+import { ensureDirs, label, loadPerfumes, readJsonFile, writeFileAtomic } from '../lib.js';
+import { FIND_JOB } from './find-url.js';
 
 export const FETCH_JOB = 'perfumes-fetch';
 
@@ -19,92 +17,85 @@ interface FetchOutcome {
   status: number | null;
 }
 
+export interface FetchOpts {
+  /** The id → URL map to fetch from (the stage's `urls` input). Defaults to the URL store on disk. */
+  urls?: Record<string, string>;
+}
+
 /** Stage 2: headless browser loads each Fragrantica URL, scrolls to trigger the
  *  lazy performance widgets, and captures the full page text. On a short/blocked
  *  page it saves the raw HTML + diagnostics so we can see exactly what happened. */
-export async function runFetch(ctx: JobContext): Promise<StageResult> {
+export async function runFetch(ctx: JobContext, opts: FetchOpts = {}): Promise<ItemTally> {
   ensureDirs();
   const perfumes = await loadPerfumes();
-  const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
-  const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && urls[p.id] && !isWorkItemDone(FETCH_JOB, p.id, perfumesConfig.maxAttempts));
-  const todo = pendingOf();
-  ctx.log(`[fetch] ${todo.length} page(s) to fetch (have a URL, not yet captured)`);
-  if (todo.length === 0) return { ok: 0, failed: 0, pending: 0, rateLimited: false };
+  const urls = opts.urls ?? readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
+  const withUrl = perfumes.filter((p) => urls[p.id]);
+  ctx.log(`[fetch] ${withUrl.length} of ${perfumes.length} perfume(s) have a URL`);
 
-  ctx.log(`[fetch] launching ${perfumesConfig.fetchHeadless ? 'headless' : 'headed'} ${perfumesConfig.fetchChannel || 'chromium'} (persistent profile) · ${perfumesConfig.fetchDelayMs}–${perfumesConfig.fetchDelayMs + perfumesConfig.fetchJitterMs}ms between pages`);
-  const context = await launchContext(ctx);
-
-  let ok = 0;
-  let failed = 0;
-  const cap = perfumesConfig.runLimit > 0 ? perfumesConfig.runLimit : Infinity;
-  const total = Math.min(todo.length, cap); // how many we'll actually fetch this run (progress denominator)
+  // The browser is launched on the first page actually fetched, so a run with
+  // nothing to do never opens Chrome.
+  const browser: { context: BrowserContext | null } = { context: null };
   try {
-    for (const [i, p] of todo.entries()) {
-      if (ok + failed >= cap) break;
-      ctx.log(`[fetch] ${i + 1}/${total} → ${label(p)}`);
-      const attempts = (getWorkItem(FETCH_JOB, p.id)?.attempts ?? 0) + 1;
-      const o = await callService('fragrantica', () => fetchPage(context, urls[p.id]), {
-        onThrottle: (ms) => ctx.log(`[fetch] waited ${Math.round(ms / 1000)}s for fragrantica spacing`),
-      });
-      const words = p.name.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-      const lc = o.text.toLowerCase();
-      const matched = words.length === 0 || words.some((w) => lc.includes(w));
-      const blocked = /just a moment|attention required|cf-|checking your browser|enable javascript/i.test(o.title + ' ' + o.text.slice(0, 400));
-
-      if (o.text.length >= 600 && matched && !blocked) {
-        writeFileSync(join(perfumesConfig.pagesDir, `${p.id}.txt`), o.text);
-        // Persist the raw HTML alongside the text: the accord-bar widths (each
-        // accord's strength %) live in inline `width: NN%` styles that innerText
-        // drops, so the parse stage reads them back from this .html. Without it
-        // every accord pct falls back to null (the success path used to save only
-        // .txt, so pages/<id>.html never existed — T072).
-        writeFileSync(join(perfumesConfig.pagesDir, `${p.id}.html`), o.html);
-        markWorkItem(FETCH_JOB, p.id, 'success', {
-          attempts,
-          detail: {
-            name: label(p),
-            format: 'text',
-            path: join(perfumesConfig.pagesDir, `${p.id}.txt`),
-            textLength: o.text.length,
-            htmlBytes: o.html.length,
-          },
+    return await eachItem(
+      ctx,
+      FETCH_JOB,
+      withUrl,
+      { key: (p) => p.id, title: label, from: { job: FIND_JOB }, maxAttempts: perfumesConfig.maxAttempts, limit: perfumesConfig.runLimit },
+      async (p) => {
+        if (!browser.context) {
+          ctx.log(`[fetch] launching ${perfumesConfig.fetchHeadless ? 'headless' : 'headed'} ${perfumesConfig.fetchChannel || 'chromium'} (persistent profile) · ${perfumesConfig.fetchDelayMs}–${perfumesConfig.fetchDelayMs + perfumesConfig.fetchJitterMs}ms between pages`);
+          try {
+            browser.context = await launchContext(ctx);
+          } catch (e) {
+            // Not this perfume's fault, and no other perfume would fare better.
+            throw new FatalStageError(`could not launch the browser: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+          }
+        }
+        const context = browser.context;
+        // Pacing is the 'fragrantica' service's job (min-interval + jitter).
+        const o = await callService('fragrantica', () => fetchPage(context, urls[p.id]), {
+          onThrottle: (ms) => ctx.log(`[fetch] waited ${Math.round(ms / 1000)}s for fragrantica spacing`),
         });
-        ok++;
-        ctx.log(`[fetch] ✓ ${label(p)} (${o.text.length} chars, ${o.html.length} html bytes)`);
-      } else {
+        const words = p.name.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+        const lc = o.text.toLowerCase();
+        const matched = words.length === 0 || words.some((w) => lc.includes(w));
+        const blocked = /just a moment|attention required|cf-|checking your browser|enable javascript/i.test(o.title + ' ' + o.text.slice(0, 400));
+
+        if (o.text.length >= 600 && matched && !blocked) {
+          const path = join(perfumesConfig.pagesDir, `${p.id}.txt`);
+          // The raw HTML is kept alongside the text: the accord-bar widths (each
+          // accord's strength %) live in inline `width: NN%` styles that innerText
+          // drops, so the parse stage reads them back from this .html (T072). It is
+          // written first, so the .txt the parse stage looks for never exists
+          // without it.
+          writeFileAtomic(join(perfumesConfig.pagesDir, `${p.id}.html`), o.html);
+          writeFileAtomic(path, o.text);
+          ctx.log(`  captured ${o.text.length} chars, ${o.html.length} html bytes`);
+          return { format: 'text', path, textLength: o.text.length, htmlBytes: o.html.length, url: urls[p.id] };
+        }
+
         // Save the offending page so we can see exactly what Fragrantica returned.
         const debugFile = join(perfumesConfig.pagesFailedDir, `${p.id}.html`);
-        writeFileSync(debugFile, o.html);
-        writeFileSync(join(perfumesConfig.pagesFailedDir, `${p.id}.txt`), o.text);
+        writeFileAtomic(debugFile, o.html);
+        writeFileAtomic(join(perfumesConfig.pagesFailedDir, `${p.id}.txt`), o.text);
         const why = blocked ? 'cloudflare challenge / bot block'
           : o.text.length < 600 ? `page too short (${o.text.length} chars)`
           : 'page text did not mention the perfume name';
-        const snippet = o.text.replace(/\s+/g, ' ').trim().slice(0, 160);
-        markWorkItem(FETCH_JOB, p.id, 'failed', {
-          attempts,
-          detail: {
-            name: label(p),
-            error: why,
-            httpStatus: o.status,
-            pageTitle: o.title,
-            finalUrl: o.finalUrl,
-            textLength: o.text.length,
-            snippet,
-            debugFile,
-            url: urls[p.id],
-          },
+        ctx.log(`  title="${o.title}" · ${o.text.length} chars · saved ${debugFile}`, 'warn');
+        throw new ItemFailure(why, {
+          httpStatus: o.status,
+          pageTitle: o.title,
+          finalUrl: o.finalUrl,
+          textLength: o.text.length,
+          snippet: o.text.replace(/\s+/g, ' ').trim().slice(0, 160),
+          debugFile,
+          url: urls[p.id],
         });
-        failed++;
-        ctx.log(`[fetch] ✗ ${label(p)}: ${why} · title="${o.title}" · ${o.text.length} chars · saved ${debugFile}${attempts >= perfumesConfig.maxAttempts ? ' — giving up' : ''}`, 'warn');
-      }
-      // pacing is now handled by the 'fragrantica' service (min-interval + jitter)
-      reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
-    }
+      },
+    );
   } finally {
-    await context.close();
+    await browser.context?.close();
   }
-
-  return { ok, failed, pending: pendingOf().length, rateLimited: false };
 }
 
 /** Persistent profile + real Chrome keeps Cloudflare's clearance cookie across pages

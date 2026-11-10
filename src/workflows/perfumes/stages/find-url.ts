@@ -1,69 +1,59 @@
-import type { JobContext } from '../../../core/types.js';
-import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { existsSync } from 'node:fs';
+import { eachItem, softStop, type ItemTally, type JobContext } from '../../../engine/index.js';
 import { runClaude } from '../../../services/claude.js';
 import { perfumesConfig } from '../config.js';
-import { ensureDirs, label, loadPerfumes, readJsonFile, reportItemProgress, writeJsonFile } from '../lib.js';
-import type { PerfumeInput, StageResult } from '../types.js';
+import { ensureDirs, label, loadPerfumes, readJsonFile, writeJsonFile } from '../lib.js';
+import type { PerfumeInput } from '../types.js';
 
 export const FIND_JOB = 'perfumes-find-url';
 
-/** Stage 1: ask Claude (web) to find each perfume's Fragrantica URL. */
-export async function runFindUrl(ctx: JobContext): Promise<StageResult> {
+const PERFUME_PAGE = /^https:\/\/www\.fragrantica\.com\/perfume\//i;
+
+/**
+ * Stage 1: find each perfume's Fragrantica URL and add it to the URL store.
+ * A perfume whose PerfumeRatings row already carries the URL is taken from
+ * there (T401); the rest are looked up by Claude with web search.
+ */
+export async function runFindUrl(ctx: JobContext): Promise<ItemTally> {
   ensureDirs();
   const perfumes = await loadPerfumes();
-  const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
-  const todo = perfumes.filter((p) => ctx.rootAllowed(p.id) && !isWorkItemDone(FIND_JOB, p.id, perfumesConfig.maxAttempts));
-  ctx.log(`[find-url] ${perfumes.length} perfumes · ${todo.length} still need a Fragrantica URL`);
+  const urlsFile = perfumesConfig.urlsFile;
+  const urls = readJsonFile<Record<string, string>>(urlsFile, {});
+  // The store exists from the first run on, even before anything is resolved:
+  // it is this stage's declared output, and "nothing yet" is a valid state of it.
+  if (!existsSync(urlsFile)) writeJsonFile(urlsFile, urls);
 
-  let ok = 0;
-  let failed = 0;
-  let rateLimited = false;
-  const cap = perfumesConfig.runLimit > 0 ? perfumesConfig.runLimit : Infinity;
-  const total = Math.min(todo.length, cap); // how many we'll actually attempt this run (progress denominator)
-
-  for (const [i, p] of todo.entries()) {
-    if (ok + failed >= cap) break;
-
-    // Seed from PerfumeRatings' own fragranticaUrl when present (T401) — skip
-    // the Claude web search entirely for an item the owner has already linked.
-    if (p.fragranticaUrl && /^https:\/\/www\.fragrantica\.com\/perfume\//i.test(p.fragranticaUrl)) {
-      urls[p.id] = p.fragranticaUrl;
-      writeJsonFile(perfumesConfig.urlsFile, urls);
-      markWorkItem(FIND_JOB, p.id, 'success', { detail: { name: label(p), url: p.fragranticaUrl, seeded: true } });
-      ok++;
-      ctx.log(`[find-url] ✓ (seeded from PerfumeRatings) ${label(p)} → ${p.fragranticaUrl}`);
-      reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
-      continue;
-    }
-
-    ctx.log(`[find-url] ${i + 1}/${total} → ${label(p)}`);
-    const attempts = (getWorkItem(FIND_JOB, p.id)?.attempts ?? 0) + 1;
-    const res = perfumesConfig.dryRun
-      ? { ok: true, text: `https://www.fragrantica.com/perfume/${encodeURIComponent(p.brand)}/${encodeURIComponent(p.name)}-0.html`, rateLimited: false }
-      : await runClaude(findPrompt(p), perfumesConfig.modelFind);
-
-    if (res.rateLimited) { ctx.log('[find-url] Claude usage/rate limit — pausing stage; will resume.', 'warn'); rateLimited = true; break; }
-
-    const url = (res.text || '').trim().split(/\s+/)[0] ?? '';
-    if (res.ok && /^https:\/\/www\.fragrantica\.com\/perfume\//i.test(url)) {
+  return eachItem(
+    ctx,
+    FIND_JOB,
+    perfumes,
+    { key: (p) => p.id, title: label, maxAttempts: perfumesConfig.maxAttempts, limit: perfumesConfig.runLimit },
+    async (p) => {
+      const seeded = p.fragranticaUrl && PERFUME_PAGE.test(p.fragranticaUrl) ? p.fragranticaUrl : null;
+      let url = seeded;
+      if (url) {
+        ctx.log(`  seeded from PerfumeRatings: ${url}`);
+      } else {
+        const res = perfumesConfig.dryRun
+          ? { ok: true, text: `https://www.fragrantica.com/perfume/${encodeURIComponent(p.brand)}/${encodeURIComponent(p.name)}-0.html`, rateLimited: false }
+          : await runClaude(findPrompt(p), perfumesConfig.modelFind);
+        if (res.rateLimited) return softStop('Claude usage or rate limit');
+        if (!res.ok) throw new Error(res.error ?? 'claude error');
+        const reply = (res.text || '').trim();
+        const first = reply.split(/\s+/)[0] ?? '';
+        if (!PERFUME_PAGE.test(first)) {
+          throw new Error(/^none$/i.test(reply) ? 'no Fragrantica page found' : `unexpected reply: ${reply.slice(0, 80)}`);
+        }
+        url = first;
+        ctx.log(`  found: ${url}`);
+      }
+      // Saved before the loop marks the perfume done, so a kill between the two
+      // can never leave a "done" perfume the fetch stage has no URL for.
       urls[p.id] = url;
-      writeJsonFile(perfumesConfig.urlsFile, urls);
-      markWorkItem(FIND_JOB, p.id, 'success', { attempts, detail: { name: label(p), url } });
-      ok++;
-      ctx.log(`[find-url] ✓ ${label(p)} → ${url}`);
-    } else {
-      const reason = !res.ok
-        ? (res.error ?? 'claude error')
-        : /^none$/i.test(res.text.trim()) ? 'no Fragrantica page found' : `unexpected reply: ${res.text.slice(0, 80)}`;
-      markWorkItem(FIND_JOB, p.id, 'failed', { attempts, detail: { name: label(p), error: reason } });
-      failed++;
-      ctx.log(`[find-url] ✗ ${label(p)}: ${reason}${attempts >= perfumesConfig.maxAttempts ? ' — giving up' : ''}`, 'warn');
-    }
-    reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
-  }
-
-  const pending = perfumes.filter((p) => !isWorkItemDone(FIND_JOB, p.id, perfumesConfig.maxAttempts)).length;
-  return { ok, failed, pending, rateLimited };
+      writeJsonFile(urlsFile, urls);
+      return seeded ? { url, seeded: true } : { url };
+    },
+  );
 }
 
 function findPrompt(p: PerfumeInput): string {

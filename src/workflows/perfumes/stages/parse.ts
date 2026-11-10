@@ -1,76 +1,58 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { JobContext } from '../../../core/types.js';
-import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { eachItem, softStop, type ItemTally, type JobContext } from '../../../engine/index.js';
 import { extractJsonObject, runClaude } from '../../../services/claude.js';
 import { perfumesConfig } from '../config.js';
-import { ensureDirs, label, loadPerfumes, reportItemProgress } from '../lib.js';
-import type { Accord, PerfumeInput, StageResult } from '../types.js';
+import { ensureDirs, label, loadPerfumes, writeJsonFile } from '../lib.js';
+import type { Accord, PerfumeInput } from '../types.js';
+import { FETCH_JOB } from './fetch.js';
 
 export const PARSE_JOB = 'perfumes-parse';
 
+export interface ParseOpts {
+  /** The folder of captured pages (the stage's `pages` input). Defaults to the configured one. */
+  pagesDir?: string;
+}
+
 /** Stage 3: Claude reads the captured page text and extracts structured JSON. */
-export async function runParse(ctx: JobContext): Promise<StageResult> {
+export async function runParse(ctx: JobContext, opts: ParseOpts = {}): Promise<ItemTally> {
   ensureDirs();
   const perfumes = await loadPerfumes();
-  const pagePath = (id: string) => join(perfumesConfig.pagesDir, `${id}.txt`);
-  const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && existsSync(pagePath(p.id)) && !isWorkItemDone(PARSE_JOB, p.id, perfumesConfig.maxAttempts));
-  const todo = pendingOf();
-  ctx.log(`[parse] ${todo.length} page(s) to parse into structured JSON`);
+  const pagesDir = opts.pagesDir ?? perfumesConfig.pagesDir;
+  const pagePath = (id: string) => join(pagesDir, `${id}.txt`);
+  const captured = perfumes.filter((p) => existsSync(pagePath(p.id)));
+  ctx.log(`[parse] ${captured.length} of ${perfumes.length} perfume(s) have a captured page`);
 
-  let ok = 0;
-  let failed = 0;
-  let rateLimited = false;
-  const cap = perfumesConfig.runLimit > 0 ? perfumesConfig.runLimit : Infinity;
-  const total = Math.min(todo.length, cap); // how many we'll actually parse this run (progress denominator)
-
-  for (const [i, p] of todo.entries()) {
-    if (ok + failed >= cap) break;
-    ctx.log(`[parse] ${i + 1}/${total} → ${label(p)}`);
-    const attempts = (getWorkItem(PARSE_JOB, p.id)?.attempts ?? 0) + 1;
-    const pageText = readFileSync(pagePath(p.id), 'utf8');
-    const res = perfumesConfig.dryRun
-      ? { ok: true, text: JSON.stringify({ dryRun: true, name: p.name }), rateLimited: false }
-      : await runClaude(parsePrompt(p, pageText), perfumesConfig.modelParse);
-
-    if (res.rateLimited) { ctx.log('[parse] Claude usage/rate limit — pausing stage; will resume.', 'warn'); rateLimited = true; break; }
-
-    try {
+  return eachItem(
+    ctx,
+    PARSE_JOB,
+    captured,
+    { key: (p) => p.id, title: label, from: { job: FETCH_JOB }, maxAttempts: perfumesConfig.maxAttempts, limit: perfumesConfig.runLimit },
+    async (p) => {
+      const pageText = readFileSync(pagePath(p.id), 'utf8');
+      const res = perfumesConfig.dryRun
+        ? { ok: true, text: JSON.stringify({ dryRun: true, name: p.name }), rateLimited: false }
+        : await runClaude(parsePrompt(p, pageText), perfumesConfig.modelParse);
+      if (res.rateLimited) return softStop('Claude usage or rate limit');
       if (!res.ok) throw new Error(res.error ?? 'claude error');
-      const data = extractJsonObject(res.text);
-      applyAccordPercents(data, p.id, ctx);
-      applyNormalizedNotes(data, label(p), ctx);
-      writeFileSync(join(perfumesConfig.fragranticaDir, `${p.id}.json`), JSON.stringify(data, null, 2));
-      const accordsCount = Array.isArray((data as { accords?: unknown }).accords)
-        ? (data as { accords: unknown[] }).accords.length
-        : 0;
-      const notesTiers = (data as { notes?: { top?: unknown[]; heart?: unknown[]; base?: unknown[] } }).notes;
-      const notesCount = notesTiers
-        ? (notesTiers.top?.length ?? 0) + (notesTiers.heart?.length ?? 0) + (notesTiers.base?.length ?? 0)
-        : 0;
-      markWorkItem(PARSE_JOB, p.id, 'success', {
-        attempts,
-        detail: {
-          name: label(p),
-          format: 'json',
-          path: join(perfumesConfig.fragranticaDir, `${p.id}.json`),
-          accordsCount,
-          notesCount,
-          rating: (data as { rating?: number | null }).rating ?? null,
-        },
-      });
-      ok++;
-      ctx.log(`[parse] ✓ ${label(p)}`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message.split('\n')[0] : String(e);
-      markWorkItem(PARSE_JOB, p.id, 'failed', { attempts, detail: { name: label(p), error: msg } });
-      failed++;
-      ctx.log(`[parse] ✗ ${label(p)}: ${msg}${attempts >= perfumesConfig.maxAttempts ? ' — giving up' : ''}`, 'warn');
-    }
-    reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
-  }
 
-  return { ok, failed, pending: pendingOf().length, rateLimited };
+      const data = extractJsonObject(res.text);
+      applyAccordPercents(data, p.id, pagesDir, ctx);
+      applyNormalizedNotes(data, label(p), ctx);
+      const path = join(perfumesConfig.fragranticaDir, `${p.id}.json`);
+      writeJsonFile(path, data);
+
+      const accords = (data as { accords?: unknown }).accords;
+      const notes = (data as { notes?: { top?: unknown[]; heart?: unknown[]; base?: unknown[] } }).notes;
+      return {
+        format: 'json',
+        path,
+        accordsCount: Array.isArray(accords) ? accords.length : 0,
+        notesCount: notes ? (notes.top?.length ?? 0) + (notes.heart?.length ?? 0) + (notes.base?.length ?? 0) : 0,
+        rating: (data as { rating?: number | null }).rating ?? null,
+      };
+    },
+  );
 }
 
 function parsePrompt(p: PerfumeInput, pageText: string): string {
@@ -179,9 +161,9 @@ function applyNormalizedNotes(data: unknown, name: string, ctx: JobContext): voi
 
 /** Locate the cached HTML for a page, if any was kept (the success path saves
  *  only `.txt`; a `.html` shows up for pages the fetch stage diagnosed). */
-function readPageHtml(id: string): string | null {
+function readPageHtml(id: string, pagesDir: string): string | null {
   for (const path of [
-    join(perfumesConfig.pagesDir, `${id}.html`),
+    join(pagesDir, `${id}.html`),
     join(perfumesConfig.pagesFailedDir, `${id}.html`),
   ]) {
     if (existsSync(path)) return readFileSync(path, 'utf8');
@@ -196,12 +178,12 @@ function readPageHtml(id: string): string | null {
  * accord with no matching bar — or a page with no cached HTML — keeps `pct: null`
  * so a genuine absence is never papered over with a fake number.
  */
-function applyAccordPercents(data: unknown, id: string, ctx: JobContext): void {
+function applyAccordPercents(data: unknown, id: string, pagesDir: string, ctx: JobContext): void {
   if (!data || typeof data !== 'object') return;
   const accords = (data as { accords?: unknown }).accords;
   if (!Array.isArray(accords) || accords.length === 0) return;
 
-  const html = readPageHtml(id);
+  const html = readPageHtml(id, pagesDir);
   if (!html) {
     ctx.log(`[parse]   no cached HTML for ${id} — accord percentages left null`, 'warn');
     return;

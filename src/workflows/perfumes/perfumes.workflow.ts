@@ -3,7 +3,7 @@ import { perfumesConfig } from './config.js';
 
 /**
  * The perfumes workflow as a first-class DAG the framework executes:
- *   find-url → fetch → parse → build
+ *   find-url → fetch → parse → build      (build also takes the URLs from find-url)
  * Replaces the old hand-written orchestrator loop (workflow.job.ts). Serial
  * (maxConcurrency 1) because the stages share one Chrome profile + the Claude CLI;
  * repeatUntilStable reproduces the old "loop until no retryable work" behaviour.
@@ -24,7 +24,9 @@ const workflow: WorkflowDefinition = {
     { job: 'perfumes-find-url' },
     { job: 'perfumes-fetch', dependsOn: ['perfumes-find-url'] },
     { job: 'perfumes-parse', dependsOn: ['perfumes-fetch'] },
-    { job: 'perfumes-build', dependsOn: ['perfumes-parse'] },
+    // The build is handed the parsed data by parse and the URL store by find-url
+    // (it cites each perfume's Fragrantica page), so it depends on both.
+    { job: 'perfumes-build', dependsOn: ['perfumes-find-url', 'perfumes-parse'] },
   ],
 };
 

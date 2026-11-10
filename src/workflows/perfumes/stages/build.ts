@@ -1,25 +1,31 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { JobContext } from '../../../core/types.js';
-import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { eachItem, softStop, type ItemTally, type JobContext } from '../../../engine/index.js';
 import { runClaude, unfenceMarkdown } from '../../../services/claude.js';
 import { perfumesConfig } from '../config.js';
-import { ensureDirs, label, loadPerfumes, loadVoteCorpus, readJsonFile, reportItemProgress } from '../lib.js';
-import { normalizeNotes, notesEmpty } from './parse.js';
-import type { ApplicationSpot, PerfumeInput, StageResult } from '../types.js';
+import { ensureDirs, label, loadPerfumes, loadVoteCorpus, readJsonFile, writeFileAtomic } from '../lib.js';
+import { PARSE_JOB, normalizeNotes, notesEmpty } from './parse.js';
+import type { ApplicationSpot, PerfumeInput } from '../types.js';
 
 export const BUILD_JOB = 'perfumes-build';
 
+export interface BuildOpts {
+  /** The id → URL map (the stage's `urls` input). Defaults to the URL store on disk. */
+  urls?: Record<string, string>;
+  /** The folder of parsed records (the stage's `data` input). Defaults to the configured one. */
+  dataDir?: string;
+}
+
 /** Stage 4: Claude combines the parsed Fragrantica data + web research into a
  *  profile that follows perfume-markdown's _TEMPLATE.md. */
-export async function runBuild(ctx: JobContext): Promise<StageResult> {
+export async function runBuild(ctx: JobContext, opts: BuildOpts = {}): Promise<ItemTally> {
   ensureDirs();
   const perfumes = await loadPerfumes();
-  const urls = readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
-  const fragPath = (id: string) => join(perfumesConfig.fragranticaDir, `${id}.json`);
-  const pendingOf = () => perfumes.filter((p) => ctx.rootAllowed(p.id) && existsSync(fragPath(p.id)) && !isWorkItemDone(BUILD_JOB, p.id, perfumesConfig.maxAttempts));
-  const todo = pendingOf();
-  ctx.log(`[build] ${todo.length} profile(s) to build`);
+  const urls = opts.urls ?? readJsonFile<Record<string, string>>(perfumesConfig.urlsFile, {});
+  const dataDir = opts.dataDir ?? perfumesConfig.fragranticaDir;
+  const fragPath = (id: string) => join(dataDir, `${id}.json`);
+  const parsed = perfumes.filter((p) => existsSync(fragPath(p.id)));
+  ctx.log(`[build] ${parsed.length} of ${perfumes.length} perfume(s) have parsed Fragrantica data`);
 
   const template = existsSync(perfumesConfig.templatePath)
     ? readFileSync(perfumesConfig.templatePath, 'utf8')
@@ -28,32 +34,26 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
   // Calibrate the Fragrantica-vs-LLM confidence blend against the WHOLE scraped
   // corpus, so "high" vs "low" vote counts are judged relative to this ecosystem
   // (niche houses cluster low; designer blockbusters cluster high).
-  const dist = voteDistribution(loadVoteCorpus(), perfumesConfig.confidenceK);
+  const dist = voteDistribution(loadVoteCorpus(dataDir), perfumesConfig.confidenceK);
   ctx.log(
     `[build] confidence calibration: ${dist.count} perfume(s) in corpus, votes ` +
       `min ${dist.min} · p25 ${dist.p25} · median ${dist.median} · p75 ${dist.p75} · max ${dist.max}; ` +
       `half-confidence k=${dist.k} (weight=0.5 at ${dist.k} votes)`,
   );
 
-  let ok = 0;
-  let failed = 0;
-  let rateLimited = false;
-  const cap = perfumesConfig.runLimit > 0 ? perfumesConfig.runLimit : Infinity;
-  const total = Math.min(todo.length, cap); // how many we'll actually build this run (progress denominator)
-
-  for (const [i, p] of todo.entries()) {
-    if (ok + failed >= cap) break;
-    ctx.log(`[build] ${i + 1}/${total} → ${label(p)}`);
-    const attempts = (getWorkItem(BUILD_JOB, p.id)?.attempts ?? 0) + 1;
-    const fragJson = readFileSync(fragPath(p.id), 'utf8');
-    const res = perfumesConfig.dryRun
-      ? { ok: true, text: `---\nname: "${p.name}"\nbrand: "${p.brand}"\n---\n# ${p.name} — ${p.brand}\n(dry run)\n`, rateLimited: false }
-      : await runClaude(buildPrompt(p, fragJson, urls[p.id] ?? null, template, dist), perfumesConfig.modelBuild);
-
-    if (res.rateLimited) { ctx.log('[build] Claude usage/rate limit — pausing stage; will resume.', 'warn'); rateLimited = true; break; }
-
-    try {
+  return eachItem(
+    ctx,
+    BUILD_JOB,
+    parsed,
+    { key: (p) => p.id, title: label, from: { job: PARSE_JOB }, maxAttempts: perfumesConfig.maxAttempts, limit: perfumesConfig.runLimit },
+    async (p) => {
+      const fragJson = readFileSync(fragPath(p.id), 'utf8');
+      const res = perfumesConfig.dryRun
+        ? { ok: true, text: `---\nname: "${p.name}"\nbrand: "${p.brand}"\n---\n# ${p.name} — ${p.brand}\n(dry run)\n\n## Sources\n- dry run\n`, rateLimited: false }
+        : await runClaude(buildPrompt(p, fragJson, urls[p.id] ?? null, template, dist), perfumesConfig.modelBuild);
+      if (res.rateLimited) return softStop('Claude usage or rate limit');
       if (!res.ok) throw new Error(res.error ?? 'claude error');
+
       const md = enforceApplicationSection(salvageProfile(res.text), p.applicationSpots);
       if (!md.startsWith('---') || !md.includes('## Sources')) {
         // Save the raw output so an intermittent formatting deviation is
@@ -63,22 +63,11 @@ export async function runBuild(ctx: JobContext): Promise<StageResult> {
         throw new Error('output is not a template-shaped markdown file');
       }
       const mdPath = join(perfumesConfig.markdownDir, `${p.id}.md`);
-      writeFileSync(mdPath, md);
-      // Record the artifact path so the dashboard's IO panel can preview it
-      // (mirrors places-llm-enrich's detail.markdown — see workItemMarkdownPath).
-      markWorkItem(BUILD_JOB, p.id, 'success', { attempts, detail: { name: label(p), markdown: mdPath } });
-      ok++;
-      ctx.log(`[build] ✓ ${label(p)}`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message.split('\n')[0] : String(e);
-      markWorkItem(BUILD_JOB, p.id, 'failed', { attempts, detail: { name: label(p), error: msg } });
-      failed++;
-      ctx.log(`[build] ✗ ${label(p)}: ${msg}${attempts >= perfumesConfig.maxAttempts ? ' — giving up' : ''}`, 'warn');
-    }
-    reportItemProgress(ctx, i + 1, total, `${ok} ok, ${failed} failed`);
-  }
-
-  return { ok, failed, pending: pendingOf().length, rateLimited };
+      writeFileAtomic(mdPath, md);
+      // `markdown` is the path the dashboard previews (see workItemMarkdownPath).
+      return { markdown: mdPath, votes: votesFromFragJson(fragJson) };
+    },
+  );
 }
 
 /**

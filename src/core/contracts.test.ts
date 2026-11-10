@@ -1,5 +1,6 @@
-// Tests for the real-job artifact contracts (T027) and that they make the
-// workflow executor derive gates. Run via `npm test`.
+// Tests for the places artifact contracts (T027) and that they make the
+// workflow executor derive gates. Run via `npm test`. (The perfumes workflow is
+// on ports: its artifact checks are tested in src/workflows/perfumes/contracts.test.ts.)
 //
 // Contract checks are exercised against SYNTHETIC fixtures in a temp dir (the
 // real data/ folders are gitignored and absent in CI) — NO live API/scrape.
@@ -9,11 +10,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ArtifactContract, GateResult } from './types.js';
 import { buildDag, deriveGates } from '../engine/dag.js';
-import {
-  fragranticaDataContract,
-  fragranticaPagesContract,
-  fragranticaUrlsContract,
-} from '../workflows/perfumes/contracts.js';
 import {
   enrichedPlacesContract,
   normalizedPlacesContract,
@@ -46,73 +42,6 @@ const writeJson = (name: string, obj: unknown) => {
   writeFileSync(p, JSON.stringify(obj));
   return p;
 };
-
-// ─────────────────────────── perfumes: fragrantica-urls ───────────────────────────
-test('fragrantica-urls: a well-formed id→URL map passes', () => {
-  const p = writeJson('urls-ok.json', {
-    'amouage-beach-hut-man': 'https://www.fragrantica.com/perfume/Amouage/Beach-Hut-Man-46336.html',
-  });
-  const r = run(fragranticaUrlsContract(p));
-  assert.equal(r.ok, true, r.violations?.join('; '));
-});
-
-test('fragrantica-urls: an empty map fails (non-empty contract)', () => {
-  const p = writeJson('urls-empty.json', {});
-  assert.equal(run(fragranticaUrlsContract(p)).ok, false);
-});
-
-test('fragrantica-urls: a non-Fragrantica URL fails (shape drift)', () => {
-  const p = writeJson('urls-drift.json', { x: 'https://example.com/whatever' });
-  assert.equal(run(fragranticaUrlsContract(p)).ok, false);
-});
-
-test('fragrantica-urls: a missing file fails', () => {
-  assert.equal(run(fragranticaUrlsContract(f('nope.json'))).ok, false);
-});
-
-// ─────────────────────────── perfumes: fragrantica-pages ──────────────────────────
-test('fragrantica-pages: a dir with a non-empty .txt passes', () => {
-  const d = join(dir, 'pages-ok');
-  mkdirSync(d, { recursive: true });
-  writeFileSync(join(d, 'a.txt'), 'real captured page text');
-  const r = run(fragranticaPagesContract(d));
-  assert.equal(r.ok, true, r.violations?.join('; '));
-});
-
-test('fragrantica-pages: an empty dir fails', () => {
-  const d = join(dir, 'pages-empty');
-  mkdirSync(d, { recursive: true });
-  assert.equal(run(fragranticaPagesContract(d)).ok, false);
-});
-
-test('fragrantica-pages: only empty .txt files fails (non-empty contract)', () => {
-  const d = join(dir, 'pages-zero');
-  mkdirSync(d, { recursive: true });
-  writeFileSync(join(d, 'a.txt'), '');
-  assert.equal(run(fragranticaPagesContract(d)).ok, false);
-});
-
-// ─────────────────────────── perfumes: fragrantica-data ───────────────────────────
-test('fragrantica-data: a parsed perfume with name + notes passes', () => {
-  const d = join(dir, 'data-ok');
-  mkdirSync(d, { recursive: true });
-  writeFileSync(join(d, 'a.json'), JSON.stringify({ name: 'Beach Hut Man', notes: { top: ['Mint'] } }));
-  const r = run(fragranticaDataContract(d));
-  assert.equal(r.ok, true, r.violations?.join('; '));
-});
-
-test('fragrantica-data: records missing name fail (shape drift)', () => {
-  const d = join(dir, 'data-drift');
-  mkdirSync(d, { recursive: true });
-  writeFileSync(join(d, 'a.json'), JSON.stringify({ notes: { top: ['Mint'] } }));
-  assert.equal(run(fragranticaDataContract(d)).ok, false);
-});
-
-test('fragrantica-data: an empty dir fails', () => {
-  const d = join(dir, 'data-empty');
-  mkdirSync(d, { recursive: true });
-  assert.equal(run(fragranticaDataContract(d)).ok, false);
-});
 
 // ─────────────────────────── places: places-normalized ────────────────────────────
 test('places-normalized: a non-empty Takeout-sourced places[] passes', () => {
@@ -173,30 +102,6 @@ test('enriched-places: an empty map fails', () => {
 // Mirror the keys declared on the real jobs (verified statically by tsc) and prove
 // deriveGates yields one gate per stage boundary — i.e. the workflow start-log
 // gate count is > 0.
-test('perfumes: gates derive between every stage (count > 0)', () => {
-  const dag = buildDag([
-    { job: 'perfumes-find-url' },
-    { job: 'perfumes-fetch', dependsOn: ['perfumes-find-url'] },
-    { job: 'perfumes-parse', dependsOn: ['perfumes-fetch'] },
-    { job: 'perfumes-build', dependsOn: ['perfumes-parse'] },
-  ]);
-  const produces = new Map<string, string[]>([
-    ['perfumes-find-url', ['fragrantica-urls']],
-    ['perfumes-fetch', ['fragrantica-pages']],
-    ['perfumes-parse', ['fragrantica-data']],
-    ['perfumes-build', []],
-  ]);
-  const consumes = new Map<string, string[]>([
-    ['perfumes-find-url', []],
-    ['perfumes-fetch', ['fragrantica-urls']],
-    ['perfumes-parse', ['fragrantica-pages']],
-    ['perfumes-build', ['fragrantica-data']],
-  ]);
-  const gates = deriveGates(dag, produces, consumes);
-  assert.equal(gates.length, 3);
-  assert.deepEqual(gates.map((g) => g.key), ['fragrantica-urls', 'fragrantica-pages', 'fragrantica-data']);
-});
-
 test('places: gates derive between every stage (count > 0)', () => {
   const dag = buildDag([
     { job: 'places-ingest' },
@@ -225,9 +130,6 @@ test('places: gates derive between every stage (count > 0)', () => {
 // Every contract declares a machine-readable `shape` for the gate page, and a
 // passing check returns per-expectation `checks` (aligned by label) + a `sample`.
 const allContracts: Array<[string, ArtifactContract]> = [
-  ['fragrantica-urls', fragranticaUrlsContract()],
-  ['fragrantica-pages', fragranticaPagesContract()],
-  ['fragrantica-data', fragranticaDataContract()],
   ['places-normalized', normalizedPlacesContract()],
   ['resolved-place-ids', resolvedPlacesContract()],
   ['enriched-places', enrichedPlacesContract()],
@@ -271,9 +173,6 @@ test('a failing check marks the offending expectation ok:false (expected-vs-actu
 // Assert the contract `key`s the jobs actually use match the keys the gate
 // derivation above relies on — so a rename can't silently break wiring.
 test('contract keys are stable + match the workflow wiring', () => {
-  assert.equal(fragranticaUrlsContract().key, 'fragrantica-urls');
-  assert.equal(fragranticaPagesContract().key, 'fragrantica-pages');
-  assert.equal(fragranticaDataContract().key, 'fragrantica-data');
   assert.equal(normalizedPlacesContract().key, 'places-normalized');
   assert.equal(resolvedPlacesContract().key, 'resolved-place-ids');
   assert.equal(enrichedPlacesContract().key, 'enriched-places');

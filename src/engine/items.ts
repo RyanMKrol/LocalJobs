@@ -52,6 +52,19 @@ export class FatalStageError extends Error {
   }
 }
 
+/**
+ * An ordinary item failure that carries diagnostics. Throwing any error fails the
+ * item and records its message; throw this one to also keep structured detail on
+ * the failed row (an HTTP status, the page title that came back, where a debug
+ * copy was saved), so the reason is on the run page and not only in the log.
+ */
+export class ItemFailure extends Error {
+  constructor(message: string, readonly detail: Record<string, unknown> = {}) {
+    super(message);
+    this.name = 'ItemFailure';
+  }
+}
+
 const SOFT_STOP = Symbol('softStop');
 export interface SoftStop {
   [SOFT_STOP]: true;
@@ -203,7 +216,8 @@ export async function eachItem<T>(
           break;
         }
         const message = err instanceof Error ? err.message.split('\n')[0] : String(err);
-        mark(() => markWorkItem(ledger, key, 'failed', { attempts: attempt, detail: { name: title(item), error: message }, ...lineage(item) }));
+        const extra = err instanceof ItemFailure ? err.detail : {};
+        mark(() => markWorkItem(ledger, key, 'failed', { attempts: attempt, detail: { name: title(item), ...extra, error: message }, ...lineage(item) }));
         tally.failed++;
         tally.attempted++;
         consecutiveFailures++;

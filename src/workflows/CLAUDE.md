@@ -4,7 +4,8 @@
 
 A stage declares what it reads and writes with `defineStage({ inputs, outputs, run })`
 (imported from `src/engine/index.js`), and the engine passes its inputs in, records its
-outputs, and checks both. `tv-recs/` and `movies/` are the worked examples. See "Ports" in the root `CLAUDE.md` for the rules and the guarantees. In
+outputs, and checks both. `tv-recs/` and `movies/` are the worked examples of a fan-out
+and fan-in, `perfumes/` of an item pipeline built on `eachItem`. See "Ports" in the root `CLAUDE.md` for the rules and the guarantees. In
 short:
 
 - Artifact types live in the workflow's `contracts.ts` (`jsonArtifact`, `dirArtifact`,
@@ -28,9 +29,9 @@ must have a validation gate between them: a matching `produces`/`consumes`
 (`src/core/types.ts`, `src/core/dag.ts`'s `deriveGates`). **A trivial gate is an
 acceptable minimum bar** — a bare `check(): { ok: true }` "the previous stage
 succeeded" contract satisfies the rule; not every boundary needs a rich
-shape-check like `places`/`perfumes`'s. Reach for a real shape-check only when
+shape-check like `places`'s. Reach for a real shape-check only when
 there's an actual artifact worth validating (see `src/workflows/places/contracts.ts`
-and `src/workflows/perfumes/contracts.ts` for the richer worked examples).
+for the richer worked example).
 
 **This is mechanically enforced, not just documented.** `src/core/gate-coverage.test.ts`
 walks every workflow the registry loads and asserts every DAG edge has a
@@ -40,11 +41,11 @@ workflow LITERALLY CANNOT merge without gates at every stage boundary.
 
 **How to wire one on a new job:** declare `produces`/`consumes` on the
 `JobDefinition` in the `.job.ts` file, pointing at factory functions in a
-`contracts.ts` at the job-folder root. `src/workflows/perfumes/stages/fetch.job.ts`
-is the shortest concrete example; `src/workflows/stocks-sync/contracts.ts`,
+`contracts.ts` at the job-folder root. `src/workflows/places/stages/enrich.job.ts`
+is a concrete example; `src/workflows/stocks-sync/contracts.ts`,
 `src/workflows/projects-sync/contracts.ts`, `src/workflows/workouts-sync/contracts.ts`,
 and `src/workflows/stock-digest/contracts.ts` are further worked examples alongside
-the original places/perfumes ones.
+the original places ones.
 
 This is a local reinforcement of the identical rule in the root `CLAUDE.md`
 ("Validation gates between workflow stages"). It's repeated here because Claude

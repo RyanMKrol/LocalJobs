@@ -1,14 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getWorkItem } from '../../db/store.js';
-import type { JobContext } from '../../core/types.js';
 import { callService } from '../../core/services.js';
-import { ensureDirs as coreEnsureDirs, readJsonFile, writeJsonFile } from '../../engine/fsjson.js';
+import { ensureDirs as coreEnsureDirs, readJsonFile, writeFileAtomic, writeJsonFile } from '../../engine/index.js';
 import { dynamoScan } from '../../services/dynamodb.service.js';
 import { perfumesConfig } from './config.js';
 import type { PerfumeInput } from './types.js';
-
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** The live source of truth (T401): the owner's PerfumeRatings DynamoDB table,
  *  populated by rating perfumes on their own website. Retired the old
@@ -46,36 +42,26 @@ export async function loadPerfumes(): Promise<PerfumeInput[]> {
   return perfumes;
 }
 
-export { readJsonFile, writeJsonFile };
+export { readJsonFile, writeFileAtomic, writeJsonFile };
 
 export function ensureDirs(): void {
   coreEnsureDirs(perfumesConfig.outDir, perfumesConfig.pagesDir, perfumesConfig.pagesFailedDir, perfumesConfig.fragranticaDir, perfumesConfig.markdownDir);
 }
 
-/** A perfume is "stuck" at a stage if it failed and is out of retries. */
-export function isStuck(jobName: string, id: string): boolean {
-  const r = getWorkItem(jobName, id);
-  return !!r && r.status === 'failed' && r.attempts >= perfumesConfig.maxAttempts;
-}
-
 export const label = (p: PerfumeInput): string => `${p.name} — ${p.brand}`;
 
 /**
- * Emit a per-item progress update for an item-loop stage: `done` of `total`
- * items finished maps to a 0..100 percentage, with an `done/total` status (plus
- * an optional suffix like "3 ok, 1 failed"). Centralises what every perfumes
- * stage does after each item so a long stage advances the run % AS IT WORKS
- * instead of jumping 0→100 only at the end. `total <= 0` (an empty run) reports
- * 100 rather than dividing by zero.
+ * Display fields for a ledger row on the run page: each `[label, value]` pair
+ * whose value is present, then the error when the row is a failed one. Used by
+ * the stages' `describeItem`.
  */
-export function reportItemProgress(
-  ctx: Pick<JobContext, 'progress'>,
-  done: number,
-  total: number,
-  suffix?: string,
-): void {
-  const pct = total > 0 ? (done / total) * 100 : 100;
-  ctx.progress(pct, `${done}/${total}${suffix ? ` · ${suffix}` : ''}`);
+export function rowFields(detail: Record<string, unknown>, pairs: [string, unknown][]): { label: string; value: string }[] {
+  const out = pairs
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([l, v]) => ({ label: l, value: String(v) }));
+  if (typeof detail.error === 'string' && detail.error) out.push({ label: 'Error', value: detail.error.slice(0, 160) });
+  if (typeof detail.stopped === 'string' && detail.stopped) out.push({ label: 'Stopped', value: detail.stopped });
+  return out;
 }
 
 /** Every parsed Fragrantica perfume's vote count, across the whole scraped
@@ -83,8 +69,7 @@ export function reportItemProgress(
  *  sample of how much community signal exists, used to calibrate what counts as
  *  a high- vs low-confidence vote count. Skips files with no usable vote count
  *  and anything unreadable. */
-export function loadVoteCorpus(): number[] {
-  const dir = perfumesConfig.fragranticaDir;
+export function loadVoteCorpus(dir: string = perfumesConfig.fragranticaDir): number[] {
   if (!existsSync(dir)) return [];
   const out: number[] = [];
   for (const f of readdirSync(dir)) {

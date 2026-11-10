@@ -789,31 +789,86 @@ const missingMoviesStageIoOverall = {
   job: '__overall__',
 };
 
-// perfumes — find-url -> fetch -> parse -> build (linear, 4 stages).
+// perfumes — find-url -> fetch -> parse -> build, with build also fed by find-url (the URLs).
+// A PORTS item pipeline: every artifact is a cumulative store, so a card shows the whole
+// store (46 URLs, 45 pages) and whether this run added to it, while the ITEM rows show only
+// what this run did (2 perfumes: one went all the way through, one failed at fetch).
 const perfumesMembers = [
   { job_name: 'perfumes-find-url', depends_on: [] },
   { job_name: 'perfumes-fetch', depends_on: ['perfumes-find-url'] },
   { job_name: 'perfumes-parse', depends_on: ['perfumes-fetch'] },
-  { job_name: 'perfumes-build', depends_on: ['perfumes-parse'] },
+  { job_name: 'perfumes-build', depends_on: ['perfumes-find-url', 'perfumes-parse'] },
 ];
 const perfumesWorkflowRun = workflowRun({ id: 'perfumes-run', workflow_name: 'perfumes' });
 const perfumesRunJobs = perfumesMembers.map((m, i) => run({
   id: `perfumes-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'perfumes-run',
 }));
-const perfumesFindUrlOutput = { jobName: 'perfumes-find-url', itemKey: 'p:1', status: 'success', detail: { name: 'Aventus', url: LONG_URL } };
-const perfumesFetchOutput = { jobName: 'perfumes-fetch', itemKey: 'p:1', status: 'success', detail: { name: 'Aventus', path: '/abs/data/out/raw/aventus.html', format: 'html' } };
-const perfumesParseOutput = { jobName: 'perfumes-parse', itemKey: 'p:1', status: 'success', detail: { name: 'Aventus', path: '/abs/data/out/parsed/aventus.json', format: 'json' } };
-const perfumesBuildOutput = { jobName: 'perfumes-build', itemKey: 'p:1', status: 'success', detail: { name: 'Aventus', markdown: '/abs/data/out/aventus.md' } };
+const perfumeRow = (job, key, title, fields, extra = {}) => ({ id: `${job}:${key}`, jobName: job, itemKey: key, status: 'success', title, fields, ...extra });
+const AVENTUS = 'aventus__creed__edp';
+const HALFETI = 'halfeti__penhaligons__edp';
+const perfumesUrls = portsArtifact({
+  job: 'perfumes-find-url', port: 'urls', artifactKey: 'fragrantica-urls',
+  description: 'Each perfume id mapped to its Fragrantica page URL. Grows as perfumes are resolved.',
+  summary: '46 URL(s)', itemCount: 46, bytes: 5_200, preview: { path: 'perfumes/data/out/fragrantica-urls.json', format: 'json' },
+  sample: [{ id: AVENTUS, title: AVENTUS, fields: [{ label: 'URL', value: 'https://www.fragrantica.com/perfume/Creed/Aventus-9828.html' }] }],
+});
+const perfumesPages = portsArtifact({
+  job: 'perfumes-fetch', port: 'pages', artifactKey: 'fragrantica-pages', storage: 'dir', format: 'text',
+  description: 'The captured Fragrantica page of each perfume: <id>.txt (the text) and <id>.html (the raw page).',
+  summary: '45 captured page(s)', itemCount: 45, bytes: null,
+  sample: [{ id: AVENTUS, title: AVENTUS, preview: { path: `perfumes/data/out/pages/${AVENTUS}.txt`, format: 'text' } }],
+});
+const perfumesData = portsArtifact({
+  job: 'perfumes-parse', port: 'data', artifactKey: 'fragrantica-data', storage: 'dir',
+  description: 'Each captured page parsed into a structured record: <id>.json with the name, notes, accords and community votes.',
+  summary: '45 parsed perfume(s)', itemCount: 45, bytes: null,
+  sample: [{ id: AVENTUS, title: AVENTUS, preview: { path: `perfumes/data/out/fragrantica/${AVENTUS}.json`, format: 'json' } }],
+});
+const perfumesProfiles = portsArtifact({
+  job: 'perfumes-build', port: 'profiles', artifactKey: 'perfume-profiles', storage: 'dir', format: 'markdown',
+  description: 'The finished markdown profile of each perfume: <id>.md.',
+  summary: '45 profile(s)', itemCount: 45, bytes: null,
+  sample: [{ id: AVENTUS, title: AVENTUS, preview: { path: `perfumes/data/out/markdown/${AVENTUS}.md`, format: 'markdown' } }],
+});
+const perfumesFound = [
+  perfumeRow('perfumes-find-url', AVENTUS, 'Aventus — Creed', [{ label: 'URL', value: 'https://www.fragrantica.com/perfume/Creed/Aventus-9828.html' }, { label: 'Source', value: 'web search' }]),
+  perfumeRow('perfumes-find-url', HALFETI, 'Halfeti — Penhaligon\'s', [{ label: 'URL', value: LONG_URL }, { label: 'Source', value: 'PerfumeRatings' }]),
+];
+const perfumesFetched = [
+  perfumeRow('perfumes-fetch', AVENTUS, 'Aventus — Creed', [{ label: 'Captured', value: '18432 chars' }], { preview: { path: `perfumes/data/out/pages/${AVENTUS}.txt`, format: 'text' } }),
+  // A failed item keeps what came back, so the reason is on the page and not only in the log.
+  perfumeRow('perfumes-fetch', HALFETI, 'Halfeti — Penhaligon\'s', [{ label: 'HTTP', value: '403' }, { label: 'Page title', value: 'Just a moment...' }, { label: 'Error', value: 'cloudflare challenge / bot block' }], { status: 'failed' }),
+];
+const perfumesParsed = [
+  perfumeRow('perfumes-parse', AVENTUS, 'Aventus — Creed', [{ label: 'Accords', value: '8' }, { label: 'Notes', value: '13' }, { label: 'Rating', value: '4.31' }], { preview: { path: `perfumes/data/out/fragrantica/${AVENTUS}.json`, format: 'json' } }),
+];
+const perfumesBuilt = [
+  perfumeRow('perfumes-build', AVENTUS, 'Aventus — Creed', [{ label: 'Fragrantica votes', value: '21804' }], { preview: { path: `perfumes/data/out/markdown/${AVENTUS}.md`, format: 'markdown' } }),
+];
+const withRows = (over, inputs, outputs) => ({ ...over, inputs, outputs, inputTotal: inputs.length, outputTotal: outputs.length });
 const perfumesStageIo = {
-  'perfumes-find-url': { inputs: [], outputs: [perfumesFindUrlOutput], predecessorJobs: [], job: 'perfumes-find-url' },
-  'perfumes-fetch': { inputs: [perfumesFindUrlOutput], outputs: [perfumesFetchOutput], predecessorJobs: ['perfumes-find-url'], job: 'perfumes-fetch' },
-  'perfumes-parse': { inputs: [perfumesFetchOutput], outputs: [perfumesParseOutput], predecessorJobs: ['perfumes-fetch'], job: 'perfumes-parse' },
-  'perfumes-build': { inputs: [perfumesParseOutput], outputs: [perfumesBuildOutput], predecessorJobs: ['perfumes-parse'], job: 'perfumes-build' },
+  'perfumes-find-url': portsIo('perfumes-find-url', withRows({ outputArtifacts: [perfumesUrls], outputsUnchanged: 44 }, [], perfumesFound)),
+  'perfumes-fetch': portsIo('perfumes-fetch', withRows({
+    predecessorJobs: ['perfumes-find-url'], inputArtifacts: [asInput(perfumesUrls, 'urls')], outputArtifacts: [perfumesPages],
+  }, perfumesFound, perfumesFetched)),
+  'perfumes-parse': portsIo('perfumes-parse', withRows({
+    predecessorJobs: ['perfumes-fetch'], inputArtifacts: [asInput(perfumesPages, 'pages')], outputArtifacts: [perfumesData],
+  }, [perfumesFetched[0]], perfumesParsed)),
+  'perfumes-build': portsIo('perfumes-build', withRows({
+    // Two inputs from two different stages: the parsed data, and the URLs from stage 1.
+    predecessorJobs: ['perfumes-find-url', 'perfumes-parse'],
+    inputArtifacts: [asInput(perfumesData, 'data'), asInput(perfumesUrls, 'urls')], outputArtifacts: [perfumesProfiles],
+  }, perfumesParsed, perfumesBuilt)),
 };
-const perfumesStageIoOverall = {
-  inputs: [perfumesFindUrlOutput], outputs: [perfumesBuildOutput],
-  predecessorJobs: ['perfumes-find-url'], outputJobs: ['perfumes-build'], job: '__overall__',
-};
+const perfumesStageIoOverall = portsIo('__overall__', withRows({
+  predecessorJobs: ['perfumes-find-url'], outputJobs: ['perfumes-build'], outputArtifacts: [perfumesProfiles],
+}, perfumesFound, perfumesBuilt));
+const perfumesGates = [
+  { key: 'fragrantica-urls', producer: 'perfumes-find-url', consumer: 'perfumes-fetch', state: 'passed' },
+  { key: 'fragrantica-pages', producer: 'perfumes-fetch', consumer: 'perfumes-parse', state: 'passed' },
+  { key: 'fragrantica-data', producer: 'perfumes-parse', consumer: 'perfumes-build', state: 'passed' },
+  { key: 'fragrantica-urls', producer: 'perfumes-find-url', consumer: 'perfumes-build', state: 'passed' },
+];
 
 // vault-sync — single stage: vault-sync-export (the second-brain vault mirror).
 const vaultSyncMembers = [{ job_name: 'vault-sync-export', depends_on: [] }];
@@ -1144,7 +1199,7 @@ function fixtureForRaw(pathname, searchParams) {
     const job = searchParams?.get('job');
     return perfumesStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
-  if (pathname === '/api/workflow-runs/perfumes-run') return { run: perfumesWorkflowRun, jobs: perfumesRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/perfumes-run') return { run: perfumesWorkflowRun, jobs: perfumesRunJobs, logs, gates: perfumesGates };
   if (pathname === '/api/workflow-runs/vault-sync-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return vaultSyncStageIoOverall;
     const job = searchParams?.get('job');
@@ -1242,7 +1297,7 @@ function fixtureForRaw(pathname, searchParams) {
     return { workflow: workflow({ name: 'tv-recommendations', category: 'recommendations', jobs: tvRecommendationsMembers, gates: [] }) };
   }
   if (pathname === '/api/workflows/perfumes') {
-    return { workflow: workflow({ name: 'perfumes', category: 'second-brain', jobs: perfumesMembers, gates: [] }) };
+    return { workflow: workflow({ name: 'perfumes', category: 'second-brain', jobs: perfumesMembers, gates: perfumesGates.map(({ state, ...g }) => g) }) };
   }
   if (pathname === '/api/workflows/vault-sync') {
     return { workflow: workflow({ name: 'vault-sync', category: 'second-brain', jobs: vaultSyncMembers, gates: [] }) };
@@ -1459,6 +1514,29 @@ export const FLOWS = [
     actions: async (page) => {
       await page.click('button:has-text("Browse 650 items")');
       await page.waitForSelector('.db-modal .stage-io-list-tall .stage-io-item', { timeout: 5000 });
+    },
+  },
+  {
+    // A ports ITEM PIPELINE (perfumes): the fetch stage's tab shows the cumulative
+    // store it was handed and the one it adds to as cards, and under them only the
+    // items THIS run touched, including a failed one with what came back.
+    name: 'workflow-run-ports-item-pipeline-fetch',
+    path: '/workflow-runs/perfumes-run',
+    waitFor: ['.io-job-filter-chip'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:has-text("perfumes-fetch")');
+      await page.waitForSelector('.stage-io-artifact', { timeout: 5000 });
+    },
+  },
+  {
+    // The same pipeline's last stage takes TWO inputs from two different stages
+    // (the parsed data from parse, the URLs from find-url).
+    name: 'workflow-run-ports-item-pipeline-build',
+    path: '/workflow-runs/perfumes-run',
+    waitFor: ['.io-job-filter-chip'],
+    actions: async (page) => {
+      await page.click('.io-job-filter-chip:has-text("perfumes-build")');
+      await page.waitForSelector('.stage-io-artifact', { timeout: 5000 });
     },
   },
   {

@@ -88,7 +88,7 @@ function IoRowView({ row, itemKey, onOpenFile }: { row: IoItem; itemKey?: string
         {row.fields && row.fields.length > 0 && (
           <div className="stage-io-item-hints">
             {row.fields.map((f) => (
-              <span key={f.label} className="stage-io-item-hint">{f.label}: {f.value}</span>
+              <span key={f.label} className="stage-io-item-hint" title={`${f.label}: ${f.value}`}>{f.label}: {f.value}</span>
             ))}
           </div>
         )}

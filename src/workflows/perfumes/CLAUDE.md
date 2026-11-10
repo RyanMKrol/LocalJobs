@@ -8,23 +8,68 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
 
 ## DAG: find-url → fetch → parse → build
 
+```
+find-url ──urls──▶ fetch ──pages──▶ parse ──data──▶ build ──▶ profiles
+   └──────────────────urls───────────────────────────▲
+```
+
+This is a ports workflow (see "Ports" in the root `CLAUDE.md`). Each stage is a `defineStage`
+in its `*.job.ts`, the artifact types are in `contracts.ts`, and each stage's loop is the
+engine's `eachItem` (`src/engine/items.ts`).
+
+| Stage | Inputs | Output (all cumulative) |
+|---|---|---|
+| `perfumes-find-url` | none (root: `inputKeys()` from DynamoDB) | `urls` (`fragrantica-urls`, `fragrantica-urls.json`) |
+| `perfumes-fetch` | `urls` | `pages` (`fragrantica-pages`, `pages/`) |
+| `perfumes-parse` | `pages` | `data` (`fragrantica-data`, `fragrantica/`) |
+| `perfumes-build` | `data`, `urls` | `profiles` (`perfume-profiles`, `markdown/`), the workflow's product |
+
+What that buys, and what to keep in mind:
+
+- **The build depends on find-url directly.** It cites each perfume's Fragrantica page, so it
+  reads the URL store. That used to be a hidden read three stages back; it is now an edge in the
+  manifest and an input on the stage.
+- **Every store is cumulative.** A perfume is resolved, fetched, parsed and built once, and each
+  stage adds to what earlier runs left. On a run with nothing new for a stage, its store is
+  recorded as carried forward. The checks are therefore about shape, not about there being
+  something new: an empty store is valid (nothing resolved yet), a store holding the wrong kind
+  of thing fails (a URL that is not Fragrantica's, an empty page capture, parsed records with no
+  name or notes, a profile with no frontmatter).
+- **`eachItem` owns the loop.** It skips perfumes already done, leaves out perfumes outside a
+  limited run, counts attempts, records a thrown error as a failed item and carries on, and
+  fails the run at the end if any perfume failed (so the next cycle retries). A stage's handler
+  only does the work for one perfume and returns what to record. There is no hand-written loop,
+  tally or `assertNoFailures` left in this folder.
+- **A Claude usage limit is `softStop(...)`.** The perfume is recorded `skipped` with no attempt
+  counted, the stage ends without failing, and the next run resumes there. If a stage stops this
+  way having completed nothing, the workflow run settles `partial` and the push says so.
+- **A failed fetch keeps what came back.** It throws `ItemFailure(why, { httpStatus, pageTitle,
+  finalUrl, textLength, snippet, debugFile, url })`, so the run page shows the HTTP status and
+  page title of a blocked page, not just "failed". A browser that will not launch is a
+  `FatalStageError`: it fails the run at once without charging any perfume an attempt.
+- **Each item is saved before it is marked done.** The handler writes its file (atomically)
+  and only then returns; find-url saves the URL store after every perfume.
+- **Each stage says what its items were made from** (`from: { job: <previous stage> }`), which is
+  what the run page lists as a stage's input items: the perfumes this run actually worked on,
+  not the whole catalogue.
+
+The stages:
+
 - **`perfumes-find-url`** — root stage (`inputKeys()` = every perfume id from the DynamoDB scan,
   routed through `inputKeysService: 'dynamodb'`). For each perfume without an already-known
-  `fragranticaUrl`, asks Claude (web search) to find its Fragrantica page. Writes
-  `data/out/fragrantica-urls.json` (gate: `fragrantica-urls`).
+  `fragranticaUrl`, asks Claude (web search) to find its Fragrantica page. Adds it to
+  `data/out/fragrantica-urls.json`, which it creates (empty) on a first run.
 - **`perfumes-fetch`** — for each resolved URL, launches a real (non-bundled) Chrome via the shared
   `launchPersistentBrowser` helper (`src/core/browser.ts`) against the framework's shared persistent
   profile (`data/chrome-profile/`, keeps Cloudflare clearance across runs), waits out any Cloudflare
-  challenge, scrolls to trigger lazy content, and saves the page. Success path saves page *text*
-  (`data/out/pages/<id>.txt`); a page diagnosed as blocked/short is saved as HTML instead
-  (`data/out/pages-failed/<id>.html`) for debugging. Paced via the `fragrantica` service
+  challenge, scrolls to trigger lazy content, and saves the page. Success path saves the page
+  *text* (`data/out/pages/<id>.txt`) and the raw page beside it (`<id>.html`, written first); a
+  page diagnosed as blocked/short is saved to `data/out/pages-failed/` instead for debugging. Paced via the `fragrantica` service
   (`minIntervalMs` ~12s + jitter — the block is rate/reputation-based, not per-request detection).
-  Gate: `fragrantica-pages`.
 - **`perfumes-parse`** — parses the cached page into structured notes/accords
-  (`data/out/fragrantica/<id>.json`, gate: `fragrantica-data`). Accord `pct` (e.g. "woody 83%") is
-  lifted from the page's coloured-bar `width: NN%` CSS — **only populated when an `<id>.html` capture
-  exists** (the normal `.txt`-only success path leaves `pct: null`); re-fetching an item so it also
-  saves `.html` backfills this on next parse. No network calls of its own.
+  (`data/out/fragrantica/<id>.json`). Accord `pct` (e.g. "woody 83%") is lifted from the page's
+  coloured-bar `width: NN%` CSS, read from the `<id>.html` capture; a page with no HTML capture
+  keeps `pct: null` rather than a guess. No network calls of its own.
 - **`perfumes-build`** — researches + writes the final profile via Claude CLI, following the enforced
   `profile.template.md` contract (YAML frontmatter — name/brand/notes pyramid/accords/wear
   profile/community rating/provenance — plus fixed narrative sections). Blends Fragrantica's
@@ -96,6 +141,11 @@ remains, capped at `maxCycles`). Runs daily at 02:00.
 - **Same-key stages, no lineage args** — every stage keys by the same perfume `id` (`p.id`), so
   `root_key` propagates for free (`markWorkItem`'s rule 3: item is its own root); this is the
   canonical "no `rootKey`/`parentKey` needed" example referenced elsewhere in this repo.
+- **The perfume list itself is not a stage hand-off.** Every stage calls `loadPerfumes()` (the
+  cached DynamoDB scan) for names and the owner's personal fields. That is a read of an external
+  source through a service, not of another stage's output, so it has no port.
+- **`dryRun` builds pass the shape check.** The fabricated dry-run profile includes a
+  `## Sources` section, so a dry run exercises the success path end to end.
 - Real Chrome (not bundled Chromium) + a persistent profile is load-bearing for beating Fragrantica's
   Cloudflare gate — this is reputation/rate-based blocking, not per-request fingerprinting, so pacing
   (the `fragrantica` service's `minIntervalMs`) matters as much as the browser identity.

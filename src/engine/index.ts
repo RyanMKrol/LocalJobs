@@ -46,7 +46,7 @@ export type {
 export type * from './types.js';
 
 // Item loops: working through a list one item at a time, with the ledger.
-export { FatalStageError, SoftStopError, eachItem, snapshotLedger, softStop, successRows } from './items.js';
+export { FatalStageError, ItemFailure, SoftStopError, eachItem, snapshotLedger, softStop, successRows } from './items.js';
 export type { EachItemOptions, ItemInfo, ItemTally, SnapshotEntry } from './items.js';
 
 // Helpers for writing a stage's data safely.

@@ -118,7 +118,7 @@ per-workflow detail back in here; add it to the workflow's own `CLAUDE.md` inste
 | Workflow | Folder | What it does |
 |---|---|---|
 | **places** | `src/workflows/places/` | Google Saved Places enrichment: CSVs → resolve CIDs → Google Places API → Gemini LLM summaries → markdown profiles |
-| **perfumes** | `src/workflows/perfumes/` | Fragrantica profile builder: find URL → headless-Chrome fetch → parse → Claude CLI profile write |
+| **perfumes** | `src/workflows/perfumes/` | Fragrantica profile builder: find URL → headless-Chrome fetch → parse → Claude CLI profile write (the build also takes the URLs straight from find-url) |
 | **missing-tv-seasons** | `src/workflows/missing-tv-seasons/` | Plex TV new-seasons audit: snapshot → check TMDB for complete missing seasons → weekly digest |
 | **missing-movies** | `src/workflows/missing-movies/` | Weekly Plex movie franchise-gap audit: snapshot → check TMDB Collections for released-not-owned films → weekly digest |
 | **movie-recommendations** | `src/workflows/movies/` | Monthly Plex movie recommender: snapshot → an 8-branch Claude recommender fan-out → merge/verify/dedupe → digest |
@@ -186,7 +186,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   **4** (raised from 1). So a DAG with independent same-wave stages — e.g. the
   `movie-recommendations` 8 recommender branches all hanging off `movie-snapshot`
   — runs them concurrently (up to 4) once their shared dependency finishes, instead
-  of one-after-another. Strictly-linear workflows (places, perfumes, the TV
+  of one-after-another. Strictly-linear workflows (places, the TV
   `missing-tv-seasons` workflow) are unaffected: only ever one stage is ready at a time. A workflow
   overrides the cap with **`maxConcurrency`** on its `WorkflowDefinition` — raise it
   for a wider fan-out, or set **`1`** to force strict sequential order (the `movie-recommendations`
@@ -481,7 +481,7 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/engine/protocol.ts` | `ENGINE_PROTOCOL`: the child-protocol version the daemon passes to children |
 | `src/engine/hash.ts` | SHA-256 of a file, and a listing fingerprint for a directory |
 | `src/engine/testing/` | `context.ts` (`makeTestContext` for unit-testing a ports stage), `ports-fixtures.ts` + `fixture-runner.ts` (the fan-out / fan-in fixture workflow the end-to-end tests run in real child processes) |
-| `src/engine/items.ts` | `eachItem` (the item loop: skip done, run-limit roots, attempts, per-item failure, soft stop, fatal stop, progress, save-then-mark, throw at the end if any failed), `softStop` / `SoftStopError` / `FatalStageError`, `snapshotLedger` (batched re-record of a whole snapshot ledger, reporting new / changed / unchanged, optional prune), `successRows` |
+| `src/engine/items.ts` | `eachItem` (the item loop: skip done, run-limit roots, attempts, per-item failure, soft stop, fatal stop, progress, save-then-mark, throw at the end if any failed), `softStop` / `SoftStopError` / `FatalStageError` / `ItemFailure`, `snapshotLedger` (batched re-record of a whole snapshot ledger, reporting new / changed / unchanged, optional prune), `successRows` |
 | `src/engine/scenarios/` | Fixture workflows and the tests that run them end to end, one per workflow shape (see `src/engine/README.md`) |
 | `src/engine/checkpoint.ts` | `createCheckpoint(save, { every })`: "save, then mark done". Holds an item-loop stage's ledger marks back until the hand-off file that carries those items' data has been saved, so a kill can never leave an item marked done whose data never reached the next stage. Used by the places stages |
 | `src/engine/retention.ts` | Daily background sweep (daemon only) that trims per-run I/O detail of old runs via `pruneRunHistoryChunk` |
@@ -633,10 +633,9 @@ job MAY colocate a service it owns).
   finishes each one, so the job's own run % advances live (the workflow bar only
   steps when the whole stage finishes — see the progress roll-up note below)
   instead of jumping 0→100 at the finish. Use a sensible denominator — the count
-  it will actually attempt this run (e.g. `Math.min(todo.length, runLimit)`). The
-  perfumes stages share `reportItemProgress(ctx, done, total, suffix?)` in
-  `perfumes/lib.ts` for this; the places stages emit it inline. All 8 example-job
-  loops do this — match it in new jobs.
+  it will actually attempt this run (e.g. `Math.min(todo.length, runLimit)`).
+  `eachItem` does this for you (the perfumes stages use it); the places stages
+  still emit it inline. Match it in new jobs.
 - Keep secrets in `.env` (read via `process.env`); never hardcode. The child
   inherits the daemon's env.
 - **Record a produced markdown artifact's path in the work item's `detail.markdown`
@@ -981,7 +980,8 @@ doubt, log it.
   `i/N` log line and progress, record what the handler returns as the item's detail,
   record a thrown error as a failed item with a counted attempt and carry on, stop
   gracefully on `softStop(reason)` or a `SoftStopError` (a service's
-  `QuotaExceededError` is one, so it needs no handling), fail the run at once on a
+  `QuotaExceededError` is one, so it needs no handling), keep the diagnostics of a
+  thrown `ItemFailure(message, detail)` on the failed row, fail the run at once on a
   `FatalStageError` (a revoked key, depleted credits), and throw at the end if any item
   failed. The handler writes the item's data BEFORE returning; for one shared file,
   pass `save` and marks are held until a save covers them. A stage that re-records a
@@ -1382,14 +1382,14 @@ doubt, log it.
   page) and return precise per-drift `violations`. Gate derivation
   (`deriveGates`) lives in `src/engine/dag.ts` (pure, edge-scoped — a consumed key
   with no producing upstream is an external input, not a gate); enforcement lives
-  in `src/engine/workflow-executor.ts`. Both example workflows declare these: the
-  contracts live in `src/workflows/places/contracts.ts` and
-  `src/workflows/perfumes/contracts.ts` as small **factory functions** (each takes an
-  optional path defaulting to the job's real `data/` artifact, so the jobs wire
-  `produces:[…()]`/`consumes:[…()]` while unit tests point them at synthetic
+  in `src/engine/workflow-executor.ts`. `places` is the worked example: its
+  contracts live in `src/workflows/places/contracts.ts` as small **factory functions**
+  (each takes an optional path defaulting to the job's real `data/` artifact, so the
+  jobs wire `produces:[…()]`/`consumes:[…()]` while unit tests point them at synthetic
   fixtures). The checks are deliberately SHAPE + NON-EMPTY (exists · non-empty ·
   expected fields/columns) — enough to catch real drift without brittle
-  full-schema validation. Each workflow derives 3 gates (one per stage boundary).
+  full-schema validation. It derives 3 gates (one per stage boundary). (`perfumes`
+  used to be the other example; it is a ports workflow now, see its own `CLAUDE.md`.)
   Gate **state** is surfaced on the dashboard's workflow-run DAG: `classifyGates`
   (also in `src/engine/dag.ts`, pure) maps each gate to `passed`/`failed`/`pending`
   from the run's member runs — a gate is `failed` when its consumer's latest run
@@ -1451,7 +1451,7 @@ doubt, log it.
     is edge-scoped (one gate per producer→consumer edge, so ≥2 producers feeding one
     consumer derive one gate each) and the executor's `enforceGate` checks the
     producer's `produces[key]` and the consumer's `consumes[key]` INDEPENDENTLY, so
-    differing shapes both run + are enforced. The places/perfumes jobs keep the
+    differing shapes both run + are enforced. The places jobs keep the
     one-factory-per-key convention (so they always collapse); asymmetry is exercised
     only by test fixtures (`dag.test.ts`, `server.test.ts`, `workflow-executor.test.ts`).
   - **Definition-level (run-agnostic) gate page (T102).** The run-scoped page above

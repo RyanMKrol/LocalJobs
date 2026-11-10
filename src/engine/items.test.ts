@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { db } from '../db/index.js';
 import { createWorkflowRun, getWorkItem, markWorkItem, syncJob, syncWorkflow } from '../db/store.js';
-import { FatalStageError, SoftStopError, eachItem, snapshotLedger, softStop } from './items.js';
+import { FatalStageError, ItemFailure, SoftStopError, eachItem, snapshotLedger, softStop } from './items.js';
 import type { JobContext, LogLevel } from './types.js';
 
 function ctx(roots: string[] | null = null) {
@@ -57,6 +57,15 @@ test('a failing item is recorded failed with a COUNTED attempt, the loop carries
   assert.equal(bad.status, 'failed');
   assert.equal(bad.attempts, 1);
   assert.equal(JSON.parse(bad.detail!).error, 'nope');
+});
+
+test('an ItemFailure keeps its diagnostics on the failed row alongside the message', async () => {
+  const j = job();
+  await assert.rejects(() => eachItem(ctx().c, j, ['blocked'], base, async () => {
+    throw new ItemFailure('page too short', { httpStatus: 403, pageTitle: 'Just a moment...' });
+  }));
+  const detail = JSON.parse(getWorkItem(j, 'blocked')!.detail!);
+  assert.deepEqual(detail, { name: 'blocked', httpStatus: 403, pageTitle: 'Just a moment...', error: 'page too short' });
 });
 
 test('attempts accumulate across runs: after maxAttempts the item is given up on and the stage passes again', async () => {
