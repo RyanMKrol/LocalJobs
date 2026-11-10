@@ -265,6 +265,8 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
   ctx.log(`Configured sections: movie=${plexRenameConfig.movieSection}, tv=${plexRenameConfig.tvSection}`);
   ctx.progress(5, 'fetching library sections');
 
+  /** Titles whose Plex fetch failed during the walk: their files are MISSING from `entries`. */
+  const walkErrors: string[] = [];
   const { entries, roots, skippedNoFile } = await walkLibraryParts(opts, {
     onSectionsFetched(sections, allCount) {
       ctx.log(
@@ -275,6 +277,7 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
       ctx.log(`"${section.title}" (${section.type}): ${count} item(s)`);
     },
     onItemError(title, message) {
+      walkErrors.push(title);
       ctx.log(`  ✗ "${title}" — ${message}`, 'warn');
     },
     onItemProgress(_section, i, total) {
@@ -332,7 +335,18 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
   // GHOSTS (a file re-grouped, deleted, or re-keyed by Plex) — prune them so
   // downstream stages never re-plan a row that no longer describes reality.
   // Only on UNLIMITED runs: a limited run re-marks just its selected roots.
-  if (ctx.selectedRoots() === null) {
+  //
+  // NEVER after an incomplete walk. If any title's Plex fetch failed, its files
+  // are missing from `entries` because the walk could not see them, not because
+  // they are gone. Pruning then would drop those files' rows from the snapshot
+  // (and so from plan and verify) on the strength of one failed request.
+  if (walkErrors.length > 0) {
+    ctx.log(
+      `Walk incomplete — ${walkErrors.length} title(s) could not be read from Plex, so NO snapshot rows are pruned this run ` +
+        `(their existing rows are kept as they were).`,
+      'warn',
+    );
+  } else if (ctx.selectedRoots() === null) {
     const seen = entries.map((e) => fileKey(kindRatingKey(e), e.partId));
     const pruned = pruneSnapshotRows(JOB_NAME, seen);
     if (pruned > 0) ctx.log(`Pruned ${pruned} stale snapshot row(s) whose keys the live walk no longer produces.`);
@@ -344,4 +358,16 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
   ctx.log(`Sections walked: movie=${plexRenameConfig.movieSection}, tv=${plexRenameConfig.tvSection} · library roots: ${roots.length}`);
   ctx.log('══════════════════════════════════════════════');
   ctx.progress(100, `${recorded} file snapshot(s) recorded`);
+
+  // A walk that could not read every title is a FAILED run, not a quiet success:
+  // planning renames from a partial picture of the library is exactly the kind of
+  // thing that must not pass silently. Everything that WAS read is recorded above,
+  // so the retry (or the next run) only has to succeed where this one did not.
+  if (walkErrors.length > 0) {
+    const shown = walkErrors.slice(0, 5).map((t) => `"${t}"`).join(', ');
+    throw new Error(
+      `${walkErrors.length} title(s) could not be read from Plex this run (${shown}${walkErrors.length > 5 ? ', …' : ''}) — ` +
+        `the snapshot is incomplete; see the ✗ lines above`,
+    );
+  }
 }

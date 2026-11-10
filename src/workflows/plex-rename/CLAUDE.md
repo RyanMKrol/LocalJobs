@@ -108,6 +108,16 @@ plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename
   independently alerts on the vanished key; deliberately NO library-wide search for the new owner
   in v1, the owner investigates). Transient fetch errors are soft skips.
 
+## An incomplete walk never prunes, and fails the run (2026-11)
+
+`discover` swallowed a per-title Plex fetch error with a warn line, then ended an
+unlimited run by pruning every snapshot row whose key it had not re-marked. So one
+failed request for one show deleted that show's rows from the discover snapshot, and
+plan and verify (which read it) then pruned theirs too: the show silently fell out of
+the pipeline for that run. `runDiscover` now counts walk errors. If there are any it
+records everything it did read, prunes NOTHING, and throws naming the titles, so the
+run is retried and reported instead of planning from a partial picture of the library.
+
 ## The naming engine (`naming.ts`) — pure, exhaustively table-tested
 
 - **ID policy:** movies prefer `{tmdb-N}` (repo identity convention) falling back to `{imdb-ttN}`;

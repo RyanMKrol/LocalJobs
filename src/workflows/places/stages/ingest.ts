@@ -1,4 +1,5 @@
-import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
+import { writeJsonFile } from '../../../core/fsjson.js';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { markWorkItem } from '../../../db/store.js';
@@ -176,8 +177,8 @@ export async function runIngest(ctx: JobContext): Promise<ValidationReport> {
     places: places.sort((a, b) => a.name.localeCompare(b.name)),
   };
 
-  writeFileSync(placesConfig.placesOut, JSON.stringify(output, null, 2));
-  writeFileSync(placesConfig.reportOut, JSON.stringify(report, null, 2));
+  writeJsonFile(placesConfig.placesOut, output);
+  writeJsonFile(placesConfig.reportOut, report);
 
   // Convention (first stage owns the per-item list): as the workflow's first stage,
   // ingest records the canonical work-item list every later stage keys on — one

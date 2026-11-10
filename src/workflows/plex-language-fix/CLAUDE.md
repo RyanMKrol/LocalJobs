@@ -98,6 +98,24 @@ scoped to "just the N newest files" instead of the whole library.
 "every row for a job" query), a deliberate, scope-driven exception to the "all SQL goes through
 store.ts" convention, confined to this one workflow-local file. Read-only, never a paid/remote call.
 
+## A failed file fails its stage's run (discover, resolve, evaluate)
+
+All three read-only stages used to log a per-file error at warn level and carry on, so the
+run reported success and the same file could fail quietly every night. Each now follows
+the item-loop rule:
+
+- **discover** collects the titles whose Plex fetch failed, still records every file it
+  did read, then throws naming them.
+- **resolve** and **evaluate** record a failing file as `failed` with a COUNTED attempt
+  and throw at the end if any failed this run. A file that fails 3 times stops being
+  retried and shows on the Stuck tile; the job's retry budget (3) burns through those
+  attempts inside one run, so one permanently bad file does not block `apply` for days.
+  In evaluate, "the part is no longer on this item" (the file was replaced or removed
+  since discovery) is one of those counted failures rather than a silent skip.
+- A TMDB quota stop in resolve is still a graceful stop, and now records the file it
+  stopped on as `skipped`, so a run that resolved nothing because of the cap is seen as
+  stalled rather than as a quiet success.
+
 ## The evaluate → apply gate is a REAL pre-mutation check, not the trivial minimum (T574)
 
 `contracts.ts`'s three gates all read the ledger via `stages/ledger.ts`, but they are NOT uniformly

@@ -184,6 +184,8 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
   ctx.progress(5, 'fetching library sections');
 
   let skippedNoTmdb = 0;
+  /** Titles whose Plex fetch failed during the walk (their files were not discovered). */
+  const walkErrors: string[] = [];
 
   const entries = await walkLibraryFiles(opts, {
     onSectionsFetched(sections, allCount) {
@@ -195,6 +197,7 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
       ctx.log(`"${section.title}" (${section.type}): ${count} item(s)`);
     },
     onItemError(title, message) {
+      walkErrors.push(title);
       ctx.log(`  ✗ "${title}" — ${message}`, 'warn');
     },
     onSkippedNoTmdb() {
@@ -226,4 +229,14 @@ export async function runDiscover(ctx: JobContext, opts: PlexFetchOverrides = {}
   ctx.log(`New file(s) recorded: ${discovered} · already known: ${alreadyKnown} · skipped (no tmdb Guid): ${skippedNoTmdb}`);
   ctx.log('══════════════════════════════════════════════');
   ctx.progress(100, `${discovered} new file(s), ${alreadyKnown} already known`);
+
+  // A title that could not be read is a failed item: fail the run (after
+  // recording everything that WAS read) so it is retried and, if it keeps
+  // failing, reported, instead of being skipped with a warn line every night.
+  if (walkErrors.length > 0) {
+    const shown = walkErrors.slice(0, 5).map((t) => `"${t}"`).join(', ');
+    throw new Error(
+      `${walkErrors.length} title(s) could not be read from Plex this run (${shown}${walkErrors.length > 5 ? ', …' : ''}) — see the ✗ lines above`,
+    );
+  }
 }

@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { writeJsonFile } from '../../../core/fsjson.js';
 import { callService } from '../../../core/services.js';
 import { isWorkItemDone, markWorkItem, workItemCounts } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';
@@ -89,8 +90,12 @@ export function readWorkoutsHistory(path: string): HevyWorkout[] {
 /** Append the given workouts (assumed new) to the history file and persist it. */
 export function appendWorkoutsHistory(path: string, existing: HevyWorkout[], newWorkouts: HevyWorkout[]): void {
   mkdirSync(dirname(path), { recursive: true });
-  const merged = [...existing, ...newWorkouts];
-  writeFileSync(path, JSON.stringify(merged, null, 2));
+  // Replace-by-id rather than blind append: a run killed after this file was saved
+  // but before its workouts were marked done re-syncs them next time, and they
+  // must not then appear twice in the history.
+  const incoming = new Set(newWorkouts.map((w) => w.id));
+  const merged = [...existing.filter((w) => !incoming.has(w.id)), ...newWorkouts];
+  writeJsonFile(path, merged); // atomic
 }
 
 // ---------------------------------------------------------------------------
@@ -152,12 +157,19 @@ export async function runHevySync(
 
   let done = 0;
   let failed = 0;
-  const newlyAppended: HevyWorkout[] = [];
+
+  // Save FIRST, mark done SECOND. The history file is what workouts-progress
+  // reads; the ledger only records "this workout is already synced". Marking a
+  // workout done before the file was written (the old order) meant a run killed in
+  // between left it "synced" forever while missing from the history for good.
+  appendWorkoutsHistory(historyPath, existing, todo);
+  ctx.log(
+    `info: saved ${todo.length} new workout(s) to ${historyPath} — history now has ` +
+      `${existing.filter((w) => !todo.some((t) => t.id === w.id)).length + todo.length} workouts`,
+  );
 
   for (const workout of todo) {
-    ctx.log(`info: recording workout ${workout.id} "${workout.title}" (${workout.exercises.length} exercises)`);
     try {
-      newlyAppended.push(workout);
       const setCount = workout.exercises.reduce((sum, e) => sum + e.sets.length, 0);
       markWorkItem(JOB_NAME, workout.id, 'success', {
         detail: {
@@ -168,7 +180,7 @@ export async function runHevySync(
         },
       });
       done++;
-      ctx.log(`info: recorded ${done}/${todo.length} — ${workout.id} "${workout.title}"`);
+      ctx.log(`info: recorded ${done}/${todo.length} — ${workout.id} "${workout.title}" (${workout.exercises.length} exercises)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       ctx.log(`error: failed to record workout ${workout.id}: ${msg}`, 'error');
@@ -178,13 +190,6 @@ export async function runHevySync(
       failed++;
     }
     ctx.progress((done + failed) / todo.length * 100, `${done}/${todo.length} recorded`);
-  }
-
-  if (newlyAppended.length > 0) {
-    appendWorkoutsHistory(historyPath, existing, newlyAppended);
-    ctx.log(
-      `info: appended ${newlyAppended.length} new workout(s) to ${historyPath} — history now has ${existing.length + newlyAppended.length} workouts`,
-    );
   }
 
   ctx.log(

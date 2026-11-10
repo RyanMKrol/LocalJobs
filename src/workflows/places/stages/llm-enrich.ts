@@ -1,4 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { createCheckpoint } from '../../../core/checkpoint.js';
+import { writeFileAtomic, writeJsonFile } from '../../../core/fsjson.js';
 import { join } from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 import type { JobContext } from '../../../core/types.js';
@@ -117,6 +119,10 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
 
   let ok = 0;
   let fail = 0;
+  // Save llm-enriched.json every 10 places, and only THEN mark those places done,
+  // so a kill can never leave a place "done" in the ledger with its result unsaved.
+  const checkpoint = createCheckpoint(() => writeJsonFile(placesConfig.llmOut, store), { every: 10 });
+  try {
   for (let i = 0; i < todo.length; i++) {
     if (ok + fail >= perRunCap) {
       ctx.log(`Reached per-run limit of ${llmConfig.runLimit} — stopping; next run continues.`);
@@ -136,7 +142,8 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
       const result = ai ? await callService('gemini', () => researchPlace(ai, place), { cacheKey: `gemini:place:${place.placeId}:v1` }) : dryRunResult(place);
       store[place.placeId] = { placeId: place.placeId, cid: place.cid, name, result, at: new Date().toISOString() };
       const mdPath = writeMarkdown(place, name, result, placesMeta[place.cid]);
-      markWorkItem(JOB_NAME, place.placeId, 'success', { attempts, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name, markdown: mdPath } });
+      // Deferred until llm-enriched.json holding this result has been saved.
+      checkpoint.defer(() => markWorkItem(JOB_NAME, place.placeId, 'success', { attempts, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name, markdown: mdPath } }));
       ok++;
       ctx.log(`[${i + 1}] ✓ "${name}"  ·  place_id=${place.placeId}`);
       ctx.log(`      type: ${result.placeType} · cuisine: ${result.cuisine.join(', ') || '—'} · vibe: ${result.vibe} · confidence: ${result.confidence}`);
@@ -169,18 +176,20 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
         markWorkItem(JOB_NAME, place.placeId, 'skipped', { attempts: attempts - 1, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name } });
         break;
       }
-      markWorkItem(JOB_NAME, place.placeId, 'failed', { attempts, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name, error: msg } });
+      checkpoint.defer(() => markWorkItem(JOB_NAME, place.placeId, 'failed', { attempts, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name, error: msg } }));
       fail++;
       const note = attempts >= llmConfig.maxAttempts ? ' — giving up (max attempts)' : `; will retry (attempt ${attempts}/${llmConfig.maxAttempts})`;
       ctx.log(`[${i + 1}] ✗ "${name}" — ${msg}${note}`, 'warn');
     }
 
-    if ((ok + fail) % 10 === 0) writeFileSync(placesConfig.llmOut, JSON.stringify(store, null, 2));
     ctx.progress((Math.min(i + 1, todo.length) / todo.length) * 100, `LLM-enriched ${ok}`);
     if (i < todo.length - 1) await sleep(llmConfig.delayMs);
   }
-
-  writeFileSync(placesConfig.llmOut, JSON.stringify(store, null, 2));
+  } finally {
+    // Save, then apply the held ledger marks, on every way out of the loop
+    // (normal end, a graceful stop, or the permanent-failure throw).
+    checkpoint.flush();
+  }
   ctx.progress(100, `enriched ${ok}, failed ${fail}`);
   const finalLedger = workItemCounts(JOB_NAME);
   ctx.log('');
@@ -369,6 +378,6 @@ function writeMarkdown(place: EnrichedPlace, name: string, r: LlmResult, meta?: 
   }
   body.push('');
 
-  writeFileSync(path, [...fm, ...body].join('\n'));
+  writeFileAtomic(path, [...fm, ...body].join('\n'));
   return path;
 }

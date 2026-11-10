@@ -205,12 +205,20 @@ describe('runStockSectorLookup', () => {
     writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'UNRESOLVED1' })]));
     const outPath = join(dir, 'sectors.json');
     const fetchProfile: ProfileFetcher = async () => ({});
+    const run = () => runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
 
-    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
-
-    assert.equal(isWorkItemDone(JOB, 'UNRESOLVED1', 3), false);
+    // The run FAILS (an item failed this run), after the sector map is written.
+    await assert.rejects(run, /1\/1 ticker\(s\) could not be resolved/);
+    assert.equal(isWorkItemDone(JOB, 'UNRESOLVED1', 3), false, 'attempt 1 of 3: still retryable');
     const written = JSON.parse(readFileSync(outPath, 'utf8'));
     assert.deepEqual(written, { UNRESOLVED1: null });
+
+    // Attempts are COUNTED across runs, so a ticker that never resolves reaches the
+    // cap, stops being retried (it surfaces as stuck), and the stage then passes.
+    await assert.rejects(run);
+    await assert.rejects(run);
+    assert.equal(isWorkItemDone(JOB, 'UNRESOLVED1', 3), true, 'gave up after 3 attempts');
+    await run(); // nothing left to attempt → succeeds, so the digest can build
   });
 
   it('still records a resolved lookup as success (unchanged path)', async () => {
@@ -225,7 +233,7 @@ describe('runStockSectorLookup', () => {
     assert.equal(isWorkItemDone(JOB, 'RESOLVED1', 1), true);
   });
 
-  it('records a failed lookup without crashing the run and leaves it retryable', async () => {
+  it('records a failed lookup as retryable and fails the run so the stage retries', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'stock-sector-'));
     const portfolioPath = join(dir, 'portfolio.json');
     writeFileSync(portfolioPath, JSON.stringify([pos({ ticker: 'BADTICKER' })]));
@@ -234,7 +242,10 @@ describe('runStockSectorLookup', () => {
       throw new Error('HTTP 404');
     };
 
-    await runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile });
+    await assert.rejects(
+      () => runStockSectorLookup(fakeCtx(), { portfolioPath, outPath, apiKey: 'key', fetchProfile }),
+      /could not be resolved to a sector this run/,
+    );
 
     assert.equal(isWorkItemDone(JOB, 'BADTICKER', 3), false);
   });

@@ -107,6 +107,17 @@ place in this workflow where `rootKey` isn't implicit). Credential:
   reported SUCCESS — for 18 consecutive nights, while 514 places went unenriched
   and the nightly push showed a green tick. A ceiling that clears on its own is a
   graceful stop; one that needs a human is a failed run.
+- **The three item stages save their hand-off file BEFORE marking items done.**
+  `cid-to-place-id-resolver`, `places-enrich` and `enrich-with-llm` each add results to a
+  cumulative JSON file the next stage reads (`resolved.json`, `enriched.json`,
+  `llm-enriched.json`) and save it every 10 items. They used to mark each item done in
+  the ledger immediately, so a run killed between saves left up to 9 places "done"
+  that were missing from the file and so never reached the next stage, with nothing to
+  retry them. Each now holds its ledger marks in a `createCheckpoint`
+  (`src/core/checkpoint.ts`) and applies them only after the save that covers them,
+  flushing in a `finally`. A kill now costs at most 9 repeated lookups. `enriched.json`
+  is about 80 MB, which is why it is not simply saved per item. All of these files are
+  written atomically.
 - Both paid stages (`places-enrich`, `enrich-with-llm`) rely EXCLUSIVELY on
   their service's quota (`google-places`, `gemini`) as the spend governor —
   don't add a redundant per-job `job_usage` cap on top; it would shadow the

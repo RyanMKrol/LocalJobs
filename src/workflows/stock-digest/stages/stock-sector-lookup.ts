@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
-import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { writeJsonFile } from '../../../core/fsjson.js';
+import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { portfolioJsonPath, sectorsJsonPath, stockDigestConfig } from '../config.js';
 import { weekKey, readPortfolio } from '../lib.js';
 
@@ -119,16 +120,21 @@ export async function runStockSectorLookup(
     const ticker = todo[i];
     const symbol = resolvedByTicker.get(ticker) ?? ticker;
     const queriedNote = symbol !== ticker ? ` (queried as resolved ticker "${symbol}")` : '';
+    // Count attempts across runs. Without this every failure was recorded as
+    // attempt 1, so a ticker Finnhub can never classify stayed "retryable" for
+    // ever instead of reaching MAX_ATTEMPTS and surfacing on the Stuck tile.
+    const attempts = (getWorkItem(JOB_NAME, ticker)?.attempts ?? 0) + 1;
     try {
       const profile = await fetchProfile(symbol, apiKey);
       const industry = profile.finnhubIndustry ?? null;
       sectors[ticker] = industry;
       if (industry) {
-        markWorkItem(JOB_NAME, ticker, 'success', { rootKey, detail: { name: ticker, industry, queriedSymbol: symbol } });
+        markWorkItem(JOB_NAME, ticker, 'success', { attempts, rootKey, detail: { name: ticker, industry, queriedSymbol: symbol } });
         ctx.log(`[${i + 1}/${todo.length}] ${ticker}${queriedNote} -> industry "${industry}"`);
         resolved++;
       } else {
         markWorkItem(JOB_NAME, ticker, 'failed', {
+          attempts,
           rootKey,
           detail: {
             name: ticker,
@@ -136,21 +142,29 @@ export async function runStockSectorLookup(
             error: 'Finnhub returned no finnhubIndustry field (symbol not recognized, or genuinely unclassified)',
           },
         });
-        ctx.log(`[${i + 1}/${todo.length}] ${ticker}${queriedNote} -> Finnhub returned no finnhubIndustry field`, 'warn');
+        ctx.log(`[${i + 1}/${todo.length}] ${ticker}${queriedNote} -> Finnhub returned no finnhubIndustry field (attempt ${attempts}/${MAX_ATTEMPTS})`, 'warn');
         failed++;
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      ctx.log(`[${i + 1}/${todo.length}] ${ticker}${queriedNote} lookup failed: ${message}`, 'warn');
-      markWorkItem(JOB_NAME, ticker, 'failed', { rootKey, detail: { name: ticker, queriedSymbol: symbol, error: message } });
+      ctx.log(`[${i + 1}/${todo.length}] ${ticker}${queriedNote} lookup failed (attempt ${attempts}/${MAX_ATTEMPTS}): ${message}`, 'warn');
+      markWorkItem(JOB_NAME, ticker, 'failed', { attempts, rootKey, detail: { name: ticker, queriedSymbol: symbol, error: message } });
       failed++;
     }
     ctx.progress(((i + 1) / todo.length) * 100, `resolved ${i + 1}/${todo.length}`);
   }
 
   mkdirSync(stockDigestConfig.outDir, { recursive: true });
-  writeFileSync(outPath, JSON.stringify(sectors, null, 2), 'utf8');
+  writeJsonFile(outPath, sectors); // atomic; written before any throw below so resolved tickers are never lost
   ctx.log(`wrote sector map (${Object.keys(sectors).length} ticker(s) total) to ${outPath}`);
   ctx.log(`stock-sector-lookup complete — ${resolved} resolved, ${failed} failed/unresolved this run`);
   ctx.progress(100, `${resolved} resolved, ${failed} failed/unresolved`);
+
+  // An item-loop stage fails its own run when any item failed this run. The run's
+  // retry budget then re-attempts just the failed tickers (resolved ones are done),
+  // and a ticker that fails MAX_ATTEMPTS times stops being retried and shows up on
+  // the Stuck tile, at which point a retry passes and the digest still builds.
+  if (failed > 0) {
+    throw new Error(`${failed}/${todo.length} ticker(s) could not be resolved to a sector this run — see logs above`);
+  }
 }

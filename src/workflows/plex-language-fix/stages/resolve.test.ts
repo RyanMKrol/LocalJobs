@@ -65,3 +65,27 @@ test('a second run does not re-resolve an already-resolved file', async () => {
   assert.equal(callsByTmdbId.get(TMDB_ID), 1, 'a file already resolved must never be re-looked-up');
   console.log('  ✓ a second resolve run does not re-resolve an already-resolved file');
 });
+
+test('a file whose lookup fails is recorded failed with a COUNTED attempt, and the run fails (others still resolve)', async () => {
+  const GOOD = 515151;
+  const BAD = 616161;
+  discoverRow('rf-good::part1', { name: 'Good Film', itemRatingKey: 'rf-good', partId: 1, type: 'movie', tmdbId: GOOD });
+  discoverRow('rf-bad::part1', { name: 'Bad Film', itemRatingKey: 'rf-bad', partId: 1, type: 'movie', tmdbId: BAD });
+  const lookup = async (tmdbId: number): Promise<TmdbLanguageDetail> => {
+    if (tmdbId === BAD) throw new Error('TMDB 404');
+    return { originalLanguage: 'en', spokenLanguages: [{ code: 'en', name: 'English' }] };
+  };
+
+  await assert.rejects(() => runResolve(fakeCtx(), { lookupLanguageDetail: lookup }), /1\/\d+ file\(s\) failed language resolution/);
+  assert.equal(getWorkItem('plex-language-resolve', 'rf-good::part1')?.status, 'success', 'the healthy file still resolved');
+  const bad = getWorkItem('plex-language-resolve', 'rf-bad::part1');
+  assert.equal(bad?.status, 'failed');
+  assert.equal(bad?.attempts, 1);
+
+  // Attempts accumulate, so a file that never resolves reaches the cap, stops
+  // being retried (it shows as stuck), and the stage then passes again.
+  await assert.rejects(() => runResolve(fakeCtx(), { lookupLanguageDetail: lookup }));
+  await assert.rejects(() => runResolve(fakeCtx(), { lookupLanguageDetail: lookup }));
+  assert.equal(getWorkItem('plex-language-resolve', 'rf-bad::part1')?.attempts, 3);
+  await runResolve(fakeCtx(), { lookupLanguageDetail: lookup });
+});

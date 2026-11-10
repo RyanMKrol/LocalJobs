@@ -1,6 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { type BrowserContext, chromium } from 'playwright';
 import { callService } from '../../../core/services.js';
+import { createCheckpoint } from '../../../core/checkpoint.js';
+import { writeJsonFile } from '../../../core/fsjson.js';
 import type { JobContext } from '../../../core/types.js';
 import { capStatus, getWorkItem, isWorkItemDone, markWorkItem, recordUsage, workItemCounts } from '../../../db/store.js';
 import { placesConfig, resolveConfig } from '../config.js';
@@ -91,6 +93,9 @@ export async function runResolve(ctx: JobContext): Promise<ResolvedFile> {
   ]);
 
   const counts = { success: 0, mismatch: 0, no_place_id: 0, error: 0 };
+  // Save resolved.json every 10 places, and only THEN mark those places done in
+  // the ledger, so a kill can never leave a place "done" with its result unsaved.
+  const checkpoint = createCheckpoint(() => { persist(resolved); }, { every: 10 });
   let usedToday = cap0.today;
   let usedMonth = cap0.month;
   try {
@@ -105,12 +110,14 @@ export async function runResolve(ctx: JobContext): Promise<ResolvedFile> {
       resolved[place.cid!] = rec;
       recordUsage(JOB_NAME);
       usedToday++; usedMonth++;
-      markWorkItem(JOB_NAME, place.cid!, rec.status === 'success' ? 'success' : 'failed', {
+      // Deferred until resolved.json (the hand-off to places-enrich) holding this
+      // result has been saved: see createCheckpoint.
+      checkpoint.defer(() => markWorkItem(JOB_NAME, place.cid!, rec.status === 'success' ? 'success' : 'failed', {
         attempts: rec.attempts,
         detail: rec.status === 'success'
           ? { name: place.name, placeId: rec.placeId }
           : { name: place.name, status: rec.status, error: rec.error },
-      });
+      }));
       counts[rec.status]++;
 
       const ok = rec.status === 'success';
@@ -126,16 +133,17 @@ export async function runResolve(ctx: JobContext): Promise<ResolvedFile> {
         : ` (attempt ${rec.attempts} of ${resolveConfig.maxAttempts}${rec.attempts >= resolveConfig.maxAttempts ? ' — giving up' : '; will retry next run'})`;
       ctx.log(`      status:       ${rec.status}${attemptNote}${rec.error ? ` — ${rec.error}` : ''}`, level);
 
-      // Persist periodically so a crash/kill never loses much progress.
-      if ((i + 1) % 10 === 0) {
-        persist(resolved);
-        ctx.log(`  …checkpoint saved (${i + 1}/${todo.length})`);
-      }
+      if ((i + 1) % 10 === 0) ctx.log(`  …checkpoint saved (${i + 1}/${todo.length})`);
       ctx.progress(((i + 1) / todo.length) * 100, `Resolved ${i + 1}/${todo.length}`);
       if (i < todo.length - 1) await sleep(resolveConfig.delayMs);
     }
   } finally {
-    await browser.close();
+    // Save, then apply the held ledger marks, on every way out of the loop.
+    try {
+      checkpoint.flush();
+    } finally {
+      await browser.close();
+    }
   }
 
   ctx.progress(100, `resolved ${counts.success}, failed ${counts.mismatch + counts.no_place_id + counts.error}`);
@@ -233,6 +241,6 @@ async function resolveOne(
 
 function persist(resolved: Record<string, ResolvedPlace>): ResolvedFile {
   const file: ResolvedFile = { generatedAt: new Date().toISOString(), resolved };
-  writeFileSync(placesConfig.resolvedOut, JSON.stringify(file, null, 2));
+  writeJsonFile(placesConfig.resolvedOut, file);
   return file;
 }

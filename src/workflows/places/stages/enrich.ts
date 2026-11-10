@@ -1,4 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { createCheckpoint } from '../../../core/checkpoint.js';
+import { writeJsonFile } from '../../../core/fsjson.js';
 import type { JobContext } from '../../../core/types.js';
 import { getWorkItem, isWorkItemDone, markWorkItem, serviceCallsThisMonth, serviceCallsToday, workItemCounts } from '../../../db/store.js';
 import { QuotaExceededError, callService, getServiceDef, isPermanentProviderFailure } from '../../../core/services.js';
@@ -103,6 +105,14 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
   let consecutiveFails = 0;
   let stopReason = 'completed all available';
 
+  // enriched.json is the hand-off to enrich-with-llm and is large (tens of MB),
+  // so it is saved every 10 places rather than after each one. The ledger marks
+  // for those places are held until that save has happened: marking a place done
+  // before its data is on disk meant a kill in between left it "done" forever
+  // while never reaching the next stage.
+  const checkpoint = createCheckpoint(() => persistEnriched(enriched), { every: 10 });
+
+  try {
   for (let i = 0; i < todo.length; i++) {
     if (okCount + failCount >= perRunCap) {
       stopReason = `per-run limit reached (${enrichConfig.runLimit})`;
@@ -163,10 +173,12 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       const d = res.data;
       const dn = (d.displayName as { text?: string } | undefined)?.text ?? place.name;
       const ptype = (d.primaryTypeDisplayName as { text?: string } | undefined)?.text ?? '—';
-      markWorkItem(JOB_NAME, placeId, 'success', {
+      // Deferred: the place is only marked done once enriched.json holding its
+      // data has been saved (see createCheckpoint).
+      checkpoint.defer(() => markWorkItem(JOB_NAME, placeId, 'success', {
         attempts, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver',
         detail: { name: dn, rating: d.rating ?? null, type: ptype, address: d.formattedAddress ?? null },
-      });
+      }));
       okCount++;
       ctx.log(`[${i + 1}] ENRICHED "${dn}"`);
       ctx.log(`      place_id: ${placeId}`);
@@ -178,7 +190,7 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       consecutiveFails = 0;
     } else {
       enriched[place.cid] = { cid: place.cid, placeId, status: 'failed', enrichedAt: new Date().toISOString(), attempts, error: res.error };
-      markWorkItem(JOB_NAME, placeId, 'failed', { attempts, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver', detail: { name: place.name, error: res.error } });
+      checkpoint.defer(() => markWorkItem(JOB_NAME, placeId, 'failed', { attempts, rootKey: place.cid, parentKey: place.cid, parentJob: 'cid-to-place-id-resolver', detail: { name: place.name, error: res.error } }));
       failCount++;
       consecutiveFails++;
       const note = attempts >= enrichConfig.maxAttempts ? ' — giving up (max attempts)' : `; will retry (attempt ${attempts}/${enrichConfig.maxAttempts})`;
@@ -191,12 +203,14 @@ export async function runEnrich(ctx: JobContext): Promise<void> {
       }
     }
 
-    if ((okCount + failCount) % 10 === 0) persistEnriched(enriched);
     ctx.progress((Math.min(i + 1, willAttempt) / willAttempt) * 100, `Enriched ${okCount}`);
     if (i < todo.length - 1) await sleep(enrichConfig.delayMs);
   }
-
-  persistEnriched(enriched);
+  } finally {
+    // Save, then apply the held ledger marks, on EVERY way out of the loop (normal
+    // end, a graceful stop, or a thrown auth/permanent-failure error).
+    checkpoint.flush();
+  }
 
   ctx.progress(100, `enriched ${okCount}, failed ${failCount}`);
   const finalLedger = workItemCounts(JOB_NAME);
@@ -264,5 +278,5 @@ async function fetchPlaceDetails(placeId: string): Promise<FetchResult> {
 
 function persistEnriched(enriched: Record<string, EnrichedPlace>): void {
   const file: EnrichedFile = { generatedAt: new Date().toISOString(), enriched };
-  writeFileSync(placesConfig.enrichedOut, JSON.stringify(file, null, 2));
+  writeJsonFile(placesConfig.enrichedOut, file);
 }

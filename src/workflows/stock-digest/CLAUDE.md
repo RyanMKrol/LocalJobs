@@ -53,6 +53,12 @@ a dead symbol. Idempotent per ticker via the `work_items` ledger — a resolved 
 re-queried; an unresolved lookup is recorded `'failed'` so it retries (capped, surfaces on the Stuck
 tile if it never resolves). `FINNHUB_API_KEY` unset soft-skips the whole stage (clear WARN) — the
 digest's diversification section is simply omitted that run.
+**A ticker that fails makes the stage's run fail, and attempts are counted.** The sector
+map is written first, then the stage throws if any ticker failed this run. The job's
+retry budget (3) re-attempts only the failed tickers, and a ticker that fails 3 times
+stops being retried and shows on the Stuck tile, at which point the retry passes and the
+digest still builds in the same run. Before this, every failure was recorded as attempt
+1, so an unclassifiable ticker was retried on every run for ever and never surfaced.
 
 **Stage 4 (`stock-digest-build`)** — a genuine fan-in, reading BOTH the portfolio snapshot and (once
 stage 3 has run) the sector map. Computes, in code (never left to Claude): each position's gain since

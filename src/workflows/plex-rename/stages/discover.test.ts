@@ -151,3 +151,21 @@ test('discoverInputKeys walks live and respects rootAllowed at record time', asy
   const movie = JSON.parse(getWorkItem('plex-rename-discover', fileKey('m1', 9001))!.detail!) as DiscoverDetail;
   assert.notEqual(movie.file, '/volume1/Share/Movies/Limited.mkv', 'file outside the limit was not re-marked');
 });
+
+test('an incomplete walk (a title Plex could not return) fails the run and prunes NOTHING', async () => {
+  const { markWorkItem } = await import('../../../db/store.js');
+  await runDiscover(fakeCtx(), fakes()); // baseline: every row present
+  const episodeKey = fileKey('e1', 9101);
+  assert.ok(getWorkItem('plex-rename-discover', episodeKey), 'precondition: the episode row exists');
+  markWorkItem('plex-rename-discover', 'ghost-incomplete::part1', 'success', { detail: { name: 'would-be ghost' } });
+
+  // The show's episode listing fails this run: its files are missing from the walk
+  // because Plex did not answer, NOT because they are gone.
+  const broken = { ...fakes('/volume1/Share/Movies/Moved.mkv'), fetchAllLeaves: async () => { throw new Error('Plex 500'); } };
+  await assert.rejects(() => runDiscover(fakeCtx(), broken), /1 title\(s\) could not be read from Plex this run \("A Show"\)/);
+
+  assert.ok(getWorkItem('plex-rename-discover', episodeKey), "the unread show's rows are kept, not pruned as ghosts");
+  assert.ok(getWorkItem('plex-rename-discover', 'ghost-incomplete::part1'), 'nothing at all is pruned after an incomplete walk');
+  const movie = JSON.parse(getWorkItem('plex-rename-discover', fileKey('m1', 9001))!.detail!) as DiscoverDetail;
+  assert.equal(movie.file, '/volume1/Share/Movies/Moved.mkv', 'everything that WAS read is still recorded before the run fails');
+});

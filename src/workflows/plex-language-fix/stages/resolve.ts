@@ -1,5 +1,5 @@
 import type { JobContext } from '../../../core/types.js';
-import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
+import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { callService, QuotaExceededError } from '../../../core/services.js';
 import { buildCandidateLanguages, lookupLanguageDetail } from '../lib.js';
 import type { DiscoverDetail, ResolveDetail } from '../types.js';
@@ -34,32 +34,46 @@ export async function runResolve(ctx: JobContext, opts: TmdbLookupOverrides = {}
   ctx.log(`${todo.length}/${discovered.length} discovered file(s) need language resolution`);
 
   let resolved = 0;
+  let failed = 0;
   let quotaStopped = false;
   for (let i = 0; i < todo.length; i++) {
     const { itemKey, detail } = todo[i];
     const d = detail as DiscoverDetail;
+    const attempts = (getWorkItem(JOB_NAME, itemKey)?.attempts ?? 0) + 1;
     try {
       const info = await callService('tmdb', () => doLookupLanguageDetail(d.tmdbId, d.type), {
         cacheKey: `tmdb-language:${d.type}:${d.tmdbId}`,
       });
       const candidateLanguages = buildCandidateLanguages(info.originalLanguage, info.spokenLanguages);
       const result: ResolveDetail = { name: d.name, originalLanguage: info.originalLanguage, candidateLanguages };
-      markWorkItem(JOB_NAME, itemKey, 'success', { detail: result });
+      markWorkItem(JOB_NAME, itemKey, 'success', { attempts, detail: result });
       resolved++;
       if ((i + 1) % 50 === 0) ctx.log(`  [${i + 1}/${todo.length}] resolved…`);
     } catch (err) {
       if (err instanceof QuotaExceededError) {
         ctx.log(`TMDB ${err.window} cap reached (${err.used}/${err.cap}) — stopping gracefully.`, 'warn');
+        // Record the soft stop (attempt not counted) so a run that resolved nothing
+        // because of the cap is seen as stalled rather than as a quiet success.
+        markWorkItem(JOB_NAME, itemKey, 'skipped', { attempts: attempts - 1, detail: { name: d.name } });
         quotaStopped = true;
         break;
       }
-      ctx.log(`  ✗ "${d.name}" — ${err instanceof Error ? err.message : err}`, 'warn');
+      // A genuine per-file failure: record it (counted, so a file that can never
+      // be resolved reaches the cap and shows as stuck) and keep going.
+      const message = err instanceof Error ? err.message : String(err);
+      markWorkItem(JOB_NAME, itemKey, 'failed', { attempts, detail: { name: d.name, error: message } });
+      failed++;
+      ctx.log(`  ✗ "${d.name}" — ${message} (attempt ${attempts}/${MAX_ATTEMPTS})`, 'warn');
     }
     ctx.progress(Math.round(((i + 1) / Math.max(todo.length, 1)) * 100), `${i + 1}/${todo.length} resolved`);
   }
 
   ctx.log('═══════════════ RESOLVE SUMMARY ═══════════════');
-  ctx.log(`Resolved ${resolved}/${todo.length} file(s)${quotaStopped ? ' (stopped early — TMDB quota)' : ''}.`);
+  ctx.log(`Resolved ${resolved}/${todo.length} file(s), ${failed} failed${quotaStopped ? ' (stopped early — TMDB quota)' : ''}.`);
   ctx.log('═══════════════════════════════════════════');
   ctx.progress(100, `${resolved}/${todo.length} resolved`);
+
+  if (failed > 0) {
+    throw new Error(`${failed}/${resolved + failed} file(s) failed language resolution this run — see the ✗ lines above`);
+  }
 }

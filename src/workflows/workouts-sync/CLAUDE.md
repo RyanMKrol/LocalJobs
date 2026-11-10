@@ -11,6 +11,11 @@ rate-limited via `src/services/hevy.service.ts`) and appends each newly-synced w
 DynamoDB. Idempotent per workout id via the `work_items` ledger: already-synced ids are skipped, new
 ones are appended, so the history file only ever grows (never rewritten/pruned). Credentials:
 `HEVY_API_KEY`.
+**The history file is saved BEFORE the workouts are marked synced**, and written atomically.
+The old order marked each workout done and wrote the file once at the end, so a run killed
+in between left those workouts "synced" for ever while missing from the history. Because a
+kill after the save but before the marks means the same workouts are synced again next run,
+the save replaces by workout id rather than blindly appending, so nothing is duplicated.
 
 **Stage 2 (`workouts-progress`)** reads the full history file and computes a per-exercise 6-month
 progress comparison — **baseline period = the calendar month exactly 6 months before the current
