@@ -5,7 +5,7 @@
 // calling Claude, parsing its reply, and writing the per-branch output file.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { writeJsonFile } from '../fsjson.js';
+import { writeJsonFile } from '../../engine/fsjson.js';
 import type { ArtifactContract, JobContext, JobDefinition } from '../types.js';
 import { extractJsonObject, runClaude } from '../../services/claude.js';
 import type { ClaudeResult } from '../../services/claude.js';

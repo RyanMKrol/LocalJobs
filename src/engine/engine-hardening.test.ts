@@ -20,7 +20,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../config.js';
-import { jobs } from '../workflows/registry.js';
+import { jobs, notifications } from './testing/fixture-host.js';
 import {
   createRun, createWorkflowRun, getLogs, getRun, getWorkflowLogs, getWorkflowRun, lastWorkflowRunForWorkflow,
   listRunsForJob, listRunsForWorkflowRun, markWorkItem, reapOrphanRuns, reapOrphanWorkflowRuns,

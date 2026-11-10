@@ -7,7 +7,7 @@ import 'dotenv/config'; // load .env for config (ports, paths) and jobs
 import { config } from './config.js';
 import { startApi } from './api/server.js';
 import { startScheduler, stopScheduler } from './core/scheduler.js';
-import { startRetention, stopRetention } from './core/retention.js';
+import { startRetention, stopRetention } from './engine/retention.js';
 import { jobs, workflows, services } from './workflows/registry.js';
 import { reapOrphanWorkflowRuns, reapOrphanRuns, syncJob, syncWorkflow, syncService } from './db/store.js';
 

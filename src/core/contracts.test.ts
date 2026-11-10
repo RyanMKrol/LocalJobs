@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ArtifactContract, GateResult } from './types.js';
-import { buildDag, deriveGates } from './dag.js';
+import { buildDag, deriveGates } from '../engine/dag.js';
 import {
   fragranticaDataContract,
   fragranticaPagesContract,

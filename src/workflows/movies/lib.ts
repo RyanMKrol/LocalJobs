@@ -1,4 +1,4 @@
-import { ensureDirs as coreEnsureDirs, readJsonFile, writeJsonFile } from '../../core/fsjson.js';
+import { ensureDirs as coreEnsureDirs, readJsonFile, writeJsonFile } from '../../engine/fsjson.js';
 import { moviesConfig } from './config.js';
 
 export function ensureDirs(): void {

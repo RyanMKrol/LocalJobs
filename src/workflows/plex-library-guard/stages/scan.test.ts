@@ -15,7 +15,7 @@ import { plexLibraryGuardConfig } from '../config.js';
 import { readSnapshot } from '../lib.js';
 import type { GuardEpisodeMeta, GuardMovieMeta, GuardReportFile } from '../types.js';
 import { runScan, ALERT_JOB, JOB_NAME } from './scan.js';
-import { readJsonFile } from '../../../core/fsjson.js';
+import { readJsonFile } from '../../../engine/fsjson.js';
 
 const GB = 1024 ** 3;
 

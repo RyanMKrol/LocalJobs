@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { JobContext } from '../../../core/types.js';
-import { writeJsonFile } from '../../../core/fsjson.js';
+import { writeJsonFile } from '../../../engine/fsjson.js';
 import { getWorkItem, isWorkItemDone, markWorkItem } from '../../../db/store.js';
 import { portfolioJsonPath, sectorsJsonPath, stockDigestConfig } from '../config.js';
 import { weekKey, readPortfolio } from '../lib.js';

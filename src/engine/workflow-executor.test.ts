@@ -10,14 +10,13 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { config } from '../config.js';
-import { jobs } from '../workflows/registry.js';
+import { jobs, notifications } from './testing/fixture-host.js';
 import {
   createWorkflowRun, createRun, finishRun, getWorkflowLogs, getWorkflowRun, getWorkflowRunRoots,
   lastWorkflowRunForWorkflow, listRunsForWorkflowRun, markWorkItem,
   rollUpWorkflowProgress, setProgress, syncJob, syncWorkflow, updateWorkflowConcurrency, updateWorkflowNotifyEnabled, getWorkflow,
 } from '../db/store.js';
 import { runWorkflow, cancelWorkflowRun, isWorkflowRunActive, isWorkflowStarting, workflowRunInProgress, effectiveWorkflowConcurrency, effectiveWorkflowNotifyEnabled, UNLIMITED_CONCURRENCY_SENTINEL, _setOnSettleThrowHookForTest } from './workflow-executor.js';
-import { _setFetchForTest, _resetFetchForTest } from './notifier.js';
 import type { JobDefinition, WorkflowDefinition } from './types.js';
 
 let passed = 0;
@@ -731,43 +730,23 @@ try {
     assert.ok(parDep < parSerial, `the three deps must still overlap (${parDep}ms < serial ${parSerial}ms)`);
   });
 
-  // T189: notifyStage is never called; notifyWorkflow is called exactly once.
-  // We enable ntfy temporarily and intercept fetch to count push calls by title.
-  await test('T189: only notifyWorkflow fires — no per-stage push notifications', async () => {
+  // T189: the engine hands the host exactly ONE notification per workflow run, when
+  // the run settles. There are no per-stage notifications. (What the host does with
+  // it, the push itself, is the notifier's concern and is tested there.)
+  await test('T189: the host is notified once per run, at the end, with the final status', async () => {
     const def: WorkflowDefinition = {
       name: 't189-notify',
       jobs: [{ job: 'pp-a' }, { job: 'pp-b', dependsOn: ['pp-a'] }],
     };
     syncWorkflow(def);
-
-    const pushTitles: string[] = [];
-    const fakeFetch = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const title = (init?.headers as Record<string, string>)?.['Title'] ?? '';
-      pushTitles.push(title);
-      return new Response('', { status: 200 });
-    };
-
-    _setFetchForTest(fakeFetch as typeof fetch);
-    config.ntfyTopic = 'test-topic';
-    try {
-      await runWorkflow(def, 'manual');
-    } finally {
-      config.ntfyTopic = '';
-      _resetFetchForTest();
-    }
-
-    // No per-stage push: titles must not contain ': pp-' (the notifyStage pattern)
-    const stagePushes = pushTitles.filter(t => t.includes(': pp-'));
-    assert.equal(stagePushes.length, 0, `Expected no per-stage pushes, got: ${JSON.stringify(stagePushes)}`);
-
-    // Exactly one aggregate push (notifyWorkflow)
-    const workflowPushes = pushTitles.filter(t => t.includes('t189-notify workflow'));
-    assert.equal(workflowPushes.length, 1, `Expected 1 workflow push, got: ${JSON.stringify(pushTitles)}`);
+    const before = notifications.length;
+    const { workflowRunId } = await runWorkflow(def, 'manual');
+    assert.deepEqual(notifications.slice(before), [{ workflow: 't189-notify', workflowRunId, status: 'success' }]);
   });
 
   // T285: notifyEnabled=false (either via manifest default or a user override)
-  // skips the aggregate notifyWorkflow call entirely, but the run still logs why.
-  await test('T285: notify_enabled=0 skips notifyWorkflow but logs the skip', async () => {
+  // means the host is not notified at all, but the run still logs why.
+  await test('T285: notify_enabled=0 skips the notification but logs the skip', async () => {
     const def: WorkflowDefinition = {
       name: 't285-notify-off',
       jobs: [{ job: 'pp-a' }],
@@ -776,24 +755,10 @@ try {
     syncWorkflow(def);
     assert.equal(effectiveWorkflowNotifyEnabled(def), false, 'manifest notifyEnabled:false is effective');
 
-    const pushTitles: string[] = [];
-    const fakeFetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const title = (init?.headers as Record<string, string>)?.['Title'] ?? '';
-      pushTitles.push(title);
-      return new Response('', { status: 200 });
-    };
-    _setFetchForTest(fakeFetch as typeof fetch);
-    config.ntfyTopic = 'test-topic';
-    let workflowRunId = '';
-    try {
-      const result = await runWorkflow(def, 'manual');
-      workflowRunId = result.workflowRunId ?? '';
-    } finally {
-      config.ntfyTopic = '';
-      _resetFetchForTest();
-    }
-
-    assert.equal(pushTitles.length, 0, `Expected no push notifications, got: ${JSON.stringify(pushTitles)}`);
+    const before = notifications.length;
+    const result = await runWorkflow(def, 'manual');
+    const workflowRunId = result.workflowRunId ?? '';
+    assert.equal(notifications.length, before, 'the host was not notified');
     const logs = getWorkflowLogs(workflowRunId).map((l) => l.message);
     assert.ok(
       logs.some((m) => m.includes('Notifications disabled') && m.includes('t285-notify-off')),

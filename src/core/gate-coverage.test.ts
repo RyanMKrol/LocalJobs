@@ -6,10 +6,10 @@
 // happens to notice. Complements dag.test.ts (pure DAG mechanics) and
 // contracts.test.ts (individual real contracts) with the cross-cutting check.
 import assert from 'node:assert/strict';
-import { buildDag, deriveGates } from './dag.js';
-import type { Dag } from './dag.js';
+import { buildDag, deriveGates } from '../engine/dag.js';
+import type { Dag } from '../engine/dag.js';
 import { jobs, workflows } from '../workflows/registry.js';
-import { validateWorkflowContracts } from './ports.js';
+import { validateWorkflowContracts } from '../engine/ports.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {

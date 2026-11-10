@@ -14,13 +14,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { acceptAny, defineStage, inlineArtifact, jsonArtifact } from '../core/ports.js';
+import { acceptAny, defineStage, inlineArtifact, jsonArtifact } from '../engine/ports.js';
 import type { JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   createRun, createWorkflowRun, finishRun, getWorkflowRun, markWorkItem, recordRunArtifact, recordRunInput,
   setRunInputUsed, syncJob, syncWorkflow,
 } from '../db/store.js';
-import { sha256File } from '../core/hash.js';
+import { sha256File } from '../engine/hash.js';
 import { statSync } from 'node:fs';
 import { OVERALL, artifactItems, stageIo } from './stage-io.js';
 

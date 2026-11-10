@@ -4,11 +4,11 @@ import { dirname, isAbsolute, join as joinPath, relative as relativePath, resolv
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
-import { type Gate, type GateStatus, buildDag, classifyGates, deriveGates, shapesIdentical } from '../core/dag.js';
-import { portGates, workflowMode } from '../core/ports.js';
+import { type Gate, type GateStatus, buildDag, classifyGates, deriveGates, shapesIdentical } from '../engine/dag.js';
+import { portGates, workflowMode } from '../engine/ports.js';
 import { OVERALL, artifactItems, stageIo } from './stage-io.js';
 import type { GateResult, RunRow } from '../core/types.js';
-import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, isWorkflowStarting, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../core/workflow-executor.js';
+import { runWorkflow, cancelWorkflowRun, workflowRunInProgress, isWorkflowStarting, effectiveWorkflowConcurrency, DEFAULT_WORKFLOW_CONCURRENCY, effectiveWorkflowNotifyEnabled } from '../engine/workflow-executor.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import { getServiceDef } from '../core/services.js';
 import { Cron } from 'croner';

@@ -1,4 +1,4 @@
-import { getJobDefinition } from '../workflows/registry.js';
+import { engineHost, getJob as getJobDefinition } from './host.js';
 import {
   addWorkflowLog,
   createWorkflowRun,
@@ -28,7 +28,6 @@ import { config } from '../config.js';
 import { bindWorkflowPorts, isPortsJob, workflowMode, type PortBinding } from './ports.js';
 import { describeArtifact, resolveInput } from './resolve-inputs.js';
 import { abortableSleep, runJobForWorkflow } from './executor.js';
-import { notifyWorkflow } from './notifier.js';
 import type { GateResult, LogLevel, WorkflowDefinition, RunStatus } from './types.js';
 
 /**
@@ -714,7 +713,7 @@ async function runWorkflowInner(
   // (T285) — user override when set, else the manifest default (true). Read fresh
   // each run so a dashboard toggle takes effect on the NEXT run, no restart.
   if (effectiveWorkflowNotifyEnabled(def)) {
-    await notifyWorkflow(def.name, workflowRunId, notifyStatus, log);
+    await engineHost().notify?.({ workflow: def, workflowRunId, status: notifyStatus, log });
   } else {
     log(`Notifications disabled for workflow "${def.name}" — skipping push notification`);
   }
@@ -741,7 +740,7 @@ async function runWorkflowInner(
       // A run that died this way used to end silently. It is a failure like any
       // other, so it reaches the phone too (best-effort: never throw from here).
       try {
-        if (effectiveWorkflowNotifyEnabled(def)) await notifyWorkflow(def.name, workflowRunId, 'failed', log);
+        if (effectiveWorkflowNotifyEnabled(def)) await engineHost().notify?.({ workflow: def, workflowRunId, status: 'failed', log });
       } catch { /* notification is best-effort on this path */ }
     }
     return { workflowRunId };

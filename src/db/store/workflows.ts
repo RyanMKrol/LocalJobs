@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../index.js';
-import { buildDag } from '../../core/dag.js';
+import { buildDag } from '../../engine/dag.js';
 import type {
   LogLevel,
   WorkflowDefinition,

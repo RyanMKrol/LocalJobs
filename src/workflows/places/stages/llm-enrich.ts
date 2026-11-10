@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { createCheckpoint } from '../../../core/checkpoint.js';
-import { writeFileAtomic, writeJsonFile } from '../../../core/fsjson.js';
+import { createCheckpoint } from '../../../engine/checkpoint.js';
+import { writeFileAtomic, writeJsonFile } from '../../../engine/fsjson.js';
 import { join } from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 import type { JobContext } from '../../../core/types.js';

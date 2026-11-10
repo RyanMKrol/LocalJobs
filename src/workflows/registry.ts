@@ -1,8 +1,10 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildDag, DagError } from '../core/dag.js';
-import { validateWorkflowContracts } from '../core/ports.js';
+import { buildDag, DagError } from '../engine/dag.js';
+import { configureEngine } from '../engine/host.js';
+import { validateWorkflowContracts } from '../engine/ports.js';
+import { notifyWorkflow } from '../core/notifier.js';
 import { registerService } from '../core/services.js';
 import type { JobDefinition, WorkflowDefinition, ServiceDefinition } from '../core/types.js';
 
@@ -105,6 +107,16 @@ export const jobs: JobDefinition[] = loadedJobs;
 export function getJobDefinition(name: string): JobDefinition | undefined {
   return jobs.find((j) => j.name === name);
 }
+
+// Connect the workflow engine to THIS application: the engine asks the registry
+// for the jobs a workflow names, and hands finished runs to the notifier. The
+// engine itself imports neither (see src/engine/host.ts), so this is the one
+// place the two meet. Installed as soon as the registry loads, which every
+// process that runs or serves workflows does.
+configureEngine({
+  getJob: getJobDefinition,
+  notify: ({ workflow, workflowRunId, status, log }) => notifyWorkflow(workflow.name, workflowRunId, status, log),
+});
 
 // ──────────────────────────────── services ────────────────────────────────
 const loadedServices: ServiceDefinition[] = [];

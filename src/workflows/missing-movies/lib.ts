@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { readJsonFile, writeJsonFile } from '../../core/fsjson.js';
+import { readJsonFile, writeJsonFile } from '../../engine/fsjson.js';
 import { missingMoviesConfig } from './config.js';
 
 export function ensureDirs(): void {

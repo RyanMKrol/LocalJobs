@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { getWorkItem } from '../../db/store.js';
 import type { JobContext } from '../../core/types.js';
 import { callService } from '../../core/services.js';
-import { ensureDirs as coreEnsureDirs, readJsonFile, writeJsonFile } from '../../core/fsjson.js';
+import { ensureDirs as coreEnsureDirs, readJsonFile, writeJsonFile } from '../../engine/fsjson.js';
 import { dynamoScan } from '../../services/dynamodb.service.js';
 import { perfumesConfig } from './config.js';
 import type { PerfumeInput } from './types.js';

@@ -6,7 +6,7 @@
 // movies/tv-recs before this extraction).
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { writeJsonFile } from '../fsjson.js';
+import { writeJsonFile } from '../../engine/fsjson.js';
 import { QuotaExceededError } from '../services.js';
 import type { JobContext } from '../types.js';
 import { runClaude } from '../../services/claude.js';

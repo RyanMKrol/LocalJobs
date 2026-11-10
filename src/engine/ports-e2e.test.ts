@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
-import { jobs } from '../workflows/registry.js';
+import { jobs, notifications } from './testing/fixture-host.js';
 import {
   artifactsForRun, artifactsForWorkflowRun, getWorkflowLogs, getWorkflowRun, listRunsForWorkflowRun,
   producedArtifact, resolvedInputsForStage, syncJob, syncWorkflow,

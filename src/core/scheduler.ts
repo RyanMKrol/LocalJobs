@@ -1,7 +1,7 @@
 import { Cron } from 'croner';
 import { getWorkflow } from '../db/store.js';
 import { getWorkflowDefinition, workflows } from '../workflows/registry.js';
-import { runWorkflow } from './workflow-executor.js';
+import { runWorkflow } from '../engine/workflow-executor.js';
 import type { WorkflowDefinition } from './types.js';
 
 const workflowCrons = new Map<string, Cron>();

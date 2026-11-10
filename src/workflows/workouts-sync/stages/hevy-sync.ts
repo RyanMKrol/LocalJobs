@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { writeJsonFile } from '../../../core/fsjson.js';
+import { writeJsonFile } from '../../../engine/fsjson.js';
 import { callService } from '../../../core/services.js';
 import { isWorkItemDone, markWorkItem, workItemCounts } from '../../../db/store.js';
 import type { JobContext } from '../../../core/types.js';

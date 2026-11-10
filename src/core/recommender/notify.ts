@@ -11,7 +11,7 @@
 // recommendations.
 import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { writeFileAtomic, writeJsonFile } from '../fsjson.js';
+import { writeFileAtomic, writeJsonFile } from '../../engine/fsjson.js';
 import { push } from '../notifier.js';
 import { ignoredItemKeys, isWorkItemDone, markWorkItem } from '../../db/store.js';
 import type { JobContext } from '../types.js';

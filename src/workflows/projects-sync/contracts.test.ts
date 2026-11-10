@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildDag, deriveGates } from '../../core/dag.js';
+import { buildDag, deriveGates } from '../../engine/dag.js';
 import { projectsCatalogContract } from './contracts.js';
 
 let passed = 0;

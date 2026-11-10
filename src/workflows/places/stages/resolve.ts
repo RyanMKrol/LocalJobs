@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { type BrowserContext, chromium } from 'playwright';
 import { callService } from '../../../core/services.js';
-import { createCheckpoint } from '../../../core/checkpoint.js';
-import { writeJsonFile } from '../../../core/fsjson.js';
+import { createCheckpoint } from '../../../engine/checkpoint.js';
+import { writeJsonFile } from '../../../engine/fsjson.js';
 import type { JobContext } from '../../../core/types.js';
 import { capStatus, getWorkItem, isWorkItemDone, markWorkItem, recordUsage, workItemCounts } from '../../../db/store.js';
 import { placesConfig, resolveConfig } from '../config.js';

@@ -189,6 +189,15 @@ const workflow: WorkflowDefinition = {
 Drop both in `src/workflows/`, restart with `scripts/safe-restart.sh`, and it
 appears in the dashboard. There is no registry to update.
 
+## How the code is laid out
+
+The part that runs workflows is kept separate from the workflows themselves.
+`src/engine/` is the framework: the pipeline graph, the contracts between steps,
+running each step in its own process, retries, cancelling, and the record of every
+run. It knows nothing about Plex, perfumes or any other job in this repo, and a test
+stops it from ever importing one. `src/workflows/` is the jobs, each built on that
+framework. `src/core/` and `src/services/` hold what the jobs share with each other.
+
 ## Testing
 
 `npm test` runs the whole suite against a scratch database, so it can never touch

@@ -338,12 +338,42 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   **visibility** upgrade (dashboard-queryable the same way `failed` is), not a new calibration
   mechanism.
 
+## The workflow engine is an isolated package (`src/engine/`)
+
+Everything that makes a workflow run lives under `src/engine/`: the DAG, ports, the
+executors, the child runtime, and the helpers stages use to write data safely. It is
+structured as a package in all but name, so its capabilities can be reasoned about, and
+tested, on their own:
+
+- **One-way dependency.** No file under `src/engine/` imports a workflow, a service, the
+  job registry, the API or the notifier. It may import only its persistence layer
+  (`src/db/`) and process config (`src/config.ts`). `src/engine/boundary.test.ts` fails
+  the suite on any other outward import.
+- **The application plugs in through a host** (`src/engine/host.ts`): `configureEngine({
+  getJob, notify })`. The engine asks the host for the jobs a workflow names and hands it
+  each settled run; it never enumerates jobs or sends a notification itself.
+  `src/workflows/registry.ts` installs the host when it loads.
+- **One public entry point.** Workflows import from `src/engine/index.ts` (`defineStage`,
+  the artifact constructors, `createCheckpoint`, the JSON helpers, the types). Its other
+  files are internal. (`src/core/types.ts` still re-exports the engine's types for the
+  stages not yet migrated.)
+- **Tested with fixture stages, not real workflows.** Engine tests import
+  `src/engine/testing/fixture-host.ts`, which installs a host backed by an array of
+  fixture jobs and captures notifications, so nothing of the real application is loaded.
+  The end-to-end tests run fixture stages in real child processes through the production
+  child runtime (`src/engine/testing/fixture-runner.ts`).
+
+What stays outside, in `src/core/`: things the application's workflows share that are
+not about running workflows (`plex-client`, `browser`, `services`, `notifier`,
+`recommender/`, `dates`), plus the scheduler, which is the daemon's own glue between the
+registry and the engine.
+
 ## Ports: how stages hand data to each other
 
 A stage declares named **inputs** and **outputs**. The engine binds them, passes inputs
 in, records outputs, and derives gates and the run page's Inputs & Outputs from that
-record. `src/core/ports.ts` is the declarative half, `src/core/stage-runtime.ts` runs
-inside the stage's process, `src/core/resolve-inputs.ts` is the daemon side.
+record. `src/engine/ports.ts` is the declarative half, `src/engine/stage-runtime.ts` runs
+inside the stage's process, `src/engine/resolve-inputs.ts` is the daemon side.
 
 ```ts
 // contracts.ts: what the data IS, how to check it, how to show it
@@ -414,9 +444,9 @@ ledger row just to be visible).
 input the stage actually used, when that is a subset worth showing.
 
 Testing a ports stage: `makeTestContext(def, { inputs })` from
-`src/core/testing/context.ts` builds a context with the inputs you give it and returns
+`src/engine/testing/context.ts` builds a context with the inputs you give it and returns
 what the stage committed, with no workflow run, child process or database. The
-end-to-end behaviour is covered by `src/core/ports-e2e.test.ts`, which runs fixture
+end-to-end behaviour is covered by `src/engine/ports-e2e.test.ts`, which runs fixture
 stages in real child processes.
 
 **The ledger records what each run did, not just the latest state.** `markWorkItem`
@@ -434,22 +464,25 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/daemon.ts` | Long-lived entrypoint: sync jobs + workflows, reap orphans (member runs first, then workflow runs: a reaped run gets an `end_reason`, a duration, a log line, and a row for each stage that never started), start scheduler + API + the retention sweep |
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
 | `src/core/types.ts` | `JobDefinition`, `WorkflowDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
-| `src/core/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
+| `src/engine/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
 | `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled`; registers each cron from the **effective** (DB) schedule, and `rescheduleWorkflow(name, schedule)` re-registers it LIVE after a dashboard edit — no restart (T135) |
-| `src/core/ports.ts` | The stage contract: `ArtifactType` + its constructors (`jsonArtifact` / `fileArtifact` / `dirArtifact` / `ledgerArtifact` / `inlineArtifact`), `defineStage`, `StageContext`, and the pure binding + validation (`bindWorkflowPorts`, `validateWorkflowContracts`, `portGates`, `workflowMode`). No database, no I/O beyond an artifact's own `read` |
-| `src/core/stage-runtime.ts` | Child side of ports: builds a stage's context (`ctx.run` / `input` / `inputs` / `output`), records what it commits, and the end-of-run sweep that fails a stage with an uncommitted output |
-| `src/core/resolve-inputs.ts` | Daemon side of ports: `resolveInput` (this run's artifact, still intact on disk) and `uncommittedOutputs` |
-| `src/core/child-main.ts` | The body of the child process (`runJobProcess`); `src/runJob.ts` only supplies the registry lookup, so tests can run fixture stages through the same code |
-| `src/core/protocol.ts` | `ENGINE_PROTOCOL`: the child-protocol version the daemon passes to children |
-| `src/core/hash.ts` | SHA-256 of a file, and a listing fingerprint for a directory |
-| `src/core/testing/` | `context.ts` (`makeTestContext` for unit-testing a ports stage), `ports-fixtures.ts` + `fixture-runner.ts` (the fan-out / fan-in fixture workflow the end-to-end tests run in real child processes) |
-| `src/core/checkpoint.ts` | `createCheckpoint(save, { every })`: "save, then mark done". Holds an item-loop stage's ledger marks back until the hand-off file that carries those items' data has been saved, so a kill can never leave an item marked done whose data never reached the next stage. Used by the places stages |
-| `src/core/retention.ts` | Daily background sweep (daemon only) that trims per-run I/O detail of old runs via `pruneRunHistoryChunk` |
-| `src/core/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
-| `src/core/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; `repeatUntilStable` cycling with a **no-forward-progress early stop** (T112, via `workflowProgressSignature`/`noForwardProgress`); owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below); emits ONLY the aggregate `notifyWorkflow` at run end (no per-stage pushes — T189) |
+| `src/engine/ports.ts` | The stage contract: `ArtifactType` + its constructors (`jsonArtifact` / `fileArtifact` / `dirArtifact` / `ledgerArtifact` / `inlineArtifact`), `defineStage`, `StageContext`, and the pure binding + validation (`bindWorkflowPorts`, `validateWorkflowContracts`, `portGates`, `workflowMode`). No database, no I/O beyond an artifact's own `read` |
+| `src/engine/stage-runtime.ts` | Child side of ports: builds a stage's context (`ctx.run` / `input` / `inputs` / `output`), records what it commits, and the end-of-run sweep that fails a stage with an uncommitted output |
+| `src/engine/resolve-inputs.ts` | Daemon side of ports: `resolveInput` (this run's artifact, still intact on disk) and `uncommittedOutputs` |
+| `src/engine/child-main.ts` | The body of the child process (`runJobProcess`); `src/runJob.ts` only supplies the registry lookup, so tests can run fixture stages through the same code |
+| `src/engine/protocol.ts` | `ENGINE_PROTOCOL`: the child-protocol version the daemon passes to children |
+| `src/engine/hash.ts` | SHA-256 of a file, and a listing fingerprint for a directory |
+| `src/engine/testing/` | `context.ts` (`makeTestContext` for unit-testing a ports stage), `ports-fixtures.ts` + `fixture-runner.ts` (the fan-out / fan-in fixture workflow the end-to-end tests run in real child processes) |
+| `src/engine/checkpoint.ts` | `createCheckpoint(save, { every })`: "save, then mark done". Holds an item-loop stage's ledger marks back until the hand-off file that carries those items' data has been saved, so a kill can never leave an item marked done whose data never reached the next stage. Used by the places stages |
+| `src/engine/retention.ts` | Daily background sweep (daemon only) that trims per-run I/O detail of old runs via `pruneRunHistoryChunk` |
+| `src/engine/index.ts` | The engine's public surface: what workflows import |
+| `src/engine/host.ts` | `configureEngine` / `EngineHost`: how the application supplies its jobs and receives settled runs |
+| `src/engine/types.ts` | The engine's types (jobs, workflows, runs, gate results); `src/core/types.ts` re-exports them and adds `ServiceDefinition` |
+| `src/engine/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
+| `src/engine/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; `repeatUntilStable` cycling with a **no-forward-progress early stop** (T112, via `workflowProgressSignature`/`noForwardProgress`); owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below); emits ONLY the aggregate `notifyWorkflow` at run end (no per-stage pushes — T189) |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout): ntfy push + macOS notification. The body is built by `workflowNotificationBody` — the stage roll-up line PLUS a counts line (`N done · N failed · N not attempted · N stuck`, empty fragments omitted) from `workflowRunItemTally`/`workflowStuckCount`. Counts matter: the body used to be the roll-up alone, which reads identically whether a run processed 500 items or zero — the ambiguity that let the places Gemini outage go unnoticed for 18 nights. A tally lookup can never block the push (it falls back to the roll-up line on any throw). `notifyWorkflow` is called once per workflow run at completion (aggregate). `notifyStage` is exported but no longer called by the executor (T189) |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
-| `src/core/fsjson.ts` | Shared JSON-file + directory helpers (`readJsonFile`/`writeJsonFile`/`writeFileAtomic`/`ensureDirs`, T588), re-exported by each workflow's `lib.ts`. **Writes are atomic** (temp file in the same directory, fsync, rename), so a reader sees the whole old file or the whole new one and a killed process leaves the previous file intact. Use these for every file one stage hands to another; never a bare `writeFileSync`. `readJsonFile` throws an error that names the file when it exists but does not parse |
+| `src/engine/fsjson.ts` | Shared JSON-file + directory helpers (`readJsonFile`/`writeJsonFile`/`writeFileAtomic`/`ensureDirs`, T588), re-exported by each workflow's `lib.ts`. **Writes are atomic** (temp file in the same directory, fsync, rename), so a reader sees the whole old file or the whole new one and a killed process leaves the previous file intact. Use these for every file one stage hands to another; never a bare `writeFileSync`. `readJsonFile` throws an error that names the file when it exists but does not parse |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
 | `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan, plus the mutating `plexPutStreams`/`triggerButlerBackup` used by `plex-language-apply`) — used by all 9 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `missing-movies`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`, `plex-library-guard`, `plex-rename`), owned by none of them. The shared `plex` service now sits in front of every `plexGet`/`plexPutStreams`/`triggerButlerBackup` call — every one of those 9 workflows routes its Plex reads/mutations through `callService('plex', ...)`, giving call-count metering + per-job consumer tracking on the Integrations page. Also exports 3 dedup helpers (T586) every one of those workflows now shares instead of re-declaring locally: `PlexAllResponse<T>` (the `{ MediaContainer?: { Metadata?: T[] } }` response shape), `extractTmdbId` (pulls the numeric id off a title's `tmdb://` GUID, or `null` when absent — never guessed), and `fetchSectionMetadata<T>` (a thin `/library/sections/<n>/all` listing wrapper, itself routed through `callService('plex', ...)`); plus `extractTvdbId`/`extractImdbId` (same never-guess contract) and `plexRefreshSection` (targeted `GET /library/sections/<n>/refresh?path=` rescan trigger — a mutation trigger, never cached) added for `plex-rename` |
 | `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
@@ -571,7 +604,7 @@ job MAY colocate a service it owns).
   `` throw new Error(`${failed}/${processed} item(s) failed this run — see logs above`) ``)
   instead of returning normally. This needs NO new framework mechanism — it reuses machinery that
   already exists: the thrown error correctly marks the RUN `'failed'` (`src/runJob.ts` →
-  `src/core/executor.ts`), which correctly blocks every downstream DAG dependent (`executeDag`'s
+  `src/engine/executor.ts`), which correctly blocks every downstream DAG dependent (`executeDag`'s
   ready-stage loop already treats any status other than exactly `'success'` as blocking), and
   correctly triggers the job's own retry budget (`runAttempts`/`maxRetries`, unchanged) — a retry
   (or the next scheduled run) naturally skips already-`isWorkItemDone` items and resumes at the
@@ -750,7 +783,7 @@ doubt, log it.
   that file has been saved. Mark-then-save loses data silently when the process is
   killed in between: the item is "done" forever and never reaches the next stage. Either
   save per item before `markWorkItem`, or, when the file is too large for that, hold the
-  marks back with `createCheckpoint` (`src/core/checkpoint.ts`) and flush in a `finally`.
+  marks back with `createCheckpoint` (`src/engine/checkpoint.ts`) and flush in a `finally`.
   When re-saving a file that may already contain an item (a re-run after a kill), merge
   by id rather than append, so nothing is duplicated.
 - **A discovery walk that could not read everything must not prune.** A stage that
@@ -1177,7 +1210,7 @@ doubt, log it.
     (footer action row) in `dashboard/app/globals.css`.
 - **Per-run I/O detail is trimmed after 90 days.** `work_item_runs`, `run_artifacts` and
   `run_inputs` gain rows on every run with no natural bound (a library-wide workflow adds
-  tens of thousands a day), so a daily sweep (`src/core/retention.ts` →
+  tens of thousands a day), so a daily sweep (`src/engine/retention.ts` →
   `pruneRunHistoryChunk`) removes them for runs that started more than
   `LOCALJOBS_RUN_HISTORY_KEEP_DAYS` (90) ago, always keeping each workflow's most recent
   `LOCALJOBS_RUN_HISTORY_KEEP_RUNS` (20) runs and anything still running. The runs
@@ -1325,9 +1358,9 @@ doubt, log it.
   LOUD at the exact gate instead of feeding bad data downstream. The `check`
   should inspect the REAL artifact (read the `data/` file, sniff the scraped
   page) and return precise per-drift `violations`. Gate derivation
-  (`deriveGates`) lives in `src/core/dag.ts` (pure, edge-scoped — a consumed key
+  (`deriveGates`) lives in `src/engine/dag.ts` (pure, edge-scoped — a consumed key
   with no producing upstream is an external input, not a gate); enforcement lives
-  in `src/core/workflow-executor.ts`. Both example workflows declare these: the
+  in `src/engine/workflow-executor.ts`. Both example workflows declare these: the
   contracts live in `src/workflows/places/contracts.ts` and
   `src/workflows/perfumes/contracts.ts` as small **factory functions** (each takes an
   optional path defaulting to the job's real `data/` artifact, so the jobs wire
@@ -1336,7 +1369,7 @@ doubt, log it.
   expected fields/columns) — enough to catch real drift without brittle
   full-schema validation. Each workflow derives 3 gates (one per stage boundary).
   Gate **state** is surfaced on the dashboard's workflow-run DAG: `classifyGates`
-  (also in `src/core/dag.ts`, pure) maps each gate to `passed`/`failed`/`pending`
+  (also in `src/engine/dag.ts`, pure) maps each gate to `passed`/`failed`/`pending`
   from the run's member runs — a gate is `failed` when its consumer's latest run
   is a gate-failure (matched via the shared `gateFailurePrefix`, the SAME format
   `recordGateFailure` writes), `passed` once the consumer actually ran, else
@@ -1388,7 +1421,7 @@ doubt, log it.
     violation log links) whenever the two sides are identical, and fall back to the
     full two-sided `Produced → | Gate | → Consumed` diff when they DIFFER. "Identical"
     is decided server-side: BOTH gate inspection endpoints return an `identical:
-    boolean` computed by `shapesIdentical(a, b)` (pure, in `src/core/dag.ts`,
+    boolean` computed by `shapesIdentical(a, b)` (pure, in `src/engine/dag.ts`,
     unit-tested) — a deep compare of the two sides' DECLARED `shape` (`summary` +
     `format` + the `expectations` array by `label`+`detail`); a missing shape on
     either side is treated as NOT identical (never hide a side we can't confirm).

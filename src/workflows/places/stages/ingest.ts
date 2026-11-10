@@ -1,5 +1,5 @@
 import { mkdirSync, statSync } from 'node:fs';
-import { writeJsonFile } from '../../../core/fsjson.js';
+import { writeJsonFile } from '../../../engine/fsjson.js';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
 import { markWorkItem } from '../../../db/store.js';

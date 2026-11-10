@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ArtifactContract, GateResult } from '../../core/types.js';
-import { buildDag, deriveGates } from '../../core/dag.js';
+import { buildDag, deriveGates } from '../../engine/dag.js';
 import { workoutsHistoryContract } from './contracts.js';
 
 let passed = 0;

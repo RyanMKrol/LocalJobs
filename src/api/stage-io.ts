@@ -24,9 +24,9 @@ import {
   artifactsForWorkflowRun, fromStoredPath, getRunArtifact, getWorkflowJobs, getWorkItem, listRunsForWorkflowRun,
   runInputsForWorkflowRun, stageIoLists, type RunArtifactRow, type RunInputRow, type StageIoItem,
 } from '../db/store.js';
-import { buildDag } from '../core/dag.js';
-import { dirStats } from '../core/hash.js';
-import type { ArtifactType, IoItem } from '../core/ports.js';
+import { buildDag } from '../engine/dag.js';
+import { dirStats } from '../engine/hash.js';
+import type { ArtifactType, IoItem } from '../engine/ports.js';
 import type { GateResult, JobDefinition, WorkflowDefinition, WorkflowRunRow } from '../core/types.js';
 
 export const OVERALL = '__overall__';

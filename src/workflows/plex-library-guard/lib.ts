@@ -1,7 +1,7 @@
 // Pure snapshot/diff/alert helpers (no I/O beyond the two JSON file helpers),
 // unit-tested in plex-library-guard.test.ts.
 import { existsSync, readFileSync } from 'node:fs';
-import { ensureDirs as coreEnsureDirs, writeJsonFile } from '../../core/fsjson.js';
+import { ensureDirs as coreEnsureDirs, writeJsonFile } from '../../engine/fsjson.js';
 import { plexLibraryGuardConfig } from './config.js';
 import type {
   GuardEpisodeMeta,

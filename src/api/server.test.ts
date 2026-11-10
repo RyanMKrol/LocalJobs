@@ -13,7 +13,7 @@ import { config } from '../config.js';
 import { jobs, workflows } from '../workflows/registry.js';
 import { createWorkflowRun, finishWorkflowRun, getJob, getWorkflow, lastWorkflowRunForWorkflow, markWorkItem, recordServiceConsumer, syncJob, syncWorkflow } from '../db/store.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
-import { isWorkflowStarting } from '../core/workflow-executor.js';
+import { isWorkflowStarting } from '../engine/workflow-executor.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,

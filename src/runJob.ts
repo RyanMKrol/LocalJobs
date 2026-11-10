@@ -10,6 +10,6 @@
  */
 import 'dotenv/config'; // load .env so jobs can read secrets (e.g. API keys)
 import { getJobDefinition } from './workflows/registry.js';
-import { runJobProcess } from './core/child-main.js';
+import { runJobProcess } from './engine/child-main.js';
 
 runJobProcess(process.argv[2], getJobDefinition);

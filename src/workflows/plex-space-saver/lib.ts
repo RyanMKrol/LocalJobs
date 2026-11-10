@@ -1,5 +1,5 @@
 // Pure Plex-parsing/formatting helpers (no I/O) — unit-tested in plex-space-saver.test.ts.
-import { ensureDirs as coreEnsureDirs, writeJsonFile } from '../../core/fsjson.js';
+import { ensureDirs as coreEnsureDirs, writeJsonFile } from '../../engine/fsjson.js';
 import { plexSpaceSaverConfig } from './config.js';
 import type { PlexEpisodeMeta, PlexMovieMeta, PlexShowMeta, SizeBreakdownFile, SizeBreakdownItem } from './types.js';
 
