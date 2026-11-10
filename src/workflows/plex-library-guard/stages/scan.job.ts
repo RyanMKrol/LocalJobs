@@ -1,7 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
+import { defineStage } from '../../../engine/index.js';
+import { plexLibraryGuardConfig } from '../config.js';
+import { guardReport, librarySnapshot } from '../contracts.js';
 import { runScan, JOB_NAME } from './scan.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: JOB_NAME,
   description:
     'Scans the Plex movie and TV library sections LIVE (explicitly opting out of the 3-hour Plex ' +
@@ -18,12 +20,18 @@ const job: JobDefinition = {
     'movie or episode listing throws before any write, and a suspected partial read (more than ' +
     'half the previous inventory missing at once) still alerts loudly but preserves the baseline ' +
     'and fails the run, so a transient Plex misread self-heals next run. First run seeds the ' +
-    'baseline and sends nothing. Safe to re-run any time: one ledger row per calendar day.',
+    'baseline and sends nothing. Safe to re-run any time. The report and the baseline snapshot are ' +
+    'the stage\'s two declared outputs.',
   timeoutMs: 300_000,
   maxRetries: 3,
+  // Both are written by every run that succeeds. The runs that deliberately leave
+  // the baseline alone (a failed alert push, a suspected partial read) throw, so
+  // they never reach the point where a missing output would be the complaint.
+  outputs: {
+    report: { artifact: guardReport, location: () => plexLibraryGuardConfig.reportOut },
+    snapshot: { artifact: librarySnapshot, location: () => plexLibraryGuardConfig.snapshotOut },
+  },
   async run(ctx) {
     await runScan(ctx);
   },
-};
-
-export default job;
+});

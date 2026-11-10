@@ -163,7 +163,28 @@ export interface WorkflowResetResult {
  * user settings (enabled/schedule/concurrency overrides, service limits), or
  * `service_usage` (a cross-workflow spend meter).
  *
- * Filesystem cleanup (data/out/**) is performed by the API layer after calling this.
+ * Filesystem cleanup (data/out/** How many rows a ledger holds (and how many per-run records point at it). */
+export function ledgerSize(jobName: string): { workItems: number; workItemRuns: number } {
+  const count = (table: string) =>
+    (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE job_name = ?`).get(jobName) as { n: number }).n;
+  return { workItems: count('work_items'), workItemRuns: count('work_item_runs') };
+}
+
+/**
+ * Delete one job's whole ledger: its `work_items` rows and the per-run records of
+ * them. For a ledger that existed only to be displayed and whose stage now
+ * declares its output instead (see scripts/cleanup-legacy-display-rows.ts). Never
+ * called by a run. Runs, logs and every other job's ledger are untouched.
+ */
+export function deleteLedgerOfJob(jobName: string): { workItems: number; workItemRuns: number } {
+  return db.transaction(() => {
+    const workItemRuns = db.prepare('DELETE FROM work_item_runs WHERE job_name = ?').run(jobName).changes;
+    const workItems = db.prepare('DELETE FROM work_items WHERE job_name = ?').run(jobName).changes;
+    return { workItems, workItemRuns };
+  }).immediate();
+}
+
+/**) is performed by the API layer after calling this.
  * MANUAL ONLY — never invoked from the run/schedule path.
  */
 export function resetWorkflowOutput(workflowName: string): WorkflowResetResult {

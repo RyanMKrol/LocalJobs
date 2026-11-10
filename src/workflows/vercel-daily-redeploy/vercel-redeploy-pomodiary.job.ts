@@ -1,6 +1,6 @@
-import type { JobDefinition } from '../../core/types.js';
+import { defineStage } from '../../engine/index.js';
 
-import { POMODIARY_TARGET, runVercelRedeploy } from './vercel-redeploy.job.js';
+import { POMODIARY_TARGET, redeployResult, runVercelRedeploy } from './vercel-redeploy.job.js';
 
 /**
  * The PomoDiary twin of vercel-redeploy: same runner, different target. That
@@ -9,7 +9,7 @@ import { POMODIARY_TARGET, runVercelRedeploy } from './vercel-redeploy.job.js';
  * auto-deploy burned Hobby quota), so this daily CLI deploy of the current
  * working tree is now its production ship mechanism.
  */
-const job: JobDefinition = {
+export default defineStage({
   name: 'vercel-redeploy-pomodiary',
   description:
     'Once a day this job runs "vercel --prod --yes" directly in the separate PomoDiary checkout, ' +
@@ -24,9 +24,8 @@ const job: JobDefinition = {
     'ryankrol.co.uk job.',
   timeoutMs: 660_000,
   maxRetries: 1,
+  outputs: { result: { artifact: redeployResult } },
   async run(ctx) {
-    await runVercelRedeploy(ctx, { target: POMODIARY_TARGET });
+    await runVercelRedeploy(ctx, { target: POMODIARY_TARGET, report: (r) => ctx.output('result').write(r) });
   },
-};
-
-export default job;
+});

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveWorkflowDataDir } from '../../config.js';
 import { dayKey } from '../../core/dates.js';
 import { callService, QuotaExceededError } from '../../core/services.js';
-import type { JobContext, JobDefinition } from '../../core/types.js';
+import { defineStage, fromChecks, inlineArtifact, type JobContext } from '../../engine/index.js';
 import { markWorkItem } from '../../db/store.js';
 
 /** Injectable child-process spawn (real implementation runs the Vercel CLI; tests stub this). */
@@ -41,13 +41,33 @@ const outDir = resolve(resolveWorkflowDataDir(resolve(here, 'data')), 'out');
 
 type Outcome = 'deployed' | 'skipped' | 'failed';
 
+/** What one redeploy attempt did: the stage's output. */
+export interface RedeployResult {
+  generatedAt: string;
+  /** The day it was for (one deploy per day). */
+  key: string;
+  outcome: Outcome;
+  deployUrl?: string;
+  reason?: string;
+}
+
+const OUTCOMES: Outcome[] = ['deployed', 'skipped', 'failed'];
+
+/** Both redeploy stages output this: small, so it is kept in the run record. */
+export const redeployResult = inlineArtifact<RedeployResult>({
+  key: 'vercel-redeploy-result',
+  description: 'How the deploy went: deployed (with its URL), skipped (and why), or failed (and why).',
+  check: (v) => fromChecks([{ label: 'a known outcome', ok: OUTCOMES.includes(v?.outcome), actual: String(v?.outcome) }]),
+  summary: (v) => `${v.outcome}${v.deployUrl ? ` · ${v.deployUrl}` : ''}${v.reason ? ` · ${v.reason.slice(0, 120)}` : ''}`,
+});
+
 /**
- * Records this run's outcome as ONE per-day ledger row (T618) — a same-day
- * manual re-run overwrites the row rather than duplicating it (dayKey ->
- * unique job_name+item_key upsert). The row's `detail` is a file-backed JSON
- * artifact under data/out/ (detail.format: 'json' + detail.path), following
- * the overrides-audit/stocks-fetch convention, so the dashboard's Output
- * panel has something concrete to preview.
+ * Records this run's outcome twice. As the stage's OUTPUT (handed to `report`,
+ * which commits it), so the run page says how the deploy went. And as ONE
+ * per-day ledger row (T618), the deploy log: one deployment a day is the item
+ * this stage produces, a same-day manual re-run overwrites the row rather than
+ * duplicating it, and a failed deploy is a `failed` row that can be queried.
+ * The row's `detail` points at a small JSON file under data/out/.
  */
 function recordOutcome(
   target: RedeployTarget,
@@ -55,11 +75,13 @@ function recordOutcome(
   outcome: Outcome,
   extra: { deployUrl?: string; reason?: string },
   status: 'success' | 'failed',
+  report?: (result: RedeployResult) => void,
 ): void {
   mkdirSync(outDir, { recursive: true });
   const outPath = resolve(outDir, `${target.outPrefix}-${key}.json`);
-  const body = { generatedAt: new Date().toISOString(), key, outcome, ...extra };
+  const body: RedeployResult = { generatedAt: new Date().toISOString(), key, outcome, ...extra };
   writeFileSync(outPath, JSON.stringify(body, null, 2));
+  report?.(body);
   markWorkItem(target.jobName, key, status, {
     detail: {
       name: `Redeploy ${outcome} — ${key}`,
@@ -94,6 +116,8 @@ export async function runVercelRedeploy(
     callServiceFn?: typeof callService;
     now?: Date;
     target?: RedeployTarget;
+    /** Handed the outcome as soon as it is known, including just before a failed deploy throws. */
+    report?: (result: RedeployResult) => void;
   } = {},
 ): Promise<void> {
   const now = opts.now ?? new Date();
@@ -102,7 +126,7 @@ export async function runVercelRedeploy(
   const checkoutPath = opts.checkoutPath ?? process.env[target.envVarName];
   if (!checkoutPath) {
     ctx.log(`${target.envVarName} not configured — skipping redeploy (see .env.example)`, 'warn');
-    recordOutcome(target, key, 'skipped', { reason: `missing-config: ${target.envVarName} is not set` }, 'success');
+    recordOutcome(target, key, 'skipped', { reason: `missing-config: ${target.envVarName} is not set` }, 'success', opts.report);
     return;
   }
   if (!existsSync(checkoutPath)) {
@@ -113,6 +137,7 @@ export async function runVercelRedeploy(
       'skipped',
       { reason: `missing-config: checkout path ${checkoutPath} does not exist on disk` },
       'success',
+      opts.report,
     );
     return;
   }
@@ -134,15 +159,15 @@ export async function runVercelRedeploy(
   } catch (e) {
     if (e instanceof QuotaExceededError) {
       ctx.log(`vercel service quota exhausted — skipping today's redeploy (${e.message})`, 'warn');
-      recordOutcome(target, key, 'skipped', { reason: `quota-exhausted: ${e.message}` }, 'success');
+      recordOutcome(target, key, 'skipped', { reason: `quota-exhausted: ${e.message}` }, 'success', opts.report);
       return;
     }
     const reason = e instanceof Error ? e.message : String(e);
-    recordOutcome(target, key, 'failed', { reason }, 'failed');
+    recordOutcome(target, key, 'failed', { reason }, 'failed', opts.report);
     throw e;
   }
 
-  recordOutcome(target, key, 'deployed', { deployUrl }, 'success');
+  recordOutcome(target, key, 'deployed', { deployUrl }, 'success', opts.report);
 }
 
 function deployOnce(ctx: JobContext, checkoutPath: string, spawnFn: SpawnFn, timeoutMs: number): Promise<string | undefined> {
@@ -203,7 +228,7 @@ function deployOnce(ctx: JobContext, checkoutPath: string, spawnFn: SpawnFn, tim
   });
 }
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'vercel-redeploy',
   description:
     'Once a day this job runs "vercel --prod --yes" directly in the separate ryankrol.co.uk ' +
@@ -221,9 +246,9 @@ const job: JobDefinition = {
     'would otherwise need to hard-kill the job process itself.',
   timeoutMs: 660_000,
   maxRetries: 1,
+  // Committed whatever happened, including just before a failed deploy fails the run.
+  outputs: { result: { artifact: redeployResult } },
   async run(ctx) {
-    await runVercelRedeploy(ctx);
+    await runVercelRedeploy(ctx, { report: (r) => ctx.output('result').write(r) });
   },
-};
-
-export default job;
+});

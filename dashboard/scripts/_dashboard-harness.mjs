@@ -631,13 +631,17 @@ const vercelDailyRedeployWorkflowRun = workflowRun({ id: 'vercel-daily-redeploy-
 const vercelDailyRedeployRunJobs = vercelDailyRedeployMembers.map((m, i) => run({
   id: `vercel-daily-redeploy-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'vercel-daily-redeploy-run',
 }));
-const vercelDailyRedeployOutput = { jobName: 'vercel-redeploy', itemKey: '2026-07-10', status: 'success', detail: { name: 'ryankrol.co.uk — production redeploy triggered' } };
-const vercelDailyRedeployStageIo = {
-  'vercel-redeploy': { inputs: [], outputs: [vercelDailyRedeployOutput], predecessorJobs: [], job: 'vercel-redeploy' },
-};
-const vercelDailyRedeployStageIoOverall = {
-  inputs: [], outputs: [vercelDailyRedeployOutput], predecessorJobs: [], outputJobs: ['vercel-redeploy'], job: '__overall__',
-};
+// A ports stage with one INLINE output (how the deploy went) and its per-day deploy-log row.
+const vercelDailyRedeployIo = singleOutputIo('vercel-redeploy', [portsArtifact({
+  job: 'vercel-redeploy', port: 'result', artifactKey: 'vercel-redeploy-result', storage: 'inline',
+  description: 'How the deploy went: deployed (with its URL), skipped (and why), or failed (and why).',
+  summary: 'deployed · https://ryankrol-co-uk.vercel.app', bytes: 132,
+  inline: { generatedAt: '2026-07-10T23:01:12.000Z', key: '2026-07-10', outcome: 'deployed', deployUrl: 'https://ryankrol-co-uk.vercel.app' },
+})], [
+  { id: 'vercel-redeploy:2026-07-10', jobName: 'vercel-redeploy', itemKey: '2026-07-10', status: 'success', title: 'Redeploy deployed — 2026-07-10', fields: [], preview: { path: 'vercel-daily-redeploy/data/out/vercel-redeploy-2026-07-10.json', format: 'json' } },
+]);
+const vercelDailyRedeployStageIo = vercelDailyRedeployIo.stage;
+const vercelDailyRedeployStageIoOverall = vercelDailyRedeployIo.overall;
 
 // tv-recommendations — tv-snapshot -> 8 rec branches -> tv-rec-merge -> tv-recs-notify.
 const tvRecommendationsMembers = [
@@ -913,14 +917,26 @@ const plexLibraryGuardWorkflowRun = workflowRun({ id: 'plex-library-guard-run', 
 const plexLibraryGuardRunJobs = plexLibraryGuardMembers.map((m, i) => run({
   id: `plex-library-guard-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-library-guard-run',
 }));
-const plexLibraryGuardOutput = { jobName: 'plex-library-guard-scan', itemKey: '2026-06-15', status: 'success', detail: { name: 'Library guard — 2026-06-15 — ALERT: 2 missing, -6.0 GB', path: '/abs/data/out/guard-report.json', format: 'json' } };
-const plexLibraryGuardSnapshotItem = { jobName: 'plex-library-guard-scan', itemKey: 'snapshot', status: 'success', detail: { name: 'Full library snapshot — 14201 files, 17.5 TB', path: '/abs/data/out/library-snapshot.json', format: 'library-snapshot' } };
-const plexLibraryGuardStageIo = {
-  'plex-library-guard-scan': { inputs: [], outputs: [plexLibraryGuardOutput, plexLibraryGuardSnapshotItem], predecessorJobs: [], job: 'plex-library-guard-scan' },
-};
-const plexLibraryGuardStageIoOverall = {
-  inputs: [], outputs: [plexLibraryGuardOutput, plexLibraryGuardSnapshotItem], predecessorJobs: [], outputJobs: ['plex-library-guard-scan'], job: '__overall__',
-};
+// A ports stage with two declared outputs and no display rows: the per-run report, and
+// the baseline snapshot whose declared format picks the searchable inventory viewer.
+const plexLibraryGuardArtifacts = [
+  portsArtifact({
+    job: 'plex-library-guard-scan', port: 'report', artifactKey: 'plex-guard-report',
+    description: 'What this run found: the library\'s size and file count, anything missing since the last run, and whether an alert went out.',
+    summary: '14201 file(s), 17.5 TB, 2 missing, 0 added, ALERTED', itemCount: 2, bytes: 1_480,
+    preview: { path: 'plex-library-guard/data/out/guard-report.json', format: 'json' },
+    sample: [{ id: 'part:1', title: 'A Missing Film (2019)', status: 'failed', fields: [{ label: 'Kind', value: 'movie' }, { label: 'File', value: '/Volumes/Share A/Movies/A Missing Film (2019)/A Missing Film (2019).mkv' }] }],
+  }),
+  portsArtifact({
+    job: 'plex-library-guard-scan', port: 'snapshot', artifactKey: 'plex-library-snapshot', format: 'library-snapshot',
+    description: 'The full per-file inventory of the library, and the baseline the next run is compared with.',
+    summary: '14201 file(s), 17.5 TB', itemCount: 14201, bytes: 10_400_000,
+    preview: { path: 'plex-library-guard/data/out/library-snapshot.json', format: 'library-snapshot' },
+  }),
+];
+const plexLibraryGuardIo = singleOutputIo('plex-library-guard-scan', plexLibraryGuardArtifacts);
+const plexLibraryGuardStageIo = plexLibraryGuardIo.stage;
+const plexLibraryGuardStageIoOverall = plexLibraryGuardIo.overall;
 // The GET .../output(-items) response body for `plexLibraryGuardOutput` — a real
 // GuardReportFile JSON string (an alerted run with missing files) so the generic
 // json OutputRenderer has realistic content to paint in the View popover.
@@ -1082,6 +1098,7 @@ function outputFileFixture(searchParams) {
   const as = (fixture) => ({ ...fixture, format, file: path });
   if (format === 'size-table') return as(plexSpaceSaverOutputFixture);
   if (format === 'library-snapshot') return as(plexLibraryGuardSnapshotFixture);
+  if (format === 'json' && path.startsWith('plex-library-guard/')) return as(plexLibraryGuardOutputFixture);
   if (format === 'json') return /^(tv-recs|movies)\//.test(path)
     ? { found: true, format, file: path, bytes: 64, truncated: false, content: JSON.stringify({ generatedAt: '2026-06-01T09:00:00Z', recommendations: [{ tmdbId: 111110, title: 'ONE PIECE', year: 2023 }] }) }
     : as(placesJsonOutputFixture);
@@ -1358,16 +1375,10 @@ function fixtureForRaw(pathname, searchParams) {
     if (pathname === '/api/workflows/plex-space-saver/output-items') {
       return { items: [], total: 0, terminalJobs: ['plex-space-saver-scan'], artifacts: [{ ...plexSpaceSaverArtifact, workflowRunId: 'plex-space-saver-run' }] };
     }
-    // plex-library-guard's daily ledger row, so the workflow-definition Output
-    // section has a real row to click "View" on (exercises the json renderer).
+    // plex-library-guard is a ports workflow: its Output section shows the report and
+    // the baseline snapshot as artifact cards ("View file" opens each in its viewer).
     if (pathname === '/api/workflows/plex-library-guard/output-items') {
-      return {
-        items: [
-          { jobName: 'plex-library-guard-scan', itemKey: '2026-06-15', name: 'Library guard — 2026-06-15 — ALERT: 2 missing, -6.0 GB', hasMarkdown: true, viewable: true, updatedAt: NOW },
-          { jobName: 'plex-library-guard-scan', itemKey: 'snapshot', name: 'Full library snapshot — 14201 files, 17.5 TB', hasMarkdown: true, viewable: true, updatedAt: NOW },
-        ],
-        terminalJobs: ['plex-library-guard-scan'],
-      };
+      return { items: [], total: 0, terminalJobs: ['plex-library-guard-scan'], artifacts: plexLibraryGuardArtifacts.map((a) => ({ ...a, workflowRunId: 'plex-library-guard-run' })) };
     }
     // A PORTS workflow: the Output section shows the latest artifact its product
     // stage committed (a card, with which run wrote it) above the produced items.
@@ -1622,9 +1633,9 @@ export const FLOWS = [
     // inventory (summary line, filter box, file rows), not a raw JSON dump.
     name: 'workflow-output-section-library-snapshot',
     path: '/workflows/plex-library-guard',
-    waitFor: ['.output-section button.btn.btn-sm'],
+    waitFor: ['.output-section .stage-io-item-link'],
     actions: async (page) => {
-      await page.click('tr:has-text("Full library snapshot") button.btn.btn-sm');
+      await page.click('.stage-io-artifact:has-text("plex-library-snapshot") .stage-io-item-link:has-text("View file")');
       await page.waitForSelector('.db-modal', { state: 'visible', timeout: 5000 });
       await page.waitForSelector('.snapshot-search', { state: 'visible', timeout: 5000 });
       await page.waitForTimeout(300);

@@ -28,6 +28,12 @@ Runs its own internal timeout-and-kill (10 min) separate from the job's outer `t
 the spawned `vercel` subprocess is always killed cleanly before the executor would ever need to
 hard-kill the job process itself.
 
+**Both stages are ports stages with one inline output, `result` (`vercel-redeploy-result`):**
+`{ generatedAt, key, outcome: deployed | skipped | failed, deployUrl?, reason? }`. It is committed
+whatever happened, including just before a failed deploy fails the run, so every run's page says
+how the deploy went. The two stages are independent (no edge between them) and both output the
+same artifact type.
+
 **One `work_items` ledger row per run, keyed by dayKey(now) (T618).** The Input side of the
 dashboard's Inputs & Outputs panel is deliberately empty — there is genuinely no input, just a
 single daily trigger — but the Output side now reflects the real per-day result:

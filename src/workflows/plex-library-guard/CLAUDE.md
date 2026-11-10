@@ -22,18 +22,19 @@ at 10:30 (`30 10 * * *`, staggered clear of the other Plex workflows). Each run:
    missing file triggers ONE combined urgent push (`rotating_light,warning` tags) naming up
    to 20 missing titles. The full list always lands in `data/out/guard-report.json` (written
    every run) and the run log.
-4. Overwrites the baseline snapshot and records TWO ledger rows: one per calendar day
-   (`dayKey`, `detail.format: 'json'` + `detail.path` pointing at the report, plus
-   `detail.markdown` set to the same path purely so the Output list's View button
-   surfaces), and one STABLE row keyed `snapshot` (updated in place each run) whose
-   `detail.format: 'library-snapshot'` points at the full baseline inventory. The
-   dashboard renders that form as a searchable per-file list
+4. Overwrites the baseline snapshot. The stage is a ports stage with two declared outputs
+   (artifact types in `contracts.ts`): `report` (`plex-guard-report`, the per-run JSON summary)
+   and `snapshot` (`plex-library-snapshot`, the full baseline inventory, declared format
+   `library-snapshot`). The dashboard renders that form as a searchable per-file list
    (`LibrarySnapshotOutputBody` in `dashboard/app/components/OutputRenderer.tsx`:
    summary header, title/path filter, at most 300 rows painted at once). Because the
    inventory is ~10 MB, the `library-snapshot` format is exempted from the output
    endpoints' 512 KB payload cap (`outputPayloadMax(format)` in `src/api/server.ts`).
-   The snapshot row is recorded only right after a successful baseline write, so the
-   dashboard always shows exactly the inventory the next run will diff against.
+   Both are committed only by a run that succeeds, so the snapshot card on the dashboard
+   always shows exactly the inventory the next run will diff against. The snapshot's check
+   refuses an empty inventory. There are no display rows in the ledger any more (the old
+   per-day row and the stable `snapshot` row existed only to put "View" buttons on the
+   Output section); the one ledger left is `plex-library-guard-alert`.
 
 ## The write-ordering invariant (protect this)
 
@@ -90,4 +91,4 @@ restructured.
 - `plex-library-guard.test.ts` (pure logic) + `stages/scan.test.ts` (behaviour, including
   the ordering invariant and the cache opt-out).
 - `data/out/library-snapshot.json` (the baseline) + `data/out/guard-report.json` (per-run
-  summary, the Output section artifact).
+  summary): the stage's two declared outputs, both shown as cards in the Output section.

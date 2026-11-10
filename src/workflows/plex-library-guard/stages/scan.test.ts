@@ -10,11 +10,10 @@ import { existsSync, rmSync } from 'node:fs';
 import type { JobContext, LogLevel } from '../../../core/types.js';
 import { registerService } from '../../../core/services.js';
 import { isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import { dayKey } from '../../../core/dates.js';
 import { plexLibraryGuardConfig } from '../config.js';
 import { readSnapshot } from '../lib.js';
 import type { GuardEpisodeMeta, GuardMovieMeta, GuardReportFile } from '../types.js';
-import { runScan, ALERT_JOB, JOB_NAME } from './scan.js';
+import { runScan, ALERT_JOB } from './scan.js';
 import { readJsonFile } from '../../../engine/fsjson.js';
 
 const GB = 1024 ** 3;
@@ -83,8 +82,6 @@ describe('runScan (plex-library-guard)', () => {
     assert.ok(report);
     assert.equal(report.firstRun, true);
     assert.equal(report.alerted, false);
-    assert.equal(isWorkItemDone(JOB_NAME, dayKey(now), 1), true, 'one ledger row per day');
-    assert.equal(isWorkItemDone(JOB_NAME, 'snapshot', 1), true, 'the stable full-inventory snapshot row is recorded');
   });
 
   it('an unchanged library sends no push and advances the baseline', async () => {
