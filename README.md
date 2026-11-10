@@ -44,9 +44,11 @@ interesting part.
 a per-item ledger, so a re-run skips finished work and picks up where it stopped.
 Interrupt a job halfway through 5,000 files and the next run continues from 2,501.
 
-**Steps check each other's work.** Where one step hands data to the next, both sides
-declare what that data should look like. If a website changes its layout or an
-export drops a column, the pipeline stops at that boundary and tells you exactly
+**Steps check each other's work.** Each step says what it reads and what it writes,
+and what that data should look like. A step is handed what the step before it wrote
+in the same run, never a file left over from an earlier one, and a step that
+finishes without writing what it promised fails. If a website changes its layout or
+an export drops a column, the pipeline stops at that boundary and tells you exactly
 what changed, rather than quietly writing bad data to disk.
 
 **Shared APIs get shared limits.** Paid or rate-limited services are declared once,
@@ -157,23 +159,43 @@ code it was started with. Restart the daemon after changing anything under `src/
 make larger changes in a separate git worktree so a half-finished edit is never picked
 up by the next scheduled job.
 
+**A failed run can be picked up where it stopped.** Resume a failed run and the steps
+that already succeeded are not run again, as long as what they wrote is unchanged.
+Eight slow steps that worked are not repeated because the ninth failed.
+
+**One workflow can wait for another.** A workflow that reads another's output can say
+so, and its run then holds back while that one is still running instead of reading
+files that are half rebuilt.
+
 ## Adding a job
 
-A job is a description of itself and a function that does the work.
+A job is a description of itself, what it produces, and a function that does the work.
 
 ```ts
-const job: JobDefinition = {
+const report = jsonArtifact<{ deleted: string[] }>({
+  key: 'cleanup-report',
+  description: 'The temp files this run deleted.',
+  check: (v) => fromChecks([{ label: 'has a list', ok: Array.isArray(v?.deleted) }]),
+  summary: (v) => `${v.deleted.length} file(s) deleted`,
+});
+
+export default defineStage({
   name: 'cleanup-temp',
   description: 'Deletes stale temp files',
   timeoutMs: 600_000,
   maxRetries: 3,
+  outputs: { report: { artifact: report, location: () => reportPath } },
   async run(ctx) {
     ctx.log('starting');
     ctx.progress(50, 'halfway');
+    ctx.output('report').write({ deleted: [] }); // checked, then written whole
     // throw to fail the run
   },
-};
+});
 ```
+
+A job has to declare at least what it writes: that is what the dashboard shows for a
+run, and what a later step would be handed.
 
 Then say when it runs, in a workflow of one step:
 
