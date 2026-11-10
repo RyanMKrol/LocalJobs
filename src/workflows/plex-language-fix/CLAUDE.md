@@ -197,6 +197,13 @@ still routed through `callService`, so the cache dedup itself is unit-tested (`l
 live Plex call. **`plex-language-apply`'s mutating `plexPutStreams`/`triggerButlerBackup` calls are
 NEVER cached** — a mutation must never be short-circuited by a stale cached response.
 
+**The discover stage has a three-hour timeout.** A walk with nothing cached makes about 30,000
+Plex calls at the service's 300 a minute, which is about 100 minutes. The timeout used to be
+one hour, so the first attempt timed out every night and the retry finished from the cache the
+first attempt had filled. A limited manual run walks the library twice (once in the daemon to
+find the candidates, once in the stage), so it takes about as long as a nightly run plus the
+second, mostly cached, walk.
+
 ## Sections scanned
 
 The movie and TV sections reuse the SAME `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION` env vars every other
