@@ -10,7 +10,7 @@ import { writeJsonFile } from '../../engine/fsjson.js';
 import { QuotaExceededError } from '../services.js';
 import type { JobContext } from '../types.js';
 import { runClaude } from '../../services/claude.js';
-import { isWorkItemDone, markWorkItem } from '../../db/store.js';
+import { isWorkItemDone } from '../../db/store.js';
 import { balanceByGenre, buildOwnedSet, dedupeRawByTitleYear, mergeLens, normTitle, recKey } from './pure.js';
 import { allHistoryTitles, collectBranchSuggestions, ignoredSuggestionTitles, recentTitles } from './branch.js';
 import type { RunClaudeFn } from './branch.js';
@@ -39,6 +39,13 @@ export interface MergeRunOpts {
   tasteFile?: string;
   historyFile?: string;
   recsDir?: string;
+  /**
+   * The exact branch files to pool. The merge stage passes the files THIS run's
+   * branches committed. Without it (older callers, tests) every `*.json` in
+   * `recsDir` is pooled, which also picks up a file left by a branch that no
+   * longer exists.
+   */
+  branchFiles?: string[];
   recsOut?: string;
   now?: Date;
   // ── Threshold/target overrides (default from domain.config; tests pass these) ──
@@ -72,13 +79,14 @@ interface VerifyCounters {
   searchFailed: number;
 }
 
-/** Read every branch's output file from the recs dir, pooling raw suggestions. */
-function poolBranchSuggestions(recsDir: string, ctx: JobContext): RawSuggestion[] {
-  if (!existsSync(recsDir)) return [];
+/** Read the given branch output files (or, with none given, every one in the recs dir), pooling raw suggestions. */
+function poolBranchSuggestions(recsDir: string, ctx: JobContext, branchFiles?: string[]): RawSuggestion[] {
+  if (!branchFiles && !existsSync(recsDir)) return [];
+  const files = branchFiles ?? readdirSync(recsDir).filter((n) => n.endsWith('.json')).map((n) => join(recsDir, n));
   const pooled: RawSuggestion[] = [];
-  for (const f of readdirSync(recsDir).filter((n) => n.endsWith('.json'))) {
+  for (const f of files) {
     try {
-      const file = JSON.parse(readFileSync(join(recsDir, f), 'utf8')) as BranchOutputFile;
+      const file = JSON.parse(readFileSync(f, 'utf8')) as BranchOutputFile;
       const n = file.suggestions?.length ?? 0;
       ctx.log(`  • ${file.branchId} (${file.lens}) — ${n} suggestion(s)${file.error ? ` [${file.error}]` : ''}`);
       if (Array.isArray(file.suggestions)) pooled.push(...file.suggestions);
@@ -272,7 +280,7 @@ export async function runMerge<M, P>(
   ctx.log(`Owned set size ${owned.size}. Target ≥${params.target}; quality bar rating ≥${params.minRating} with ≥${params.minVotes} votes.`);
 
   ctx.log('Pooling branch suggestions…');
-  const pooled = poolBranchSuggestions(recsDir, ctx);
+  const pooled = poolBranchSuggestions(recsDir, ctx, opts.branchFiles);
   const unique = dedupeRawByTitleYear(pooled);
   ctx.log(`Pooled ${pooled.length} raw suggestion(s) → ${unique.length} after title/year dedup.`);
   if (unique.length < pooled.length) {
@@ -353,18 +361,6 @@ export async function runMerge<M, P>(
   const verified = [...byTmdb.values()];
   const out: RecommendationsFile = { generatedAt: now.toISOString(), pooled: pooled.length, recommendations: balanced };
   writeJsonFile(recsOut, out);
-
-  // One work_items row per FINAL balanced recommendation (T602) — the merge
-  // stage's own ledger (job = domain.mergeStageName, e.g. 'rec-merge' /
-  // 'tv-rec-merge'), distinct from domain.recsJob's separate
-  // notified/ignored keyspace (T144). Keyed by the recommendation's own
-  // tmdbId via recKey, so a same-day re-run with the same balanced set
-  // upserts the same rows rather than duplicating them.
-  for (const r of balanced) {
-    markWorkItem(domain.mergeStageName, recKey(r.tmdbId), 'success', {
-      detail: { title: r.title, year: r.year, genre: r.genre, reason: r.reason, lens: r.lens, tmdbRating: r.tmdbRating },
-    });
-  }
 
   ctx.progress(100, `${balanced.length} recommendation(s)`);
   ctx.log('');

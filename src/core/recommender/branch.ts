@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeJsonFile } from '../../engine/fsjson.js';
-import type { ArtifactContract, JobContext, JobDefinition } from '../types.js';
+import type { JobContext } from '../types.js';
 import { extractJsonObject, runClaude } from '../../services/claude.js';
 import type { ClaudeResult } from '../../services/claude.js';
 import { ignoredWorkItemDetails } from '../../db/store.js';
@@ -232,46 +232,4 @@ export async function collectBranchSuggestions<M, P>(
   } catch {
     return [];
   }
-}
-
-export interface MakeBranchJobOpts {
-  /**
-   * Called once, right after this branch's suggestions file is written, from the
-   * REAL job execution path (`run(ctx)` below) — this is how a domain
-   * (movies/tv-recs) records its own `work_items` ledger row. Without this hook
-   * a domain's ledger-writing code is dead: the returned `run(ctx)` calls this
-   * module's OWN `runBranch`, not a domain wrapper's, so anything the domain does
-   * only after calling ITS OWN `runBranch` never actually executes.
-   */
-  onBranchWritten?: (branchId: string, opts: BranchRunOpts, sampledItems?: unknown[]) => void;
-  /** Extra opts to thread into `runBranch` (test-only — e.g. an injected `runClaude` + fixture paths). */
-  runOpts?: BranchRunOpts;
-}
-
-/**
- * Build the thin JobDefinition for ONE recommender branch (its `*.job.ts` file
- * just calls the domain's own `makeBranchJob(id)` wrapper, which calls this with
- * its domain + gate contracts). Each branch consumes the snapshot and produces
- * its own raw-suggestions file; an empty branch is legitimate, so no gate would
- * wrongly fail the run.
- */
-export function makeBranchJob<M, P>(
-  domain: RecommenderDomain<M, P>,
-  id: string,
-  contracts: { consumes: ArtifactContract[]; produces: ArtifactContract[] },
-  opts: MakeBranchJobOpts = {},
-): JobDefinition {
-  const spec = domain.branches.find((b) => b.id === id);
-  if (!spec) throw new Error(`unknown recommender branch: ${id}`);
-  return {
-    name: spec.id,
-    description: spec.description,
-    timeoutMs: 600_000, // ~10 min headroom for one Claude CLI call
-    maxRetries: 1,      // LLM trouble is handled gracefully in-stage, not via retries
-    consumes: contracts.consumes,
-    produces: contracts.produces,
-    async run(ctx) {
-      await runBranch(ctx, domain, spec, { ...opts.runOpts, onBranchWritten: opts.onBranchWritten });
-    },
-  };
 }

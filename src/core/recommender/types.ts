@@ -154,6 +154,13 @@ export interface RecommenderDomain<M, P> {
   branches: BranchSpec<M, P>[];
   /** Pull the owned-item array out of the domain's snapshot JSON shape. */
   itemsOf(snapshot: unknown): M[];
+  /**
+   * The property of the snapshot JSON that holds that array (`shows` / `movies`).
+   * `itemsOf` is forgiving and returns `[]` when it is absent; the snapshot's
+   * check uses this to tell "an empty library" from "a file that is not a
+   * snapshot at all".
+   */
+  snapshotListKey: string;
   /** Pull the taste profile out of the domain's taste-profile JSON shape. */
   profileOf(taste: unknown): P;
   /** TMDB title search — domain owns the endpoint + field mapping. */

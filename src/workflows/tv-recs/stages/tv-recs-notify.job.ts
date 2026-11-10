@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { tvRecommendationsContract } from '../contracts.js';
-import { runTvRecsNotify } from './tv-recs-notify.js';
+import { makeNotifyStage } from '../../../core/recommender/stages.js';
+import { tvArtifacts } from '../contracts.js';
+import { ensureDirs } from '../lib.js';
+import { tvDomain } from './branches.js';
 
-const job: JobDefinition = {
+export default makeNotifyStage(tvDomain, tvArtifacts, {
   name: 'tv-recs-notify',
   description: 'Terminal stage of the tv-recommendations workflow, consuming tv-rec-merge\'s verified ' +
     'recommendation list. It filters out any show the owner has permanently ignored via the dashboard and ' +
@@ -14,10 +15,4 @@ const job: JobDefinition = {
     'its branches away from repeats.',
   timeoutMs: 120_000,
   maxRetries: 3,
-  consumes: [tvRecommendationsContract()],
-  async run(ctx) {
-    await runTvRecsNotify(ctx);
-  },
-};
-
-export default job;
+}, { before: ensureDirs });

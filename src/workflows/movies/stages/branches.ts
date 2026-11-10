@@ -328,6 +328,7 @@ export const moviesDomain: RecommenderDomain<PlexMovie, TasteProfile> = {
   config: moviesConfig,
   branches: BRANCHES,
   itemsOf: (snapshot) => (snapshot as { movies?: PlexMovie[] }).movies ?? [],
+  snapshotListKey: 'movies',
   profileOf: (taste) => (taste as { profile: TasteProfile }).profile,
   search: defaultSearchMovie,
   genreName: genreNameFromIds,

@@ -19,12 +19,6 @@ const workflow: WorkflowDefinition = {
   idempotencyNote: 'Your Plex library is re-scanned and every recommendation branch re-runs fresh each month; only the final notify step tracks which recommended shows you\'ve already been told about or have dismissed, so a show is never recommended to you twice unless you un-dismiss it.',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,
-  // T603: tv-recs-notify records its "have I notified this?" ledger under the
-  // decoupled recommender keyspace 'tv-recs' (recs.ts's RECS_JOB), not its own
-  // DAG member name — outputJob (T348) points the Stage I/O lookup at the right
-  // ledger job_name so its own tab (and the workflow-run "Overall" tab) shows real
-  // notified-recommendation rows instead of an always-empty list.
-  outputJob: 'tv-recs',
   jobs: [
     { job: 'tv-snapshot' },
     { job: 'tv-rec-random-1', dependsOn: ['tv-snapshot'] },
@@ -37,7 +31,11 @@ const workflow: WorkflowDefinition = {
     { job: 'tv-rec-world', dependsOn: ['tv-snapshot'] },
     {
       job: 'tv-rec-merge',
+      // The merge reads the snapshot and taste profile itself (to drop shows already
+      // owned, and to re-prompt when short), so it depends on tv-snapshot directly
+      // as well as on every branch. Every read is an edge; none is hidden.
       dependsOn: [
+        'tv-snapshot',
         'tv-rec-random-1', 'tv-rec-random-2', 'tv-rec-random-3',
         'tv-rec-creator', 'tv-rec-canon', 'tv-rec-thin-genre',
         'tv-rec-older-era', 'tv-rec-world',

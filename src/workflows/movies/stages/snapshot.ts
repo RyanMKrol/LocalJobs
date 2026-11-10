@@ -1,31 +1,9 @@
 import type { JobContext } from '../../../core/types.js';
 import { fetchSectionMetadata } from '../../../core/plex-client.js';
-import { markWorkItem } from '../../../db/store.js';
 import { moviesConfig } from '../config.js';
 import { ensureDirs, writeJsonFile } from '../lib.js';
 import { buildMovieSnapshots, buildOwnedSet, buildTasteProfile } from '../movies.js';
-import type { MovieSnapshotFile, PlexMovie, PlexMovieMeta, TasteProfileFile } from '../types.js';
-
-/** The DAG member (job) name this stage records its ledger row under. */
-export const SNAPSHOT_JOB = 'movie-snapshot';
-
-/** Ledger key for one movie: prefer the resolved tmdbId, else fall back to the Plex ratingKey. */
-export function snapshotItemKey(movie: Pick<PlexMovie, 'tmdbId' | 'ratingKey'>): string {
-  return String(movie.tmdbId ?? movie.ratingKey);
-}
-
-/**
- * Record one work_items row per movie, for dashboard Input/Output visibility (not
- * skip-if-done idempotency — this stage re-scans fresh every run regardless).
- * Extracted as its own function so it can be unit-tested without touching Plex.
- */
-export function recordSnapshotLedger(movies: PlexMovie[]): void {
-  for (const m of movies) {
-    markWorkItem(SNAPSHOT_JOB, snapshotItemKey(m), 'success', {
-      detail: { name: m.title, tmdbId: m.tmdbId, year: m.year },
-    });
-  }
-}
+import type { MovieSnapshotFile, PlexMovieMeta, TasteProfileFile } from '../types.js';
 
 export interface SnapshotOpts {
   /** Injectable Plex fetch (tests). Defaults to the real callService('plex', plexGet). */
@@ -38,7 +16,7 @@ export interface SnapshotOpts {
    * `plexGet`.
    */
   plexFetch?: <T>(path: string) => Promise<T>;
-  /** Injectable clock (tests) — drives the per-run ledger key. */
+  /** Injectable clock (tests): the `generatedAt` stamped on both files. */
   now?: Date;
 }
 
@@ -47,8 +25,8 @@ export interface SnapshotOpts {
  * (with GUIDs + taste metadata), builds the owned tmdbId set, and writes
  * data/out/snapshot.json + data/out/taste-profile.json. RE-SCANS FRESH every run
  * (no skip-if-done) — the notify stage's "have I recommended this?" ledger is
- * unchanged. Records ONE visibility row per movie (T605) so the run page's
- * Input/Output panel shows every movie this stage produced.
+ * unchanged. It records nothing in the ledger: the two files are its outputs,
+ * and the engine records them (the run page lists the films from the snapshot).
  */
 export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Promise<void> {
   ensureDirs();
@@ -87,12 +65,6 @@ export async function runSnapshot(ctx: JobContext, opts: SnapshotOpts = {}): Pro
   writeJsonFile(moviesConfig.snapshotOut, snap);
   const tasteFile: TasteProfileFile = { generatedAt: now.toISOString(), profile };
   writeJsonFile(moviesConfig.tasteOut, tasteFile);
-
-  // One visibility row per movie (T605, superseding T571's single combined row) —
-  // so the run page's Input/Output panel shows every movie this stage produced.
-  // NOT a work-done ledger (this stage always re-scans fresh) — purely for
-  // dashboard visibility. Same-item re-runs (same day or otherwise) upsert in place.
-  recordSnapshotLedger(movies);
 
   ctx.progress(100, `${movies.length} movies snapshotted`);
   ctx.log(`Wrote ${moviesConfig.snapshotOut}`);

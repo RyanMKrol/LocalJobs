@@ -3,8 +3,8 @@
 ## ✅ New and migrated stages use ports (2026-11)
 
 A stage declares what it reads and writes with `defineStage({ inputs, outputs, run })`
-(`src/core/ports.ts`), and the engine passes its inputs in, records its outputs, and
-checks both. See "Ports" in the root `CLAUDE.md` for the rules and the guarantees. In
+(imported from `src/engine/index.js`), and the engine passes its inputs in, records its
+outputs, and checks both. `tv-recs/` and `movies/` are the worked examples. See "Ports" in the root `CLAUDE.md` for the rules and the guarantees. In
 short:
 
 - Artifact types live in the workflow's `contracts.ts` (`jsonArtifact`, `dirArtifact`,

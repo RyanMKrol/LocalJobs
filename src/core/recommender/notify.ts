@@ -34,6 +34,18 @@ export interface NotifyRunOpts {
   reportDir?: string;
 }
 
+/** What one notify run did: the stage commits this as its (inline) output. */
+export interface NotifyResult {
+  /** Recommendations announced for the first time this run. */
+  announced: number;
+  /** Current recommendations that an earlier run already announced. */
+  alreadyAnnounced: number;
+  /** Current recommendations the owner has dismissed. */
+  ignored: number;
+  /** The titles announced this run. */
+  titles: string[];
+}
+
 /**
  * Terminal stage — the recommendations digest. Reads the TMDB-verified
  * recommendations, drops anything the owner has manually IGNORED, finds the
@@ -50,7 +62,7 @@ export async function runRecsNotify<M, P>(
   ctx: JobContext,
   domain: RecommenderDomain<M, P>,
   opts: NotifyRunOpts = {},
-): Promise<void> {
+): Promise<NotifyResult> {
   const pushFn = opts.push ?? push;
   const now = opts.now ?? new Date();
   const recsFile = opts.recsFile ?? domain.config.recsOut;
@@ -81,10 +93,17 @@ export async function runRecsNotify<M, P>(
   const reportPath = writeReport(domain, recs, newRecs, now, reportDir);
   ctx.log(`Wrote report ${reportPath}`);
 
+  const outcome = (announced: Recommendation[]): NotifyResult => ({
+    announced: announced.length,
+    alreadyAnnounced: recs.length - newRecs.length,
+    ignored: ignoredRecCount,
+    titles: announced.map((r) => `${r.title}${r.year ? ` (${r.year})` : ''}`),
+  });
+
   if (newRecs.length === 0) {
     ctx.progress(100, 'nothing new to notify');
     ctx.log('Nothing new — no digest sent. ✓');
-    return;
+    return outcome([]);
   }
 
   const digest = domain.buildDigest(newRecs);
@@ -118,6 +137,7 @@ export async function runRecsNotify<M, P>(
 
   ctx.progress(100, `${newRecs.length} rec(s) notified`);
   ctx.log(`Marked ${newRecs.length} recommendation(s) notified.`);
+  return outcome(newRecs);
 }
 
 /**

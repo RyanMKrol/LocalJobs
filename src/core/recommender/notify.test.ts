@@ -51,6 +51,7 @@ function makeDomain(name: string, dir: string, extraDetail?: boolean): Recommend
     config: makeConfig(dir),
     branches: [],
     itemsOf: () => [],
+    snapshotListKey: 'items',
     profileOf: () => ({}),
     search: async () => null,
     genreName: () => 'Unknown',

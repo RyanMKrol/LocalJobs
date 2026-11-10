@@ -39,12 +39,6 @@ const workflow: WorkflowDefinition = {
   idempotencyNote: 'Your Plex library is re-scanned and every recommendation branch re-runs fresh each month; only the final notify step tracks which recommended films you\'ve already been told about or have dismissed, so a film is never recommended to you twice unless you un-dismiss it.',
   schedule: '0 9 1 * *',
   maxConcurrency: 4,
-  // T603: movie-recs-notify records its "have I notified this?" ledger under the
-  // decoupled recommender keyspace 'movie-recs' (recs.ts's RECS_JOB), not its own
-  // DAG member name — outputJob (T348) points the Stage I/O lookup at the right
-  // ledger job_name so its own tab (and the workflow-run "Overall" tab) shows real
-  // notified-recommendation rows instead of an always-empty list.
-  outputJob: 'movie-recs',
   jobs: [
     { job: 'movie-snapshot' },
     // 8 recommender branches fan out from the snapshot…
@@ -56,10 +50,14 @@ const workflow: WorkflowDefinition = {
     { job: 'rec-thin-genre', dependsOn: ['movie-snapshot'] },
     { job: 'rec-older-era', dependsOn: ['movie-snapshot'] },
     { job: 'rec-world-cinema', dependsOn: ['movie-snapshot'] },
-    // …and merge back in, TMDB-verified + balanced.
+    // …and merge back in, TMDB-verified + balanced. The merge also reads the
+    // snapshot and taste profile itself (to drop films already owned, and to
+    // re-prompt when short), so it depends on movie-snapshot directly too. Every
+    // read is an edge; none is hidden.
     {
       job: 'rec-merge',
       dependsOn: [
+        'movie-snapshot',
         'rec-random-1', 'rec-random-2', 'rec-random-3',
         'rec-auteur', 'rec-canon', 'rec-thin-genre', 'rec-older-era', 'rec-world-cinema',
       ],

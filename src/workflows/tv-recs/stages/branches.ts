@@ -367,6 +367,7 @@ export const tvDomain: RecommenderDomain<PlexShow, TvTasteProfile> = {
   config: tvRecsConfig,
   branches: BRANCHES,
   itemsOf: (snapshot) => (snapshot as { shows?: PlexShow[] }).shows ?? [],
+  snapshotListKey: 'shows',
   profileOf: (taste) => (taste as { profile: TvTasteProfile }).profile,
   search: defaultSearchTv,
   genreName: genreNameFromIds,

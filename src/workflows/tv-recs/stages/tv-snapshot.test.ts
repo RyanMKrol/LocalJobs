@@ -4,8 +4,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { JobContext } from '../../../core/types.js';
 import { callService, registerService } from '../../../core/services.js';
-import { getWorkItem, workItemCounts } from '../../../db/store.js';
-import { recordSnapshotLedger, runTvSnapshot, snapshotItemKey, TV_SNAPSHOT_JOB } from './tv-snapshot.js';
+import { workItemCounts } from '../../../db/store.js';
+import { outputLocation } from '../../../engine/ports.js';
+import { tvRecsConfig } from '../config.js';
+import { tvArtifacts } from '../contracts.js';
+import { runTvSnapshot } from './tv-snapshot.js';
+import job from './tv-snapshot.job.js';
 import {
   buildOwnedSet,
   buildShowSnapshots,
@@ -145,59 +149,46 @@ const LEDGER_SHOWS: PlexShowMeta[] = [
   { title: 'No GUID Show', year: 2015, ratingKey: '3', childCount: 2, Genre: [{ tag: 'Comedy' }] },
 ];
 
-describe('tv-snapshot — per-show visibility ledger rows (T605)', () => {
-  it('snapshotItemKey prefers tmdbId, falls back to ratingKey', () => {
-    assert.equal(snapshotItemKey({ tmdbId: 1438, ratingKey: '1' }), '1438');
-    assert.equal(snapshotItemKey({ tmdbId: null, ratingKey: 'noguid' }), 'noguid');
+describe('tv-snapshot — its outputs are the two files; it writes nothing to the ledger', () => {
+  const runShows: PlexShowMeta[] = [
+    { title: 'The Sopranos', year: 1999, ratingKey: 'r-701', childCount: 6, Guid: [{ id: 'tmdb://1398' }], Genre: [{ tag: 'Drama' }] },
+    { title: 'Fargo', year: 2014, ratingKey: 'r-702', childCount: 5, Guid: [{ id: 'tmdb://60622' }], Genre: [{ tag: 'Crime' }] },
+    { title: 'Unmatched Show', year: 2020, ratingKey: 'r-703', childCount: 1, Genre: [{ tag: 'Drama' }] },
+  ];
+
+  it('the stage declares both files as outputs, at the paths the run writes', () => {
+    assert.deepEqual(Object.keys(job.outputs ?? {}), ['snapshot', 'taste']);
+    assert.equal(job.outputs!.snapshot.artifact.key, 'tv-snapshot');
+    assert.equal(job.outputs!.taste.artifact.key, 'tv-taste-profile');
+    assert.equal(outputLocation(job.name, job.outputs!.snapshot), tvRecsConfig.snapshotOut);
+    assert.equal(outputLocation(job.name, job.outputs!.taste), tvRecsConfig.tasteOut);
   });
 
-  it('records one success row per show, keyed + detailed correctly', async () => {
-    recordSnapshotLedger([
-      { title: 'The Wire', year: 2002, tmdbId: 1438, ratingKey: '1', genres: ['Crime'], roles: [], countries: [], studio: null, audienceRating: null, rating: null, seasonCount: null },
-      { title: 'No GUID Show', year: 2015, tmdbId: null, ratingKey: '3', genres: ['Comedy'], roles: [], countries: [], studio: null, audienceRating: null, rating: null, seasonCount: null },
+  it('what a run writes passes both artifact checks, and the snapshot lists every show for the run page', async () => {
+    await runTvSnapshot(fakeCtx(), { fetchMeta: async () => runShows, now: new Date('2026-07-14T09:00:00Z') });
+    const { snapshot, taste } = tvArtifacts;
+    const value = snapshot.read(tvRecsConfig.snapshotOut);
+    assert.equal(snapshot.check(value).ok, true);
+    assert.equal(snapshot.summary!(value), '3 shows, 2 with a TMDB id');
+    assert.deepEqual(snapshot.items!(value), [
+      { id: '1398', title: 'The Sopranos (1999)', fields: [{ label: 'TMDB', value: '1398' }] },
+      { id: '60622', title: 'Fargo (2014)', fields: [{ label: 'TMDB', value: '60622' }] },
+      { id: 'r-703', title: 'Unmatched Show (2020)', fields: [] },
     ]);
-
-    const row1 = getWorkItem(TV_SNAPSHOT_JOB, '1438');
-    assert.ok(row1, 'a row is recorded for the GUID-matched show');
-    assert.equal(row1!.status, 'success');
-    assert.deepEqual(JSON.parse(row1!.detail!), { name: 'The Wire', tmdbId: 1438, year: 2002 });
-
-    const row2 = getWorkItem(TV_SNAPSHOT_JOB, '3');
-    assert.ok(row2, 'a row is recorded for the GUID-less show too, keyed by ratingKey');
-    assert.equal(row2!.status, 'success');
-    assert.deepEqual(JSON.parse(row2!.detail!), { name: 'No GUID Show', tmdbId: null, year: 2015 });
+    assert.equal(taste.check(taste.read(tvRecsConfig.tasteOut)).ok, true);
   });
 
-  it('runTvSnapshot records one row per show matching the fetched count', async () => {
-    const runShows: PlexShowMeta[] = [
-      { title: 'The Sopranos', year: 1999, ratingKey: 'r-701', childCount: 6, Guid: [{ id: 'tmdb://1398' }], Genre: [{ tag: 'Drama' }] },
-      { title: 'Fargo', year: 2014, ratingKey: 'r-702', childCount: 5, Guid: [{ id: 'tmdb://60622' }], Genre: [{ tag: 'Crime' }] },
-      { title: 'Unmatched Show', year: 2020, ratingKey: 'r-703', childCount: 1, Genre: [{ tag: 'Drama' }] },
-    ];
-    const now = new Date('2026-07-14T09:00:00Z');
-    await runTvSnapshot(fakeCtx(), { fetchMeta: async () => runShows, now });
-
-    let matched = 0;
-    for (const s of runShows) {
-      const key = s.Guid?.[0]?.id?.startsWith('tmdb://') ? s.Guid[0].id.replace('tmdb://', '') : String(s.ratingKey);
-      const row = getWorkItem(TV_SNAPSHOT_JOB, key);
-      assert.ok(row, `a row exists for show "${s.title}" keyed "${key}"`);
-      assert.equal(row!.status, 'success');
-      matched += 1;
-    }
-    assert.equal(matched, runShows.length, 'a ledger row was recorded for every fetched show');
+  it('records no ledger rows: nothing is written just to be visible', async () => {
+    await runTvSnapshot(fakeCtx(), { fetchMeta: async () => runShows });
+    assert.deepEqual(workItemCounts('tv-snapshot'), {});
   });
 
-  it('upserts the same rows on a re-run (no duplicate rows per show)', async () => {
-    const runShows: PlexShowMeta[] = [
-      { title: 'Deadwood', year: 2004, ratingKey: 'r-801', childCount: 3, Guid: [{ id: 'tmdb://4564' }], Genre: [{ tag: 'Western' }] },
-    ];
-    const now = new Date('2026-07-14T18:00:00Z');
-    await runTvSnapshot(fakeCtx(), { fetchMeta: async () => runShows, now });
-    const afterFirst = workItemCounts(TV_SNAPSHOT_JOB).success;
-    await runTvSnapshot(fakeCtx(), { fetchMeta: async () => runShows, now });
-    const afterSecond = workItemCounts(TV_SNAPSHOT_JOB).success;
-    assert.equal(afterSecond, afterFirst, 're-running with the same shows does not grow the ledger row count');
+  it('a snapshot in which no show carries a TMDB id fails its check (the GUIDs stopped coming through)', () => {
+    const r = tvArtifacts.snapshot.check({ shows: [{ title: 'A', tmdbId: null }, { title: 'B', tmdbId: null }] });
+    assert.equal(r.ok, false);
+    assert.match((r.violations ?? []).join(' '), /0\/2 with a TMDB id/);
+    assert.equal(tvArtifacts.snapshot.check({ shows: [] }).ok, true, 'an empty library is acceptable');
+    assert.equal(tvArtifacts.snapshot.check({}).ok, false, 'a file with no shows list is not a snapshot');
   });
 });
 

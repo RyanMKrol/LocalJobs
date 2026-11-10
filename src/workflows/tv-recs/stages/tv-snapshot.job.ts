@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { tvSnapshotContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { tvRecsConfig } from '../config.js';
+import { tvArtifacts } from '../contracts.js';
 import { runTvSnapshot } from './tv-snapshot.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'tv-snapshot',
   description: 'First stage of the tv-recommendations workflow. It connects to Plex via the shared ' +
     'plex-client (self-healing a changed DHCP IP if needed), reads the configured TV library section, and ' +
@@ -14,10 +15,14 @@ const job: JobDefinition = {
     'and, downstream, tv-rec-merge\'s TMDB verification.',
   timeoutMs: 300_000,
   maxRetries: 3,
-  produces: [tvSnapshotContract()],
+  // Both files are rebuilt from Plex on every run, and both must be: a run that
+  // returned without writing either fails here rather than handing the branches
+  // last month's library.
+  outputs: {
+    snapshot: { artifact: tvArtifacts.snapshot, location: () => tvRecsConfig.snapshotOut },
+    taste: { artifact: tvArtifacts.taste, location: () => tvRecsConfig.tasteOut },
+  },
   async run(ctx) {
     await runTvSnapshot(ctx);
   },
-};
-
-export default job;
+});

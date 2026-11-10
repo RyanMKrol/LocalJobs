@@ -1,7 +1,6 @@
 // movie-snapshot stage test — hermetic: drives runSnapshot with an injected Plex
-// fetch (no live Plex) and asserts the per-movie visibility ledger rows it
-// records (T605) have the expected shape: one row per movie, keyed by
-// tmdbId-or-ratingKey, detail { name, tmdbId, year }.
+// fetch (no live Plex) and asserts what it produces: the two output files, which
+// pass their artifact checks and describe every film, and no ledger rows.
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,10 +8,13 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import type { JobContext } from '../../../core/types.js';
 import { registerService } from '../../../core/services.js';
-import { getWorkItem, workItemCounts } from '../../../db/store.js';
+import { workItemCounts } from '../../../db/store.js';
+import { outputLocation } from '../../../engine/ports.js';
 import { moviesConfig } from '../config.js';
 import type { PlexMovieMeta } from '../types.js';
-import { recordSnapshotLedger, runSnapshot, SNAPSHOT_JOB, snapshotItemKey } from './snapshot.js';
+import { movieArtifacts } from '../contracts.js';
+import { runSnapshot } from './snapshot.js';
+import job from './snapshot.job.js';
 
 // Redirect this workflow's output paths to a throwaway temp dir BEFORE any stage code
 // runs — `runSnapshot` writes moviesConfig.snapshotOut + moviesConfig.tasteOut, which by
@@ -41,62 +43,32 @@ const SYNTHETIC_MOVIES: PlexMovieMeta[] = [
   { title: 'No GUID Movie', year: 2001, ratingKey: '3', Genre: [{ tag: 'Drama' }] },
 ];
 
-describe('movie-snapshot — per-movie visibility ledger rows (T605)', () => {
-  it('snapshotItemKey prefers tmdbId, falls back to ratingKey', () => {
-    assert.equal(snapshotItemKey({ tmdbId: 949, ratingKey: '1' }), '949');
-    assert.equal(snapshotItemKey({ tmdbId: null, ratingKey: 'noguid' }), 'noguid');
+describe('movie-snapshot — its outputs are the two files; it writes nothing to the ledger', () => {
+  it('the stage declares both files as outputs, at the paths the run writes', () => {
+    assert.deepEqual(Object.keys(job.outputs ?? {}), ['snapshot', 'taste']);
+    assert.equal(job.outputs!.snapshot.artifact.key, 'movie-snapshot');
+    assert.equal(job.outputs!.taste.artifact.key, 'movie-taste-profile');
+    assert.equal(outputLocation(job.name, job.outputs!.snapshot), moviesConfig.snapshotOut);
+    assert.equal(outputLocation(job.name, job.outputs!.taste), moviesConfig.tasteOut);
   });
 
-  it('records one success row per movie, keyed + detailed correctly', async () => {
-    recordSnapshotLedger([
-      { title: 'Heat', year: 1995, tmdbId: 949, ratingKey: '1', genres: ['Crime'], directors: [], countries: [], audienceRating: null, rating: null },
-      { title: 'No GUID Movie', year: 2001, tmdbId: null, ratingKey: '3', genres: ['Drama'], directors: [], countries: [], audienceRating: null, rating: null },
+  it('what a run writes passes both artifact checks, and the snapshot lists every film for the run page', async () => {
+    await runSnapshot(fakeCtx(), { fetchMeta: async () => SYNTHETIC_MOVIES, now: new Date('2026-07-14T09:00:00Z') });
+    const { snapshot, taste } = movieArtifacts;
+    const value = snapshot.read(moviesConfig.snapshotOut);
+    assert.equal(snapshot.check(value).ok, true);
+    assert.equal(snapshot.summary!(value), '3 movies, 2 with a TMDB id');
+    assert.deepEqual(snapshot.items!(value), [
+      { id: '949', title: 'Heat (1995)', fields: [{ label: 'TMDB', value: '949' }] },
+      { id: '9384', title: 'Ronin (1998)', fields: [{ label: 'TMDB', value: '9384' }] },
+      { id: '3', title: 'No GUID Movie (2001)', fields: [] },
     ]);
-
-    const row1 = getWorkItem(SNAPSHOT_JOB, '949');
-    assert.ok(row1, 'a row is recorded for the GUID-matched movie');
-    assert.equal(row1!.status, 'success');
-    assert.deepEqual(JSON.parse(row1!.detail!), { name: 'Heat', tmdbId: 949, year: 1995 });
-
-    const row2 = getWorkItem(SNAPSHOT_JOB, '3');
-    assert.ok(row2, 'a row is recorded for the GUID-less movie too, keyed by ratingKey');
-    assert.equal(row2!.status, 'success');
-    assert.deepEqual(JSON.parse(row2!.detail!), { name: 'No GUID Movie', tmdbId: null, year: 2001 });
+    assert.equal(taste.check(taste.read(moviesConfig.tasteOut)).ok, true);
   });
 
-  it('runSnapshot records one row per movie matching the fetched count', async () => {
-    // Distinct, non-overlapping keys from every other test in this file, so the
-    // total-row assertion below isn't coupled to insertion order across tests.
-    const runMovies: PlexMovieMeta[] = [
-      { title: 'The Insider', year: 1999, ratingKey: 'r-501', Guid: [{ id: 'tmdb://501' }], Genre: [{ tag: 'Drama' }] },
-      { title: 'Collateral', year: 2004, ratingKey: 'r-502', Guid: [{ id: 'tmdb://502' }], Genre: [{ tag: 'Thriller' }] },
-      { title: 'Unmatched Movie', year: 2010, ratingKey: 'r-503', Genre: [{ tag: 'Drama' }] },
-    ];
-    const now = new Date('2026-07-14T09:00:00Z');
-    await runSnapshot(fakeCtx(), { fetchMeta: async () => runMovies, now });
-
-    let matched = 0;
-    for (const m of runMovies) {
-      const key = m.Guid?.[0]?.id?.startsWith('tmdb://') ? m.Guid[0].id.replace('tmdb://', '') : String(m.ratingKey);
-      const row = getWorkItem(SNAPSHOT_JOB, key);
-      assert.ok(row, `a row exists for movie "${m.title}" keyed "${key}"`);
-      assert.equal(row!.status, 'success');
-      matched += 1;
-    }
-    assert.equal(matched, runMovies.length, 'a ledger row was recorded for every fetched movie');
-  });
-
-  it('upserts the same rows on a re-run (no duplicate rows per movie)', async () => {
-    const runMovies: PlexMovieMeta[] = [
-      { title: 'The Third Man', year: 1949, ratingKey: 'r-601', Guid: [{ id: 'tmdb://601' }], Genre: [{ tag: 'Noir' }] },
-      { title: 'Chinatown', year: 1974, ratingKey: 'r-602', Guid: [{ id: 'tmdb://602' }], Genre: [{ tag: 'Noir' }] },
-    ];
-    const now = new Date('2026-07-14T18:00:00Z');
-    await runSnapshot(fakeCtx(), { fetchMeta: async () => runMovies, now });
-    const afterFirst = workItemCounts(SNAPSHOT_JOB).success;
-    await runSnapshot(fakeCtx(), { fetchMeta: async () => runMovies, now });
-    const afterSecond = workItemCounts(SNAPSHOT_JOB).success;
-    assert.equal(afterSecond, afterFirst, 're-running with the same movies does not grow the ledger row count');
+  it('records no ledger rows: nothing is written just to be visible', async () => {
+    await runSnapshot(fakeCtx(), { fetchMeta: async () => SYNTHETIC_MOVIES });
+    assert.deepEqual(workItemCounts('movie-snapshot'), {});
   });
 });
 

@@ -1,9 +1,13 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { tvBranchSuggestionsContract, tvRecommendationsContract } from '../contracts.js';
-import { BRANCHES } from './branches.js';
-import { runTvRecMerge } from './tv-rec-merge.js';
+import { makeMergeStage } from '../../../core/recommender/stages.js';
+import { tvArtifacts } from '../contracts.js';
+import { ensureDirs } from '../lib.js';
+import { tvDomain } from './branches.js';
 
-const job: JobDefinition = {
+// The fan-in. Its `branches` input is fed by every one of the 8 branch stages
+// (one entry per branch), and it starts only when all of them have succeeded. It
+// also reads the snapshot and the taste profile directly, which is why the
+// manifest gives it an edge from tv-snapshot as well.
+export default makeMergeStage(tvDomain, tvArtifacts, {
   name: 'tv-rec-merge',
   description: 'Merge stage of the tv-recommendations workflow, depending on all 8 recommender branches. ' +
     'It pools every branch\'s raw suggestions and TMDB-verifies each one via the shared plex-client (a real ' +
@@ -16,11 +20,4 @@ const job: JobDefinition = {
     'to build the monthly digest.',
   timeoutMs: 1_800_000,
   maxRetries: 2,
-  consumes: BRANCHES.map((b) => tvBranchSuggestionsContract(b.id)),
-  produces: [tvRecommendationsContract()],
-  async run(ctx) {
-    await runTvRecMerge(ctx);
-  },
-};
-
-export default job;
+}, { before: ensureDirs });
