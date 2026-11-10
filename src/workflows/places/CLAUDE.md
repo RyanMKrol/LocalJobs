@@ -101,7 +101,7 @@ A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contra
   knobs — spend caps live on the `google-places` service, NOT here),
   `llmConfig` (Gemini knobs — spend caps live on the `gemini` service),
   `resolveConfig` (resolver knobs + its own free-tier `job_usage` caps).
-- `contracts.ts`: the artifact types the stages exchange (see the ports table below).
+- `contracts.ts`: the artifact types the stages exchange (see the ports table above).
 - `parse.ts` — CSV parsing helpers (`parseListFile`, CID/name extraction, plus
   `listSavedCsvFiles`/`collectResolvableCids` — the shared CSV-walk + CID-list
   helpers used by both `places-ingest` and `resolveInputKeys`).

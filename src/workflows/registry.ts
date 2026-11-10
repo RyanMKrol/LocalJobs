@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildDag, DagError } from '../engine/dag.js';
 import { configureEngine } from '../engine/host.js';
-import { validateWorkflowContracts } from '../engine/ports.js';
+import { validateWorkflowContracts, workflowMode } from '../engine/ports.js';
 import { notifyWorkflow } from '../core/notifier.js';
 import { registerService } from '../core/services.js';
 import type { JobDefinition, WorkflowDefinition, ServiceDefinition } from '../core/types.js';
@@ -159,8 +159,19 @@ for (const file of findFiles(__dirname, isWorkflowFile).sort()) {
   // and every edge of a legacy workflow must have a produces/consumes gate. This
   // used to be asserted only by a unit test, so a daemon could start with a
   // workflow whose stages did not line up.
-  const contractErrors = validateWorkflowContracts(def, (n) => loadedJobs.find((j) => j.name === n));
+  const getLoadedJob = (n: string) => loadedJobs.find((j) => j.name === n);
+  const contractErrors = validateWorkflowContracts(def, getLoadedJob);
   for (const e of contractErrors) loadErrors.push(`workflow "${def.name}" (${file}): ${e}`);
+  // Every workflow in this repo is on ports (stages built with defineStage). The
+  // older produces/consumes form still exists in the engine only so that its own
+  // tests and the pages of runs recorded before the migration keep working; a
+  // workflow written that way now is a mistake, caught here.
+  if (contractErrors.length === 0 && workflowMode(def, getLoadedJob) === 'legacy') {
+    loadErrors.push(
+      `workflow "${def.name}" (${file}) does not use ports: its stages must be built with defineStage and declare ` +
+        `their inputs and outputs (see "Ports" in CLAUDE.md, and src/workflows/tv-recs or perfumes for examples)`,
+    );
+  }
   for (const ref of def.jobs) {
     for (const other of loadedJobs.find((j) => j.name === ref.job)?.reads ?? []) {
       if (!jobNameSet.has(other)) loadErrors.push(`workflow "${def.name}": "${ref.job}" declares it reads "${other}", which is not a known job`);

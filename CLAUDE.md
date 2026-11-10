@@ -417,8 +417,12 @@ The rules, all checked when the registry loads (a violation stops the daemon):
   manifest: the DAG on the dashboard is then the real data flow, with no hidden reads.
 - **Every edge carries data.** A `dependsOn` entry that feeds none of the stage's inputs
   is an error.
-- **A workflow is all ports or all legacy** (`produces` / `consumes`). Both kinds run
-  side by side while workflows are migrated one at a time; a mix inside one is an error.
+- **Every workflow is on ports.** All 22 shipped workflows were migrated (2026-11), and the
+  registry now refuses a workflow whose stages do not declare inputs and outputs. The older
+  `produces` / `consumes` form still exists inside the engine only for its own tests and so
+  that pages of runs recorded before the migration keep rendering; do not write new stages
+  that way. (Still to do: delete that legacy code, and the display-only day/week ledger rows
+  a few stock stages still write.)
 
 What the engine then guarantees at run time:
 
@@ -525,36 +529,53 @@ is a one-stage workflow with its own `*.workflow.ts` manifest (no implicit
 wrapping). The workflow owns the `schedule`; a job with no manifest fails loud at
 load.
 
-1. Create `src/workflows/<name>.job.ts`:
+1. Create `src/workflows/<name>/stages/<stage>.job.ts` with `defineStage`. Every stage
+   declares what it writes (and, if it follows another stage, what it reads). A stage
+   built as a bare `JobDefinition` with no `outputs` is rejected when the registry loads:
    ```ts
-   import type { JobDefinition } from '../core/types.js';
+   import { defineStage, fromChecks, jsonArtifact } from '../../../engine/index.js';
 
-   const job: JobDefinition = {
+   // Usually in the workflow's contracts.ts: what the data is, how to check it, how to show it.
+   const report = jsonArtifact<{ items: string[] }>({
+     key: 'my-report',
+     description: 'One plain sentence saying what this is.',
+     check: (v) => fromChecks([{ label: 'has items', ok: Array.isArray(v?.items), actual: `${v?.items?.length} item(s)` }]),
+     summary: (v) => `${v.items.length} item(s)`,
+   });
+
+   export default defineStage({
      name: 'unique-name',           // stable; it's the DB primary key
      description: 'A paragraph (a few sentences) explaining what this stage ' +
        'actually does step by step, what it reads/writes, and any notable ' +
-       'behavior (rate limiting, retries, idempotency, gating) — NOT a short ' +
-       'label. Plain prose only, no markdown, since it renders inside a plain ' +
-       '<p> on both /jobs/[name] and /runs/[id].',
+       'behavior (rate limiting, retries, idempotency). NOT a short label. ' +
+       'Plain prose only, no markdown, since it renders inside a plain <p> ' +
+       'on both /jobs/[name] and /runs/[id].',
      timeoutMs: 600_000,            // 0 = no timeout
      maxRetries: 3,
+     outputs: { report: { artifact: report, location: () => config.reportOut } },
      async run(ctx) {
        ctx.log('message');          // -> run_logs, shown live in dashboard
        ctx.progress(50, 'halfway'); // -> progress bar 0..100
-       // ...work... throw to fail the run
+       ctx.output('report').write({ items: [] }); // checked, written atomically, recorded
+       // ...throw to fail the run
      },
-   };
-   export default job;
+   });
    ```
+   Pick the output that fits: a `jsonArtifact` or `fileArtifact` for one file, a
+   `dirArtifact` for a folder of per-item files (`cumulative: true` when it grows over
+   many runs), a `ledgerArtifact` when the data is the stage's ledger rows, an
+   `inlineArtifact` for a stage whose only product is a small result (counts, a
+   verdict). A stage that works through a list uses `eachItem`. See "Ports" above, and
+   `src/workflows/tv-recs/` (fan-out and fan-in), `perfumes/` (item pipeline),
+   `mount-keeper/` (single stage, inline output) for worked examples.
    A job carries NO workflow-level properties (T070): no `schedule`, no `enabled`
-   toggle, no `instructions`, and no run-now — those live ONLY on the workflow. The
-   `JobDefinition` is just identity + execution params (`timeoutMs`/`maxRetries`) +
-   `run`/`produces`/`consumes`. You run a WORKFLOW, never a job; a job runs when its
-   prerequisites are met inside its workflow, and `/jobs/[name]` is a read-only
-   member view (status · run history · logs). Put any setup/run docs in the README,
-   not on the job. **Write `description` as a real paragraph, not a one-liner** — it
-   renders on TWO dashboard surfaces: the job's own page (`/jobs/[name]`) and every
-   individual run of that job (`/runs/[id]`), so a terse label under-serves both.
+   toggle, no `instructions`, and no run-now. Those live ONLY on the workflow. You run a
+   WORKFLOW, never a job; a job runs when its prerequisites are met inside its workflow,
+   and `/jobs/[name]` is a read-only member view (status · run history · logs). Put any
+   setup/run docs in the README, not on the job. **Write `description` as a real
+   paragraph, not a one-liner**: it renders on TWO dashboard surfaces, the job's own
+   page (`/jobs/[name]`) and every individual run of that job (`/runs/[id]`), so a terse
+   label under-serves both.
 2. Declare it in a `*.workflow.ts` manifest — a one-stage workflow for a lone job;
    the workflow carries the cron `schedule` (or `null` for manual-only):
    ```ts
@@ -732,7 +753,9 @@ job MAY colocate a service it owns).
     `total`; `WorkflowOutputSection` lazy-loads further pages on scroll via the shared
     `LoadMoreSentinel` — a workflow with tens of thousands of output items (plex-rename)
     must never render them all up front.
-  - **`outputJob` override for a non-terminal output stage (T348).** Some workflows are
+  - **(Legacy: no shipped workflow uses `outputJob` any more. A ports workflow marks its
+    product stage `product: true`, as `stocks-sync` and `plex-rename` do.)
+    `outputJob` override for a non-terminal output stage (T348).** Some workflows are
     shaped build-then-notify, where the DAG's TERMINAL stage is a pure notify-trigger that
     structurally never records `work_items` rows (e.g. `stocks-sync`'s `stocks-notify`, which
     just reads `fresh-breaches.json` and optionally sends one push) — for these the generic
@@ -1371,7 +1394,9 @@ doubt, log it.
   jobs should use it via `perfumesConfig.profileDir` / `defaultChromeProfileDir`
   rather than defining a job-local path — one shared, warmed, trusted profile
   means any job benefits from cookies accumulated by others.
-- **Validation gates between workflow stages (typed artifacts).** See
+- **(Legacy mechanism, kept only for the engine's own tests and for old runs: every shipped
+  workflow now uses ports, see "Ports" above.) Validation gates between workflow stages
+  (typed artifacts).** See
   `src/workflows/CLAUDE.md` for the short, hard-requirement statement of this rule
   (every DAG edge needs a gate; a trivial `check(): { ok: true }` is an
   acceptable minimum) — it's the one that surfaces automatically when working

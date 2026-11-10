@@ -1,6 +1,6 @@
 # CLAUDE.md — src/workflows/
 
-## ✅ New and migrated stages use ports (2026-11)
+## ✅ Stages use ports (2026-11)
 
 A stage declares what it reads and writes with `defineStage({ inputs, outputs, run })`
 (imported from `src/engine/index.js`), and the engine passes its inputs in, records its
@@ -17,43 +17,22 @@ short:
   `cumulative: true`; otherwise an output that was not written this run fails the stage.
 - Never write a ledger row only so the run page has something to show. Declare an
   `inlineArtifact` output instead.
-- A workflow is all ports or all legacy. The sections below about `produces` /
-  `consumes` gates describe the legacy form, which remains only until each workflow is
-  migrated.
+- Every shipped workflow is on ports, and the registry refuses one that is not.
 
-## ✅ Every adjacent job pair needs a validation gate (non-negotiable)
+## ✅ Every edge carries data, and every stage declares its outputs (non-negotiable)
 
-Every pair of adjacent jobs in every workflow's DAG — every `dependsOn` edge —
-must have a validation gate between them: a matching `produces`/`consumes`
-`ArtifactContract` key declared on both sides of the edge
-(`src/core/types.ts`, `src/core/dag.ts`'s `deriveGates`). **A trivial gate is an
-acceptable minimum bar** — a bare `check(): { ok: true }` "the previous stage
-succeeded" contract satisfies the rule; not every boundary needs a rich
-shape-check like `places`'s. Reach for a real shape-check only when
-there's an actual artifact worth validating (see `src/workflows/places/contracts.ts`
-for the richer worked example).
+This replaced the old "every adjacent job pair needs a `produces`/`consumes` gate" rule. It
+is enforced when the registry loads (the daemon refuses to start) and again by
+`src/core/gate-coverage.test.ts`:
 
-**This is mechanically enforced, not just documented.** `src/core/gate-coverage.test.ts`
-walks every workflow the registry loads and asserts every DAG edge has a
-matching gate, failing `npm test` if one is missing. Since a green `npm test`
-is part of Definition of Done everywhere in this repo (root `CLAUDE.md`), a new
-workflow LITERALLY CANNOT merge without gates at every stage boundary.
-
-**How to wire one on a new job:** declare `produces`/`consumes` on the
-`JobDefinition` in the `.job.ts` file, pointing at factory functions in a
-`contracts.ts` at the job-folder root. `src/workflows/places/stages/enrich.job.ts`
-is a concrete example; `src/workflows/stocks-sync/contracts.ts`,
-`src/workflows/projects-sync/contracts.ts`, `src/workflows/workouts-sync/contracts.ts`,
-and `src/workflows/stock-digest/contracts.ts` are further worked examples alongside
-the original places ones.
-
-This is a local reinforcement of the identical rule in the root `CLAUDE.md`
-("Validation gates between workflow stages"). It's repeated here because Claude
-Code loads the nearest `CLAUDE.md` when working directly inside `src/workflows/`, so
-the rule surfaces automatically to any future session or agent adding a job or
-workflow in this directory — not just one that happened to read the root doc
-first. See the root doc for the full mechanism (shape/checks/sample, gate
-detail pages, `gateFailurePrefix`, etc.) — this file only states the rule.
+- Every workflow is on ports. A stage with no declared `outputs` is rejected.
+- Every `dependsOn` edge must feed one of the consuming stage's inputs: an edge that carries
+  no data is an error. If a stage reads something from further back, it needs that edge too.
+- The check an artifact type declares runs when the producing stage commits its output and
+  again before the consuming stage starts. That is the gate. Give an artifact a real check
+  when there is something to get wrong (see `plex-rename/contracts.ts`, whose plan and
+  verdict checks sit in front of the stage that moves files); a "has the expected shape"
+  check is the minimum.
 
 ## ✅ A stage's success `detail` must describe what it produced (2026-07)
 

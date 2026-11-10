@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { buildDag, deriveGates } from '../engine/dag.js';
 import type { Dag } from '../engine/dag.js';
 import { jobs, workflows } from '../workflows/registry.js';
-import { validateWorkflowContracts } from '../engine/ports.js';
+import { validateWorkflowContracts, workflowMode } from '../engine/ports.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -62,6 +62,15 @@ test('every workflow in the registry has a contract on every DAG edge (ports bin
     for (const e of validateWorkflowContracts(workflow, (n) => jobsByName.get(n))) problems.push(`workflow '${workflow.name}': ${e}`);
   }
   assert.deepEqual(problems, [], `contract problems:\n${problems.join('\n')}\n(see src/workflows/CLAUDE.md)`);
+});
+
+test('every workflow in the registry is on ports: every stage declares its inputs and outputs', () => {
+  const jobsByName = new Map(jobs.map((j) => [j.name, j]));
+  const legacy = workflows.filter((w) => workflowMode(w, (n) => jobsByName.get(n)) !== 'ports').map((w) => w.name);
+  assert.deepEqual(legacy, [], `workflows not on ports: ${legacy.join(', ')}`);
+  const undeclared = jobs.filter((j) => !j.outputs).map((j) => j.name);
+  assert.deepEqual(undeclared, [], `stages that declare no outputs: ${undeclared.join(', ')}`);
+  assert.ok(workflows.length >= 22, `expected the 22 shipped workflows, found ${workflows.length}`);
 });
 
 // ─────────────────────────── synthetic trivial-minimum-bar test ───────────────────────────
