@@ -1,6 +1,6 @@
 // Dependency-free self-running tests: `npx tsx src/core/dag.test.ts`
 import assert from 'node:assert/strict';
-import { buildDag, classifyGates, DagError, deriveGates, executeDag, gateFailurePrefix, shapesIdentical } from './dag.js';
+import { buildDag, classifyGates, DagError, executeDag, gateFailurePrefix } from './dag.js';
 import type { Gate, GateRunRef } from './dag.js';
 import type { ArtifactShape, WorkflowJobRef } from './types.js';
 
@@ -84,106 +84,6 @@ test('dependents/dependencies maps are correct', () => {
   assert.deepEqual(dag.dependents.get('a'), ['b']);
   assert.deepEqual(dag.dependencies.get('b'), ['a']);
   assert.deepEqual(dag.dependencies.get('a'), []);
-});
-
-test('deriveGates: a key produced upstream and consumed downstream becomes one gate', () => {
-  const dag = buildDag([{ job: 'a' }, { job: 'b', dependsOn: ['a'] }]);
-  const gates = deriveGates(dag, new Map([['a', ['rows']], ['b', []]]), new Map([['a', []], ['b', ['rows']]]));
-  assert.deepEqual(gates, [{ key: 'rows', producer: 'a', consumer: 'b' }]);
-});
-
-test('deriveGates: a consumed key with no producing upstream is NOT a gate (external input)', () => {
-  const dag = buildDag([{ job: 'a' }, { job: 'b', dependsOn: ['a'] }]);
-  // b consumes 'rows' but a produces nothing → no boundary to gate.
-  const gates = deriveGates(dag, new Map([['a', []], ['b', []]]), new Map([['a', []], ['b', ['rows']]]));
-  assert.deepEqual(gates, []);
-});
-
-test('deriveGates: only matching keys across an edge gate (mismatched keys ignored)', () => {
-  const dag = buildDag([{ job: 'a' }, { job: 'b', dependsOn: ['a'] }]);
-  const gates = deriveGates(dag, new Map([['a', ['rows', 'extra']], ['b', []]]), new Map([['a', []], ['b', ['rows', 'other']]]));
-  assert.deepEqual(gates, [{ key: 'rows', producer: 'a', consumer: 'b' }]);
-});
-
-test('deriveGates: only DIRECT edges gate — a non-adjacent producer is skipped', () => {
-  const dag = buildDag([{ job: 'a' }, { job: 'b', dependsOn: ['a'] }, { job: 'c', dependsOn: ['b'] }]);
-  // a produces 'rows', c consumes 'rows', but a is not a direct dep of c → no gate.
-  const gates = deriveGates(
-    dag,
-    new Map([['a', ['rows']], ['b', []], ['c', []]]),
-    new Map([['a', []], ['b', []], ['c', ['rows']]]),
-  );
-  assert.deepEqual(gates, []);
-});
-
-test('deriveGates: a fan-in (≥2 producers → one consumer) derives one gate per producer→consumer edge', () => {
-  // Two independent producers (a, b) each feed one downstream consumer (c). a
-  // produces 'rowsA', b produces 'rowsB', and c consumes BOTH → two distinct gates,
-  // one per inbound edge. Proves the framework derives fan-in gates edge-by-edge.
-  const dag = buildDag([{ job: 'a' }, { job: 'b' }, { job: 'c', dependsOn: ['a', 'b'] }]);
-  const gates = deriveGates(
-    dag,
-    new Map([['a', ['rowsA']], ['b', ['rowsB']], ['c', []]]),
-    new Map([['a', []], ['b', []], ['c', ['rowsA', 'rowsB']]]),
-  );
-  assert.deepEqual(gates.sort((x, y) => x.key.localeCompare(y.key)), [
-    { key: 'rowsA', producer: 'a', consumer: 'c' },
-    { key: 'rowsB', producer: 'b', consumer: 'c' },
-  ]);
-});
-
-test('deriveGates: a diamond join gates against BOTH producers of the same key', () => {
-  const dag = buildDag([
-    { job: 'a' }, { job: 'b', dependsOn: ['a'] }, { job: 'c', dependsOn: ['a'] }, { job: 'd', dependsOn: ['b', 'c'] },
-  ]);
-  const gates = deriveGates(
-    dag,
-    new Map([['a', []], ['b', ['k']], ['c', ['k']], ['d', []]]),
-    new Map([['a', []], ['b', []], ['c', []], ['d', ['k']]]),
-  );
-  assert.deepEqual(gates.sort((x, y) => x.producer.localeCompare(y.producer)), [
-    { key: 'k', producer: 'b', consumer: 'd' },
-    { key: 'k', producer: 'c', consumer: 'd' },
-  ]);
-});
-
-// ---- shapesIdentical: deep compare of two declared artifact shapes (T138) ----
-
-const shapeBase: ArtifactShape = {
-  summary: 'rows of stuff', format: 'csv',
-  expectations: [{ label: 'non-empty', detail: 'at least one row' }, { label: 'has cid' }],
-};
-const clone = (s: ArtifactShape): ArtifactShape => JSON.parse(JSON.stringify(s));
-
-test('shapesIdentical: two deeply-equal shapes (the one-factory case) are identical', () => {
-  assert.equal(shapesIdentical(shapeBase, clone(shapeBase)), true);
-});
-
-test('shapesIdentical: an absent shape on EITHER side is never identical', () => {
-  assert.equal(shapesIdentical(shapeBase, null), false);
-  assert.equal(shapesIdentical(null, shapeBase), false);
-  assert.equal(shapesIdentical(null, null), false);
-  assert.equal(shapesIdentical(shapeBase, undefined), false);
-});
-
-test('shapesIdentical: a differing summary / format makes them NOT identical', () => {
-  assert.equal(shapesIdentical(shapeBase, { ...clone(shapeBase), summary: 'different' }), false);
-  assert.equal(shapesIdentical(shapeBase, { ...clone(shapeBase), format: 'json' }), false);
-});
-
-test('shapesIdentical: differing expectations (count / label / detail) are NOT identical', () => {
-  // fewer expectations
-  assert.equal(shapesIdentical(shapeBase, { ...clone(shapeBase), expectations: [{ label: 'non-empty', detail: 'at least one row' }] }), false);
-  // a renamed label
-  assert.equal(shapesIdentical(shapeBase, { ...clone(shapeBase), expectations: [{ label: 'EMPTY?', detail: 'at least one row' }, { label: 'has cid' }] }), false);
-  // a changed detail
-  assert.equal(shapesIdentical(shapeBase, { ...clone(shapeBase), expectations: [{ label: 'non-empty', detail: 'CHANGED' }, { label: 'has cid' }] }), false);
-});
-
-test('shapesIdentical: an absent detail compares equal to an empty-string detail', () => {
-  const a: ArtifactShape = { summary: 's', expectations: [{ label: 'x' }] };
-  const b: ArtifactShape = { summary: 's', expectations: [{ label: 'x', detail: '' }] };
-  assert.equal(shapesIdentical(a, b), true);
 });
 
 // ---- classifyGates: gate state from a run's member runs ----

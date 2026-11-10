@@ -48,7 +48,7 @@ export interface ShapeExpectation {
 /**
  * The machine-readable expected shape of an artifact, surfaced on the gate page
  * as the "expected" side of an expected-vs-actual view. Declared on the
- * contract; purely descriptive (no checking happens here).
+ * artifact type; purely descriptive (no checking happens here).
  */
 export interface ArtifactShape {
   /** One-line plain summary, e.g. "The normalized list of places to look up." */
@@ -69,7 +69,7 @@ export interface ExpectationResult {
   actual?: string;
 }
 
-/** Outcome of validating one typed-artifact contract at a stage boundary. */
+/** The outcome of checking one artifact (an artifact type's `check`). */
 export interface GateResult {
   /** Whether the artifact satisfies the contract. */
   ok: boolean;
@@ -91,29 +91,6 @@ export interface GateResult {
 }
 
 /**
- * A typed artifact a job produces or consumes — the contract enforced at a
- * workflow stage boundary. `key` ties a producer's output to its consumer's
- * expectation; `check` inspects the ACTUAL artifact (a data file, a scraped
- * page, …) and reports drift so an external-format change (Takeout CSV layout,
- * Fragrantica page structure) fails LOUD at the exact gate instead of feeding
- * bad data downstream. A `check` that throws is treated as a failed gate.
- */
-export interface ArtifactContract {
-  /** Stable identifier shared by the producing job and its consumer(s). */
-  key: string;
-  description?: string;
-  /**
-   * Optional machine-readable expected shape, surfaced on the dashboard gate
-   * page so a reader sees what the gate expects (the "expected" half of an
-   * expected-vs-actual view). The `check` should report per-expectation results
-   * in `GateResult.checks`, aligned by `label`.
-   */
-  shape?: ArtifactShape;
-  /** Validate the real artifact. Sync or async; throwing counts as a violation. */
-  check(): GateResult | Promise<GateResult>;
-}
-
-/**
  * A job is a unit of work the orchestrator runs ONLY as a member of a workflow
  * (T037/T070). Workflow-level concerns — scheduling, the enable toggle, manual
  * run — live on the WorkflowDefinition, never here: a job never owns a schedule,
@@ -128,18 +105,6 @@ export interface JobDefinition {
   timeoutMs?: number;
   /** How many times to retry on failure before marking the run failed. */
   maxRetries?: number;
-  /**
-   * Typed artifacts this job emits. Each is validated AFTER the job succeeds and
-   * before a downstream consumer of the same `key` starts (the producer side of
-   * the stage gate).
-   */
-  produces?: ArtifactContract[];
-  /**
-   * Typed artifacts this job requires. Each is validated BEFORE the job starts,
-   * against the artifact left by a successful upstream producer of the same
-   * `key` (the consumer side of the stage gate).
-   */
-  consumes?: ArtifactContract[];
   /**
    * Optional: the set of item keys (the `itemKey`s used with the work_items
    * ledger) currently present in this job's input. Used ONLY by the MANUAL
@@ -160,9 +125,10 @@ export interface JobDefinition {
    */
   inputKeysService?: string;
   /**
-   * PORTS (see `src/core/ports.ts`). Present, even when empty, on a job made by
-   * `defineStage`: that is how the engine tells a ports stage from a legacy one
-   * that uses `produces` / `consumes`. A workflow's stages are all one or the other.
+   * PORTS (see `src/engine/ports.ts`). Present, even when empty, on a job made by
+   * `defineStage`: that is how the engine tells a ports stage from a plain one
+   * (which only the engine's own tests still use). A workflow's stages are all
+   * one or the other.
    *
    * `inputs`: what this stage needs, by name. Each is bound at load to the direct
    * dependency (or, for a `many` port, dependencies) that outputs the same artifact.
@@ -279,26 +245,6 @@ export interface WorkflowDefinition {
    * tracks the manifest. Omit/empty to render nothing on the dashboard.
    */
   idempotencyNote?: string;
-  /**
-   * Override which `work_items` job_name the unified Output section (T205) AND
-   * the run-scoped Stage I/O panel (`GET /workflow-runs/:id/stage-io`, T603)
-   * read from, for a workflow whose DAG terminal stage doesn't record its ledger
-   * rows under its own DAG member name. Two shapes in use:
-   *  - Names an EXISTING member job of this workflow (stocks-sync-style): the
-   *    true DAG terminal stage (e.g. `stocks-notify`) is a pure notify-trigger
-   *    with no ledger of its own, so both surfaces read an EARLIER stage's
-   *    ledger (`stocks-snapshot`) instead.
-   *  - Names a DECOUPLED ledger job_name that ISN'T a DAG member at all
-   *    (movie-recs/tv-recs-style, T603): the terminal notify stage (e.g.
-   *    `movie-recs-notify`) genuinely records its own "have I notified this?"
-   *    ledger, but under a shared cross-domain keyspace name (`movie-recs`)
-   *    rather than its own DAG member name — so a lookup by the literal member
-   *    name would always come back empty.
-   * When unset (the common case), both surfaces read the DAG's terminal wave
-   * (or, for a per-stage Stage I/O lookup, the requested stage's own name),
-   * exactly as before.
-   */
-  outputJob?: string;
   /**
    * Workflows this one reads the results of. If any of them has a run in
    * progress when this workflow starts, the run waits (visibly, and cancellably)

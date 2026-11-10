@@ -1294,6 +1294,10 @@ function fixtureForRaw(pathname, searchParams) {
     return stockDigestStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/stock-digest-run') return { run: stockDigestWorkflowRun, jobs: stockDigestRunJobs, logs, gates: stockDigestGates };
+  // DELIBERATELY in the legacy (ledger-only) shape, although places itself is on
+  // ports now: this is what the page of a run recorded BEFORE the migration looks
+  // like, and those pages must keep rendering. It is the one fixture that covers
+  // that path; do not convert it. (Every other run fixture is in the ports shape.)
   if (pathname === '/api/workflow-runs/1/stage-io') {
     if (searchParams?.get('overall') === 'true') return placesStageIoOverall;
     const job = searchParams?.get('job');

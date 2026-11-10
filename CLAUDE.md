@@ -234,12 +234,10 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   being absent. Rows also carry `cycle`, `queued_at_ms` / `started_at_ms` /
   `finished_at_ms` and `gate_ms`, so queue wait and gate time are measurable. A workflow
   run records `end_reason` (who or what ended it) and `cycles`.
-- **Gate verdicts are recorded when they are reached.** Each inbound gate's result goes
-  into `run_inputs` (ok, reason, the check's own detail, duration) at the moment the
-  engine checks it. Every inbound gate is evaluated even after one fails, so a fan-in
-  reports all of its bad inputs, not just the first. A `check()` gets
-  `LOCALJOBS_GATE_TIMEOUT_MS` (default 30s) and is abandoned on cancel; a hung check used
-  to hold its stage and a concurrency slot forever.
+- **Gate verdicts are recorded when they are reached.** Each input's verdict goes into
+  `run_inputs` (ok, reason, which committed artifact it resolved to, duration) at the
+  moment the engine resolves it. Every input is resolved even after one fails, so a fan-in
+  reports all of its bad inputs, not just the first.
 - **Retries back off.** A failed or timed-out attempt is retried after
   `LOCALJOBS_RETRY_BACKOFF_MS` (default 5s, 30s, 2min; the last value repeats). The wait
   is cancellable.
@@ -443,10 +441,12 @@ The rules, all checked when the registry loads (a violation stops the daemon):
 - **Every edge carries data.** A `dependsOn` entry that feeds none of the stage's inputs
   is an error.
 - **Every workflow is on ports.** All 22 shipped workflows were migrated (2026-11), and the
-  registry now refuses a workflow whose stages do not declare inputs and outputs. The older
-  `produces` / `consumes` form still exists inside the engine only for its own tests and so
-  that pages of runs recorded before the migration keep rendering; do not write new stages
-  that way. (Still to do: delete that legacy code.)
+  registry refuses a workflow whose stages do not declare inputs and outputs. The older
+  `produces` / `consumes` contracts, and the code that derived and enforced gates from
+  them, have been deleted. The engine can still run a stage with no ports at all, which
+  its own tests use to exercise scheduling, retries and cancelling without any data flow,
+  and `src/engine/reporting.ts` keeps a frozen mapping (`legacyRow`) so the pages of runs
+  recorded before the migration still render.
 
 What the engine then guarantees at run time:
 
@@ -521,8 +521,8 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/engine/index.ts` | The engine's public surface: what workflows import |
 | `src/engine/host.ts` | `configureEngine` / `EngineHost`: how the application supplies its jobs and receives settled runs |
 | `src/engine/types.ts` | The engine's types (jobs, workflows, runs, gate results); `src/core/types.ts` re-exports them and adds `ServiceDefinition` |
-| `src/engine/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight) |
-| `src/engine/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, stage gates, retries, completed-stage progress roll-up; `repeatUntilStable` cycling with a **no-forward-progress early stop** (T112, via `workflowProgressSignature`/`noForwardProgress`); owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below); emits ONLY the aggregate `notifyWorkflow` at run end (no per-stage pushes — T189) |
+| `src/engine/dag.ts` | Workflow DAG: build + validate topological order, cycle detection; `executeDag` honours an `AbortSignal` (stops launching new stages, drains in-flight); the `Gate` type, `gateFailurePrefix` and `classifyGates` (a gate's state from the member runs) |
+| `src/engine/workflow-executor.ts` | Orchestrate a workflow run: member jobs in DAG order, each stage's inputs resolved and recorded before it starts (the gates), `after` waits, resume, retries, completed-stage progress roll-up; `repeatUntilStable` cycling with a **no-forward-progress early stop** (T112, via `workflowProgressSignature`/`noForwardProgress`); owns the **active-run registry** (`workflowRunId → AbortController`) + `cancelWorkflowRun()` that powers run cancellation; the **authoritative "one active run per workflow" guard** — `workflowRunInProgress(name)` + a synchronous per-name claim in `runWorkflow` (see below); emits ONLY the aggregate `notifyWorkflow` at run end (no per-stage pushes — T189) |
 | `src/core/notifier.ts` | Run alerts (success/failure/timeout): ntfy push + macOS notification. The body is built by `workflowNotificationBody` — the stage roll-up line PLUS a counts line (`N done · N failed · N not attempted · N stuck`, empty fragments omitted) from `workflowRunItemTally`/`workflowStuckCount`. Counts matter: the body used to be the roll-up alone, which reads identically whether a run processed 500 items or zero — the ambiguity that let the places Gemini outage go unnoticed for 18 nights. A tally lookup can never block the push (it falls back to the roll-up line on any throw). `notifyWorkflow` is called once per workflow run at completion (aggregate). `notifyStage` is exported but no longer called by the executor (T189) |
 | `src/core/services.ts` | `callService`: cross-job shared rate-limit + quota middleware (coordinated via SQLite) |
 | `src/engine/fsjson.ts` | Shared JSON-file + directory helpers (`readJsonFile`/`writeJsonFile`/`writeFileAtomic`/`ensureDirs`, T588), re-exported by each workflow's `lib.ts`. **Writes are atomic** (temp file in the same directory, fsync, rename), so a reader sees the whole old file or the whole new one and a killed process leaves the previous file intact. Use these for every file one stage hands to another; never a bare `writeFileSync`. `readJsonFile` throws an error that names the file when it exists but does not parse |
@@ -748,8 +748,8 @@ job MAY colocate a service it owns).
   (`ledgersWrittenByJob`). `WorkflowOutputSection` shows the artifacts as the same cards the
   run page uses (`ProductArtifacts`), each saying which run committed it. So a single-stage
   workflow that writes one report declares it as an output and is done: it must NOT write a
-  per-run or per-week ledger row just to appear here. The bullet below describes the legacy
-  (ledger-only) form.
+  per-run or per-week ledger row just to appear here. The bullet below describes how the
+  item list (the ledger half of the section) works.
 - **Unified Output section on the workflow detail page (T205).** Every workflow's detail
   page shows a consolidated **Output** section backed by `GET /api/workflows/:name/output-items`
   → `workflowTerminalItems(lastWave)` in `src/db/store.ts`. The convention is:
@@ -778,19 +778,11 @@ job MAY colocate a service it owns).
     `total`; `WorkflowOutputSection` lazy-loads further pages on scroll via the shared
     `LoadMoreSentinel` — a workflow with tens of thousands of output items (plex-rename)
     must never render them all up front.
-  - **(Legacy: no shipped workflow uses `outputJob` any more. A ports workflow marks its
-    product stage `product: true`, as `stocks-sync` and `plex-rename` do.)
-    `outputJob` override for a non-terminal output stage (T348).** Some workflows are
-    shaped build-then-notify, where the DAG's TERMINAL stage is a pure notify-trigger that
-    structurally never records `work_items` rows (e.g. `stocks-sync`'s `stocks-notify`, which
-    just reads `fresh-breaches.json` and optionally sends one push) — for these the generic
-    Output section would always be empty even though a real, meaningful ledger exists one
-    stage earlier. `WorkflowDefinition.outputJob` (an optional field on the manifest, like
-    `category`) names a different member job whose ledger the Output section should read
-    instead; `GET /api/workflows/:name/output-items` uses it (falling back to the terminal
-    wave if unset or if the name isn't an actual member) in place of `lastWave`. It's
-    opt-in and manifest-owned only — no dashboard edit UI, no `_overridden` column, same as
-    `category`.
+  - **A product stage that is not the last stage.** Some workflows end with a stage that
+    only sends a push now and then (`stocks-sync`'s `stocks-notify`). Mark the stage whose
+    output IS the workflow's product `product: true` on its `defineStage` (`stocks-snapshot`,
+    `plex-rename-apply`) and the Output section shows that stage's artifacts and ledger
+    instead. (This replaced the manifest's `outputJob` field, which is gone.)
   - **Output-form convention (T262) — how to add a new render form.** An output
     item declares its render form via `detail.format` (a string, defaults to `"markdown"`
     when absent). The read-only output endpoint (`GET /api/workflow-runs/:id/output` and
@@ -1092,27 +1084,17 @@ doubt, log it.
     independent, un-paired lists — see the `<StageIoPanel>` entry above. Being a
     brand-new table, `work_item_runs`' index lives in `schema.sql` (the columns
     exist on creation for fresh AND existing DBs, so it does NOT hit the T098 trap).
-  - **The FIRST stage owns the per-item list (convention).** A multi-stage
-    workflow's first stage must record the canonical per-item work-item list that
-    the rest of the pipeline keys on — one `markWorkItem` per input item, keyed by
-    the stable id every downstream stage uses (e.g. places-ingest records one item
-    per CID-bearing place, keyed by CID). Do this **even for a bulk-prep first stage**
-    that produces a single file: it parses the CSVs into `places.json` *and* emits the
-    ledger list (`recordIngestLedger`). Why: the work-item ledger — and the
-    workflow-run **Input → Output mapping**, which pairs the FIRST stage's work_items
-    with the LAST stage's by `root_key` — is anchored from stage one. If the first
-    stage records nothing, the IO panel has no input side and renders **empty**
-    (the places bug: ingest used to produce only a file, so the panel was blank). A
-    bulk first stage re-records the full current list each run (idempotent upsert; it
-    doesn't skip). Keep the first stage's item key == the downstream `root_key` so the
-    mapping joins cleanly. **It must still filter by `ctx.rootAllowed`** like every stage
-    (T094) — on a *limited* manual run only the selected roots are recorded, so the ledger
-    + IO mapping reflect the limited subset (the full catalog file is still written; only
-    the ledger is scoped). This is SEPARATE from the **root stage** (the first member
-    declaring `inputKeys()`, which drives the limit): that stays the first stage whose
-    ledger *meaningfully tracks per-item completion* (for places that's the resolver, not
-    ingest — ingest marks every item `success` at once, which would break the limit's
-    "pick the first N not-yet-done roots" logic if ingest were the root).
+  - **A first stage does not have to write a list for the run page.** This used to be a
+    convention ("the first stage owns the per-item list"): a bulk first stage that only
+    produced a file had to record one ledger row per item as well, or the run page's input
+    side was blank. With ports the run page shows the stage's declared output and its
+    items come from the artifact type's `items(value)`, so a first stage writes ledger rows
+    only when the ledger is its real state. `places-ingest` still records its catalogue
+    (one row per CID, through `recordIngestLedger`, filtered by `ctx.rootAllowed` like
+    every stage), which is harmless and kept. The **root stage** is a separate idea: the
+    first member declaring `inputKeys()`, which a limited run selects from. It must be a
+    stage whose ledger tracks per-item completion (for places the resolver, not ingest,
+    which marks every item done at once).
   - **Pruning orphaned ledger rows (manual only).** When a job's input keys
     change (e.g. a source id is corrected), the old keys leave orphaned
     `work_items` behind. A job can expose its current input key-set via an
@@ -1419,119 +1401,45 @@ doubt, log it.
   jobs should use it via `perfumesConfig.profileDir` / `defaultChromeProfileDir`
   rather than defining a job-local path — one shared, warmed, trusted profile
   means any job benefits from cookies accumulated by others.
-- **(Legacy mechanism, kept only for the engine's own tests and for old runs: every shipped
-  workflow now uses ports, see "Ports" above.) Validation gates between workflow stages
-  (typed artifacts).** See
-  `src/workflows/CLAUDE.md` for the short, hard-requirement statement of this rule
-  (every DAG edge needs a gate; a trivial `check(): { ok: true }` is an
-  acceptable minimum) — it's the one that surfaces automatically when working
-  inside `src/workflows/`. This is **enforced at load**: the registry runs
-  `validateWorkflowContracts` on every workflow and refuses to start if a DAG edge has
-  no contract (for a ports workflow, an input fed by that edge; for a legacy one, a
-  shared `produces`/`consumes` key). `src/core/gate-coverage.test.ts` asserts the same
-  thing in the suite. The rest of this bullet describes the LEGACY `produces` /
-  `consumes` contracts; new and migrated workflows use ports (see "Ports" above). A job may
-  declare `produces` and/or `consumes` — arrays of `ArtifactContract`
-  (`{ key, description?, shape?, check() }`) in `src/core/types.ts`. For every workflow
-  **edge** where the upstream `produces` a key the downstream `consumes`, the
-  workflow executor runs both contracts' `check()` at that boundary — producer
-  side (output well-formed) right before, consumer side (input acceptable) — and
-  a `check` returning `ok:false` (or throwing) is a **gate violation**: the
-  consumer never spawns, a first-class **failed** run is recorded
-  (`recordGateFailure`, error = the exact drift), a stage notification fires, and
-  the failure cascades to the consumer's own dependents. This is how an
-  external-format drift (Takeout CSV layout, Fragrantica page structure) fails
-  LOUD at the exact gate instead of feeding bad data downstream. The `check`
-  should inspect the REAL artifact (read the `data/` file, sniff the scraped
-  page) and return precise per-drift `violations`. Gate derivation
-  (`deriveGates`) lives in `src/engine/dag.ts` (pure, edge-scoped — a consumed key
-  with no producing upstream is an external input, not a gate); enforcement lives
-  in `src/engine/workflow-executor.ts`. `places` is the worked example: its
-  contracts live in `src/workflows/places/contracts.ts` as small **factory functions**
-  (each takes an optional path defaulting to the job's real `data/` artifact, so the
-  jobs wire `produces:[…()]`/`consumes:[…()]` while unit tests point them at synthetic
-  fixtures). The checks are deliberately SHAPE + NON-EMPTY (exists · non-empty ·
-  expected fields/columns) — enough to catch real drift without brittle
-  full-schema validation. It derives 3 gates (one per stage boundary). (`perfumes`
-  used to be the other example; it is a ports workflow now, see its own `CLAUDE.md`.)
-  Gate **state** is surfaced on the dashboard's workflow-run DAG: `classifyGates`
-  (also in `src/engine/dag.ts`, pure) maps each gate to `passed`/`failed`/`pending`
-  from the run's member runs — a gate is `failed` when its consumer's latest run
-  is a gate-failure (matched via the shared `gateFailurePrefix`, the SAME format
-  `recordGateFailure` writes), `passed` once the consumer actually ran, else
-  `pending`. The `GET /api/workflow-runs/:id` endpoint returns this as `gates[]`
-  — each gate carries its `description` (what the producer's `produces[key]` and
-  consumer's `consumes[key]` contracts ASSERT, enriched in the API's
-  `gatesForWorkflow`), so a gate is inspectable, not just coloured.
-  `dashboard/app/components/DagFlow.tsx` renders a gate mark per gate as a React Flow edge label
-  on the connecting edge between the specific producer and consumer nodes it guards (T204). The
-  graph layout uses topological columns (each node's column = max(parent columns) + 1) with dagre
-  computing the vertical ordering — every edge reflects the actual `dependsOn` relationship, so
-  there are no false wave-barrier implications (e.g. `franchise-gaps` and `rec-merge` in
-  movie-recommendations have no implied ordering). EVERY mark (passed/failed/pending alike) links
-  directly to that gate's dedicated detail page
-  (`/workflow-runs/<id>/gates/<producer>/<key>`), which shows what the gate
-  validates (key + description, producer→consumer), its outcome, and links to the
-  producer/consumer/violation run logs. Gates render ONLY when a run's `gates` prop is passed — the
-  structure-only `/workflows/[name]` graph omits it. The executor also LOGS each
-  gate check to the workflow run's framework logs: a `⛒ checking gate …` line
-  naming the boundary, artifact, and both contracts' assertions
-  (`gateAssertions`), then a `✓ gate ok …` / `⨯ Gate violation …` result line —
-  so the run page tells you what each gate verified and why it passed or failed.
-  - **Expected-vs-actual gate page (black box).** Each gate has a dedicated page
-    (`dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx`) that
-    explains the gate to a NON-EXPERT with no knowledge of internals. It lays the
-    boundary out left-to-right — **Produced →** → **Gate** (what it checks) →
-    **→ Consumed** — and on each side shows the contract's declared
-    **expected shape** alongside the **actual** artifact's per-expectation ✓/✗ and
-    a small sample. To support it, an `ArtifactContract` may declare a
-    machine-readable `shape: ArtifactShape` (`{ summary, format?, expectations[] }`,
-    each expectation a plain-English `{ label, detail? }`), and its `check()`
-    returns `GateResult.checks[]` (per-expectation `{ label, ok, actual? }`, aligned
-    to the shape BY LABEL) plus a `sample` string. `ok`/`violations` are still
-    derived from the failed checks (the contract helper `fromChecks` does this), so
-    executor enforcement is unchanged — keep the labels in `shape.expectations`
-    identical to the ones the `check` emits. The page is served by
-    `GET /api/workflow-runs/:id/gates/:producer/:key`, which classifies the gate
-    state for the run and runs each side's contract `check()` LIVE (produced =
-    producer's `produces[key]`, consumed = consumer's `consumes[key]`). That endpoint
-    reads `data/` files only — NEVER a paid/remote call — so it is safe to poll;
-    keep any future contract `check()` cheap + side-effect-free for the same reason.
-  - **Collapse identical producer/consumer sides to ONE panel (T138).** In this
-    codebase every gate references the SAME contract factory on both sides
-    (`fragranticaDataContract()` is both parse's `produces` and build's `consumes`),
-    so the **Produced →** and **→ Consumed** `SideCard`s show an IDENTICAL shape +
-    identical actuals — pure redundancy. Both gate detail pages therefore COLLAPSE
-    to a single consolidated panel (boundary + ONE **Expected shape** + the run's
-    actual ✓/✗ + sample, keeping the centre **Gate** block and the producer/consumer/
-    violation log links) whenever the two sides are identical, and fall back to the
-    full two-sided `Produced → | Gate | → Consumed` diff when they DIFFER. "Identical"
-    is decided server-side: BOTH gate inspection endpoints return an `identical:
-    boolean` computed by `shapesIdentical(a, b)` (pure, in `src/engine/dag.ts`,
-    unit-tested) — a deep compare of the two sides' DECLARED `shape` (`summary` +
-    `format` + the `expectations` array by `label`+`detail`); a missing shape on
-    either side is treated as NOT identical (never hide a side we can't confirm).
-    The framework genuinely supports **asymmetric / fan-in** gates — `deriveGates`
-    is edge-scoped (one gate per producer→consumer edge, so ≥2 producers feeding one
-    consumer derive one gate each) and the executor's `enforceGate` checks the
-    producer's `produces[key]` and the consumer's `consumes[key]` INDEPENDENTLY, so
-    differing shapes both run + are enforced. The places jobs keep the
-    one-factory-per-key convention (so they always collapse); asymmetry is exercised
-    only by test fixtures (`dag.test.ts`, `server.test.ts`, `workflow-executor.test.ts`).
-  - **Definition-level (run-agnostic) gate page (T102).** The run-scoped page above
-    belongs to a SPECIFIC run. The workflow DEFINITION view (`/workflows/[name]`)
-    instead links each structural gate chip to a run-AGNOSTIC gate page at
-    `dashboard/app/workflows/[name]/gates/[producer]/[key]/page.tsx` — mirroring how a
-    job node there links to the read-only `/jobs/<name>` rather than into one run. It
-    explains the gate ITSELF (the contract: artifact key, enriched description,
-    producer→consumer, and each side's declared **expected shape**) with NO run state
-    and NO actuals. It's served by `GET /api/workflows/:name/gates/:producer/:key`,
-    which returns the structural gate from `gatesForWorkflow` (`deriveGates` +
-    contract descriptions) plus each side's `shape` ONLY — it does **NOT** run any
-    contract `check()`, so it touches no `data/` files and makes no paid/remote calls
-    at all (purely static contract metadata). `DagFlow`'s structural gate chips take a
-    `workflowName` prop to build these definition-view links; run-view chips use
-    `workflowRunId` → the run-scoped page.
+- **Gates between stages.** A gate is one input binding: an artifact a stage outputs that a
+  stage depending on it takes as an input (see "Ports" above). There is nothing to declare
+  beyond the ports themselves. `src/workflows/CLAUDE.md` has the short statement of the rule;
+  it is **enforced at load** (`validateWorkflowContracts`, run by the registry, which refuses
+  to start if an edge carries no data) and asserted again by
+  `src/core/gate-coverage.test.ts`.
+  - **What is checked, and when.** The artifact type's `check(value)` runs in the producing
+    stage when it commits the output: a value that fails is never written and the stage
+    fails. Before the consuming stage is spawned, the daemon resolves each of its inputs to
+    what the producer committed in this run and confirms the file on disk is still that
+    (`resolveInput`). An input that does not resolve is a **gate violation**: the consumer
+    never spawns, a first-class failed run is recorded (`recordGateFailure`, with
+    `outcome_reason = 'gate-failed'` and an error that starts with `gateFailurePrefix`),
+    and the failure carries on to the consumer's own dependents. Every input is resolved
+    even after one fails. Give an artifact a real check when there is something to get
+    wrong (`plex-rename/contracts.ts` is the worked example); "has the expected shape and
+    is not empty" is the usual minimum. Build the result with `fromChecks`, which keeps the
+    per-expectation labels the gate page shows.
+  - **Gate state on the DAG.** `gateStatesForRun` in `src/api/server.ts` gives each gate
+    `passed` / `failed` / `pending` from the verdicts the engine recorded in `run_inputs`
+    (falling back to `classifyGates` in `src/engine/dag.ts`, which reads the member runs).
+    `GET /api/workflow-runs/:id` returns them as `gates[]`, each with the artifact's
+    description. `DagFlow` draws a padlock per gate on the edge it guards, linking to the
+    gate's page. The structure-only graph on `/workflows/[name]` has the same padlocks with
+    no state.
+  - **The gate page for a run** (`dashboard/app/workflow-runs/[id]/gates/[producer]/[key]/page.tsx`,
+    served by `GET /api/workflow-runs/:id/gates/:producer/:key`) explains one boundary to
+    someone who does not know the internals: what was produced, what the gate checks, what
+    was consumed, the artifact's declared `shape` (plain-English expectations) beside the
+    per-expectation result. It shows what the engine RECORDED during that run: the
+    producer's own check at commit, and whether the consumer's input resolved. Nothing is
+    checked again against today's files, so the page of an old run stays true, and a
+    boundary the run never reached says "not checked in this run". When both sides agree
+    (the normal case) the page shows one panel; when the input could not be resolved it
+    shows both, so the difference is visible.
+  - **The gate page for a workflow** (`dashboard/app/workflows/[name]/gates/[producer]/[key]/page.tsx`,
+    served by `GET /api/workflows/:name/gates/:producer/:key`) describes the gate itself
+    with no run: the artifact key, its description, producer and consumer, and the declared
+    shape. It reads no files.
 - **Workflow progress is rolled up from member jobs (don't set it by hand).** A
   workflow run's `progress` is a first-class roll-up that counts **only completed
   stages** over the workflow's total stage count — a member in a terminal state

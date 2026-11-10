@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join as joinPath, relative as relativePath, resolv
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
-import { type Gate, type GateStatus, buildDag, classifyGates, deriveGates, shapesIdentical } from '../engine/dag.js';
+import { type Gate, type GateStatus, buildDag, classifyGates } from '../engine/dag.js';
 import { portGates, workflowMode } from '../engine/ports.js';
 import { OVERALL, artifactItems, latestProductArtifacts, productStages, stageIo, type ArtifactCard } from '../engine/reporting.js';
 import type { GateResult, RunRow } from '../core/types.js';
@@ -400,43 +400,24 @@ function workflowView(name: string) {
 }
 
 /**
- * Derive the validation gates for a workflow from its members' declared
- * produces/consumes contracts (the same `deriveGates` the executor enforces).
- * Pure structure — gate STATE is layered on per-run by `classifyGates`. A
- * malformed DAG yields no gates (the run endpoint surfaces the DAG error itself).
+ * A workflow's gates: one per input binding (a producer's output feeding a
+ * consumer's input), derived from the stages' declared ports. Pure structure;
+ * gate STATE is layered on per run by `gateStatesForRun`. A workflow whose
+ * stages do not line up yields no gates (the registry refuses to load one, so
+ * this only happens for a workflow that is no longer in the code).
  */
 function gatesForWorkflow(name: string): Gate[] {
   const refs = getWorkflowJobs(name).map((m) => ({ job: m.job_name, dependsOn: m.depends_on }));
-  // A ports workflow's gates are its input bindings (one per producer → consumer input).
-  if (workflowMode({ jobs: refs }, getJobDefinition) === 'ports') {
-    try {
-      return portGates({ name, jobs: refs }, getJobDefinition);
-    } catch {
-      return [];
-    }
-  }
-  let dag;
   try {
-    dag = buildDag(refs);
+    return portGates({ name, jobs: refs }, getJobDefinition);
   } catch {
     return [];
   }
-  const produces = new Map<string, string[]>();
-  const consumes = new Map<string, string[]>();
-  for (const node of dag.nodes) {
-    const jd = getJobDefinition(node);
-    produces.set(node, (jd?.produces ?? []).map((c) => c.key));
-    consumes.set(node, (jd?.consumes ?? []).map((c) => c.key));
-  }
-  // Enrich each derived gate with a human description of what its contracts
-  // assert (producer's `produces[key]` + consumer's `consumes[key]` descriptions)
-  // so the dashboard's per-gate detail can explain what the gate validates.
-  return deriveGates(dag, produces, consumes).map((g) => {
-    const pd = getJobDefinition(g.producer)?.produces?.find((c) => c.key === g.key)?.description;
-    const cd = getJobDefinition(g.consumer)?.consumes?.find((c) => c.key === g.key)?.description;
-    const parts = [pd && `produced: ${pd}`, cd && `consumed: ${cd}`].filter(Boolean) as string[];
-    return parts.length ? { ...g, description: parts.join(' · ') } : g;
-  });
+}
+
+/** The shape an artifact declares, found on the output port of the stage that produces it. */
+function declaredShape(producer: string, key: string) {
+  return Object.values(getJobDefinition(producer)?.outputs ?? {}).find((o) => o.artifact.key === key)?.artifact.shape ?? null;
 }
 
 const safeParse = <T>(raw: string | null | undefined): T | null => {
@@ -1227,19 +1208,9 @@ const routes: Route[] = [
       const key = decodeURIComponent(params.key);
       const gate = gatesForWorkflow(name).find((g) => g.producer === producer && g.key === key);
       if (!gate) return json(res, 404, { error: 'gate not found' });
-      const sideShape = (jobName: string, field: 'produces' | 'consumes') =>
-        getJobDefinition(jobName)?.[field]?.find((c) => c.key === key)?.shape ?? null;
-      const producedShape = sideShape(gate.producer, 'produces');
-      const consumedShape = sideShape(gate.consumer, 'consumes');
-      return json(res, 200, {
-        gate,
-        produced: { shape: producedShape },
-        consumed: { shape: consumedShape },
-        // When both sides declare the SAME contract shape (the normal case —
-        // one factory wired as both produces[key] and consumes[key]), the detail
-        // page collapses to a single panel; an asymmetric gate keeps both sides.
-        identical: shapesIdentical(producedShape, consumedShape),
-      });
+      // Both sides of a boundary are the same artifact type, so there is one shape.
+      const shape = declaredShape(gate.producer, key);
+      return json(res, 200, { gate, produced: { shape }, consumed: { shape }, identical: true });
     },
   },
 
@@ -1286,17 +1257,12 @@ const routes: Route[] = [
       } catch {
         return json(res, 200, none);
       }
-      const def = getWorkflowDefinition(name);
-      // T603: outputJob may name either an existing member job (stocks-sync-style,
-      // an earlier stage's ledger) OR a decoupled ledger job_name a member records
-      // its work_items under instead of its own DAG name (movie-recs/tv-recs-style)
-      // — either way just query it directly; a stale/misconfigured value yields an
-      // empty (harmless) result, same as any other job name with no ledger rows.
-      const outputJobs = def?.outputJob ? [def.outputJob] : lastWave;
+      // A workflow with no ports (one that is no longer in the code, or a test
+      // fixture): the ledger of its final stage(s).
       return json(res, 200, {
-        items: workflowTerminalItems(outputJobs, page),
-        total: workflowTerminalItemsCount(outputJobs),
-        terminalJobs: outputJobs,
+        items: workflowTerminalItems(lastWave, page),
+        total: workflowTerminalItemsCount(lastWave),
+        terminalJobs: lastWave,
         artifacts: [] as ArtifactCard[],
       });
     },
@@ -1766,12 +1732,11 @@ const routes: Route[] = [
   },
 
   // GET /api/workflow-runs/:id/gates/:producer/:key
-  // Inspect ONE validation gate for the dashboard's expected-vs-actual view:
-  // the classified gate state plus, for each side (produced = producer's
-  // `produces[key]`, consumed = consumer's `consumes[key]`), the contract's
-  // declared `shape` and a LIVE `check()` of the artifact on disk (per-
-  // expectation pass/fail + a small sample of what flowed). Reads files only —
-  // never a paid/remote call — so it's safe to poll.
+  // Inspect ONE gate of a run for the dashboard's expected-vs-actual view: its
+  // state, the artifact's declared `shape`, and what the engine RECORDED when it
+  // checked the boundary during the run (the producer's own check at commit, and
+  // whether the consumer's input resolved). Database reads only: nothing is
+  // re-checked against today's files, so it is safe to poll.
   {
     method: 'GET',
     pattern: '/api/workflow-runs/:id/gates/:producer/:key',
@@ -1809,25 +1774,6 @@ const routes: Route[] = [
             recorded: { at, source: 'ports', artifactId: artifact.id, fresh: artifact.fresh === 1, note: artifact.note },
           });
         }
-        const sides = safeParse<{ sides?: { side: 'output' | 'input'; ok: boolean; result?: GateResult; error?: string }[] }>(recordedInput.check_json)?.sides ?? [];
-        const recordedSide = (side: 'output' | 'input', jobName: string, field: 'produces' | 'consumes') => {
-          const contract = getJobDefinition(jobName)?.[field]?.find((c) => c.key === key);
-          const rec = sides.find((sd) => sd.side === side);
-          if (!contract && !rec) return null;
-          const result: GateResult = rec?.result ?? { ok: rec?.ok ?? false, violations: rec?.error ? [rec.error] : undefined };
-          return { shape: contract?.shape ?? null, result };
-        };
-        const producedRec = recordedSide('output', gate.producer, 'produces');
-        const consumedRec = recordedSide('input', gate.consumer, 'consumes');
-        if (producedRec || consumedRec) {
-          return json(res, 200, {
-            gate,
-            produced: producedRec,
-            consumed: consumedRec,
-            identical: shapesIdentical(producedRec?.shape ?? null, consumedRec?.shape ?? null),
-            recorded: { at, source: 'gate' },
-          });
-        }
         // An unresolved ports input (no artifact was ever committed for it).
         if (recordedInput.ok !== 1) {
           const type = getJobDefinition(gate.consumer)?.inputs?.[recordedInput.port]?.artifact;
@@ -1842,34 +1788,13 @@ const routes: Route[] = [
         }
       }
 
-      // No recorded verdict (an older run, or a boundary the run never reached):
-      // fall back to checking the artifact as it is on disk NOW, and say so.
-      const inspectSide = async (jobName: string, field: 'produces' | 'consumes') => {
-        const contract = getJobDefinition(jobName)?.[field]?.find((c) => c.key === key);
-        if (!contract) return null;
-        let result: GateResult;
-        try {
-          result = await contract.check();
-        } catch (e) {
-          result = { ok: false, violations: [`check threw — ${e instanceof Error ? e.message : e}`] };
-        }
-        return { shape: contract.shape ?? null, result };
-      };
-      let produced = await inspectSide(gate.producer, 'produces');
-      let consumed = await inspectSide(gate.consumer, 'consumes');
-      if (!produced && !consumed) {
-        // A ports boundary this run never reached: show the declared shape only.
-        const outPort = Object.values(getJobDefinition(gate.producer)?.outputs ?? {}).find((o) => o.artifact.key === key);
-        const shape = outPort?.artifact.shape ?? null;
-        const pending: GateResult = { ok: true, detail: 'not checked in this run' };
-        produced = { shape, result: pending };
-        consumed = { shape, result: pending };
-      }
-      // `identical` is a deep compare of the DECLARED shapes only (not the live
-      // actuals), so the page can collapse the duplicated producer/consumer
-      // panels when both sides assert the same contract (the normal case).
-      const identical = shapesIdentical(produced?.shape ?? null, consumed?.shape ?? null);
-      return json(res, 200, { gate, produced, consumed, identical, recorded: null });
+      // No recorded verdict: a boundary the run never reached, or a run from before
+      // verdicts were recorded. Show what the artifact is meant to look like, and
+      // say plainly that nothing was checked. (This used to re-run the check
+      // against whatever file was on disk today, which said nothing about the run.)
+      const shape = declaredShape(gate.producer, key);
+      const pending: GateResult = { ok: true, detail: 'not checked in this run' };
+      return json(res, 200, { gate, produced: { shape, result: pending }, consumed: { shape, result: pending }, identical: true, recorded: null });
     },
   },
 
@@ -1898,7 +1823,7 @@ const routes: Route[] = [
       const overall = url.searchParams.get('overall') === 'true';
       const jobParam = url.searchParams.get('job');
       if (!overall && !jobParam) return json(res, 400, { error: 'job query param is required' });
-      const io = stageIo(getJobDefinition, run, getWorkflowDefinition(run.workflow_name), overall ? OVERALL : jobParam!, page);
+      const io = stageIo(getJobDefinition, run, overall ? OVERALL : jobParam!, page);
       if (!io) return json(res, 400, { error: `unknown job "${jobParam}" for this workflow` });
       // Item rows stay at the top level (`inputs` / `outputs` + totals) as they
       // always were; the artifacts a stage was handed and committed sit beside them.

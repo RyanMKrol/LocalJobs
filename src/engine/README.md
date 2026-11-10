@@ -80,8 +80,8 @@ Nothing from the rest of the repo is loaded.
 
 | Scenario | What it shows |
 |---|---|
-| `linear` | Data passing down a chain, a bad output stopping it at the source, retries, cancelling, an injected fault, resuming a failed run (and not reusing a stage whose output has since changed) |
-| `fan-in` | Several branches joining through one input, stale files rejected, a failed attempt ignored, a changed file caught, a store carried forward |
+| `linear` | Data passing down a chain, a bad output stopping it at the source, retries, cancelling, an injected fault, resuming a failed run (and not reusing a stage whose output has since changed), a second workflow waiting for the first to finish |
+| `fan-in` | Several branches joining through one input, stale files rejected, a failed attempt ignored, a changed file caught (the stage that would have read it never starts, and every other input is still checked), a store carried forward, resuming after one branch failed |
 | `diamond` | Two different inputs joining, the two sides running at once, the join waiting for both |
 | `item-pipeline` | Items done once each, a failed item not blocking the rest, picking up where it left off, a run capped to a few items, a quota stop, repeating until settled |
 
@@ -107,5 +107,9 @@ To add a case, write a `*.scenario.ts` that exports `jobs`, then a test that cal
 
 The rest of the tests here cover the pieces on their own: the graph (`dag.test.ts`),
 how inputs are matched to outputs (`ports.test.ts`), the item loop (`items.test.ts`),
-what the run page is built from (`reporting.test.ts`), and the older style of stage
-that is being replaced (`engine-hardening.test.ts`, `workflow-executor.test.ts`).
+what the run page is built from (`reporting.test.ts`), and how runs are scheduled,
+retried, cancelled and cleaned up after a restart (`engine-hardening.test.ts`,
+`workflow-executor.test.ts`). Those last two use plain stages with no inputs or
+outputs, which the engine still runs for exactly this purpose: the mechanics of a run
+can be tested without any data flowing. A real workflow cannot be written that way,
+because the application refuses to load one.

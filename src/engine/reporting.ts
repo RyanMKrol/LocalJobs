@@ -444,7 +444,7 @@ function portsStageIo(
 
 function legacyStageIo(
   run: WorkflowRunRow,
-  wf: Pick<WorkflowDefinition, 'jobs' | 'outputJob'>,
+  wf: Pick<WorkflowDefinition, 'jobs'>,
   job: string,
   page: StageIoPage,
 ): StageIoResponse {
@@ -453,12 +453,11 @@ function legacyStageIo(
   let outputJobs: string[];
   let inputJobs: string[];
   if (job === OVERALL) {
-    // `outputJob` may name a ledger job that is not a DAG member (T603).
-    outputJobs = wf.outputJob ? [wf.outputJob] : lastWave;
+    outputJobs = lastWave;
     inputJobs = (dag.waves[0] ?? []).filter((j) => !outputJobs.includes(j));
   } else {
     inputJobs = dag.dependencies.get(job) ?? [];
-    outputJobs = [wf.outputJob && lastWave.includes(job) ? wf.outputJob : job];
+    outputJobs = [job];
   }
   const lists = stageIoLists(outputJobs, inputJobs, run.id, page);
   return {
@@ -486,7 +485,6 @@ export function runUsesPorts(workflowRunId: string): boolean {
 export function stageIo(
   getJob: JobLookup,
   run: WorkflowRunRow,
-  def: Pick<WorkflowDefinition, 'outputJob'> | undefined,
   job: string,
   page: StageIoPage,
 ): StageIoResponse | null {
@@ -502,7 +500,7 @@ export function stageIo(
   try {
     return mode === 'ports'
       ? portsStageIo(getJob, run, { jobs }, job, page)
-      : legacyStageIo(run, { jobs, outputJob: def?.outputJob }, job, page);
+      : legacyStageIo(run, { jobs }, job, page);
   } catch {
     return empty(mode); // a DAG that no longer builds: nothing to derive from
   }

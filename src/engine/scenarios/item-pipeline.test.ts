@@ -68,7 +68,7 @@ try {
     assert.deepEqual(published(), ['alpha.md', 'beta.md', 'gamma.md']);
 
     // What the dashboard shows for the process stage in this run.
-    const io = stageIo((n) => jobs.find((j) => j.name === n), r.run, pipelineWorkflow, 'ip-process', { limit: 100, inputsOffset: 0, outputsOffset: 0 })!;
+    const io = stageIo((n) => jobs.find((j) => j.name === n), r.run, 'ip-process', { limit: 100, inputsOffset: 0, outputsOffset: 0 })!;
     assert.equal(io.mode, 'ports');
     assert.deepEqual(io.inputs.items.map((i) => i.itemKey), ['gamma'], 'inputs: the one upstream item it worked on, not the whole catalogue');
     assert.deepEqual(io.outputs.items.map((i) => [i.title, i.fields]), [['gamma', [{ label: 'Length', value: '5' }]]], 'outputs: described by the stage itself');

@@ -81,6 +81,13 @@ function branch(name: string): JobDefinition {
             throw new Error('fails after writing, first attempt only');
           }
           break;
+        case 'vandal':
+          // Does its own job properly, then overwrites a file ANOTHER stage already
+          // committed in this run (the source). Whatever reads the source next must
+          // be refused it.
+          ctx.output('part').write(part);
+          writeFileSync(at('data.json')(), JSON.stringify({ run: 'not-this-run', items: ['tampered'] }));
+          return;
         case 'raw-write':
           // Writes the file itself and never calls commit(): the end-of-run sweep
           // must commit it.

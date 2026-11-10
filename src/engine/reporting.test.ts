@@ -90,7 +90,7 @@ test('ports: a stage shows the artifacts it was handed and committed, and the it
     [{ id: 1, title: 'One' }, { id: 2, title: 'Two' }],
     [{ key: 'tmdb-9', name: 'Severance', lens: 'canon' }],
   );
-  const io = stageIo(getJob, getWorkflowRun(wfRun)!, wf, 'sio-pick', page)!;
+  const io = stageIo(getJob, getWorkflowRun(wfRun)!, 'sio-pick', page)!;
   assert.equal(io.mode, 'ports');
   assert.deepEqual(io.predecessorJobs, ['sio-snap']);
 
@@ -120,16 +120,16 @@ test('ports: a stage shows the artifacts it was handed and committed, and the it
 test('ports: `used()` items are attached to the input they came from', () => {
   const { wfRun } = seedRun([{ id: 1, title: 'One' }, { id: 2, title: 'Two' }, { id: 3, title: 'Three' }], []);
   setRunInputUsed(wfRun, 1, 'sio-pick', 'snapshot', 'sio-snap', { total: 1, items: [{ id: '2', title: 'Two' }] });
-  const io = stageIo(getJob, getWorkflowRun(wfRun)!, wf, 'sio-pick', page)!;
+  const io = stageIo(getJob, getWorkflowRun(wfRun)!, 'sio-pick', page)!;
   assert.deepEqual(io.inputs.artifacts[0].used, { total: 1, items: [{ id: '2', title: 'Two' }] });
 });
 
 test('ports: only items the run CHANGED are listed; identical re-records are counted, not shown', () => {
   const first = seedRun([{ id: 1, title: 'One' }], [{ key: 'a', name: 'A', lens: 'x' }, { key: 'b', name: 'B', lens: 'x' }]);
-  assert.equal(stageIo(getJob, getWorkflowRun(first.wfRun)!, wf, 'sio-pick', page)!.outputs.itemTotal, 2);
+  assert.equal(stageIo(getJob, getWorkflowRun(first.wfRun)!, 'sio-pick', page)!.outputs.itemTotal, 2);
   // A second run re-records `a` identically and changes `b`.
   const second = seedRun([{ id: 1, title: 'One' }], [{ key: 'a', name: 'A', lens: 'x' }, { key: 'b', name: 'B', lens: 'changed' }]);
-  const io = stageIo(getJob, getWorkflowRun(second.wfRun)!, wf, 'sio-pick', page)!;
+  const io = stageIo(getJob, getWorkflowRun(second.wfRun)!, 'sio-pick', page)!;
   assert.deepEqual(io.outputs.items.map((i) => i.itemKey), ['b']);
   assert.equal(io.outputs.unchangedCount, 1);
 });
@@ -137,7 +137,7 @@ test('ports: only items the run CHANGED are listed; identical re-records are cou
 test('ports: an old run still shows what IT recorded after a later run overwrites the ledger', () => {
   const first = seedRun([{ id: 1, title: 'One' }], [{ key: 'hist', name: 'Original', lens: 'first' }]);
   seedRun([{ id: 1, title: 'One' }], [{ key: 'hist', name: 'Rewritten', lens: 'second' }]);
-  const io = stageIo(getJob, getWorkflowRun(first.wfRun)!, wf, 'sio-pick', page)!;
+  const io = stageIo(getJob, getWorkflowRun(first.wfRun)!, 'sio-pick', page)!;
   assert.equal(io.outputs.items[0].title, 'Original');
   assert.deepEqual(io.outputs.items[0].fields, [{ label: 'Lens', value: 'first' }]);
 });
@@ -164,7 +164,7 @@ test("ports: a stage's item inputs are the upstream items it worked on, even one
   recordRunArtifact({ workflowRunId: wfRun, runId: w, cycle: 1, jobName: 'sio-worker', port: 'digest', artifactKey: 'sio-digest', storage: 'inline', inlineJson: '{"sent":0}', fresh: true, ok: true });
   finishRun(w, 'failed');
 
-  const io = stageIo(getJob, getWorkflowRun(wfRun)!, wf2, 'sio-worker', page)!;
+  const io = stageIo(getJob, getWorkflowRun(wfRun)!, 'sio-worker', page)!;
   assert.deepEqual(io.inputs.items.map((i) => [i.itemKey, i.title]), [['new-item', 'From this run'], ['old-item', 'From an earlier run']]);
   assert.equal(io.inputs.itemTotal, 2);
   assert.deepEqual(io.outputs.items.map((i) => [i.itemKey, i.status]), [['new-item', 'failed'], ['old-item', 'success']]);
@@ -176,7 +176,7 @@ test('ports: an input the engine could not resolve is still shown, with the reas
   recordRunArtifact({ workflowRunId: wfRun, runId: snapRun, cycle: 1, jobName: 'sio-snap', port: 'other', artifactKey: 'x', storage: 'inline', inlineJson: '1', fresh: true, ok: true });
   finishRun(snapRun, 'success');
   recordRunInput({ workflowRunId: wfRun, cycle: 1, jobName: 'sio-pick', port: 'snapshot', producerJob: 'sio-snap', artifactKey: 'sio-snapshot', ok: false, reason: '"sio-snap" succeeded but committed no "sio-snapshot" artifact in this run' });
-  const io = stageIo(getJob, getWorkflowRun(wfRun)!, wf, 'sio-pick', page)!;
+  const io = stageIo(getJob, getWorkflowRun(wfRun)!, 'sio-pick', page)!;
   assert.equal(io.inputs.artifacts.length, 1);
   assert.equal(io.inputs.artifacts[0].resolved?.ok, false);
   assert.match(io.inputs.artifacts[0].resolved?.reason ?? '', /committed no "sio-snapshot" artifact/);
@@ -185,7 +185,7 @@ test('ports: an input the engine could not resolve is still shown, with the reas
 
 test('ports: Overall shows what the root stage gathered and what the final stage produced', () => {
   const { wfRun } = seedRun([{ id: 1, title: 'One' }], [{ key: 'ov', name: 'Overall pick', lens: 'x' }]);
-  const io = stageIo(getJob, getWorkflowRun(wfRun)!, wf, OVERALL, page)!;
+  const io = stageIo(getJob, getWorkflowRun(wfRun)!, OVERALL, page)!;
   assert.deepEqual(io.predecessorJobs, ['sio-snap']);
   assert.deepEqual(io.outputJobs, ['sio-pick']);
   assert.deepEqual(io.inputs.artifacts.map((a) => `${a.job}.${a.port}`), ['sio-snap.snapshot']);
@@ -215,9 +215,8 @@ test('artifact items are computed on demand while the file is still the one comm
 });
 
 test('legacy: a run with no artifacts renders through the frozen mapping (predecessor rows as inputs, inferred fields)', () => {
-  const ok = () => ({ ok: true });
-  const a: JobDefinition = { name: 'sio-legacy-a', produces: [{ key: 'k', check: ok }], run };
-  const b: JobDefinition = { name: 'sio-legacy-b', consumes: [{ key: 'k', check: ok }], run };
+  const a: JobDefinition = { name: 'sio-legacy-a', run };
+  const b: JobDefinition = { name: 'sio-legacy-b', run };
   syncJob(a); syncJob(b);
   const lwf: WorkflowDefinition = { name: 'sio-legacy-wf', jobs: [{ job: 'sio-legacy-a' }, { job: 'sio-legacy-b', dependsOn: ['sio-legacy-a'] }] };
   syncWorkflow(lwf);
@@ -225,7 +224,7 @@ test('legacy: a run with no artifacts renders through the frozen mapping (predec
   markWorkItem('sio-legacy-a', 'in-1', 'success', { detail: { name: 'Input one', tmdbId: 7, nested: { x: 1 } }, workflowRunId: wfRun });
   markWorkItem('sio-legacy-b', 'out-1', 'success', { detail: { name: 'Output one', markdown: '/tmp/x.md' }, workflowRunId: wfRun });
 
-  const io = stageIo(() => undefined, getWorkflowRun(wfRun)!, lwf, 'sio-legacy-b', page)!;
+  const io = stageIo(() => undefined, getWorkflowRun(wfRun)!, 'sio-legacy-b', page)!;
   assert.equal(io.mode, 'legacy');
   assert.deepEqual(io.inputs.artifacts, []);
   assert.deepEqual(io.inputs.items.map((i) => [i.title, i.fields]), [['Input one', [{ label: 'Tmdb Id', value: '7' }]]]);
@@ -234,11 +233,11 @@ test('legacy: a run with no artifacts renders through the frozen mapping (predec
   // The per-run snapshot keeps a legacy run's page honest too.
   const later = createWorkflowRun('sio-legacy-wf', 'manual');
   markWorkItem('sio-legacy-b', 'out-1', 'failed', { detail: { name: 'Overwritten later' }, workflowRunId: later });
-  const again = stageIo(() => undefined, getWorkflowRun(wfRun)!, lwf, 'sio-legacy-b', page)!;
+  const again = stageIo(() => undefined, getWorkflowRun(wfRun)!, 'sio-legacy-b', page)!;
   assert.equal(again.outputs.items[0].title, 'Output one');
   assert.equal(again.outputs.items[0].status, 'success');
 
-  assert.equal(stageIo(() => undefined, getWorkflowRun(wfRun)!, lwf, 'not-a-member', page), null);
+  assert.equal(stageIo(() => undefined, getWorkflowRun(wfRun)!, 'not-a-member', page), null);
 });
 
 test.after(() => rmSync(dir, { recursive: true, force: true }));

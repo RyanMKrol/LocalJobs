@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import {
   artifactsForRun, artifactsForWorkflowRun, getWorkflowLogs, getWorkflowRun, listRunsForWorkflowRun,
   producedArtifact, resolvedInputsForStage,
+  runInputsForWorkflowRun,
 } from '../../db/store.js';
 import { bindWorkflowPorts } from '../ports.js';
 import { resolveInput, uncommittedOutputs } from '../resolve-inputs.js';
@@ -168,6 +169,31 @@ try {
     assert.match(r.reason ?? '', /has changed since "px-b1" committed it/);
     rmSync(path);
     assert.match(resolveInput(id, 1, binding).reason ?? '', /no longer exists/);
+  });
+
+  await test('an input that no longer matches what its producer committed stops the stage before it starts, and every other input is still checked', async () => {
+    control({});
+    assert.equal((await scenario.run(fanInWorkflow)).status, 'success');
+    const mergedBefore = readFileSync(join(dir, 'merged.json'), 'utf8');
+
+    control({ 'px-b3': 'vandal' });
+    const r = await scenario.run(fanInWorkflow);
+    assert.equal(r.status, 'partial');
+    // All three branches succeeded; the fan-in was refused its `data` input.
+    assert.deepEqual([r.statuses['px-b1'], r.statuses['px-b2'], r.statuses['px-b3']], ['success', 'success', 'success']);
+    const merge = r.stage('px-merge')!;
+    assert.equal(merge.status, 'failed');
+    assert.equal(merge.outcome_reason, 'gate-failed');
+    assert.match(merge.error ?? '', /Gate violation \[px-src → px-merge\] artifact "px-data": .*has changed since "px-src" committed it/);
+    assert.equal(merge.attempt, 1, 'a refused input is not retried: the stage never ran');
+    assert.equal(readFileSync(join(dir, 'merged.json'), 'utf8'), mergedBefore, 'the stage never started, so it wrote nothing');
+    // The verdict on EVERY input was recorded, not just the one that failed first.
+    const verdicts = runInputsForWorkflowRun(r.id).filter((i) => i.job_name === 'px-merge').map((i) => `${i.port}<-${i.producer_job}:${i.ok ? 'ok' : 'refused'}`).sort();
+    assert.deepEqual(verdicts, ['data<-px-src:refused', 'parts<-px-b1:ok', 'parts<-px-b2:ok', 'parts<-px-b3:ok']);
+    // And the failure carries on down: the report after it did not run.
+    assert.equal(r.stage('px-report')?.outcome_reason, 'upstream-skipped');
+    assert.match(r.log, /⨯ input "data" of px-merge/);
+    control({});
   });
 
   await test('a cumulative store with nothing new is carried forward and marked as such; a first run with no store at all fails', async () => {

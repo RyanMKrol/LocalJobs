@@ -1,4 +1,4 @@
-import type { ArtifactShape, WorkflowJobRef, RunStatus } from './types.js';
+import type { WorkflowJobRef, RunStatus } from './types.js';
 
 /** Thrown when a workflow's `jobs` cannot form a valid DAG. */
 export class DagError extends Error {}
@@ -77,60 +77,28 @@ export function buildDag(refs: WorkflowJobRef[]): Dag {
 }
 
 /**
- * A validation gate on a DAG edge: the upstream `producer` emits artifact `key`
- * and the downstream `consumer` requires it, so the contract for `key` is checked
- * at that boundary before the consumer runs.
+ * A gate on a DAG edge: the upstream `producer` commits the artifact `key` and
+ * the downstream `consumer` takes it as an input, so that artifact is resolved
+ * and checked at the boundary before the consumer runs.
  */
 export interface Gate {
   key: string;
   producer: string;
   consumer: string;
-  /**
-   * Human-readable summary of what the gate's contracts ASSERT (the producer's
-   * `produces[key].description` and/or the consumer's `consumes[key].description`).
-   * Not set by `deriveGates` (which only sees keys) — enriched by the caller that
-   * has the job definitions (the API) so the detail view can explain the gate.
-   */
+  /** What the artifact is, in a sentence (the artifact type's own description). */
   description?: string;
 }
 
 /**
  * The stable, leading portion of the error a gate violation records on its
  * (failed, never-spawned) consumer run — `recordGateFailure` writes this prefix
- * followed by the per-drift violations. Centralised here so the executor (which
- * WRITES the failure) and the API (which READS member runs back to classify each
- * gate's state) agree on one format. Changing it is a breaking change to both.
+ * followed by the reason each input could not be resolved. Centralised here so
+ * the executor (which WRITES the failure) and the API (which READS member runs
+ * back to classify each gate's state) agree on one format. Changing it is a
+ * breaking change to both.
  */
 export function gateFailurePrefix(gate: Gate): string {
   return `Gate violation [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"`;
-}
-
-/**
- * Whether two DECLARED artifact shapes are identical — a deep compare of
- * `summary`, `format`, and the `expectations` array (each by `label` + `detail`,
- * order-sensitive). Used by the gate inspection endpoints to decide whether a
- * gate's producer (`produces[key]`) and consumer (`consumes[key]`) sides assert
- * the SAME contract, so the detail page can collapse the two identical panels
- * into one. A missing/absent shape on either side is treated as NOT identical —
- * we never claim a match we can't confirm (so a side with no declared shape is
- * always shown in full). Pure: compares only the static declared shapes, never
- * any per-run actuals.
- */
-export function shapesIdentical(
-  a: ArtifactShape | null | undefined,
-  b: ArtifactShape | null | undefined,
-): boolean {
-  if (!a || !b) return false; // can't confirm a match for an absent shape
-  if ((a.summary ?? '') !== (b.summary ?? '')) return false;
-  if ((a.format ?? '') !== (b.format ?? '')) return false;
-  const ea = a.expectations ?? [];
-  const eb = b.expectations ?? [];
-  if (ea.length !== eb.length) return false;
-  for (let i = 0; i < ea.length; i++) {
-    if (ea[i].label !== eb[i].label) return false;
-    if ((ea[i].detail ?? '') !== (eb[i].detail ?? '')) return false;
-  }
-  return true;
 }
 
 /** A gate's outcome within one workflow run, derived from member runs. */
@@ -192,33 +160,6 @@ export function classifyGates(gates: Gate[], runs: GateRunRef[]): GateStatus[] {
     const neverRan = reason ? NEVER_RAN_REASONS.has(reason) : latest.status === 'skipped';
     return { ...gate, state: neverRan ? 'pending' : 'passed' };
   });
-}
-
-/**
- * Derive the typed-artifact gates implied by a DAG plus each member's declared
- * produced/consumed artifact keys. For every edge (producer → consumer), each
- * key the producer PRODUCES and the consumer CONSUMES becomes a gate to enforce
- * at that boundary. Pure: a consumed key with no producing upstream is an
- * external input, not a stage boundary, so it yields no gate. Returned in
- * consumer-then-producer declaration order for stable logging/tests.
- */
-export function deriveGates(
-  dag: Dag,
-  produces: Map<string, string[]>,
-  consumes: Map<string, string[]>,
-): Gate[] {
-  const gates: Gate[] = [];
-  for (const consumer of dag.nodes) {
-    const wants = consumes.get(consumer);
-    if (!wants || wants.length === 0) continue;
-    const wantSet = new Set(wants);
-    for (const producer of dag.dependencies.get(consumer)!) {
-      for (const key of produces.get(producer) ?? []) {
-        if (wantSet.has(key)) gates.push({ key, producer, consumer });
-      }
-    }
-  }
-  return gates;
 }
 
 export interface DagExecHooks {

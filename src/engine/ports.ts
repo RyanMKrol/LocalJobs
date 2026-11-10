@@ -414,9 +414,13 @@ export type WorkflowMode = 'ports' | 'legacy';
 type JobLookup = (name: string) => JobDefinition | undefined;
 
 /**
- * Whether a workflow's stages use ports or the legacy produces/consumes
- * contracts. A workflow is migrated as a whole, so a mix is an error (reported
- * by `validateWorkflowPorts`); this returns 'ports' as soon as any member does.
+ * Whether a workflow's stages declare ports. 'legacy' means none of them do:
+ * the engine still runs such a workflow (its own tests use plain stages to
+ * exercise scheduling, retries and cancelling, and runs recorded before the
+ * migration are of that kind), but nothing is passed between its stages or
+ * checked, and the application's registry refuses to load one. A mix of the
+ * two inside one workflow is an error (reported by `bindWorkflowPorts`); this
+ * returns 'ports' as soon as any member declares a port.
  */
 export function workflowMode(wf: Pick<WorkflowDefinition, 'jobs'>, getJob: JobLookup): WorkflowMode {
   return wf.jobs.some((ref) => {
@@ -457,7 +461,7 @@ export function bindWorkflowPorts(
   });
   if (legacy.length > 0) {
     errors.push(
-      `mixes ports stages with legacy produces/consumes stages (${legacy.join(', ')}); a workflow is migrated as a whole`,
+      `mixes ports stages with stages that declare no ports (${legacy.join(', ')}); every stage of a workflow must be built with defineStage`,
     );
     return { bindings, errors };
   }
@@ -535,23 +539,12 @@ export function bindWorkflowPorts(
 
 /**
  * Every problem with a workflow's ports, as readable strings (empty = valid).
- * A legacy workflow is validated by its own rule: every edge needs a matching
- * produces/consumes key. Both are checked at LOAD by the registry, so a broken
- * contract stops the daemon instead of surfacing halfway through a night's run.
+ * Checked at LOAD by the registry, so a broken contract stops the daemon instead
+ * of surfacing halfway through a night's run. A workflow with no ports at all has
+ * nothing to check here (the registry rejects it for that reason alone).
  */
 export function validateWorkflowContracts(wf: Pick<WorkflowDefinition, 'name' | 'jobs'>, getJob: JobLookup): string[] {
-  if (workflowMode(wf, getJob) === 'ports') return bindWorkflowPorts(wf, getJob).errors;
-  const errors: string[] = [];
-  for (const ref of wf.jobs) {
-    const consumes = new Set((getJob(ref.job)?.consumes ?? []).map((c) => c.key));
-    for (const dep of ref.dependsOn ?? []) {
-      const produced = (getJob(dep)?.produces ?? []).map((c) => c.key);
-      if (!produced.some((k) => consumes.has(k))) {
-        errors.push(`edge ${dep} → ${ref.job} has no validation gate: no artifact key that "${dep}" produces and "${ref.job}" consumes`);
-      }
-    }
-  }
-  return errors;
+  return workflowMode(wf, getJob) === 'ports' ? bindWorkflowPorts(wf, getJob).errors : [];
 }
 
 /** The gates of a ports workflow: one per binding, in the shape the DAG view and gate pages use. */

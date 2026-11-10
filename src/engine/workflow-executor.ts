@@ -31,13 +31,13 @@ import {
   type FinalWorkflowRunStatus,
   type WorkflowProgressSignature,
 } from '../db/store.js';
-import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePrefix } from './dag.js';
+import { type Dag, type Gate, buildDag, executeDag, gateFailurePrefix } from './dag.js';
 import { config } from '../config.js';
 import { bindWorkflowPorts, isPortsJob, workflowMode, type PortBinding } from './ports.js';
 import { describeArtifact, resolveInput } from './resolve-inputs.js';
 import { planResume, type ResumePlan } from './resume.js';
 import { abortableSleep, runJobForWorkflow } from './executor.js';
-import type { GateResult, LogLevel, WorkflowDefinition, RunStatus } from './types.js';
+import type { LogLevel, WorkflowDefinition, RunStatus } from './types.js';
 
 /**
  * Default bounded parallelism for a workflow's independent stages (T156). When a
@@ -87,97 +87,6 @@ export function effectiveWorkflowNotifyEnabled(def: WorkflowDefinition): boolean
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-/**
- * Enforce one gate: run the producer's `produces[key]` contract (output is
- * well-formed) and the consumer's `consumes[key]` contract (input is acceptable),
- * whichever are declared. A check that returns `ok:false` or throws contributes
- * its violations. Returns the merged verdict so the boundary fails LOUD with the
- * exact drift rather than passing bad data downstream.
- */
-/**
- * The human-readable assertions a gate enforces — the producer's `produces[key]`
- * and the consumer's `consumes[key]` contract descriptions, whichever are
- * declared. Logged before each check so the run's framework log says what the
- * gate is verifying (not just pass/fail). Pure lookup; runs no checks.
- */
-function gateAssertions(gate: Gate): string[] {
-  const out: string[] = [];
-  const p = getJobDefinition(gate.producer)?.produces?.find((c) => c.key === gate.key)?.description;
-  const c = getJobDefinition(gate.consumer)?.consumes?.find((c) => c.key === gate.key)?.description;
-  if (p) out.push(`output (from ${gate.producer}): ${p}`);
-  if (c) out.push(`input (to ${gate.consumer}): ${c}`);
-  return out;
-}
-
-/** What one side of a gate reported, kept so it can be recorded and shown later. */
-export interface GateSideResult {
-  side: 'output' | 'input';
-  job: string;
-  ok: boolean;
-  /** The contract's own result (checks, sample, detail), when the check returned one. */
-  result?: GateResult;
-  /** Set when the check threw, timed out, or was abandoned on cancel. */
-  error?: string;
-}
-
-/**
- * Run one contract `check()` with a time limit and cancel-awareness. A check is
- * meant to be a quick look at a local file. Without a limit, one that hangs
- * (an awaited promise that never settles) holds its stage, and a concurrency
- * slot, forever: the job's own timeout only starts once its process is spawned,
- * and a cancel waits for in-flight stages, so not even cancelling got out of it.
- * (A check that blocks the event loop SYNCHRONOUSLY cannot be interrupted from
- * here; checks must not do that.)
- */
-async function runCheck(check: () => GateResult | Promise<GateResult>, signal?: AbortSignal): Promise<GateResult> {
-  let timer: NodeJS.Timeout | undefined;
-  let onAbort: (() => void) | undefined;
-  const limit = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`check did not finish within ${Math.round(config.gateTimeoutMs / 1000)}s`)),
-      config.gateTimeoutMs,
-    );
-    if (signal) {
-      onAbort = () => reject(new Error('check abandoned — the workflow run was cancelled'));
-      if (signal.aborted) onAbort();
-      else signal.addEventListener('abort', onAbort, { once: true });
-    }
-  });
-  try {
-    return await Promise.race([Promise.resolve().then(check), limit]);
-  } finally {
-    if (timer) clearTimeout(timer);
-    if (signal && onAbort) signal.removeEventListener('abort', onAbort);
-  }
-}
-
-async function enforceGate(
-  gate: Gate,
-  signal?: AbortSignal,
-): Promise<{ ok: boolean; violations: string[]; sides: GateSideResult[] }> {
-  const producer = getJobDefinition(gate.producer);
-  const consumer = getJobDefinition(gate.consumer);
-  const sides: Array<['output' | 'input', ReturnType<typeof getJobDefinition>, 'produces' | 'consumes', string]> = [
-    ['output', producer, 'produces', gate.producer],
-    ['input', consumer, 'consumes', gate.consumer],
-  ];
-  const violations: string[] = [];
-  const results: GateSideResult[] = [];
-  for (const [side, def, field, job] of sides) {
-    const contract = def?.[field]?.find((c) => c.key === gate.key);
-    if (!contract) continue;
-    try {
-      const r = await runCheck(() => contract.check(), signal);
-      if (!r.ok) violations.push(...(r.violations?.length ? r.violations : [`${gate.key}: ${side} contract not satisfied`]));
-      results.push({ side, job, ok: r.ok, result: r });
-    } catch (e) {
-      violations.push(`${gate.key}: ${side} check threw — ${msg(e)}`);
-      results.push({ side, job, ok: false, error: msg(e) });
-    }
-  }
-  return { ok: violations.length === 0, violations, sides: results };
-}
 
 export interface WorkflowRunResult {
   workflowRunId: string | null;
@@ -383,25 +292,12 @@ async function runWorkflowInner(
     return { workflowRunId: id };
   }
 
-  // Derive the typed-artifact gates between dependent stages from each member's
-  // declared produces/consumes keys. Inbound gates are grouped by consumer so a
-  // job's contracts are checked the moment it's about to run.
-  const produces = new Map<string, string[]>();
-  const consumes = new Map<string, string[]>();
-  for (const node of dag.nodes) {
-    const jd = getJobDefinition(node);
-    produces.set(node, (jd?.produces ?? []).map((c) => c.key));
-    consumes.set(node, (jd?.consumes ?? []).map((c) => c.key));
-  }
-  const gates = deriveGates(dag, produces, consumes);
-  const inboundGates = new Map<string, Gate[]>();
-  for (const g of gates) (inboundGates.get(g.consumer) ?? inboundGates.set(g.consumer, []).get(g.consumer)!).push(g);
-
-  // A PORTS workflow has no produces/consumes gates. Its boundaries are the port
-  // bindings: for each input of each stage, which upstream stage feeds it. Each is
-  // resolved (against what that producer committed in THIS run) just before the
-  // consumer runs. The registry validates the bindings at load; this is the same
-  // check again for a definition handed to runWorkflow directly (tests).
+  // The boundaries between stages are the port bindings: for each input of each
+  // stage, which upstream stage feeds it. Each is resolved (against what that
+  // producer committed in THIS run) just before the consumer runs. The registry
+  // validates the bindings at load; this is the same check again for a definition
+  // handed to runWorkflow directly (tests). A workflow whose stages declare no
+  // ports has no boundaries to check: its stages just run in dependency order.
   const mode = workflowMode(def, getJobDefinition);
   const bound = mode === 'ports' ? bindWorkflowPorts(def, getJobDefinition) : null;
   if (bound && bound.errors.length > 0) {
@@ -412,7 +308,7 @@ async function runWorkflowInner(
   }
   const inboundBindings = new Map<string, PortBinding[]>();
   for (const b of bound?.bindings ?? []) (inboundBindings.get(b.consumer) ?? inboundBindings.set(b.consumer, []).get(b.consumer)!).push(b);
-  const boundaryCount = bound ? bound.bindings.length : gates.length;
+  const boundaryCount = bound?.bindings.length ?? 0;
 
   const total = dag.nodes.length;
   const memberNames = def.jobs.map((j) => j.job);
@@ -496,7 +392,7 @@ async function runWorkflowInner(
   }
 
   try {
-  log(`Workflow "${def.name}" started · ${total} job(s) · ${boundaryCount} ${bound ? 'input(s)' : 'gate(s)'} · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
+  log(`Workflow "${def.name}" started · ${total} job(s) · ${boundaryCount} input(s) · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
   if (emptySelectionWarning) log(emptySelectionWarning, 'warn');
 
   // Resume: work out which stages' results from the earlier run can be reused.
@@ -584,47 +480,14 @@ async function runWorkflowInner(
           log(`↺ ${job} not run: ${note} (${reuse.artifacts.length} output(s) carried over)`);
           return 'success';
         }
-        // Validation gate: every inbound contract from a (now-succeeded) upstream
-        // is checked BEFORE the consumer runs. A violation is a first-class failed
-        // run — the consumer never spawns and the drift is surfaced + notified,
-        // so bad data is stopped at the exact boundary.
-        //
-        // EVERY inbound gate is evaluated, even after one fails: on a fan-in the
-        // useful answer is "which of the 8 inputs are bad", not just the first.
-        // Each verdict is RECORDED (run_inputs) as it is reached, so the run page
-        // shows what was checked at run time rather than re-checking later.
         const gateStart = Date.now();
         const failures: Array<{ gate: Gate; detail: string }> = [];
-        for (const gate of inboundGates.get(job) ?? []) {
-          const asserts = gateAssertions(gate);
-          const suffix = asserts.length ? ` · ${asserts.join('; ')}` : '';
-          log(`⛒ checking gate [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${suffix}`);
-          const t0 = Date.now();
-          const verdict = await enforceGate(gate, controller.signal);
-          recordRunInput({
-            workflowRunId,
-            cycle,
-            jobName: gate.consumer,
-            port: gate.key,
-            producerJob: gate.producer,
-            artifactKey: gate.key,
-            ok: verdict.ok,
-            reason: verdict.ok ? null : verdict.violations.join('; '),
-            check: { sides: verdict.sides },
-            durationMs: Date.now() - t0,
-          });
-          if (!verdict.ok) {
-            const detail = `${gateFailurePrefix(gate)}: ${verdict.violations.join('; ')}`;
-            log(`⨯ ${detail}`, 'error');
-            failures.push({ gate, detail });
-            continue;
-          }
-          const sample = verdict.sides.map((sd) => sd.result?.sample ?? sd.result?.detail).find(Boolean);
-          log(`✓ gate ok [${gate.producer} → ${gate.consumer}] artifact "${gate.key}"${sample ? ` (${sample})` : ''}${suffix}`);
-        }
-        // Ports: resolve every input to what its producer committed in THIS run and
-        // cycle, check it is still what is on disk, and record the verdict. All of
-        // them, even after one fails, for the same reason as the gates above.
+        // The gate: resolve every input to what its producer committed in THIS run
+        // and cycle, check it is still what is on disk, and record the verdict
+        // (run_inputs) as it is reached, so the run page shows what was checked at
+        // run time. A failure is a first-class failed run: the stage never spawns.
+        // EVERY input is resolved, even after one fails: on a fan-in the useful
+        // answer is "which of the 8 inputs are bad", not just the first.
         for (const b of inboundBindings.get(job) ?? []) {
           const gate: Gate = { key: b.artifactKey, producer: b.producer, consumer: b.consumer };
           const t0 = Date.now();

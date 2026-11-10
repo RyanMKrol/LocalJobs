@@ -170,14 +170,6 @@ export const config = {
   retryBackoffMs: parseBackoff(process.env.LOCALJOBS_RETRY_BACKOFF_MS, isTestEnv() ? [0] : [5_000, 30_000, 120_000]),
 
   /**
-   * How long (ms) a single gate/contract `check()` may run before the engine
-   * treats it as failed. A check is meant to be a quick look at a local file; one
-   * that hangs would otherwise hold its stage (and a concurrency slot) forever,
-   * since the job's own timeout only starts once its process is spawned.
-   */
-  gateTimeoutMs: Number(process.env.LOCALJOBS_GATE_TIMEOUT_MS ?? 30_000),
-
-  /**
    * A workflow that declares `after` waits for the workflows it names to finish
    * before its first stage starts. This is how often it looks (ms), and how long
    * it will wait in total before giving up on them and starting anyway.

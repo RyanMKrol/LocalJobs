@@ -14,6 +14,7 @@ import { jobs, workflows } from '../workflows/registry.js';
 import { createWorkflowRun, finishWorkflowRun, getJob, getWorkflow, lastWorkflowRunForWorkflow, markWorkItem, recordServiceConsumer, syncJob, syncWorkflow } from '../db/store.js';
 import { nextWorkflowRun, rescheduleWorkflow } from '../core/scheduler.js';
 import { isWorkflowStarting } from '../engine/workflow-executor.js';
+import { defineStage, jsonArtifact } from '../engine/ports.js';
 import type { ArtifactShape, JobDefinition, WorkflowDefinition } from '../core/types.js';
 import {
   authoriseMutation,
@@ -706,31 +707,30 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
   for (const w of [raLimWf, raPlainWf, raBusyWf]) { const i = workflows.indexOf(w); if (i >= 0) workflows.splice(i, 1); }
 }
 
-// ── definition-level gate detail (T102): the run-AGNOSTIC
-// GET /api/workflows/:name/gates/:producer/:key returns the structural gate
-// (key, enriched description, producer→consumer) plus each side's declared
-// expected shape — no run state, no actuals, no contract check() runs. A fake
-// two-stage workflow with a producer→consumer artifact contract, registered then
-// cleaned up. ──
+// ── gate detail. A gate is one input binding: an artifact the producer outputs
+// and the consumer takes in. The definition-level endpoint
+// (GET /api/workflows/:name/gates/:producer/:key) returns the gate and the
+// artifact's declared shape. The run-scoped one adds what the engine recorded
+// for that run. Neither ever runs the artifact's check(): the gate page must
+// show what was seen at run time, not re-check today's files. ──
 {
   const shapeA: ArtifactShape = {
-    summary: 'rows of stuff', format: 'csv',
+    summary: 'rows of stuff', format: 'json file',
     expectations: [{ label: 'non-empty', detail: 'has at least one row' }],
   };
   let checkCalls = 0;
-  const upstream: JobDefinition = {
-    name: 'gate-up', run: async () => {},
-    produces: [{ key: 'artA', description: 'the A artifact', shape: shapeA, check: () => { checkCalls++; return { ok: true }; } }],
-  };
-  const downstream: JobDefinition = {
-    name: 'gate-down', run: async () => {},
-    consumes: [{ key: 'artA', description: 'needs A', shape: { summary: 'consumes A', expectations: [{ label: 'parseable' }] }, check: () => { checkCalls++; return { ok: true }; } }],
-  };
+  const artA = jsonArtifact<{ rows: number[] }>({
+    key: 'artA', description: 'the A artifact', shape: shapeA,
+    check: () => { checkCalls++; return { ok: true }; },
+  });
+  const upstream = defineStage({ name: 'gate-up', outputs: { a: { artifact: artA, location: '/tmp/lj-gate-test-artA.json' } }, run: async () => {} });
+  const downstream = defineStage({ name: 'gate-down', inputs: { a: { artifact: artA } }, run: async () => {} });
   for (const d of [upstream, downstream]) { syncJob(d); jobs.push(d); }
   const gw: WorkflowDefinition = { name: 'gate-wf', jobs: [{ job: 'gate-up' }, { job: 'gate-down', dependsOn: ['gate-up'] }] };
   syncWorkflow(gw); workflows.push(gw);
+  const gateRunId = createWorkflowRun('gate-wf', 'manual');
 
-  await test('definition gate: endpoint returns structural gate + both sides expected shape, never runs check()', async () => {
+  await test('definition gate: the gate and its declared shape, one shape for both sides, never runs check()', async () => {
     await withServer({}, async (base) => {
       const res = await fetch(`${base}/api/workflows/gate-wf/gates/gate-up/artA`);
       assert.equal(res.status, 200);
@@ -745,10 +745,9 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
       assert.equal(body.gate.key, 'artA');
       assert.match(body.gate.description ?? '', /the A artifact/);
       assert.equal(body.produced.shape?.summary, 'rows of stuff');
-      assert.equal(body.consumed.shape?.summary, 'consumes A');
-      // This gate is ASYMMETRIC (produces shape ≠ consumes shape) → not collapsible.
-      assert.equal(body.identical, false, 'differing shapes must report identical:false');
-      assert.equal(checkCalls, 0, 'definition-level endpoint must NOT run any contract check()');
+      assert.deepEqual(body.consumed.shape, body.produced.shape, 'both sides are the same artifact type');
+      assert.equal(body.identical, true);
+      assert.equal(checkCalls, 0, 'the definition-level endpoint must not run any check()');
     });
   });
 
@@ -759,55 +758,29 @@ await test('mutation guard: a loopback POST passes the guard (default isLoopback
     });
   });
 
+  await test('run-scoped gate: a boundary the run never reached says so, and nothing is checked against the files on disk', async () => {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/api/workflow-runs/${gateRunId}/gates/gate-up/artA`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as {
+        gate: { state: string };
+        produced: { shape: ArtifactShape | null; result: { ok: boolean; detail?: string } };
+        consumed: { result: { detail?: string } };
+        identical: boolean;
+        recorded: unknown;
+      };
+      assert.equal(body.gate.state, 'pending');
+      assert.equal(body.recorded, null);
+      assert.equal(body.produced.shape?.summary, 'rows of stuff');
+      assert.equal(body.produced.result.detail, 'not checked in this run');
+      assert.equal(body.consumed.result.detail, 'not checked in this run');
+      assert.equal(body.identical, true);
+      assert.equal(checkCalls, 0, 'the run-scoped endpoint must not re-run the check either');
+    });
+  });
+
   for (const d of [upstream, downstream]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
   { const i = workflows.indexOf(gw); if (i >= 0) workflows.splice(i, 1); }
-}
-
-// ── T138: the gate inspection endpoints report `identical` so the detail page can
-// collapse the duplicated producer/consumer panels when both sides declare the
-// SAME shape (the normal one-factory-per-key case). Asymmetric is covered above. ──
-{
-  const sharedShape: ArtifactShape = {
-    summary: 'the shared artifact', format: 'json file',
-    expectations: [{ label: 'non-empty', detail: 'at least one entry' }],
-  };
-  const idProd: JobDefinition = {
-    name: 'id-prod', run: async () => {},
-    produces: [{ key: 'shared', description: 'emits shared', shape: sharedShape, check: () => ({ ok: true, sample: '3 entries' }) }],
-  };
-  const idCons: JobDefinition = {
-    name: 'id-cons', run: async () => {},
-    // A SEPARATE but DEEP-EQUAL shape value on the consume side — the one-factory
-    // case after JSON round-trips; `identical` is a structural compare, not ===.
-    consumes: [{ key: 'shared', description: 'needs shared', shape: { summary: 'the shared artifact', format: 'json file', expectations: [{ label: 'non-empty', detail: 'at least one entry' }] }, check: () => ({ ok: true }) }],
-  };
-  for (const d of [idProd, idCons]) { syncJob(d); jobs.push(d); }
-  const idWf: WorkflowDefinition = { name: 'identical-wf', jobs: [{ job: 'id-prod' }, { job: 'id-cons', dependsOn: ['id-prod'] }] };
-  syncWorkflow(idWf); workflows.push(idWf);
-  const idRunId = createWorkflowRun('identical-wf', 'manual');
-
-  await test('definition gate: identical:true when both sides declare the same shape (collapsible)', async () => {
-    await withServer({}, async (base) => {
-      const res = await fetch(`${base}/api/workflows/identical-wf/gates/id-prod/shared`);
-      assert.equal(res.status, 200);
-      const body = (await res.json()) as { identical: boolean; produced: { shape: ArtifactShape | null }; consumed: { shape: ArtifactShape | null } };
-      assert.equal(body.identical, true);
-      assert.ok(body.produced.shape && body.consumed.shape, 'both sides still returned (page chooses how to render)');
-    });
-  });
-
-  await test('run-scoped gate: identical:true with both sides still present (page collapses)', async () => {
-    await withServer({}, async (base) => {
-      const res = await fetch(`${base}/api/workflow-runs/${idRunId}/gates/id-prod/shared`);
-      assert.equal(res.status, 200);
-      const body = (await res.json()) as { identical: boolean; produced: unknown; consumed: unknown };
-      assert.equal(body.identical, true);
-      assert.ok(body.produced && body.consumed, 'both sides still returned even when collapsible');
-    });
-  });
-
-  for (const d of [idProd, idCons]) { const i = jobs.indexOf(d); if (i >= 0) jobs.splice(i, 1); }
-  { const i = workflows.indexOf(idWf); if (i >= 0) workflows.splice(i, 1); }
 }
 
 // ── T110: workflow-run output preview / path-safety ──
@@ -1198,47 +1171,8 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
   });
 }
 
-// ── T384: overall=true honors a workflow's outputJob override (mirrors T348's
-// stocks-sync-style pattern: the true DAG terminal stage records nothing, an
-// earlier outputJob-named stage carries the real ledger rows). ──
+// ── The Overall tab of a run recorded with no ports (the legacy mapping). ──
 {
-  syncJob({ name: 't384-first', run: async () => {} });
-  syncJob({ name: 't384-last', run: async () => {} });
-  jobs.push({ name: 't384-first', run: async () => {} }, { name: 't384-last', run: async () => {} });
-  const t384OverrideWf = {
-    name: 't384-override-wf',
-    jobs: [{ job: 't384-first' }, { job: 't384-last', dependsOn: ['t384-first'] }],
-    outputJob: 't384-first',
-  };
-  syncWorkflow(t384OverrideWf);
-  workflows.push(t384OverrideWf);
-
-  const t384Run = createWorkflowRun('t384-override-wf', 'manual');
-  markWorkItem('t384-first', 'pos-1', 'success', { workflowRunId: t384Run });
-  // t384-last (the raw DAG last wave / true terminal) never records anything —
-  // mirrors stocks-notify.
-
-  await test('GET /api/workflow-runs/:id/stage-io?overall=true — outputs reflect the outputJob override, not the empty raw last wave', async () => {
-    await withServer({}, async (base) => {
-      const body = (await (await fetch(`${base}/api/workflow-runs/${t384Run}/stage-io?overall=true`)).json()) as {
-        inputs: unknown[];
-        outputs: { jobName: string; itemKey: string }[];
-        predecessorJobs: string[];
-        outputJobs: string[];
-        job: string;
-      };
-      assert.equal(body.job, '__overall__');
-      assert.deepEqual(body.outputJobs, ['t384-first'], 'outputJob override, not the raw terminal wave [t384-last]');
-      // T448: the root wave IS the outputJob override here, so there is no genuine
-      // distinct predecessor to show — inputs must be filtered out, not duplicated.
-      assert.deepEqual(body.predecessorJobs, [], 'root wave equals outputJobs -> no distinct predecessor');
-      assert.equal(body.inputs.length, 0, 'no duplicated input row when input job == output job');
-      assert.equal(body.outputs.length, 1);
-      assert.equal(body.outputs[0].jobName, 't384-first');
-      assert.equal(body.outputs[0].itemKey, 'pos-1');
-    });
-  });
-
   // T448: a genuinely single-wave workflow (every job independent, no dependsOn
   // edges — e.g. plex-space-saver/claude-warmer/listening-digest in production)
   // must show an EMPTY inputs list on the Overall tab, not a duplicate of outputs.
@@ -1269,79 +1203,6 @@ await test('isWithin: nesting yes; siblings / traversal / absolute escapes no', 
     });
   });
 
-  // Cleanup registry stubs.
-  for (const n of ['t384-first', 't384-last']) {
-    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
-  }
-  { const i = workflows.findIndex((x) => x.name === 't384-override-wf'); if (i >= 0) workflows.splice(i, 1); }
-}
-
-// ── T603: the movie-recs/tv-recs notify-stage ledger job-name mismatch. A DAG
-// member (e.g. movie-recs-notify) records its "have I notified this?" ledger
-// under a DECOUPLED job_name ('movie-recs') that is NOT itself a DAG member —
-// outputJob now governs the per-job Stage I/O lookup too, not just the
-// workflow-definition-level Output section, with no requirement that outputJob
-// name an actual member job. ──
-{
-  syncJob({ name: 't603-snapshot', run: async () => {} });
-  syncJob({ name: 't603-notify', run: async () => {} });
-  jobs.push({ name: 't603-snapshot', run: async () => {} }, { name: 't603-notify', run: async () => {} });
-  const t603Wf = {
-    name: 't603-recs-wf',
-    jobs: [{ job: 't603-snapshot' }, { job: 't603-notify', dependsOn: ['t603-snapshot'] }],
-    // The decoupled ledger keyspace 't603-recs' is NOT a DAG member of this
-    // workflow at all — mirrors movie-recs-notify marking work_items as 'movie-recs'.
-    outputJob: 't603-recs',
-  };
-  syncWorkflow(t603Wf);
-  workflows.push(t603Wf);
-
-  const t603Run = createWorkflowRun('t603-recs-wf', 'manual');
-  markWorkItem('t603-snapshot', 'lib-scan', 'success', { workflowRunId: t603Run });
-  // t603-notify (the real DAG member) never records anything under its own
-  // name — the notify stage marks the decoupled 't603-recs' keyspace instead.
-  markWorkItem('t603-recs', 'tmdb-42', 'success', { workflowRunId: t603Run, detail: { title: 'A Movie' } });
-
-  await test('GET /api/workflow-runs/:id/stage-io?job=<notify-member> — outputJob remaps the per-job lookup to the decoupled ledger job_name', async () => {
-    await withServer({}, async (base) => {
-      const body = (await (
-        await fetch(`${base}/api/workflow-runs/${t603Run}/stage-io?job=t603-notify`)
-      ).json()) as {
-        inputs: { jobName: string; itemKey: string }[];
-        outputs: { jobName: string; itemKey: string; fields: { label: string; value: string }[] }[];
-        predecessorJobs: string[];
-        job: string;
-      };
-      assert.equal(body.job, 't603-notify', 'job in the response is still the requested DAG member name');
-      assert.deepEqual(body.predecessorJobs, ['t603-snapshot']);
-      assert.equal(body.inputs.length, 1);
-      assert.equal(body.inputs[0].jobName, 't603-snapshot');
-      // The real assertion: outputs come from the outputJob-named ledger ('t603-recs'),
-      // NOT an empty result from querying the literal member name 't603-notify'.
-      assert.equal(body.outputs.length, 1, 'outputs must not be empty — this is the T603 bug');
-      assert.equal(body.outputs[0].jobName, 't603-recs');
-      assert.equal(body.outputs[0].itemKey, 'tmdb-42');
-      // Rows carry explicit display fields now, not the raw ledger detail.
-      assert.deepEqual(body.outputs[0].fields, [{ label: 'Title', value: 'A Movie' }]);
-    });
-  });
-
-  await test('GET /api/workflow-runs/:id/stage-io?job=<non-terminal member> — outputJob does NOT apply outside the terminal wave', async () => {
-    await withServer({}, async (base) => {
-      const body = (await (
-        await fetch(`${base}/api/workflow-runs/${t603Run}/stage-io?job=t603-snapshot`)
-      ).json()) as { outputs: { jobName: string; itemKey: string }[]; job: string };
-      assert.equal(body.job, 't603-snapshot');
-      assert.equal(body.outputs.length, 1);
-      assert.equal(body.outputs[0].jobName, 't603-snapshot', 'non-terminal member is unaffected by outputJob');
-    });
-  });
-
-  // Cleanup registry stubs.
-  for (const n of ['t603-snapshot', 't603-notify']) {
-    const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
-  }
-  { const i = workflows.findIndex((x) => x.name === 't603-recs-wf'); if (i >= 0) workflows.splice(i, 1); }
 }
 
 // ── movie-gaps endpoints (T145): GET overlays ignored/notified; POST ignores ──
@@ -2029,24 +1890,18 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
   }
 }
 
-// ── T348: outputJob override routes the Output section to a non-terminal stage ──
+// ── output-items for a workflow with no ports: the ledger of its final stage ──
 {
   syncJob({ name: 't348-first', run: async () => {} });
   syncJob({ name: 't348-last', run: async () => {} });
   jobs.push({ name: 't348-first', run: async () => {} }, { name: 't348-last', run: async () => {} });
   const t348DefaultWf = { name: 't348-default-wf', jobs: [{ job: 't348-first' }, { job: 't348-last', dependsOn: ['t348-first'] }] };
-  const t348OverrideWf = {
-    name: 't348-override-wf',
-    jobs: [{ job: 't348-first' }, { job: 't348-last', dependsOn: ['t348-first'] }],
-    outputJob: 't348-first',
-  };
   syncWorkflow(t348DefaultWf);
-  syncWorkflow(t348OverrideWf);
-  workflows.push(t348DefaultWf, t348OverrideWf);
+  workflows.push(t348DefaultWf);
   markWorkItem('t348-first', 'pos-1', 'success');
-  // The terminal stage never records anything (mirrors stocks-notify).
+  // The terminal stage never records anything.
 
-  await test('output-items: no outputJob override — reads the terminal wave (empty here) as before', async () => {
+  await test('output-items: a workflow with no ports reads the terminal wave (empty here)', async () => {
     await withServer({}, async (base) => {
       const res = await fetch(`${base}/api/workflows/t348-default-wf/output-items`);
       assert.equal(res.status, 200);
@@ -2056,23 +1911,11 @@ await test('GET /api/services/:name/consumers returns recorded consumers grouped
     });
   });
 
-  await test('output-items: outputJob override reads the named member job instead of the terminal wave', async () => {
-    await withServer({}, async (base) => {
-      const res = await fetch(`${base}/api/workflows/t348-override-wf/output-items`);
-      assert.equal(res.status, 200);
-      const body = (await res.json()) as { items: Array<{ jobName: string; itemKey: string }>; terminalJobs: string[] };
-      assert.deepEqual(body.terminalJobs, ['t348-first']);
-      assert.equal(body.items.length, 1);
-      assert.equal(body.items[0]?.jobName, 't348-first');
-      assert.equal(body.items[0]?.itemKey, 'pos-1');
-    });
-  });
-
   // Cleanup registry stubs.
   for (const n of ['t348-first', 't348-last']) {
     const i = jobs.findIndex((x) => x.name === n); if (i >= 0) jobs.splice(i, 1);
   }
-  for (const n of ['t348-default-wf', 't348-override-wf']) {
+  for (const n of ['t348-default-wf']) {
     const i = workflows.findIndex((x) => x.name === n); if (i >= 0) workflows.splice(i, 1);
   }
 }

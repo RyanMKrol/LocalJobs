@@ -1,15 +1,12 @@
-// Whole-repo invariant: every adjacent job pair (DAG edge) in every workflow must
-// have a matching produces/consumes validation gate between them (see root
-// CLAUDE.md's "Validation gates between workflow stages" section). This is the
-// mechanical enforcement of that convention — a future workflow shipped without
-// gates on some edge must fail `npm test`, not just leave a dashboard gap someone
-// happens to notice. Complements dag.test.ts (pure DAG mechanics) and
-// contracts.test.ts (individual real contracts) with the cross-cutting check.
+// Whole-repo invariant: every workflow is on ports, and every DAG edge in it
+// carries data (it feeds a declared input of the downstream stage with an
+// artifact the upstream stage really outputs). The registry enforces the same
+// thing when it loads; this asserts it in the suite with every problem listed,
+// plus a pair of synthetic cases that prove the checker itself notices a hole.
 import assert from 'node:assert/strict';
-import { buildDag, deriveGates } from '../engine/dag.js';
-import type { Dag } from '../engine/dag.js';
 import { jobs, workflows } from '../workflows/registry.js';
-import { validateWorkflowContracts, workflowMode } from '../engine/ports.js';
+import { acceptAny, defineStage, jsonArtifact, validateWorkflowContracts, workflowMode } from '../engine/ports.js';
+import type { JobDefinition } from '../engine/types.js';
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -23,36 +20,12 @@ function test(name: string, fn: () => void) {
   }
 }
 
-/**
- * Every DAG edge (producer → consumer) that has NO matching gate in
- * `deriveGates(dag, produces, consumes)`. Shared by the real-registry walk and
- * the synthetic pass/fail unit tests below so both exercise identical logic.
- */
-function missingGateEdges(
-  dag: Dag,
-  produces: Map<string, string[]>,
-  consumes: Map<string, string[]>,
-): { producer: string; consumer: string }[] {
-  const gateKeys = new Set(deriveGates(dag, produces, consumes).map((g) => `${g.producer}->${g.consumer}`));
-  const missing: { producer: string; consumer: string }[] = [];
-  for (const consumer of dag.nodes) {
-    for (const producer of dag.dependencies.get(consumer)!) {
-      if (!gateKeys.has(`${producer}->${consumer}`)) {
-        missing.push({ producer, consumer });
-      }
-    }
-  }
-  return missing;
-}
-
 // ─────────────────────────── real-registry walk ───────────────────────────
 
-test('every workflow in the registry has a contract on every DAG edge (ports binding, or a legacy gate)', () => {
-  // The SAME check the registry runs at load (`validateWorkflowContracts`): for a
-  // ports workflow every edge must carry a declared input the upstream stage
-  // really outputs; for a legacy one every edge needs a shared produces/consumes
-  // key. Asserted here too so a contract hole fails the suite with every problem
-  // listed, not just the first.
+test('every workflow in the registry has a contract on every DAG edge', () => {
+  // The SAME check the registry runs at load (`validateWorkflowContracts`): every
+  // edge must carry a declared input the upstream stage really outputs. Asserted
+  // here too so a contract hole fails the suite with every problem listed.
   const jobsByName = new Map(jobs.map((j) => [j.name, j]));
   const problems: string[] = [];
   for (const workflow of workflows) {
@@ -73,26 +46,24 @@ test('every workflow in the registry is on ports: every stage declares its input
   assert.ok(workflows.length >= 22, `expected the 22 shipped workflows, found ${workflows.length}`);
 });
 
-// ─────────────────────────── synthetic trivial-minimum-bar test ───────────────────────────
+// ─────────────────────────── the checker itself ───────────────────────────
 
-test('a bare { ok: true } stub gate satisfies coverage (trivial minimum bar)', () => {
-  const dag = buildDag([{ job: 'producer' }, { job: 'consumer', dependsOn: ['producer'] }]);
-  const produces = new Map([['producer', ['x']], ['consumer', []]]);
-  const consumes = new Map([['producer', []], ['consumer', ['x']]]);
+const run = async () => {};
+const thing = jsonArtifact<{ n: number }>({ key: 'gc-thing', description: 'A thing.', check: acceptAny });
+const producer = defineStage({ name: 'gc-producer', outputs: { thing: { artifact: thing, location: '/tmp/gc-thing.json' } }, run });
+const lookup = (...defs: JobDefinition[]) => (n: string) => defs.find((d) => d.name === n);
+const edge = { name: 'gc-wf', jobs: [{ job: 'gc-producer' }, { job: 'gc-consumer', dependsOn: ['gc-producer'] }] };
 
-  const missing = missingGateEdges(dag, produces, consumes);
-  assert.deepEqual(missing, []);
+test('an edge that feeds a declared input passes, with the least an artifact can declare (a check that accepts anything)', () => {
+  const consumer = defineStage({ name: 'gc-consumer', inputs: { thing: { artifact: thing } }, run });
+  assert.deepEqual(validateWorkflowContracts(edge, lookup(producer, consumer)), []);
 });
 
-// ─────────────────────────── synthetic negative-case test ───────────────────────────
-
-test('a missing gate is genuinely detected (regression guard for the checker itself)', () => {
-  const dag = buildDag([{ job: 'producer' }, { job: 'consumer', dependsOn: ['producer'] }]);
-  const produces = new Map([['producer', []], ['consumer', []]]);
-  const consumes = new Map([['producer', []], ['consumer', []]]);
-
-  const missing = missingGateEdges(dag, produces, consumes);
-  assert.deepEqual(missing, [{ producer: 'producer', consumer: 'consumer' }]);
+test('an edge that carries no data is genuinely detected (regression guard for the checker itself)', () => {
+  const consumer = defineStage({ name: 'gc-consumer', run });
+  const problems = validateWorkflowContracts(edge, lookup(producer, consumer));
+  assert.equal(problems.length, 1, problems.join('\n'));
+  assert.match(problems[0], /gc-producer/);
 });
 
 console.log(`\n${passed} gate-coverage test(s) passed`);

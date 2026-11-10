@@ -100,23 +100,20 @@ test('inline and ledger outputs need no location', () => {
   assert.deepEqual(bindWorkflowPorts(wf([{ job: 'p' }]), lookup(p)).errors, []);
 });
 
-test('a workflow is migrated as a whole: mixing ports and legacy stages is an error', () => {
+test('a workflow is all ports or none: mixing in a stage with no ports is an error', () => {
   const p = defineStage({ name: 'p', outputs: { o: { artifact: A, location: '/p' } }, run });
-  const legacy: JobDefinition = { name: 'old', consumes: [{ key: 'a', check: () => ({ ok: true }) }], run };
+  const plain: JobDefinition = { name: 'old', run };
   const def = wf([{ job: 'p' }, { job: 'old', dependsOn: ['p'] }]);
-  assert.equal(workflowMode(def, lookup(p, legacy)), 'ports');
-  assert.match(validateWorkflowContracts(def, lookup(p, legacy))[0], /mixes ports stages with legacy/);
+  assert.equal(workflowMode(def, lookup(p, plain)), 'ports');
+  assert.match(validateWorkflowContracts(def, lookup(p, plain))[0], /mixes ports stages with stages that declare no ports \(old\)/);
 });
 
-test('a legacy workflow is validated by its own rule: every edge needs a shared produces/consumes key', () => {
-  const ok = () => ({ ok: true });
-  const p: JobDefinition = { name: 'p', produces: [{ key: 'k', check: ok }], run };
-  const good: JobDefinition = { name: 'c', consumes: [{ key: 'k', check: ok }], run };
-  const bad: JobDefinition = { name: 'c', consumes: [{ key: 'other', check: ok }], run };
+test('a workflow with no ports at all has nothing to validate here (the registry refuses it for that alone)', () => {
+  const p: JobDefinition = { name: 'p', run };
+  const c: JobDefinition = { name: 'c', run };
   const def = wf([{ job: 'p' }, { job: 'c', dependsOn: ['p'] }]);
-  assert.equal(workflowMode(def, lookup(p, good)), 'legacy');
-  assert.deepEqual(validateWorkflowContracts(def, lookup(p, good)), []);
-  assert.match(validateWorkflowContracts(def, lookup(p, bad))[0], /edge p → c has no validation gate/);
+  assert.equal(workflowMode(def, lookup(p, c)), 'legacy');
+  assert.deepEqual(validateWorkflowContracts(def, lookup(p, c)), []);
 });
 
 test('defineStage marks a job as a ports stage even with no ports, and refuses a plain context', async () => {

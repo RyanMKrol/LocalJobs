@@ -81,7 +81,7 @@ const dir = mkdtempSync(join(tmpdir(), 'lj-engine-'));
 const fakePath = join(dir, 'fake-runner.mjs');
 writeFileSync(fakePath, FAKE);
 
-const orig = { script: config.runJobScript, topic: config.ntfyTopic, gateTimeout: config.gateTimeoutMs, backoff: config.retryBackoffMs };
+const orig = { script: config.runJobScript, topic: config.ntfyTopic, backoff: config.retryBackoffMs };
 config.runJobScript = fakePath;
 config.ntfyTopic = '';
 
@@ -218,87 +218,6 @@ try {
     assert.ok(notStarted.every((r) => r.status === 'cancelled'));
     assert.match(logText(wrid), /pw-join not started — the workflow run was cancelled/);
     assert.equal(runs.length, 5, 'every stage of the workflow has a row');
-  });
-
-  await test('gate: a check that never finishes fails the gate after the time limit instead of hanging the run', async () => {
-    job({ name: 'gh-prod', produces: [{ key: 'k', check: () => ({ ok: true }) }], run: async () => {} });
-    job({ name: 'gh-cons', consumes: [{ key: 'k', check: () => new Promise(() => {}) }], run: async () => {} });
-    const def: WorkflowDefinition = { name: 'eh-gate-hang', jobs: [{ job: 'gh-prod' }, { job: 'gh-cons', dependsOn: ['gh-prod'] }] };
-    syncWorkflow(def);
-    config.gateTimeoutMs = 150;
-    const t0 = Date.now();
-    const { workflowRunId } = await runWorkflow(def, 'manual');
-    config.gateTimeoutMs = orig.gateTimeout;
-    assert.ok(Date.now() - t0 < 5000, 'the run did not hang');
-    const cons = byJob(listRunsForWorkflowRun(workflowRunId!), 'gh-cons')[0];
-    assert.equal(cons?.status, 'failed');
-    assert.equal(cons?.outcome_reason, 'gate-failed');
-    assert.match(cons?.error ?? '', /did not finish within/);
-    assert.ok((cons?.gate_ms ?? 0) >= 100, 'the time spent in the gate is recorded');
-  });
-
-  await test('gate: a check that rejects asynchronously is a violation', async () => {
-    job({ name: 'gr-prod', produces: [{ key: 'k', check: () => ({ ok: true }) }], run: async () => {} });
-    job({ name: 'gr-cons', consumes: [{ key: 'k', check: async () => { throw new Error('async drift'); } }], run: async () => {} });
-    const def: WorkflowDefinition = { name: 'eh-gate-reject', jobs: [{ job: 'gr-prod' }, { job: 'gr-cons', dependsOn: ['gr-prod'] }] };
-    syncWorkflow(def);
-    const { workflowRunId } = await runWorkflow(def, 'manual');
-    const cons = byJob(listRunsForWorkflowRun(workflowRunId!), 'gr-cons')[0];
-    assert.equal(cons?.status, 'failed');
-    assert.match(cons?.error ?? '', /input check threw — async drift/);
-  });
-
-  await test('gate: cancelling while a check is hung ends the run promptly and records the stage as not started', async () => {
-    job({ name: 'gc-prod', produces: [{ key: 'k', check: () => ({ ok: true }) }], run: async () => {} });
-    job({ name: 'gc-cons', consumes: [{ key: 'k', check: () => new Promise(() => {}) }], run: async () => {} });
-    const def: WorkflowDefinition = { name: 'eh-gate-cancel', jobs: [{ job: 'gc-prod' }, { job: 'gc-cons', dependsOn: ['gc-prod'] }] };
-    syncWorkflow(def);
-    const p = runWorkflow(def, 'manual');
-    const wrid = await waitActive('eh-gate-cancel');
-    await waitFor('the gate check to start', () => /checking gate \[gc-prod → gc-cons\]/.test(logText(wrid)));
-    const t0 = Date.now();
-    cancelWorkflowRun(wrid);
-    await p;
-    assert.ok(Date.now() - t0 < 3000, 'cancel did not wait for the gate time limit');
-    assert.equal(getWorkflowRun(wrid)?.status, 'cancelled');
-    const cons = byJob(listRunsForWorkflowRun(wrid), 'gc-cons')[0];
-    assert.equal(cons?.status, 'cancelled');
-    assert.equal(cons?.outcome_reason, 'not-started-cancelled');
-  });
-
-  await test('gates on a fan-in: EVERY inbound gate is evaluated and recorded, not just the first failure', async () => {
-    const bad = (why: string) => () => ({ ok: false, violations: [why] });
-    job({ name: 'ga-p1', produces: [{ key: 'one', check: bad('one is empty') }], run: async () => {} });
-    job({ name: 'ga-p2', produces: [{ key: 'two', check: () => ({ ok: true, sample: '12 rows' }) }], run: async () => {} });
-    job({ name: 'ga-p3', produces: [{ key: 'three', check: bad('three is stale') }], run: async () => {} });
-    job({
-      name: 'ga-cons',
-      consumes: [
-        { key: 'one', check: () => ({ ok: true }) },
-        { key: 'two', check: () => ({ ok: true }) },
-        { key: 'three', check: () => ({ ok: true }) },
-      ],
-      run: async () => {},
-    });
-    const def: WorkflowDefinition = {
-      name: 'eh-gate-all',
-      jobs: [{ job: 'ga-p1' }, { job: 'ga-p2' }, { job: 'ga-p3' }, { job: 'ga-cons', dependsOn: ['ga-p1', 'ga-p2', 'ga-p3'] }],
-    };
-    syncWorkflow(def);
-    const { workflowRunId } = await runWorkflow(def, 'manual');
-    const cons = byJob(listRunsForWorkflowRun(workflowRunId!), 'ga-cons')[0];
-    assert.equal(cons?.status, 'failed');
-    assert.match(cons?.error ?? '', /^Gate violation \[ga-p1 → ga-cons\] artifact "one": one is empty/, 'first failure leads (classifyGates matches this prefix)');
-    assert.match(cons?.error ?? '', /artifact "three": three is stale/, 'the second failure is reported too');
-
-    const inputs = runInputsForStage(workflowRunId!, 'ga-cons');
-    assert.equal(inputs.length, 3, 'one recorded verdict per inbound gate');
-    const verdict = Object.fromEntries(inputs.map((i) => [i.producer_job, i.ok]));
-    assert.deepEqual(verdict, { 'ga-p1': 0, 'ga-p2': 1, 'ga-p3': 0 });
-    const two = inputs.find((i) => i.producer_job === 'ga-p2')!;
-    assert.match(two.check_json ?? '', /12 rows/, "the check's own detail is recorded, not just pass/fail");
-    assert.equal(inputs.find((i) => i.producer_job === 'ga-p1')!.reason, 'one is empty');
-    assert.equal(runInputsForWorkflowRun(workflowRunId!).length, 3);
   });
 
   await test('retries inside a workflow: one row per attempt, the stage succeeds on the retry, run identity reaches the child', async () => {
@@ -445,7 +364,6 @@ try {
 } finally {
   config.runJobScript = orig.script;
   config.ntfyTopic = orig.topic;
-  config.gateTimeoutMs = orig.gateTimeout;
   config.retryBackoffMs = orig.backoff;
   for (const d of pushed) {
     const i = jobs.indexOf(d);

@@ -21,15 +21,17 @@ short:
 
 ## ✅ Every edge carries data, and every stage declares its outputs (non-negotiable)
 
-This replaced the old "every adjacent job pair needs a `produces`/`consumes` gate" rule. It
-is enforced when the registry loads (the daemon refuses to start) and again by
-`src/core/gate-coverage.test.ts`:
+This replaced the old rule that every adjacent job pair needed a hand-written gate contract
+(that mechanism has been deleted). It is enforced when the registry loads (the daemon
+refuses to start) and again by `src/core/gate-coverage.test.ts`:
 
 - Every workflow is on ports. A stage with no declared `outputs` is rejected.
 - Every `dependsOn` edge must feed one of the consuming stage's inputs: an edge that carries
   no data is an error. If a stage reads something from further back, it needs that edge too.
-- The check an artifact type declares runs when the producing stage commits its output and
-  again before the consuming stage starts. That is the gate. Give an artifact a real check
+- The check an artifact type declares runs when the producing stage commits its output: a
+  value that fails is never written. Before the consuming stage starts, the engine confirms
+  that what it is about to hand over is what the producer committed in this run, and that
+  it passed that check. That is the gate. Give an artifact a real check
   when there is something to get wrong (see `plex-rename/contracts.ts`, whose plan and
   verdict checks sit in front of the stage that moves files); a "has the expected shape"
   check is the minimum.
