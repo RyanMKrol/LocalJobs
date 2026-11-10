@@ -1,7 +1,7 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import type { JobContext } from '../../../core/types.js';
+import { mkdirSync } from 'node:fs';
+import { writeJsonFile, type JobContext } from '../../../engine/index.js';
 import { weekKey } from '../../../core/dates.js';
-import { listStaleOverrides, markWorkItem } from '../../../db/store.js';
+import { listStaleOverrides } from '../../../db/store.js';
 import { overridesAuditConfig } from '../config.js';
 import type { StaleOverrideReportRow, StaleOverridesReport } from '../types.js';
 
@@ -32,11 +32,10 @@ export interface ScanOpts {
  * writes to IDEAS.jsonl, and never patches any manifest file itself — folding an
  * override into code stays a fully manual step the owner does by hand.
  *
- * Idempotent per ISO calendar week via the work_items ledger (mirrors
- * plex-space-saver): a manual re-run the same week regenerates that week's
- * report rather than duplicating it. Runs weekly.
+ * Re-scans fresh every run and rewrites the one report file, which is the stage's
+ * declared output: there is nothing to skip and no ledger. Runs weekly.
  */
-export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<void> {
+export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<StaleOverridesReport> {
   mkdirSync(overridesAuditConfig.outDir, { recursive: true });
   const now = opts.now ?? new Date();
   const minAgeMs = opts.minAgeMs ?? overridesAuditConfig.minAgeMs;
@@ -71,20 +70,9 @@ export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<voi
     items,
   };
 
-  writeFileSync(overridesAuditConfig.reportOut, JSON.stringify(report, null, 2));
+  writeJsonFile(overridesAuditConfig.reportOut, report);
   ctx.log(`Wrote ${overridesAuditConfig.reportOut}`);
 
-  // Idempotent per ISO week (report-only; a re-run the same week regenerates it).
-  // Declared output form (T262/T282): JSON, served from detail.path via
-  // safeOutputFile through the unified Output section.
-  const key = weekKey(now);
-  markWorkItem(JOB_NAME, key, 'success', {
-    detail: {
-      name: `Stale overrides report — ${key}`,
-      format: 'json',
-      path: overridesAuditConfig.reportOut,
-    },
-  });
-
   ctx.progress(100, `${items.length} stale override(s) reported`);
+  return report;
 }

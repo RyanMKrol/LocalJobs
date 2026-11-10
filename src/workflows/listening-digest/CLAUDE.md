@@ -19,4 +19,9 @@ calendar month via the `work_items` ledger: the 1-month digest is keyed `YYYY-MM
 `YYYY-MM-3month`, both under the same `lastfm-digest` job name. A manual re-run the same month
 regenerates BOTH files in place rather than duplicating either.
 
+It is a ports stage with one declared output, `digests` (`listening-digests`, the `data/out/`
+folder, artifact type in `contracts.ts`): every run must leave that folder written, and its check
+wants at least one digest and no empty one. The two ledger rows a run writes are the items it
+produced (each with the path of its markdown file), which is also what `vault-sync` mirrors.
+
 Service: `src/services/lastfm.service.ts`. Credentials: `LAST_FM_API_KEY`, `LAST_FM_USERNAME`.

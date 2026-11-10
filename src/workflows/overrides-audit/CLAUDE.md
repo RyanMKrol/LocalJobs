@@ -33,13 +33,13 @@ step the owner does by hand (there is currently no "reset to code default" actio
 the dashboard — see the comment in `src/db/index.ts`'s T475 migration for where one would
 clear `_overridden`/`_overridden_at` together if that's ever added).
 
-## Idempotency + output form
+## Output
 
-Re-scans fresh every run (an audit, not a build); idempotent per ISO calendar week via the
-`work_items` ledger (`weekKey`, mirrors `plex-space-saver`/`stock-digest`) — a manual re-run
-the same week regenerates that week's report instead of duplicating it. The ledger row
-records `detail.format: 'json'` + `detail.path` pointing at the report, served through the
-unified Output section's `safeOutputFile` guard (T262/T282) — no dedicated dashboard viewer
-needed, it renders via the generic JSON/raw fallback (`OutputRenderer.tsx`). Runs weekly
+A ports stage with one declared output: `report` (`stale-overrides-report`, the JSON file
+`data/out/stale-overrides.json`, artifact type in `contracts.ts`). It re-scans fresh every run
+and rewrites the file, so a run that returned without writing it fails. There is no ledger:
+the weekly row that existed only so the dashboard's Output section had something to list is
+gone, and that section now shows the report as an artifact card (latest run, with a "Browse
+items" list of the overrides). Runs weekly
 (Sundays 07:00, one hour after `plex-space-saver`'s Sunday 06:00 slot to avoid a scheduling
 collision).

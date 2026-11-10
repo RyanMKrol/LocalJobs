@@ -1,7 +1,26 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { runCheck } from './check.js';
+import { defineStage, fromChecks, inlineArtifact } from '../../../engine/index.js';
+import { runCheck, type MountStatus } from './check.js';
 
-const job: JobDefinition = {
+/** The state of every configured share after a run. Small, so it is kept in the run record. */
+export const mountStatus = inlineArtifact<MountStatus>({
+  key: 'mount-status',
+  description: 'Every configured network share after this run: already mounted, remounted, or failed.',
+  check: (v) => fromChecks([{ label: 'lists the shares it checked', ok: Array.isArray(v?.shares), actual: Array.isArray(v?.shares) ? `${v.shares.length} share(s)` : 'no list' }]),
+  summary: (v) => `${v.healthy} healthy, ${v.remounted} remounted, ${v.failed} failed`,
+  items: (v) => v.shares.map((s) => ({
+    id: s.mountPoint,
+    title: s.name,
+    status: s.action === 'failed' ? 'failed' : 'success',
+    fields: [
+      { label: 'Mount point', value: s.mountPoint },
+      { label: 'Action', value: s.action },
+      { label: 'Was', value: s.stateBefore },
+      ...(s.error ? [{ label: 'Error', value: s.error }] : []),
+    ],
+  })),
+});
+
+export default defineStage({
   name: 'mount-keeper-check',
   description:
     'Keeps the configured SMB network shares mounted on this Mac. macOS mounts network shares lazily ' +
@@ -13,14 +32,14 @@ const job: JobDefinition = {
     'with a plain rmdir (it cannot delete files, and without this macOS would silently divert the mount ' +
     'to "<name> - 1", breaking every configured path), then the share is mounted via osascript\'s ' +
     '"mount volume" — the same mechanism Finder uses, authenticating from the login Keychain, so no ' +
-    'password is ever stored or read by this repo — and the mount point is re-verified healthy. Every ' +
-    'share\'s outcome is recorded as a per-share ledger snapshot (re-marked each run), and a share that ' +
-    'cannot be brought up fails the run so the workflow\'s aggregate notification fires.',
+    'password is ever stored or read by this repo — and the mount point is re-verified healthy. The ' +
+    'state of every share is the stage\'s output, committed even when a share could not be brought up, ' +
+    'in which case the run then fails so the workflow\'s aggregate notification fires.',
   timeoutMs: 300_000,
   maxRetries: 2,
+  outputs: { status: { artifact: mountStatus } },
   async run(ctx) {
-    await runCheck(ctx);
+    // Committed from inside the check, before it throws for a failed share.
+    await runCheck(ctx, { report: (status) => ctx.output('status').write(status) });
   },
-};
-
-export default job;
+});

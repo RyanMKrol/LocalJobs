@@ -21,16 +21,15 @@ TV section's shows, and its flat episode list (`type=4`), computes a biggest-fir
 `buildMovieRows`/`buildShowRows`/`buildBreakdown` in `lib.ts`, and writes it to
 `data/out/size-breakdown.json`.
 
-**Report only — never flags or suggests deletions.** Re-scans fresh every run (an audit, not a
-build); idempotent per ISO calendar week via the `work_items` ledger (`weekKey`) — a manual re-run the
-same week regenerates that week's breakdown rather than duplicating it. Runs weekly (Sundays 06:00).
+**Report only: never flags or suggests deletions.** Re-scans fresh every run (an audit, not a
+build). Runs weekly (Sundays 06:00).
 
-**Surfaced via the declared-output-form mechanism, not markdown prose** — the ledger row's
-`detail.format: 'size-table'` + `detail.path` point the unified Output section's fetch endpoint at the
-structured JSON breakdown, served through `safeOutputFile`; the dashboard's generic
-`WorkflowOutputSection` renders it via its raw-content fallback with no dedicated viewer needed.
-(`detail.markdown` is also set, to the same path, purely so the output list query's "View" button
-still surfaces — the fetch endpoint itself dispatches on `detail.format`/`detail.path` regardless.)
+**One declared output, no ledger.** The stage is a ports stage whose `breakdown` output
+(`plex-size-breakdown`, artifact type in `contracts.ts`) is the JSON file above, rewritten every
+run; a run that returned without writing it fails. Its declared `format` is `size-table`, so the
+dashboard's Output section and the run page both open it in the size-table viewer
+(`SizeTableOutputBody`). The weekly ledger row that used to exist only to put a "View" button on
+the Output section is gone.
 
 **The old shrink guard (T519) was removed.** The "library shrank" safeguard now lives in the
 `plex-library-guard` workflow (daily, per-file inventory, zero-threshold by default), which

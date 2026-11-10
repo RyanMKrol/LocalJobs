@@ -1,7 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
+import { defineStage } from '../../../engine/index.js';
+import { overridesAuditConfig } from '../config.js';
+import { staleOverridesReport } from '../contracts.js';
 import { runScan } from './scan.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'overrides-audit-scan',
   description: 'Audits every dashboard override currently set across services (rate/quota limits), ' +
     'workflows (schedule, max concurrency, notify-on-completion), and jobs (timeout) — anything with ' +
@@ -9,14 +11,15 @@ const job: JobDefinition = {
     '(set before this feature existed) or have been live and unchanged for 2+ weeks. This is purely a ' +
     'report: it never sends a push notification, never writes to the ideas inbox, and never patches any ' +
     'manifest or service-definition file — folding a stable override into its code default and clearing ' +
-    'the flag stays a fully manual step the owner does by hand. Idempotent per ISO calendar week via the ' +
-    'work_items ledger, so a manual re-run in the same week regenerates that week\'s report instead of ' +
-    'duplicating it.',
+    'the flag stays a fully manual step the owner does by hand. It re-scans from scratch on every run ' +
+    'and rewrites data/out/stale-overrides.json, its one declared output.',
   timeoutMs: 60_000,
   maxRetries: 3,
+  // Rebuilt on every run: a run that returned without writing it fails.
+  outputs: {
+    report: { artifact: staleOverridesReport, location: () => overridesAuditConfig.reportOut },
+  },
   async run(ctx) {
     await runScan(ctx);
   },
-};
-
-export default job;
+});

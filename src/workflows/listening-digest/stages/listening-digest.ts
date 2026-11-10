@@ -1,9 +1,9 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { resolve } from 'path';
 
 import { callService } from '../../../core/services.js';
 import { markWorkItem } from '../../../db/store.js';
-import type { JobContext } from '../../../core/types.js';
+import { writeFileAtomic, type JobContext } from '../../../engine/index.js';
 import { listeningDigestConfig } from '../config.js';
 import type {
   LastFmTopAlbum,
@@ -209,7 +209,7 @@ async function runPass(
 
   mkdirSync(outDir, { recursive: true });
   const mdPath = resolve(outDir, `listening-digest-${key}.md`);
-  writeFileSync(mdPath, markdown, 'utf8');
+  writeFileAtomic(mdPath, markdown);
   ctx.log(`info: wrote digest markdown to ${mdPath}`);
 
   markWorkItem(JOB_NAME, key, 'success', {

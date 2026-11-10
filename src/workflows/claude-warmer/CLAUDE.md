@@ -11,4 +11,6 @@ running out of usage credits mid-session.
 No local quota cap — the upstream Claude plan enforces its own limit; if that limit is hit the CLI
 fails out and the job exits cleanly (soft-fail).
 
-One stage (`claude-warm.job.ts`), `maxRetries: 0`, `timeoutMs: 60_000`.
+One stage (`claude-warm.job.ts`), `maxRetries: 0`, `timeoutMs: 60_000`. It is a ports stage with
+one inline output, `result` (`claude-warm-result`): `{ outcome: warmed | already-active | failed,
+model, detail?, at }`, so each run's page says how the warm attempt went without a ledger row.

@@ -1,5 +1,4 @@
-import type { JobContext } from '../../../core/types.js';
-import { markWorkItem } from '../../../db/store.js';
+import type { JobContext } from '../../../engine/index.js';
 import { mountKeeperConfig } from '../config.js';
 import { mountState, parseShares, realMount, removeStaleMountDir, type MountFn, type MountState, type ShareConfig } from '../lib.js';
 
@@ -12,9 +11,15 @@ export interface CheckOverrides {
   removeStale?: typeof removeStaleMountDir;
   mount?: MountFn;
   now?: () => string;
+  /**
+   * Handed the status of every share once all have been checked, BEFORE the run
+   * fails for a share that could not be brought up: the stage commits it as its
+   * output either way, so a failed run still shows which share was the problem.
+   */
+  report?: (status: MountStatus) => void;
 }
 
-/** The per-share ledger detail — a snapshot re-recorded every run. */
+/** What one share looked like, and what was done about it. */
 export interface CheckDetail {
   name: string;
   url: string;
@@ -25,6 +30,15 @@ export interface CheckDetail {
   at: string;
 }
 
+/** The stage's output: every configured share's state after this run. */
+export interface MountStatus {
+  checkedAt: string;
+  healthy: number;
+  remounted: number;
+  failed: number;
+  shares: CheckDetail[];
+}
+
 /**
  * Check every configured share's mount and remount the missing ones. Per
  * share: healthy (exists + non-empty) → nothing to do; a stale EMPTY dir at
@@ -32,11 +46,11 @@ export interface CheckDetail {
  * deleting files — and without this, macOS would silently mount the share at
  * "<name> - 1", breaking every path that references the real name); then
  * `mount volume` via osascript (Keychain-authenticated, like Finder), and the
- * mount point is re-verified healthy afterwards. Every share's outcome is
- * recorded on the ledger as a snapshot (re-marked each run); any share that
- * cannot be brought up fails the run so the workflow notification fires.
+ * mount point is re-verified healthy afterwards. Every share's outcome goes into
+ * the returned status (the stage's output); any share that cannot be brought up
+ * fails the run so the workflow notification fires.
  */
-export async function runCheck(ctx: JobContext, opts: CheckOverrides = {}): Promise<void> {
+export async function runCheck(ctx: JobContext, opts: CheckOverrides = {}): Promise<MountStatus> {
   const shares = opts.shares ?? parseShares(mountKeeperConfig.sharesRaw);
   const getState = opts.getState ?? mountState;
   const removeStale = opts.removeStale ?? removeStaleMountDir;
@@ -48,19 +62,21 @@ export async function runCheck(ctx: JobContext, opts: CheckOverrides = {}): Prom
   if (shares.length === 0) {
     ctx.log('MOUNT_KEEPER_SHARES is unset/empty — nothing to keep mounted. Set it in .env (see .env.example).', 'warn');
     ctx.progress(100, 'no shares configured');
-    return;
+    const none: MountStatus = { checkedAt: now(), healthy: 0, remounted: 0, failed: 0, shares: [] };
+    opts.report?.(none);
+    return none;
   }
 
   let healthy = 0;
   let remounted = 0;
   let failed = 0;
+  const results: CheckDetail[] = [];
 
   for (let i = 0; i < shares.length; i++) {
     const share = shares[i];
     if (!ctx.rootAllowed(share.mountPoint)) continue;
     const record = (action: CheckDetail['action'], stateBefore: MountState, error?: string) => {
-      const detail: CheckDetail = { name: share.name, url: share.url, mountPoint: share.mountPoint, action, stateBefore, error, at: now() };
-      markWorkItem(JOB_NAME, share.mountPoint, action === 'failed' ? 'failed' : 'success', { detail });
+      results.push({ name: share.name, url: share.url, mountPoint: share.mountPoint, action, stateBefore, error, at: now() });
     };
 
     const before = await getState(share.mountPoint);
@@ -114,7 +130,10 @@ export async function runCheck(ctx: JobContext, opts: CheckOverrides = {}): Prom
   ctx.log(`Healthy: ${healthy} · remounted: ${remounted} · failed: ${failed}`);
   ctx.log('══════════════════════════════════════════════════');
   ctx.progress(100, `${healthy} healthy, ${remounted} remounted, ${failed} failed`);
+  const status: MountStatus = { checkedAt: now(), healthy, remounted, failed, shares: results };
+  opts.report?.(status);
   if (failed > 0) {
     throw new Error(`${failed}/${shares.length} share(s) could not be brought up — see logs above`);
   }
+  return status;
 }

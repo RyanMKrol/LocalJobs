@@ -1,7 +1,10 @@
-import type { JobDefinition } from '../../../core/types.js';
+import { resolve } from 'node:path';
+import { defineStage } from '../../../engine/index.js';
+import { listeningDigestConfig } from '../config.js';
+import { listeningDigests } from '../contracts.js';
 import { runListeningDigest } from './listening-digest.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'lastfm-digest',
   description:
     'Once a month, calls the Last.fm API for the two aggregated endpoints user.getTopAlbums and ' +
@@ -14,15 +17,17 @@ const job: JobDefinition = {
     'heuristic the owner\'s ryankrol.co.uk /listening page already applies). There is deliberately ' +
     'no DynamoDB or other persistence step here: the owner\'s website reads Last.fm\'s own ' +
     'period-based aggregation directly, so this job has nothing further to store beyond the ' +
-    'digest files themselves. Idempotency is keyed by calendar month in the work_items ledger — ' +
-    'the 1-month digest under key YYYY-MM and the 3-month digest under key YYYY-MM-3month — so a ' +
-    'manual re-run within the same month regenerates both digests in place rather than creating ' +
-    'duplicates.',
+    'digest files themselves. The folder of digests is the stage\'s declared output, and each ' +
+    'digest written is one item in the ledger, keyed by calendar month (YYYY-MM, and ' +
+    'YYYY-MM-3month for the trailing one), so a manual re-run within the same month rewrites both ' +
+    'digests in place rather than creating duplicates.',
   timeoutMs: 60_000,
   maxRetries: 3,
+  // The digests accumulate month by month, but every run writes this month's two.
+  outputs: {
+    digests: { artifact: listeningDigests, location: () => resolve(listeningDigestConfig.dataDir, 'out') },
+  },
   async run(ctx) {
     await runListeningDigest(ctx);
   },
-};
-
-export default job;
+});

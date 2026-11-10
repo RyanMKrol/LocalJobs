@@ -1,10 +1,9 @@
-import type { JobContext } from '../../../core/types.js';
+import type { JobContext } from '../../../engine/index.js';
 import { weekKey } from '../../../core/dates.js';
-import { markWorkItem } from '../../../db/store.js';
 import { fetchSectionMetadata } from '../../../core/plex-client.js';
 import { plexSpaceSaverConfig } from '../config.js';
 import { buildBreakdown, buildMovieRows, buildShowRows, ensureDirs, writeJsonFile } from '../lib.js';
-import type { PlexEpisodeMeta, PlexMovieMeta, PlexShowMeta } from '../types.js';
+import type { PlexEpisodeMeta, PlexMovieMeta, PlexShowMeta, SizeBreakdownFile } from '../types.js';
 
 export const JOB_NAME = 'plex-space-saver-scan';
 
@@ -30,14 +29,13 @@ export interface ScanOpts {
  * JSON artifact. RE-SCANS FRESH every run (report-only audit, like
  * missing-tv-seasons) — no per-item skip-if-done.
  *
- * Idempotent per ISO calendar week via the work_items ledger: a manual re-run
- * the same week regenerates that week's breakdown rather than duplicating it
- * (mirrors stock-digest/listening-digest's weekly/monthly cadence). Report only
- * — this NEVER flags or suggests deletions, purely a size breakdown. (The old
- * T519 shrink guard was removed when the plex-library-guard workflow took over
- * the library-shrank signal with a daily, per-file, zero-threshold check.)
+ * The breakdown file is the stage's declared output, rewritten on every run;
+ * there is no ledger. Report only: this NEVER flags or suggests deletions, it is
+ * purely a size breakdown. (The old T519 shrink guard was removed when the
+ * plex-library-guard workflow took over the library-shrank signal with a daily,
+ * per-file, zero-threshold check.)
  */
-export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<void> {
+export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<SizeBreakdownFile> {
   ensureDirs();
   const now = opts.now ?? new Date();
   const { movieSection, tvSection } = plexSpaceSaverConfig;
@@ -70,22 +68,6 @@ export async function runScan(ctx: JobContext, opts: ScanOpts = {}): Promise<voi
   writeJsonFile(plexSpaceSaverConfig.breakdownOut, breakdown);
   ctx.log(`Wrote ${plexSpaceSaverConfig.breakdownOut}`);
 
-  // Idempotent per ISO week (report-only; a re-run the same week regenerates it).
-  // Declared output form (T262/T282): 'size-table', served from detail.path via
-  // safeOutputFile — a structured breakdown, not markdown prose. `detail.markdown`
-  // is ALSO set (to the same path) so the generic Output section's list query
-  // (`workflowTerminalItems`, which only flags `hasMarkdown` truthy — out of this
-  // task's scope to change) still surfaces a "View" button; the fetch endpoint
-  // reads `detail.format`/`detail.path`, so the button opens the real size table.
-  const key = weekKey(now);
-  markWorkItem(JOB_NAME, key, 'success', {
-    detail: {
-      name: `Size breakdown — ${key}`,
-      format: 'size-table',
-      path: plexSpaceSaverConfig.breakdownOut,
-      markdown: plexSpaceSaverConfig.breakdownOut,
-    },
-  });
-
   ctx.progress(100, `${breakdown.items.length} item(s), ${breakdown.totalHuman} total`);
+  return breakdown;
 }

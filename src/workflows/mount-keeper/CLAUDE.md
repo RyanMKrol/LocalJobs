@@ -30,10 +30,12 @@ NAS host/user/share names describe the owner's machine topology, same rule as pl
 4. **Re-verify** the mount point is healthy afterwards; a "successful" mount that leaves the
    expected path unhealthy is flagged as a probably-diverted mount name and fails loud.
 
-Ledger: one row per share, keyed by MOUNT POINT, re-marked (snapshot) every run — `detail:
-{ name, url, mountPoint, action: already-mounted|remounted|failed, stateBefore, error?, at }`.
-A share that cannot be brought up marks `failed` and the run throws (the repo item-loop rule),
-so the aggregate workflow notification fires. NB: while the NAS is genuinely down, the hourly
+Output: a ports stage with one inline output, `status` (`mount-status`): `{ checkedAt, healthy,
+remounted, failed, shares: [{ name, url, mountPoint, action: already-mounted|remounted|failed,
+stateBefore, error?, at }] }`. It is committed even when a share could not be brought up (the
+check hands it over before throwing), so a failed run's page still shows which share was the
+problem; the run then throws, so the aggregate workflow notification fires. There is no ledger:
+the per-share rows this stage used to re-mark every hour existed only to be displayed. NB: while the NAS is genuinely down, the hourly
 schedule means a failure push per hour — if that's ever too noisy during planned NAS downtime,
 toggle the workflow (or just its notifications) off from the dashboard, and back on after.
 
