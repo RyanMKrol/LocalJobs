@@ -27,7 +27,10 @@ export function describeArtifact(a: RunArtifactRow): string {
   const bits = [
     summary,
     a.item_count != null && !summary ? `${a.item_count} item(s)` : undefined,
-    a.fresh ? undefined : 'carried forward unchanged',
+    // Not fresh means one of two things, and the run page tells them apart the same
+    // way: left alone this run (it has a note saying why), or written again with
+    // exactly the content it already had.
+    a.fresh ? undefined : a.note ? 'carried forward unchanged' : 'written again, same as before',
   ].filter(Boolean);
   return bits.join(' · ');
 }
