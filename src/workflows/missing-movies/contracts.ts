@@ -1,126 +1,88 @@
-// Typed-artifact contracts for the missing-movies franchise-gap audit stage boundaries.
+// The data the missing-movies stages hand to each other.
 //
-//   plex-movie-snapshot ──movie-snapshot──▶ franchise-gaps ──franchise-gaps──▶ movie-gaps-notify
-//
-// Each factory returns an ArtifactContract whose `check()` inspects the REAL JSON
-// artifact left on disk and reports SHAPE + NON-EMPTY drift — enough to catch a
-// Plex/TMDB response-shape change or an empty hand-off without brittle full-schema
-// validation. They take an optional path so unit tests can point at fixtures.
-// Types are shared with `movie-recommendations` (its `types.ts`) rather than
-// duplicated — both workflows' snapshot/gaps artifacts have the identical shape.
-import { existsSync, readFileSync } from 'node:fs';
-import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
+//   plex-movie-snapshot ──snapshot──▶ franchise-gaps ──gaps──▶ movie-gaps-notify ──▶ report, digest
+import { fileArtifact, fromChecks, inlineArtifact, jsonArtifact } from '../../engine/index.js';
 import type { FranchiseGapsFile, MovieSnapshotFile } from '../movies/types.js';
-import { missingMoviesConfig } from './config.js';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** This workflow's own Plex movie library snapshot. */
+export const plexMovieSnapshot = jsonArtifact<MovieSnapshotFile>({
+  key: 'plex-movie-snapshot',
+  description: 'The Plex movie library as of this run: every movie with its TMDB id.',
+  shape: {
+    summary: 'The fresh Plex movie snapshot: each movie with its TMDB id.',
+    format: 'JSON object { generatedAt, section, movies[] }',
+    expectations: [
+      { label: 'Contains the movies array', detail: 'It has a `movies` array.' },
+      { label: 'At least one movie carries a tmdbId', detail: 'At least one movie matched a tmdb:// GUID. A Plex shape change that drops GUIDs is caught here.' },
+    ],
+  },
+  check(v) {
+    const movies = Array.isArray(v?.movies) ? v.movies : null;
+    if (!movies) return fromChecks([{ label: 'Contains the movies array', ok: false, actual: 'no movies array' }]);
+    const withTmdb = movies.filter((m) => typeof m.tmdbId === 'number').length;
+    return fromChecks([
+      { label: 'Contains the movies array', ok: true, actual: `${movies.length} movie(s)` },
+      { label: 'At least one movie carries a tmdbId', ok: movies.length === 0 || withTmdb > 0, actual: `${withTmdb}/${movies.length} with tmdbId` },
+    ], `${movies.length} movie(s), ${withTmdb} with a TMDB id`);
+  },
+  summary: (v) => `${v.movies.length} movie(s), ${v.movies.filter((m) => typeof m.tmdbId === 'number').length} with a TMDB id`,
+  items: (v) => v.movies.map((m) => ({
+    id: String(m.tmdbId ?? m.ratingKey),
+    title: `${m.title}${m.year ? ` (${m.year})` : ''}`,
+    fields: m.tmdbId != null ? [{ label: 'TMDB', value: String(m.tmdbId) }] : [],
+  })),
+});
 
-function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
-  const failed = checks.filter((c) => !c.ok);
-  const ok = failed.length === 0;
-  return {
-    ok,
-    violations: ok ? undefined : failed.map((c) => `${c.label}: ${c.actual ?? 'failed'}`),
-    checks,
-    sample,
-    detail: sample,
-  };
+/** Every released franchise film the owner does not have. */
+export const franchiseGaps = jsonArtifact<FranchiseGapsFile>({
+  key: 'franchise-gaps',
+  description: 'Every released film missing from a collection the owner has part of. May be empty when nothing is missing.',
+  shape: {
+    summary: 'The deterministic franchise-gap detection: released franchise films the owner does not own.',
+    format: 'JSON object { generatedAt, collectionsChecked, gaps[] }',
+    expectations: [
+      { label: 'Contains the gaps array', detail: 'It has a `gaps` array (may be empty when nothing is missing).' },
+      { label: 'Each gap carries a collection name and tmdbId', detail: 'Every gap carries a collectionName and a numeric tmdbId.' },
+    ],
+  },
+  check(v) {
+    const gaps = Array.isArray(v?.gaps) ? v.gaps : null;
+    if (!gaps) return fromChecks([{ label: 'Contains the gaps array', ok: false, actual: 'no gaps array' }]);
+    const bad = gaps.find((g) => !g.collectionName || typeof g.tmdbId !== 'number');
+    return fromChecks([
+      { label: 'Contains the gaps array', ok: true, actual: `${gaps.length} gap(s)` },
+      { label: 'Each gap carries a collection name and tmdbId', ok: !bad, actual: bad ? 'a gap is missing collectionName/tmdbId' : 'all gaps well-formed' },
+    ], `${gaps.length} gap(s)`);
+  },
+  summary: (v) => `${v.gaps.length} gap(s) across ${v.collectionsChecked} collection(s) checked`,
+  items: (v) => v.gaps.map((g) => ({
+    id: String(g.tmdbId),
+    title: `${g.title}${g.year ? ` (${g.year})` : ''}`,
+    subtitle: g.collectionName,
+    fields: g.tmdbRating != null ? [{ label: 'TMDB', value: g.tmdbRating.toFixed(1) }] : [],
+  })),
+});
+
+/** The markdown report of the current gaps, rewritten every run. */
+export const gapsReport = fileArtifact({
+  key: 'franchise-gaps-report',
+  description: 'The markdown report of the current franchise gaps, grouped by collection.',
+  format: 'markdown',
+  check: (f) => fromChecks([{ label: 'the report has content', ok: f.bytes > 0, actual: `${f.bytes} bytes` }]),
+});
+
+/** What one notify run did. */
+export interface GapsDigest {
+  /** Gaps announced by this run (first seen now). */
+  announced: number;
+  alreadyAnnounced: number;
+  ignored: number;
+  titles: string[];
 }
 
-const SNAP_EXP = {
-  json: 'A readable snapshot JSON object',
-  movies: 'Contains the movies array',
-  tmdb: 'At least one movie carries a tmdbId',
-};
-
-/** plex-movie-snapshot → franchise-gaps boundary: this workflow's own Plex movie library snapshot. */
-export function missingMoviesSnapshotContract(file: string = missingMoviesConfig.snapshotOut): ArtifactContract {
-  return {
-    key: 'movie-snapshot',
-    description: 'snapshot output: { movies: [{ title, tmdbId, ratingKey, genres, directors }] } — readable, with GUID-matched movies.',
-    shape: {
-      summary: 'The fresh Plex movie snapshot: each movie with its TMDB id.',
-      format: 'JSON object { generatedAt, section, movies[] }',
-      expectations: [
-        { label: SNAP_EXP.json, detail: 'The hand-off file exists and parses as a JSON object.' },
-        { label: SNAP_EXP.movies, detail: 'It has a `movies` array (the library may legitimately be empty).' },
-        { label: SNAP_EXP.tmdb, detail: 'At least one movie matched a tmdb:// GUID — a Plex shape change that drops GUIDs is caught here.' },
-      ],
-    },
-    check(): GateResult {
-      const checks: ExpectationResult[] = [];
-      if (!existsSync(file)) {
-        checks.push({ label: SNAP_EXP.json, ok: false, actual: `snapshot missing: ${file}` });
-        return fromChecks(checks);
-      }
-      let parsed: MovieSnapshotFile;
-      try {
-        parsed = JSON.parse(readFileSync(file, 'utf8')) as MovieSnapshotFile;
-      } catch (e) {
-        checks.push({ label: SNAP_EXP.json, ok: false, actual: `not valid JSON — ${errMsg(e)}` });
-        return fromChecks(checks);
-      }
-      checks.push({ label: SNAP_EXP.json, ok: true, actual: 'valid JSON object' });
-      const movies = Array.isArray(parsed.movies) ? parsed.movies : null;
-      checks.push({ label: SNAP_EXP.movies, ok: !!movies, actual: movies ? `${movies.length} movie(s)` : 'no movies array' });
-      if (!movies) return fromChecks(checks);
-      const withTmdb = movies.filter((m) => typeof m.tmdbId === 'number').length;
-      checks.push({
-        label: SNAP_EXP.tmdb,
-        // An empty library is acceptable; only a NON-empty snapshot with ZERO
-        // tmdbIds signals a GUID-extraction drift.
-        ok: movies.length === 0 || withTmdb > 0,
-        actual: `${withTmdb}/${movies.length} with tmdbId`,
-      });
-      return fromChecks(checks, `${movies.length} movie(s) · ${withTmdb} with tmdbId`);
-    },
-  };
-}
-
-const GAPS_EXP = {
-  json: 'A readable franchise-gaps JSON object',
-  gaps: 'Contains the gaps array',
-  fields: 'Each gap carries a collection name and tmdbId',
-};
-
-/** franchise-gaps → movie-gaps-notify boundary: the detected franchise gaps. */
-export function franchiseGapsContract(file: string = missingMoviesConfig.gapsOut): ArtifactContract {
-  return {
-    key: 'franchise-gaps',
-    description: 'gap output: { gaps: [{ collectionName, tmdbId, title, year, tmdbRating }] } — readable; every released-not-owned franchise film.',
-    shape: {
-      summary: 'The deterministic franchise-gap detection: released franchise films the owner does not own.',
-      format: 'JSON object { generatedAt, collectionsChecked, gaps[] }',
-      expectations: [
-        { label: GAPS_EXP.json, detail: 'The hand-off file exists and parses as a JSON object.' },
-        { label: GAPS_EXP.gaps, detail: 'It has a `gaps` array (may be empty when nothing is missing).' },
-        { label: GAPS_EXP.fields, detail: 'Every gap carries a collectionName and a numeric tmdbId.' },
-      ],
-    },
-    check(): GateResult {
-      const checks: ExpectationResult[] = [];
-      if (!existsSync(file)) {
-        checks.push({ label: GAPS_EXP.json, ok: false, actual: `franchise-gaps file missing: ${file}` });
-        return fromChecks(checks);
-      }
-      let parsed: FranchiseGapsFile;
-      try {
-        parsed = JSON.parse(readFileSync(file, 'utf8')) as FranchiseGapsFile;
-      } catch (e) {
-        checks.push({ label: GAPS_EXP.json, ok: false, actual: `not valid JSON — ${errMsg(e)}` });
-        return fromChecks(checks);
-      }
-      checks.push({ label: GAPS_EXP.json, ok: true, actual: 'valid JSON object' });
-      const gaps = Array.isArray(parsed.gaps) ? parsed.gaps : null;
-      checks.push({ label: GAPS_EXP.gaps, ok: !!gaps, actual: gaps ? `${gaps.length} gap(s)` : 'no gaps array' });
-      if (!gaps) return fromChecks(checks);
-      const bad = gaps.find((g) => !g.collectionName || typeof g.tmdbId !== 'number');
-      checks.push({
-        label: GAPS_EXP.fields,
-        ok: !bad,
-        actual: bad ? `a gap is missing collectionName/tmdbId` : 'all gaps well-formed',
-      });
-      return fromChecks(checks, `${gaps.length} gap(s)`);
-    },
-  };
-}
+export const gapsDigest = inlineArtifact<GapsDigest>({
+  key: 'franchise-gaps-digest',
+  description: 'What this run announced: how many gaps were new, and how many were already announced or dismissed.',
+  check: (v) => fromChecks([{ label: 'has counts', ok: typeof v?.announced === 'number', actual: `${v?.announced} announced` }]),
+  summary: (v) => `${v.announced} announced, ${v.alreadyAnnounced} already announced, ${v.ignored} dismissed`,
+});

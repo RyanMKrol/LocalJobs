@@ -1,124 +1,98 @@
-// Typed-artifact contracts for the Plex new-seasons audit stage boundaries.
+// The data the missing-tv-seasons stages hand to each other.
 //
-//   plex-tv-snapshot ──plex-snapshot──▶ tmdb-season-check ──tmdb-missing-seasons──▶ plex-seasons-notify
-//
-// Each factory returns an ArtifactContract whose `check()` inspects the REAL JSON
-// artifact left on disk and reports SHAPE + NON-EMPTY drift — enough to catch a
-// Plex/TMDB response-shape change or an empty hand-off without brittle full-schema
-// validation. They take an optional path so unit tests can point at fixtures.
-import { existsSync, readFileSync } from 'node:fs';
-import type { ArtifactContract, ExpectationResult, GateResult } from '../../core/types.js';
-import { plexConfig } from './config.js';
+//   plex-tv-snapshot ──snapshot──▶ tmdb-season-check ──missing──▶ plex-seasons-notify ──▶ report, digest
+import { fileArtifact, fromChecks, inlineArtifact, jsonArtifact } from '../../engine/index.js';
 import type { MissingSeasonsFile, SnapshotFile } from './types.js';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** The Plex TV library as of this run. */
+export const plexTvSnapshot = jsonArtifact<SnapshotFile>({
+  key: 'plex-tv-snapshot',
+  description: 'The Plex TV library as of this run: every show with its TMDB id and the highest season owned.',
+  shape: {
+    summary: 'The fresh Plex TV snapshot: each show with its TMDB id and highest owned season.',
+    format: 'JSON object { generatedAt, section, shows[] }',
+    expectations: [
+      { label: 'Contains the shows array', detail: 'It has a `shows` array.' },
+      { label: 'At least one show carries a tmdbId', detail: 'At least one show matched a tmdb:// GUID. A Plex shape change that drops GUIDs is caught here.' },
+    ],
+  },
+  check(v) {
+    const shows = Array.isArray(v?.shows) ? v.shows : null;
+    if (!shows) return fromChecks([{ label: 'Contains the shows array', ok: false, actual: 'no shows array' }]);
+    const withTmdb = shows.filter((s) => typeof s.tmdbId === 'number').length;
+    return fromChecks([
+      { label: 'Contains the shows array', ok: true, actual: `${shows.length} show(s)` },
+      { label: 'At least one show carries a tmdbId', ok: shows.length === 0 || withTmdb > 0, actual: `${withTmdb}/${shows.length} with tmdbId` },
+    ], `${shows.length} show(s), ${withTmdb} with a TMDB id`);
+  },
+  summary: (v) => `${v.shows.length} show(s), ${v.shows.filter((s) => typeof s.tmdbId === 'number').length} with a TMDB id`,
+  items: (v) => v.shows.map((s) => ({
+    id: String(s.tmdbId ?? s.ratingKey),
+    title: `${s.title}${s.year ? ` (${s.year})` : ''}`,
+    fields: [{ label: 'Owned up to', value: `S${s.highestOwnedSeason}` }, ...(s.tmdbId != null ? [{ label: 'TMDB', value: String(s.tmdbId) }] : [])],
+  })),
+});
 
-function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
-  const failed = checks.filter((c) => !c.ok);
-  const ok = failed.length === 0;
-  return {
-    ok,
-    violations: ok ? undefined : failed.map((c) => `${c.label}: ${c.actual ?? 'failed'}`),
-    checks,
-    sample,
-    detail: sample,
-  };
-}
-
-const SNAP_EXP = {
-  json: 'A readable snapshot JSON object',
-  shows: 'Contains the shows array',
-  tmdb: 'At least one show carries a tmdbId',
-};
-
-/** snapshot → season-check boundary: the Plex library snapshot. */
-export function plexSnapshotContract(file: string = plexConfig.snapshotOut): ArtifactContract {
-  return {
-    key: 'plex-snapshot',
-    description: 'snapshot output: { shows: [{ title, tmdbId, ratingKey, highestOwnedSeason }] } — readable, with GUID-matched shows.',
-    shape: {
-      summary: 'The fresh Plex TV snapshot: each show with its TMDB id and highest owned season.',
-      format: 'JSON object { generatedAt, section, shows[] }',
-      expectations: [
-        { label: SNAP_EXP.json, detail: 'The hand-off file exists and parses as a JSON object.' },
-        { label: SNAP_EXP.shows, detail: 'It has a `shows` array (the library may legitimately be empty).' },
-        { label: SNAP_EXP.tmdb, detail: 'At least one show matched a tmdb:// GUID — a Plex shape change that drops GUIDs is caught here.' },
+/** The shows with a complete season the owner does not have, plus what could not be checked. */
+export const missingSeasons = jsonArtifact<MissingSeasonsFile>({
+  key: 'tmdb-missing-seasons',
+  description: 'Shows with at least one complete season the owner is missing, plus the shows that could not be checked.',
+  shape: {
+    summary: 'The TMDB completeness check: shows with complete seasons the owner does not own.',
+    format: 'JSON object { generatedAt, shows[], unverifiable[], errors[] }',
+    expectations: [
+      { label: 'Contains the shows array', detail: 'It has a `shows` array (may be empty when nothing is missing).' },
+      { label: 'Every listed show has a missing season', detail: 'Every listed show carries a non-empty completeMissingSeasons array.' },
+    ],
+  },
+  check(v) {
+    const shows = Array.isArray(v?.shows) ? v.shows : null;
+    if (!shows) return fromChecks([{ label: 'Contains the shows array', ok: false, actual: 'no shows array' }]);
+    const bad = shows.find((s) => !Array.isArray(s.completeMissingSeasons) || s.completeMissingSeasons.length === 0);
+    return fromChecks([
+      { label: 'Contains the shows array', ok: true, actual: `${shows.length} actionable show(s)` },
+      { label: 'Every listed show has a missing season', ok: !bad, actual: bad ? `"${bad.title}" lists no missing season` : 'all shows well-formed' },
+    ], `${shows.length} actionable show(s)`);
+  },
+  summary: (v) =>
+    `${v.shows.length} show(s) with a complete missing season` +
+    (v.unverifiable?.length ? `, ${v.unverifiable.length} unverifiable` : '') +
+    (v.errors?.length ? `, ${v.errors.length} errored` : ''),
+  // Actionable shows first, then what could not be checked (shown as failed).
+  items: (v) => [
+    ...v.shows.map((s) => ({
+      id: String(s.tmdbId),
+      title: `${s.title}${s.year ? ` (${s.year})` : ''}`,
+      fields: [
+        { label: 'Missing', value: s.completeMissingSeasons.map((n) => `S${n}`).join(', ') },
+        { label: 'Owned up to', value: `S${s.highestOwnedSeason}` },
+        { label: 'Status', value: s.tmdbStatus },
       ],
-    },
-    check(): GateResult {
-      const checks: ExpectationResult[] = [];
-      if (!existsSync(file)) {
-        checks.push({ label: SNAP_EXP.json, ok: false, actual: `snapshot missing: ${file}` });
-        return fromChecks(checks);
-      }
-      let parsed: SnapshotFile;
-      try {
-        parsed = JSON.parse(readFileSync(file, 'utf8')) as SnapshotFile;
-      } catch (e) {
-        checks.push({ label: SNAP_EXP.json, ok: false, actual: `not valid JSON — ${errMsg(e)}` });
-        return fromChecks(checks);
-      }
-      checks.push({ label: SNAP_EXP.json, ok: true, actual: 'valid JSON object' });
-      const shows = Array.isArray(parsed.shows) ? parsed.shows : null;
-      checks.push({ label: SNAP_EXP.shows, ok: !!shows, actual: shows ? `${shows.length} show(s)` : 'no shows array' });
-      if (!shows) return fromChecks(checks);
-      const withTmdb = shows.filter((s) => typeof s.tmdbId === 'number').length;
-      checks.push({
-        label: SNAP_EXP.tmdb,
-        // An empty library is acceptable; only a NON-empty snapshot with ZERO
-        // tmdbIds signals a GUID-extraction drift.
-        ok: shows.length === 0 || withTmdb > 0,
-        actual: `${withTmdb}/${shows.length} with tmdbId`,
-      });
-      return fromChecks(checks, `${shows.length} show(s) · ${withTmdb} with tmdbId`);
-    },
-  };
+    })),
+    ...(v.errors ?? []).map((e) => ({ id: `error:${e.tmdbId}`, title: e.title, status: 'failed', fields: [{ label: 'Error', value: e.error.slice(0, 160) }] })),
+    ...(v.unverifiable ?? []).map((u) => ({ id: `unverifiable:${u.ratingKey}`, title: u.title, status: 'failed', fields: [{ label: 'Reason', value: 'no tmdb:// GUID' }] })),
+  ],
+});
+
+/** The markdown report of the current backlog, rewritten every run. */
+export const seasonsReport = fileArtifact({
+  key: 'missing-seasons-report',
+  description: 'The markdown report of every complete season currently missing, marking the newly found ones.',
+  format: 'markdown',
+  check: (f) => fromChecks([{ label: 'the report has content', ok: f.bytes > 0, actual: `${f.bytes} bytes` }]),
+});
+
+/** What one notify run did. */
+export interface SeasonsDigest {
+  /** (show, season) pairs announced by this run. */
+  announced: number;
+  alreadyAnnounced: number;
+  titles: string[];
 }
 
-const MISS_EXP = {
-  json: 'A readable missing-seasons JSON object',
-  shows: 'Contains the actionable shows array',
-  seasons: 'Each actionable show lists ≥1 complete missing season',
-};
-
-/** season-check → notify boundary: the actionable missing-seasons list. */
-export function missingSeasonsContract(file: string = plexConfig.missingOut): ArtifactContract {
-  return {
-    key: 'tmdb-missing-seasons',
-    description: 'season-check output: { shows: [{ tmdbId, completeMissingSeasons[] }], unverifiable[] } — readable, each actionable show has complete seasons.',
-    shape: {
-      summary: 'The TMDB completeness check: shows with complete season(s) the owner is missing.',
-      format: 'JSON object { generatedAt, shows[], unverifiable[] }',
-      expectations: [
-        { label: MISS_EXP.json, detail: 'The hand-off file exists and parses as a JSON object.' },
-        { label: MISS_EXP.shows, detail: 'It has a `shows` array (may be empty when nothing is missing).' },
-        { label: MISS_EXP.seasons, detail: 'Every listed show carries a non-empty completeMissingSeasons array.' },
-      ],
-    },
-    check(): GateResult {
-      const checks: ExpectationResult[] = [];
-      if (!existsSync(file)) {
-        checks.push({ label: MISS_EXP.json, ok: false, actual: `missing-seasons file missing: ${file}` });
-        return fromChecks(checks);
-      }
-      let parsed: MissingSeasonsFile;
-      try {
-        parsed = JSON.parse(readFileSync(file, 'utf8')) as MissingSeasonsFile;
-      } catch (e) {
-        checks.push({ label: MISS_EXP.json, ok: false, actual: `not valid JSON — ${errMsg(e)}` });
-        return fromChecks(checks);
-      }
-      checks.push({ label: MISS_EXP.json, ok: true, actual: 'valid JSON object' });
-      const shows = Array.isArray(parsed.shows) ? parsed.shows : null;
-      checks.push({ label: MISS_EXP.shows, ok: !!shows, actual: shows ? `${shows.length} actionable show(s)` : 'no shows array' });
-      if (!shows) return fromChecks(checks);
-      const bad = shows.find((s) => !Array.isArray(s.completeMissingSeasons) || s.completeMissingSeasons.length === 0);
-      checks.push({
-        label: MISS_EXP.seasons,
-        ok: !bad,
-        actual: bad ? `show "${bad.title}" has no complete missing seasons` : 'all have complete seasons',
-      });
-      return fromChecks(checks, `${shows.length} actionable show(s)`);
-    },
-  };
-}
+export const seasonsDigest = inlineArtifact<SeasonsDigest>({
+  key: 'missing-seasons-digest',
+  description: 'What this run announced: how many missing seasons were new, and how many had been announced before.',
+  check: (v) => fromChecks([{ label: 'has counts', ok: typeof v?.announced === 'number', actual: `${v?.announced} announced` }]),
+  summary: (v) => `${v.announced} announced, ${v.alreadyAnnounced} already announced`,
+});

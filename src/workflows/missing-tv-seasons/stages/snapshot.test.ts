@@ -10,10 +10,10 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { JobContext } from '../../../core/types.js';
-import { clearServiceCache, getWorkItem, syncService } from '../../../db/store.js';
+import { clearServiceCache, syncService } from '../../../db/store.js';
 import { registerService } from '../../../core/services.js';
 import { plexConfig } from '../config.js';
-import { recordSnapshotLedger, runSnapshot, snapshotItemKey } from './snapshot.js';
+import { runSnapshot, snapshotItemKey } from './snapshot.js';
 import type { PlexShow } from '../types.js';
 
 // Redirect this workflow's output paths to a throwaway temp dir BEFORE any stage code
@@ -50,28 +50,6 @@ function show(overrides: Partial<PlexShow> = {}): PlexShow {
 assert.equal(snapshotItemKey(show({ tmdbId: 615, ratingKey: 'r1' })), '615', 'prefers the tmdbId when present');
 assert.equal(snapshotItemKey(show({ tmdbId: null, ratingKey: 'noguid' })), 'noguid', 'falls back to ratingKey with no tmdbId');
 console.log('  ✓ snapshotItemKey prefers tmdbId, falls back to ratingKey');
-
-// ── recordSnapshotLedger: one row per show, keyed + detailed correctly ──
-{
-  const withGuid = show({ title: 'Futurama', tmdbId: 9990615, ratingKey: 'futurama', highestOwnedSeason: 7 });
-  const noGuid = show({ title: 'No GUID Show', tmdbId: null, ratingKey: 'noguid-9990615', highestOwnedSeason: 2 });
-  recordSnapshotLedger([withGuid, noGuid]);
-
-  const row1 = getWorkItem('plex-tv-snapshot', '9990615');
-  assert.ok(row1, 'a row is recorded for the GUID-matched show');
-  assert.equal(row1!.status, 'success', 'always success — snapshotting itself never fails per-show');
-  assert.equal(row1!.root_key, '9990615', 'no rootKey/parentKey passed — this is the root stage, root_key defaults to item_key');
-  const detail1 = JSON.parse(row1!.detail!);
-  assert.deepEqual(detail1, { name: 'Futurama', tmdbId: 9990615, highestOwnedSeason: 7 });
-
-  const row2 = getWorkItem('plex-tv-snapshot', 'noguid-9990615');
-  assert.ok(row2, 'a row is recorded for the GUID-less show too');
-  assert.equal(row2!.status, 'success', 'a show with no tmdb:// GUID is still a successfully-snapshotted state');
-  const detail2 = JSON.parse(row2!.detail!);
-  assert.deepEqual(detail2, { name: 'No GUID Show', tmdbId: null, highestOwnedSeason: 2 });
-
-  console.log('  ✓ recordSnapshotLedger records one success row per show, keyed + detailed correctly');
-}
 
 // ── T477: Plex reads pass a cacheKey and reuse the 3-hour service_cache ──
 {

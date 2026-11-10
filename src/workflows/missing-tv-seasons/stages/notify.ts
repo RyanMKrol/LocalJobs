@@ -2,7 +2,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { push } from '../../../core/notifier.js';
 import { ignoredItemKeys, isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import type { JobContext } from '../../../core/types.js';
+import type { JobContext } from '../../../engine/index.js';
+import type { SeasonsDigest } from '../contracts.js';
 import { plexConfig } from '../config.js';
 import { ensureDirs, formatSeasonRanges } from '../lib.js';
 import type { MissingSeasonsFile, ShowMissingSeasons } from '../types.js';
@@ -56,7 +57,7 @@ export interface NotifyOpts {
  * it. Ledger rows are recorded ONLY for actionable shows so the workflow-run IO
  * panel highlights those, not 600+ "up to date" rows.
  */
-export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise<void> {
+export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise<SeasonsDigest> {
   ensureDirs();
   const pushFn = opts.push ?? push;
   const now = opts.now ?? new Date();
@@ -90,7 +91,7 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   if (totalNew === 0) {
     ctx.progress(100, 'nothing new to notify');
     ctx.log('Nothing new — no digest sent. ✓');
-    return;
+    return { announced: 0, alreadyAnnounced: alreadyKnown, titles: [] };
   }
 
   // Send ONE digest, then record each notified pair so it never repeats.
@@ -114,6 +115,11 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
 
   ctx.progress(100, `${totalNew} new season(s) notified`);
   ctx.log(`Marked ${totalNew} (show, season) pair(s) notified.`);
+  return {
+    announced: totalNew,
+    alreadyAnnounced: alreadyKnown,
+    titles: newShows.map((s) => `${s.title} ${s.seasons.map((n) => `S${n}`).join(', ')}`),
+  };
 }
 
 /** Write a markdown report of the current backlog (excluding ignored pairs); returns its absolute path. */

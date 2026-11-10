@@ -40,6 +40,13 @@ export interface UnverifiableShow {
   ratingKey: string;
 }
 
+/** A show whose TMDB check errored this run (it is retried next run). */
+export interface ErroredShow {
+  title: string;
+  tmdbId: number;
+  error: string;
+}
+
 /** stage 2 artifact: the fresh-every-run TMDB completeness check. */
 export interface MissingSeasonsFile {
   generatedAt: string;
@@ -47,6 +54,8 @@ export interface MissingSeasonsFile {
   shows: ShowMissingSeasons[];
   /** Shows skipped because they have no tmdbId (never guessed). */
   unverifiable: UnverifiableShow[];
+  /** Shows whose check failed this run. Absent in files written before this field existed. */
+  errors?: ErroredShow[];
 }
 
 // ── Minimal Plex / TMDB response shapes (only the fields we read) ──

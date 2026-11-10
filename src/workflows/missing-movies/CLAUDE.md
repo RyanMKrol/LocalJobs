@@ -28,6 +28,20 @@ skip-if-done); only `movie-gaps-notify` uses the `work_items` ledger, and there 
 already notified this?" / "has the owner ignored it?" log, not a work-done ledger — so a backlog
 item is announced exactly once and an ignored item is suppressed forever.
 
+**A ports workflow** (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `plex-movie-snapshot` | none | `snapshot` (`plex-movie-snapshot`, `snapshot.json`) |
+| `franchise-gaps` | `snapshot` | `gaps` (`franchise-gaps`, `franchise-gaps.json`) |
+| `movie-gaps-notify` | `gaps` | `report` (`franchise-gaps-report`, the markdown), `digest` (`franchise-gaps-digest`, inline counts) |
+
+Each output is rebuilt every run, so a stage that returned without writing its file fails
+rather than handing the next stage last week's. The first two stages no longer write ledger
+rows (one per movie, one per collection) so the run page has something to show: the run page
+lists the snapshot's movies and the gaps from the artifacts themselves. The `movie-gaps-notify`
+ledger is the only one, and its rows are the gaps a run announced.
+
 ## Stage 1 — `plex-movie-snapshot`
 
 Reads Plex library section `PLEX_MOVIE_SECTION` (default `4`, the owner's "Movies") via the shared
@@ -119,8 +133,8 @@ be deleted.
 
 - `config.ts` (`missingMoviesConfig`) — `data/out/` paths, `PLEX_MOVIE_SECTION`. No new env vars —
   reuses the same Plex/TMDB credentials as every other Plex-touching workflow.
-- `contracts.ts` — gate contracts for every DAG edge (`missingMoviesSnapshotContract` for
-  snapshot→franchise-gaps, `franchiseGapsContract` for franchise-gaps→notify).
+- `contracts.ts`: the artifact types the stages exchange (`plexMovieSnapshot`, `franchiseGaps`,
+  `gapsReport`, `gapsDigest`), each with its check and how it is shown.
 - `lib.ts` — `ensureDirs`/`readJsonFile`/`writeJsonFile` (this workflow's own `data/out/` tree).
 - Pure collection-gap detection logic lives in the shared `../movies/movies.js` (owned by
   `movie-recommendations`) — imported here, not duplicated.

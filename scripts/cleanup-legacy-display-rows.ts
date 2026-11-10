@@ -26,6 +26,11 @@ const DISPLAY_ONLY_LEDGERS: { job: string; was: string }[] = [
   { job: 'mount-keeper-check', was: 'one row per share, re-marked every hour' },
   // The alert dedupe ledger is a different job name (plex-library-guard-alert) and is kept.
   { job: 'plex-library-guard-scan', was: 'one row per day pointing at guard-report.json, plus a "snapshot" row' },
+  // missing-movies / missing-tv-seasons: only the notify stages' ledgers (what has been announced) are real.
+  { job: 'plex-movie-snapshot', was: 'one row per movie in the library, re-marked every run' },
+  { job: 'franchise-gaps', was: 'one row per collection checked, re-marked every run' },
+  { job: 'plex-tv-snapshot', was: 'one row per show in the library, re-marked every run' },
+  { job: 'tmdb-season-check', was: 'one row per show checked, re-marked every run' },
 ];
 
 const apply = process.argv.includes('--apply');

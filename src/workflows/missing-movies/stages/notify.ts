@@ -2,9 +2,10 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { push } from '../../../core/notifier.js';
 import { ignoredItemKeys, isWorkItemDone, markWorkItem } from '../../../db/store.js';
-import type { JobContext } from '../../../core/types.js';
+import type { JobContext } from '../../../engine/index.js';
 import type { FranchiseGap, FranchiseGapsFile } from '../../movies/types.js';
 import { missingMoviesConfig } from '../config.js';
+import type { GapsDigest } from '../contracts.js';
 import { ensureDirs } from '../lib.js';
 
 /** The work_items key-space for the franchise-gap "already-notified / ignored" ledger.
@@ -51,7 +52,7 @@ export interface NotifyOpts {
  * gap is notified at most once ever and an `ignored` gap leaves BOTH the report
  * AND notifications.
  */
-export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise<void> {
+export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise<GapsDigest> {
   ensureDirs();
   const pushFn = opts.push ?? push;
   const now = opts.now ?? new Date();
@@ -87,10 +88,17 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
   const reportPath = writeReport(gaps, newGaps, now, reportDir, collectionExamples);
   ctx.log(`Wrote report ${reportPath}`);
 
+  const result = (announced: FranchiseGap[]): GapsDigest => ({
+    announced: announced.length,
+    alreadyAnnounced: alreadyNotifiedGaps.length,
+    ignored: ignoredGapCount,
+    titles: announced.map((g) => `${g.collectionName}: ${g.title}`),
+  });
+
   if (newGaps.length === 0) {
     ctx.progress(100, 'nothing new to notify');
     ctx.log('Nothing new — no digest sent. ✓');
-    return;
+    return result([]);
   }
 
   const digest = buildDigest(newGaps);
@@ -121,6 +129,7 @@ export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise
 
   ctx.progress(100, `${newGaps.length} gap(s) notified`);
   ctx.log(`Marked ${newGaps.length} gap(s) notified.`);
+  return result(newGaps);
 }
 
 /** A TMDB movie link for the report. */

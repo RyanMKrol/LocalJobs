@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { QuotaExceededError, callService } from '../../../core/services.js';
-import type { JobContext } from '../../../core/types.js';
+import type { JobContext } from '../../../engine/index.js';
 import { tmdbGet } from '../../../core/plex-client.js';
-import { markWorkItem } from '../../../db/store.js';
 import { buildOwnedSet, collectionGaps, collectionOwnedExample } from '../../movies/movies.js';
 import type {
   FranchiseGap,
@@ -30,26 +29,6 @@ export interface FranchiseGapsOpts {
   fetchMovie?: MovieFetch;
   /** Override the /collection fetch (tests). Defaults to the rate-limited tmdb service. */
   fetchCollection?: CollectionFetch;
-}
-
-/**
- * Record one work_items row per distinct collection checked in pass 2, describing
- * the collection's outcome (gaps found or none). Extracted as its own function so
- * it can be unit-tested without driving the full franchise-gaps logic.
- */
-export function recordCollectionLedger(
-  collectionId: number,
-  collectionName: string,
-  gaps: FranchiseGap[],
-): void {
-  const gapTitles = gaps.map((g) => g.title);
-  markWorkItem('franchise-gaps', String(collectionId), 'success', {
-    detail: {
-      name: collectionName,
-      gapsCount: gapTitles.length,
-      gaps: gapTitles,
-    },
-  });
 }
 
 const defaultMovieFetch: MovieFetch = (id) =>
@@ -132,7 +111,6 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
         const found = collectionGaps(detail, owned, now);
         const collName = detail.name ?? collectionIds.get(cid) ?? `Collection ${cid}`;
         // Record ledger row for this collection, whether or not gaps were found.
-        recordCollectionLedger(cid, collName, found);
         if (found.length) {
           gaps.push(...found);
           const example = collectionOwnedExample(detail, owned);
@@ -148,13 +126,6 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
         }
         const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
         ctx.log(`  ✗ collection #${cid} — ${msg}`, 'warn');
-        // Record ledger row for this collection as failed.
-        markWorkItem('franchise-gaps', String(cid), 'failed', {
-          detail: {
-            name: collectionIds.get(cid) ?? `Collection ${cid}`,
-            error: msg,
-          },
-        });
         collectionFailed++;
       }
     }
