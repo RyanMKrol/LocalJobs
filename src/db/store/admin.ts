@@ -177,6 +177,11 @@ export function resetWorkflowOutput(workflowName: string): WorkflowResetResult {
   const tx = db.transaction(() => {
     // work_item_runs: attribution rows for member jobs
     db.prepare(`DELETE FROM work_item_runs WHERE job_name IN (${ph})`).run(...jobNames);
+    // …and any written under another ledger name during this workflow's runs
+    db.prepare('DELETE FROM work_item_runs WHERE workflow_run_id IN (SELECT id FROM workflow_runs WHERE workflow_name = ?)').run(workflowName);
+    // run_artifacts / run_inputs: the per-run record of what each stage read and wrote
+    db.prepare('DELETE FROM run_artifacts WHERE workflow_run_id IN (SELECT id FROM workflow_runs WHERE workflow_name = ?)').run(workflowName);
+    db.prepare('DELETE FROM run_inputs WHERE workflow_run_id IN (SELECT id FROM workflow_runs WHERE workflow_name = ?)').run(workflowName);
     // work_items: ledger rows for member jobs
     const itemsDeleted = db.prepare(`DELETE FROM work_items WHERE job_name IN (${ph})`).run(...jobNames).changes;
     // run_logs: cascade-delete before runs (subquery avoids large IN lists)
@@ -210,6 +215,8 @@ export interface WorkflowDeleteResult {
 /** Delete a workflow definition and everything under it. Idempotent (no-op if absent). */
 export function deleteWorkflowCompletely(workflowName: string): WorkflowDeleteResult {
   const tx = db.transaction(() => {
+    db.prepare('DELETE FROM run_artifacts WHERE workflow_run_id IN (SELECT id FROM workflow_runs WHERE workflow_name = ?)').run(workflowName);
+    db.prepare('DELETE FROM run_inputs WHERE workflow_run_id IN (SELECT id FROM workflow_runs WHERE workflow_name = ?)').run(workflowName);
     const workflowRunLogs = db.prepare(
       'DELETE FROM workflow_run_logs WHERE workflow_run_id IN (SELECT id FROM workflow_runs WHERE workflow_name = ?)'
     ).run(workflowName).changes;
@@ -261,3 +268,74 @@ export function deleteServiceCompletely(serviceName: string): ServiceDeleteResul
   return tx();
 }
 
+
+// ─────────────────── Retention: per-run I/O detail of old runs ───────────────────
+
+export interface RunHistoryRetention {
+  /** Runs that STARTED more than this many days ago are eligible. Default 90. */
+  keepDays?: number;
+  /** …unless they are among this many most recent runs of their workflow. Default 20. */
+  keepRunsPerWorkflow?: number;
+  /** Max rows deleted per call, so each call is one short write. Default 5000. */
+  chunk?: number;
+}
+
+/**
+ * Delete ONE chunk of per-run I/O detail belonging to old workflow runs, and say
+ * whether more remains. "Per-run I/O detail" is `work_item_runs` (which items a
+ * run touched, and what it recorded about them), `run_artifacts` and `run_inputs`.
+ *
+ * What is kept, always: the run itself (`workflow_runs`, its member `runs`, every
+ * log line), and the `work_items` ledger. So an old run still shows its status,
+ * stages, timings and logs; only its Inputs & Outputs lists go. A run is eligible
+ * when it started more than `keepDays` ago AND is not among its workflow's
+ * `keepRunsPerWorkflow` most recent runs AND is not running, so a workflow that
+ * runs monthly keeps well over `keepDays` of detail.
+ *
+ * Why it exists: `work_item_runs` gains a row per item per run with no upper
+ * bound (a library-wide workflow adds tens of thousands a day), and nothing ever
+ * removed them. Deleting in small chunks keeps each write lock short, so jobs
+ * running at the same time are never blocked for long; the caller loops until
+ * `done`.
+ */
+export function pruneRunHistoryChunk(opts: RunHistoryRetention = {}): { deleted: number; done: boolean } {
+  const keepDays = Math.max(1, opts.keepDays ?? 90);
+  const keepRuns = Math.max(1, opts.keepRunsPerWorkflow ?? 20);
+  const chunk = Math.max(1, opts.chunk ?? 5000);
+
+  // The oldest eligible run that still has any detail left to delete.
+  const target = db.prepare(`
+    SELECT w.id AS id FROM workflow_runs w
+    WHERE w.status <> 'running'
+      AND w.started_at < datetime('now', ?)
+      AND w.id NOT IN (
+        SELECT w2.id FROM workflow_runs w2
+        WHERE w2.workflow_name = w.workflow_name
+        ORDER BY w2.started_at DESC, w2.rowid DESC
+        LIMIT ?
+      )
+      AND (
+        EXISTS (SELECT 1 FROM work_item_runs r WHERE r.workflow_run_id = w.id)
+        OR EXISTS (SELECT 1 FROM run_artifacts a WHERE a.workflow_run_id = w.id)
+        OR EXISTS (SELECT 1 FROM run_inputs i WHERE i.workflow_run_id = w.id)
+      )
+    ORDER BY w.started_at, w.rowid
+    LIMIT 1
+  `).get(`-${keepDays} days`, keepRuns) as { id: string } | undefined;
+  if (!target) return { deleted: 0, done: true };
+
+  const deleted = db.transaction((): number => {
+    let n = db.prepare(`
+      DELETE FROM work_item_runs WHERE rowid IN (
+        SELECT rowid FROM work_item_runs WHERE workflow_run_id = ? LIMIT ?
+      )
+    `).run(target.id, chunk).changes;
+    if (n < chunk) {
+      // The big table is drained for this run; its small per-run records go in the same write.
+      n += db.prepare('DELETE FROM run_artifacts WHERE workflow_run_id = ?').run(target.id).changes;
+      n += db.prepare('DELETE FROM run_inputs WHERE workflow_run_id = ?').run(target.id).changes;
+    }
+    return n;
+  })();
+  return { deleted, done: false };
+}

@@ -7,6 +7,7 @@ import 'dotenv/config'; // load .env for config (ports, paths) and jobs
 import { config } from './config.js';
 import { startApi } from './api/server.js';
 import { startScheduler, stopScheduler } from './core/scheduler.js';
+import { startRetention, stopRetention } from './core/retention.js';
 import { jobs, workflows, services } from './workflows/registry.js';
 import { reapOrphanWorkflowRuns, reapOrphanRuns, syncJob, syncWorkflow, syncService } from './db/store.js';
 
@@ -22,15 +23,19 @@ function main(): void {
   console.log(`[daemon] synced ${jobs.length} job(s), ${services.length} service(s), ${workflows.length} workflow(s)`);
   if (workflows.length) console.log(`[daemon] workflows: ${workflows.map((p) => p.name).join(', ')}`);
 
+  // Order matters: member runs first, so the workflow-run reap can tell a stage
+  // that was in flight (now cancelled) from one that never started.
   const reaped = reapOrphanRuns() + reapOrphanWorkflowRuns();
   if (reaped > 0) console.log(`[daemon] reaped ${reaped} orphaned run(s) from a previous crash`);
 
   startScheduler();
   startApi();
+  startRetention();
 
   const shutdown = (signal: string) => {
     console.log(`[daemon] ${signal} received — shutting down`);
     stopScheduler();
+    stopRetention();
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
