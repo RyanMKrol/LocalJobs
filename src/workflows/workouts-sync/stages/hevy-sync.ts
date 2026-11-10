@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { writeJsonFile } from '../../../engine/fsjson.js';
 import { callService } from '../../../core/services.js';
 import { isWorkItemDone, markWorkItem, workItemCounts } from '../../../db/store.js';
-import type { JobContext } from '../../../core/types.js';
+import type { JobContext } from '../../../engine/index.js';
 
 const JOB_NAME = 'hevy-sync';
 const MAX_RETRIES = 3;

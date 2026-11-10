@@ -39,14 +39,20 @@ export interface DirStats {
 /**
  * Fingerprint a directory of per-item files without reading their contents
  * (there can be thousands): name + size + mtime of each regular file directly
- * inside. Any file added, removed, resized or rewritten changes it.
+ * inside. Any file added, removed, resized or rewritten changes it. `belongs`
+ * limits it to the files that are part of the artifact (see `ArtifactType.files`).
  */
-export function dirStats(path: string): DirStats {
+export function dirStats(path: string, belongs?: (name: string) => boolean): DirStats {
   const hash = createHash('sha256');
   let bytes = 0;
   let files = 0;
-  let mtimeMs = statSync(path).mtimeMs;
-  const names = readdirSync(path, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name).sort();
+  // With a `belongs` filter the directory is shared: its own mtime moves when ANY
+  // file in it is added or removed, so only the matching files' mtimes count.
+  let mtimeMs = belongs ? 0 : statSync(path).mtimeMs;
+  const names = readdirSync(path, { withFileTypes: true })
+    .filter((e) => e.isFile() && (!belongs || belongs(e.name)))
+    .map((e) => e.name)
+    .sort();
   for (const name of names) {
     const st = statSync(join(path, name));
     hash.update(`${name}\0${st.size}\0${Math.floor(st.mtimeMs)}\n`);

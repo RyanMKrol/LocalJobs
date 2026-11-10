@@ -543,7 +543,7 @@ export function artifactItems(
     location = fromStoredPath(a.path ?? '');
     if (!existsSync(location)) return sample(true);
     const unchanged = a.storage === 'dir'
-      ? dirStats(location).sha256 === a.sha256
+      ? dirStats(location, type.files).sha256 === a.sha256
       : (() => { const st = statSync(location); return st.size === a.bytes && Math.floor(st.mtimeMs) === a.mtime_ms; })();
     if (!unchanged) return sample(true);
   }

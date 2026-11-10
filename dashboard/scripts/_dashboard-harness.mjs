@@ -287,6 +287,24 @@ function auditPortsFixtures({ dir, stages: [snap, check, notify], snapshot, foun
     ],
   };
 }
+// A two-stage sync on ports (fetch -> build): workouts-sync and projects-sync. Each stage
+// has an artifact card and the ledger items it changed this run; the second stage's
+// input items are the first stage's rows.
+function twoStagePortsFixtures({ stages: [first, second], firstArtifact, firstRows, secondArtifacts, secondRows }) {
+  const a = portsArtifact({ job: first, ...firstArtifact });
+  const outs = secondArtifacts.map((x) => portsArtifact({ job: second, ...x }));
+  const row = (job) => (r) => ({ id: `${job}:${r.itemKey}`, jobName: job, status: 'success', fields: [], ...r });
+  const r1 = firstRows.map(row(first));
+  const r2 = secondRows.map(row(second));
+  return {
+    stageIo: {
+      [first]: portsIo(first, { outputArtifacts: [a], outputs: r1, outputTotal: r1.length }),
+      [second]: portsIo(second, { predecessorJobs: [first], inputArtifacts: [asInput(a, a.port)], inputs: r1, inputTotal: r1.length, outputArtifacts: outs, outputs: r2, outputTotal: r2.length }),
+    },
+    overall: portsIo('__overall__', { predecessorJobs: [first], outputJobs: [second], inputs: r1, inputTotal: r1.length, outputArtifacts: outs, outputs: r2, outputTotal: r2.length }),
+    gates: [{ key: a.artifactKey, producer: first, consumer: second, state: 'passed' }],
+  };
+}
 const singleStageMembers = [{ job_name: 'claude-warm', depends_on: [] }];
 const singleStageWorkflowRun = workflowRun({ id: 'claude-warmer-run', workflow_name: 'claude-warmer', progress: 100 });
 const singleStageRunJobs = singleStageMembers.map((m, i) => run({
@@ -499,16 +517,22 @@ const workoutsSyncWorkflowRun = workflowRun({ id: 'workouts-sync-run', workflow_
 const workoutsSyncRunJobs = workoutsSyncMembers.map((m, i) => run({
   id: `workouts-sync-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'workouts-sync-run',
 }));
-const workoutsSyncSyncOutput = { jobName: 'hevy-sync', itemKey: 'workout:2026-06-15-abc123', status: 'success', detail: { name: 'Push day — 2026-06-15' } };
-const workoutsSyncProgressOutput = { jobName: 'workouts-progress', itemKey: '2026-06', status: 'success', detail: { name: 'Progress report — June 2026', markdown: '/abs/data/out/workouts-progress.md' } };
-const workoutsSyncStageIo = {
-  'hevy-sync': { inputs: [], outputs: [workoutsSyncSyncOutput], predecessorJobs: [], job: 'hevy-sync' },
-  'workouts-progress': { inputs: [workoutsSyncSyncOutput], outputs: [workoutsSyncProgressOutput], predecessorJobs: ['hevy-sync'], job: 'workouts-progress' },
-};
-const workoutsSyncStageIoOverall = {
-  inputs: [workoutsSyncSyncOutput], outputs: [workoutsSyncProgressOutput],
-  predecessorJobs: ['hevy-sync'], outputJobs: ['workouts-progress'], job: '__overall__',
-};
+const workoutsSyncPorts = twoStagePortsFixtures({
+  stages: ['hevy-sync', 'workouts-progress'],
+  firstArtifact: {
+    port: 'history', artifactKey: 'workouts-history', description: 'The full history of Hevy workouts synced so far.',
+    summary: '312 workout(s)', itemCount: 312, bytes: 1_840_000, preview: { path: 'workouts-sync/data/out/workouts-history.json', format: 'json' },
+    sample: [{ id: 'abc123', title: 'Push day', fields: [{ label: 'Date', value: '2026-06-15' }, { label: 'Exercises', value: '6' }] }],
+  },
+  firstRows: [{ itemKey: 'abc123', title: 'Push day', fields: [{ label: 'Date', value: '2026-06-15' }, { label: 'Exercises', value: '6' }, { label: 'Sets', value: '21' }] }],
+  secondArtifacts: [
+    { port: 'data', artifactKey: 'workouts-progress-data', description: 'The computed comparison behind the report: each exercise this month against six months ago.', summary: '24 exercise(s), 2026-06 against 2025-12', itemCount: 24, bytes: 9_300, preview: { path: 'workouts-sync/data/out/progress-data.json', format: 'json' } },
+    { port: 'reports', artifactKey: 'workouts-progress-reports', storage: 'dir', format: 'markdown', description: 'The monthly progress reports: workouts-progress-<YYYY-MM>.md.', summary: '5 report(s)', itemCount: 5 },
+  ],
+  secondRows: [{ itemKey: '2026-06', title: 'Workouts progress — 2026-06', preview: { path: 'workouts-sync/data/out/workouts-progress-2026-06.md', format: 'markdown' } }],
+});
+const workoutsSyncStageIo = workoutsSyncPorts.stageIo;
+const workoutsSyncStageIoOverall = workoutsSyncPorts.overall;
 
 // listening-digest — single stage: lastfm-digest.
 const listeningDigestMembers = [{ job_name: 'lastfm-digest', depends_on: [] }];
@@ -540,16 +564,21 @@ const projectsSyncWorkflowRun = workflowRun({ id: 'projects-sync-run', workflow_
 const projectsSyncRunJobs = projectsSyncMembers.map((m, i) => run({
   id: `projects-sync-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'projects-sync-run',
 }));
-const projectsSyncSyncOutput = { jobName: 'github-sync', itemKey: '123456', status: 'success', detail: { name: 'local-jobs', pushedAt: NOW } };
-const projectsSyncSummarizeOutput = { jobName: 'project-summarize', itemKey: '123456', status: 'success', detail: { name: 'local-jobs', markdown: '/abs/data/out/local-jobs.md' } };
-const projectsSyncStageIo = {
-  'github-sync': { inputs: [], outputs: [projectsSyncSyncOutput], predecessorJobs: [], job: 'github-sync' },
-  'project-summarize': { inputs: [projectsSyncSyncOutput], outputs: [projectsSyncSummarizeOutput], predecessorJobs: ['github-sync'], job: 'project-summarize' },
-};
-const projectsSyncStageIoOverall = {
-  inputs: [projectsSyncSyncOutput], outputs: [projectsSyncSummarizeOutput],
-  predecessorJobs: ['github-sync'], outputJobs: ['project-summarize'], job: '__overall__',
-};
+const projectsSyncPorts = twoStagePortsFixtures({
+  stages: ['github-sync', 'project-summarize'],
+  firstArtifact: {
+    port: 'catalog', artifactKey: 'projects-catalog', description: 'The catalog of the owner\'s GitHub repos: one entry per repo, most recently pushed first.',
+    summary: '18 repo(s)', itemCount: 18, bytes: 7_900, preview: { path: 'projects-sync/data/out/projects.json', format: 'json' },
+    sample: [{ id: '123456', title: 'owner/local-jobs', subtitle: 'A self-hosted job runner', fields: [{ label: 'Language', value: 'TypeScript' }, { label: 'Pushed', value: '2026-06-21' }] }],
+  },
+  firstRows: [{ itemKey: '123456', title: 'owner/local-jobs', subtitle: 'A self-hosted job runner', fields: [{ label: 'Language', value: 'TypeScript' }, { label: 'Pushed', value: '2026-06-21' }] }],
+  secondArtifacts: [
+    { port: 'summaries', artifactKey: 'project-summaries', storage: 'dir', format: 'markdown', description: 'The markdown profile of each repo: <repo>.md.', summary: '18 profile(s)', itemCount: 18 },
+  ],
+  secondRows: [{ itemKey: '123456', title: 'owner/local-jobs', fields: [{ label: 'Pushed', value: '2026-06-21' }], preview: { path: 'projects-sync/data/out/local-jobs.md', format: 'markdown' } }],
+});
+const projectsSyncStageIo = projectsSyncPorts.stageIo;
+const projectsSyncStageIoOverall = projectsSyncPorts.overall;
 
 // plex-space-saver — single stage: plex-space-saver-scan.
 const plexSpaceSaverMembers = [{ job_name: 'plex-space-saver-scan', depends_on: [] }];
@@ -1208,7 +1237,7 @@ function fixtureForRaw(pathname, searchParams) {
     const job = searchParams?.get('job');
     return workoutsSyncStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
-  if (pathname === '/api/workflow-runs/workouts-sync-run') return { run: workoutsSyncWorkflowRun, jobs: workoutsSyncRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/workouts-sync-run') return { run: workoutsSyncWorkflowRun, jobs: workoutsSyncRunJobs, logs, gates: workoutsSyncPorts.gates };
   if (pathname === '/api/workflow-runs/listening-digest-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return listeningDigestStageIoOverall;
     const job = searchParams?.get('job');
@@ -1220,7 +1249,7 @@ function fixtureForRaw(pathname, searchParams) {
     const job = searchParams?.get('job');
     return projectsSyncStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
-  if (pathname === '/api/workflow-runs/projects-sync-run') return { run: projectsSyncWorkflowRun, jobs: projectsSyncRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/projects-sync-run') return { run: projectsSyncWorkflowRun, jobs: projectsSyncRunJobs, logs, gates: projectsSyncPorts.gates };
   if (pathname === '/api/workflow-runs/plex-space-saver-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return plexSpaceSaverStageIoOverall;
     const job = searchParams?.get('job');

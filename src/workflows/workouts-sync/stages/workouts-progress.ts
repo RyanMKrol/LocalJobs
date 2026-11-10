@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { markWorkItem } from '../../../db/store.js';
 import { runClaude, unfenceMarkdown, type ClaudeResult } from '../../../services/claude.js';
-import type { JobContext } from '../../../core/types.js';
+import { writeFileAtomic, writeJsonFile, type JobContext } from '../../../engine/index.js';
 import { defaultHistoryPath, type HevyWorkout } from './hevy-sync.js';
 
 const JOB_NAME = 'workouts-progress';
@@ -256,7 +256,7 @@ export async function runWorkoutsProgress(
 
   mkdirSync(outDir, { recursive: true });
   const dataPath = resolve(outDir, 'progress-data.json');
-  writeFileSync(dataPath, JSON.stringify(data, null, 2));
+  writeJsonFile(dataPath, data);
   ctx.log(`info: wrote raw progress data to ${dataPath}`);
 
   ctx.progress(50, 'computed progress data — asking Claude for narrative');
@@ -280,7 +280,7 @@ export async function runWorkoutsProgress(
   // Per-month filename so past months survive: the old single-slot file was
   // overwritten every month, which made prior reports unrecoverable.
   const mdPath = resolve(outDir, `workouts-progress-${current.key}.md`);
-  writeFileSync(mdPath, report, 'utf8');
+  writeFileAtomic(mdPath, report);
   ctx.log(`info: wrote narrative report to ${mdPath}`);
 
   markWorkItem(JOB_NAME, current.key, 'success', {

@@ -442,7 +442,10 @@ What the engine then guarantees at run time:
   in manifest order.
 
 Storage kinds: `jsonArtifact` (one JSON file), `fileArtifact` (any other file),
-`dirArtifact` (a directory of per-item files), `ledgerArtifact` (the data travels in
+`dirArtifact` (a directory of per-item files; give it `files: (name) => boolean` when
+the directory also holds files that are not part of the artifact, so that a neighbour
+being rewritten is neither mistaken for this artifact changing nor fails a consumer's
+"has anything touched it since" check), `ledgerArtifact` (the data travels in
 the `work_items` ledger itself), `inlineArtifact` (a small value kept in the run record:
 use it for a stage whose only product is a count or a verdict, instead of writing a
 ledger row just to be visible).

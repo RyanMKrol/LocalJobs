@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
+import { defineStage } from '../../../engine/index.js';
+import { projectsSyncConfig } from '../config.js';
+import { projectSummaries, projectsCatalog } from '../contracts.js';
 import { runProjectSummarize } from './project-summarize.js';
-import { projectsCatalogContract } from '../contracts.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'project-summarize',
   description:
     'Shallow-clones each cataloged repo into a gitignored data/repos/<name>/ folder (pulling/resetting ' +
@@ -21,10 +22,17 @@ const job: JobDefinition = {
     'current catalog value is skipped entirely, with no clone and no Claude call.',
   timeoutMs: 600_000,
   maxRetries: 2,
-  consumes: [projectsCatalogContract()],
-  async run(ctx) {
-    await runProjectSummarize(ctx);
+  inputs: { catalog: { artifact: projectsCatalog } },
+  // One profile per repo, rewritten only when the repo has been pushed to: on a
+  // week with no pushes the folder is carried forward.
+  outputs: {
+    summaries: { artifact: projectSummaries, location: () => projectsSyncConfig.outDir, cumulative: true },
   },
-};
-
-export default job;
+  describeItem: (d) => ({
+    title: String(d.name ?? ''),
+    fields: typeof d.lastCommitSha === 'string' ? [{ label: 'Pushed', value: d.lastCommitSha.slice(0, 10) }] : [],
+  }),
+  async run(ctx) {
+    await runProjectSummarize(ctx, { readCatalog: () => ctx.input('catalog').read() });
+  },
+});

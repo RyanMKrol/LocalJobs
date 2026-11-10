@@ -526,7 +526,7 @@ async function runWorkflowInner(
         for (const b of inboundBindings.get(job) ?? []) {
           const gate: Gate = { key: b.artifactKey, producer: b.producer, consumer: b.consumer };
           const t0 = Date.now();
-          const r = resolveInput(workflowRunId, cycle, b);
+          const r = resolveInput(workflowRunId, cycle, b, getJobDefinition(b.producer)?.outputs?.[b.producerPort]?.artifact.files);
           recordRunInput({
             workflowRunId,
             cycle,

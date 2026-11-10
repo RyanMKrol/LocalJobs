@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
+import { defineStage } from '../../../engine/index.js';
+import { projectsSyncConfig } from '../config.js';
+import { projectsCatalog } from '../contracts.js';
 import { runGithubSync, githubSyncInputKeys } from './github-sync.js';
-import { projectsCatalogContract } from '../contracts.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'github-sync',
   description:
     'Fetches the owner\'s repositories from the GitHub REST API (GET /users/<GITHUB_USERNAME>/repos), ' +
@@ -17,10 +18,19 @@ const job: JobDefinition = {
   maxRetries: 3,
   inputKeysService: 'github',
   inputKeys: githubSyncInputKeys,
-  produces: [projectsCatalogContract()],
+  // Rebuilt from GitHub on every run: a run that returned without writing it fails.
+  outputs: {
+    catalog: { artifact: projectsCatalog, location: () => projectsSyncConfig.catalogPath },
+  },
+  describeItem: (d) => ({
+    title: String(d.name ?? ''),
+    subtitle: typeof d.description === 'string' ? d.description : undefined,
+    fields: [
+      ...(typeof d.language === 'string' ? [{ label: 'Language', value: d.language }] : []),
+      ...(typeof d.pushedAt === 'string' ? [{ label: 'Pushed', value: d.pushedAt.slice(0, 10) }] : []),
+    ],
+  }),
   async run(ctx) {
     await runGithubSync(ctx);
   },
-};
-
-export default job;
+});

@@ -39,7 +39,13 @@ export function describeArtifact(a: RunArtifactRow): string {
  * what it committed failed its own check, or when the file or directory has
  * changed since it was committed (some other process wrote it in between).
  */
-export function resolveInput(workflowRunId: string, cycle: number, b: PortBinding): ResolvedInput {
+export function resolveInput(
+  workflowRunId: string,
+  cycle: number,
+  b: PortBinding,
+  /** For a directory artifact that shares its directory: which files are its own (`ArtifactType.files`). */
+  belongs?: (name: string) => boolean,
+): ResolvedInput {
   const a = producedArtifact(workflowRunId, cycle, b.producer, b.artifactKey);
   if (!a) {
     return {
@@ -62,7 +68,7 @@ export function resolveInput(workflowRunId: string, cycle: number, b: PortBindin
       reason: `${path} has changed since "${b.producer}" committed it: something else wrote it between the two stages`,
     });
     if (a.storage === 'dir') {
-      if (dirStats(path).sha256 !== a.sha256) return changed();
+      if (dirStats(path, belongs).sha256 !== a.sha256) return changed();
     } else {
       const st = statSync(path);
       // Same size and mtime as recorded: unchanged. Otherwise only the content

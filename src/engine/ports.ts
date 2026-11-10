@@ -102,9 +102,17 @@ export interface ArtifactType<T = unknown> {
   count?(value: T): number;
   /** The artifact's contents as display rows (may be large; the caller pages). */
   items?(value: T): IoItem[];
+  /**
+   * `dir` storage only: which files in the directory belong to this artifact.
+   * Without it every regular file directly inside does. Give it when the
+   * directory is shared (a reports folder that also holds a data file another
+   * stage rewrites): otherwise that other file would make this artifact look
+   * changed, or would fail a consumer's "has anything touched it since" check.
+   */
+  files?(name: string): boolean;
 }
 
-type ArtifactOptions<T> = Pick<ArtifactType<T>, 'key' | 'description' | 'shape' | 'format' | 'check' | 'summary' | 'count' | 'items'>;
+type ArtifactOptions<T> = Pick<ArtifactType<T>, 'key' | 'description' | 'shape' | 'format' | 'check' | 'summary' | 'count' | 'items' | 'files'>;
 
 /** Build a GateResult from per-expectation checks (the shape the gate page renders). */
 export function fromChecks(checks: ExpectationResult[], sample?: string): GateResult {
@@ -157,7 +165,7 @@ export function dirArtifact(o: ArtifactOptions<DirListing>): ArtifactType<DirLis
     read(path) {
       if (!existsSync(path)) throw new Error(`${path} does not exist`);
       const files = readdirSync(path, { withFileTypes: true })
-        .filter((e) => e.isFile())
+        .filter((e) => e.isFile() && (!o.files || o.files(e.name)))
         .map((e) => e.name)
         .sort();
       return { path, files };

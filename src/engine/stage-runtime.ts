@@ -79,9 +79,12 @@ function violationsOf(r: GateResult): string {
 }
 
 /** When a file-backed artifact was last written, or null when it does not exist. */
-function lastWrittenMs(storage: string, location: string): number | null {
+function lastWrittenMs(artifact: ArtifactType, location: string): number | null {
   if (!location || !existsSync(location)) return null;
-  return storage === 'dir' ? dirStats(location).mtimeMs : statSync(location).mtimeMs;
+  if (artifact.storage !== 'dir') return statSync(location).mtimeMs;
+  const stats = dirStats(location, artifact.files);
+  // A shared directory holding none of this artifact's files yet: exists, never written.
+  return artifact.files && stats.files === 0 ? statSync(location).birthtimeMs : stats.mtimeMs;
 }
 
 export interface StageRuntime {
@@ -178,7 +181,7 @@ export function createStageRuntime(
       sha256 = sha256Text(extra.inlineJson ?? 'null');
       bytes = (extra.inlineJson ?? '').length;
     } else if (artifact.storage === 'dir' && existsSync(location)) {
-      const s = dirStats(location);
+      const s = dirStats(location, artifact.files);
       ({ sha256, bytes, mtimeMs } = s);
     } else if ((artifact.storage === 'json' || artifact.storage === 'file') && existsSync(location)) {
       const st = statSync(location);
@@ -317,7 +320,7 @@ export function createStageRuntime(
           handle.commit(); // the rows are already in the ledger; this checks and records them
           continue;
         }
-        const written = lastWrittenMs(artifact.storage, handle.location);
+        const written = lastWrittenMs(artifact, handle.location);
         if (written !== null && written >= writtenSinceMs - 1) {
           handle.commit();
         } else if (out.cumulative && written !== null) {

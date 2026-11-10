@@ -1,9 +1,9 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync } from 'fs';
 
 import { callService } from '../../../core/services.js';
 import type { CallServiceOpts } from '../../../core/services.js';
 import { markWorkItem, workItemCounts } from '../../../db/store.js';
-import type { JobContext } from '../../../core/types.js';
+import { writeJsonFile, type JobContext } from '../../../engine/index.js';
 import { projectsSyncConfig } from '../config.js';
 
 const JOB_NAME = 'github-sync';
@@ -131,7 +131,7 @@ export type CatalogWriter = (entries: CatalogEntry[]) => void;
 
 export function writeCatalog(entries: CatalogEntry[]): void {
   mkdirSync(projectsSyncConfig.outDir, { recursive: true });
-  writeFileSync(projectsSyncConfig.catalogPath, JSON.stringify(entries, null, 2));
+  writeJsonFile(projectsSyncConfig.catalogPath, entries);
 }
 
 /** Root stage (T094): each filtered repo id is an originating input. */

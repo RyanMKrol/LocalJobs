@@ -36,3 +36,19 @@ began with a leaked "I can't write files..." preamble), and a reply with no head
 the run so it retries. Idempotent per calendar month via the `work_items` ledger (mirrors
 `listening-digest`) — a manual re-run the same month regenerates that month's file rather than
 duplicating it.
+
+## How the stages hand data to each other (ports)
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `hevy-sync` | none | `history` (`workouts-history`, `workouts-history.json`, cumulative) |
+| `workouts-progress` | `history` | `data` (`workouts-progress-data`, `progress-data.json`), `reports` (`workouts-progress-reports`, the folder of monthly markdown reports, cumulative) |
+
+The history grows as workouts are synced, so a run with nothing new carries it forward, and an
+empty history (a fresh install) is valid. The progress stage is handed the history the sync
+stage committed in the same run. `data` is recomputed every run; a run that hits a Claude usage
+limit writes no report and carries the reports folder forward. Each stage keeps its ledger:
+`hevy-sync` one row per synced workout (idempotency), `workouts-progress` one row per month
+(the report it produced, with its markdown path).

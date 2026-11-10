@@ -3,6 +3,22 @@
 Weekly GitHub repo ingestion + Claude-authored per-project markdown summaries, forming a queryable
 "second brain" corpus. Runs Sunday at 05:00. Two-stage DAG: `github-sync → project-summarize`.
 
+## How the stages hand data to each other (ports)
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `github-sync` | none (root: `inputKeys()` live from GitHub) | `catalog` (`projects-catalog`, `projects.json`) |
+| `project-summarize` | `catalog` | `summaries` (`project-summaries`, the folder of `<repo>.md` profiles, cumulative) |
+
+The catalog is rebuilt from GitHub every run and must not be empty. The summarize stage reads
+the catalog it was handed (`ctx.input('catalog').read()`), not whatever file is on disk. A repo
+is re-summarized only when it has been pushed to, so on a quiet week the summaries folder is
+carried forward. Both stages keep their ledgers: `github-sync` one row per repo (the root list a
+limited run selects from), `project-summarize` one row per repo holding the `pushedAt` marker it
+was last summarized at.
+
 ## Stage 1 — `github-sync`
 
 Fetches the owner's repos via `GET /users/<GITHUB_USERNAME>/repos`, filters out forks/archived/private,

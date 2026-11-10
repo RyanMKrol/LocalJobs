@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const REQUIRED_HEADINGS = [
@@ -46,7 +46,7 @@ const FALLBACK_TEMPLATE = [
 import { runClaudeWithRepoAccess } from '../../../services/claude.js';
 import { callService } from '../../../core/services.js';
 import { getWorkItem, markWorkItem } from '../../../db/store.js';
-import type { JobContext } from '../../../core/types.js';
+import { writeFileAtomic, type JobContext } from '../../../engine/index.js';
 import { projectsSyncConfig } from '../config.js';
 import type { CatalogEntry } from './github-sync.js';
 
@@ -204,7 +204,7 @@ export async function runProjectSummarize(
   const summarize = opts.summarizeWithRepoAccess ?? runClaudeWithRepoAccess;
   const writeMarkdown = opts.writeMarkdown ?? ((path: string, content: string) => {
     mkdirSync(projectsSyncConfig.outDir, { recursive: true });
-    writeFileSync(path, content);
+    writeFileAtomic(path, content);
   });
 
   let entries: CatalogEntry[];

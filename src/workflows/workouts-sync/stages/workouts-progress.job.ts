@@ -1,8 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { runWorkoutsProgress } from './workouts-progress.js';
-import { workoutsHistoryContract } from '../contracts.js';
+import { resolve } from 'node:path';
+import { defineStage } from '../../../engine/index.js';
+import { progressData, progressReports, workoutsHistory } from '../contracts.js';
+import { defaultOutDir, runWorkoutsProgress } from './workouts-progress.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'workouts-progress',
   description:
     'Reads the full workouts history file and computes, per exercise, a comparison between a ' +
@@ -22,10 +23,15 @@ const job: JobDefinition = {
     "that month's file rather than duplicating it.",
   timeoutMs: 300_000,
   maxRetries: 3,
-  consumes: [workoutsHistoryContract()],
-  async run(ctx) {
-    await runWorkoutsProgress(ctx);
+  inputs: { history: { artifact: workoutsHistory } },
+  outputs: {
+    // Recomputed from the whole history on every run.
+    data: { artifact: progressData, location: () => resolve(defaultOutDir, 'progress-data.json') },
+    // One report per month. A run that hit a Claude usage limit writes none and
+    // carries the folder forward; the next run writes this month's.
+    reports: { artifact: progressReports, location: () => defaultOutDir, cumulative: true },
   },
-};
-
-export default job;
+  async run(ctx) {
+    await runWorkoutsProgress(ctx, { historyPath: ctx.input('history').path });
+  },
+});
