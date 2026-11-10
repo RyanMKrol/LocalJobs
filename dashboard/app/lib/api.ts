@@ -45,6 +45,7 @@ export const OUTCOME_REASON_LABEL: Record<string, string> = {
   noop: 'Ran, but had nothing to do',
   stalled: 'Stalled: had work queued and completed none of it',
   'upstream-skipped': 'Not run',
+  resumed: 'Reused',
   overlap: 'Not run',
   'gate-failed': 'Not run, an input check failed',
   'not-started-cancelled': 'Not started',
@@ -79,6 +80,8 @@ export interface WorkflowRun {
   progress_msg: string;
   /** Manual run-limit: N originating inputs this run was bounded to (T094); null = unlimited. */
   run_limit?: number | null;
+  /** The earlier run this one resumed, reusing its succeeded stages; null for an ordinary run. */
+  resumed_from?: string | null;
   started_at: string | null;
   finished_at: string | null;
   duration_ms: number | null;
@@ -743,6 +746,9 @@ export const api = {
       { timeoutMs },
     ),
   cancelWorkflowRun: (id: string) => post<{ ok: boolean }>(`/api/workflow-runs/${id}/cancel`),
+  // Start a new run that reuses this run's succeeded stages and runs the rest.
+  // The server's error text (already running, repeats in cycles, …) is surfaced as the thrown message.
+  resumeWorkflowRun: (id: string) => postWithServerError<{ ok: boolean; resumedFrom: string }>(`/api/workflow-runs/${id}/resume`, {}),
   // Clear all output data for a workflow (T203): work_items + runs/logs + data/out/*.
   // Preserves: input data (data/raw), chrome-profile, settings, definition tables.
   // Refuses while the workflow has an active run.

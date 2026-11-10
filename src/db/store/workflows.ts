@@ -195,6 +195,11 @@ export function createWorkflowRun(
  * visible immediately as `running` while it discovers inputs; the roots are
  * attached here once the discovery scan finishes, BEFORE any member stage spawns).
  */
+/** Mark a workflow run as a resume of an earlier one (it reuses that run's succeeded stages). */
+export function setWorkflowRunResumedFrom(workflowRunId: string, resumedFrom: string): void {
+  db.prepare('UPDATE workflow_runs SET resumed_from = ? WHERE id = ?').run(resumedFrom, workflowRunId);
+}
+
 export function setWorkflowRunSelectedRoots(workflowRunId: string, selectedRoots: string[]): void {
   db.prepare('UPDATE workflow_runs SET selected_roots = ? WHERE id = ?')
     .run(JSON.stringify(selectedRoots), workflowRunId);

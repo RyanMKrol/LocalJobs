@@ -32,7 +32,9 @@ export type OutcomeReason =
   | 'overlap'
   | 'gate-failed'
   | 'not-started-cancelled'
-  | 'orphaned';
+  | 'orphaned'
+  /** Not run: this run resumed an earlier one, and the stage's result there was reused. */
+  | 'resumed';
 
 /** Engine-v2 run metadata recorded alongside a run row (all optional). */
 export interface RunMeta {
@@ -80,6 +82,22 @@ export function recordSettledRun(
                       workflow_run_id, cycle, outcome_reason, queued_at_ms, started_at_ms, finished_at_ms, gate_ms)
     VALUES (?, ?, ?, 'workflow', 1, datetime('now'), datetime('now'), 0, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(id, jobName, status, error, workflowRunId, meta.cycle ?? null, outcomeReason, meta.queuedAtMs ?? null, now, now, meta.gateMs ?? null);
+  return id;
+}
+
+/**
+ * Record a stage that was NOT run because this workflow run resumed an earlier
+ * one and the stage's result there was reused. It settles `success` (so its
+ * dependents run) with the reason `resumed` and a note naming the run it came from.
+ */
+export function recordReusedRun(jobName: string, workflowRunId: string, note: string, meta: RunMeta = {}): string {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO runs (id, job_name, status, trigger, attempt, started_at, finished_at, duration_ms, progress, progress_msg,
+                      workflow_run_id, cycle, outcome_reason, queued_at_ms, started_at_ms, finished_at_ms, gate_ms)
+    VALUES (?, ?, 'success', 'workflow', 1, datetime('now'), datetime('now'), 0, 100, ?, ?, ?, 'resumed', ?, ?, ?, ?)
+  `).run(id, jobName, note, workflowRunId, meta.cycle ?? null, meta.queuedAtMs ?? null, now, now, meta.gateMs ?? null);
   return id;
 }
 

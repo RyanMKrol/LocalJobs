@@ -64,7 +64,7 @@ export interface Scenario {
   dir: string;
   /** Steer the fixture stages for the next run(s): `{ "<stage>": "<mode>" }`. */
   control(c: Record<string, string>): void;
-  run(workflow: WorkflowDefinition, opts?: { limit?: number; trigger?: 'manual' | 'schedule' }): Promise<RunReport>;
+  run(workflow: WorkflowDefinition, opts?: { limit?: number; trigger?: 'manual' | 'schedule'; resumeFrom?: string }): Promise<RunReport>;
   /**
    * Start a run without waiting for it to finish (to cancel it, or watch it
    * mid-flight). Resolves once the run exists, with its id and a `done` promise
@@ -128,7 +128,7 @@ export function setupScenario(opts: { moduleUrl: string; jobs: JobDefinition[]; 
     dir,
     control: (c) => writeFileSync(join(dir, 'control.json'), JSON.stringify(c)),
     async run(workflow, o = {}) {
-      const { workflowRunId } = await runWorkflow(workflow, o.trigger ?? 'manual', { limit: o.limit });
+      const { workflowRunId } = await runWorkflow(workflow, o.trigger ?? 'manual', { limit: o.limit, resumeFrom: o.resumeFrom });
       if (!workflowRunId) throw new Error(`workflow "${workflow.name}" did not start`);
       return reportFor(workflowRunId);
     },

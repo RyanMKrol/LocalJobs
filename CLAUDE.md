@@ -228,7 +228,7 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   plain success or failure of its own process: `noop` (ran, nothing to do), `stalled`
   (ran, had work, completed none), `upstream-skipped`, `overlap` (the job was already
   running; the reason names the holding run), `gate-failed`, `not-started-cancelled`,
-  `orphaned`. `skipped` alone used to mean four different things, told apart only by
+  `orphaned`, `resumed` (not run: reused from the run this one resumed). `skipped` alone used to mean four different things, told apart only by
   free text the run page did not show. Stages the engine never reached, because the run
   was cancelled or the daemon restarted, still get a `cancelled` row saying so instead of
   being absent. Rows also carry `cycle`, `queued_at_ms` / `started_at_ms` /
@@ -255,6 +255,18 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   writer) records the workflow run + killed member run `cancelled`. A cancelled member
   is terminal (not retried); not-yet-started stages simply never spawn. Idempotency
   means the next run resumes outstanding work.
+- **A failed run can be resumed.** `POST /api/workflow-runs/:id/resume` (the "Resume from
+  here" button on a failed, partial or cancelled run's page) starts a NEW run of the same
+  workflow that reuses what the earlier run's stages committed and runs only the rest. A
+  stage is reused only if it succeeded there, every stage it depends on is reused too, and
+  every output it declared is still byte-for-byte what is on disk (`planResume` in
+  `src/engine/resume.ts`); otherwise it runs normally. A reused stage gets a `success` row
+  with `outcome_reason = 'resumed'` and no logs, and its artifacts are re-recorded under the
+  new run (`fresh = 0`, note "reused from run …"), so the stages after it resolve their
+  inputs exactly as in any run. The new run records `resumed_from` and takes the earlier
+  run's limit and frozen roots. Not offered for a `repeatUntilStable` workflow (re-running
+  it already skips finished items). So eight LLM branches that succeeded are not paid for
+  again because the merge after them failed.
 - **One active run per workflow (T105).** A given workflow may have only ONE run
   active at a time — but DIFFERENT workflows still run concurrently (this is
   per-workflow, NOT a global lock). The executor is the **authoritative, race-safe
@@ -485,6 +497,7 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/engine/stage-runtime.ts` | Child side of ports: builds a stage's context (`ctx.run` / `input` / `inputs` / `output`), records what it commits, and the end-of-run sweep that fails a stage with an uncommitted output |
 | `src/engine/resolve-inputs.ts` | Daemon side of ports: `resolveInput` (this run's artifact, still intact on disk) and `uncommittedOutputs` |
 | `src/engine/child-main.ts` | The body of the child process (`runJobProcess`); `src/runJob.ts` only supplies the registry lookup, so tests can run fixture stages through the same code |
+| `src/engine/resume.ts` | `planResume`: for a resume of an earlier run, which stages' results can be reused (succeeded there, everything upstream reused too, every declared output still intact on disk) and why each of the others runs again |
 | `src/engine/faults.ts` | Fault injection for proving failure handling on a REAL run: a list in `data/engine-faults.json` (`{ job, fault: 'fail' \| 'skip-outputs', attempts }`) makes the named stage misbehave for that many attempts, then removes itself. Does nothing when the file is absent. See `src/engine/README.md` |
 | `src/engine/protocol.ts` | `ENGINE_PROTOCOL`: the child-protocol version the daemon passes to children |
 | `src/engine/hash.ts` | SHA-256 of a file, and a listing fingerprint for a directory |

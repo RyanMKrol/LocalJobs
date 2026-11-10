@@ -1234,6 +1234,23 @@ function fixtureForRaw(pathname, searchParams) {
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflow-runs/')) return gateInspection;
   if (pathname.includes('/gates/') && pathname.startsWith('/api/workflows/')) return structuralGateDetail;
   if (pathname === '/api/workflow-runs/skipped') return { run: workflowRunSkipped, jobs: membersSkipped, logs, gates: [] };
+  // A failed run (it offers "Resume from here"), and the run that resumed it: its
+  // first stage was reused rather than run again.
+  if (pathname === '/api/workflow-runs/failed-run') {
+    return { run: workflowRun({ id: 'failed-run', status: 'failed' }), jobs: members.map((m, i) => run({
+      id: `failed-${i}`, job_name: m.job_name, workflow_run_id: 'failed-run', cycle: 1,
+      status: i === 0 ? 'success' : i === 1 ? 'failed' : 'skipped',
+      outcome_reason: i > 1 ? 'upstream-skipped' : null,
+      error: i === 1 ? 'Error: upstream returned 503 for every attempt' : i > 1 ? `skipped: upstream ${members[1].job_name} did not succeed (failed)` : null,
+    })), logs, gates: [] };
+  }
+  if (pathname === '/api/workflow-runs/resumed-run') {
+    return { run: workflowRun({ id: 'resumed-run', resumed_from: 'failed-run' }), jobs: members.map((m, i) => run({
+      id: `resumed-${i}`, job_name: m.job_name, workflow_run_id: 'resumed-run', cycle: 1, status: 'success',
+      outcome_reason: i === 0 ? 'resumed' : null, duration_ms: i === 0 ? 0 : 12_300,
+      progress_msg: i === 0 ? 'reused from run failed-run' : '',
+    })), logs, gates: [] };
+  }
   if (pathname === '/api/workflow-runs/movie-recs-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return movieRecsStageIoOverall;
     const job = searchParams?.get('job');
@@ -1574,6 +1591,9 @@ export const PAGES = [
   { name: 'workflow-missing-movies', path: '/workflows/missing-movies',        waitFor: ['.rf-dag-node'] },
   { name: 'workflow-empty-output',   path: '/workflows/workouts-sync',         waitFor: ['.rf-dag-node'] },
   { name: 'workflow-tv-recs',        path: '/workflows/tv-recommendations',    waitFor: ['.rf-dag-node'] },
+  // A failed run offers "Resume from here"; the run that resumed it marks the reused stage.
+  { name: 'workflow-run-failed-resumable', path: '/workflow-runs/failed-run',  waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-resumed',    path: '/workflow-runs/resumed-run',       waitFor: ['.rf-dag-node'] },
   // A ports workflow's page: its Output section leads with the product artifact card.
   { name: 'workflow-perfumes-ports-output', path: '/workflows/perfumes',       waitFor: ['.rf-dag-node', '.stage-io-artifact'] },
   { name: 'workflow-missing-tv-seasons', path: '/workflows/missing-tv-seasons', waitFor: ['.rf-dag-node'] },

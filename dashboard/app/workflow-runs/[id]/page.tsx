@@ -88,6 +88,18 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
   const logs = data?.logs ?? [];
   const gates = data?.gates ?? [];
 
+  // Resume: a NEW run that reuses the stages that succeeded here and runs the rest.
+  const [resumeState, setResumeState] = useState<{ busy: boolean; note?: string; error?: string }>({ busy: false });
+  async function resume() {
+    setResumeState({ busy: true });
+    try {
+      await api.resumeWorkflowRun(id);
+      setResumeState({ busy: false, note: 'Resume started. It is a new run: open it from the workflow page.' });
+    } catch (e) {
+      setResumeState({ busy: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   async function cancel() {
     setBusy(true);
     try { await api.cancelWorkflowRun(id); } catch { /* poll will reflect new status */ } finally { busyTimerRef.current = setTimeout(() => setBusy(false), 1200); }
@@ -131,7 +143,24 @@ export default function WorkflowRunDetail({ params }: { params: Promise<{ id: st
             {busy ? 'Cancelling…' : '✕ Cancel'}
           </button>
         )}
+        {run && ['failed', 'partial', 'cancelled', 'timeout'].includes(run.status) && (
+          <button
+            className="btn"
+            onClick={resume}
+            disabled={resumeState.busy}
+            title="Start a new run that reuses the stages that succeeded in this one (when what they wrote is unchanged) and runs only the rest."
+          >
+            {resumeState.busy ? 'Starting…' : '↺ Resume from here'}
+          </button>
+        )}
       </div>
+      {run?.resumed_from && (
+        <p className="muted" style={{ margin: '4px 0 0' }}>
+          Resumed from <Link href={`/workflow-runs/${run.resumed_from}`}>an earlier run</Link>: stages marked "Reused" were not run again.
+        </p>
+      )}
+      {resumeState.note && <p className="muted" style={{ margin: '4px 0 0' }}>{resumeState.note} <Link href={`/workflows/${run?.workflow_name}`}>Go to the workflow →</Link></p>}
+      {resumeState.error && <p className="error" style={{ margin: '4px 0 0' }}>Could not resume: {resumeState.error}</p>}
       <p className="sub">{run ? `${completedStages} of ${totalStages} stages` : ''}{run ? ` · ${run.progress}%` : ''}{run?.duration_ms != null ? ` · ${fmtDuration(run.duration_ms)}` : ''}{run?.started_at ? ` · Started ${fmtAbsolute(run.started_at)}` : ''}</p>
 
       {workflow && (

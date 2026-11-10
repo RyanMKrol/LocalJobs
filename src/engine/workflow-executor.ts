@@ -13,6 +13,11 @@ import {
   recordNotStarted,
   recordRunInput,
   recordSettledRun,
+  recordReusedRun,
+  recordRunArtifact,
+  getWorkflowRun,
+  getWorkflowRunRoots,
+  setWorkflowRunResumedFrom,
   recordSkippedRun,
   rollUpWorkflowProgress,
   runChangedAnyItem,
@@ -30,6 +35,7 @@ import { type Dag, type Gate, buildDag, deriveGates, executeDag, gateFailurePref
 import { config } from '../config.js';
 import { bindWorkflowPorts, isPortsJob, workflowMode, type PortBinding } from './ports.js';
 import { describeArtifact, resolveInput } from './resolve-inputs.js';
+import { planResume, type ResumePlan } from './resume.js';
 import { abortableSleep, runJobForWorkflow } from './executor.js';
 import type { GateResult, LogLevel, WorkflowDefinition, RunStatus } from './types.js';
 
@@ -295,10 +301,21 @@ function findRootStage(dag: Dag): string | null {
  * All fan-out of a selected root runs to completion. Unset / scheduled runs are
  * unlimited (today's behaviour, unchanged).
  */
+export interface RunWorkflowOptions {
+  /** Cap a manual run to this many originating inputs (T094). */
+  limit?: number;
+  /**
+   * Resume an earlier run of this workflow: reuse the result of every stage that
+   * succeeded there and whose outputs are still intact, and run the rest. See
+   * `resume.ts` for exactly when a stage is reused.
+   */
+  resumeFrom?: string;
+}
+
 export async function runWorkflow(
   def: WorkflowDefinition,
   trigger: 'schedule' | 'manual',
-  opts: { limit?: number } = {},
+  opts: RunWorkflowOptions = {},
 ): Promise<WorkflowRunResult> {
   // Atomic per-workflow start guard (T105): check + claim run SYNCHRONOUSLY with no
   // await between them, so two near-simultaneous starts of the SAME workflow can't
@@ -320,7 +337,7 @@ export async function runWorkflow(
 async function runWorkflowInner(
   def: WorkflowDefinition,
   trigger: 'schedule' | 'manual',
-  opts: { limit?: number } = {},
+  opts: RunWorkflowOptions = {},
 ): Promise<WorkflowRunResult> {
   let dag: Dag;
   try {
@@ -387,7 +404,14 @@ async function runWorkflowInner(
     }
   }
 
-  const workflowRunId = createWorkflowRun(def.name, trigger, runLimit, null);
+  // A resume runs over the same inputs as the run it resumes: it takes that run's
+  // limit and frozen roots as they are, instead of selecting afresh.
+  const resumed = opts.resumeFrom ? getWorkflowRun(opts.resumeFrom) : undefined;
+  const resumedRoots = resumed ? getWorkflowRunRoots(resumed.id) : null;
+  if (resumed) runLimit = resumedRoots ? (resumed.run_limit ?? resumedRoots.length) : null;
+
+  const workflowRunId = createWorkflowRun(def.name, trigger, runLimit, resumedRoots);
+  if (resumed) setWorkflowRunResumedFrom(workflowRunId, resumed.id);
   const controller = new AbortController();
   activeWorkflowRuns.set(workflowRunId, controller);
   const log = (m: string, level: LogLevel = 'info') => addWorkflowLog(workflowRunId, m, level);
@@ -402,7 +426,9 @@ async function runWorkflowInner(
   // cancellable during this window now, since the row already exists (the abort
   // takes effect once the scan returns and gates the DAG below).
   let emptySelectionWarning: string | null = null;
-  if (runLimit) {
+  if (resumed && resumedRoots) {
+    limitNote = ` · limited to the ${resumedRoots.length} originating input(s) of the run it resumes`;
+  } else if (runLimit) {
     const rootStage = findRootStage(dag)!;
     log(`Discovering originating inputs for a limited run (limit ${runLimit}) via "${rootStage}"…`);
     try {
@@ -432,6 +458,21 @@ async function runWorkflowInner(
   try {
   log(`Workflow "${def.name}" started · ${total} job(s) · ${boundaryCount} ${bound ? 'input(s)' : 'gate(s)'} · trigger=${trigger}${def.repeatUntilStable ? ` · repeatUntilStable (maxCycles=${maxCycles})` : ''}${limitNote}`);
   if (emptySelectionWarning) log(emptySelectionWarning, 'warn');
+
+  // Resume: work out which stages' results from the earlier run can be reused.
+  let resume: ResumePlan | null = null;
+  if (opts.resumeFrom) {
+    if (!resumed || resumed.workflow_name !== def.name) {
+      log(`Cannot resume from run ${opts.resumeFrom}: it is not a run of "${def.name}". Running every stage.`, 'warn');
+    } else if (mode !== 'ports') {
+      log(`Cannot resume: "${def.name}" is not a ports workflow, so its stages' outputs were never recorded. Running every stage.`, 'warn');
+    } else {
+      resume = planResume(dag, resumed.id, getJobDefinition);
+      log(`Resuming run ${resumed.id} (${resumed.status}): reusing ${resume.reusable.size} of ${total} stage(s).`);
+      for (const [job] of resume.reusable) log(`  ↺ ${job}: its result from that run is reused`);
+      for (const [job, why] of resume.rerun) log(`  ▶ ${job} runs again: ${why}`);
+    }
+  }
 
   // No-forward-progress detection across repeatUntilStable cycles (T112).
   let prevSig: WorkflowProgressSignature | null = null;
@@ -481,6 +522,27 @@ async function runWorkflowInner(
           // Still leave a row: every stage of every run gets a recorded outcome.
           recordSettledRun(job, workflowRunId, 'failed', `job "${job}" has no definition in the registry`, 'gate-failed', meta);
           return 'failed';
+        }
+        // Resumed from an earlier run, and this stage's result there is still good:
+        // do not run it. Its artifacts are re-recorded under THIS run (marked as
+        // reused), so the stages after it resolve their inputs exactly as usual.
+        // Only in the first cycle: a later cycle is new work.
+        const reuse = cycle === 1 ? resume?.reusable.get(job) : undefined;
+        if (reuse) {
+          const note = `reused from run ${opts.resumeFrom}`;
+          const reusedRunId = recordReusedRun(job, workflowRunId, note, meta);
+          for (const a of reuse.artifacts) {
+            recordRunArtifact({
+              workflowRunId, runId: reusedRunId, cycle, jobName: job, port: a.port, artifactKey: a.artifact_key, storage: a.storage,
+              path: a.path, sha256: a.sha256, bytes: a.bytes, mtimeMs: a.mtime_ms, itemCount: a.item_count,
+              fresh: false, ok: true,
+              check: a.check_json ? JSON.parse(a.check_json) : undefined,
+              summary: a.summary_json ? JSON.parse(a.summary_json) : undefined,
+              inlineJson: a.inline_json, note,
+            });
+          }
+          log(`↺ ${job} not run: ${note} (${reuse.artifacts.length} output(s) carried over)`);
+          return 'success';
         }
         // Validation gate: every inbound contract from a (now-succeeded) upstream
         // is checked BEFORE the consumer runs. A violation is a first-class failed

@@ -1735,6 +1735,34 @@ const routes: Route[] = [
     },
   },
 
+  // POST /api/workflow-runs/:id/resume
+  // Start a NEW run of the same workflow that picks up where this one stopped: the
+  // stages that succeeded here are reused when what they wrote is still intact,
+  // and only the rest are run (see src/engine/resume.ts). The run must be finished
+  // and not a success, the workflow must not already be running, and it must not
+  // be one that repeats in cycles (a later cycle's work is not a stage to reuse).
+  {
+    method: 'POST',
+    pattern: '/api/workflow-runs/:id/resume',
+    handler: ({ res, params }) => {
+      const run = getWorkflowRun(params.id);
+      if (!run) return json(res, 404, { error: 'workflow run not found' });
+      if (run.status === 'running') return json(res, 409, { error: 'workflow run is still running: cancel it or wait for it to finish' });
+      if (run.status === 'success') return json(res, 409, { error: 'workflow run succeeded: there is nothing to resume' });
+      const def = getWorkflowDefinition(run.workflow_name);
+      if (!def) return json(res, 404, { error: `workflow "${run.workflow_name}" no longer exists` });
+      if (def.repeatUntilStable) {
+        return json(res, 400, { error: `workflow "${def.name}" repeats in cycles and cannot be resumed: run it again instead (finished items are skipped)` });
+      }
+      if (workflowRunInProgress(def.name)) {
+        return json(res, 409, { error: `workflow "${def.name}" already has an active run`, running: true });
+      }
+      runWorkflow(def, 'manual', { resumeFrom: run.id }).catch((e) => console.error('[api] workflow resume error', e));
+      console.log(`[api] resume requested for workflow run ${params.id}`);
+      return json(res, 202, { ok: true, message: 'resume started', resumedFrom: run.id });
+    },
+  },
+
   // GET /api/workflow-runs/:id/gates/:producer/:key
   // Inspect ONE validation gate for the dashboard's expected-vs-actual view:
   // the classified gate state plus, for each side (produced = producer's

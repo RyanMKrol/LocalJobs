@@ -20,6 +20,8 @@ it produces. The engine:
 - retries, times out and cancels stages, each of which runs in its own process
 - keeps a record of every run: what each stage read, what it wrote, how it ended and
   why
+- can resume a failed run: a new run that reuses the stages that succeeded, as long as
+  what they wrote has not changed, and runs only the rest
 
 The run page in the dashboard is drawn from that record. A stage does not write
 anything for the dashboard's benefit.
@@ -76,7 +78,7 @@ Nothing from the rest of the repo is loaded.
 
 | Scenario | What it shows |
 |---|---|
-| `linear` | Data passing down a chain, a bad output stopping it at the source, retries, cancelling |
+| `linear` | Data passing down a chain, a bad output stopping it at the source, retries, cancelling, an injected fault, resuming a failed run (and not reusing a stage whose output has since changed) |
 | `fan-in` | Several branches joining through one input, stale files rejected, a failed attempt ignored, a changed file caught, a store carried forward |
 | `diamond` | Two different inputs joining, the two sides running at once, the join waiting for both |
 | `item-pipeline` | Items done once each, a failed item not blocking the rest, picking up where it left off, a run capped to a few items, a quota stop, repeating until settled |

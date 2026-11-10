@@ -1,6 +1,6 @@
 // SCENARIO: a linear pipeline, run for real with fixture stages.
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { getLogs } from '../../db/store.js';
 import { setupScenario } from '../testing/scenario.js';
 import { cancelWorkflowRun } from '../workflow-executor.js';
@@ -81,6 +81,53 @@ try {
     } finally {
       delete process.env.LOCALJOBS_FAULTS_FILE;
     }
+  });
+
+  await test('resume: a new run reuses the stages that succeeded and runs only the rest', async () => {
+    s.control({ 'ln-transform': 'fail' });
+    const failed = await s.run(linearWorkflow);
+    assert.equal(failed.stage('ln-fetch')?.status, 'success');
+    assert.equal(failed.stage('ln-transform')?.status, 'failed');
+
+    s.control({});
+    const r = await s.run(linearWorkflow, { resumeFrom: failed.id });
+    assert.equal(r.status, 'success', r.log);
+    // The fetch stage was NOT run again: one settled row, no child process, the reason says why.
+    const fetch = r.stage('ln-fetch')!;
+    assert.equal(fetch.outcome_reason, 'resumed');
+    assert.equal(getLogs(fetch.id).length, 0, 'a reused stage has no log of its own: it never ran');
+    assert.match(r.log, /↺ ln-fetch not run: reused from run/);
+    assert.match(r.log, /▶ ln-transform runs again: it did not succeed in that run \(failed\)/);
+    assert.match(r.log, /▶ ln-publish runs again: it did not succeed in that run \(skipped, upstream-skipped\)/);
+    // Its artifact is re-recorded under this run, marked as carried over, and is what transform was handed.
+    const carried = r.artifact('ln-fetch', 'fetched')!;
+    assert.equal(carried.fresh, 0);
+    assert.match(carried.note ?? '', /reused from run/);
+    assert.equal(carried.sha256, failed.artifact('ln-fetch', 'fetched')!.sha256);
+    assert.deepEqual(r.inputsOf('ln-transform'), ['fetched<-ln-fetch']);
+    assert.equal(r.stage('ln-transform')?.status, 'success');
+    assert.equal(r.stage('ln-publish')?.status, 'success');
+  });
+
+  await test('resume: a stage whose output has changed since is not reused, and neither is anything after it', async () => {
+    // Make the LAST stage fail (an injected fault, for every attempt it gets).
+    const faults = s.path('engine-faults.json');
+    process.env.LOCALJOBS_FAULTS_FILE = faults;
+    writeFileSync(faults, JSON.stringify([{ job: 'ln-publish', fault: 'fail', attempts: 10 }]));
+    const failed = await s.run(linearWorkflow);
+    rmSync(faults, { force: true });
+    delete process.env.LOCALJOBS_FAULTS_FILE;
+    assert.equal(failed.stage('ln-transform')?.status, 'success');
+    assert.equal(failed.stage('ln-publish')?.status, 'failed');
+
+    // Something rewrites the first stage's file after the run.
+    writeFileSync(s.path('fetched.json'), JSON.stringify({ rows: [9, 9, 9] }));
+    const r = await s.run(linearWorkflow, { resumeFrom: failed.id });
+    assert.equal(r.status, 'success', r.log);
+    assert.match(r.log, /▶ ln-fetch runs again: its "fetched" output cannot be reused: .*has changed since that run/);
+    assert.match(r.log, /▶ ln-transform runs again: "ln-fetch", which it depends on, is being run again/);
+    assert.notEqual(r.stage('ln-fetch')?.outcome_reason, 'resumed');
+    assert.deepEqual(s.readJson<{ rows: number[] }>('fetched.json').rows, [1, 2, 3], 'the stage ran and wrote its own output again');
   });
 
   await test('cancelling mid-run kills the running stage and records the rest as not started; a later run is unaffected', async () => {
