@@ -6,6 +6,14 @@ stores behind ryankrol.co.uk/reviews/*) and writes one markdown file per review 
 helpers are policy-disabled — keep it that way); the site itself is never scraped. vault-sync
 mirrors the output into the vault under `Reviews/Books|Movies|TV|Albums`.
 
+## Outputs (ports)
+
+Each of the four stages is a ports stage with one output, `reviews` (`media-reviews`, the
+category's own folder under `data/out/`, cumulative): a day with no new or changed review
+carries the folder forward. The artifact type is in `contracts.ts`. There are no edges between
+the four, so there is nothing to bind. Each stage keeps its ledger, which holds the content
+hash a review was last written at.
+
 ## Structure: four independent single-stage jobs, one generic engine
 
 Four members (`media-reviews-books|movies|tv|albums`), NO `dependsOn` edges — so no gates/contracts

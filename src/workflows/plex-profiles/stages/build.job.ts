@@ -1,7 +1,9 @@
-import type { JobDefinition } from '../../../core/types.js';
+import { defineStage } from '../../../engine/index.js';
+import { plexProfilesConfig } from '../config.js';
+import { movieProfiles, showProfiles } from '../contracts.js';
 import { resolveInputKeys, runBuild } from './build.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-profiles-build',
   description:
     'Scans the owner\'s entire Plex library (movies AND TV shows) and writes one markdown profile ' +
@@ -20,9 +22,13 @@ const job: JobDefinition = {
   maxRetries: 3,
   inputKeysService: 'plex',
   inputKeys: resolveInputKeys,
+  // A profile is rewritten only when Plex says the title changed, so on most
+  // runs most of each folder is carried forward.
+  outputs: {
+    movies: { artifact: movieProfiles, location: () => plexProfilesConfig.moviesOutDir, cumulative: true },
+    shows: { artifact: showProfiles, location: () => plexProfilesConfig.showsOutDir, cumulative: true },
+  },
   async run(ctx) {
     await runBuild(ctx);
   },
-};
-
-export default job;
+});

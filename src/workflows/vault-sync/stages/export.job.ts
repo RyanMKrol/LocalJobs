@@ -1,7 +1,18 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { runVaultExport } from './export.js';
+import { defineStage, fromChecks, inlineArtifact } from '../../../engine/index.js';
+import { runVaultExport, type VaultExportResult } from './export.js';
 
-const job: JobDefinition = {
+/**
+ * The vault is outside the repo, so the stage's output is not the folder itself
+ * but what this run did to it.
+ */
+export const vaultExportResult = inlineArtifact<VaultExportResult>({
+  key: 'vault-export-result',
+  description: 'What this run did to the vault: how many files were copied in, and how many were already up to date.',
+  check: (v) => fromChecks([{ label: 'has counts', ok: typeof v?.synced === 'number' && typeof v?.unchanged === 'number', actual: `${v?.synced} copied` }]),
+  summary: (v) => `${v.synced} copied, ${v.unchanged} unchanged`,
+});
+
+export default defineStage({
   name: 'vault-sync-export',
   description: 'Copies the markdown output of the nine source jobs across six workflows (places, perfumes, ' +
     'plex-profiles, listening-digest, workouts-sync, and the four media-reviews categories) into the ' +
@@ -18,9 +29,15 @@ const job: JobDefinition = {
     'single-slot layout simply stay closed out.',
   timeoutMs: 600_000,
   maxRetries: 2,
+  outputs: { result: { artifact: vaultExportResult } },
+  describeItem: (dt) => ({
+    title: String(dt.name ?? ''),
+    fields: [
+      ...(typeof dt.vaultPath === 'string' ? [{ label: 'In the vault', value: dt.vaultPath }] : []),
+      ...(typeof dt.error === 'string' ? [{ label: 'Error', value: dt.error.slice(0, 160) }] : []),
+    ],
+  }),
   async run(ctx) {
-    await runVaultExport(ctx);
+    ctx.output('result').write(await runVaultExport(ctx));
   },
-};
-
-export default job;
+});

@@ -680,13 +680,15 @@ const plexProfilesWorkflowRun = workflowRun({ id: 'plex-profiles-run', workflow_
 const plexProfilesRunJobs = plexProfilesMembers.map((m, i) => run({
   id: `plex-profiles-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-profiles-run',
 }));
-const plexProfilesOutput = { jobName: 'plex-profiles-build', itemKey: 'tmdb:1399', status: 'success', detail: { name: 'Game of Thrones', markdown: '/abs/data/out/game-of-thrones.md' } };
-const plexProfilesStageIo = {
-  'plex-profiles-build': { inputs: [], outputs: [plexProfilesOutput], predecessorJobs: [], job: 'plex-profiles-build' },
-};
-const plexProfilesStageIoOverall = {
-  inputs: [], outputs: [plexProfilesOutput], predecessorJobs: [], outputJobs: ['plex-profiles-build'], job: '__overall__',
-};
+// A ports stage with two cumulative folders (movie and show profiles) and the profile it rewrote this run.
+const plexProfilesIo = singleOutputIo('plex-profiles-build', [
+  portsArtifact({ job: 'plex-profiles-build', port: 'movies', artifactKey: 'plex-movie-profiles', storage: 'dir', format: 'markdown', description: 'One markdown profile per movie in the Plex library.', summary: '1658 profile(s)', itemCount: 1658 }),
+  portsArtifact({ job: 'plex-profiles-build', port: 'shows', artifactKey: 'plex-show-profiles', storage: 'dir', format: 'markdown', description: 'One markdown profile per TV show in the Plex library.', summary: '649 profile(s)', itemCount: 649 }),
+], [
+  { id: 'plex-profiles-build:show:1399', jobName: 'plex-profiles-build', itemKey: 'show:1399', status: 'success', title: 'Game of Thrones', fields: [], preview: { path: 'plex-profiles/data/out/shows/1399-game-of-thrones.md', format: 'markdown' } },
+]);
+const plexProfilesStageIo = plexProfilesIo.stage;
+const plexProfilesStageIoOverall = plexProfilesIo.overall;
 
 // vercel-daily-redeploy — single stage: vercel-redeploy.
 const vercelDailyRedeployMembers = [{ job_name: 'vercel-redeploy', depends_on: [] }];
@@ -968,16 +970,16 @@ const vaultSyncWorkflowRun = workflowRun({ id: 'vault-sync-run', workflow_name: 
 const vaultSyncRunJobs = vaultSyncMembers.map((m, i) => run({
   id: `vault-sync-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'vault-sync-run',
 }));
-const vaultSyncOutput = {
-  jobName: 'vault-sync-export', itemKey: 'plex-profiles-build::movie:10123', status: 'success',
-  detail: { name: '10 Cloverfield Lane (2016)', markdown: '/abs/data/out/movies/10123-10-cloverfield-lane.md', vaultPath: 'Plex/Movies/10 Cloverfield Lane (2016).md', sourceUpdatedAt: NOW },
-};
-const vaultSyncStageIo = {
-  'vault-sync-export': { inputs: [], outputs: [vaultSyncOutput], predecessorJobs: [], job: 'vault-sync-export' },
-};
-const vaultSyncStageIoOverall = {
-  inputs: [], outputs: [vaultSyncOutput], predecessorJobs: [], outputJobs: ['vault-sync-export'], job: '__overall__',
-};
+// A ports stage whose output is what it did to the vault (inline), plus the files it copied.
+const vaultSyncIo = singleOutputIo('vault-sync-export', [portsArtifact({
+  job: 'vault-sync-export', port: 'result', artifactKey: 'vault-export-result', storage: 'inline',
+  description: 'What this run did to the vault: how many files were copied in, and how many were already up to date.',
+  summary: '1 copied, 2954 unchanged', inline: { synced: 1, unchanged: 2954, failed: 0 }, bytes: 44,
+})], [
+  { id: 'vault-sync-export:plex-profiles-build::movie:10123', jobName: 'vault-sync-export', itemKey: 'plex-profiles-build::movie:10123', status: 'success', title: '10 Cloverfield Lane (2016)', fields: [{ label: 'In the vault', value: 'Plex/Movies/10 Cloverfield Lane (2016).md' }], preview: { path: 'plex-profiles/data/out/movies/10123-10-cloverfield-lane.md', format: 'markdown' } },
+]);
+const vaultSyncStageIo = vaultSyncIo.stage;
+const vaultSyncStageIoOverall = vaultSyncIo.overall;
 
 // plex-library-guard — single stage: plex-library-guard-scan (daily per-file snapshot + deletion alerts).
 const plexLibraryGuardMembers = [{ job_name: 'plex-library-guard-scan', depends_on: [] }];
@@ -1106,16 +1108,21 @@ const mediaReviewsWorkflowRun = workflowRun({ id: 'media-reviews-run', workflow_
 const mediaReviewsRunJobs = mediaReviewsMembers.map((m, i) => run({
   id: `media-reviews-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'media-reviews-run',
 }));
-const mediaReviewsBookOutput = { jobName: 'media-reviews-books', itemKey: 'book-0001-aaaa', status: 'success', detail: { name: 'Norwegian Wood (Haruki Murakami)', markdown: '/abs/data/out/books/norwegian-wood-haruki-murakami-book0001.md', marker: 'ab12cd34' } };
-const mediaReviewsAlbumOutput = { jobName: 'media-reviews-albums', itemKey: 'album-0001-bbbb', status: 'success', detail: { name: 'In Rainbows (Radiohead)', markdown: '/abs/data/out/albums/in-rainbows-radiohead-album0001.md', marker: 'ef56ab78' } };
-const mediaReviewsStageIo = {
-  'media-reviews-books': { inputs: [], outputs: [mediaReviewsBookOutput], predecessorJobs: [], job: 'media-reviews-books' },
-  'media-reviews-albums': { inputs: [], outputs: [mediaReviewsAlbumOutput], predecessorJobs: [], job: 'media-reviews-albums' },
-};
-const mediaReviewsStageIoOverall = {
-  inputs: [], outputs: [mediaReviewsBookOutput, mediaReviewsAlbumOutput], predecessorJobs: [],
-  outputJobs: ['media-reviews-books', 'media-reviews-movies', 'media-reviews-tv', 'media-reviews-albums'], job: '__overall__',
-};
+// Four independent ports stages, each with its own cumulative folder of reviews.
+const mediaReviewsCats = { books: ['Norwegian Wood (Haruki Murakami)', 'book-0001-aaaa', 212], movies: ['Stalker (1979)', 'movie-0001-cccc', 431], tv: ['Severance', 'tv-0001-dddd', 118], albums: ['In Rainbows (Radiohead)', 'album-0001-bbbb', 97] };
+const mediaReviewsStageIo = Object.fromEntries(Object.entries(mediaReviewsCats).map(([cat, [title, key, n]]) => {
+  const job = `media-reviews-${cat}`;
+  return [job, portsIo(job, {
+    outputArtifacts: [portsArtifact({ job, port: 'reviews', artifactKey: 'media-reviews', storage: 'dir', format: 'markdown', description: 'One markdown file per review in this category, mirrored from the website\'s table.', summary: `${n} review(s)`, itemCount: n })],
+    outputs: cat === 'books' || cat === 'albums' ? [{ id: `${job}:${key}`, jobName: job, itemKey: key, status: 'success', title, fields: [], preview: { path: `media-reviews/data/out/${cat}/${key}.md`, format: 'markdown' } }] : [],
+    outputTotal: cat === 'books' || cat === 'albums' ? 1 : 0,
+  })];
+}));
+const mediaReviewsStageIoOverall = portsIo('__overall__', {
+  outputJobs: Object.keys(mediaReviewsStageIo),
+  outputArtifacts: Object.values(mediaReviewsStageIo).flatMap((io) => io.outputArtifacts),
+  outputs: Object.values(mediaReviewsStageIo).flatMap((io) => io.outputs), outputTotal: 2,
+});
 
 // Map an /api/* pathname (+ optional search params) to a fixture body.
 /**

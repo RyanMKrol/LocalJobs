@@ -1,7 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
+import { defineStage } from '../../../engine/index.js';
+import { mediaReviews } from '../contracts.js';
 import { CATEGORY_SPECS, runReviewBuild } from './build.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'media-reviews-albums',
   description:
     'Scans the owner\'s AlbumRatingsV3 DynamoDB table — the live store behind ryankrol.co.uk/reviews/albums — ' +
@@ -19,9 +20,11 @@ const job: JobDefinition = {
     'write failure marks that item failed and fails the run at the end so it retries.',
   timeoutMs: 600_000,
   maxRetries: 2,
+  // The folder grows as reviews are added: a day with no new or changed review carries it forward.
+  outputs: {
+    reviews: { artifact: mediaReviews, location: () => CATEGORY_SPECS.albums.outDir(), cumulative: true },
+  },
   async run(ctx) {
     await runReviewBuild(ctx, CATEGORY_SPECS.albums);
   },
-};
-
-export default job;
+});

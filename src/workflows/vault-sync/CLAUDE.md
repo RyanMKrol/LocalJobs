@@ -4,6 +4,13 @@ A single-stage mirror that copies the markdown output of six source workflows (n
 jobs) into the owner's second-brain vault folder on disk. The vault is the owner's browsable
 "second brain"; this workflow is the only thing that writes into it.
 
+## Output (ports)
+
+The stage is a ports stage with one inline output, `result` (`vault-export-result`):
+`{ synced, unchanged, failed }`. The vault is outside the repo, so the output is what the run
+did to it rather than the folder itself. The files a run copied are its ledger items (one row
+per source item, holding where it went in the vault).
+
 ## What it does
 
 `vault-sync-export` (the only stage — no DAG edge, no gate needed, mirroring the

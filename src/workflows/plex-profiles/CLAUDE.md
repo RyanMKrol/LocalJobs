@@ -8,6 +8,13 @@ workflows: `missing-tv-seasons` audits season completeness, `movie-recommendatio
 recommendation digests, and `plex-space-saver` reports a disk-size breakdown only — none of them
 write a per-title profile covering summary/cast/ratings/technical detail for every movie AND show.
 
+## Outputs (ports)
+
+The stage is a ports stage with two outputs, `movies` (`plex-movie-profiles`) and `shows`
+(`plex-show-profiles`): the two folders of profiles, both cumulative, since a profile is
+rewritten only when Plex says the title changed. Artifact types are in `contracts.ts`. The
+ledger is unchanged: one row per title holding the `updatedAt` it was last built at.
+
 ## Confirmed Plex fields in use
 
 Reuses the shared Plex client (`src/core/plex-client.ts`'s `resolvePlexHost`/`plexGet` — DHCP
