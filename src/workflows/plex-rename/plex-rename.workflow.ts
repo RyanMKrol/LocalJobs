@@ -30,13 +30,14 @@ const workflow: WorkflowDefinition = {
     'The mutating apply stage (when enabled) moves each physical file at most once, ever, via its own ' +
     'permanent ledger — re-moving a file requires manually unsticking its apply row from the dashboard.',
   schedule: '0 5 * * *',
-  outputJob: 'plex-rename-apply',
   jobs: [
     { job: 'plex-rename-discover' },
     { job: 'plex-rename-plan', dependsOn: ['plex-rename-discover'] },
-    { job: 'plex-rename-verify', dependsOn: ['plex-rename-plan'] },
-    { job: 'plex-rename-apply', dependsOn: ['plex-rename-verify'] },
-    { job: 'plex-rename-confirm', dependsOn: ['plex-rename-apply'] },
+    // verify, apply and confirm each read the discover rows as well as the stage
+    // before them, so each depends on discover directly.
+    { job: 'plex-rename-verify', dependsOn: ['plex-rename-discover', 'plex-rename-plan'] },
+    { job: 'plex-rename-apply', dependsOn: ['plex-rename-discover', 'plex-rename-verify'] },
+    { job: 'plex-rename-confirm', dependsOn: ['plex-rename-discover', 'plex-rename-apply'] },
   ],
 };
 

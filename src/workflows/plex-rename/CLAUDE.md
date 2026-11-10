@@ -53,7 +53,23 @@ the library becomes deterministically re-discoverable from disk alone.
 ```
 plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename-apply → plex-rename-confirm
    (read-only, root)     (read-only)         (read-only, fs)      (MUTATING)          (read-only)
+        └── also feeds verify, apply and confirm directly
 ```
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`). The data travels in the `work_items`
+ledger, so every artifact in `contracts.ts` is a `ledgerArtifact`: a stage's rows ARE its output.
+
+| Stage | Inputs | Output |
+|---|---|---|
+| `plex-rename-discover` | none (root: `inputKeys()`) | `files` (`plex-rename-discover`) |
+| `plex-rename-plan` | `files` | `plan` (`plex-rename-plan`) |
+| `plex-rename-verify` | `plan`, `files` | `verdicts` (`plex-rename-verify`) |
+| `plex-rename-apply` | `verdicts`, `files` | `applied` (`plex-rename-apply`, the workflow's product) |
+| `plex-rename-confirm` | `applied`, `files` | `confirmed` (`plex-rename-confirm`) |
+
+verify, apply and confirm each read the discover rows as well as the stage before them. Those
+three reads had no edge and no gate; each stage now depends on discover directly. The stage
+marked `product: true` is apply (this replaced `outputJob: 'plex-rename-apply'`).
 
 - **discover** — LIVE library walk (deliberately NEVER cached, unlike plex-language-fix's 3h-cached
   reads: a rename pipeline must not plan off a stale listing — `lib.ts`'s fetch helpers pass no
@@ -359,14 +375,16 @@ every surprise as a loud conflict (occupied original, divergent duplicate, hand-
 `.plexmatch`), and refuses when a journaled mount is absent. It never touches the apply ledger —
 reprocessing an undone item is a manual unstick, same doctrine as plex-language-undo.
 
-## Gates (contracts.ts)
+## The checks (contracts.ts)
 
-discover→plan and apply→confirm are the sanctioned trivial minimum; **plan→verify and
-verify→apply are REAL** (T574
-pattern): plan's gate asserts every rename row has from ≠ to, target under the file's own library
-root, and global collision-freedom; verify's gate asserts every eligible row has both local
-paths mapped under configured shares, verified bytes > 0, and a well-formed sidecar list — exactly the malformations apply would
-otherwise silently skip, failing loud at the boundary instead.
+The `files`, `applied` and `confirmed` artifacts are at the "the ledger is readable" minimum.
+**The `plan` and `verdicts` checks are REAL** (T574 pattern): the plan's check asserts every
+rename row has from ≠ to, a target under the file's own library root, and global
+collision-freedom; the verdicts' check asserts every eligible row has both local paths mapped
+under configured shares, verified bytes > 0, and a well-formed sidecar list. Those are exactly
+the malformations apply would otherwise silently skip. Each is checked when its stage commits
+its output and again before the next stage starts, so a bad row fails loudly before any file is
+moved.
 
 ## Config (`config.ts`)
 

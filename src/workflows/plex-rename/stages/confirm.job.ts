@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { plexRenameApplyContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { appliedRenames, confirmedRenames, discoveredFiles } from '../contracts.js';
 import { runConfirm } from './confirm.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-rename-confirm',
   description:
     'Post-rename verification that Plex itself re-associated each moved file at the SAME ratingKey, so ' +
@@ -17,10 +17,12 @@ const job: JobDefinition = {
     'itself, so the aggregate workflow notification surfaces it.',
   timeoutMs: 1_800_000,
   maxRetries: 3,
-  consumes: [plexRenameApplyContract()],
+  inputs: {
+    applied: { artifact: appliedRenames },
+    files: { artifact: discoveredFiles },
+  },
+  outputs: { confirmed: { artifact: confirmedRenames } },
   async run(ctx) {
     await runConfirm(ctx);
   },
-};
-
-export default job;
+});

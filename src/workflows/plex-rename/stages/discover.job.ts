@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { plexRenameDiscoverContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { discoveredFiles } from '../contracts.js';
 import { discoverInputKeys, runDiscover } from './discover.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-rename-discover',
   description:
     'Root stage of the plex-rename workflow. Walks the configured Plex movie + TV library sections LIVE ' +
@@ -17,12 +17,11 @@ const job: JobDefinition = {
     'never a ledger read-back), making this the workflow\'s limitable root.',
   timeoutMs: 3_600_000,
   maxRetries: 3,
-  produces: [plexRenameDiscoverContract()],
+  // The stage's ledger rows are its output: one per physical file.
+  outputs: { files: { artifact: discoveredFiles } },
   inputKeysService: 'plex',
   inputKeys: discoverInputKeys,
   async run(ctx) {
     await runDiscover(ctx);
   },
-};
-
-export default job;
+});

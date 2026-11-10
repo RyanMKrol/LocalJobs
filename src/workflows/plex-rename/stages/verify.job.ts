@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { plexRenamePlanContract, plexRenameVerifyContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { discoveredFiles, renamePlan, renameVerdicts } from '../contracts.js';
 import { runVerify } from './verify.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-rename-verify',
   description:
     'The local-disk reality check for every planned rename — the only read stage that touches the ' +
@@ -18,11 +18,13 @@ const job: JobDefinition = {
     'run. Read-only — it stats and lists, never changes anything.',
   timeoutMs: 1_800_000,
   maxRetries: 3,
-  consumes: [plexRenamePlanContract()],
-  produces: [plexRenameVerifyContract()],
+  // The plan, and the discover rows it was made from (this stage reads both).
+  inputs: {
+    plan: { artifact: renamePlan },
+    files: { artifact: discoveredFiles },
+  },
+  outputs: { verdicts: { artifact: renameVerdicts } },
   async run(ctx) {
     await runVerify(ctx);
   },
-};
-
-export default job;
+});

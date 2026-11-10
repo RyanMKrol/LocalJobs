@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { plexRenameApplyContract, plexRenameVerifyContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { appliedRenames, discoveredFiles, renameVerdicts } from '../contracts.js';
 import { runApply } from './apply.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-rename-apply',
   description:
     'The workflow\'s only mutating stage — and it ships DISABLED: until PLEX_RENAME_APPLY_ENABLED=1 it runs ' +
@@ -23,11 +23,16 @@ const job: JobDefinition = {
     'requires manually unsticking its ledger row.',
   timeoutMs: 6 * 3_600_000,
   maxRetries: 1,
-  consumes: [plexRenameVerifyContract()],
-  produces: [plexRenameApplyContract()],
+  // The verdicts are checked before this stage starts: a malformed eligible row
+  // stops the run before any file is moved. It reads the discover rows too.
+  inputs: {
+    verdicts: { artifact: renameVerdicts },
+    files: { artifact: discoveredFiles },
+  },
+  outputs: { applied: { artifact: appliedRenames } },
+  // What this workflow is for: the files it has moved.
+  product: true,
   async run(ctx) {
     await runApply(ctx);
   },
-};
-
-export default job;
+});

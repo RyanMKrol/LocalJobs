@@ -1,8 +1,8 @@
-import type { JobDefinition } from '../../../core/types.js';
-import { plexRenameDiscoverContract, plexRenamePlanContract } from '../contracts.js';
+import { defineStage } from '../../../engine/index.js';
+import { discoveredFiles, renamePlan } from '../contracts.js';
 import { runPlan } from './plan.js';
 
-const job: JobDefinition = {
+export default defineStage({
   name: 'plex-rename-plan',
   description:
     'Computes each discovered file\'s canonical Plex-convention rename decision using the pure naming engine ' +
@@ -18,11 +18,9 @@ const job: JobDefinition = {
     'during the probation period before enabling the mutating apply stage.',
   timeoutMs: 900_000,
   maxRetries: 3,
-  consumes: [plexRenameDiscoverContract()],
-  produces: [plexRenamePlanContract()],
+  inputs: { files: { artifact: discoveredFiles } },
+  outputs: { plan: { artifact: renamePlan } },
   async run(ctx) {
     await runPlan(ctx);
   },
-};
-
-export default job;
+});
