@@ -1114,6 +1114,61 @@ const plexRenamePorts = ledgerPipelineFixtures([
 const plexRenameStageIo = plexRenamePorts.stageIo;
 const plexRenameStageIoOverall = plexRenamePorts.overall;
 
+// plex-poster-backup — a plain four-stage chain on ports: list → fetch → record → alert.
+// The record stage is the product stage (its report), although alert follows it.
+const posterBackupMembers = [
+  { job_name: 'plex-posters-list', depends_on: [] },
+  { job_name: 'plex-posters-fetch', depends_on: ['plex-posters-list'] },
+  { job_name: 'plex-posters-record', depends_on: ['plex-posters-fetch'] },
+  { job_name: 'plex-posters-alert', depends_on: ['plex-posters-record'] },
+];
+const posterBackupWorkflowRun = workflowRun({ id: 'plex-poster-backup-run', workflow_name: 'plex-poster-backup' });
+const posterBackupRunJobs = posterBackupMembers.map((m, i) => run({
+  id: `plex-poster-backup-${i}`, job_name: m.job_name, status: 'success', workflow_run_id: 'plex-poster-backup-run',
+}));
+const posterListArt = portsArtifact({
+  job: 'plex-posters-list', port: 'list', artifactKey: 'plex-poster-list',
+  description: 'Every film, show and season in the Plex library, each with the path of the poster it currently shows.',
+  summary: '4511 title(s) across 3 libraries', itemCount: 4511, bytes: 1_420_000,
+  preview: { path: 'plex-posters/data/out/poster-list.json', format: 'json' },
+  sample: [{ id: 'movie:37974', title: 'The 4:30 Movie (2024)', fields: [{ label: 'Kind', value: 'movie' }, { label: 'Library', value: 'Films' }] }],
+});
+const posterSetArt = portsArtifact({
+  job: 'plex-posters-fetch', port: 'set', artifactKey: 'plex-poster-set',
+  description: 'The same titles, each now pointing at its poster in the archive, with how many were downloaded this run and how many were already there.',
+  summary: '38 downloaded, 4470 already archived, 3 with no poster', itemCount: 4511, bytes: 2_690_000,
+  preview: { path: 'plex-posters/data/out/poster-set.json', format: 'json' },
+  sample: [{ id: 'movie:37974', title: 'The 4:30 Movie (2024)', fields: [{ label: 'Kind', value: 'movie' }, { label: 'Size', value: '2.9 MB' }] }],
+});
+const posterReportArt = portsArtifact({
+  job: 'plex-posters-record', port: 'report', artifactKey: 'plex-poster-backup-report',
+  description: "This backup's snapshot: how many posters it covers, where it was written in the archive, and which posters changed since the previous snapshot.",
+  summary: '4511 posters backed up; 6 changed, 2 new, 0 gone since the last snapshot', itemCount: 6, bytes: 3_100,
+  preview: { path: 'plex-posters/data/out/backup-report.json', format: 'json' },
+  sample: [
+    { id: 'show:30357', title: 'Severance (2022)', fields: [{ label: 'Kind', value: 'show' }, { label: 'Was', value: 'edbb759219' }, { label: 'Now', value: '4c1f0a77de' }] },
+    { id: 'season:30358', title: 'Severance (2022) / Season 2', fields: [{ label: 'Kind', value: 'season' }, { label: 'Was', value: 'no poster' }, { label: 'Now', value: '9a3e11b2c0' }] },
+  ],
+});
+const posterAlertArt = portsArtifact({
+  job: 'plex-posters-alert', port: 'digest', artifactKey: 'plex-poster-alert', storage: 'inline',
+  description: 'Whether this backup raised an alert: sent only when a large share of posters changed since the previous snapshot.',
+  summary: 'no alert: 6 changed (0.1%), below the threshold of 20% and 25', bytes: 120,
+  inline: { alerted: false, changed: 6, changedPct: 0.1, reason: '6 changed (0.1%), below the threshold of 20% and 25' },
+});
+const posterBackupStageIo = {
+  'plex-posters-list': portsIo('plex-posters-list', { outputArtifacts: [posterListArt] }),
+  'plex-posters-fetch': portsIo('plex-posters-fetch', { predecessorJobs: ['plex-posters-list'], inputArtifacts: [asInput(posterListArt, 'list')], outputArtifacts: [posterSetArt] }),
+  'plex-posters-record': portsIo('plex-posters-record', { predecessorJobs: ['plex-posters-fetch'], inputArtifacts: [asInput(posterSetArt, 'set')], outputArtifacts: [posterReportArt] }),
+  'plex-posters-alert': portsIo('plex-posters-alert', { predecessorJobs: ['plex-posters-record'], inputArtifacts: [asInput(posterReportArt, 'report')], outputArtifacts: [posterAlertArt] }),
+};
+const posterBackupStageIoOverall = portsIo('__overall__', { outputJobs: ['plex-posters-record'], outputArtifacts: [posterReportArt] });
+const posterBackupGates = [
+  { key: 'plex-poster-list', producer: 'plex-posters-list', consumer: 'plex-posters-fetch', state: 'passed', description: posterListArt.description },
+  { key: 'plex-poster-set', producer: 'plex-posters-fetch', consumer: 'plex-posters-record', state: 'passed', description: posterSetArt.description },
+  { key: 'plex-poster-backup-report', producer: 'plex-posters-record', consumer: 'plex-posters-alert', state: 'passed', description: posterReportArt.description },
+];
+
 // mount-keeper — single stage: mount-keeper-check (hourly NAS SMB share remounter).
 const mountKeeperMembers = [{ job_name: 'mount-keeper-check', depends_on: [] }];
 const mountKeeperWorkflowRun = workflowRun({ id: 'mount-keeper-run', workflow_name: 'mount-keeper' });
@@ -1400,6 +1455,12 @@ function fixtureForRaw(pathname, searchParams) {
     return mediaReviewsStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
   }
   if (pathname === '/api/workflow-runs/media-reviews-run') return { run: mediaReviewsWorkflowRun, jobs: mediaReviewsRunJobs, logs, gates: [] };
+  if (pathname === '/api/workflow-runs/plex-poster-backup-run/stage-io') {
+    if (searchParams?.get('overall') === 'true') return posterBackupStageIoOverall;
+    const job = searchParams?.get('job');
+    return posterBackupStageIo[job] ?? { inputs: [], outputs: [], predecessorJobs: [], job };
+  }
+  if (pathname === '/api/workflow-runs/plex-poster-backup-run') return { run: posterBackupWorkflowRun, jobs: posterBackupRunJobs, logs, gates: posterBackupGates };
   if (pathname === '/api/workflow-runs/mount-keeper-run/stage-io') {
     if (searchParams?.get('overall') === 'true') return mountKeeperStageIoOverall;
     const job = searchParams?.get('job');
@@ -1483,6 +1544,12 @@ function fixtureForRaw(pathname, searchParams) {
   }
   if (pathname === '/api/workflows/plex-rename') {
     return { workflow: workflow({ name: 'plex-rename', category: 'regular-maintenance', jobs: plexRenameMembers, gates: plexRenamePorts.gates.map(({ state, ...g }) => g) }) };
+  }
+  if (pathname === '/api/workflows/plex-poster-backup') {
+    return { workflow: workflow({ name: 'plex-poster-backup', category: 'regular-maintenance', schedule: '0 4 * * 0', jobs: posterBackupMembers, gates: posterBackupGates.map(({ state, ...g }) => g) }) };
+  }
+  if (pathname === '/api/workflows/plex-poster-backup/output-items') {
+    return { items: [], total: 0, terminalJobs: ['plex-posters-record'], artifacts: [posterReportArt] };
   }
   if (pathname === '/api/workflows/mount-keeper') {
     return { workflow: workflow({ name: 'mount-keeper', category: 'regular-maintenance', schedule: '45 * * * *', jobs: mountKeeperMembers, gates: [] }) };
@@ -1643,6 +1710,8 @@ export const PAGES = [
   { name: 'workflow-run-plex-library-guard', path: '/workflow-runs/plex-library-guard-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-plex-rename',        path: '/workflow-runs/plex-rename-run',        waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-mount-keeper',       path: '/workflow-runs/mount-keeper-run',       waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-plex-poster-backup',     path: '/workflows/plex-poster-backup',         waitFor: ['.rf-dag-node'] },
+  { name: 'workflow-run-plex-poster-backup', path: '/workflow-runs/plex-poster-backup-run', waitFor: ['.rf-dag-node'] },
   { name: 'workflow-run-media-reviews',      path: '/workflow-runs/media-reviews-run',      waitFor: ['.rf-dag-node'] },
   { name: 'gate-run-scoped',         path: '/workflow-runs/1/gates/places-resolve/resolved.json' },
   { name: 'gate-definition-scoped',  path: '/workflows/places/gates/places-resolve/resolved.json' },

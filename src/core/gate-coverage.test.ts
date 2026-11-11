@@ -43,7 +43,7 @@ test('every workflow in the registry is on ports: every stage declares its input
   assert.deepEqual(legacy, [], `workflows not on ports: ${legacy.join(', ')}`);
   const undeclared = jobs.filter((j) => !j.outputs).map((j) => j.name);
   assert.deepEqual(undeclared, [], `stages that declare no outputs: ${undeclared.join(', ')}`);
-  assert.ok(workflows.length >= 22, `expected the 22 shipped workflows, found ${workflows.length}`);
+  assert.ok(workflows.length >= 23, `expected the 23 shipped workflows, found ${workflows.length}`);
 });
 
 // ─────────────────────────── the checker itself ───────────────────────────

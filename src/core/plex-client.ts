@@ -5,10 +5,10 @@ import { callService, effectiveServiceTimeoutMs } from './services.js';
 
 /**
  * Shared Plex + TMDB connectivity helper — used by every Plex-touching workflow
- * (nine of them: `missing-tv-seasons`, `missing-movies`, `tv-recommendations`,
+ * (ten of them: `missing-tv-seasons`, `missing-movies`, `tv-recommendations`,
  * `movie-recommendations`, `plex-space-saver`, `plex-library-guard`,
- * `plex-language-fix`, `plex-profiles`, `plex-rename`), not owned by any single one
- * of them. Self-contained: reads
+ * `plex-language-fix`, `plex-profiles`, `plex-rename`, `plex-poster-backup`), not
+ * owned by any single one of them. Self-contained: reads
  * its own env vars directly, imports nothing from a workflow's `config.ts`
  * (mirroring how `src/services/*.service.ts` and `src/core/browser.ts` are
  * self-contained).
@@ -548,6 +548,91 @@ export async function fetchSectionMetadata<T>(
  * same resolved host + scoped insecure-TLS agent as `plexGet` — no second TLS
  * bypass. Throws on a non-2xx so the caller can record the failure.
  */
+/**
+ * GET a Plex path and return the raw bytes with their content type: an image
+ * (a poster's `thumb` path), not JSON. Same resolved host and TLS handling as
+ * `plexGet`. Throws on a non-2xx, a timeout, or an empty body. Not routed through
+ * `callService` here: the caller wraps it, as with `plexGet`.
+ */
+export async function plexGetBinary(path: string): Promise<{ buffer: Buffer; contentType: string }> {
+  if (!PLEX_API_TOKEN) {
+    throw new Error('Plex token missing — set PLEX_API_TOKEN in .env.');
+  }
+  const host = await resolvePlexHost();
+  const url = new URL(path, host);
+  url.searchParams.set('X-Plex-Token', PLEX_API_TOKEN);
+  const isHttps = url.protocol === 'https:';
+  const mod = isHttps ? https : http;
+  const timeoutMs = plexRequestTimeoutMs();
+
+  return new Promise((resolve, reject) => {
+    const req = mod.get(url, { agent: isHttps ? insecurePlexAgent : undefined, timeout: timeoutMs }, (res) => {
+      const status = res.statusCode ?? 0;
+      if (status >= 400) {
+        res.resume();
+        reject(new Error(`Plex HTTP ${status} for ${path}`));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('error', (e) => reject(new Error(`Plex response failed for ${path}: ${e.message}`)));
+      res.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        if (buffer.length === 0) {
+          reject(new Error(`Plex returned an empty body for ${path}`));
+          return;
+        }
+        const contentType = String(res.headers['content-type'] ?? 'image/jpeg').split(';')[0].trim();
+        resolve({ buffer, contentType });
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for ${path} (${timeoutMs}ms)`)));
+    req.on('error', (e) => reject(new Error(`Plex unreachable at ${host}: ${e instanceof Error ? e.message : e}.`)));
+  });
+}
+
+/**
+ * POST raw bytes to a Plex path (uploading a poster image is
+ * `POST /library/metadata/<id>/posters` with the image as the body). A MUTATING
+ * call: only the manual restore script uses it, never a scheduled stage. Same host
+ * and TLS handling as `plexPut`. Throws on a non-2xx.
+ */
+export async function plexPostBinary(path: string, body: Buffer, contentType: string): Promise<void> {
+  if (!PLEX_API_TOKEN) {
+    throw new Error('Plex token missing — set PLEX_API_TOKEN in .env.');
+  }
+  const host = await resolvePlexHost();
+  const url = new URL(path, host);
+  url.searchParams.set('X-Plex-Token', PLEX_API_TOKEN);
+  const isHttps = url.protocol === 'https:';
+  const mod = isHttps ? https : http;
+  const timeoutMs = plexRequestTimeoutMs();
+
+  await new Promise<void>((resolve, reject) => {
+    const req = mod.request(
+      url,
+      {
+        method: 'POST',
+        agent: isHttps ? insecurePlexAgent : undefined,
+        headers: { 'Content-Type': contentType, 'Content-Length': String(body.length) },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        res.resume();
+        if (status >= 400) {
+          reject(new Error(`Plex HTTP ${status} for POST ${path}`));
+          return;
+        }
+        resolve();
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error(`Plex request timed out for POST ${path} (${timeoutMs}ms)`)));
+    req.on('error', (e) => reject(new Error(`Plex unreachable at ${host}: ${e instanceof Error ? e.message : e}.`)));
+    req.end(body);
+  });
+}
+
 /**
  * A generic authenticated PUT against Plex, for endpoints that take their whole
  * payload in the query string (artwork selection, for one). Shares plexGet's TLS

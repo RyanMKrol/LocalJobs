@@ -98,6 +98,7 @@ Twenty-two workflows, all included in this repo as working examples.
 | plex-language-fix | Works out each title's real original language and sets the right audio and subtitle tracks. |
 | plex-profiles | Writes a markdown profile for every film and show, with cast, ratings, and technical detail. |
 | plex-space-saver | Reports where the disk space actually went, biggest first. |
+| plex-poster-backup | Keeps a copy of every poster your library shows, week by week, so chosen artwork can be put back after a refresh replaces it. |
 | mount-keeper | Keeps the NAS shares mounted, because macOS drops them and everything else depends on them. |
 | missing-movies | Finds collections you own part of, and tells you which films are missing. |
 | missing-tv-seasons | Spots complete seasons of shows you follow that you haven't got yet. |
