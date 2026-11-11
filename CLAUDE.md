@@ -995,11 +995,10 @@ doubt, log it.
   label for the workflows-list page with NO `_overridden` column and NO edit
   endpoint: `syncWorkflow` always refreshes it from the manifest's `category` field
   on every sync (same as `description`), so there is nothing for the owner to
-  override. Controlled values in use: `second-brain` (places, perfumes,
-  plex-profiles, vault-sync),
-  `recommendations` (movie-recommendations, tv-recommendations,
-  missing-tv-seasons, missing-movies), and `regular-maintenance` (workouts-sync, listening-digest,
-  projects-sync, claude-warmer, stocks-sync). A manifest with no `category` set
+  override. Controlled values in use: `second-brain` (places, perfumes, plex-profiles,
+  media-reviews, vault-sync), `recommendations` (movie-recommendations, tv-recommendations,
+  missing-tv-seasons, missing-movies), and `regular-maintenance` (everything else: the Plex
+  upkeep workflows, the stock and listening digests, the syncs and the housekeeping ones). A manifest with no `category` set
   defaults to `'uncategorized'`. The `category` column is added by `schema.sql`
   (fresh DBs, `NOT NULL DEFAULT ''`) + an additive `ALTER TABLE` migration in
   `index.ts` (existing DBs, per the T098 rule — no index on the new column).
