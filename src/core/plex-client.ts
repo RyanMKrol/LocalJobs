@@ -47,6 +47,16 @@ const insecurePlexAgent = new https.Agent({ rejectUnauthorized: false });
 
 /** Per-probe network timeout — short so a dead host fails fast during a scan. */
 const PROBE_TIMEOUT_MS = Number(process.env.PLEX_PROBE_TIMEOUT_MS ?? 1_500);
+/**
+ * How long to keep waiting on the CONFIGURED host after its quick probe went
+ * unanswered. A Plex server whose disks have spun down (or that has been idle all
+ * night) can take several seconds to answer its first request. The quick probe is
+ * 1.5s, so the first Plex call of a night-time run used to give up on a server that
+ * was merely waking, scan the LAN (probing it once more, just as briefly), find
+ * nothing, and fail the attempt; the retry 24 seconds later then worked. That was
+ * the first attempt of `plex-rename-discover` on most mornings.
+ */
+const WAKE_TIMEOUT_MS = Number(process.env.PLEX_WAKE_TIMEOUT_MS ?? 30_000);
 /** How many subnet hosts to probe at once during a scan. */
 const SCAN_CONCURRENCY = Number(process.env.PLEX_SCAN_CONCURRENCY ?? 32);
 /** Overall wall-clock cap on a scan so a no-Plex LAN fails fast, never hangs. */
@@ -70,6 +80,8 @@ interface ResolveDeps {
   /** Override the subnet candidate list (defaults to `enumerateSubnetHosts()`). */
   candidateHosts?: () => string[] | Promise<string[]>;
   probeTimeoutMs?: number;
+  /** How long the patient second probe of the configured host may take. */
+  wakeTimeoutMs?: number;
   concurrency?: number;
   overallCapMs?: number;
   log?: (msg: string, level?: 'info' | 'warn' | 'error') => void;
@@ -112,11 +124,17 @@ async function doResolvePlexHost(deps: ResolveDeps): Promise<string> {
   const machineId = deps.machineId ?? PLEX_MACHINE_ID;
   const probe = deps.probe ?? probePlexIdentity;
   const probeTimeoutMs = deps.probeTimeoutMs ?? PROBE_TIMEOUT_MS;
+  const wakeTimeoutMs = deps.wakeTimeoutMs ?? WAKE_TIMEOUT_MS;
   const concurrency = deps.concurrency ?? SCAN_CONCURRENCY;
   const overallCapMs = deps.overallCapMs ?? SCAN_OVERALL_CAP_MS;
   const log = deps.log ?? ((m, level) => console[level === 'error' ? 'error' : 'log'](`[plex] ${m}`));
 
   // 1. Trust the configured host only if it actually answers as the right Plex.
+  // If it does not answer the quick probe at all, it may only be slow to wake: keep
+  // a patient probe of it going WHILE the subnet is scanned, and take whichever
+  // finds a server first.
+  let patient: Promise<string | null> = Promise.resolve(null);
+  const startedAt = Date.now();
   if (configuredHost) {
     const id = await probe(configuredHost, probeTimeoutMs);
     if (id !== null && (!machineId || id === machineId)) {
@@ -128,7 +146,17 @@ async function doResolvePlexHost(deps: ResolveDeps): Promise<string> {
         'warn',
       );
     } else {
-      log(`Configured PLEX_HOST ${configuredHost} did not answer as a Plex — scanning the local subnet.`, 'warn');
+      log(
+        `Configured PLEX_HOST ${configuredHost} did not answer within ${probeTimeoutMs}ms. Waiting up to ` +
+          `${Math.round(wakeTimeoutMs / 1000)}s for it in case it is waking, and scanning the local subnet meanwhile.`,
+        'warn',
+      );
+      if (wakeTimeoutMs > probeTimeoutMs) {
+        patient = probe(configuredHost, wakeTimeoutMs).then(
+          (late) => (late !== null && (!machineId || late === machineId) ? configuredHost : null),
+          () => null,
+        );
+      }
     }
   } else {
     log('PLEX_HOST is unset — scanning the local subnet for a Plex server.', 'warn');
@@ -141,7 +169,12 @@ async function doResolvePlexHost(deps: ResolveDeps): Promise<string> {
   log(
     `Scanning ${candidates.length} candidate address(es) on :32400 for a Plex server${machineId ? ` (machineIdentifier ${machineId})` : ''}…`,
   );
-  const found = await scanForPlexHost(candidates, machineId, probe, probeTimeoutMs, concurrency, overallCapMs);
+  const scan = scanForPlexHost(candidates, machineId, probe, probeTimeoutMs, concurrency, overallCapMs);
+  const found = await firstFound([patient, scan]);
+  if (found === configuredHost) {
+    log(`✓ the configured PLEX_HOST ${configuredHost} answered after all, ${((Date.now() - startedAt) / 1000).toFixed(1)}s after the first try (it was slow to wake).`);
+    return found;
+  }
   if (found) {
     log(`✓ found Plex at ${found} — set PLEX_HOST=${found} in .env to skip the scan next time.`);
     return found;
@@ -152,6 +185,20 @@ async function doResolvePlexHost(deps: ResolveDeps): Promise<string> {
       machineId ? ` matching PLEX_MACHINE_ID ${machineId}` : ''
     }. Check the server is awake and on this subnet.`,
   );
+}
+
+/** The first of these to resolve to a host; null once every one has resolved to null. */
+function firstFound(searches: Promise<string | null>[]): Promise<string | null> {
+  return new Promise((done) => {
+    let left = searches.length;
+    if (left === 0) return done(null);
+    for (const s of searches) {
+      s.then(
+        (host) => { if (host) done(host); else if (--left === 0) done(null); },
+        () => { if (--left === 0) done(null); },
+      );
+    }
+  });
 }
 
 /**

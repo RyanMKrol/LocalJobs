@@ -45,6 +45,55 @@ await (async () => {
   }
   console.log('  ✓ resolvePlexHost uses a reachable configured PLEX_HOST');
 
+  // slow-to-wake: the configured host ignores the quick probe (disks spun down)
+  // but answers a patient one. It must be used, and the run must not fail because
+  // the subnet scan (which also only probes briefly) found nothing.
+  resetPlexHostCacheForTests();
+  {
+    const timeouts: number[] = [];
+    const probe: PlexProbe = async (host, timeoutMs) => {
+      if (host !== 'https://sleepy:32400') return null;
+      timeouts.push(timeoutMs);
+      return timeoutMs >= 5_000 ? 'MID-1' : null; // only a patient caller gets an answer
+    };
+    const logs: string[] = [];
+    const host = await resolvePlexHost({
+      configuredHost: 'https://sleepy:32400',
+      machineId: 'MID-1',
+      probe,
+      probeTimeoutMs: 1_500,
+      wakeTimeoutMs: 30_000,
+      candidateHosts: () => ['https://10.0.0.5:32400', 'https://sleepy:32400'],
+      log: (m) => logs.push(m),
+    });
+    assert.equal(host, 'https://sleepy:32400', 'the configured host is used once it answers');
+    assert.ok(timeouts.includes(30_000), 'it was given a patient second probe');
+    assert.ok(logs.some((l) => /did not answer within 1500ms\. Waiting up to 30s/.test(l)), logs.join(' | '));
+    assert.ok(logs.some((l) => /answered after all/.test(l)), logs.join(' | '));
+  }
+  console.log('  ✓ resolvePlexHost waits for a configured host that is slow to wake');
+
+  // …and a host that has really moved is still found by the scan, without
+  // waiting out the patient probe of the old address.
+  resetPlexHostCacheForTests();
+  {
+    let releasePatient: (v: string | null) => void = () => {};
+    const probe: PlexProbe = (host, timeoutMs) => {
+      if (host === 'https://old:32400' && timeoutMs > 5_000) return new Promise((res) => { releasePatient = res; });
+      return Promise.resolve(host === 'https://10.0.0.7:32400' ? 'MID-9' : null);
+    };
+    const host = await resolvePlexHost({
+      configuredHost: 'https://old:32400',
+      machineId: '',
+      probe,
+      candidateHosts: () => ['https://10.0.0.7:32400'],
+      log: SILENT,
+    });
+    assert.equal(host, 'https://10.0.0.7:32400', 'the scan result is taken while the patient probe is still pending');
+    releasePatient(null);
+  }
+  console.log('  ✓ resolvePlexHost does not wait on the old address when the scan finds the server');
+
   // scan-fallback: configured host dead → scan finds the live Plex on the subnet.
   resetPlexHostCacheForTests();
   {
