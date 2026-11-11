@@ -142,9 +142,9 @@ export function activeRunOf(jobName: string): { id: string; workflow_run_id: str
 export function setProgress(runId: string, pct: number, message: string): void {
   db.prepare('UPDATE runs SET progress = ?, progress_msg = ? WHERE id = ?')
     .run(Math.max(0, Math.min(100, Math.round(pct))), message, runId);
-  // If this run is a workflow member, roll its progress up into the parent
-  // workflow run in real time, so the workflow reflects in-flight member
-  // progress rather than only whole settled stages.
+  // If this run is a workflow member, recompute the parent workflow run's
+  // progress. That roll-up counts FINISHED stages only (a stage still running
+  // adds nothing), so this matters when the member settles, not while it runs.
   const row = db.prepare('SELECT workflow_run_id FROM runs WHERE id = ?')
     .get(runId) as { workflow_run_id: string | null } | undefined;
   if (row?.workflow_run_id) rollUpWorkflowProgress(row.workflow_run_id);

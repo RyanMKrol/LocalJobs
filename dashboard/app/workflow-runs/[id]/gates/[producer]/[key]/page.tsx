@@ -161,14 +161,14 @@ export default function GateDetail({
             Checks the <span className="mono">{gate.key}</span> artifact handed from{' '}
             <strong>{gate.producer}</strong> to <strong>{gate.consumer}</strong>.
           </p>
-          {/* Say WHICH result this is: the one the engine recorded when it checked
-              this boundary during the run, or (no record) a check of whatever is on
-              disk right now, which a later run may have rewritten. */}
+          {/* Say what is shown: the result the engine recorded when it checked this
+              boundary during the run, or, with no record, only what the artifact is
+              meant to look like. Nothing is ever checked again against today's files. */}
           {inspect && (
             <p className="sub">
               {inspect.recorded
                 ? `Showing the result recorded during this run, at ${new Date(inspect.recorded.at).toLocaleString()}.${inspect.recorded.fresh === false ? ' The artifact was carried forward unchanged by this run.' : ''}`
-                : 'This run has no recorded result for this gate. Showing a check of the artifact as it is on disk now, which may reflect a later run.'}
+                : 'This run did not check this gate: the stage after it never started, or the run is older than the record. Showing what the artifact is meant to look like.'}
             </p>
           )}
 
@@ -191,10 +191,11 @@ export default function GateDetail({
               </div>
             );
 
-            // Collapsed view (T138): when the producer's `produces[key]` and the
-            // consumer's `consumes[key]` declare the SAME shape (the normal case —
-            // one factory wired on both sides), the two side panels are redundant,
-            // so show ONE consolidated contract panel. The boundary above already
+            // Collapsed view: both sides of a gate are the same artifact, so when
+            // they agree (the normal case) the two side panels would say the same
+            // thing and ONE panel is shown. The server sends `identical: false`
+            // only when the consumer's input could not be resolved, and then both
+            // are shown so the difference is visible. The boundary above already
             // states producer→consumer; the per-side log links live in the footer.
             if (inspect?.identical) {
               const side = inspect.produced ?? inspect.consumed ?? null;

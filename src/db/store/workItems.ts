@@ -463,16 +463,14 @@ function toStageIoItem(r: LedgerRow): StageIoItem {
  * on either side, not just a single stage (T383) — the single-job case (each array
  * with exactly one entry) behaves identically to before.
  *
- * **Self-recorded `input-sample` rows (T615).** A recommender branch job records,
- * under its OWN job name, both its per-suggestion output rows AND (separately)
- * `detail.kind === 'input-sample'` rows capturing the EXACT owned items its
- * `build()` put into its Claude prompt — its predecessor's ledger rows (the full
- * snapshot) are NOT that branch's true input, since the branch only used a
- * lens-filtered subset of them. So for every job in `outputJobNames`, any row it
- * recorded with `detail.kind === 'input-sample'` is routed into `inputs` instead
- * of `outputs` — the same "alternate ledger source for a decoupled stage" idea
- * `outputJob` already applies at the workflow level, generalized here to a
- * single job's own two disjoint row kinds.
+ * **`input-sample` rows (T615), kept for old runs only.** Before ports, a
+ * recommender branch recorded, under its own job name, both its suggestions and
+ * (with `detail.kind === 'input-sample'`) the exact owned titles it had put into
+ * its prompt. Such a row is routed into `inputs` here, not `outputs`. No stage
+ * writes these any more (a ports stage reports what it used through
+ * `ctx.input(p).used(items)`), but runs recorded back then still hold them, and
+ * this function only serves those runs now (`legacyStageIo` in
+ * `src/engine/reporting.ts`).
  */
 export function stageIoLists(
   outputJobNames: string[],

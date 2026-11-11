@@ -187,18 +187,16 @@ export interface GateInspection {
   gate: GateStatus;
   produced: GateSide | null;
   consumed: GateSide | null;
-  /** True when both sides declare the SAME contract shape (T138) — the page then
-   *  collapses the duplicated producer/consumer panels into one. False for an
-   *  asymmetric gate (different produces[key] vs consumes[key] shapes) or when a
-   *  side has no declared shape. */
+  /** True when the two sides agree, and the page shows one panel. False only when
+   *  the consumer's input could not be resolved: then both sides are shown. */
   identical: boolean;
   /**
    * Set when the result shown is what the engine RECORDED when it checked this
    * boundary during the run. Null means there was no record (an older run, or a
-   * boundary the run never reached) and the artifact was checked as it is on disk
-   * now, which may reflect a later run.
+   * boundary the run never reached): only the declared shape is shown, and
+   * nothing is checked against today's files.
    */
-  recorded?: { at: number; source: 'ports' | 'gate'; fresh?: boolean; note?: string | null } | null;
+  recorded?: { at: number; source: 'ports'; fresh?: boolean; note?: string | null } | null;
 }
 
 /** One side (produced/consumed) of a gate's DEFINITION-level view: declared shape

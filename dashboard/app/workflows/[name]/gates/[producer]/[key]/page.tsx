@@ -118,11 +118,10 @@ export default function StructuralGateDetail({
               </div>
             );
 
-            // Collapsed view (T138): when both sides declare the SAME shape (the
-            // normal case — one contract factory wired as both produces[key] and
-            // consumes[key]), the two side panels are redundant, so show ONE
-            // consolidated contract panel. The boundary above already states
-            // producer→consumer; member-page links live in the footer.
+            // Both sides of a gate are the same artifact type, so there is one shape
+            // and ONE panel (the server always sends `identical: true` here). The
+            // boundary above already states producer→consumer; member-page links
+            // live in the footer.
             if (data?.identical) {
               const shape = data.produced?.shape ?? data.consumed?.shape ?? null;
               return (

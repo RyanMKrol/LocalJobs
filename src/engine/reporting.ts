@@ -11,10 +11,10 @@
 //           that wrote them (`run_id`), so a stage that writes a ledger under a
 //           different name needs no special case.
 //
-//   legacy  a run of a workflow that used produces/consumes contracts (or any run
-//           from before per-run recording). A stage's outputs are its ledger rows
-//           touched this run, its inputs its predecessors' rows: the old rule,
-//           frozen here so old runs keep rendering.
+//   legacy  a run recorded before the 2026-11 move to ports, which has no
+//           artifacts. A stage's outputs are its ledger rows touched in that run,
+//           its inputs its predecessors' rows: the old rule, frozen here so those
+//           runs keep rendering. No new run takes this path.
 //
 // Both produce the SAME wire shape, with explicit display rows (`IoItem`), so the
 // dashboard has one renderer and guesses nothing.

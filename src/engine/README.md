@@ -60,6 +60,21 @@ For a stage that works through a list, `eachItem` is the loop: it skips what is
 already done, counts attempts, keeps going past a failed item, stops politely at a
 quota, and fails the run at the end if anything failed.
 
+What a stage can declare, beyond its inputs and outputs:
+
+| On the stage | What it is for |
+|---|---|
+| `cumulative: true` on an output | The output is a store the stage adds to over many runs. A run with nothing new carries it forward instead of failing for not writing it |
+| `many: true` on an input | Fed by every stage it depends on that outputs that artifact, not just one |
+| `product: true` | This stage's outputs are what the workflow is for, when that is not simply the last stage |
+| `describeItem(detail, key)` | How one of the stage's ledger rows is shown on a run page: a title, fields, a file to preview |
+| `settles(detail)` | This recorded result means no later stage has work for the item. A run capped to a few items then skips it instead of picking it for ever |
+| `inputKeys()` | The full list of items the workflow could work on. Declaring it on the first stage is what lets a run be capped to a few of them |
+| `timeoutMs`, `maxRetries` | When to kill an attempt, and how many more to make |
+
+And on the workflow: `dependsOn` between its stages, `maxConcurrency`, `after` (other
+workflows to wait for), and `repeatUntilStable` to keep cycling while retryable work is left.
+
 ## How it stays separate
 
 No file here imports a workflow, a service, the job registry or the notifier. The

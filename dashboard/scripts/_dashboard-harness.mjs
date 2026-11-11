@@ -92,14 +92,14 @@ const logs = [
 
 // Structural gates (no state — displayed as muted-grey padlocks on the definition-view DAG).
 const structuralGates = [
-  { key: 'resolved.json', producer: 'places-resolve', consumer: 'places-enrich', description: 'produces — resolved.json is a non-empty array of place_ids · consumes — every row has a place_id' },
-  { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', description: 'produces — enriched.json has name + address fields' },
+  { key: 'resolved.json', producer: 'places-resolve', consumer: 'places-enrich', description: 'Every place resolved to a Google place_id, one row per input CID.' },
+  { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', description: 'The Google Places details of each resolved place: name, address and the rest.' },
 ];
 
 // Run-scoped gates (with state — colour-coded in the run-view DAG).
 const gates = [
-  { key: 'resolved.json', producer: 'places-resolve', consumer: 'places-enrich', state: 'passed', description: 'produces — resolved.json is a non-empty array of place_ids · consumes — every row has a place_id' },
-  { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', state: 'failed', failureRunId: '1', description: 'produces — enriched.json has name + address fields' },
+  { key: 'resolved.json', producer: 'places-resolve', consumer: 'places-enrich', state: 'passed', description: 'Every place resolved to a Google place_id, one row per input CID.' },
+  { key: 'enriched.json', producer: 'places-enrich', consumer: 'places-enrich-with-llm', state: 'failed', failureRunId: '1', description: 'The Google Places details of each resolved place: name, address and the rest.' },
 ];
 
 // Gate inspection fixtures (the gate DETAIL pages — run-scoped and definition-scoped).
@@ -124,7 +124,7 @@ const gateInspection = {
   identical: true,
   // The result the engine RECORDED when it checked this boundary during the run
   // (not a re-check of whatever is on disk today).
-  recorded: { at: 1780300800000, source: 'gate' },
+  recorded: { at: 1780300800000, source: 'ports', fresh: true },
 };
 const structuralGateDetail = {
   gate: structuralGates[0],

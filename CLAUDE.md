@@ -10,6 +10,12 @@ editing anything — **read these in full so you have current context:**
 1. **This file (`CLAUDE.md`)** — architecture, conventions, how to add jobs.
 2. **`README.md`** — what the app does and how it runs.
 
+Then, depending on the work, the doc that sits next to the code (each is loaded
+automatically when you work in its folder): the workflow's own
+`src/workflows/<name>/CLAUDE.md`, `src/workflows/CLAUDE.md` (the rules every stage
+follows), `src/services/CLAUDE.md`, and `src/engine/README.md` for the engine itself.
+"Where to look for what" below maps tasks to sections.
+
 These are the source of truth for how this project works between sessions. They
 are kept deliberately up to date (see the rule below), so trust them — but if
 you find them contradicting the code, the code wins: fix the docs to match and
@@ -99,6 +105,55 @@ changes) sat uncommitted across an entire session before anyone caught it via
 away a whole idea-conversion sweep. Treat "uncommitted" as "not durable" here: the moment
 a unit of work is coherent (a finished idea conversion, a completed doc update, a working
 job), commit it and push it — don't let it accumulate.
+
+## Where to look for what
+
+This file is long. The model it describes is short:
+
+- A **workflow** is a manifest (`*.workflow.ts`): a schedule and a graph of **stages**.
+  Only workflows are scheduled and run; a stage never runs on its own.
+- A **stage** is built with `defineStage`. It declares named **inputs** and **outputs**.
+  An input is fed by a stage it depends on that outputs the same artifact. The engine
+  hands a stage what was written for it in the same run, records what it writes, and fails
+  it if it writes nothing. That hand-over is the **gate**. There is nothing else to wire.
+- A stage that works through many items keeps a **ledger** (`work_items`): one row per
+  item, so a re-run skips what is done. The ledger is for idempotency. It is not how data
+  moves between stages and it is never written just to show something on the dashboard.
+- The **daemon** schedules workflows and runs each stage in its own child process. The
+  **dashboard** only reads. A run page is drawn from what the engine recorded for that run.
+
+| If you are… | Read |
+|---|---|
+| adding a workflow or a stage | "How to add a job", "Ports", `src/workflows/CLAUDE.md`, and one existing workflow of the same shape: `mount-keeper/` (one stage), `stocks-sync/` (a chain), `tv-recs/` (fan-out and fan-in), `perfumes/` (items, built on `eachItem`) |
+| changing an existing workflow | its own `CLAUDE.md` first: it has the stage table and the invariants worth protecting |
+| changing the engine | "The workflow engine is an isolated package", `src/engine/README.md`, then add or extend a scenario in `src/engine/scenarios/` |
+| working out why a run did what it did | the run page (framework log, timeline, each stage's Inputs & Outputs, the padlocks), then "Every stage of every run gets a recorded outcome" and "Gates between stages" |
+| proving a failure path on a real run | fault injection: `src/engine/README.md`, "Proving a failure on a real run" |
+| calling a paid or rate-limited API | "Services" under Conventions, `src/services/CLAUDE.md` |
+| changing the dashboard | "Shared dashboard UI components", the mobile and visual-check rules, `dashboard/scripts/_dashboard-harness.mjs` |
+| touching the database | "Schema bootstrap must NEVER reference a migration-added column", "A transaction that reads before it writes must be `.immediate()`" |
+| deploying a change | "Always restart what you changed": `scripts/safe-restart.sh`, never a bare kickstart |
+
+Three things that catch people out here:
+
+- **A child process runs the code on disk.** A half-edited file under `src/` is live for the
+  next stage that starts (one starts every hour). Do multi-file work in a git worktree and
+  move `main` only at a green commit.
+- **A script run from a worktree opens that worktree's own, empty database.** Anything meant
+  to look at or change the live `data/jobs.db` must be run from the main checkout.
+- **A limited run of `plex-language-fix` walks the whole Plex library before it starts**
+  (about 100 minutes), and the daemon cannot be restarted while it does. Do not start one
+  casually.
+
+Open as of 2026-11-11 (delete a line when it is dealt with):
+
+- Gemini prepayment credits are depleted, so the last stage of `places` fails every night
+  (HTTP 402) and the run is `partial`. Only the owner can top them up.
+- The Plex client was changed on 2026-11-11 to wait for a server that is slow to answer its
+  first request. Not yet seen to work: on the next 05:00 run, attempt 1 of
+  `plex-rename-discover` should succeed, and its log says how long the server took. If it
+  still fails as "Plex unreachable", the cause is something else.
+- Most item-loop stages still write their loop by hand; only perfumes uses `eachItem`.
 
 ## What this project is
 
@@ -379,8 +434,9 @@ tested, on their own:
   `src/workflows/registry.ts` installs the host when it loads.
 - **One public entry point.** Workflows import from `src/engine/index.ts` (`defineStage`,
   the artifact constructors, `createCheckpoint`, the JSON helpers, the types). Its other
-  files are internal. (`src/core/types.ts` still re-exports the engine's types for the
-  stages not yet migrated.)
+  files are internal. (`src/core/types.ts` re-exports the engine's types, so older
+  `import type { … } from '../core/types.js'` lines keep working, and is where
+  `ServiceDefinition` lives.)
 - **Tested with fixture stages, not real workflows.** Engine tests import
   `src/engine/testing/fixture-host.ts`, which installs a host backed by an array of
   fixture jobs and captures notifications, so nothing of the real application is loaded.
@@ -486,8 +542,8 @@ input the stage actually used, when that is a subset worth showing.
 Testing a ports stage: `makeTestContext(def, { inputs })` from
 `src/engine/testing/context.ts` builds a context with the inputs you give it and returns
 what the stage committed, with no workflow run, child process or database. The
-end-to-end behaviour is covered by `src/engine/ports-e2e.test.ts`, which runs fixture
-stages in real child processes.
+end-to-end behaviour is covered by the scenarios in `src/engine/scenarios/`, which run
+fixture stages in real child processes.
 
 **The ledger records what each run did, not just the latest state.** `markWorkItem`
 writes the cumulative `work_items` row and, in the same transaction, a per-run snapshot
@@ -503,7 +559,7 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/config.ts` | Env-driven config: ports, bind host, CORS allowlist, auth token, db path, ntfy, shared Chrome profile dir |
 | `src/daemon.ts` | Long-lived entrypoint: sync jobs + workflows, reap orphans (member runs first, then workflow runs: a reaped run gets an `end_reason`, a duration, a log line, and a row for each stage that never started), start scheduler + API + the retention sweep |
 | `src/runJob.ts` | Child entrypoint: run one job, emit NDJSON |
-| `src/core/types.ts` | `JobDefinition`, `WorkflowDefinition`, `ServiceDefinition`, `JobContext`, event types — the contracts |
+| `src/core/types.ts` | Re-exports the engine's types (`JobDefinition`, `WorkflowDefinition`, `JobContext`, the run and event types, defined in `src/engine/types.ts`) and defines `ServiceDefinition` |
 | `src/engine/executor.ts` | Spawn child, parse events, enforce timeout, retries, overlap-prevention; **cancellation** — an `AbortSignal` threaded into the attempt loop hard-kills the in-flight child (SIGTERM→SIGKILL, the timeout path) and settles the run `cancelled` (terminal, never retried) |
 | `src/core/scheduler.ts` | croner triggers for scheduled **workflows** (the only schedule owner; drives member jobs — jobs never get their own cron); respects `enabled`; registers each cron from the **effective** (DB) schedule, and `rescheduleWorkflow(name, schedule)` re-registers it LIVE after a dashboard edit — no restart (T135) |
 | `src/engine/ports.ts` | The stage contract: `ArtifactType` + its constructors (`jsonArtifact` / `fileArtifact` / `dirArtifact` / `ledgerArtifact` / `inlineArtifact`), `defineStage`, `StageContext`, and the pure binding + validation (`bindWorkflowPorts`, `validateWorkflowContracts`, `portGates`, `workflowMode`). No database, no I/O beyond an artifact's own `read` |
@@ -514,7 +570,7 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/engine/faults.ts` | Fault injection for proving failure handling on a REAL run: a list in `data/engine-faults.json` (`{ job, fault: 'fail' \| 'skip-outputs', attempts }`) makes the named stage misbehave for that many attempts, then removes itself. Does nothing when the file is absent. See `src/engine/README.md` |
 | `src/engine/protocol.ts` | `ENGINE_PROTOCOL`: the child-protocol version the daemon passes to children |
 | `src/engine/hash.ts` | SHA-256 of a file, and a listing fingerprint for a directory |
-| `src/engine/testing/` | `context.ts` (`makeTestContext` for unit-testing a ports stage), `ports-fixtures.ts` + `fixture-runner.ts` (the fan-out / fan-in fixture workflow the end-to-end tests run in real child processes) |
+| `src/engine/testing/` | `context.ts` (`makeTestContext` for unit-testing a ports stage), `fixture-host.ts` (an engine host backed by an array of fixture jobs, capturing notifications), `fixture-runner.ts` (the child entrypoint that loads the scenario module named in `LJ_SCENARIO_MODULE`), `scenario.ts` (the scenario harness: `setupScenario`, `run`, `start` / `until`, the `RunReport`) |
 | `src/engine/items.ts` | `eachItem` (the item loop: skip done, run-limit roots, attempts, per-item failure, soft stop, fatal stop, progress, save-then-mark, throw at the end if any failed), `softStop` / `SoftStopError` / `FatalStageError` / `ItemFailure`, `snapshotLedger` (batched re-record of a whole snapshot ledger, reporting new / changed / unchanged, optional prune), `successRows` |
 | `src/engine/scenarios/` | Fixture workflows and the tests that run them end to end, one per workflow shape (see `src/engine/README.md`) |
 | `src/engine/checkpoint.ts` | `createCheckpoint(save, { every })`: "save, then mark done". Holds an item-loop stage's ledger marks back until the hand-off file that carries those items' data has been saved, so a kill can never leave an item marked done whose data never reached the next stage. Used by the places stages |
@@ -529,16 +585,16 @@ Pass `from: { job, key? }` on a stage that turns one ledger item into another.
 | `src/engine/fsjson.ts` | Shared JSON-file + directory helpers (`readJsonFile`/`writeJsonFile`/`writeFileAtomic`/`ensureDirs`, T588), re-exported by each workflow's `lib.ts`. **Writes are atomic** (temp file in the same directory, fsync, rename), so a reader sees the whole old file or the whole new one and a killed process leaves the previous file intact. Use these for every file one stage hands to another; never a bare `writeFileSync`. `readJsonFile` throws an error that names the file when it exists but does not parse |
 | `src/core/browser.ts` | Shared headless-browser helper: persistent-profile + real-Chrome-channel launch (bundled-chromium fallback, stale-lock cleanup) for reputation-gated scrapes, plus a jittered-delay pacing helper |
 | `src/core/plex-client.ts` | Shared, self-contained Plex + TMDB connectivity (`plexGet`/`tmdbGet`/`resolvePlexHost`, DHCP-self-heal LAN scan, plus the mutating `plexPutStreams`/`triggerButlerBackup` used by `plex-language-apply`) — used by all 9 Plex-touching workflows (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`, `missing-movies`, `plex-space-saver`, `plex-language-fix`, `plex-profiles`, `plex-library-guard`, `plex-rename`), owned by none of them. The shared `plex` service now sits in front of every `plexGet`/`plexPutStreams`/`triggerButlerBackup` call — every one of those 9 workflows routes its Plex reads/mutations through `callService('plex', ...)`, giving call-count metering + per-job consumer tracking on the Integrations page. Also exports 3 dedup helpers (T586) every one of those workflows now shares instead of re-declaring locally: `PlexAllResponse<T>` (the `{ MediaContainer?: { Metadata?: T[] } }` response shape), `extractTmdbId` (pulls the numeric id off a title's `tmdb://` GUID, or `null` when absent — never guessed), and `fetchSectionMetadata<T>` (a thin `/library/sections/<n>/all` listing wrapper, itself routed through `callService('plex', ...)`); plus `extractTvdbId`/`extractImdbId` (same never-guess contract) and `plexRefreshSection` (targeted `GET /library/sections/<n>/refresh?path=` rescan trigger — a mutation trigger, never cached) added for `plex-rename` |
-| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (run→work-item attribution, T139), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186) |
+| `src/db/schema.sql` | `jobs`, `runs`, `run_logs`, `work_items` (+ `root_key`/`parent_key` lineage), `work_item_runs` (what each run recorded for each item), `run_artifacts` and `run_inputs` (what each stage committed and was handed, per run), `job_usage`, `workflows`, `workflow_jobs`, `workflow_runs` (+ `run_limit`/`selected_roots`/`resumed_from`), `workflow_run_logs`, `services`, `service_usage`, `service_consumers` (runtime-recorded job→service mapping, T186), `service_cache` (per-service response cache) |
 | `src/db/index.ts` | SQLite connection + schema bootstrap (WAL mode) |
 | `src/db/store.ts` | A pure barrel (`export * from './store/<domain>.js'`, zero logic) — every symbol is still importable from `../db/store.js` exactly as before (T529) |
-| `src/db/store/` | ALL queries live here, split by domain — add new ones to the matching domain file, not inline. `lib.ts` (shared path helpers), `jobs.ts`, `runs.ts` (+ global log feed), `workItems.ts` (per-item ledger, lineage, stuck/ignored), `usage.ts` (per-job spend meter), `workflows.ts` (workflow defs, workflow runs, progress roll-up, framework logs), `services.ts` (service defs, rate/quota meter, consumers, response cache), `admin.ts` (stale-override audit, output reset, definition deletes, run-history retention, read-only DB browser + canned queries), `artifacts.ts` (`run_inputs` / `run_artifacts`: what each stage was handed and what it committed, per run) |
-| `src/workflows/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/workflows/` AND `*.service.ts` under BOTH `src/services/` and `src/workflows/` (no manual registration); fails loud if any job belongs to no workflow (`orphanJobNames`) |
+| `src/db/store/` | ALL queries live here, split by domain. Add new ones to the matching domain file, not inline. `lib.ts` (shared path helpers), `jobs.ts`, `runs.ts` (+ global log feed), `workItems.ts` (per-item ledger, lineage, stuck/ignored), `usage.ts` (per-job spend meter), `workflows.ts` (workflow defs, workflow runs, progress roll-up, framework logs), `services.ts` (service defs, rate/quota meter, consumers, response cache), `admin.ts` (stale-override audit, output reset, definition deletes, run-history retention, deleting a display-only ledger), `artifacts.ts` (`run_inputs` / `run_artifacts`: what each stage was handed and what it committed, per run) |
+| `src/workflows/registry.ts` | Auto-discovers `*.job.ts` + `*.workflow.ts` under `src/workflows/` AND `*.service.ts` under BOTH `src/services/` and `src/workflows/` (no manual registration), installs the engine host (`configureEngine`), and refuses to load, listing every problem at once, when: a file has no valid default export, a name is duplicated, a DAG is invalid, a stage's inputs do not line up with the outputs before it, a workflow is not on ports, a job is in more than one workflow (`sharedJobNames`) or in none (`orphanJobNames`), or an `after` list is wrong (`afterProblems`) |
 | `src/services/*.service.ts` | **Top-level, daemon-wide** service definitions, default-exporting a `ServiceDefinition` (shared rate-limited / quota'd dependencies — gemini, google-places, fragrantica, claude-cli). **Self-contained**: each owns its limits from env and imports NOTHING from a workflow |
 | `src/services/lib.ts` | Shared service spend-cap math: `DAILY_SPEND_DIVISOR` (=30) + `dailyFromMonthly()` — the `daily = monthly/30` rule for paid daily-scheduled services |
-| `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`) — gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Used by the movies recommender branches (T146). (Perfumes still has its own `perfumes/claude.ts` — migrating it onto this is a follow-up; see `.harness/docs/LIMITATIONS.md`.) |
-| `src/workflows/<workflow>/` | One folder per example workflow (`places/`, `perfumes/`, `missing-tv-seasons/`, `missing-movies/`, `movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-library-guard/`, `plex-language-fix/`, `plex-profiles/`, `overrides-audit/`, `vault-sync/`). Shared files at the workflow root (`*.workflow.ts`, `config.ts`, `types.ts`, `contracts.ts`, helpers, the template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
-| `src/workflows/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports a `JobDefinition`) + its `<stage>.ts` impl (+ `<stage>.test.ts`). Root-level top-level `*.job.ts` files are gitignored; the `places/`+`perfumes/` stages are tracked |
+| `src/services/claude.ts` | Shared, self-contained Claude Code CLI helper (`runClaude`/`extractJsonObject`). It gates every call through the `claude-cli` service, reads `LOCALJOBS_CLAUDE_BIN`/`_TIMEOUT_MS` from env. Also `runClaudeWithRepoAccess` (the CLI with read-only access to one checked-out repo, used by `projects-sync`) and `salvageFrontmatterMarkdown` / `unfenceMarkdown` (clean a reply that came back fenced or prefixed with commentary). Used by every Claude-calling workflow, perfumes included |
+| `src/workflows/<workflow>/` | One folder per workflow, 22 of them (the table under "Shipped example workflows" lists each). Shared files at the workflow root (`*.workflow.ts` the manifest, `contracts.ts` the artifact types its stages exchange, `config.ts`, `types.ts`, helpers, any template, `data/`); per-stage code grouped under a flat `stages/` subfolder. **Each folder has its own `CLAUDE.md`** with the workflow's full current-state documentation (see "Shipped example workflows" above) |
+| `src/workflows/<workflow>/stages/*.job.ts` / `*.ts` | One stage per `<stage>.job.ts` (default-exports the result of `defineStage`: name, description, timeout, retries, inputs, outputs, and a `run` that maps the ports onto the impl) + its `<stage>.ts` impl, which takes a plain `JobContext` plus path options so it can be unit-tested without the engine (+ `<stage>.test.ts`). A `*.job.ts` placed directly in `src/workflows/` (not in a workflow folder) is gitignored |
 | `src/workflows/*.workflow.ts` | Workflow manifests, default-exporting a `WorkflowDefinition` (DAG of jobs); live at the workflow-folder root |
 | `src/engine/reporting.ts` | Derives a stage's (or the whole workflow's) Inputs & Outputs for one run from what the engine recorded: `stageIo` and `artifactItems`. For a ports run: the artifacts the stage was handed (`run_inputs`) and committed (`run_artifacts`), plus the ledger items its own attempts changed and the upstream items they were made from. For a legacy run: the old predecessor-rows rule, through a frozen mapping (`legacyRow`). Both return the same wire shape with explicit display rows |
 | `src/api/server.ts` | Node `http` API (no framework). Routing is a declarative `routes: Route[]` table (`{ method, pattern, handler }`) matched by `matchRoute` — a small exact-segment-length matcher (T530) that replaced the old sequential `if (method === … && parts[N] === '…')` chain. A `:name`-style pattern segment matches any literal path segment and is captured into `ctx.params`; every other segment must match literally; the pattern and the path must have the SAME segment count. That length-exact requirement is the actual fix: the old chain had a real bug class where a check like `parts[3] === 'runs'` matched ANY path with `'runs'` at that position regardless of what followed, so `GET /api/workflows/foo/runs/extra` incorrectly matched the `:name/runs` handler instead of 404ing — `matchRoute` can't do that. Route order is otherwise irrelevant (no two routes share the same method + segment count with a possible overlap). Add a new endpoint by appending a `{ method, pattern, handler }` entry to `routes` |
@@ -570,7 +626,7 @@ load.
    });
 
    export default defineStage({
-     name: 'unique-name',           // stable; it's the DB primary key
+     name: 'my-thing-build',        // stable (it's the DB primary key) and unique across all jobs
      description: 'A paragraph (a few sentences) explaining what this stage ' +
        'actually does step by step, what it reads/writes, and any notable ' +
        'behavior (rate limiting, retries, idempotency). NOT a short label. ' +
@@ -605,16 +661,24 @@ load.
 2. Declare it in a `*.workflow.ts` manifest — a one-stage workflow for a lone job;
    the workflow carries the cron `schedule` (or `null` for manual-only):
    ```ts
-   import type { WorkflowDefinition } from '../core/types.js';
+   // src/workflows/<name>/<name>.workflow.ts
+   import type { WorkflowDefinition } from '../../core/types.js';
 
    const workflow: WorkflowDefinition = {
-     name: 'unique-name',           // distinct from every job name
+     name: 'my-thing',              // must differ from every job name, its own stage's included
      description: 'what it does',
      schedule: '0 3 * * *',         // croner cron, or null for manual-only
-     jobs: [{ job: 'unique-name' }],
+     jobs: [{ job: 'my-thing-build' }],
+     // Several stages: jobs: [{ job: 'fetch' }, { job: 'build', dependsOn: ['fetch'] }]
+     // Every dependsOn edge must feed one of the later stage's inputs.
    };
    export default workflow;
    ```
+   Other manifest fields, all optional: `category` (which group it sits in on the
+   workflows page), `idempotencyNote` (one sentence shown on its page), `maxConcurrency`,
+   `notifyEnabled`, `after` (other workflows to wait for), and `repeatUntilStable` with
+   `maxCycles` / `cycleSleepMs` / `minAttempts` for a pipeline that should keep cycling
+   until nothing retryable is left.
 3. That's it for wiring — jobs and workflows are **auto-discovered** by filename
    glob (`*.job.ts` / `*.workflow.ts`). There is **no registry to edit**.
 4. Tell the user to restart the daemon (jobs are loaded at startup):
@@ -630,7 +694,8 @@ its files in `<workflow>/stages/` and add the member to the `*.workflow.ts` — 
 are discovered **recursively**, so a `*.job.ts` in `stages/` is picked up
 automatically. A stage file imports root-level shared modules one level up
 (`../config.js`, `../types.js`, `../contracts.js`, …) and framework code two more
-(`../../../core/…`, `../../../db/…`); sibling stages stay `./`. Keep config/data
+(`../../../engine/index.js` for everything the engine offers, `../../../core/…` for the
+shared clients, `../../../db/store.js` for the ledger); sibling stages stay `./`. Keep config/data
 resolution (`resolve(here, …)`) anchored at the job root, so `config.ts`/`data/`
 stay at the root, not in `stages/`.
 
@@ -642,7 +707,7 @@ job MAY colocate a service it owns).
 
 > **Privacy — real jobs are local-only by default.** Top-level
 > `src/workflows/*.job.ts` files are gitignored. The
-> public repo ships the `places/`, `perfumes/`, `plex/`, `movies/`, `missing-movies/`, `tv-recs/`, `workouts-sync/`, `listening-digest/`, `projects-sync/`, `claude-warmer/`, `stocks-sync/`, `stock-digest/`, `vercel-daily-redeploy/`, `plex-space-saver/`, `plex-library-guard/`, `plex-language-fix/`, `plex-profiles/`, `plex-rename/`, `mount-keeper/`, `overrides-audit/`, and `vault-sync/` subfolder workflows as
+> public repo ships all 22 workflow folders listed in the table near the top of this file as
 > worked examples, but their `data/` folders stay gitignored. New jobs you add as
 > a root-level `*.job.ts` stay untracked by design. NEVER use `git add -f` on a
 > private job file.
@@ -655,53 +720,35 @@ job MAY colocate a service it owns).
 ### Job conventions
 - Jobs must be **idempotent / safe to re-run** (they retry and can be run
   manually). Use guards / "skip if already done".
-- **An item-loop job must fail its own run if it failed ANY item this run (2026-07, T416).**
-  The per-item `try/catch` / `markWorkItem(..., 'failed', ...)` / `continue` pattern inside a
-  processing loop is UNCHANGED and still correct — one bad item must not stop the loop from
-  attempting every other item this run. BUT at the END of that loop, if this run's own tally
-  shows `failed > 0` (a genuine `'failed'` outcome — NOT a `'skipped'` soft-stop like a
-  quota/rate-limit pause, which is an intentional defer-to-later-run, not a failure), the job's
-  `run()` function MUST `throw` a summarizing `Error` (e.g.
-  `` throw new Error(`${failed}/${processed} item(s) failed this run — see logs above`) ``)
-  instead of returning normally. This needs NO new framework mechanism — it reuses machinery that
-  already exists: the thrown error correctly marks the RUN `'failed'` (`src/runJob.ts` →
-  `src/engine/executor.ts`), which correctly blocks every downstream DAG dependent (`executeDag`'s
-  ready-stage loop already treats any status other than exactly `'success'` as blocking), and
-  correctly triggers the job's own retry budget (`runAttempts`/`maxRetries`, unchanged) — a retry
-  (or the next scheduled run) naturally skips already-`isWorkItemDone` items and resumes at the
-  first not-yet-done one, since that idempotency filtering is already how every compliant
-  item-loop job works (the rule above). Most jobs already compute an `{ ok, failed, ... }` tally
-  for their own logging/return value — for those, the fix is usually just a couple of added lines
-  at the very end: `if (failed > 0) throw new Error(...)`. Applies ONLY to genuine item-PROCESSING
-  loops where a per-item failure is currently silently swallowed — not to a stage with no
-  per-item "did work" concept (e.g. a pure notify-trigger that either sends a push or doesn't).
-  This is a documentation-only convention (no job has been retrofitted yet — that's separate
-  per-workflow follow-up work).
+- **An item-loop stage fails its own run if it failed ANY item this run.** One bad item
+  must not stop the loop from attempting the others, so a failed item is recorded
+  (`failed`, with its attempt counted) and the loop carries on. But at the end, if any item
+  failed this run, the stage throws. That marks the run `failed`, which stops the stages
+  after it and uses the stage's retry budget; a retry, or the next run, skips what is
+  already done and picks up at the failures. A quota or rate-limit pause is not a failure:
+  it is a soft stop (`skipped`), the stage returns normally, and the next run resumes.
+  `eachItem` does all of this. The stages that still write the loop by hand (most of the
+  ones written before `eachItem` existed) follow the same rule with their own
+  `if (failed > 0) throw …` at the end. Write new loops with `eachItem`.
 - Use `ctx.log` and `ctx.progress` generously — that's the entire visibility
   story. No `console.log` (it still gets captured, but prefer `ctx`).
-- **Item-loop jobs report progress per item, not just at the end.** Any job that
-  processes N items must call `ctx.progress(i/N*100)` and log an `i/N` line as it
-  finishes each one, so the job's own run % advances live (the workflow bar only
-  steps when the whole stage finishes — see the progress roll-up note below)
-  instead of jumping 0→100 at the finish. Use a sensible denominator — the count
-  it will actually attempt this run (e.g. `Math.min(todo.length, runLimit)`).
-  `eachItem` does this for you (the perfumes stages use it); the places stages
-  still emit it inline. Match it in new jobs.
+- **Item-loop stages report progress per item, not just at the end.** Log an `i/N` line
+  and call `ctx.progress(i/N*100)` as each item finishes, so the stage's own bar moves (the
+  workflow's bar only steps when a whole stage finishes). Use the number the stage will
+  really attempt this run as the denominator. `eachItem` does this for you.
 - Keep secrets in `.env` (read via `process.env`); never hardcode. The child
   inherits the daemon's env.
-- **Record a produced markdown artifact's path in the work item's `detail.markdown`
-  (T110).** A job whose final output is a markdown file should pass the file's
-  absolute path as `markWorkItem(…, { detail: { name, markdown: mdPath } })`
-  (places-llm-enrich and perfumes-build both do). The dashboard's workflow-run
-  **Input → Output** panel reads it via `workItemMarkdownPath` and the read-only,
-  path-safe `GET /api/workflow-runs/:id/output?job=&key=` endpoint to preview the
-  artifact + open the full markdown in a popover. The popover renders content as
-  formatted markdown via `react-markdown` (XSS-safe — no `rehype-raw`, raw HTML is
-  escaped not executed; T115). YAML frontmatter is stripped and shown as a compact
-  key-value header. The endpoint confines reads to a `.md` file inside a job's own
-  `data/out/` tree (`safeOutputMarkdown` in `server.ts` — resolve + realpath +
-  prefix + `/data/out/` checks; no traversal, files only, no paid/remote calls),
-  so keep output artifacts under `data/out/`.
+- **Record a produced file's path in the item's detail.** A stage that writes one file
+  per item records where it is: `detail.markdown` for a markdown file, or `detail.path` +
+  `detail.format` for anything else (`eachItem` records whatever the handler returns as the
+  detail). That is what lets the dashboard open the file: the workflow page's Output
+  section through `GET /api/workflows/:name/output?job=&key=`, and a run page's item rows
+  through the preview the stage's `describeItem` returns (served by `GET /api/output-file`).
+  Both endpoints only read a file inside a workflow's own `data/out/` tree
+  (`safeOutputMarkdown` / `safeOutputFile` in `server.ts`: resolve, realpath, prefix and
+  `/data/out/` checks, no traversal), so keep output files under `data/out/`. Markdown is
+  rendered with `react-markdown` without `rehype-raw`, so raw HTML in a file is shown, not
+  run; YAML frontmatter is shown as a small key-value header.
   **`detail.markdown`/`detail.path` are stored relative to the workflows root, not as a
   frozen absolute path (T447).** `markWorkItem` (`src/db/store.ts`) normalizes both keys
   via `toStoredPath` before persisting — a job author still just passes its natural
@@ -714,33 +761,16 @@ job MAY colocate a service it owns).
   `safeOutputMarkdown`/`safeOutputFile` in `server.ts` resolve a relative candidate
   against the freshly-computed `WORKFLOWS_ROOT`; an absolute candidate (legacy rows,
   or rows outside the workflows tree) still resolves exactly as before.
-- **Every stage's success `detail` must describe what THAT STAGE produced — not just restate
-  the item's identity (2026-07, generalizes T110).** `work_items` is fundamentally an
-  idempotency/retry ledger, but its `detail` blob is also the ONLY evidence the dashboard's
-  Inputs & Outputs panel (`StageIoPanel`, T382+) can show for what happened at a stage — the
-  panel has no way to see a `ctx.log` line or a file on disk, only what's recorded in `detail`.
-  A `detail` of just `{ name }` (or `{ name, attempts }`) reads as if the stage did nothing, even
-  when it performed real work (a browser scrape, an LLM extraction, a resolved value) — found
-  live on `perfumes-fetch`/`perfumes-parse`, whose successful `detail` never referenced the raw
-  page or parsed-JSON files they actually wrote to `data/out/`. Concretely, on every stage's
-  SUCCESS `markWorkItem` call:
-  - **Stage writes a file** → reference it. Reuse `detail.markdown` for a markdown artifact
-    (T110, unchanged) or, for any OTHER file type, `detail.path` + `detail.format` — the SAME
-    pair the T262 output-form convention already defines for a workflow's terminal/output stage,
-    generalized here to EVERY stage, not just the terminal one. Both are already served by the
-    read-only `GET /api/workflow-runs/:id/output?job=&key=` endpoint via `resolveOutputForm`
-    (`safeOutputFile` accepts any extension under `data/out/`), and the dashboard's
-    `StageIoPanel` recognizes either field to show a "click to preview" link
-    (`dashboard/app/components/StageIoLists.tsx`).
-  - **Stage discovers/computes a value, writes no file** → put the value itself in `detail`
-    (a resolved URL, an industry classification, a count, a rating) — `perfumes-find-url`'s
-    `{ name, url }` and `stock-sector-lookup`'s `{ name, industry }` are the worked examples.
-  - **Stage is a genuine, deliberate pass-through** with nothing of its own to show (rare) —
-    minimal `detail` is fine, but this should be a conscious exception a stage author chooses,
-    not the unexamined default every stage falls back to.
-  This is convention, not mechanically enforced (unlike the gate-coverage test) — there is no
-  structural way to distinguish "identity-only because there's genuinely nothing to show" from
-  "identity-only because the author never considered it" without reading the stage's own code.
+- **A ledger row's `detail` says what THAT STAGE did to the item, not just which item it
+  is.** A run page shows two things for a stage: its artifacts (from its declared outputs,
+  nothing to write) and, for a stage with a ledger, one row per item it changed. The row
+  shows the title and fields the stage's `describeItem(detail, key)` returns, or just
+  `detail.name` when it has none. So a detail of `{ name }` alone reads as if the stage did
+  nothing. Record the file the stage wrote for the item (see the bullet above), or the value
+  it found (`perfumes-find-url`'s `{ name, url }`, `stock-sector-lookup`'s
+  `{ name, industry }`), and give the stage a `describeItem` when those are worth showing as
+  fields. A stage with no per-item work has no ledger at all: it declares an output instead
+  and never writes a row just to be listed. Nothing checks this mechanically.
 - **The Output section of a PORTS workflow needs no ledger row.** For a ports workflow
   `GET /api/workflows/:name/output-items` returns, as `artifacts`, the latest artifact each
   output of the workflow's product stage committed in any run (`latestProductArtifacts` in
@@ -751,34 +781,34 @@ job MAY colocate a service it owns).
   workflow that writes one report declares it as an output and is done: it must NOT write a
   per-run or per-week ledger row just to appear here. The bullet below describes how the
   item list (the ledger half of the section) works.
-- **Unified Output section on the workflow detail page (T205).** Every workflow's detail
-  page shows a consolidated **Output** section backed by `GET /api/workflows/:name/output-items`
-  → `workflowTerminalItems(lastWave)` in `src/db/store.ts`. The convention is:
-  - **The terminal stage's `work_items` ledger IS the output list.** `workflowTerminalItems`
-    queries `work_items` for the DAG's final-wave job names with `status='success'`, ordered
-    newest first. Items are de-duped by `(job_name, item_key)` by construction (the ledger has
-    a UNIQUE key per pair), so each produced item appears exactly once regardless of how many
-    runs have processed it.
+- **The item list in the Output section (T205).** Below the artifact cards, the section
+  lists the items of the product stage's ledger: `GET /api/workflows/:name/output-items` →
+  `workflowTerminalItems(ledgers)` in `src/db/store/`, where `ledgers` are the job names the
+  product stage's attempts have written rows under (usually its own; a notify stage that
+  records under a shared name such as `movie-recs` is found the same way). How it works:
+  - **Each produced item appears once.** `workflowTerminalItems` returns the `success`
+    rows, newest first. The ledger has one row per `(job_name, item_key)`, so an item that
+    many runs have processed is still listed once.
   - **Markdown artifact workflows** (places, perfumes): the terminal stage records
     `detail: { name, markdown: <path> }` on each `markWorkItem` call (T110). The output
     section shows a "View" button per item that fetches `GET /api/workflows/:name/output?job=&key=`
     (same guard as the per-run endpoint: `safeOutputMarkdown`, confined to `data/out/` tree)
     and opens the content in a markdown popover.
-  - **Audit-style workflows** (movie-recommendations, missing-tv-seasons): these already have
-    dedicated, richer output managers on the detail page — the generic `RecsManager`/
+  - **The four audit and recommender workflows** (movie-recommendations, tv-recommendations,
+    missing-movies, missing-tv-seasons) have dedicated, richer output managers on the detail
+    page: the generic `RecsManager`/
     `GroupedManager` components (T584, see "Shared dashboard UI components" below) rendered via
     per-workflow config objects (`MOVIE_RECS_CONFIG`, `TV_RECS_CONFIG`, `MOVIE_GAPS_CONFIG`,
     `MISSING_SEASONS_CONFIG` in `page.tsx`). They are EXCLUDED from the generic section
     (the `WORKFLOWS_WITH_SPECIFIC_MANAGERS` set in `page.tsx`). New dedicated managers should
     be added to that set; standard build workflows use the generic section automatically.
-  - **Adding a new workflow that produces output**: make the terminal stage call
-    `markWorkItem(ctx, key, 'success', { detail: { name: ..., markdown: <path> } })` for
-    markdown artifact items, OR just `markWorkItem(ctx, key, 'success')` for non-markdown
-    items. The output section renders automatically — no extra wiring needed. The
-    `output-items` endpoint is always paged (`limit` default 100 max 500, `offset`) with a
-    `total`; `WorkflowOutputSection` lazy-loads further pages on scroll via the shared
-    `LoadMoreSentinel` — a workflow with tens of thousands of output items (plex-rename)
-    must never render them all up front.
+  - **Adding a workflow that produces output**: nothing to wire. What its product stage
+    declares as outputs appears as artifact cards, and if that stage keeps a ledger (one
+    row per item, with `detail.markdown` or `detail.path` + `detail.format`) its items are
+    listed under them with a View button. The `output-items` endpoint is always paged
+    (`limit` default 100 max 500, `offset`) with a `total`; `WorkflowOutputSection`
+    lazy-loads further pages on scroll via the shared `LoadMoreSentinel`. A workflow with
+    tens of thousands of output items (plex-rename) must never render them all up front.
   - **A product stage that is not the last stage.** Some workflows end with a stage that
     only sends a push now and then (`stocks-sync`'s `stocks-notify`). Mark the stage whose
     output IS the workflow's product `product: true` on its `defineStage` (`stocks-snapshot`,
@@ -984,10 +1014,10 @@ doubt, log it.
   (`enabled`, schedule override, concurrency override, service limit overrides), and
   `service_usage` (the spend meter — lifetime call counts are never erased).
   The filesystem cleanup (`findWorkflowDataOut` + `deleteDataOutContents` in `server.ts`)
-  locates the workflow's folder by scanning `JOBS_ROOT` for `*.workflow.ts` files and
+  locates the workflow's folder by scanning `WORKFLOWS_ROOT` for `*.workflow.ts` files and
   dynamically importing each to match by `default.name` (fast — already in module cache after
   registry startup). Two path-safety guards in `deleteDataOutContents` enforce that the target
-  is (1) within `JOBS_ROOT` AND (2) contains `/data/out/` in its path — neither check alone
+  is (1) within `WORKFLOWS_ROOT` AND (2) contains `/data/out/` in its path. Neither check alone
   is sufficient. The DB reset (`resetWorkflowOutput` in `store.ts`) uses subquery-based deletes
   (`DELETE … WHERE run_id IN (SELECT id FROM runs WHERE job_name IN (…))`) to avoid SQLite's
   999-variable limit. The dashboard's workflow detail page exposes a **Danger zone → Clear
@@ -1028,8 +1058,11 @@ doubt, log it.
   doesn't throw and ends correctly migrated — it FAILS if pointed at the pre-fix
   buggy `schema.sql`. (`openDb(dbPath?)` takes an optional path solely so this test
   can drive it; the daemon uses the default.)
-- **Item loops use `eachItem` (`src/engine/items.ts`).** A stage that works through a
-  list does not write the loop by hand. `eachItem(ctx, jobName, items, { key, title,
+- **Item loops use `eachItem` (`src/engine/items.ts`).** A new stage that works through a
+  list does not write the loop by hand. (So far only the four perfumes stages have been
+  moved onto it. The other item-loop stages still have hand-written loops that call
+  `markWorkItem` directly and follow the same rules; move one onto `eachItem` when you are
+  changing it anyway.) `eachItem(ctx, jobName, items, { key, title,
   maxAttempts, from?, root?, limit?, save? }, handler)` does, in order: leave out items
   outside a limited run's roots, skip items the ledger has done, attempt each with an
   `i/N` log line and progress, record what the handler returns as the item's detail,
@@ -1065,7 +1098,7 @@ doubt, log it.
     args). Use this shape when the work is a periodic audit/alert, not a build.
   - **Plex client self-heals a changed DHCP IP.** The owner's Plex server gets its IP
     via DHCP, so a hardcoded `PLEX_HOST` goes stale — the shared `src/core/plex-client.ts`
-    (`resolvePlexHost`, used by all 4 Plex-touching workflows) confirms the configured
+    (`resolvePlexHost`, used by all nine Plex-touching workflows) confirms the configured
     host first and otherwise scans the local LAN for a live Plex, self-healing the
     address. A configured host that does not answer the quick probe (1.5s) is not written
     off: a patient probe of it (`PLEX_WAKE_TIMEOUT_MS`, 30s) runs alongside the scan and
@@ -1074,22 +1107,17 @@ doubt, log it.
     "Plex unreachable" and only the retry got through (most mornings for
     `plex-rename-discover`). Full mechanism + tests: `src/core/plex-client.ts` /
     `src/core/plex-client.test.ts`.
-  - **Run→work-item attribution (`work_item_runs`, T139).** `work_items` stays the
-    CUMULATIVE, idempotent ledger keyed by `(job_name, item_key)` with NO run
-    linkage. The separate append-only `work_item_runs` table
-    (`(workflow_run_id, job_name, item_key, root_key, at)`, UNIQUE per run+item)
-    attributes WHICH workflow run advanced each item: `markWorkItem` records a
-    linkage row (using the SAME resolved `root_key`) whenever it runs inside a
-    workflow run — it reads the run id from its optional `workflowRunId` param,
-    defaulting to `process.env.LOCALJOBS_WORKFLOW_RUN_ID` (set by the executor for
-    every child), so existing call sites are UNCHANGED and a standalone run records
-    nothing. This powers the **genuinely run-scoped** workflow-run Inputs & Outputs
-    panel: `stageIoLists(outputJobNames, inputJobNames, runId)` (T386, superseding
-    the original T139 `workItemIoRows` joined-table function, removed in T389)
-    lists every ledger row THIS run recorded for the given stage(s), as two
-    independent, un-paired lists — see the `<StageIoPanel>` entry above. Being a
-    brand-new table, `work_item_runs`' index lives in `schema.sql` (the columns
-    exist on creation for fresh AND existing DBs, so it does NOT hit the T098 trap).
+  - **What each run did to each item (`work_item_runs`).** `work_items` is the
+    CUMULATIVE ledger, one row per `(job_name, item_key)`, with no link to any run.
+    `work_item_runs` is the per-run record beside it. `markWorkItem` writes both in one
+    transaction whenever it runs inside a workflow run (it takes the run from
+    `LOCALJOBS_WORKFLOW_RUN_ID` and the stage attempt from `LOCALJOBS_RUN_ID`, which the
+    executor sets for every child, so call sites pass nothing). The per-run row holds the
+    status, attempts and detail THAT run recorded, which stage attempt wrote it (`run_id`),
+    the cycle, what the item was made `from`, and `changed`: whether the run changed the
+    item or only re-recorded an identical row (then the detail is not stored again). A run
+    page is built from these rows, so an old run shows what it recorded, not today's ledger,
+    and only the items a run changed are listed. They are trimmed after 90 days (see below).
   - **A first stage does not have to write a list for the run page.** This used to be a
     convention ("the first stage owns the per-item list"): a bulk first stage that only
     produced a file had to record one ledger row per item as well, or the run page's input
@@ -1148,7 +1176,7 @@ doubt, log it.
       `inputKeys()` and root stage's `run()` walk the same source (plex-language-fix
       walks the library in BOTH), a *limited* run walks twice; that's a per-workflow
       efficiency matter, not this framework path's concern. The id is threaded to each child via the
-    `LOCALJOBS_WORKFLOW_RUN_ID` env (`executor.ts`); the child (`runJob.ts`) loads
+    `LOCALJOBS_WORKFLOW_RUN_ID` env (`executor.ts`); the child (`src/engine/child-main.ts`) loads
     `getWorkflowRunRoots` into `ctx.selectedRoots()`/`ctx.rootAllowed(rootKey)`. **Every
     stage MUST filter its work-list by `ctx.rootAllowed(root)`** — when unlimited it's
     a no-op (the set is null → always true), so unlimited runs behave exactly as
@@ -1215,12 +1243,9 @@ doubt, log it.
     whereas `ignoreWorkItem` requires a `failed` row. The notify stage then excludes
     ignored keys from BOTH the report (`ignoredItemKeys(jobName)`) AND notifications
     (`isWorkItemDone` already treats `ignored` as done, so it's never re-notified).
-    Wired for the franchise-gap audit (owned by the `missing-movies` workflow since T468) via
-    `POST /api/movie-gaps/:tmdbId/ignore` + a "Recommendations &
-    gaps" management section that is STILL, PENDING T469, rendered on the **movie-recommendations
-    workflow detail page** (`/workflows/movie-recommendations`, gated to render only for that
-    workflow — T152 folded it in from the old dedicated top-level `/movie-gaps` page; T469 moves it
-    onto `missing-movies`'s own detail page); still MANUAL-ONLY (nothing auto-ignores). Reuse this
+    Wired for the franchise-gap audit (the `missing-movies` workflow) via
+    `POST /api/movie-gaps/:tmdbId/ignore` and the gaps manager on that workflow's own detail
+    page (`/workflows/missing-movies`); still MANUAL-ONLY (nothing auto-ignores). Reuse this
     shape for any future periodic-audit workflow that needs the owner to permanently silence a
     factual-but-unwanted finding. The movie-recommendations **recommendation layer** (T146) reuses
     it verbatim for recs: `ignoreSurfacedItem('movie-recs', <tmdbId>)` excludes a rec
@@ -1530,9 +1555,8 @@ doubt, log it.
   blocks stack). After any dashboard UI change, build it and run
   `node dashboard/scripts/mobile-check.mjs` (hermetic — no daemon, synthetic API
   fixtures) and keep it green. The check is local-only, not part of CI.
-  ⚠️ The mobile check only exercises the DEFAULT theme/font (it sets no
-  localStorage), so it guards the default look; non-default themes are
-  mobile-safe by design + spot-checked manually at phone width.
+  The check runs in one colour mode only (whichever the harness seeds), so look at the
+  other mode by hand when a change touches colour.
 - **Dashboard UI changes must get VISUAL confirmation, not just structural checks.**
   A UI element can pass `tsc`, the unit suite, the dashboard build, AND mobile-check
   yet never actually be PAINTED — the T223 gate-padlock bug shipped exactly that (an
@@ -1614,41 +1638,29 @@ doubt, log it.
     an empty/null frontmatter value with `.md-fm-null` and joins a JSON-array value into
     comma-separated text) — these live only here, not in a separate component (T582).
   - **`<StageIoPanel>`** (`dashboard/app/components/StageIoLists.tsx`) — the
-    workflow-run page's ONLY Inputs & Outputs panel. **It renders what the server sends
-    and infers nothing** (2026-11): each side of a stage has ARTIFACT CARDS (what the
-    stage was handed or committed: description, summary, size, whether it was carried
-    forward, whether it passed its check or could not be resolved, the items it said it
-    `used`, a "View file" and a paged "Browse N items") and ITEM ROWS with a server-built
-    title, explicit fields and a preview. The data comes from `src/engine/reporting.ts`. Rows
-    are attributed to the stage ATTEMPT that wrote them (`work_item_runs.run_id`), only
-    items a run changed are listed (unchanged re-records are counted), and an old run
-    shows what it recorded, not today's ledger. A stage shows its fields by declaring
+    workflow-run page's only Inputs & Outputs panel, the same for every workflow. **It
+    renders what the server sends and infers nothing.** A tab per stage plus "Overall";
+    each side of a stage has ARTIFACT CARDS (what the stage was handed or committed:
+    description, summary, size, whether it was carried forward or written again unchanged,
+    whether it passed its check or could not be resolved, the items it said it `used`, a
+    "View file" and a paged "Browse N items") and ITEM ROWS with a server-built title,
+    explicit fields and a preview. Inputs and outputs are two independent lists, never
+    paired one to one, so a stage that fans out or fans in shows every row. The data comes
+    from `GET /api/workflow-runs/:id/stage-io` → `stageIo` in `src/engine/reporting.ts`;
+    an artifact's items come from `GET /api/workflow-runs/:id/artifact-items`. Rows are
+    attributed to the stage ATTEMPT that wrote them (`work_item_runs.run_id`), only items
+    a run changed are listed (unchanged re-records are counted), and an old run shows what
+    it recorded, not today's ledger. A stage shows its fields by declaring
     `describeItem(detail, key)` on its job, and its artifact's items via the artifact
     type's `items(value)`. Previews are fetched by recorded path through
-    `GET /api/output-file` (guarded to `data/out/`). The history below describes how the
-    LEGACY ledger-only view came about; it still applies to runs of workflows not yet
-    migrated to ports, which the server maps into the same shape.
-    Originally (T382 → T386 → T389 → T458):
-    Originally built for workflows with a genuine fan-out/fan-in shape a single
-    "input → output" row can't represent honestly (see `stock-digest.workflow.ts`'s
-    file comment), **T386 made it the default for EVERY workflow's run page**, not
-    just `stock-digest`, and **T389 deleted the old generic joined `IoPanel`
-    entirely** (component, its `workItemIoRows` store function, and the
-    `GET /workflow-runs/:id/io` endpoint) — `StageIoPanel` is no longer an
-    alternative to anything, it's the only mechanism. Renders one block per DAG
-    member with two independent, un-paired lists (its predecessor(s)' ledger rows
-    this run as Inputs, its own ledger rows this run as Outputs — the lists are
-    never forced into a 1:1 join, so a genuine many-to-one or one-to-many stage
-    shows every row honestly, not just a representative one), backed by
-    `GET /workflow-runs/:id/stage-io` → `stageIoLists` in `src/db/store.ts`. Every
-    new workflow gets this same honest, un-paired treatment automatically; there
-    is no per-workflow opt-in to make. **Always paged + lazy-loaded (2026-08):** the
-    endpoint takes `limit` (default 100, max 500) + per-side `inputsOffset`/`outputsOffset`
-    and returns per-side totals; the panel keeps page one on the 5s poll and appends
-    further pages via an in-list `LoadMoreSentinel` (IntersectionObserver inside each
-    column's own 320px scroll container) — a 27k-item run (plex-rename) used to ship
-    both full lists in one response and hard-froze the tab. The T615 input-sample
-    routing is applied IN SQL (`stageIoLists`) so paging offsets never skip rows.
+    `GET /api/output-file` (guarded to `data/out/`). **Always paged and lazy-loaded:** the
+    endpoint takes `limit` (default 100, max 500) and per-side `inputsOffset` /
+    `outputsOffset` and returns per-side totals; the panel keeps page one on the 5s poll
+    and appends further pages through an in-list `LoadMoreSentinel` (a 27k-item plex-rename
+    run once shipped both full lists in one response and froze the tab). A run recorded
+    BEFORE the 2026-11 migration has no artifacts: the server maps its ledger rows into the
+    same shape through a frozen mapping (`legacyStageIo` / `legacyRow` in `reporting.ts`,
+    over `stageIoLists` in the store), which is the only reason that older code remains.
   - **`<RunTimeline>`** (`dashboard/app/components/RunTimeline.tsx`) — the Timeline panel
     on the workflow-run page: one row per stage, one bar per attempt, on a shared time
     axis. The pale part of a bar is the time between the stage becoming ready and its
@@ -1717,52 +1729,21 @@ doubt, log it.
   AND vertically centres a short sentence within its `.panel` wrapper — reuse it for
   future empty states instead of duplicating ad-hoc centring CSS. (A related,
   IO-panel-specific class, `.io-empty-state`, predates this and is left as-is.)
-- **Dashboard appearance is CSS-variable-driven + has a live theme/font switcher
-  (T142 → T154 evaluation, curated down in T184).** All colours/fonts come from
-  `:root` custom properties; a header **🎨** control (`ThemeControls` in
-  `dashboard/app/ui.tsx`) flips persisted (localStorage) html attributes on
-  `document.documentElement`. The curated set (T184) is:
-  - **`data-theme` — the theme FAMILY, exactly 3:** `default` (plain), `pixel-picnic`,
-    `sunny-8bit`. The switcher only picks the family.
-  - **`data-mode` — the RESOLVED value is always `light` | `dark`; the user's CHOICE
-    is `dark` | `light` | `system` (T344, reintroducing System on top of T308's
-    binary toggle — a deliberate owner UX reversal).** The header **🎨**-successor
-    control — a single compact icon button (`ThemeControls`/`useMode` in
-    `dashboard/app/ui.tsx`), not a popover — CYCLES the choice Dark → Light →
-    System → Dark on each click, persisted as `localjobs.mode` (the literal string
-    `'dark'`/`'light'`/`'system'`; `'system'` is written explicitly, not just left
-    unset). Each state has its own icon: 🌙 dark, ☀️ light, 🖥️ system. In System
-    state — also the default when nothing is stored — `data-mode` follows the OS
-    `prefers-color-scheme` live via a `matchMedia` change listener attached only
-    while in System state; Dark/Light force a fixed `data-mode` and detach that
-    listener. Each of the 3 theme families has a **light + dark palette** in
-    `globals.css` (6 total). The family's BASE rule carries its DARK palette (so a
-    JS-less viewer still gets a coherent theme) and a `[data-mode="light"]` rule
-    overrides to light; the `default` family is the exception — its DARK palette IS
-    `:root` (unchanged, the original pre-T142 dark look) and only its light override
-    is defined. `data-mode` is set BEFORE first paint by the pre-paint inline script
-    in `layout.tsx` (reads `localjobs.mode`; `'dark'` forces dark, `'light'` forces
-    light, anything else — `'system'` or unset — follows `prefers-color-scheme`) and
-    kept in sync after hydration by `useMode()`. The pure `resolveMode(stored,
-    osPrefersDark)` helper in `ui.tsx` maps the stored choice → effective
-    `data-mode` (`null`/`'system'` both follow the OS preference).
-  - **`data-font` — exactly 3:** unset = System default, `baloo` (Baloo 2, a rounded
-    face; uses a lighter `--heading-weight: 500` so headers read crisp), `spacemono`
-    (Space Mono everywhere). Only **two faces are loaded** via `next/font/google` in
-    `layout.tsx` (Baloo 2 + Space Mono) — no other faces are shipped.
-  - **`data-motion="reduced"`** — dampens animations + hides emoji; defaults to the
-    OS `prefers-reduced-motion`.
-  Hard rules to preserve: the **untouched default** (default family, no attributes
-  set) — and the default family's DARK mode generally — must render exactly as the
-  pre-T142 dark look, so joyful accents are gated by
-  `html[data-theme]:not([data-theme="default"])` and `--heading-weight` defaults to
-  `700` (the original bold headings); **logs keep a fixed dark-terminal palette**
-  (`--logs-*` in `:root`, never overridden by a theme or by light mode) so streaming
-  logs stay legible in both modes; and display/rounded faces only ever map to
-  `--font-display`/`--font-body`, never the log/mono surfaces (except the deliberate
-  Space Mono everywhere). Confine theme/font/accent CSS to `globals.css`, the
-  switcher+hooks to `ui.tsx`, and font loading + the pre-paint script to
-  `layout.tsx`.
+- **Dashboard appearance: one theme, one font, a light / dark / system switch.** All
+  colours and fonts come from `:root` custom properties in `dashboard/app/globals.css`.
+  The look is fixed (the "sunny 8-bit" palette and the Baloo 2 face, loaded once through
+  `next/font/google` in `layout.tsx`); there is no theme or font picker any more. The one
+  choice is the mode: the header button (`ThemeControls` / `useMode` in
+  `dashboard/app/ui.tsx`) cycles Dark → Light → System, stored as `localjobs.mode`
+  (`'dark'`, `'light'` or `'system'`). It sets `data-mode` on `<html>` to `light` or `dark`;
+  in System, which is also the default when nothing is stored, it follows the OS
+  `prefers-color-scheme` live. `:root` carries the DARK palette and a `[data-mode="light"]`
+  rule overrides it. An inline script in `layout.tsx` sets `data-mode` before first paint
+  so there is no flash, and `useMode` keeps it in step after hydration; `resolveMode` in
+  `ui.tsx` is the pure mapping from the stored choice to the attribute. **Logs keep a fixed
+  dark-terminal palette** (`--logs-*`, never overridden by light mode) so streaming logs
+  stay legible in both. Keep colour and font CSS in `globals.css`, the switch and its hook
+  in `ui.tsx`, and font loading plus the pre-paint script in `layout.tsx`.
 - **Commit + push as you go.** See the "⚠️ Commit + push as you go" section near the top
   of this file — it's a hard rule here, not a style preference, because of how
   `LOOP_AUTORESET` treats a dirty tree.

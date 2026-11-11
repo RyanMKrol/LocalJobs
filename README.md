@@ -77,6 +77,14 @@ an earlier step failed, never started because the run was cancelled.
 not at all, and an item is only marked done once its result is safely on disk, so
 killing a job at any moment costs a little repeated work and never loses data.
 
+**A failed run can be picked up where it stopped.** Resume a failed run and the steps
+that already succeeded are not run again, as long as what they wrote is unchanged.
+Eight slow steps that worked are not repeated because the ninth failed.
+
+**One workflow can wait for another.** A workflow that reads another's output can say
+so, and its run then holds back while that one is still running instead of reading
+files that are half rebuilt.
+
 ## What it currently runs
 
 Twenty-two workflows, all included in this repo as working examples.
@@ -118,8 +126,9 @@ Twenty-two workflows, all included in this repo as working examples.
 | claude-warmer | Keeps a usage window warm, so the jobs that need it aren't cold when they run. |
 | overrides-audit | Reminds you about settings you changed in the dashboard weeks ago and forgot to make permanent. |
 
-Your own jobs stay private by default. This repo is public, and anything you add
-is ignored by git unless you choose to publish it. Secrets live in `.env`.
+This repo is public. To keep a workflow of your own out of it, add its folder to
+`.gitignore`. Every workflow's `data/` folder is ignored already, and secrets live in
+`.env`, which is ignored too.
 
 ---
 
@@ -159,14 +168,6 @@ code it was started with. Restart the daemon after changing anything under `src/
 make larger changes in a separate git worktree so a half-finished edit is never picked
 up by the next scheduled job.
 
-**A failed run can be picked up where it stopped.** Resume a failed run and the steps
-that already succeeded are not run again, as long as what they wrote is unchanged.
-Eight slow steps that worked are not repeated because the ninth failed.
-
-**One workflow can wait for another.** A workflow that reads another's output can say
-so, and its run then holds back while that one is still running instead of reading
-files that are half rebuilt.
-
 ## Adding a job
 
 A job is a description of itself, what it produces, and a function that does the work.
@@ -180,7 +181,7 @@ const report = jsonArtifact<{ deleted: string[] }>({
 });
 
 export default defineStage({
-  name: 'cleanup-temp',
+  name: 'cleanup-temp-sweep',
   description: 'Deletes stale temp files',
   timeoutMs: 600_000,
   maxRetries: 3,
@@ -197,19 +198,23 @@ export default defineStage({
 A job has to declare at least what it writes: that is what the dashboard shows for a
 run, and what a later step would be handed.
 
-Then say when it runs, in a workflow of one step:
+Then say when it runs, in a workflow of one step. The workflow needs a name of its own,
+different from every job's:
 
 ```ts
 const workflow: WorkflowDefinition = {
   name: 'cleanup-temp',
   description: 'Nightly temp-file cleanup',
   schedule: '0 4 * * *',
-  jobs: [{ job: 'cleanup-temp' }],
+  jobs: [{ job: 'cleanup-temp-sweep' }],
 };
 ```
 
-Drop both in `src/workflows/`, restart with `scripts/safe-restart.sh`, and it
-appears in the dashboard. There is no registry to update.
+Put both in a folder of their own (`src/workflows/cleanup-temp/`, the job as
+`stages/sweep.job.ts` and the workflow as `cleanup-temp.workflow.ts`), restart with
+`scripts/safe-restart.sh`, and it appears in the dashboard. There is no registry to update.
+A broken definition stops the daemon from starting and says why, so check the log after
+the restart.
 
 ## How the code is laid out
 

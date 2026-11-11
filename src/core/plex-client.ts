@@ -5,8 +5,10 @@ import { callService, effectiveServiceTimeoutMs } from './services.js';
 
 /**
  * Shared Plex + TMDB connectivity helper — used by every Plex-touching workflow
- * (`missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
- * `plex-space-saver`), not owned by any single one of them. Self-contained: reads
+ * (nine of them: `missing-tv-seasons`, `missing-movies`, `tv-recommendations`,
+ * `movie-recommendations`, `plex-space-saver`, `plex-library-guard`,
+ * `plex-language-fix`, `plex-profiles`, `plex-rename`), not owned by any single one
+ * of them. Self-contained: reads
  * its own env vars directly, imports nothing from a workflow's `config.ts`
  * (mirroring how `src/services/*.service.ts` and `src/core/browser.ts` are
  * self-contained).

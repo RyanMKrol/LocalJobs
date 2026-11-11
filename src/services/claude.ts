@@ -6,8 +6,9 @@ import { callService, effectiveServiceTimeoutMs } from '../core/services.js';
  * Shared, self-contained Claude Code CLI helper (the `claude -p --output-format
  * json` worker — $0 under the user's plan). It lives in the top-level services
  * layer (sibling of `claude-cli.service.ts`) precisely because more than one
- * workflow drives Claude: all four perfumes stages (`find-url`/`parse`/`build`,
- * T567) and the movies recommendation branches (T146). Like every service helper
+ * workflow drives Claude: three perfumes stages (`find-url`, `parse`, `build`),
+ * the movie and TV recommender branches, `projects-sync`, `workouts-sync`,
+ * `stock-digest` and `claude-warmer`. Like every service helper
  * it is self-contained — it reads its binary from env and its timeout from
  * `claudeTimeoutMs()` (an env-seeded default, dashboard-overridable via the
  * `claude-cli` service's limits, T465), and imports nothing from any workflow's

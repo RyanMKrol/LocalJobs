@@ -12,7 +12,7 @@ import { defineService } from './lib.js';
 const service = defineService({
   name: 'vercel',
   category: 'cli-tool',
-  description: 'Vercel CLI ("vercel --prod --yes") — direct production deploy trigger for the ryankrol.co.uk checkout (a daily safety-net, see vercel-daily-redeploy).',
+  description: 'Vercel CLI ("vercel --prod --yes"): the direct production deploy trigger for the two site checkouts the vercel-daily-redeploy workflow ships each day (ryankrol.co.uk and PomoDiary). Both stages share the daily and monthly caps of this service.',
   envPrefix: 'VERCEL',
   dailyCap: { fallback: 3 },
   monthlyCap: { fallback: 30 },
