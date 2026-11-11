@@ -1,6 +1,8 @@
 // A StageContext for unit tests: lets a test call a ports stage's `run()` with
 // inputs it supplies and see what the stage committed, with no workflow run, no
 // child process and no database.
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { writeJsonFile } from '../fsjson.js';
 import { outputLocation } from '../ports.js';
 import type { ArtifactMeta, InputHandle, IoItem, OutputHandle, StageContext } from '../ports.js';
@@ -81,7 +83,10 @@ export function makeTestContext(
       write(value) {
         const check = out.artifact.check(value);
         if (!check.ok) throw new Error(`output "${port}" failed its check, nothing was written: ${(check.violations ?? []).join('; ')}`);
-        if (out.artifact.storage === 'json') writeJsonFile(location, value);
+        if (out.artifact.storage === 'json') {
+          mkdirSync(dirname(location), { recursive: true });
+          writeJsonFile(location, value);
+        }
         outputs[port] = { via: 'write', value, check };
       },
       commit: () => fromLocation('commit'),

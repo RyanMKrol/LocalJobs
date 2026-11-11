@@ -42,7 +42,9 @@ const transform = defineStage({
   name: 'ln-transform',
   maxRetries: 1,
   inputs: { fetched: { artifact: fetched } },
-  outputs: { transformed: { artifact: transformed, location: at('transformed.json') } },
+  // In a folder that does not exist until the stage first writes: the engine makes
+  // the folder of a declared output, so a new workflow's first run just works.
+  outputs: { transformed: { artifact: transformed, location: at('made-on-first-write/out/transformed.json') } },
   async run(ctx) {
     const m = mode('ln-transform');
     if (m === 'fail') throw new Error('transform is broken');

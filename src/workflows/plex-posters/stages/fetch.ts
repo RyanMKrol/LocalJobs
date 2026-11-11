@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { callService } from '../../../core/services.js';
 import { plexGetBinary } from '../../../core/plex-client.js';
 import { readJsonFile, writeJsonFile, type JobContext } from '../../../engine/index.js';
@@ -68,6 +68,7 @@ export async function runFetch(ctx: JobContext, list: PosterList, opts: FetchOpt
   let unsaved = 0;
   let newBytes = 0;
   const saveIndex = () => {
+    mkdirSync(dirname(indexFile), { recursive: true });
     writeJsonFile(indexFile, index);
     unsaved = 0;
   };

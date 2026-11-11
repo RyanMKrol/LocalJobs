@@ -517,7 +517,8 @@ What the engine then guarantees at run time:
   two stages fails the gate. Each verdict is recorded in `run_inputs`.
 - **"Succeeded" means "its outputs are committed".** Every declared output must be
   committed on every run. `ctx.output(p).write(value)` checks the value first and writes
-  nothing if it fails; a stage that writes a file or directory itself is committed by an
+  nothing if it fails (and makes the output's folder if it is not there yet, so a new
+  workflow needs no `mkdir` before its first run); a stage that writes a file or directory itself is committed by an
   end-of-run sweep; a declared output that was not written since the stage became ready
   fails the stage. The daemon verifies the same thing again before recording success.
 - **Carrying forward is explicit.** An output marked `cumulative: true` is a store the

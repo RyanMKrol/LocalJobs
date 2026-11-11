@@ -30,6 +30,8 @@ try {
     assert.equal(readFileSync(s.path('report.md'), 'utf8'), '# Report\n\nSum: 12\n');
     assert.deepEqual(r.inputsOf('ln-transform'), ['fetched<-ln-fetch']);
     assert.deepEqual(r.inputsOf('ln-publish'), ['transformed<-ln-transform']);
+    // The transform stage's output lives in a folder nothing had created: the engine made it.
+    assert.deepEqual(s.readJson<{ doubled: number[] }>('made-on-first-write/out/transformed.json').doubled, [2, 4, 6]);
     assert.equal(r.artifact('ln-fetch', 'fetched')?.summary_json?.includes('3 row(s)'), true);
     assert.equal(r.artifact('ln-publish', 'report')?.storage, 'file', 'a file the stage wrote itself was committed by the sweep');
     assert.equal(JSON.parse(r.artifact('ln-publish', 'total')!.inline_json!), 12);

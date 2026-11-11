@@ -5,7 +5,8 @@
 // Runs INSIDE the stage's own process (see `src/runJob.ts`). The daemon-side half
 // (resolving inputs before the stage is spawned, verifying outputs after it
 // exits) lives in `workflow-executor.ts` / `executor.ts`.
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { dirname } from 'node:path';
 import {
   fromStoredPath,
   previousArtifactSha,
@@ -281,6 +282,11 @@ export function createStageRuntime(
         if (artifact.storage === 'inline') {
           record(port, out, location, result, value, { inlineJson: JSON.stringify(value ?? null) });
         } else {
+          // The folder a declared output lives in is the engine's to make. A new
+          // workflow has no `data/out` yet on its first run, and a fresh checkout or
+          // "Clear output data" can remove a subfolder: neither is the stage's
+          // problem to anticipate.
+          mkdirSync(dirname(location), { recursive: true });
           writeJsonFile(location, value); // atomic
           record(port, out, location, result, value, {});
         }
