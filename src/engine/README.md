@@ -83,7 +83,7 @@ Nothing from the rest of the repo is loaded.
 | `linear` | Data passing down a chain, a bad output stopping it at the source, retries, cancelling, an injected fault, resuming a failed run (and not reusing a stage whose output has since changed), a second workflow waiting for the first to finish |
 | `fan-in` | Several branches joining through one input, stale files rejected, a failed attempt ignored, a changed file caught (the stage that would have read it never starts, and every other input is still checked), a store carried forward, resuming after one branch failed |
 | `diamond` | Two different inputs joining, the two sides running at once, the join waiting for both |
-| `item-pipeline` | Items done once each, a failed item not blocking the rest, picking up where it left off, a run capped to a few items, a quota stop, repeating until settled |
+| `item-pipeline` | Items done once each, a failed item not blocking the rest, picking up where it left off, a run capped to a few items (and not wasting that cap on an item an earlier stage already settled), a quota stop, repeating until settled |
 
 ## Proving a failure on a real run
 

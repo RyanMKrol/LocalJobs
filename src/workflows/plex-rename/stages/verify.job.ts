@@ -24,6 +24,10 @@ export default defineStage({
     files: { artifact: discoveredFiles },
   },
   outputs: { verdicts: { artifact: renameVerdicts } },
+  // A planned rename that is not eligible (too recent, an existing .plexmatch) has nothing
+  // apply can do today. The verdict is recomputed every run, so a file that becomes
+  // eligible later stops being settled and a limited run can pick it then.
+  settles: (d) => d.eligible === false,
   async run(ctx) {
     await runVerify(ctx);
   },

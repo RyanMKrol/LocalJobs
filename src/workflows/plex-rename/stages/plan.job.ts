@@ -20,6 +20,9 @@ export default defineStage({
   maxRetries: 3,
   inputs: { files: { artifact: discoveredFiles } },
   outputs: { plan: { artifact: renamePlan } },
+  // A file that is already canonical, or that the plan skips, is finished: no later stage
+  // records it. Without this, a limited run kept picking such a file and doing nothing.
+  settles: (d) => d.decision === 'already-canonical' || d.decision === 'skip',
   async run(ctx) {
     await runPlan(ctx);
   },

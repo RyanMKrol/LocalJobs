@@ -78,6 +78,11 @@ marked `product: true` is apply (this replaced `outputJob: 'plex-rename-apply'`)
   air-dates. Multi-episode files are grouped by shared Part id into one row (keyed by the FIRST
   leaf's ratingKey) listing every episode. Library roots come from Plex's own section `Location`
   paths — no env var. `inputKeys()` = the same live walk (T485), `inputKeysService: 'plex'`.
+  **Which files a limited run picks.** Only files apply could act on. Plan declares
+  `settles` for "already canonical" and "skip", and verify for "not eligible", because no
+  later stage ever records those files; without it they looked unfinished for ever and a
+  limited run always picked one and did nothing. Verify's verdict is recomputed every run,
+  so a file that was too recent becomes selectable once it is eligible.
   **Snapshot ledgers self-prune (2026-08-11):** discover/plan/verify each end an UNLIMITED run by
   deleting their own rows whose keys this run didn't re-mark (`pruneSnapshotRows` in store) —
   keys that stop being emitted are GHOSTS (found live: pre-grouping-fix double-episode rows

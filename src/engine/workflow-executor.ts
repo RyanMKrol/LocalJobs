@@ -373,7 +373,14 @@ async function runWorkflowInner(
       // not merely past the entry stage (T163) — so a root with un-attempted
       // downstream work (e.g. resolved-but-not-enriched) is correctly selectable.
       const terminalJobs = dag.waves[dag.waves.length - 1] ?? [];
-      const selectedRoots = selectPendingRoots(memberNames, terminalJobs, candidates, runLimit, minAttempts);
+      // Stages that can decide an item is finished without the final stage ever
+      // recording it say so through `settles`.
+      const settles = new Map<string, (detail: Record<string, unknown>) => boolean>();
+      for (const name of memberNames) {
+        const fn = getJobDefinition(name)?.settles;
+        if (fn) settles.set(name, fn);
+      }
+      const selectedRoots = selectPendingRoots(memberNames, terminalJobs, candidates, runLimit, minAttempts, settles);
       setWorkflowRunSelectedRoots(workflowRunId, selectedRoots);
       limitNote = ` · limited to ${runLimit} originating input(s): ${selectedRoots.length ? selectedRoots.join(', ') : '(none pending)'}`;
       // Guard the silent no-op (T163): a limit that selects 0 roots from a
@@ -475,6 +482,20 @@ async function runWorkflowInner(
               check: a.check_json ? JSON.parse(a.check_json) : undefined,
               summary: a.summary_json ? JSON.parse(a.summary_json) : undefined,
               inlineJson: a.inline_json, note,
+            });
+          }
+          // Its inputs too. Everything upstream of a reused stage is reused as well,
+          // so each input resolves to an artifact just carried over into THIS run,
+          // and is confirmed to be what is on disk now. Recording that keeps the
+          // run's picture whole: the gates into a reused stage show as passed, and
+          // its Inputs list what it was given, instead of both being blank.
+          for (const b of inboundBindings.get(job) ?? []) {
+            const t0 = Date.now();
+            const r = resolveInput(workflowRunId, cycle, b, getJobDefinition(b.producer)?.outputs?.[b.producerPort]?.artifact.files);
+            if (!r.ok) continue; // planResume has already checked this; never fail a stage that is not running
+            recordRunInput({
+              workflowRunId, cycle, jobName: job, port: b.port, producerJob: b.producer, artifactKey: b.artifactKey,
+              artifactId: r.artifact?.id ?? null, ok: true, reason: null, durationMs: Date.now() - t0,
             });
           }
           log(`↺ ${job} not run: ${note} (${reuse.artifacts.length} output(s) carried over)`);

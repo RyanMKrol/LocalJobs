@@ -13,6 +13,9 @@
 //   "ip-process": "fail:<id>"        that item always fails
 //   "ip-process": "fail-once:<id>"   that item fails on its first attempt only
 //   "ip-process": "quota"            a quota is hit before anything is processed
+//   "ip-process": "nothing:<id>"     that item is looked at and found to need nothing
+//                                    published: no file is written, so the publish
+//                                    stage never has a row for it
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensureDirs, writeFileAtomic, writeJsonFile } from '../fsjson.js';
@@ -64,6 +67,9 @@ const process = defineStage({
   inputs: { discovered: { artifact: discovered } },
   outputs: { processed: { artifact: processed, location: processedDir, cumulative: true } },
   describeItem: (d) => ({ title: String(d.name), fields: [{ label: 'Length', value: String(d.length) }], preview: { path: String(d.path), format: 'json' } }),
+  // An item this stage decided needs nothing published is finished here: the
+  // publish stage will never record it. A limited run must not keep picking it.
+  settles: (d) => d.publish === false,
   async run(ctx) {
     ensureDirs(processedDir());
     const m = mode('ip-process');
@@ -72,6 +78,7 @@ const process = defineStage({
       if (m === 'quota') return softStop('daily quota reached');
       if (m === `fail:${row.itemKey}`) throw new Error(`cannot process ${row.itemKey}`);
       if (m === `fail-once:${row.itemKey}` && info.attempt === 1) throw new Error(`first attempt at ${row.itemKey} fails`);
+      if (m === `nothing:${row.itemKey}`) return { publish: false };
       const path = join(processedDir(), `${row.itemKey}.json`);
       // The item's data is on disk BEFORE the loop marks it done.
       writeJsonFile(path, { id: row.itemKey, upper: row.itemKey.toUpperCase() });

@@ -331,20 +331,53 @@ function rootHasTerminalBlocker(jobNames: string[], rootKey: string, minAttempts
  *  3. else if it carries a gave-up marker (ignored / retry-exhausted at any stage)
  *     and has no retryable work → stuck below the terminal, treat as done so the
  *     selector can't livelock on an unprogressable root;
+ *  3b. else if a stage that declares `settles` recorded a result for it meaning
+ *     "nothing further to do" (evaluated, no change needed) → done. Without this
+ *     a workflow whose final stage only records the items it changed could never
+ *     finish such an item, and every limited run picked it and did nothing;
  *  4. else it has unattempted downstream work (e.g. a resolved-but-not-yet-enriched
  *     place: entry succeeded, a later stage has NO row at all) → pending.
  * Step 4 is the bug this fixes: previously a root whose later stages simply hadn't
  * been attempted (no row) looked "fully done" and was never selected.
  */
+/** Per stage: does this recorded result mean the item needs nothing further? (`JobDefinition.settles`) */
+export type SettlesByJob = ReadonlyMap<string, (detail: Record<string, unknown>) => boolean>;
+
+/**
+ * Has some stage recorded, for this root, a result that says nothing further will
+ * be done for it (rule 3b of {@link isRootPending})? Looks only at the successful
+ * rows of stages that declare `settles`. A row whose detail does not parse, or a
+ * `settles` that throws, counts as "not settled": the root stays selectable, which
+ * costs a wasted pick but never hides work.
+ */
+function rootIsSettled(settles: SettlesByJob, rootKey: string): boolean {
+  if (settles.size === 0) return false;
+  const jobNames = [...settles.keys()];
+  const ph = jobNames.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT job_name, detail FROM work_items
+     WHERE job_name IN (${ph}) AND root_key = ? AND status = 'success'
+  `).all(...jobNames, rootKey) as { job_name: string; detail: string | null }[];
+  for (const row of rows) {
+    try {
+      const detail = row.detail ? (JSON.parse(row.detail) as unknown) : null;
+      if (detail && typeof detail === 'object' && settles.get(row.job_name)!(detail as Record<string, unknown>)) return true;
+    } catch { /* not settled */ }
+  }
+  return false;
+}
+
 export function isRootPending(
   members: string[],
   terminalJobs: string[],
   rootKey: string,
   minAttempts: number,
+  settles: SettlesByJob = new Map(),
 ): boolean {
   if (rootHasOutstandingWork(members, rootKey, minAttempts)) return true;     // (1)
   if (rootReachedTerminal(terminalJobs, rootKey, minAttempts)) return false;  // (2)
   if (rootHasTerminalBlocker(members, rootKey, minAttempts)) return false;    // (3)
+  if (rootIsSettled(settles, rootKey)) return false;                          // (3b)
   return true;                                                                // (4)
 }
 
@@ -357,6 +390,8 @@ export function isRootPending(
  * downstream stages simply haven't been attempted yet (e.g. resolved-but-not-
  * enriched) is correctly selected, while a fully-propagated or unprogressable-stuck
  * root is skipped. `terminalJobs` is the DAG's last wave. `n <= 0` selects none.
+ * `settles` carries each stage's `settles` function, for stages that can decide an
+ * item is finished without the final stage ever recording it.
  */
 export function selectPendingRoots(
   members: string[],
@@ -364,11 +399,12 @@ export function selectPendingRoots(
   candidateRootsInOrder: string[],
   n: number,
   minAttempts: number,
+  settles: SettlesByJob = new Map(),
 ): string[] {
   if (n <= 0) return [];
   const selected: string[] = [];
   for (const root of candidateRootsInOrder) {
-    if (isRootPending(members, terminalJobs, root, minAttempts)) selected.push(root);
+    if (isRootPending(members, terminalJobs, root, minAttempts, settles)) selected.push(root);
     if (selected.length >= n) break;
   }
   return selected;

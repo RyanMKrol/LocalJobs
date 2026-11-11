@@ -48,6 +48,12 @@ for each file's Plex ids. That read used to have no edge and no gate.
   manually-limited run selected zero roots and no-op'd instead of re-discovering the library. Known,
   accepted tradeoff: every manual limited-run request now pays the cost of a full/partial library crawl
   just to compute candidate keys — correct versus silently no-opping on a reset ledger.
+  **Which files a limited run picks.** Only files that still have work. A file evaluate
+  marked "skip" is finished, although apply never records it (apply only writes a row for a
+  file it changed): the evaluate stage declares `settles: (d) => d.status === 'skip'` for
+  exactly this. Before that, such a file looked unfinished for ever, so `{"limit": 1}`
+  always picked one and the run did nothing. With the whole library evaluated, a limited
+  run now selects nothing and says so in a warning, after the walk.
 - **`plex-language-resolve`** (read-only, `dependsOn: discover`) looks up each not-yet-resolved file's
   show/movie's true original language + candidate spoken languages via TMDB, routed through
   `callService('tmdb', () => lookupLanguageDetail(tmdbId, type), { cacheKey: 'tmdb-language:<type>:<tmdbId>'

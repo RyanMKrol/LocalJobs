@@ -116,6 +116,33 @@ try {
     assert.deepEqual(changed(rest.id, 'ip-publish'), [`${other}:success`]);
   });
 
+  await test('a limited run skips an input that an earlier stage settled, and picks the next one with real work', async () => {
+    // "nought" is looked at by the process stage and found to need nothing: it gets
+    // no file, so the publish stage (the last one) never records it.
+    source(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'nought']);
+    s.control({ 'ip-process': 'nothing:nought' });
+    const first = await s.run(pipelineWorkflow);
+    assert.equal(first.status, 'success', first.log);
+    assert.deepEqual(changed(first.id, 'ip-process'), ['nought:success']);
+    assert.equal(getWorkItem('ip-publish', 'nought'), undefined, 'the last stage has no row for it, and never will');
+    assert.equal(published().includes('nought.md'), false);
+
+    // A new input arrives AFTER it in the source. A limit of 1 must take the new
+    // one. Before `settles`, "nought" looked unfinished for ever: it was picked
+    // every time, and the run did nothing.
+    source(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'nought', 'omega']);
+    const r = await s.run(pipelineWorkflow, { limit: 1 });
+    assert.deepEqual(JSON.parse(r.run.selected_roots ?? '[]'), ['omega'], r.log);
+    assert.equal(r.status, 'success', r.log);
+    assert.deepEqual(changed(r.id, 'ip-publish'), ['omega:success']);
+
+    // With everything finished or settled, a limited run selects nothing and says so.
+    const none = await s.run(pipelineWorkflow, { limit: 1 });
+    assert.deepEqual(JSON.parse(none.run.selected_roots ?? '[]'), []);
+    assert.match(none.log, /0 originating inputs were selectable/);
+    s.control({});
+  });
+
   await test('a stage that hits a quota before completing anything is STALLED, and the run is partial, not a green tick', async () => {
     source(['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta']);
     s.control({ 'ip-process': 'quota' });

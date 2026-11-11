@@ -261,7 +261,8 @@ launchd ──keeps alive──▶ daemon (src/daemon.ts)
   `src/engine/resume.ts`); otherwise it runs normally. A reused stage gets a `success` row
   with `outcome_reason = 'resumed'` and no logs, and its artifacts are re-recorded under the
   new run (`fresh = 0`, note "reused from run …"), so the stages after it resolve their
-  inputs exactly as in any run. The new run records `resumed_from` and takes the earlier
+  inputs exactly as in any run. Its own inputs are resolved and recorded for the new run
+  too, so the gates into a reused stage show as passed rather than never checked. The new run records `resumed_from` and takes the earlier
   run's limit and frozen roots. Not offered for a `repeatUntilStable` workflow (re-running
   it already skips finished items). So eight LLM branches that succeeded are not paid for
   again because the merge after them failed.
@@ -1066,7 +1067,12 @@ doubt, log it.
     via DHCP, so a hardcoded `PLEX_HOST` goes stale — the shared `src/core/plex-client.ts`
     (`resolvePlexHost`, used by all 4 Plex-touching workflows) confirms the configured
     host first and otherwise scans the local LAN for a live Plex, self-healing the
-    address. Full mechanism + tests: `src/core/plex-client.ts` /
+    address. A configured host that does not answer the quick probe (1.5s) is not written
+    off: a patient probe of it (`PLEX_WAKE_TIMEOUT_MS`, 30s) runs alongside the scan and
+    whichever finds a server first wins. A server that had been idle all night was slow to
+    answer its first request, so the first Plex call of a night-time run used to fail as
+    "Plex unreachable" and only the retry got through (most mornings for
+    `plex-rename-discover`). Full mechanism + tests: `src/core/plex-client.ts` /
     `src/core/plex-client.test.ts`.
   - **Run→work-item attribution (`work_item_runs`, T139).** `work_items` stays the
     CUMULATIVE, idempotent ledger keyed by `(job_name, item_key)` with NO run
@@ -1169,6 +1175,19 @@ doubt, log it.
       selectable — N candidate(s), all already complete") instead of quietly
       succeeding. (Unlimited/scheduled runs never call `selectPendingRoots`; each stage
       just processes its own not-done items — unaffected.)
+    - **A stage can settle an item early: `settles` (rule 3b).** Step (4) is wrong for a
+      workflow whose last stage only records the items it changed. A file that an earlier
+      stage evaluated as "nothing to change" never gets a row in the last stage, so it
+      looked pending for ever, and a limited run picked it every time and did nothing
+      (`plex-language-fix` and `plex-rename` both did this). A stage that makes that kind
+      of decision declares `settles: (detail) => boolean` on its `defineStage`: given the
+      detail of its successful row, does it mean no later stage has anything to do?
+      `isRootPending` asks it between steps (3) and (4), so a settled root is done.
+      `plex-language-evaluate` settles on `status === 'skip'`, `plex-rename-plan` on
+      "already canonical" or "skip", `plex-rename-verify` on "not eligible" (recomputed
+      every run, so a file that becomes eligible is selectable again). It is read only by
+      limited-run selection. When you add a stage that can decide an item is finished
+      without the final stage recording it, give it `settles`.
   - **Stuck vs ignored: unstick vs ignore (both manual only).** An item that
     failed past `maxAttempts` is **stuck** — it won't retry and surfaces on the
     dashboard front page / alerts (`stuckItems`, `stuckCount`). Two manual

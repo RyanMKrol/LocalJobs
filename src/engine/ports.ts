@@ -346,7 +346,7 @@ export interface StageContext<I extends PortMap<InputPort<any>> = PortMap<InputP
 
 /** A stage definition: a job that declares its ports. */
 export interface StageDefinition<I extends PortMap<InputPort<any>>, O extends PortMap<OutputPort<any>>>
-  extends Omit<JobDefinition, 'run' | 'inputs' | 'outputs' | 'produces' | 'consumes'> {
+  extends Omit<JobDefinition, 'run' | 'inputs' | 'outputs'> {
   inputs?: I;
   outputs?: O;
   run(ctx: StageContext<I, O>): Promise<void>;

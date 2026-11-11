@@ -151,6 +151,20 @@ export interface JobDefinition {
    * page's Output section lists) when that is not simply the final stage.
    */
   product?: boolean;
+  /**
+   * Given what this stage recorded for an item (the `detail` of its successful
+   * ledger row): does that result mean NO later stage has anything to do for the
+   * item? For example an evaluate stage that decided "nothing to change", when
+   * the apply stage after it only ever writes a row for a file it changed.
+   *
+   * It is consulted in one place: when a LIMITED run picks the first N inputs
+   * that still have work. Without it such an item never gets a row in the final
+   * stage, so it looks unfinished for ever, and every limited run picks it and
+   * does nothing. It is read from the row as it stands when the run starts, so a
+   * verdict that changes later (too recent today, eligible next week) is picked
+   * up. Unlimited runs never look at it.
+   */
+  settles?(detail: Record<string, unknown>): boolean;
   run(ctx: JobContext): Promise<void>;
 }
 

@@ -234,6 +234,10 @@ try {
       assert.equal(r.stage(reused)?.outcome_reason, 'resumed', `${reused} is reused`);
       assert.equal(r.artifact(reused, reused === 'px-src' ? 'data' : 'part')?.fresh, 0);
     }
+    // A reused stage's inputs are recorded for this run as well (resolved against
+    // the artifacts carried over), so its gates read as passed, not as never checked.
+    assert.deepEqual(r.inputsOf('px-b1'), ['data<-px-src']);
+    assert.deepEqual(r.inputsOf('px-b3'), ['data<-px-src']);
     // The failed branch ran, reading the source the earlier run committed.
     assert.equal(r.stage('px-b2')?.outcome_reason ?? null, null);
     assert.deepEqual(r.inputsOf('px-b2'), ['data<-px-src']);

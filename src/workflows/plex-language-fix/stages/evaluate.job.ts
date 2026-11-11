@@ -21,6 +21,9 @@ export default defineStage({
     languages: { artifact: resolvedLanguages },
   },
   outputs: { decisions: { artifact: languageDecisions } },
+  // A file evaluated as "skip" is finished: apply only ever records a file it changed.
+  // Without this, a limited run kept picking such a file and doing nothing.
+  settles: (d) => d.status === 'skip',
   async run(ctx) {
     await runEvaluate(ctx);
   },
