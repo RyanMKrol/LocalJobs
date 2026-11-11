@@ -10,11 +10,18 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * matches as the source of truth, so the whole library becomes
  * deterministically re-discoverable from disk alone.
  *
- * discover → plan → verify are read-only; apply (the only mutating stage —
- * copy → checksum-verify → delete-original, write-ahead journal, 30/day
- * quota) runs in REPORT-ONLY rehearsal mode until the owner flips
- * PLEX_RENAME_APPLY_ENABLED=1 after the probation review; confirm then
- * verifies Plex re-associated each moved file at the same ratingKey.
+ * discover → plan → verify are read-only. apply is the only stage that changes
+ * files: a same-share move is one atomic rename, a cross-share or case-only
+ * move is copy → checksum-verify → delete-original, both behind a write-ahead
+ * journal and a 30/day quota. It runs in REPORT-ONLY rehearsal mode until the
+ * owner flips PLEX_RENAME_APPLY_ENABLED=1 after the probation review. confirm
+ * then verifies Plex re-associated each moved file (at the same ratingKey, or
+ * at the target path under a new one after a consolidation merge) and
+ * re-selects the artwork that was showing before the move.
+ *
+ * Every stage's output is its own work_items ledger (see contracts.ts). verify,
+ * apply and confirm also read the discover rows, so each has its own edge from
+ * discover. apply is the product stage.
  */
 const workflow: WorkflowDefinition = {
   name: 'plex-rename',

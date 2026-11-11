@@ -30,17 +30,15 @@ export interface BranchRunOpts {
   recsDir?: string;
   now?: Date;
   /**
-   * Called once, right after `runBranch` writes this branch's suggestions file
-   * (on every path — success, skip-no-targets, Claude error, unparseable reply) —
-   * the hook that lets a domain (movies/tv-recs) record its own `work_items`
-   * ledger row from the REAL job execution path (`makeBranchJob`'s `run(ctx)`),
-   * not just from a direct call to a domain wrapper.
+   * Called once, right after `runBranch` writes this branch's suggestions file,
+   * on every path that returns (success, skip-no-targets, rate limit,
+   * unparseable reply). It is not called when the branch throws.
    *
-   * `sampledItems` carries the branch's `build()`-reported EXACT owned-item
-   * selection (T615) whenever `build()` succeeded (every path except the
-   * skip-no-targets one, where `build()` returned null and nothing was ever
-   * selected) — a domain wrapper uses it to record `input-sample` ledger rows
-   * distinct from its per-suggestion output rows.
+   * `sampledItems` is the exact owned-item selection `build()` put in the
+   * prompt. It is absent on the skip-no-targets path, where `build()` returned
+   * null and nothing was selected. The branch stage (`makeBranchStage` in
+   * stages.ts) passes it to `ctx.input('snapshot').used(...)`, so the run page
+   * shows the sample the branch was given. Nothing here writes a ledger row.
    */
   onBranchWritten?: (branchId: string, opts: BranchRunOpts, sampledItems?: unknown[]) => void;
 }
@@ -116,11 +114,12 @@ function writeBranchFile(recsDir: string, file: BranchOutputFile): string {
 /**
  * Run ONE recommender branch: build its prompt from the taste profile + a
  * stratified library sample, ask Claude for a batch of diverse un-owned items,
- * and write its raw suggestions to data/out/recs/<branchId>.json. Resilient by
- * design — a Claude error, rate-limit, junk/no-JSON reply, or a branch with
- * nothing to ask writes an EMPTY suggestions file and returns normally (the run
- * continues; the merge stage simply has fewer candidates). It NEVER throws on
- * LLM trouble.
+ * and write its raw suggestions to data/out/recs/<branchId>.json. A rate or
+ * usage limit, a junk/no-JSON reply, or a branch with nothing to ask writes an
+ * EMPTY suggestions file and returns normally (the run continues; the merge
+ * stage has fewer candidates). Any other Claude failure (binary not found, a
+ * crash, a timeout) THROWS, so the branch fails and blocks the merge instead of
+ * feeding it an empty file that looks like a result.
  */
 export async function runBranch<M, P>(
   ctx: JobContext,

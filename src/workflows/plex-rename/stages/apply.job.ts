@@ -5,22 +5,25 @@ import { runApply } from './apply.js';
 export default defineStage({
   name: 'plex-rename-apply',
   description:
-    'The workflow\'s only mutating stage — and it ships DISABLED: until PLEX_RENAME_APPLY_ENABLED=1 it runs ' +
-    'in rehearsal mode, logging exactly what it would move and writing a REPORT-ONLY markdown, touching ' +
-    'nothing. When enabled, it takes the verified-eligible items (up to the PLEX_RENAME_MAX_PER_DAY daily ' +
-    'quota, default 30 media files, tracked on the job_usage meter), re-checks every precondition at the ' +
-    'moment of truth (source present at the exact verified size, still older than the still-downloading ' +
-    'window, target absent, enough free space for a transient second copy), and relocates each file with ' +
-    'the copy -> checksum-verify -> delete-original procedure: stream-copy to a .plexrename-partial, ' +
-    'SHA-256 verify the written copy against the source, atomically finalize to the real name, and only ' +
-    'then delete the original — so an original is never deleted until a verified copy exists, and the ' +
-    'worst crash outcome is a dead extra file. Every operation is recorded in a write-ahead NDJSON journal ' +
-    '(fsynced BEFORE each filesystem effect; the manual scripts/plex-rename-undo.ts can replay it in ' +
-    'reverse), an unresolved journal from a crashed run is reconciled against disk before any new work, a ' +
-    'Plex Butler database backup fires before the first mutation, sidecars move in lockstep, the emptied ' +
-    'source dir is removed only via rmdir-if-empty (structurally incapable of deleting files), and Plex is ' +
-    'asked to rescan just the changed directories. Each file is applied at most once, EVER — redoing one ' +
-    'requires manually unsticking its ledger row.',
+    'The only stage of the workflow that changes files, and it ships DISABLED: until ' +
+    'PLEX_RENAME_APPLY_ENABLED=1 it runs in rehearsal mode, logging exactly what it would move and writing ' +
+    'a REPORT-ONLY markdown, touching nothing. When enabled, it takes the verified-eligible items (up to the ' +
+    'PLEX_RENAME_MAX_PER_DAY daily quota, default 30 media files, tracked on the job_usage meter, and the ' +
+    'optional PLEX_RENAME_MAX_PER_RUN cap), checks that Plex is healthy, and re-checks every precondition at ' +
+    'the moment of truth (source present at the exact verified size, still older than the still-downloading ' +
+    'window, target absent, and for a copy enough free space on a volume that would not end up too full). ' +
+    'A move within one share is a single atomic rename: the bytes are never rewritten, so there is nothing ' +
+    'to verify. A move between shares, or a case-only rename, uses the copy -> checksum-verify -> ' +
+    'delete-original procedure: stream-copy to a .plexrename-partial, SHA-256 verify the written copy ' +
+    'against the source, atomically finalize to the real name, and only then delete the original. An ' +
+    'original is never deleted until a verified copy exists, and the worst crash outcome is a dead extra ' +
+    'file. Every operation is recorded in a write-ahead NDJSON journal (fsynced BEFORE each filesystem ' +
+    'effect; the manual scripts/plex-rename-undo.ts can replay it in reverse), an unresolved journal from a ' +
+    'crashed run is reconciled against disk before any new work, a Plex Butler database backup fires at ' +
+    'most once a day before the first mutation, sidecars move in lockstep, the emptied source dir is ' +
+    'removed only via rmdir-if-empty (structurally incapable of deleting files), and Plex is asked to ' +
+    'rescan just the changed directories. Each file is applied at most once, EVER. Redoing one requires ' +
+    'manually unsticking its ledger row.',
   timeoutMs: 6 * 3_600_000,
   maxRetries: 1,
   // The verdicts are checked before this stage starts: a malformed eligible row

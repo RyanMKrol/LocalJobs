@@ -19,9 +19,9 @@ const workflow: WorkflowDefinition = {
     'availability guarantee plex-rename\'s daily 05:00 run depends on. Fails loud when a share cannot ' +
     'be brought up.',
   idempotencyNote:
-    'Every run re-checks all configured shares fresh and re-records one snapshot ledger row per share ' +
-    '(keyed by mount point) — an already-healthy mount is never touched, so back-to-back runs are ' +
-    'harmless no-ops.',
+    'Every run re-checks all configured shares fresh and reports the state of each one as its output. ' +
+    'Nothing is remembered between runs. An already-healthy mount is never touched, so back-to-back ' +
+    'runs are harmless no-ops.',
   schedule: '45 * * * *',
   jobs: [{ job: 'mount-keeper-check' }],
 };

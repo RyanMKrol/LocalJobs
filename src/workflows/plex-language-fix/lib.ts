@@ -1,6 +1,7 @@
 // Plex-parsing + language-matching helpers for the per-title original-language
-// default audit — no I/O beyond the shared plexGet/tmdbGet clients passed in by
-// the stage. Unit-tested in stages/scan.test.ts.
+// default audit. The only I/O is the Plex and TMDB reads, which go through the
+// shared plexGet/tmdbGet clients and the plex/tmdb services. Unit-tested in
+// lib.test.ts.
 import { callService } from '../../core/services.js';
 import { extractTmdbId, plexGet, tmdbGet } from '../../core/plex-client.js';
 import type { FileEntry, PlexPart, PlexSection, PlexStream, StreamChoice } from './types.js';

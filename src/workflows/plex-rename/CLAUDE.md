@@ -48,36 +48,63 @@ the library becomes deterministically re-discoverable from disk alone.
    skip. Existing `.plexmatch` (source tree, or divergent content at the target) → skip. Non-media
    siblings whose ownership is unclear (a lone `English.srt`) are left behind and reported.
 
-## DAG — 5 stages, all keyed `${ratingKey}::part${partId}`
+## DAG: 5 stages, all keyed `${ratingKey}::part${partId}`
 
 ```
 plex-rename-discover → plex-rename-plan → plex-rename-verify → plex-rename-apply → plex-rename-confirm
-   (read-only, root)     (read-only)         (read-only, fs)      (MUTATING)          (read-only)
+   (read-only, root)     (read-only)         (read-only, fs)      (MOVES FILES)       (no file changes)
         └── also feeds verify, apply and confirm directly
 ```
 
+## How the stages hand data to each other (ports)
+
 A ports workflow (see "Ports" in the root `CLAUDE.md`). The data travels in the `work_items`
 ledger, so every artifact in `contracts.ts` is a `ledgerArtifact`: a stage's rows ARE its output.
+There are no hand-off files.
 
-| Stage | Inputs | Output |
+| Stage | Depends on | Inputs | Outputs |
+|---|---|---|---|
+| `plex-rename-discover` | nothing (root: `inputKeys()`) | none | `files` (`plex-rename-discover`) |
+| `plex-rename-plan` | discover | `files` | `plan` (`plex-rename-plan`) |
+| `plex-rename-verify` | discover, plan | `plan`, `files` | `verdicts` (`plex-rename-verify`) |
+| `plex-rename-apply` | discover, verify | `verdicts`, `files` | `applied` (`plex-rename-apply`) |
+| `plex-rename-confirm` | discover, apply | `applied`, `files` | `confirmed` (`plex-rename-confirm`) |
+
+Each artifact key is also the job name whose ledger holds the rows. verify, apply and confirm
+each read the discover rows as well as the stage before them, and every read needs an edge, so
+each depends on discover directly. The product stage is apply (`product: true`): the dashboard's
+Output section shows the files that have been moved, not what confirm (the last stage) records.
+
+The engine commits each ledger output when its stage ends, which runs the artifact's check, and
+confirms it again before a consuming stage starts (see "The checks" below). The stages do not
+call `ctx.input()`: they read the upstream rows themselves through `stages/ledger.ts`
+(`ledgerSuccessRows`). Declaring the inputs is what puts the checks in front of each stage.
+
+What each stage records, all under its own job name and the shared key:
+
+| Ledger (job name) | Rows | Lifetime |
 |---|---|---|
-| `plex-rename-discover` | none (root: `inputKeys()`) | `files` (`plex-rename-discover`) |
-| `plex-rename-plan` | `files` | `plan` (`plex-rename-plan`) |
-| `plex-rename-verify` | `plan`, `files` | `verdicts` (`plex-rename-verify`) |
-| `plex-rename-apply` | `verdicts`, `files` | `applied` (`plex-rename-apply`, the workflow's product) |
-| `plex-rename-confirm` | `applied`, `files` | `confirmed` (`plex-rename-confirm`) |
+| `plex-rename-discover` | one `success` row per physical file, with the Plex-side snapshot | re-recorded every run, pruned |
+| `plex-rename-plan` | one `success` row per discovered file: `decision` is `rename` (with `from`, `to`, `ops`), `already-canonical` or `skip` (with `reason`) | re-recorded every run, pruned |
+| `plex-rename-verify` | one `success` row per `rename` plan row: `eligible` true (local paths, bytes, sidecars, `.plexmatch` write) or false (with `reason`) | re-recorded every run, pruned |
+| `plex-rename-apply` | `success` once a file is moved (`from`, `to`, `sha256`, `bytes`, `appliedAt`, the run's report as `markdown`, the captured `artwork`); `skipped` for a soft skip at apply; `failed` for an aborted item | a `success` row is permanent |
+| `plex-rename-confirm` | `success` when Plex shows the file at its new path (or `reason: 'reassociated'`); `skipped` while a rescan is pending; `failed` past the grace window | a `success` row is permanent |
 
-verify, apply and confirm each read the discover rows as well as the stage before them. Those
-three reads had no edge and no gate; each stage now depends on discover directly. The stage
-marked `product: true` is apply (this replaced `outputJob: 'plex-rename-apply'`).
+Schedule: daily at 05:00 (`0 5 * * *`). Timeouts: discover 1 hour, plan 15 minutes, verify
+30 minutes, apply 6 hours, confirm 30 minutes. Every stage has 3 retries except apply, which
+has 1.
 
-- **discover** — LIVE library walk (deliberately NEVER cached, unlike plex-language-fix's 3h-cached
-  reads: a rename pipeline must not plan off a stale listing — `lib.ts`'s fetch helpers pass no
+## The stages
+
+- **discover**: LIVE library walk (deliberately NEVER cached, unlike plex-language-fix's 3h-cached
+  reads: a rename pipeline must not plan off a stale listing, so `lib.ts`'s fetch helpers pass no
   cacheKey). Records one SNAPSHOT row per physical file, re-marked every run: path, `Part.size`,
   tmdb/tvdb/imdb ids off the item's own Guids, movie year/edition, episode numbering/titles/
-  air-dates. Multi-episode files are grouped by shared Part id into one row (keyed by the FIRST
-  leaf's ratingKey) listing every episode. Library roots come from Plex's own section `Location`
-  paths — no env var. `inputKeys()` = the same live walk (T485), `inputKeysService: 'plex'`.
+  air-dates. A multi-episode file is grouped by FILE PATH into one row (keyed by the FIRST leaf's
+  ratingKey and part id) listing every episode. Plex does not reliably share one part id across
+  the leaves of one file, so the path is what identifies "the same physical file". Library roots
+  come from Plex's own section `Location` paths, with no env var. `inputKeys()` is the same live
+  walk (T485), `inputKeysService: 'plex'`.
   **Which files a limited run picks.** Only files apply could act on. Plan declares
   `settles` for "already canonical" and "skip", and verify for "not eligible", because no
   later stage ever records those files; without it they looked unfinished for ever and a
@@ -89,12 +116,12 @@ marked `product: true` is apply (this replaced `outputJob: 'plex-rename-apply'`)
   lingered and re-noised every apply run as "source no longer present" soft-skips). Limited runs
   never prune (they only re-mark selected roots), and the once-ever apply/confirm ledgers are
   NEVER pruned — deleting those rows would re-arm already-done mutations.
-- **plan** — pure naming-engine computation (`naming.ts`), recomputed every run (plans are derived
+- **plan**: pure naming-engine computation (`naming.ts`), recomputed every run (plans are derived
   state). No disk, no Plex. Passes `siblings: []` — sidecar enumeration is verify's job, because
   directory listings are a FILESYSTEM fact. Cross-item collision pass (`finalizePlan`) downgrades
   duplicate targets deterministically. Detail carries from → to per item (the StageIoPanel report
   the owner reviews during probation).
-- **verify** — the only fs-touching read stage (via `callService('fs', ...)` through the injectable
+- **verify**: the only fs-touching read stage (via `callService('fs', ...)` through the injectable
   `ReadFsSeam`). Mount preflight per `PLEX_RENAME_PATH_MAP` pair; maps Plex-side → local paths;
   asserts BOTH sides' shares are mounted + healthy (cross-share consolidation moves are
   legitimate — see the home-root rule below), source exists at exactly Plex's recorded size, mtime ≥
@@ -104,30 +131,39 @@ marked `product: true` is apply (this replaced `outputJob: 'plex-rename-apply'`)
   assets; episodes never move release-folder assets into Season dirs), sidecar-target collisions,
   and the `.plexmatch` rules (source-tree hit → ineligible; identical target content → write op
   dropped; divergent → ineligible). Recomputed every run.
-- **apply** — the ONLY mutating stage (`stages/apply.ts`). REHEARSAL MODE until
-  `PLEX_RENAME_APPLY_ENABLED=1`: same selection + logging + REPORT-ONLY markdown, but no journal,
-  no ledger marks, no Butler, zero mutations (a journal file existing always means real intent).
-  When enabled: hard mount preflight (any needed share unhealthy → ZERO mutations, nothing marked,
-  run success), daily quota via the `job_usage` meter (`PLEX_RENAME_MAX_PER_DAY`, default 30 media
-  files; sidecars uncounted; `recordUsage` per applied file), crash reconciliation of any
-  unresolved journal BEFORE new work (target-only → roll forward; both-sides-identical → delete
-  source after hash equality; divergent/neither → fail loud, never guess), one Plex Butler DB
-  backup before the first mutation (WARN-only — it protects the DB, not files), then per item:
-  re-check EVERYTHING at the moment of truth (existence, exact size, mtime window, target absent,
-  free space for a transient second copy, sidecar targets still clear — any drift is a SOFT skip,
-  recomputed next run), journal the full op list, and execute mkdir → write-plexmatch → media
-  move → sidecar moves → rmdir-if-empty, each move via `performVerifiedMove` with write-ahead
-  journaling per step. Ledger success only after the journal's item-done is flushed; once-ever
-  per file. Postamble: per-run report markdown (`data/out/reports/`), targeted
-  `plexRefreshSection` per changed dir (falling back to full-section past 30 dirs, WARN-only),
-  `run-end`, and a thrown error if any item failed.
-- **confirm** — read-only post-verification (`stages/confirm.ts`) that Plex re-associated each
-  moved file at the SAME ratingKey (watch state intact). Live fetch per applied-not-yet-confirmed
-  item: new path at same key → success (once-ever); old path still → `skipped` (retryable) until
-  `PLEX_RENAME_CONFIRM_GRACE_DAYS` (14) past `appliedAt`, then loud failure; ratingKey no longer
-  resolving → loud failure immediately (the duplicate-re-import worst case — plex-library-guard
-  independently alerts on the vanished key; deliberately NO library-wide search for the new owner
-  in v1, the owner investigates). Transient fetch errors are soft skips.
+- **apply**: the ONLY stage that changes files (`stages/apply.ts`). Both modes start the same
+  way: select the eligible, not-yet-applied items; run the hard mount preflight (any needed share
+  unhealthy means ZERO mutations, nothing marked, run success); then size the batch from the
+  daily quota on the `job_usage` meter (`PLEX_RENAME_MAX_PER_DAY`, default 30 media files;
+  sidecars uncounted; `recordUsage` per applied file) and the optional per-run cap
+  (`PLEX_RENAME_MAX_PER_RUN`, default 0 = none). REHEARSAL MODE (until
+  `PLEX_RENAME_APPLY_ENABLED=1`) then logs the batch, writes a REPORT-ONLY markdown and stops: no
+  journal, no ledger marks, no Butler, zero mutations (a journal file existing always means real
+  intent). When enabled it goes on, in this order: the Plex health probe (see "Plex health
+  gate"); crash reconciliation of any unresolved journal BEFORE new work (target-only: roll
+  forward; both sides identical: delete the source after hash equality; divergent or neither:
+  fail loud, never guess); at most one Plex Butler DB backup per day before the day's first
+  mutation (WARN-only: it protects the DB, not files). Then per item: re-check EVERYTHING at the
+  moment of truth (existence, exact size, mtime window, target absent, free space and volume
+  utilization for a copy, sidecar targets still clear). Any drift is a SOFT skip, recorded as a
+  `skipped` row and recomputed next run. Then journal the full op list and execute mkdir →
+  write-plexmatch → media move → sidecar moves → rmdir-if-empty, with write-ahead journaling per
+  step. A same-share move goes through `performAtomicRenameMove`, a cross-share or case-only
+  move through `performVerifiedMove` (see the safety doctrine). Ledger success only after the
+  journal's item-done is flushed; once-ever per file. Postamble: per-run report markdown
+  (`data/out/reports/`), targeted `plexRefreshSection` per changed dir (falling back to
+  full-section past 30 dirs, WARN-only), `run-end`, and a thrown error if any item failed.
+- **confirm**: post-verification (`stages/confirm.ts`) that Plex re-associated each moved file. It
+  never touches a file; its only writes are re-selecting artwork in Plex (see "Artwork
+  continuity"). One live fetch per applied-not-yet-confirmed item: the new path at the same
+  ratingKey is a success (once-ever, watch state intact). The old path still showing is `skipped`
+  (retryable) until `PLEX_RENAME_CONFIRM_GRACE_DAYS` (14) past `appliedAt`, then a loud failure.
+  A ratingKey that no longer resolves, or now reports some other file, is checked against THIS
+  run's discover snapshot: a Plex item at exactly the target path whose ids match the ones the
+  canonical name embeds confirms the file as `reassociated` (the consolidation-merge case, see
+  "Three gaps" below). With nothing at the target path it stays `skipped` inside the grace window
+  and fails loud after it (plex-library-guard independently alerts on a vanished key). Transient
+  fetch errors are soft skips.
 
 ## An incomplete walk never prunes, and fails the run (2026-11)
 
@@ -372,44 +408,52 @@ own shell scripts) that the cleanup correctly refused to classify.
 
 `journal.ts`: per-run NDJSON, `JournalWriter` fsyncs every record (and the journal dir at
 create); `analyzeJournal` classifies complete/aborted/unresolved for crash recovery.
-`move.ts`'s `performVerifiedMove` is the ONLY file-relocation primitive (copy → verify →
-finalize → delete-source; case-only renames swap the last two so the verified partial guards
-the bytes). `scripts/plex-rename-undo.ts` (manual, never scheduled, dry-run by default,
-`--apply` to act) reverses completed ops newest-first with the SAME verified procedure, treats
-every surprise as a loud conflict (occupied original, divergent duplicate, hand-edited
-`.plexmatch`), and refuses when a journaled mount is absent. It never touches the apply ledger —
-reprocessing an undone item is a manual unstick, same doctrine as plex-language-undo.
+`move.ts` holds the only two file-relocation primitives. `performVerifiedMove` is copy → verify →
+finalize → delete-source (case-only renames swap the last two so the verified partial guards
+the bytes). `performAtomicRenameMove` is the single same-share rename. `scripts/plex-rename-undo.ts`
+(manual, never scheduled, dry-run by default, `--apply` to act) reverses completed ops
+newest-first, each with the primitive its journal record names, treats every surprise as a loud
+conflict (occupied original, divergent duplicate, hand-edited `.plexmatch`), and refuses when a
+journaled mount is absent. It never touches the apply ledger: reprocessing an undone item is a
+manual unstick, same doctrine as plex-language-undo.
 
 ## The checks (contracts.ts)
 
 The `files`, `applied` and `confirmed` artifacts are at the "the ledger is readable" minimum.
-**The `plan` and `verdicts` checks are REAL** (T574 pattern): the plan's check asserts every
-rename row has from ≠ to, a target under the file's own library root, and global
-collision-freedom; the verdicts' check asserts every eligible row has both local paths mapped
-under configured shares, verified bytes > 0, and a well-formed sidecar list. Those are exactly
-the malformations apply would otherwise silently skip. Each is checked when its stage commits
-its output and again before the next stage starts, so a bad row fails loudly before any file is
-moved.
+**The `plan` and `verdicts` checks are REAL** (T574 pattern). The plan's check asserts every
+rename row has a non-empty from and to, from ≠ to, a target under its target root (the file's
+own library root, or the show's home root for a cross-share consolidation), and that no two rows
+share a target. The verdicts' check asserts every eligible row has both local paths mapped under
+configured shares, localFrom ≠ localTo unless the rename is case-only, verified bytes > 0, and a
+well-formed sidecar list. Those are exactly the malformations apply would otherwise silently
+skip. Each is checked when its stage commits its output and again before the next stage starts,
+so a bad row fails loudly before any file is moved.
 
 ## Config (`config.ts`)
 
-`PLEX_RENAME_PATH_MAP` (env-ONLY, no committed default — this repo is public and the share names
-describe the owner's machine; empty map ⇒ everything `unmapped-path`, nothing can mutate),
-`PLEX_RENAME_MIN_AGE_DAYS` (7), `PLEX_RENAME_MAX_PER_DAY` (30 — the daily move quota via the
-job_usage meter, owner-raised in .env as trust grows), `PLEX_RENAME_MAX_VOLUME_UTILIZATION` (92 — the volume-overburden cap above),
-`PLEX_RENAME_APPLY_ENABLED` (0 — the
-probation gate: flipping it is a deliberate .env edit + daemon restart, never a dashboard click),
+`PLEX_RENAME_PATH_MAP` (env-ONLY, no committed default: this repo is public and the share names
+describe the owner's machine; with an empty map everything is `unmapped-path` and nothing can
+mutate), `PLEX_RENAME_MIN_AGE_DAYS` (7), `PLEX_RENAME_MAX_PER_DAY` (30: the daily move quota via
+the job_usage meter, owner-raised in .env as trust grows), `PLEX_RENAME_MAX_PER_RUN` (0: no per-run
+cap; set it to make each trigger apply at most that many, with the daily cap still the ceiling),
+`PLEX_RENAME_MAX_VOLUME_UTILIZATION` (92: the volume-overburden cap above),
+`PLEX_RENAME_HEALTH_TIMEOUT_MS` (15000: the Plex health-probe budget),
+`PLEX_RENAME_APPLY_ENABLED` (0: the probation gate. Flipping it is a deliberate .env edit and a
+daemon restart through `scripts/safe-restart.sh`, never a dashboard click),
 `PLEX_RENAME_CONFIRM_GRACE_DAYS` (14). Sections reuse `PLEX_MOVIE_SECTION`/`PLEX_TV_SECTION`.
 Data dir routes through `resolveWorkflowDataDir` (the mandatory test guard).
 
 ## Probation plan (owner-decided)
 
-The workflow runs DAILY report-only: plans + verify verdicts accumulate on the dashboard. The flip
-to real applying requires ALL of: (1) daily rename plans reviewed for a while and trusted, (2) the
-separate `plex-library-guard` workflow (the independent deletion detector) landed and running,
-(3) both NAS shares mounted persistently on the Mini (`/Volumes/NAS-Cool Shared Drive` and
-`/Volumes/NAS-Cool Shared Drive - 2` — the second is often NOT mounted), (4)
-`PLEX_RENAME_APPLY_ENABLED=1` set in `.env` + daemon kickstart. Quota stays 30/day until earned.
+With the code default (`PLEX_RENAME_APPLY_ENABLED` unset) the workflow runs DAILY report-only:
+plans and verify verdicts accumulate on the dashboard and apply only rehearses. The owner's
+install went through this probation before the 2026-08 sweep above. The flip to real applying
+requires ALL of: (1) daily rename plans reviewed for a while and trusted, (2) the separate
+`plex-library-guard` workflow (the independent deletion detector) landed and running, (3) every
+NAS share in `PLEX_RENAME_PATH_MAP` mounted persistently on the Mini (the second share is often
+NOT mounted; the `mount-keeper` workflow now keeps them up), (4) `PLEX_RENAME_APPLY_ENABLED=1`
+set in `.env` and the daemon restarted through `scripts/safe-restart.sh`. The quota default
+stays 30/day; the owner raises it in `.env`.
 
 ## Testing
 

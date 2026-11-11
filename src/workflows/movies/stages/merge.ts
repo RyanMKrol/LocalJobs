@@ -1,7 +1,8 @@
-// Movie-domain thin wrapper over the shared recommender merge stage
-// (src/core/recommender/merge.ts, T561). Keeps the exact same exported API
-// (`runMerge`, `SearchMovieFn`, `MergeOpts`) so `merge.job.ts` and every
-// existing merge test keeps working unchanged.
+// Movie-domain thin wrapper over the shared recommender merge
+// (src/core/recommender/merge.ts). The stage itself (`merge.job.ts`) is built by
+// `makeMergeStage` and does not go through this file. This wrapper (`runMerge`,
+// `SearchMovieFn`, `MergeOpts`) is what the merge tests call, with explicit paths
+// and an injected TMDB search.
 import type { JobContext } from '../../../core/types.js';
 import { runMerge as coreRunMerge } from '../../../core/recommender/merge.js';
 import type { MergeRunOpts, RunClaudeFn } from '../../../core/recommender/merge.js';

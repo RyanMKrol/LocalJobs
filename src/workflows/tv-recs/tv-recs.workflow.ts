@@ -11,6 +11,10 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * Stages (T214 + T216 + T217 + T218): tv-snapshot + 8 recommender branches (3 random
  * serendipity + 5 targeted) + tv-rec-merge (TMDB-verify, dedupe, quality bar,
  * balance, top-up) + tv-recs-notify (monthly digest push + report).
+ *
+ * The only ledger is `tv-recs`, keyed by tmdb id: tv-recs-notify writes it, and
+ * the branches and the merge read it. It records which shows have been
+ * announced or dismissed, not work done.
  */
 const workflow: WorkflowDefinition = {
   name: 'tv-recommendations',

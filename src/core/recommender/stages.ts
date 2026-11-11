@@ -239,7 +239,7 @@ export function makeBranchStage<M extends OwnedItem, P>(
     name: spec.id,
     description: spec.description,
     timeoutMs: 600_000, // ~10 min headroom for one Claude CLI call
-    maxRetries: 1, //      LLM trouble is handled gracefully in-stage, not via retries
+    maxRetries: 1, //      a rate limit or junk reply is handled in-stage; any other Claude failure throws and gets this one retry
     inputs: { snapshot: { artifact: artifacts.snapshot }, taste: { artifact: artifacts.taste } },
     outputs: { suggestions: { artifact: artifacts.suggestions, location: () => join(domain.config.recsDir, `${spec.id}.json`) } },
     state: recommenderState(domain, 'read'),

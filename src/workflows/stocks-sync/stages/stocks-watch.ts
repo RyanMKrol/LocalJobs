@@ -36,20 +36,19 @@ export interface BreachLine {
 }
 
 /**
- * Check stage (T300 — split from the combined check+notify stage). Reads the
- * portfolio snapshot and, for EVERY position on EVERY run, computes gainPct
- * and records it via an UNCONDITIONAL `markWorkItem(ticker, 'success')` call —
- * so this stage always has ledger activity and can never be misclassified as
- * noop by the framework's `hasJobAdvancedAnyItem` heuristic, even when nothing
- * breaches.
+ * Check stage. Reads the portfolio snapshot and, for every position on every
+ * run, computes gainPct and records it with a `markWorkItem(key, 'success')`
+ * call, where key is `<account>:<ticker>`. That row was added so the stage
+ * always showed ledger activity under the old no-op detection, which now
+ * applies only to limitable workflows. Nothing reads the row back.
  *
- * "Already notified for the current breach episode" is tracked on a SEPARATE
- * ledger key (`${ticker}::notified`) from the per-run check row (`ticker`)
- * above, so the unconditional per-run success marker doesn't erase the
- * notify-once-per-episode state: a position still above 30% that was already
- * notified stays untouched on its notified row; dropping back below 30%
- * resets that row to `skipped` (isWorkItemDone treats that as NOT done) so a
- * later re-crossing notifies again.
+ * "Already notified for the current breach" is tracked on a SEPARATE ledger
+ * key (`<account>:<ticker>::notified`), so the per-run row above cannot erase
+ * it. `stocks-notify` sets that row to `success` once its push has gone out. A
+ * position still above the threshold that was already notified is left alone.
+ * Dropping back below the threshold resets the row to `skipped` here
+ * (isWorkItemDone treats that as NOT done), so a later re-crossing notifies
+ * again.
  *
  * This run's fresh-breach tickers are written to data/out/fresh-breaches.json
  * (empty array if none) for the downstream `stocks-notify` stage to send.

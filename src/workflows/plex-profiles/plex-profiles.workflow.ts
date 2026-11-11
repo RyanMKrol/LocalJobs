@@ -3,17 +3,18 @@ import type { WorkflowDefinition } from '../../core/types.js';
 /**
  * plex-profiles — a single-stage build that writes one markdown profile per
  * Plex title (movie + TV show), sourced purely from the Plex API (list +
- * per-title detail endpoints) — no LLM involved (phase 1 only; see this
- * folder's CLAUDE.md for the deferred phase 2). Distinct from the other four
+ * per-title detail endpoints). No LLM is involved (phase 1 only; see this
+ * folder's CLAUDE.md for the deferred phase 2). Distinct from the other
  * Plex-touching workflows: none of them cover BOTH movies and shows with a
  * per-title markdown output (missing-tv-seasons audits season completeness,
- * movie-recommendations/tv-recommendations do franchise-gap/recommendation
- * digests, plex-space-saver reports disk-size breakdown only).
+ * movie-recommendations/tv-recommendations build recommendation digests,
+ * missing-movies reports franchise gaps, plex-space-saver reports a disk-size
+ * breakdown only).
  *
  * Idempotent per title via the work_items ledger's stored `updatedAt` marker
  * (a title unchanged since its last build is skipped). One stage, so no DAG
- * edge — no gate needed (see this folder's CLAUDE.md / src/workflows/CLAUDE.md).
- * Runs weekly, offset from plex-space-saver's Sunday 06:00 slot.
+ * edge. Its two declared outputs are the movie and show profile folders, both
+ * cumulative. Runs weekly, offset from plex-space-saver's Sunday 06:00 slot.
  */
 const workflow: WorkflowDefinition = {
   name: 'plex-profiles',

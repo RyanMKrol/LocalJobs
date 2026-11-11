@@ -108,8 +108,8 @@ function randomBranch(n: number): BranchSpec {
       'for acclaimed, diverse recommendations drawn from a stratified-random slice of the owned shows ' +
       `(sampled by primary genre, seeded uniquely per branch — ${1000 + n} — so the three random branches ` +
       'see different slices and surface different picks), rather than steering towards any one genre or ' +
-      "era the way the targeted branches do. It excludes titles already owned and anything on this run's " +
-      'growing already-suggested list, then writes its raw suggestion list for tv-rec-merge to pool, ' +
+      'era the way the targeted branches do. It tells Claude to avoid the owned shows it was shown and any ' +
+      'title recommended or dismissed in earlier runs, then writes its raw suggestion list for tv-rec-merge to pool, ' +
       'TMDB-verify, dedupe against the other seven branches, and quality-filter.',
     build(ctx) {
       const sample = stratifiedSample(ctx.items, { keyFn: primaryGenre, target: ctx.sampleSize, seed: 1000 + n });

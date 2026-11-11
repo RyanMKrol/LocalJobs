@@ -1,7 +1,7 @@
-// Pure normalizing/markdown-building helpers for the media-reviews workflow —
-// no I/O, unit-tested in lib.test.ts. The stages/build.ts engine owns the
-// DynamoDB scan + file writes; everything here takes plain values in and
-// returns strings/objects out.
+// Pure normalizing/markdown-building helpers for the media-reviews workflow:
+// no I/O, unit-tested in lib.test.ts. The shared build function in
+// stages/build.ts owns the DynamoDB scan + file writes; everything here takes
+// plain values in and returns strings/objects out.
 import { createHash } from 'node:crypto';
 
 import type {
@@ -90,7 +90,7 @@ const strList = (v: unknown): string[] | undefined =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
 
 // ── Normalizers — raw Dynamo item → typed review, or null when malformed ──
-// A null means the row lacks a required field; the engine warn-skips it
+// A null means the row lacks a required field; the build warn-skips it
 // (perfumes loadPerfumes precedent) rather than failing the run.
 
 export function normalizeBook(raw: Record<string, unknown>): BookReview | null {
@@ -274,7 +274,7 @@ export function buildAlbumReviewMarkdown(a: AlbumReview): string {
 }
 
 // ── Render functions — one per category, composing normalize + build + naming.
-// The engine (stages/build.ts) calls these; null = malformed row, warn-skip. ──
+// The build (stages/build.ts) calls these; null = malformed row, warn-skip. ──
 
 export function renderBookReview(raw: Record<string, unknown>): RenderedReview | null {
   const b = normalizeBook(raw);

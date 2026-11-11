@@ -42,9 +42,10 @@ function ineligible(
  * The local-disk reality check — the ONLY read stage that touches the
  * filesystem, recomputed every run. For every `rename` plan row it asserts the
  * disk is EXACTLY as expected before the item may reach the mutating apply
- * stage: mounts healthy (non-empty dir — a stale empty mountpoint is treated
- * as missing, never as deleted files), paths mappable and same-share, source
- * present with Plex's exact recorded size, mtime older than the
+ * stage: mounts healthy on BOTH sides of the move (a non-empty dir; a stale
+ * empty mountpoint is treated as missing, never as deleted files), paths
+ * mappable under configured shares (a cross-share consolidation move is
+ * legitimate), source present with Plex's exact recorded size, mtime older than the
  * still-downloading window, target absent (except case-only renames), the
  * REAL directory listing's sidecars enumerated with collision checks, and
  * `.plexmatch` never clobbered (source tree or divergent target → ineligible).

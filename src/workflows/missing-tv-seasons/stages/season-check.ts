@@ -28,7 +28,9 @@ import type {
  * read `/tv/{id}/season/{N}` and keep it ONLY if the season is COMPLETE (every
  * episode aired). ENDED/CANCELED shows are NOT skipped (revivals). A show with no
  * tmdbId is flagged "unverifiable", never guessed. TMDB calls route through the
- * shared rate-limited `tmdb` service. RE-CHECKS FRESH every run.
+ * shared rate-limited `tmdb` service. RE-CHECKS FRESH every run and writes no
+ * ledger rows. The result file is always written; if any show was unverifiable
+ * or errored, the function then throws so the run fails.
  */
 export interface SeasonCheckOpts {
   /** The snapshot to check (the stage's `snapshot` input). Defaults to the configured path. */
@@ -102,7 +104,7 @@ export async function runSeasonCheck(ctx: JobContext, opts: SeasonCheckOpts = {}
         break;
       }
       const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
-      // One bad show must not fail the whole audit — log + skip it.
+      // One bad show must not stop the loop: log it, carry on, and fail the run at the end.
       ctx.log(`  ✗ "${show.title}" (tmdb=${show.tmdbId}) — ${msg}`, 'warn');
       errors.push({ title: show.title, tmdbId: show.tmdbId, error: msg });
       failed++;

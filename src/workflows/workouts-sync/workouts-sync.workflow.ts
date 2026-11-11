@@ -1,25 +1,27 @@
 import type { WorkflowDefinition } from '../../core/types.js';
 
 /**
- * Workouts-sync: paginate the Hevy API and append each newly-synced workout's
- * full data (title, sets, exercises) to a local, full-history JSON file
- * (`data/out/workouts-history.json`). Idempotent — workouts already recorded
- * in the work_items ledger are skipped, so the history file only ever grows.
+ * Workouts-sync: two stages, `hevy-sync` then `workouts-progress`.
  *
- * Runs monthly (1st, 06:00) — a same-day-fresh cadence isn't needed now that
- * the sync no longer feeds DynamoDB.
+ * Stage 1, `hevy-sync`, pages through the whole Hevy workout list and adds each
+ * workout the work_items ledger does not already have (title, exercises, sets)
+ * to a local history file, `data/out/workouts-history.json`. The file is saved
+ * before the workouts are marked synced, so a kill in between cannot leave a
+ * workout marked done but missing from the history. A workout is synced once
+ * and the file is never pruned.
  *
- * Stage 2, `workouts-progress` (`dependsOn: ['hevy-sync']`), reads the full
- * history file and computes a per-exercise 6-month progress comparison (best
- * single set, total volume, estimated 1-rep-max via the Epley formula) across
- * a baseline calendar month (6 months before the current period) vs the
- * current period (the most recently completed calendar month), writes the
- * raw comparison to `data/out/progress-data.json`, and uses the shared Claude
- * CLI helper to narrate it into `data/out/workouts-progress-<YYYY-MM>.md`
- * (one file per month, so past reports survive). Idempotent
- * per calendar month via the work_items ledger (mirrors `listening-digest`) —
- * a manual re-run the same month regenerates the report rather than
- * duplicating it.
+ * Stage 2, `workouts-progress` (`dependsOn: ['hevy-sync']`), is handed that
+ * history and computes a per-exercise 6-month comparison (best single set,
+ * total volume, estimated 1-rep-max via the Epley formula): the most recently
+ * completed calendar month against the month 6 months before it. It writes the
+ * raw comparison to `data/out/progress-data.json` and uses the shared Claude
+ * CLI helper to narrate it into `data/out/workouts-progress-<YYYY-MM>.md`, one
+ * file per month so earlier reports survive. A re-run in the same month
+ * rewrites that month's report. It records one ledger row per report month,
+ * pointing at the file, which is what `vault-sync` reads to copy the report.
+ *
+ * Runs monthly (1st, 06:00). Nothing reads the result in real time, so a
+ * fresher cadence is not needed. Not limitable: no stage declares inputKeys().
  */
 const workflow: WorkflowDefinition = {
   name: 'workouts-sync',

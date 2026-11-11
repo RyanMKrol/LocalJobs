@@ -84,8 +84,8 @@ export const enrichedPlaces = jsonArtifact<EnrichedFile>({
   key: 'enriched-places',
   description: 'The Google Places details fetched for each resolved place. Grows as places are enriched.',
   shape: {
-    summary: 'Places details per place_id.',
-    format: 'JSON object { generatedAt, enriched: { placeId: {...} } }',
+    summary: 'Places details per place, keyed by CID.',
+    format: 'JSON object { generatedAt, enriched: { cid: {...} } }',
     expectations: [
       { label: 'Has an "enriched" lookup map', detail: 'The file carries an enriched map.' },
       { label: 'The map is not empty', detail: 'At least one entry.' },

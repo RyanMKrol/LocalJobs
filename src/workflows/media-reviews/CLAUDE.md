@@ -6,22 +6,33 @@ stores behind ryankrol.co.uk/reviews/*) and writes one markdown file per review 
 helpers are policy-disabled — keep it that way); the site itself is never scraped. vault-sync
 mirrors the output into the vault under `Reviews/Books|Movies|TV|Albums`.
 
-## Outputs (ports)
+## How the stages hand data to each other (ports)
 
-Each of the four stages is a ports stage with one output, `reviews` (`media-reviews`, the
-category's own folder under `data/out/`, cumulative): a day with no new or changed review
-carries the folder forward. The artifact type is in `contracts.ts`. There are no edges between
-the four, so there is nothing to bind. Each stage keeps its ledger, which holds the content
-hash a review was last written at.
+A ports workflow (see "Ports" in the root `CLAUDE.md`; the artifact type is in `contracts.ts`).
+The four stages do not hand anything to each other: there are no edges, so no stage has inputs.
 
-## Structure: four independent single-stage jobs, one generic engine
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `media-reviews-books` | none | `reviews` (`media-reviews`, the `data/out/books/` folder, cumulative) |
+| `media-reviews-movies` | none | `reviews` (`media-reviews`, the `data/out/movies/` folder, cumulative) |
+| `media-reviews-tv` | none | `reviews` (`media-reviews`, the `data/out/tv/` folder, cumulative) |
+| `media-reviews-albums` | none | `reviews` (`media-reviews`, the `data/out/albums/` folder, cumulative) |
 
-Four members (`media-reviews-books|movies|tv|albums`), NO `dependsOn` edges — so no gates/contracts
-are needed (plex-profiles precedent: gates only exist on DAG edges) and the default
+All four share one artifact type (a folder of `.md` files, none of them empty). The folders are
+cumulative, so a day with no new or changed review carries the folder forward. No stage is
+marked `product`, and none is depended on, so all four count as the workflow's product and the
+Output section shows the four folders. Each stage keeps its ledger (one row per review, under
+the stage's own job name, keyed by the Dynamo `id`), which holds the content hash a review was
+last written at. That ledger is real state: it drives the skip, and `vault-sync` reads it.
+
+## Structure: four independent stages, one shared build function
+
+Four members (`media-reviews-books|movies|tv|albums`) with no `dependsOn` edges, so the default
 `maxConcurrency` (4) runs all four in parallel. The scan→diff→write→mark loop lives ONCE in
 `stages/build.ts` (`runReviewBuild` + the `CATEGORY_SPECS` table); each `<category>.job.ts` is a
-thin `JobDefinition` invoking it with its spec. Pure helpers (normalizers, markdown builders,
-hashing, naming) live in `lib.ts`.
+thin `defineStage` that calls it with its spec and declares the folder output. Each stage has a
+10 minute timeout and 2 retries. Pure helpers (normalizers, markdown builders, hashing, naming)
+live in `lib.ts`.
 
 ## ⚠️ Do NOT add `inputKeys()` to any member (run-limit trap)
 
@@ -39,8 +50,8 @@ style; a no-op when unlimited).
 All four tables: partition key `id` (String UUID), no sort key/GSI; full paginated Scan (what the
 site itself does). Table names are env-overridable (`MEDIA_REVIEWS_*_TABLE`), defaulting to the
 site's current versions — if the site migrates a table (e.g. V4 → V5), update the default here (or
-override in `.env`). AWS creds/region are the shared ones the perfumes workflow already uses
-(region `us-east-2`).
+override in `.env`). AWS creds and region are the shared ones the perfumes workflow already
+uses (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`).
 
 | Job | Table | Review-text field | Identity | Artwork |
 |---|---|---|---|---|
@@ -72,9 +83,10 @@ changes — the whole-row hash catches them. Deleting a `data/out` file does NOT
 the source row changes (same as plex-profiles); use the dashboard's "Clear output data" to rebuild
 from scratch.
 
-Success `detail` is `{ name, markdown: <path>, marker }` — `name` is the display name vault-sync
-uses (`Title (Author)` / `Title (Artist)` / `Title (year)`), `markdown` powers the dashboard
-Output section (T110/T205; store-relativized per T447).
+Success `detail` is `{ name, markdown: <path>, marker }`. `name` is the display name vault-sync
+uses (`Title (Author)` / `Title (Artist)` / `Title (year)`), and `markdown` is the path
+vault-sync copies from and the dashboard previews (the store keeps it relative, T447). A failed
+write is recorded `failed` with `detail: { name: <id> }` and the run fails at the end.
 
 ## Markdown format
 
@@ -97,7 +109,7 @@ metered calls/day against the service's 30/min + 50k/month caps.
 
 ## Tests
 
-`lib.test.ts` — pure helpers, bare-assert script. `stages/build.test.ts` — the engine with an
+`lib.test.ts`: pure helpers, bare-assert script. `stages/build.test.ts`: `runReviewBuild` with an
 injected `scan` (no AWS), temp-dir-redirected config outDirs (the plex-profiles pattern), scratch
 DB: first-run writes, steady-state skip, backfill-without-editedDate rewrite, id-less/malformed
 warn-skip, and the T416 fail-the-run path.

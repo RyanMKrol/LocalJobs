@@ -13,23 +13,21 @@ import type {
   ValidationReport,
 } from '../types.js';
 
-/** This job's name — the workflow's first stage, which owns the per-item ledger list. */
+/** This job's name, and the ledger its per-place rows are recorded under. */
 const INGEST_JOB = 'places-ingest';
 
 /**
- * Record the canonical per-item work-item list for the workflow: one ledger entry
- * per CID-bearing place, keyed by its CID (the id every downstream stage keys on).
- * Name-only places (no CID) can't be resolved, so they don't enter the pipeline and
- * aren't recorded. This is what makes ingest — the FIRST stage — the owner of the
- * idempotency list (so the run's Input→Output mapping has an input side). A bulk
- * prep step re-records the full current list each run (upsert; no skip).
+ * Record one ledger entry per CID-bearing place, keyed by its CID (the id the
+ * resolver keys on and every later stage uses as its root). Name-only places
+ * (no CID) can't be resolved, so they aren't recorded. The full current list is
+ * recorded again each run (upsert; no skip). This ledger is kept on purpose: the
+ * run page is drawn from the stage's declared outputs, not from these rows.
  *
  * Like every stage, it filters by `ctx.rootAllowed` (T094): on a *limited* manual
- * run only the selected originating roots are recorded, so the ledger — and the IO
- * mapping's input side — reflects the limited subset, not the whole catalog. The
- * full `places.json` is still written either way (downstream needs the catalog);
- * it's only the per-item ledger that's scoped. Unlimited runs allow everything
- * (no-op filter). Exported (with an injectable predicate) for unit testing.
+ * run only the selected originating roots are recorded. The full `places.json`
+ * is still written either way (downstream needs the catalog); it's only the
+ * ledger that's scoped. Unlimited runs allow everything (no-op filter).
+ * Exported (with an injectable predicate) for unit testing.
  */
 export function recordIngestLedger(
   places: NormalizedPlace[],
@@ -42,7 +40,7 @@ export function recordIngestLedger(
 }
 
 /**
- * Ingest every saved-list CSV (places-data/raw/Saved) into one normalized,
+ * Ingest every saved-list CSV (data/raw/Saved) into one normalized,
  * deduped places.json, and emit a validation report. Only the Saved/ export is
  * processed — Maps / Maps (your places) are intentionally ignored for now.
  * Throws if validation finds any error-level issue (so the job is marked failed).
@@ -180,11 +178,8 @@ export async function runIngest(ctx: JobContext): Promise<ValidationReport> {
   writeJsonFile(placesConfig.placesOut, output);
   writeJsonFile(placesConfig.reportOut, report);
 
-  // Convention (first stage owns the per-item list): as the workflow's first stage,
-  // ingest records the canonical work-item list every later stage keys on — one
-  // ledger item per CID-bearing place, keyed by CID. This anchors idempotency AND
-  // the run's Input→Output mapping from stage one (a bulk-prep first stage that
-  // records nothing leaves the IO panel with no input side). Only on a valid run.
+  // One ledger row per CID-bearing place, keyed by CID (see recordIngestLedger).
+  // Only on a valid run.
   if (report.ok) recordIngestLedger(places, ctx.rootAllowed);
 
   ctx.progress(100, `${places.length} places (${withCid} with CID)`);

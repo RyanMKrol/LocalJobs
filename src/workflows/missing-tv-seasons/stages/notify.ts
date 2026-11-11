@@ -53,9 +53,9 @@ export interface NotifyOpts {
  * markdown report (recorded as the ledger items' `detail.markdown`, T110). FIRST
  * run = one big digest of the whole backlog; if nothing is new, sends nothing.
  *
- * The ledger here is a "notified" log, NOT a work-done log — only this stage uses
- * it. Ledger rows are recorded ONLY for actionable shows so the workflow-run IO
- * panel highlights those, not 600+ "up to date" rows.
+ * The ledger here is a "notified" log, NOT a work-done log, and only this stage
+ * writes it. A row is recorded only for a (show, season) pair that was announced,
+ * so an "up to date" show never has one.
  */
 export async function runNotify(ctx: JobContext, opts: NotifyOpts = {}): Promise<SeasonsDigest> {
   ensureDirs();

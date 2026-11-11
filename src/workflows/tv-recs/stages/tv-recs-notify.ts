@@ -1,7 +1,7 @@
-// TV-domain thin wrapper over the shared recommender notify stage
-// (src/core/recommender/notify.ts, T561). Keeps the exact same exported API
-// (`runTvRecsNotify`, `buildDigest`, `NotifyOpts`) so `tv-recs-notify.job.ts`
-// and every existing notify test keeps working unchanged.
+// TV-domain thin wrapper over the shared recommender notify
+// (src/core/recommender/notify.ts). The stage itself (`tv-recs-notify.job.ts`)
+// is built by `makeNotifyStage` and does not go through this file. This wrapper
+// (`runTvRecsNotify`, `buildDigest`, `NotifyOpts`) is what the notify tests call.
 import { push } from '../../../core/notifier.js';
 import type { JobContext } from '../../../core/types.js';
 import { runRecsNotify } from '../../../core/recommender/notify.js';

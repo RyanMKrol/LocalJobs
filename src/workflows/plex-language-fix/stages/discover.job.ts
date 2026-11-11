@@ -13,7 +13,8 @@ export default defineStage({
     'files are found, but a file already known from a prior run is never re-recorded: idempotency for the ' +
     'workflow\'s expensive/mutating stages (TMDB lookup, apply) rests on each of THOSE stages processing a ' +
     'file exactly once, ever, not on this one skipping the walk. Declares inputKeys(), making this the ' +
-    'workflow\'s limitable root — a manual run-limit selects among files this ledger already knows about.',
+    'workflow\'s limitable root. The candidates for a manual run-limit come from a live walk of the ' +
+    'library, not from this ledger.',
   // Three hours. The walk makes about 30,000 Plex calls and the plex service allows 300 a
   // minute, so a walk with nothing cached takes about 100 minutes. This was one hour, so
   // every night the first attempt was killed at 60 minutes and the retry finished the job

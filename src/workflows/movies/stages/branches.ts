@@ -2,7 +2,8 @@
 // branches + 5 targeted branches (2 depth: auteur-completion, top-genre-canon;
 // 3 breadth: thin-genre round-out, older-era classics, world cinema). Each builds
 // a prompt from the taste profile + a TARGETED (lens-specific) subset of owned
-// films and asks Claude for ~5 diverse, un-owned films. Pure prompt construction — no I/O.
+// films and asks Claude for a batch of diverse, un-owned films (`ctx.ask`, default 9).
+// Pure prompt construction, no I/O.
 //
 // T183: per-branch owned-awareness — each branch gets a LENS-TARGETED subset of owned
 // titles (not the full library) plus the full already-suggested history so it avoids

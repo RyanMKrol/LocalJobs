@@ -5,7 +5,10 @@ import { ensureDirs, writeJsonFile } from '../lib.js';
 import { buildShowSnapshots } from '../plex.js';
 import type { PlexEpisodeMeta, PlexShow, PlexShowMeta, SnapshotFile } from '../types.js';
 
-/** Ledger key for one show: prefer the resolved tmdbId, else fall back to the Plex ratingKey. */
+/**
+ * A stable id for one show: its tmdbId, else its Plex ratingKey. This stage
+ * writes no ledger rows, so nothing is keyed by it now (only the test calls it).
+ */
 export function snapshotItemKey(show: Pick<PlexShow, 'tmdbId' | 'ratingKey'>): string {
   return String(show.tmdbId ?? show.ratingKey);
 }

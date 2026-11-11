@@ -1,21 +1,20 @@
 # CLAUDE.md — src/workflows/movies/
 
-The folder is `movies`; the workflow's registered name is **`movie-recommendations`** — distinct
-names, same thing. Referenced elsewhere as either.
+The folder is `movies`. The workflow's registered name is **`movie-recommendations`**. Both names
+refer to the same thing.
 
 ## What it does
 
-Monthly, taste-based Plex movie **recommendation** layer: 8 parallel Claude recommender branches
-propose picks from a stratified sample of the owner's library, merged with code-side TMDB
-verification, cross-branch dedup, and per-genre balancing, then pushed as one monthly digest.
+A monthly, taste-based Plex movie recommender. A snapshot stage reads the library, 8 Claude
+branches each propose films from a different angle, a merge stage verifies every suggestion
+against TMDB and balances the list, and a notify stage sends one digest of the picks that have
+not been announced before.
 
-**The deterministic franchise-gap audit (films you own some-but-not-all of in a collection) moved
-to the separate `missing-movies` workflow (T468)** — see `src/workflows/missing-movies/CLAUDE.md`.
-Splitting it out mirrors how `missing-tv-seasons` and `tv-recommendations` are two independent
-workflows for TV: this workflow no longer has a `franchise-gaps` stage, and its own `movie-snapshot`
-is NOT shared with `missing-movies` (that workflow has its own dedicated snapshot).
+The franchise-gap audit (films missing from a collection you partly own) is a separate workflow,
+`missing-movies` (see `src/workflows/missing-movies/CLAUDE.md`). It has its own Plex snapshot and
+its own schedule. This workflow has no `franchise-gaps` stage.
 
-The owner can ignore-to-suppress a recommendation from the dashboard.
+The owner can dismiss a recommendation from the dashboard (see "Ignore-to-suppress" below).
 
 ## DAG
 
@@ -24,205 +23,213 @@ movie-snapshot ──snapshot, taste──▶ 8 branches ──suggestions──
      └──────────────snapshot, taste──────────────────────────▲
 ```
 
-The 8 branches are `rec-random-1/2/3`, `rec-auteur`, `rec-canon`, `rec-thin-genre`,
-`rec-older-era`, `rec-world-cinema`. `rec-merge` depends on all of them AND on `movie-snapshot`.
+The 8 branches are `rec-random-1`, `rec-random-2`, `rec-random-3`, `rec-auteur`, `rec-canon`,
+`rec-thin-genre`, `rec-older-era` and `rec-world-cinema`. Each depends only on `movie-snapshot`.
+`rec-merge` depends on all 8 branches and on `movie-snapshot`. `movie-recs-notify` depends on
+`rec-merge`.
+
+Scheduled monthly (`'0 9 1 * *'`, the 1st at 09:00), `maxConcurrency: 4`. Once `movie-snapshot`
+finishes, the branches run up to 4 at a time. Each branch is its own child process running the
+Claude CLI, and the cap keeps the Mac Mini from running 8 at once. The cap is not the spend
+limit: every Claude call goes through the shared `claude-cli` service and every TMDB call through
+the `tmdb` service, which meter usage across all processes.
+
+Not limitable: no stage declares `inputKeys()`. The library is read live from Plex on every run.
 
 ## How the stages hand data to each other (ports)
 
-This is a ports workflow (see "Ports" in the root `CLAUDE.md`), built exactly like `tv-recs`:
-the stages come from `defineStage` and the makers in `src/core/recommender/stages.ts`, and the
-artifact types from `contracts.ts` (`movieArtifacts = recommenderArtifacts(moviesDomain, 'movie', 'movies')`).
+This is a ports workflow (see "Ports" in the root `CLAUDE.md`), built the same way as `tv-recs`.
+`movie-snapshot` is a `defineStage`. The branch, merge and notify stages come from the makers in
+`src/core/recommender/stages.ts`. The artifact types come from `contracts.ts`
+(`movieArtifacts = recommenderArtifacts(moviesDomain, 'movie', 'movies')`).
 
 | Stage | Inputs | Outputs |
 |---|---|---|
-| `movie-snapshot` | none | `snapshot` (`movie-snapshot`), `taste` (`movie-taste-profile`) |
+| `movie-snapshot` | none | `snapshot` (`movie-snapshot`, `snapshot.json`), `taste` (`movie-taste-profile`, `taste-profile.json`) |
 | each `rec-*` branch | `snapshot`, `taste` | `suggestions` (`movie-branch-suggestions`, `recs/<branch>.json`) |
-| `rec-merge` | `snapshot`, `taste`, `branches` (fan-in, one per branch) | `recommendations` (`movie-recommendations`) |
-| `movie-recs-notify` | `recommendations` | `report` (`movie-recs-report`, markdown), `digest` (`movie-recs-digest`, inline counts) |
+| `rec-merge` | `snapshot`, `taste`, `branches` (`movie-branch-suggestions`, `many`: one per branch) | `recommendations` (`movie-recommendations`, `recommendations.json`) |
+| `movie-recs-notify` | `recommendations` | `report` (`movie-recs-report`, `reports/recommendations.md`), `digest` (`movie-recs-digest`, inline counts) |
 
-- The merge reads its branch files through `ctx.inputs('branches')`: one per branch, each the
-  file that branch committed in this run. It no longer pools whatever is in `recs/`.
-- The merge's reads of the snapshot and taste profile are a declared edge, not a hidden read.
-- No stage writes a ledger row to be visible. The per-run "visibility" rows (T571), the per-rec
-  merge rows (T600) and the input-sample rows (T605, T615) are gone, along with `outputJob`. A
-  branch reports the library sample its prompt used through `ctx.input('snapshot').used(...)`.
-- The one ledger left is `movie-recs`, written by `movie-recs-notify`: the record of what has
-  been announced or dismissed. See `tv-recs/CLAUDE.md` for the longer version of these notes.
+All files are under `data/out/`.
 
-`maxConcurrency: 4` — all 8 recommender branches depend ONLY on `movie-snapshot`, so once it
-finishes they run up to 4 at a time instead of sequentially (each branch is its own child process
-invoking the Claude CLI; the cap protects the Mac Mini while collapsing wall-time). Every branch
-routes its Claude calls through the shared `claude-cli` service (`callService`), so the rate limit +
-monthly quota are enforced GLOBALLY regardless of concurrency — the service is the spend governor,
-not the cap. Scheduled monthly (`'0 9 1 * *'`, 1st at 09:00).
+- All 8 branches output the same artifact type, which is what lets the merge take them through
+  one `many` input. The merge reads them with `ctx.inputs('branches')`: one handle per branch,
+  each the file that branch committed in this run. It never pools whatever happens to be in
+  `recs/`.
+- The merge also takes `snapshot` and `taste` directly, which is why the manifest gives it an
+  edge from `movie-snapshot`. It uses the snapshot to drop films already owned and the taste
+  profile to re-prompt when the list is short.
+- Every branch commits its file on every run that succeeds, even an empty one (a branch with
+  nothing to ask, or one that hit a usage limit).
+- No stage writes a ledger row so that the run page has something to show. The run page is drawn
+  from what the engine recorded for each stage's inputs and outputs. A branch reports the films
+  it put in its prompt through `ctx.input('snapshot').used(...)`.
+- The one ledger is **`movie-recs`** (`RECS_JOB` in `recs.ts`), keyed by the recommended film's
+  TMDB id. Note the job name is `movie-recs`, not the stage name `movie-recs-notify`. The notify
+  stage writes a `success` row for each film it announces, and the dashboard writes `ignored`
+  rows. The branches and the merge read it. So a film is announced once, and a dismissed film
+  stays out.
+- `movie-recs-notify` is marked `product: true` (it is also the last stage), so the workflow
+  page's Output section shows its report.
+- Besides the ledger, one file carries state across runs: `data/out/recs-history.json`. The
+  notify stage appends each announced film to it, and the branches and the merge read it to
+  steer prompts away from repeats. Both are declared on the stages as `state`, not as ports.
 
-**Not limitable** — no member declares `inputKeys()`. Inputs are discovered live from Plex each run,
-not a static file. `movie-snapshot` RE-COMPUTES FRESH every run (no skip-if-done); only
-`movie-recs-notify` uses the `work_items` ledger, and there it's a "have I already recommended
-this?" / "has the owner ignored it?" log, not a work-done ledger — so a backlog item is announced
-exactly once and an ignored item is suppressed forever.
+## Stage 1: `movie-snapshot`
 
-## Stage 1 — `movie-snapshot`
+Reads Plex library section `PLEX_MOVIE_SECTION` (default `4`) through `fetchSectionMetadata` in
+the shared `src/core/plex-client.ts`. Each movie's TMDB id comes from its `tmdb://` GUID and is
+never guessed. A movie with no such GUID is logged, keeps a null id, and so cannot be matched
+against a recommendation. It still counts towards the taste profile. Writes:
 
-Reads Plex library section `PLEX_MOVIE_SECTION` (default `4`, the owner's "Movies") via the shared
-`plexGet` (`src/core/plex-client.ts`), matching each movie's `tmdb://` GUID (never guessed — a
-movie with no `tmdb://` GUID is flagged and excluded from downstream matching, listed in the run's
-logs). Writes:
-- `data/out/snapshot.json` — every movie + its owned-set membership.
-- `data/out/taste-profile.json` — aggregated genres/directors/decades/countries, fed to the
-  recommender branches as taste context.
+- `data/out/snapshot.json`: every movie with its TMDB id, genres, directors, countries and
+  ratings.
+- `data/out/taste-profile.json`: counts per genre, director, decade and country across the whole
+  library.
 
-**Not shared with `missing-movies`.** That workflow's franchise-gap audit uses its OWN dedicated
-snapshot (`plex-movie-snapshot`, its own `data/out/snapshot.json`) — deliberately duplicated, not
-imported, so the two workflows have zero cross-workflow dependency and run on independent
-schedules. This stage is the ONLY one that still builds `taste-profile.json` (the gap audit never
-needed it — see `missing-movies`'s own `CLAUDE.md`).
+Both are rebuilt on every run. `timeoutMs` 5 minutes, `maxRetries: 3`.
 
-The Plex read is metered via the shared `plex` service (`callService('plex', ...)`), coordinating rate limits and quotas across all Plex-touching workflows.
+The Plex read goes through the shared `plex` service (`callService('plex', ...)`) with a cache
+key of `plex:<path>`, so a second read of the same section within the service's 3-hour cache
+window is served from the cache. In tests, `fetchMeta` replaces the whole fetch and bypasses the
+service. `plexFetch` replaces only the low-level GET, so the caching path can be tested without
+a live Plex.
 
-**Plex reads are response-cached for a 3-hour window (T477).** `movie-snapshot`'s Plex fetch passes a
-`cacheKey` derived from the request path (`plex:<path>`) to `callService('plex', ..., { cacheKey })`,
-engaging the `plex` service's 3-hour cache TTL (T476) — a second read of the same movie section
-within that window (e.g. another Plex-touching workflow triggered back-to-back via the admin "Run
-all workflows" button) is served from cache instead of hitting Plex again. The stage's existing
-`fetchMeta` test seam still fully bypasses `callService`; a new `plexFetch` option stands in for the
-real `plexGet` used by the default `fetchMeta`, still routed through `callService`, so the cache
-dedup itself is unit-tested without a live Plex call.
+This snapshot is not shared with `missing-movies`, which builds its own. The two workflows have
+no dependency on each other. Only this one builds a taste profile.
 
-## Stage 2 — 8 recommender branches (subjective)
+## Stage 2: the 8 recommender branches
 
-Each branch (`rec-random-1/2/3`, `rec-auteur`, `rec-canon`, `rec-thin-genre`, `rec-older-era`,
-`rec-world-cinema` — specs in `src/workflows/movies/stages/branches.ts`) is its own job/child
-process, one Claude CLI call, proposing raw suggestions from a lens:
-- 3× `rec-random-*` — stratified-random serendipity.
-- `rec-auteur` — auteur-completion (directors the owner already likes, films of theirs not owned).
-- `rec-canon` — top-genre canon (well-regarded films in the owner's most-watched genres).
-- `rec-thin-genre` — thin-genre round-out (genres underrepresented in the owned library).
-- `rec-older-era` — older-era classics.
-- `rec-world-cinema` — international/non-English cinema.
+Specs (id, lens, prompt) are in `stages/branches.ts`. Each branch is one stage, one child
+process and one Claude CLI call:
 
-Each branch is shown a stratified sample of the owned library (`MOVIES_RECS_SAMPLE`, default 50)
-plus the taste profile, and asked for `MOVIES_RECS_PER_BRANCH_ASK` (default 9) titles — headroom
-above the eventual target, since verification/dedup/quality-filtering will drop some. Raw
-per-branch output goes to `data/out/recs/<branch-id>.json`. Model: `MOVIES_RECS_MODEL` (default a
-Sonnet 5 id), via the shared `src/services/claude.ts` `runClaude` helper (→ `callService('claude-cli', ...)`).
+- `rec-random-1/2/3` (lens `serendipity`): a stratified sample of the library, balanced across
+  genres, with a different seed per branch.
+- `rec-auteur` (`auteur-completion`): more films by directors the owner has at least 3 films by.
+  Writes an empty list without calling Claude when no director qualifies.
+- `rec-canon` (`top-genre-canon`): well-regarded films in the owner's 4 strongest genres.
+- `rec-thin-genre` (`thin-genre`): films in the genres the owner has fewest of.
+- `rec-older-era` (`older-era`): pre-1980 films.
+- `rec-world-cinema` (`world-cinema`): non-English-language films.
 
-**A branch's Claude failure fails the branch (shared `src/core/recommender/branch.ts`) — NOT a silent
-soft-skip.** Only a rate/usage limit defers gracefully; any genuine error (`spawn claude ENOENT`, crash,
-timeout) throws so the branch run is `failed` and blocks merge/notify instead of yielding an empty
-"successful" digest. Requires `LOCALJOBS_CLAUDE_BIN` to be an absolute path in `.env` (the daemon's
-launchd PATH won't find a bare `claude`). See `tv-recs/CLAUDE.md` for the full note (both share the runner).
+A random branch is shown a stratified sample of `MOVIES_RECS_SAMPLE` (default 50) owned films. A
+targeted branch is shown the owned films that match its lens, capped at the same number. Every
+branch also gets the taste profile and the list of titles already recommended or dismissed
+(`recs-history.json` plus the `ignored` rows of the `movie-recs` ledger, capped at
+`MOVIES_RECS_HISTORY_CONTEXT`, default 200). It asks for `MOVIES_RECS_PER_BRANCH_ASK` (default
+9) titles, more than the final list needs, because the merge drops some. Model:
+`MOVIES_RECS_MODEL` (default `claude-sonnet-5`), called through `runClaude` in
+`src/services/claude.ts`. `timeoutMs` 10 minutes, `maxRetries: 1`.
 
-## Stage 3 — `rec-merge`
+How a branch ends (shared `src/core/recommender/branch.ts`):
 
-Pools the suggestions of every branch that fed it this run (the `branches` input), then per suggestion:
-1. **TMDB title search** (`callService('tmdb', ...)`) — no match = "hallucinated," dropped.
-2. **Owned check** — already in the library, dropped.
-3. **Already-recommended/ignored check** (`isWorkItemDone(RECS_JOB, recKey(tmdbId), 1)`) — dropped,
-   never re-surfaced.
-4. **Quality bar** — TMDB `vote_average ≥ MOVIES_RECS_MIN_RATING` (default 7.0) AND
-   `vote_count ≥ MOVIES_RECS_MIN_VOTES` (default 50) — below either, dropped.
-5. Survivors are deduped by title+year across branches (a title suggested by multiple branches
-   merges its `lens` tags rather than counting twice) and balanced by genre
-   (`MOVIES_RECS_GENRE_CAP` per genre, default 3).
+- A rate or usage limit, a reply that cannot be parsed, or a branch with nothing to ask: the
+  branch writes an empty suggestions file (with an `error` note) and succeeds.
+- Any other Claude failure (`spawn claude ENOENT`, a crash, a timeout): the branch throws. Its
+  run is `failed`, and because the merge needs every branch, the merge and notify do not run.
+  This is deliberate: an unset `LOCALJOBS_CLAUDE_BIN` once made every branch fail quietly and the
+  workflow reported success with no recommendations. The daemon's launchd PATH is minimal, so
+  `LOCALJOBS_CLAUDE_BIN` must be an absolute path in `.env`.
 
-**Top-up loop** (bounded, `MOVIES_RECS_TOPUP_ROUNDS` rounds, default 3): if fewer than
-`MOVIES_RECS_TARGET` (default 15) well-rated/un-owned/never-recommended/genre-balanced picks
-survive, re-prompts all 8 branches in-memory for additional suggestions (excluding everything
-already collected/owned/considered this run, up to `MOVIES_RECS_TOPUP_CONCURRENCY` branches at once,
-default 4), re-verifies, re-merges, repeats until the target is reached or rounds are exhausted.
-Resilient per-item: a search failure is skipped individually (the rest of the batch keeps
-processing) and a TMDB quota hit stops verification gracefully — the stage always writes a
-(possibly short) list first. But if ANY suggestion's TMDB search errored this run, the stage then
-THROWS a summarizing error (`TMDB search failed for N suggestion(s) this run — see warn logs above
-for titles.`), failing the run so it's retried — mirroring `tv-recs`' `tv-rec-merge` stage. Writes
-`data/out/recommendations.json`; appends to
-`data/out/recs-history.json` (fed back into future branch prompts as "already suggested," bounded by
-`MOVIES_RECS_HISTORY_CONTEXT`, default 200 titles, and `MOVIES_RECS_RECENT_WINDOW`, default 40).
+## Stage 3: `rec-merge`
 
-## Stage 4 — `movie-recs-notify`
+Pools the suggestions of every branch that fed it this run, then:
 
-Reads `recommendations.json`, filters out anything owner-ignored (`ignoredItemKeys(RECS_JOB)`), and
-sends a monthly push covering only items not yet notified (`work_items` ledger, keyed
-`recKey(tmdbId)`). The first run digests the whole current pool; later runs only cover what's new
-since the last one. Also (re)writes a monthly `recommendations.md` report.
+1. Drops duplicate suggestions by normalised title and year before any lookup, keeping the first.
+2. Searches TMDB for each title (`/search/movie` through `callService('tmdb', ...)`, cached per
+   title and year). No match means the model made it up, and it is dropped.
+3. Drops films already in the library.
+4. Drops films already recommended or dismissed (`isWorkItemDone('movie-recs', <tmdbId>, 1)`).
+5. Drops films below the quality bar: TMDB `vote_average` at least `MOVIES_RECS_MIN_RATING`
+   (default 7.0) with `vote_count` at least `MOVIES_RECS_MIN_VOTES` (default 50).
+6. Merges suggestions that resolve to the same TMDB id, joining their lens tags.
+7. Balances by genre: at most `MOVIES_RECS_GENRE_CAP` (default 3) per genre, up to
+   `MOVIES_RECS_TARGET` (default 15) in total.
+
+If fewer than the target survive, a top-up loop runs for up to `MOVIES_RECS_TOPUP_ROUNDS`
+(default 3) rounds. Each round re-prompts all 8 branches in memory (no files, up to
+`MOVIES_RECS_TOPUP_CONCURRENCY` at once, default 4), excluding every title already considered
+this run, then verifies and balances again. It stops when the target is reached, a round returns
+nothing new, or TMDB's quota is hit.
+
+A TMDB quota stop ends verification early and the stage still writes the (possibly short) list.
+A search that errors for one title is skipped so the rest carry on, but if any search errored the
+stage throws after writing `data/out/recommendations.json`, so the run fails and is retried.
+`timeoutMs` 30 minutes, `maxRetries: 2`.
+
+## Stage 4: `movie-recs-notify`
+
+Reads the recommendations, removes anything the owner dismissed, and finds the films with no
+done row in the `movie-recs` ledger. It rewrites `data/out/reports/recommendations.md` (all
+current recommendations, new ones flagged) on every run. If there are new films it sends one
+push, and only after the push succeeds does it mark each film `success` in the ledger and append
+it to `recs-history.json`. A failed push throws before anything is marked, so the retry sends
+the digest again. The first run announces the whole current list. Later runs announce only what
+is new. `timeoutMs` 2 minutes, `maxRetries: 3`.
 
 ## Ignore-to-suppress (owner UI)
 
-- `POST /api/movie-recs/:tmdbId/ignore` / `/unignore`, backed by
-  `ignoreSurfacedItem(RECS_JOB, recKey(tmdbId))` — an ignored rec is excluded from BOTH the merge
-  stage (never re-suggested) and future digests.
-- Un-ignoring **deletes** the ledger row (not a status reset) — the item is treated as genuinely new
-  again and can resurface in a future digest.
-- Surfaced on the `movie-recommendations` workflow's dashboard detail page (Recommendations
-  management section) — MANUAL-ONLY, nothing auto-ignores.
-- (Franchise-gap ignore-to-suppress — `/api/movie-gaps/*` — moved with the audit to
-  `missing-movies`; see that workflow's own `CLAUDE.md`.)
+- `POST /api/movie-recs/:tmdbId/ignore` and `/unignore` (plus `/api/movie-recs/ignore-bulk` and
+  `/unignore-bulk`), backed by `ignoreSurfacedItem('movie-recs', <tmdbId>)`. A dismissed film is dropped by the merge and left
+  out of the report and every later digest.
+- Un-ignoring deletes the ledger row. The film is then treated as new and can come back in a
+  later digest.
+- The controls are on the `movie-recommendations` workflow's dashboard page. Nothing is ignored
+  automatically.
+- The franchise-gap controls (`/api/movie-gaps/*`) belong to `missing-movies`.
 
-## Shared recommender pipeline (T561)
+## Shared recommender pipeline
 
-The recommender machinery (branch runner, merge verify/dedup/balance/top-up, notify
-digest/report/history) is **not owned by this folder** — it's generic across domains and lives in
-`src/core/recommender/` (`types.ts`, `pure.ts`, `branch.ts`, `merge.ts`, `notify.ts`, `stages.ts`), shared with
-`tv-recs` (its independent standalone TV recommender, `src/workflows/tv-recs/`). This folder keeps
-only what's genuinely movie-specific:
+The branch runner, the merge and the notify logic are not owned by this folder. They live in
+`src/core/recommender/` (`types.ts`, `pure.ts`, `branch.ts`, `merge.ts`, `notify.ts`,
+`stages.ts`) and are shared with `tv-recs`. Both workflows run the same code with a different
+`RecommenderDomain` object. This folder keeps what is specific to movies:
 
-- `stages/branches.ts` — the 8 branches' lens PROMPT TEXT (unchanged content) + the
-  `moviesDomain: RecommenderDomain<PlexMovie, TasteProfile>` wiring object (TMDB `/search/movie`
-  endpoint + field mapping, the TMDB movie-genre id table, digest emoji/wording, push
-  job/tags, report heading/filename). Every other workflow file that needs the shared pipeline
-  imports `moviesDomain` from here.
-- `recs.ts` — thin re-exports of the shared pure helpers (`src/core/recommender/pure.ts`) plus
-  `RECS_JOB`, `directorsOwnedAtLeast` (movies' wrapper over the shared `ownedAtLeast`), and the
-  TMDB movie-genre table (`genreNameFromIds`).
-- `stages/recommend.ts`, `stages/merge.ts`, `stages/notify.ts`: thin wrappers that call the
-  shared `runBranch`, `runMerge`, `runRecsNotify` with `moviesDomain` baked in. They exist for
-  the tests, which call the impl functions with explicit paths.
-- The `*.job.ts` files are the stages themselves: `snapshot.job.ts` is a `defineStage`, and the
-  branch, merge and notify ones call `makeBranchStage` / `makeMergeStage` / `makeNotifyStage`
-  from `src/core/recommender/stages.ts`.
-- `contracts.ts` is one line: the domain's artifact types. `config.ts` (env var names and tuning
-  defaults) stays per-workflow; the shared pipeline takes it as plain data (`domain.config`) and
-  never reads `process.env` itself.
-
-This is a **pure structural extraction (T561)** — `tv-recs` used to duplicate ~1,100 lines of this
-same logic; both workflows now run the identical shared code with different `RecommenderDomain`
-wiring. Job names, ledger keys, and DAG shape are all unchanged.
+- `stages/branches.ts`: the 8 branches' prompt text and the `moviesDomain` object (the TMDB
+  `/search/movie` call, the TMDB movie-genre table, the digest wording, the push job and tags,
+  the report heading and filename).
+- `recs.ts`: re-exports of the shared pure helpers (`src/core/recommender/pure.ts`), plus
+  `RECS_JOB`, `directorsOwnedAtLeast` and `genreNameFromIds`.
+- `stages/recommend.ts`: `makeBranchJob(id)`, which each `rec-*.job.ts` file calls and which
+  builds the stage with `makeBranchStage`. It also wraps the shared `runBranch` for the tests.
+- `stages/merge.ts`, `stages/notify.ts`: wrappers over the shared `runMerge` and `runRecsNotify`
+  with `moviesDomain` filled in. The stages do not use them (`merge.job.ts` and `notify.job.ts`
+  call `makeMergeStage` and `makeNotifyStage` directly). They exist for the tests, which call the
+  functions with explicit paths, and `notify.ts` also carries the compat re-export described
+  below.
+- `contracts.ts` is one line: this domain's artifact types.
+- `config.ts` holds the env var names and defaults. The shared pipeline takes it as plain data
+  (`domain.config`) and never reads `process.env` itself.
 
 ## Files, credentials, config
 
-- `config.ts` (`moviesConfig`) — `data/out/` paths, the 10+ `MOVIES_RECS_*` tuning env vars,
-  `PLEX_MOVIE_SECTION`. `gapsOut` is a **compat-shim alias** into `missing-movies`'s own config —
-  see "Cross-workflow compat shim" below. `recsModel` defaults to `claude-sonnet-5` — aligned with
-  `tv-recs` (T561; `tv-recs` previously defaulted to an older Sonnet id).
-- `contracts.ts`: the artifact types the stages exchange (see the ports table above). The
-  franchise-gaps contract moved to `missing-movies/contracts.ts`.
-- `recs.ts` — movie-domain wiring over the shared pure helpers (see "Shared recommender pipeline"
-  above).
-- `movies.ts` — pure snapshot/collection-gap logic (`buildMovieSnapshots`, `buildOwnedSet`,
-  `buildTasteProfile`, `collectionGaps`, `collectionOwnedExample`). **Still owned by this folder**
-  even though `missing-movies`'s `franchise-gaps` stage imports `collectionGaps`/
-  `collectionOwnedExample`/`buildMovieSnapshots`/`buildOwnedSet` from here — the pure collection-gap
-  math is identical for both workflows, so it isn't duplicated.
-- Plex/TMDB connectivity: the shared `src/core/plex-client.ts` (`plexGet`/`tmdbGet`, plus
-  `fetchSectionMetadata`/`extractTmdbId`/`PlexAllResponse<T>` — the section-listing wrapper, GUID
-  extraction, and `MediaContainer` response type this stage's `movie-snapshot` uses, T586) — NOT
-  owned by this workflow, shared with `missing-tv-seasons`, `tv-recommendations`, `missing-movies`,
-  `plex-space-saver`, `plex-language-fix`, `plex-profiles`.
-- Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (read by the shared client),
-  `PLEX_MOVIE_SECTION` (shared with `missing-movies`).
+- `config.ts` (`moviesConfig`): the `data/out/` paths, the `MOVIES_RECS_*` tuning env vars and
+  `PLEX_MOVIE_SECTION`. `gapsOut` is an alias into `missing-movies`'s config (see the compat shim
+  below).
+- `movies.ts`: pure helpers for the snapshot, the taste profile and collection gaps
+  (`buildMovieSnapshots`, `buildOwnedSet`, `buildTasteProfile`, `collectionGaps`,
+  `collectionOwnedExample`). `missing-movies` imports the snapshot and collection-gap helpers
+  from here rather than copying them, and takes its `FranchiseGap*` and `MovieSnapshotFile` types
+  from `types.ts`.
+- Plex and TMDB access is the shared `src/core/plex-client.ts` (`plexGet`, `tmdbGet`,
+  `fetchSectionMetadata`, `extractTmdbId`). It is not owned by this workflow. Nine workflows use
+  it: `movie-recommendations`, `tv-recommendations`, `missing-movies`, `missing-tv-seasons`,
+  `plex-space-saver`, `plex-library-guard`, `plex-language-fix`, `plex-profiles` and
+  `plex-rename`.
+- Services called: `plex` (snapshot), `claude-cli` (branches, and the merge's top-up), `tmdb`
+  (merge).
+- Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (read by the shared client), and
+  `LOCALJOBS_CLAUDE_BIN` for the Claude CLI. `PLEX_MOVIE_SECTION` is shared with `missing-movies`.
 
-## Cross-workflow compat shim (T468)
+## Cross-workflow compat shim
 
-`src/api/server.ts` (out of T468's scope; T469 only relocated the DASHBOARD-side manager component
-— `MovieGapsManager` now renders on `missing-movies`'s own detail page instead of unconditionally
-here — it did not touch `server.ts`'s routes) imports `NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey` from
-`'../workflows/movies/stages/notify.js'` and `moviesConfig.gapsOut` from `'../workflows/movies/config.js'`
-— paths that predate the split. Rather than touch `server.ts`:
-- `src/workflows/movies/stages/notify.ts` (this recs-only notify stage) re-exports
-  `NOTIFY_JOB`/`gapKey` from `missing-movies`'s `stages/notify.js` — the source of truth moved
-  there, but the import path `server.ts` already uses keeps resolving unchanged.
-- `moviesConfig.gapsOut` is aliased to `missingMoviesConfig.gapsOut` — same reasoning.
+`src/api/server.ts` still imports `NOTIFY_JOB` and `gapKey` from
+`'../workflows/movies/stages/notify.js'` and reads `moviesConfig.gapsOut`, paths from before the
+franchise-gap audit moved to `missing-movies`. So that `server.ts` did not have to change:
 
-Neither shim changes behavior; they exist purely so `server.ts` doesn't need editing to keep
-working. See `missing-movies/CLAUDE.md` for the workflow that now owns these for real.
+- `stages/notify.ts` re-exports `NOTIFY_JOB` and `gapKey` from `missing-movies`'s
+  `stages/notify.js`, which is where they are defined.
+- `moviesConfig.gapsOut` is an alias of `missingMoviesConfig.gapsOut`.
+
+Neither changes behaviour. If `server.ts` is changed to import from `missing-movies` directly,
+both can be deleted.

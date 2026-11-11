@@ -31,9 +31,9 @@ export function tags(arr: PlexTag[] | undefined): string[] {
 }
 
 /**
- * Extract the tmdb/imdb/tvdb ids from a detail fetch's `Guid[]` — generalizes
- * the single-purpose `extractTmdbId` in `missing-tv-seasons/plex.ts` /
- * `movies/movies.ts` / `tv-recs/tv-shows.ts` to pull all three id families.
+ * Extract the tmdb/imdb/tvdb ids from a detail fetch's `Guid[]`. Generalizes
+ * the single-purpose `extractTmdbId` (now shared, in `src/core/plex-client.ts`)
+ * to pull all three id families.
  */
 export function extractGuidIds(guids: PlexGuid[] | undefined): {
   tmdbId: number | null;

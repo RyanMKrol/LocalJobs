@@ -1,52 +1,48 @@
 import type { WorkflowDefinition } from '../../core/types.js';
 
 /**
- * Stocks-sync: pull the owner's current open equity positions from Trading212 via
- * a strictly read-only integration and write a local snapshot — no DynamoDB,
- * matching this repo's local-markdown-first direction.
+ * Stocks-sync: pull the owner's current open equity positions from Trading212 and
+ * write a local snapshot. No DynamoDB.
  *
- * Stage 1, `stocks-fetch`, calls Trading212's read-only portfolio endpoint for the Invest
- * account (and the ISA account too, if TRADING212_ISA_API_KEY_ID/_SECRET_KEY are set),
- * normalizes each position into a broker-agnostic shape tagged by account, and writes
- * data/out/raw-positions.json — NOT yet ticker-resolved. The file is written on every run,
- * even when zero positions are fetched.
+ * Trading212 access is strictly read-only: GET requests only, never an order, a
+ * transfer or an account change (see the root CLAUDE.md and src/services/CLAUDE.md).
  *
- * Stage 2, `stocks-resolve-names` (depends on stocks-fetch), reads raw-positions.json and
- * resolves each position's company name via Trading212's own instruments-metadata endpoint (at
- * most once per run) — Trading212-metadata-only, no OpenFIGI at all. A miss is a soft skip
- * (logged, `name` left undefined). Writes data/out/named-positions.json for stocks-snapshot to
- * read.
+ * Five stages in a line. Each one reads what the stage before it committed in the
+ * same run (artifact types in contracts.ts):
  *
- * Stage 3, `stocks-snapshot` (depends on stocks-resolve-names), reads named-positions.json and
- * ALSO resolves each position's ISIN + a current, real-world ticker (Trading212's
- * `GET /equity/metadata/instruments`, at most once per run, + OpenFIGI) — a soft, never-throwing
- * best-effort step (a miss just logs a warn and leaves isin/resolvedTicker undefined for that
- * position). This is a deliberate, temporary duplication of the metadata call `stocks-resolve-names`
- * already makes — removing it (so `stocks-snapshot` no longer needs OpenFIGI at all) is a follow-up
- * task (T414). Writes the FINAL data/out/portfolio.json (structured) + data/out/portfolio.md
- * (human-readable, with a "Real ticker" column). Like the two stages before it, it writes
- * no ledger row: its declared outputs are what the run page shows.
+ * 1. `stocks-fetch` calls Trading212's read-only portfolio endpoint for the Invest
+ *    account (and the ISA account, if TRADING212_ISA_API_KEY_ID/_SECRET_KEY are
+ *    set), tags each position by account, and writes data/out/raw-positions.json.
+ *    The file is written on every run, even with zero positions.
  *
- * Stage 4, `stocks-watch` (depends on stocks-snapshot), reads that snapshot and, for EVERY
- * position on EVERY run, computes + records its gain since average buy price — this
- * unconditional per-position ledger write (T300) means the check stage always has ledger
- * activity and is never misclassified as a noop by the framework's noop-detection, even when
- * nothing breaches. It tracks "already notified for the current breach episode" on a separate
- * ledger key and writes this run's fresh breaches to data/out/fresh-breaches.json.
+ * 2. `stocks-resolve-names` fills in each position's company name from Trading212's
+ *    own instruments-metadata endpoint (at most one call per run, no OpenFIGI, no
+ *    ISIN). A miss is logged and `name` is left unset. Writes
+ *    data/out/named-positions.json.
  *
- * Stage 5, `stocks-notify` (depends on stocks-watch), reads fresh-breaches.json and sends ONE
- * push naming every position that freshly breached 30%+ above its average buy price this run —
- * a "re-scan + notification-log" idempotent stage (mirrors missing-tv-seasons): a fresh breach
- * notifies once, staying above 30% notifies nothing further, and dropping back below 30% resets
- * so a later re-breach notifies again. Unlike stocks-watch, `stocks-notify` legitimately shows as
- * skipped/noop when there's nothing to send — that's the correct, desired behavior; only the
- * *checking* work being mislabeled skipped was the bug.
+ * 3. `stocks-snapshot` makes no network call. It writes data/out/portfolio.json and
+ *    data/out/portfolio.md (a table with a "Company name" column). This is the
+ *    workflow's product, so the stage is marked `product: true` and the dashboard's
+ *    Output section shows the portfolio and its report.
  *
- * Runs daily (schedule editable from the dashboard).
+ * 4. `stocks-watch` computes every position's gain since its average buy price and
+ *    writes the positions that newly crossed the threshold (STOCKS_WATCH_BREACH_PCT,
+ *    default 30) to data/out/fresh-breaches.json, an empty array on a normal day.
  *
- * The workflow's PRODUCT is the portfolio `stocks-snapshot` writes, not anything the final
- * notify stage does, so that stage is marked `product: true` and the dashboard's Output
- * section shows the portfolio and its report. (This replaced the `outputJob` override.)
+ * 5. `stocks-notify` sends ONE push naming every fresh breach, then marks each as
+ *    announced. With nothing to announce it sends nothing. It commits a small
+ *    digest of what it announced either way.
+ *
+ * Stages 1 to 3 write no ledger rows: their declared outputs are what the run page
+ * shows. The only ledger is under the job name `stocks-watch`. Its
+ * `<account>:<ticker>::notified` rows record which breaches have been announced:
+ * set by `stocks-notify` after a successful push, reset by `stocks-watch` when the
+ * gain drops back below the threshold, so a later re-crossing alerts again.
+ * `stocks-watch` also re-records a `<account>:<ticker>` row with the latest gain
+ * for every position on every run.
+ *
+ * Runs daily at 07:00 (schedule editable from the dashboard). Not limitable: no
+ * stage declares inputKeys().
  */
 const workflow: WorkflowDefinition = {
   name: 'stocks-sync',

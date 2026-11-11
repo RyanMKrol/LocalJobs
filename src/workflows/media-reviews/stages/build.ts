@@ -17,7 +17,7 @@ import {
 import type { RenderedReview, ReviewCategory } from '../types.js';
 
 /**
- * One category's wiring for the generic engine below. `table`/`outDir` are
+ * One category's wiring for the shared build function below. `table`/`outDir` are
  * read at CALL time (functions, not values) so tests can redirect the config
  * singleton's outDirs to a temp dir before running.
  */
@@ -66,7 +66,7 @@ export interface BuildOpts {
   /**
    * Injectable table scan (tests) — swaps in for the real
    * `callService('dynamodb', () => dynamoScan(table), { cacheKey })` so the
-   * engine runs without AWS. Defaults to the real cached scan.
+   * build runs without AWS. Defaults to the real cached scan.
    */
   scan?: (table: string) => Promise<Record<string, unknown>[]>;
 }

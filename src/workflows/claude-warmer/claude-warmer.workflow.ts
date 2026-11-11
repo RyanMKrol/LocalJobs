@@ -10,8 +10,9 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * out of usage credits mid-session. One tiny "hi" prompt is all it takes to start
  * the clock.
  *
- * No local quota cap is needed — the upstream Claude plan enforces its own limit.
- * If that limit is hit, the CLI fails out and the job soft-fails gracefully.
+ * No local quota cap is needed: the upstream Claude plan enforces its own limit.
+ * If that limit is hit, or the call fails for any other reason, the stage logs a
+ * warning, records the outcome as its output and still succeeds.
  */
 const workflow: WorkflowDefinition = {
   name: 'claude-warmer',

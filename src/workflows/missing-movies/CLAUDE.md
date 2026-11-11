@@ -1,16 +1,16 @@
 # CLAUDE.md — src/workflows/missing-movies/
 
-The folder is `missing-movies`; the workflow's registered name is also **`missing-movies`**.
+The folder is `missing-movies`, and so is the workflow's registered name.
 
 ## What it does
 
-Weekly, deterministic audit of the owner's Plex movie library for **franchise gaps** — films you
-own some-but-not-all of in a collection, via the TMDB Collections API. No quality filter — every
-factual gap is surfaced; the TMDB rating rides along for context only.
+A weekly audit of the owner's Plex movie library for franchise gaps: released films in a TMDB
+collection the owner has some, but not all, of. There is no quality filter. Every gap is listed,
+and the TMDB rating is shown for context only.
 
-Split out of `movie-recommendations` (T468) so this deterministic audit runs on its own cadence,
-independent of that workflow's subjective monthly recommendation fan-out — mirroring how
-`missing-tv-seasons` and `tv-recommendations` are two independent workflows for TV.
+It is a separate workflow from `movie-recommendations` so that this factual audit runs weekly on
+its own, apart from that workflow's monthly Claude recommender. `missing-tv-seasons` and
+`tv-recommendations` are split the same way for TV.
 
 ## DAG
 
@@ -18,131 +18,127 @@ independent of that workflow's subjective monthly recommendation fan-out — mir
 plex-movie-snapshot → franchise-gaps → movie-gaps-notify
 ```
 
-Scheduled weekly (`'0 9 * * 1'`, Monday 09:00) — matching `missing-tv-seasons`'s cadence exactly (a
-deliberate cadence increase from the old combined workflow's monthly schedule, for more frequent gap
-alerts).
+Scheduled weekly (`'0 9 * * 1'`, Monday 09:00), the same time as `missing-tv-seasons`.
 
-**Not limitable** — no member declares `inputKeys()`. Inputs are discovered live from Plex each run,
-not a static file. `plex-movie-snapshot` and `franchise-gaps` RE-COMPUTE FRESH every run (no
-skip-if-done); only `movie-gaps-notify` uses the `work_items` ledger, and there it's a "have I
-already notified this?" / "has the owner ignored it?" log, not a work-done ledger — so a backlog
-item is announced exactly once and an ignored item is suppressed forever.
+Not limitable: no stage declares `inputKeys()`. The library is read live from Plex on every run.
 
-**A ports workflow** (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+## How the stages hand data to each other (ports)
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
 
 | Stage | Inputs | Outputs |
 |---|---|---|
 | `plex-movie-snapshot` | none | `snapshot` (`plex-movie-snapshot`, `snapshot.json`) |
 | `franchise-gaps` | `snapshot` | `gaps` (`franchise-gaps`, `franchise-gaps.json`) |
-| `movie-gaps-notify` | `gaps` | `report` (`franchise-gaps-report`, the markdown), `digest` (`franchise-gaps-digest`, inline counts) |
+| `movie-gaps-notify` | `gaps` | `report` (`franchise-gaps-report`, `reports/franchise-gaps.md`), `digest` (`franchise-gaps-digest`, inline counts) |
 
-Each output is rebuilt every run, so a stage that returned without writing its file fails
-rather than handing the next stage last week's. The first two stages no longer write ledger
-rows (one per movie, one per collection) so the run page has something to show: the run page
-lists the snapshot's movies and the gaps from the artifacts themselves. The `movie-gaps-notify`
-ledger is the only one, and its rows are the gaps a run announced.
+All files are under `data/out/`. Each output is rebuilt on every run, so a stage that returned
+without writing its file fails instead of handing the next stage last week's.
 
-## Stage 1 — `plex-movie-snapshot`
+`plex-movie-snapshot` and `franchise-gaps` recompute everything on every run and write no ledger
+rows. The run page lists the snapshot's movies and the gaps from the artifacts themselves. The
+only ledger is `movie-gaps-notify`'s, keyed by the missing film's TMDB id. It records "have I
+already announced this gap?" and "has the owner dismissed it?", not work done, so a gap is
+announced once and a dismissed gap stays out.
 
-Reads Plex library section `PLEX_MOVIE_SECTION` (default `4`, the owner's "Movies") via the shared
-`plexGet` (`src/core/plex-client.ts`), matching each movie's `tmdb://` GUID (never guessed — a
-movie with no `tmdb://` GUID is flagged and excluded from franchise-gap checking, listed in the
-run's logs). The Plex read is metered via the shared `plex` service (`callService('plex', ...)`),
-coordinating rate limits and quotas across all Plex-touching workflows (T577). Writes
-`data/out/snapshot.json` — every movie + its owned-set membership.
+## Stage 1: `plex-movie-snapshot`
 
-**This is a DEDICATED snapshot, not shared with `movie-recommendations`'s `movie-snapshot`.** It is
-deliberately duplicated (not imported/reused) so the two workflows run on fully independent
-schedules with no cross-workflow dependency — mirrors `plex-tv-snapshot` vs the TV recs workflow's
-own snapshot. Unlike `movie-snapshot`, it does NOT build a taste profile — nothing downstream here
-consumes one (only the recommender branches in `movie-recommendations` do).
+Reads Plex library section `PLEX_MOVIE_SECTION` (default `4`) through `fetchSectionMetadata` in
+the shared `src/core/plex-client.ts`. Each movie's TMDB id comes from its `tmdb://` GUID and is
+never guessed. A movie with no such GUID is logged and cannot be checked for gaps. The read goes
+through the shared `plex` service (`callService('plex', ...)`) and opts out of that service's
+response cache (`cacheKey: null`), so every run reads the library as it is now. Writes
+`data/out/snapshot.json`: every movie with its TMDB id. `timeoutMs` 5 minutes, `maxRetries: 3`.
 
-**Fails loud on a 0-movie read** (mirrors the same guard in `missing-tv-seasons`' snapshot): if the
-section listing returns zero movies it THROWS (before writing anything) rather than succeeding with
-an empty snapshot. A populated movie library never legitimately reads empty — an empty result is a
-transient Plex anomaly, and writing it would let `franchise-gaps` find 0 gaps and CLOBBER the
-last-good `franchise-gaps.json`, wiping the dashboard's Output section. Throwing (the stage has
-`maxRetries: 3`) preserves the last good snapshot + downstream output and surfaces the failure.
+This snapshot is this workflow's own. `movie-recommendations` has a separate `movie-snapshot`
+stage, and neither workflow reads the other's file, so they run on independent schedules. Unlike
+`movie-snapshot`, this stage builds no taste profile, because nothing here reads one.
 
-## Stage 2 — `franchise-gaps` (deterministic)
+**It fails on a 0-movie read** (`missing-tv-seasons`' snapshot has the same guard). If the section
+listing returns no movies the stage throws before writing anything. A populated library never
+really reads empty, so an empty result is a Plex problem, and writing it would let
+`franchise-gaps` find 0 gaps and replace the last good `franchise-gaps.json`. Throwing keeps the
+last good files, stops the later stages, and shows the failure.
 
-Two-pass TMDB Collections audit (`src/workflows/missing-movies/stages/franchise-gaps.ts`):
-1. For each owned movie with a tmdbId: `GET /movie/{id}` → its `belongs_to_collection`. Collects
-   every DISTINCT collection id the library touches (deduped — a collection with several owned
-   members is only resolved once).
-2. For each distinct collection: `GET /collection/{id}` → `parts[]`. A gap is any RELEASED part
-   whose tmdb id is NOT owned.
+## Stage 2: `franchise-gaps`
 
-No quality filter, no skip heuristics — every factual gap surfaces; the TMDB rating rides along for
-context only. Both TMDB calls route through `callService('tmdb', ...)`; a hit quota stops the pass
-gracefully (logs a warn, writes whatever was found so far) rather than failing the run. Writes
-`data/out/franchise-gaps.json` (sorted by collection → year → title for a stable, readable
-artifact), including a `collectionExamples` map (one owned title per collection, for the digest to
-show "you own: X" context).
+Two passes against TMDB (`stages/franchise-gaps.ts`):
 
-The job name is `franchise-gaps` — **unchanged** from before the T468 split, and its pure detection
-logic (`buildOwnedSet`, `collectionGaps`, `collectionOwnedExample`) is imported from the shared
-`../movies/movies.js` module (owned by `movie-recommendations`, not duplicated here) since both
-workflows' collection-gap math is identical.
+1. For each owned movie with a TMDB id: `GET /movie/{id}`, read `belongs_to_collection`, and
+   collect the distinct collection ids. A collection with several owned films is fetched once.
+2. For each distinct collection: `GET /collection/{id}`, read `parts[]`. A gap is any released
+   part whose TMDB id is not owned.
 
-## Stage 3 — `movie-gaps-notify`
+Both calls go through `callService('tmdb', ...)` with a cache key per path. Writes
+`data/out/franchise-gaps.json`, sorted by collection, year, then title, with a
+`collectionExamples` map (one owned title per collection, so the report can say "You own: X").
+`timeoutMs` 30 minutes, `maxRetries: 3`.
 
-Reads `franchise-gaps.json`, filters out anything owner-ignored (`ignoredItemKeys(NOTIFY_JOB)`), and
-sends a digest of gaps not yet notified (`work_items` ledger, keyed `gapKey(tmdbId)`). The first run
-digests the whole current backlog; later runs only cover what's new since the last one. Also
-(re)writes a markdown report grouped by collection.
+How it handles trouble:
 
-The job name (`movie-gaps-notify`) and the `NOTIFY_JOB`/`gapKey` ledger constants are **UNCHANGED**
-from before the T468 split — this workflow is now their source of truth (`src/workflows/movies/stages/notify.ts`
-re-exports them as a compat shim, since `src/api/server.ts`'s `/api/movie-gaps/*` endpoints import
-from that path — see "Cross-workflow compat shim" below). No `work_items` migration was needed or
-performed: the ledger is keyed by `(job_name, item_key)`, not workflow membership.
+- A collection fetch that errors is logged and the loop carries on. The file is still written,
+  and then the stage throws, so the run fails and is retried.
+- A `/movie/{id}` fetch that errors is logged as a warning and skipped. It does not fail the run.
+- A TMDB quota stop ends the pass early with a warning, and the stage writes what it has and
+  succeeds. A quota stop in pass 1 skips pass 2 entirely. Either way that run's
+  `franchise-gaps.json` and report can be short until the next full run.
+
+The gap logic (`buildOwnedSet`, `collectionGaps`, `collectionOwnedExample`) and the snapshot
+builder (`buildMovieSnapshots`) are imported from `../movies/movies.js`, and the types from
+`../movies/types.js`. That folder belongs to `movie-recommendations`. The code is shared rather
+than copied because the maths is the same for both workflows.
+
+## Stage 3: `movie-gaps-notify`
+
+Reads the gaps, removes any the owner dismissed, and finds those with no done row in the ledger
+(job name `movie-gaps-notify`, `NOTIFY_JOB` in `stages/notify.ts`, keyed `gapKey(tmdbId)`). It
+rewrites `data/out/reports/franchise-gaps.md` (current gaps grouped by collection, new ones
+flagged) on every run. If there are new gaps it sends one push, and only after the push succeeds
+does it mark each gap `success`. A failed push throws before anything is marked, so the retry
+sends the digest again. The first run announces the whole backlog. Later runs announce only what
+is new. Its inline `digest` output records how many were announced, already announced and
+dismissed. `timeoutMs` 2 minutes, `maxRetries: 3`.
+
+The job name and ledger key are the same as before this audit was split out of
+`movie-recommendations`. The ledger is keyed by job name and item key, not by workflow, so
+nothing had to be migrated.
 
 ## Ignore-to-suppress (owner UI)
 
-- `POST /api/movie-gaps/:tmdbId/ignore` / `/unignore`, plus a bulk
-  `POST /api/movie-gaps/ignore-bulk { tmdbIds }` for "ignore all" at a collection group header.
-  Backed by `ignoreSurfacedItem(MOVIE_GAPS_JOB, gapKey(tmdbId))` — upserts the ledger row to
-  `ignored` even if none exists yet (a surfaced gap is typically `success` after its one
-  notification, or has no row at all).
-- Un-ignoring **deletes** the ledger row (not a status reset) — the item is treated as genuinely new
-  again and can resurface in a future digest.
-- Surfaced on the dashboard: **currently still on the `movie-recommendations` workflow detail
-  page's Gaps management section** (T469, dependsOn T468, moves this to `missing-movies`'s own
-  detail page — deferred, not yet done as of this workflow's creation).
-- **Important semantic**: bulk "ignore all" on a collection group only ignores the EXACT gap keys
-  surfaced right now — a new film added to that collection later (a sequel announced, a new TMDB
-  entry) is NOT auto-ignored; it surfaces fresh.
+- `POST /api/movie-gaps/:tmdbId/ignore` and `/unignore`, plus bulk
+  `POST /api/movie-gaps/ignore-bulk { tmdbIds }` and `/unignore-bulk` for a whole collection
+  group. Backed by `ignoreSurfacedItem('movie-gaps-notify', gapKey(tmdbId))`, which sets the
+  ledger row to `ignored` and creates it if there is none yet.
+- Un-ignoring deletes the ledger row. The gap is then treated as new and can be announced again.
+- The controls are on this workflow's own dashboard page (`/workflows/missing-movies`).
+- A bulk ignore on a collection only ignores the gap keys shown at that moment. A film added to
+  that collection later is not ignored. It shows up as a new gap.
 
-## Cross-workflow compat shim (T468)
+## Cross-workflow compat shim
 
-`src/api/server.ts` (out of this task's scope; T469 is queued to relocate its dashboard-facing
-concerns) imports `NOTIFY_JOB as MOVIE_GAPS_JOB, gapKey` from `'../workflows/movies/stages/notify.js'`
-and `moviesConfig.gapsOut` from `'../workflows/movies/config.js'`. Rather than touch `server.ts`:
-- `src/workflows/movies/stages/notify.ts` (the now recs-only notify stage) re-exports
-  `NOTIFY_JOB`/`gapKey` from this workflow's `stages/notify.js` — the source of truth moved here,
-  but the import path `server.ts` already uses keeps resolving unchanged.
-- `src/workflows/movies/config.ts`'s `gapsOut` is aliased to this workflow's
-  `missingMoviesConfig.gapsOut` — same reasoning.
+`src/api/server.ts` imports `NOTIFY_JOB` and `gapKey` from
+`'../workflows/movies/stages/notify.js'` and reads `moviesConfig.gapsOut` from
+`'../workflows/movies/config.js'`, paths from before the split. So that `server.ts` did not have
+to change:
 
-Neither shim changes behavior; they exist purely so `server.ts` doesn't need editing to keep
-working. If `server.ts` is ever relocated to import from `missing-movies` directly, both shims can
-be deleted.
+- `src/workflows/movies/stages/notify.ts` re-exports `NOTIFY_JOB` and `gapKey` from this
+  workflow's `stages/notify.js`, where they are defined.
+- `moviesConfig.gapsOut` is an alias of this workflow's `missingMoviesConfig.gapsOut`.
+
+Neither changes behaviour. If `server.ts` is changed to import from `missing-movies` directly,
+both can be deleted.
 
 ## Files, credentials, config
 
-- `config.ts` (`missingMoviesConfig`) — `data/out/` paths, `PLEX_MOVIE_SECTION`. No new env vars —
-  reuses the same Plex/TMDB credentials as every other Plex-touching workflow.
+- `config.ts` (`missingMoviesConfig`): the `data/out/` paths and `PLEX_MOVIE_SECTION`. No env
+  vars of its own.
 - `contracts.ts`: the artifact types the stages exchange (`plexMovieSnapshot`, `franchiseGaps`,
   `gapsReport`, `gapsDigest`), each with its check and how it is shown.
-- `lib.ts` — `ensureDirs`/`readJsonFile`/`writeJsonFile` (this workflow's own `data/out/` tree).
-- Pure collection-gap detection logic lives in the shared `../movies/movies.js` (owned by
-  `movie-recommendations`) — imported here, not duplicated.
-- Plex/TMDB connectivity: the shared `src/core/plex-client.ts` (`plexGet`/`tmdbGet`, plus
-  `fetchSectionMetadata`/`extractTmdbId`/`PlexAllResponse<T>` — the section-listing wrapper, GUID
-  extraction, and `MediaContainer` response type this workflow's `plex-movie-snapshot` uses, T586)
-  — NOT owned by this workflow, shared with `missing-tv-seasons`, `tv-recommendations`,
-  `movie-recommendations`, `plex-space-saver`, `plex-language-fix`, `plex-profiles` — this is the
-  7th Plex-touching workflow using it.
-- Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (read by the shared client),
-  `PLEX_MOVIE_SECTION` (shared with `movie-recommendations`).
+- `lib.ts`: `ensureDirs`, `readJsonFile`, `writeJsonFile`.
+- Plex and TMDB access is the shared `src/core/plex-client.ts` (`fetchSectionMetadata`,
+  `tmdbGet`). It is not owned by this workflow. Nine workflows use it: `missing-movies`,
+  `movie-recommendations`, `tv-recommendations`, `missing-tv-seasons`, `plex-space-saver`,
+  `plex-library-guard`, `plex-language-fix`, `plex-profiles` and `plex-rename`.
+- Services called: `plex` (snapshot) and `tmdb` (gap check).
+- Credentials: `PLEX_HOST`, `PLEX_API_TOKEN`, `TMDB_API_TOKEN` (read by the shared client).
+  `PLEX_MOVIE_SECTION` is shared with `movie-recommendations`.

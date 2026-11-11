@@ -98,14 +98,15 @@ export function defaultSpawn(cwd: string): ChildProcess {
 }
 
 /**
- * Runs `vercel --prod --yes` directly in the `ryankrol.co.uk` checkout — a real CLI
- * deploy of the current working tree, not an HTTP call to a Deploy Hook. This works
- * regardless of whether that repo's Vercel Git integration is connected (as of
- * 2026-07-03 it deliberately is NOT — see that repo's own CLAUDE.md "Deploying"
- * section), since a CLI deploy needs no Git integration at all. Relies on the
- * Vercel CLI's own persistent login session (`vercel login`, already established on
- * this machine — the daemon runs as the same OS user) rather than a passed token, so
- * there is no new credential to provision.
+ * Runs `vercel --prod --yes` directly in the target's checkout (`ryankrol.co.uk`
+ * by default, PomoDiary when given that target). It is a real CLI deploy of the
+ * current working tree, not an HTTP call to a Deploy Hook, so it works whether or
+ * not the repo's Vercel Git integration is connected (`ryankrol.co.uk` took it
+ * off on purpose). Relies on the Vercel CLI's own persistent login session
+ * (`vercel login`, already established on this machine; the daemon runs as the
+ * same OS user) rather than a passed token, so there is no new credential to
+ * provision. The deploy goes through `callService('vercel', ...)`: a used-up
+ * quota is recorded as a skip, not a failure.
  */
 export async function runVercelRedeploy(
   ctx: JobContext,
@@ -243,7 +244,12 @@ export default defineStage({
     'exist on disk, the job logs a warning and soft-skips rather than failing. The spawned "vercel" ' +
     'process is subject to its own internal 10-minute timeout-and-kill, separate from and shorter ' +
     'than the job\'s own outer timeout, so a hung deploy is always cleaned up before the executor ' +
-    'would otherwise need to hard-kill the job process itself.',
+    'would otherwise need to hard-kill the job process itself. The deploy is counted against the ' +
+    'vercel service\'s daily and monthly caps, which this job shares with the PomoDiary job, and a ' +
+    'run that finds a cap used up skips with a warning instead of failing. A failed deploy fails ' +
+    'the run and is retried once. Every run records how it went (deployed, skipped or failed) as ' +
+    'the stage\'s output and as one ledger row per day, which points at a small JSON file under ' +
+    'data/out.',
   timeoutMs: 660_000,
   maxRetries: 1,
   // Committed whatever happened, including just before a failed deploy fails the run.

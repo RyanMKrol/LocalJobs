@@ -8,8 +8,9 @@ workflow landed; this guard is the single owner of the "library shrank" signal.
 
 ## What it does
 
-Single stage (`plex-library-guard-scan`, no DAG edge so no gate contracts), scheduled daily
-at 10:30 (`30 10 * * *`, staggered clear of the other Plex workflows). Each run:
+Single stage (`plex-library-guard-scan`, so no DAG edge), scheduled daily at 10:30
+(`30 10 * * *`, staggered clear of the other Plex workflows). The stage has a 5 minute timeout
+and 3 retries. It declares no `inputKeys()`, so the workflow is not limitable. Each run:
 
 1. Fetches the movie section listing and the TV section's flat episode listing (`?type=4`)
    via `fetchSectionMetadata`. Just 2 Plex API calls: the section listings carry
@@ -22,19 +23,34 @@ at 10:30 (`30 10 * * *`, staggered clear of the other Plex workflows). Each run:
    missing file triggers ONE combined urgent push (`rotating_light,warning` tags) naming up
    to 20 missing titles. The full list always lands in `data/out/guard-report.json` (written
    every run) and the run log.
-4. Overwrites the baseline snapshot. The stage is a ports stage with two declared outputs
-   (artifact types in `contracts.ts`): `report` (`plex-guard-report`, the per-run JSON summary)
-   and `snapshot` (`plex-library-snapshot`, the full baseline inventory, declared format
-   `library-snapshot`). The dashboard renders that form as a searchable per-file list
-   (`LibrarySnapshotOutputBody` in `dashboard/app/components/OutputRenderer.tsx`:
-   summary header, title/path filter, at most 300 rows painted at once). Because the
-   inventory is ~10 MB, the `library-snapshot` format is exempted from the output
-   endpoints' 512 KB payload cap (`outputPayloadMax(format)` in `src/api/server.ts`).
-   Both are committed only by a run that succeeds, so the snapshot card on the dashboard
-   always shows exactly the inventory the next run will diff against. The snapshot's check
-   refuses an empty inventory. There are no display rows in the ledger any more (the old
-   per-day row and the stable `snapshot` row existed only to put "View" buttons on the
-   Output section); the one ledger left is `plex-library-guard-alert`.
+4. Overwrites the baseline snapshot.
+
+## How the stages hand data to each other (ports)
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `plex-library-guard-scan` | none | `report` (`plex-guard-report`, `data/out/guard-report.json`), `snapshot` (`plex-library-snapshot`, `data/out/library-snapshot.json`) |
+
+`report` is the per-run JSON summary. `snapshot` is the full baseline inventory, with the
+declared format `library-snapshot`. The dashboard renders that form as a searchable per-file
+list (`LibrarySnapshotOutputBody` in `dashboard/app/components/OutputRenderer.tsx`: summary
+header, title/path filter, at most 300 rows painted at once). Because the inventory is ~10 MB,
+the `library-snapshot` format is exempted from the output endpoints' 512 KB payload cap
+(`outputPayloadMax(format)` in `src/api/server.ts`).
+
+The stage writes both files itself and the engine commits them when the run ends. Both are
+committed only by a run that succeeds, so the snapshot card on the dashboard always shows
+exactly the inventory the next run will diff against. The runs that deliberately leave the
+baseline alone (a failed alert push, a suspected partial read) throw, so they fail for that
+reason and not for a missing output. The snapshot's check refuses an empty inventory.
+
+The stage reads the previous baseline straight from `data/out/library-snapshot.json`. That is
+its own output from an earlier run, not an input from another stage, so it is not a port.
+
+The only ledger is `plex-library-guard-alert` (see below). The scan stage writes no rows under
+its own job name.
 
 ## The write-ordering invariant (protect this)
 

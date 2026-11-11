@@ -1,4 +1,6 @@
-// Shared types for the Plex movie franchise-gap audit workflow.
+// Types for the movie-recommendations workflow (the snapshot, the taste profile,
+// TMDB response shapes), plus the franchise-gap shapes the separate
+// `missing-movies` workflow imports from here.
 
 /** One movie as snapshotted from Plex (stage 1 output), with taste metadata. */
 export interface PlexMovie {

@@ -33,13 +33,13 @@ function readFreshBreaches(path: string): BreachLine[] {
 }
 
 /**
- * Notify stage (T300 — split from the combined check+notify stage). Reads
- * this run's fresh-breach list written by `stocks-watch` and, if non-empty,
- * sends exactly ONE push naming every fresh breach. If empty, this stage does
- * nothing — that's the CORRECT noop: the framework may legitimately show
- * `stocks-notify` as skipped, meaning "nothing to send this run." (It was
- * `stocks-watch`'s checking work being mislabeled skipped that was the bug —
- * see T300.)
+ * Notify stage. Reads this run's fresh-breach list written by `stocks-watch`
+ * and, if non-empty, sends exactly ONE push naming every fresh breach. A
+ * failed push throws, so the run fails and nothing is marked. After a
+ * successful push each breach's `<account>:<ticker>::notified` row is set to
+ * `success` under the `stocks-watch` job name, which is what stops a second
+ * alert while the position stays above the threshold. If the list is empty
+ * this function does nothing; the job then commits a digest of zero.
  */
 export async function runStocksNotify(
   ctx: JobContext,

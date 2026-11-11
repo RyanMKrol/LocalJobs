@@ -10,11 +10,14 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * per-title, original-language-aware replacement for that single global setting.
  *
  * Four members (T453), each processing a file exactly once, ever, via the
- * per-item work_items ledger — NOT a whole-library re-scan every run:
- *   plex-language-discover  (read-only, root — enumerates every file)
- *     → plex-language-resolve   (read-only — TMDB original-language lookup, cached per title)
- *       → plex-language-evaluate  (read-only — decides change vs skip per file)
- *         → plex-language-apply    (MUTATING — applies every "change" via Plex's own API)
+ * per-item work_items ledger. It is NOT a whole-library re-scan every run:
+ *   plex-language-discover  (read-only, root: enumerates every file)
+ *     → plex-language-resolve   (read-only: TMDB original-language lookup, cached per title)
+ *       → plex-language-evaluate  (read-only: decides change vs skip per file)
+ *         → plex-language-apply    (MUTATING: applies every "change" via Plex's own API)
+ * Evaluate and apply also read the discover rows, so each has its own edge from
+ * discover. Every stage's output is its own ledger (see contracts.ts); apply is
+ * the product stage.
  *
  * There is NO manual approval step: the owner explicitly chose full unattended
  * automation over a per-run sign-off. The safety net is a Plex Butler on-demand

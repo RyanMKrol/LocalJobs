@@ -30,9 +30,10 @@ interface FetchResult {
  *    quota (day/month), enforced inside callService — there is no longer a
  *    redundant per-job cap. When the service quota is exhausted, callService
  *    throws QuotaExceededError and the run stops gracefully ($0, inside free tier).
- *  - Quits gracefully if the API returns a rate/quota error (429).
- *  - Designed to run weekly: each run picks up whatever is still un-enriched,
- *    within that month's remaining budget. ~1766 places => ~2 months to finish.
+ *  - Quits gracefully if the API returns a rate/quota error (429), unless the
+ *    error is a permanent one (depleted billing, a disabled API), which throws.
+ *  - Runs daily: each run picks up whatever is still un-enriched, within that
+ *    day's and month's remaining budget.
  */
 export async function runEnrich(ctx: JobContext): Promise<void> {
   ctx.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

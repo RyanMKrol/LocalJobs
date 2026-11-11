@@ -1,19 +1,35 @@
 # CLAUDE.md — src/workflows/plex-profiles/
 
 A single-stage build that writes one markdown profile file per Plex title (movie AND TV show) to
-`data/out/movies/` / `data/out/shows/`, sourced purely from data the Plex API already exposes — no
-LLM involved. This is a genuinely NEW workflow, distinct from the other four Plex-touching
-workflows: `missing-tv-seasons` audits season completeness, `movie-recommendations`
-(`src/workflows/movies/`) / `tv-recommendations` (`src/workflows/tv-recs/`) build franchise-gap /
-recommendation digests, and `plex-space-saver` reports a disk-size breakdown only — none of them
-write a per-title profile covering summary/cast/ratings/technical detail for every movie AND show.
+`data/out/movies/` / `data/out/shows/`, sourced purely from data the Plex API already exposes. No
+LLM is involved. It is distinct from the other Plex-touching workflows: `missing-tv-seasons` audits
+season completeness, `movie-recommendations` (`src/workflows/movies/`) / `tv-recommendations`
+(`src/workflows/tv-recs/`) build recommendation digests, `missing-movies` reports franchise gaps,
+and `plex-space-saver` reports a disk-size breakdown only. None of them write a per-title profile
+covering summary/cast/ratings/technical detail for every movie AND show.
 
-## Outputs (ports)
+## How the stages hand data to each other (ports)
 
-The stage is a ports stage with two outputs, `movies` (`plex-movie-profiles`) and `shows`
-(`plex-show-profiles`): the two folders of profiles, both cumulative, since a profile is
-rewritten only when Plex says the title changed. Artifact types are in `contracts.ts`. The
-ledger is unchanged: one row per title holding the `updatedAt` it was last built at.
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `plex-profiles-build` | none | `movies` (`plex-movie-profiles`, the `data/out/movies/` folder, cumulative), `shows` (`plex-show-profiles`, the `data/out/shows/` folder, cumulative) |
+
+Both outputs are directory artifacts that count only the `.md` files in the folder, and their
+check fails if any profile file is empty. Both are `cumulative: true`: a profile is rewritten only
+when Plex says the title changed, so on a run with nothing new the folders are recorded as carried
+forward. The stage writes each profile file itself and the engine commits the two folders when the
+run ends. With one stage there is no DAG edge.
+
+The stage also keeps a real ledger under its own job name, `plex-profiles-build`: one row per
+title, keyed `movie:<ratingKey>` / `show:<ratingKey>`. A success row's detail is
+`{ name, markdown, updatedAt }` (the profile's path and the Plex `updatedAt` it was built at). A
+title whose build threw is recorded `failed`, the loop carries on, and the run throws at the end if
+any title failed. `vault-sync` reads these rows to find the profiles it mirrors into the vault, and
+its manifest lists this workflow in `after`, so it waits while a build is running.
+
+The stage has a 30 minute timeout and 3 retries.
 
 ## Confirmed Plex fields in use
 
@@ -48,10 +64,10 @@ service's 3-hour cache TTL (T476) — a second read of the SAME Plex resource wi
 button) is served from cache instead of hitting Plex again. `runBuild` accepts an injectable
 `plexFetch` option (tests) that stands in for the real `plexGet`, still routed through
 `callService`, so the cache dedup itself is unit-tested without a live Plex call.
-**`resolveInputKeys()`'s own two section-listing calls deliberately stay UNCACHED** (no `cacheKey`
-passed) — it exists specifically to compute the CURRENT candidate root key set for a manual
-run-limit (T094), and a stale cached key list would misrepresent what the library currently
-contains; see its own doc comment in `build.ts`.
+**`resolveInputKeys()`'s own two section-listing calls deliberately stay UNCACHED** (they pass
+`cacheKey: null`). It exists specifically to compute the CURRENT candidate root key set for a
+manual run-limit (T094), and a stale cached key list would misrepresent what the library currently
+contains. See its own doc comment in `build.ts`.
 
 ## Idempotency — `updatedAt` marker (mirrors projects-sync)
 
@@ -76,16 +92,9 @@ within a section is free-form. `type: movie|show` distinguishes the two; movies 
 tagline/director/writer/file-path fields that shows omit, and shows carry `original_title` (when it
 differs from `title`), season/episode counts, and a summed total library size instead of a single
 file size. See `lib.ts`'s `buildMovieProfileMarkdown`/`buildShowProfileMarkdown` for the exact
-shape. `detail.markdown` is set on every successful `markWorkItem` call (T110), so the produced
-profiles surface automatically in the workflow's generic unified Output section (T205) — no
-dashboard changes needed.
-
-## No DAG edge, no gate needed
-
-One stage (`plex-profiles-build`), no `dependsOn` edges — per the gate-coverage rule in
-`src/workflows/CLAUDE.md`, a gate is only derived for a producer→consumer edge inside a workflow's
-own DAG; a single-stage workflow has none, so (mirroring `plex-space-saver`'s identical reasoning)
-no `contracts.ts` and no gate are needed here.
+shape. The dashboard's Output section shows the two profile folders as artifact cards (each
+profile opens as a markdown preview), plus the ledger rows, whose `detail.markdown` (T110) points
+at the same files.
 
 ## Schedule
 
@@ -99,5 +108,5 @@ This task (phase 1) is deliberately pure-API, no LLM call anywhere. A phase 2 �
 Claude-authored narrative commentary on top of the pure-API profile (mirroring how `perfumes`/
 `projects-sync` layer a Claude write over raw source data) — is a SEPARATE, later follow-up idea.
 No toggle, no stub stage, and no unused config knob for it exists in this folder yet; if/when that
-follow-up lands, it should add its own stage (e.g. `plex-profiles-narrate`) consuming this stage's
-output rather than modifying `build.ts` in place.
+follow-up lands, it should add its own stage (e.g. `plex-profiles-narrate`) that declares this
+stage's profile folders as its inputs. Do not modify `build.ts` in place.

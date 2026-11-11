@@ -21,7 +21,12 @@ export default defineStage({
     'The checkout path comes from the POMODIARY_PATH env var — if that var is unset or points at a ' +
     'path that does not exist on disk, the job logs a warning and soft-skips rather than failing. ' +
     'The spawned "vercel" process has the same internal 10-minute timeout-and-kill as the ' +
-    'ryankrol.co.uk job.',
+    'ryankrol.co.uk job. The deploy is counted against the vercel service\'s daily and monthly ' +
+    'caps, which this job shares with the ryankrol.co.uk job, and a run that finds a cap used up ' +
+    'skips with a warning instead of failing. A failed deploy fails the run and is retried once. ' +
+    'Every run records how it went (deployed, skipped or failed) as the stage\'s output and as ' +
+    'one ledger row per day under this job\'s own name, which points at a small JSON file under ' +
+    'data/out.',
   timeoutMs: 660_000,
   maxRetries: 1,
   outputs: { result: { artifact: redeployResult } },

@@ -82,9 +82,9 @@ export interface BranchContext<M, P> {
  * What a branch's `build()` reports alongside the prompt: the EXACT owned items
  * (M) it selected and put into that prompt — the branch's real lens-filtered
  * subset (targeted branches) or stratified sample (random branches), never a
- * post-hoc reconstruction. Recorded verbatim as `input-sample` ledger rows so
- * the run page's Inputs panel shows what a branch was ACTUALLY shown, not a
- * recomputed guess (T615).
+ * post-hoc reconstruction. The branch stage reports them to the engine with
+ * `ctx.input('snapshot').used(...)`, so the run page shows what the branch was
+ * actually shown rather than the whole library.
  */
 export interface BranchBuildResult<M> {
   prompt: string;

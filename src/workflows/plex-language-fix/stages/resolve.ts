@@ -17,11 +17,12 @@ export interface TmdbLookupOverrides {
  * For every discovered file not yet resolved, look up its show/movie's true
  * original language via TMDB. The TMDB call is routed through
  * `callService('tmdb', ..., { cacheKey })` keyed by `tmdb-language:<type>:<tmdbId>`
- * (T451's opt-in response cache) — every OTHER file belonging to the same
- * show/movie resolved within the same 5-minute window reuses the cached response
- * instead of making a redundant TMDB call, even though every file still records
- * its OWN per-file ledger row. Read-only; a hit TMDB quota is caught per-file and
- * stops the run gracefully (the item is left un-done and retried next run).
+ * (T451's opt-in response cache). Every OTHER file belonging to the same
+ * show/movie resolved while the entry is fresh (the tmdb service's `cacheTtlMs`,
+ * 22 hours) reuses the cached response instead of making a redundant TMDB call,
+ * even though every file still records its OWN per-file ledger row. Read-only; a
+ * hit TMDB quota is caught per-file and stops the run gracefully (the item is
+ * left un-done and retried next run).
  */
 export async function runResolve(ctx: JobContext, opts: TmdbLookupOverrides = {}): Promise<void> {
   const doLookupLanguageDetail = opts.lookupLanguageDetail ?? lookupLanguageDetail;

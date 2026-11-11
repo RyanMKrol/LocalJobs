@@ -1,4 +1,5 @@
-// Pure Plex-parsing/formatting helpers (no I/O) — unit-tested in plex-space-saver.test.ts.
+// Plex-parsing and formatting helpers, unit-tested in plex-space-saver.test.ts. The parsing and
+// formatting functions are pure; the only I/O here is `ensureDirs` and the re-exported `writeJsonFile`.
 import { ensureDirs as coreEnsureDirs, writeJsonFile } from '../../engine/fsjson.js';
 import { plexSpaceSaverConfig } from './config.js';
 import type { PlexEpisodeMeta, PlexMovieMeta, PlexShowMeta, SizeBreakdownFile, SizeBreakdownItem } from './types.js';

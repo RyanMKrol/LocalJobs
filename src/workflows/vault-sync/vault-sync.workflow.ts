@@ -7,8 +7,8 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * (~/SecondBrain by default, SECOND_BRAIN_VAULT_DIR to override), organized
  * one folder per source with prettified filenames. The vault is a READ-ONLY
  * mirror: the sync always overwrites a vault copy when its source changes,
- * and never deletes anything. One stage, so no DAG edge — no gate needed
- * (plex-profiles / overrides-audit precedent).
+ * and never deletes anything. One stage with no inputs: it reads the source
+ * jobs' ledgers and declares an inline result (what the run did to the vault).
  *
  * Daily at 07:30, after the nightly perfumes (02:00), places (03:00), and
  * media-reviews (04:00) runs, so new profiles and reviews reach the vault the

@@ -8,10 +8,13 @@ import type { WorkflowDefinition } from '../../core/types.js';
  *  - NO member declares `inputKeys()`, so the workflow is NOT limitable — its
  *    inputs are DISCOVERED live from Plex each run, not a static file. Scheduled
  *    + always unlimited.
- *  - Snapshot + season-check RE-SCAN FRESH every run (no skip-if-done). Only the
- *    final notify stage uses the `work_items` ledger — and there it's a "have I
- *    already notified this (show, season)?" log, NOT a work-done ledger — so a
- *    backlog season is announced exactly once.
+ *  - Snapshot + season-check RE-SCAN FRESH every run (no skip-if-done) and write
+ *    no ledger rows. Only the final notify stage uses the `work_items` ledger,
+ *    and there it's a "have I already notified this (show, season)?" log, NOT a
+ *    work-done ledger. So a backlog season is announced exactly once.
+ *  - A show the season-check cannot check (no tmdb:// GUID, or its TMDB call
+ *    failed) fails that stage after its output is committed, so the notify stage
+ *    does not run until the show is fixed.
  * Serial (maxConcurrency 1): each stage strictly feeds the next.
  */
 const workflow: WorkflowDefinition = {

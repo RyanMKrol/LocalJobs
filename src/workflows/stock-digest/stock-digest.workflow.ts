@@ -1,61 +1,47 @@
 import type { WorkflowDefinition } from '../../core/types.js';
 
 /**
- * stock-digest: weekly Claude-narrated markdown summary of current stock
- * holdings, performance movers, and a sector/diversification breakdown,
- * DISTINCT from `stocks-sync` (which only snapshots positions +
- * threshold-alerts). NOT limitable: nothing to fan out over.
+ * stock-digest: a weekly Claude-narrated markdown summary of current stock
+ * holdings, performance movers, and a sector breakdown. Separate from
+ * `stocks-sync`, which snapshots positions daily and alerts on a threshold
+ * breach. NOT limitable: no stage declares inputKeys().
  *
- * Scheduled for Monday 08:00 — historically AFTER `stocks-sync`'s daily
- * '0 7 * * *' run, back when this workflow read stocks-sync's snapshot; kept
- * at the same time since it's still a sensible weekly cadence, though it no
- * longer depends on that ordering (see below).
+ * Trading212 access is strictly read-only: GET requests only, never an order, a
+ * transfer or an account change (see the root CLAUDE.md and src/services/CLAUDE.md).
  *
- * NO inter-workflow dependency (T382, reverses the T337 cross-workflow-read
- * pattern): stock-digest fetches its OWN Trading212 snapshot rather than
- * reading `stocks-sync`'s `data/out/portfolio.json`. Four-stage DAG (T415 split
- * the old combined fetch+resolve stage in two, mirroring `stocks-sync`):
- * `stock-portfolio-fetch` (own credentials read, fetches Invest + optional ISA
- * positions, writes `data/out/raw-portfolio.json`, no resolution) feeds
- * `stock-portfolio-snapshot` (reads raw-portfolio.json, resolves each position's
- * ISIN + real-world ticker via OpenFIGI, T373, via the shared
- * `src/services/trading212.service.ts` also used by `stocks-sync` — genuinely
- * load-bearing here, unlike `stocks-sync`'s now-cosmetic-only resolution, since
- * `stock-sector-lookup` actually queries Finnhub with the resolved ticker),
- * which fans out to BOTH `stock-sector-lookup` (resolves each held ticker's
- * industry via the Finnhub company-profile API — preferring the
- * OpenFIGI-resolved real-world ticker over the raw/possibly-stale Trading212
- * ticker — idempotent per ticker via the work_items ledger, writes
- * data/out/sectors.json) AND `stock-digest-build` (a genuine fan-in: it reads
- * BOTH the portfolio snapshot and, once `stock-sector-lookup` has run, the
- * sector map). The report degrades gracefully (omits the diversification
- * section) if sectors.json is missing or empty, and soft-skips (WARN + clean
- * return, no crash) if the portfolio snapshot is empty.
+ * No dependency on `stocks-sync`, on purpose: this workflow fetches its OWN
+ * Trading212 snapshot instead of reading `stocks-sync`'s
+ * `data/out/portfolio.json`. Both call the shared
+ * `src/services/trading212.service.ts`. The Monday 08:00 schedule happens to
+ * fall after `stocks-sync`'s daily 07:00 run, but nothing relies on that order.
  *
- * Markdown-only output — no push notification is sent, mirroring
- * `listening-digest`.
+ * Four stages (artifact types in contracts.ts):
  *
- * Shared lineage root (follow-up to T382): the two stages that write to the
- * ledger, `stock-sector-lookup` (per-ticker rows) and `stock-digest-build` (one
- * row per week), both pass the SAME `weekKey(now)`
+ * 1. `stock-portfolio-fetch` fetches the Invest positions (and ISA, if its key
+ *    pair is set) and writes `data/out/raw-portfolio.json`. No resolution.
+ * 2. `stock-portfolio-snapshot` reads that file and adds each position's ISIN
+ *    (one Trading212 instruments-metadata call per run) and real-world ticker
+ *    (OpenFIGI), best effort, then writes `data/out/portfolio.json`. The
+ *    resolved ticker matters: the next stage queries Finnhub with it.
+ * 3. `stock-sector-lookup` finds each held ticker's industry through the Finnhub
+ *    company-profile API, once per ticker (tracked in the work_items ledger),
+ *    and keeps the map in `data/out/sectors.json`. It always commits a map,
+ *    empty if nothing has ever been resolved.
+ * 4. `stock-digest-build` takes TWO inputs from two different stages, the
+ *    portfolio from stage 2 and the sector map from stage 3, so it has an edge
+ *    to each and starts only when both have succeeded. It writes
+ *    `data/out/stock-digest-<weekKey>.md`. The digest leaves out its
+ *    diversification section when no ticker has an industry, and no digest is
+ *    written (a warning, not a failure) when the portfolio is empty.
+ *
+ * No stage sends a push of its own.
+ *
+ * Ledger: only `stock-sector-lookup` (one row per ticker) and
+ * `stock-digest-build` (one row per ISO week, pointing at that week's file)
+ * write rows. Both pass the SAME `weekKey(now)`
  * (`src/workflows/stock-digest/lib.ts`) as an explicit `rootKey`. The fetch and
  * snapshot stages write no ledger rows: their declared outputs are what the
  * run page shows.
- *
- * Decoupled dashboard display, NOT a joined table (second follow-up to T382): the
- * generic workflow-run Input → Output panel pairs "one input" to "one output" by
- * matching root_key, which — given `stock-sector-lookup`'s genuine per-ticker
- * fan-out and `stock-digest-build`'s genuine many-to-one aggregation — either
- * collapsed real data away or showed a confusing union of unmatched rows. This
- * workflow's run page instead renders `StageIoPanel`
- * (`dashboard/app/components/StageIoLists.tsx`, backed by `GET
- * /workflow-runs/:id/stage-io` → `stageIoLists` in `src/db/store.ts`): per stage,
- * TWO independent, un-paired lists — its direct predecessor(s)' ledger rows this
- * run as "Inputs", its own ledger rows this run as "Outputs". A genuine 3-ticker
- * fan-out shows as 3 rows, not 1. This was originally gated to `stock-digest`
- * only, but T386 made `StageIoPanel` the default Inputs & Outputs panel for EVERY
- * workflow's run page, and T389 deleted the old generic joined `IoPanel` entirely
- * — so `StageIoPanel` is now the only panel, no longer an alternative to anything.
  */
 const workflow: WorkflowDefinition = {
   name: 'stock-digest',

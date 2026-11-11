@@ -6,14 +6,18 @@ import { defaultHistoryPath, runHevySync } from './hevy-sync.js';
 export default defineStage({
   name: 'hevy-sync',
   description:
-    'Pages through the Hevy workout API (https://api.hevyapp.com/v1/workouts), fetching workouts ' +
-    'in batches and stopping once it reaches ones already recorded. Requests are rate-limited via ' +
-    'the shared hevy service (src/services/hevy.service.ts), which coordinates call pacing across ' +
-    'jobs so this stays within Hevy\'s API limits. Idempotent per workout via the work_items ' +
-    'ledger, keyed by Hevy workout id: only workouts not already synced are appended, so already- ' +
-    'synced ids are skipped on re-runs. Each new workout\'s full data — title, its exercises, and ' +
-    'every logged set (weight, reps, etc.) — is appended to a local full-history JSON file ' +
-    '(data/out/workouts-history.json), which only ever grows and is never rewritten or pruned.',
+    'Pages through the whole Hevy workout list (https://api.hevyapp.com/v1/workouts), ten ' +
+    'workouts per page, reading every page on every run. Requests are rate-limited via the shared ' +
+    'hevy service (src/services/hevy.service.ts), which coordinates call pacing across jobs so ' +
+    'this stays within Hevy\'s API limits. Each workout is tracked in the work_items ledger, keyed ' +
+    'by Hevy workout id, so a workout that is already synced is skipped and only new ones are ' +
+    'added. Each new workout\'s full data (its title, its exercises, and every logged set with ' +
+    'weight, reps and so on) is added to a local full-history JSON file ' +
+    '(data/out/workouts-history.json), which grows over time and is never pruned. The file is ' +
+    'saved, atomically, before the workouts are marked synced in the ledger, so a run killed in ' +
+    'between cannot leave a workout marked done but missing from the history; the save replaces ' +
+    'by workout id, so a workout synced twice after such a kill is not duplicated. On a fresh ' +
+    'install with nothing to sync the stage commits an empty history.',
   timeoutMs: 300_000,
   maxRetries: 3,
   // The history grows as workouts are synced: a run with nothing new carries it forward.

@@ -28,8 +28,8 @@ export function writeRawPositions(positions: NormalizedPosition[]): void {
 /**
  * Stage 1: fetch open positions from Trading212 (Invest, and ISA if
  * configured), normalize + tag each by account, and write
- * data/out/raw-positions.json for `stocks-snapshot` to resolve real-world
- * tickers for. No ticker resolution happens here — that's the next stage.
+ * data/out/raw-positions.json for `stocks-resolve-names` to add company names
+ * to. Nothing is resolved here. Read-only: GET requests only.
  *
  * Writes no ledger row: the raw positions file is this stage's declared output,
  * and the run page shows that.

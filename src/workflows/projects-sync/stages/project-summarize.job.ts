@@ -14,8 +14,9 @@ export default defineStage({
     'read-only filesystem access to explore the actual checked-out project (package.json, source ' +
     'layout, README) — no Bash, Write, or Edit tools are granted. The prompt embeds GitHub metadata ' +
     '(name, description, language, topics, pushedAt, url) plus the required project.template.md shape ' +
-    '(YAML frontmatter and fixed section headings), and the response is validated post-hoc against that ' +
-    'template — a missing section or malformed frontmatter throws and marks the item failed. Claude is ' +
+    '(YAML frontmatter and fixed section headings). The reply is cleaned of a code fence or a leading line of ' +
+    'commentary and then checked against that template: a missing section, or a reply that does not open ' +
+    'with the frontmatter, marks the repo failed and fails the run once the other repos are done. Claude is ' +
     'instructed never to invent facts about a project it can\'t verify by exploring the repo. The final ' +
     'markdown is written to data/out/<repo-name>.md and recorded via detail.markdown. Idempotent per ' +
     'repo — a repo whose stored last-processed marker (the catalog\'s pushedAt) already matches the ' +

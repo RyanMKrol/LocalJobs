@@ -110,7 +110,7 @@ export async function runFranchiseGaps(ctx: JobContext, opts: FranchiseGapsOpts 
         tmdbCalls++;
         const found = collectionGaps(detail, owned, now);
         const collName = detail.name ?? collectionIds.get(cid) ?? `Collection ${cid}`;
-        // Record ledger row for this collection, whether or not gaps were found.
+        // Log every collection, whether or not it has gaps (no ledger row is written).
         if (found.length) {
           gaps.push(...found);
           const example = collectionOwnedExample(detail, owned);

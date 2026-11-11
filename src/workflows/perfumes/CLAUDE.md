@@ -3,8 +3,10 @@
 Builds a rich markdown profile for each perfume in the owner's collection. Backlog source: the
 `PerfumeRatings` DynamoDB table (populated by rating perfumes on the owner's own website — the
 `dynamodb` service, read-only `Scan`). Fully serial DAG (`maxConcurrency: 1`, since stages share one
-Chrome profile + the Claude CLI), wrapped in `repeatUntilStable` (cycles until nothing retryable
-remains, capped at `maxCycles`). Runs daily at 02:00.
+Chrome profile + the Claude CLI), wrapped in `repeatUntilStable`: the four stages run again in
+cycles until nothing retryable remains or a cycle makes no progress, up to `maxCycles` (default
+40, `PERFUMES_MAX_CYCLES`) with `cycleSleepMs` (default 5s) between cycles. Runs daily at 02:00.
+Limitable: `perfumes-find-url` declares `inputKeys()`, so a manual run can be capped to N perfumes.
 
 ## DAG: find-url → fetch → parse → build
 
@@ -49,9 +51,13 @@ What that buys, and what to keep in mind:
   `FatalStageError`: it fails the run at once without charging any perfume an attempt.
 - **Each item is saved before it is marked done.** The handler writes its file (atomically)
   and only then returns; find-url saves the URL store after every perfume.
-- **Each stage says what its items were made from** (`from: { job: <previous stage> }`), which is
-  what the run page lists as a stage's input items: the perfumes this run actually worked on,
-  not the whole catalogue.
+- **Each stage after find-url says what its items were made from** (`from: { job: <previous
+  stage> }`), which is what the run page lists as a stage's input items: the perfumes this run
+  actually worked on, not the whole catalogue. find-url is the root and has no `from`.
+- **Every ledger row is real state.** Each stage records one row per perfume under its own job
+  name, keyed by the perfume id. That row is what makes a perfume "done" for the stage. The
+  detail is `{ name, ...what the handler returned }`: the URL for find-url, the capture path and
+  sizes for fetch, the JSON path and counts for parse, the markdown path and vote count for build.
 
 The stages:
 
@@ -66,10 +72,11 @@ The stages:
   *text* (`data/out/pages/<id>.txt`) and the raw page beside it (`<id>.html`, written first); a
   page diagnosed as blocked/short is saved to `data/out/pages-failed/` instead for debugging. Paced via the `fragrantica` service
   (`minIntervalMs` ~12s + jitter — the block is rate/reputation-based, not per-request detection).
-- **`perfumes-parse`** — parses the cached page into structured notes/accords
-  (`data/out/fragrantica/<id>.json`). Accord `pct` (e.g. "woody 83%") is lifted from the page's
-  coloured-bar `width: NN%` CSS, read from the `<id>.html` capture; a page with no HTML capture
-  keeps `pct: null` rather than a guess. No network calls of its own.
+- **`perfumes-parse`**: asks Claude (`modelParse`) to turn the captured page text into a
+  structured record of notes, accords and community votes (`data/out/fragrantica/<id>.json`).
+  Accord `pct` (e.g. "woody 83%") is lifted in code from the page's coloured-bar `width: NN%`
+  CSS, read from the `<id>.html` capture; a page with no HTML capture keeps `pct: null` rather
+  than a guess. It fetches nothing from the web: its only outside call is the Claude CLI.
 - **`perfumes-build`** — researches + writes the final profile via Claude CLI, following the enforced
   `profile.template.md` contract (YAML frontmatter — name/brand/notes pyramid/accords/wear
   profile/community rating/provenance — plus fixed narrative sections). Blends Fragrantica's
@@ -97,7 +104,7 @@ The stages:
   — a run sometimes pasted the raw JSON array into the section (9 shipped profiles), and structured
   owner data never needs the model for rendering. The prompt also feeds Claude the pre-rendered
   bullet lines rather than a JSON blob. No spots recorded → the model's "not recorded yet" text
-  stands. The dead `status: "owned"` frontmatter field (it never varied) was removed in T481.
+  stands.
   `personal_rating` is `loadPerfumes`'s Dynamo `rating` halved (0-10 → 0-5) so it lines up with
   Fragrantica's 0-5 `community_rating` scale, rather than the raw 0-10 owner score. The personal
   frontmatter block and the `## Personal Notes`/`## Application` body sections sit immediately after
@@ -124,19 +131,25 @@ The stages:
   (the richer research/writing step). The per-call CLI timeout comes from the shared
   `claude-cli` service (`claudeTimeoutMs()` in `src/services/claude.ts`, dashboard-editable),
   not a perfumes-local setting.
-- `maxAttempts` (default 4), `runLimit` (0 = no per-stage cap), `dryRun` (skip real Claude calls,
-  fabricate — for harness testing).
+- `maxAttempts` (default 4; the manifest passes the same number as `minAttempts`, the retry budget the engine uses to decide whether retryable work is left), `runLimit` (`PERFUMES_RUN_LIMIT`,
+  0 = no cap; a per-stage cap on items attempted in one run, separate from the dashboard's run
+  limit), `dryRun` (`PERFUMES_DRY_RUN=1`: skip real Claude calls and fabricate a reply, for testing).
+- Left over in `config.ts` and read by nothing: `claudeBin`, `claudeTimeoutMs` and
+  `rateLimitBackoffMs`. `fetchDelayMs` and `fetchJitterMs` only feed a log line in the fetch
+  stage; the pacing itself is done by the `fragrantica` service, which reads the same two env
+  vars (`PERFUMES_FETCH_DELAY_MS`, `PERFUMES_FETCH_JITTER_MS`).
 
 ## Non-obvious invariants
 
 - **`perfumes` uses the shared Claude helper (T567).** `find-url`/`parse`/`build` all import
   `runClaude`/`extractJsonObject`/`unfenceMarkdown` from `src/services/claude.ts` — the same
   spawn/timeout/parse implementation `projects-sync` and the movie/TV recommender branches use.
-  There is no perfumes-local Claude helper anymore. Each stage still calls `runClaude` per-item
-  inside its loop (correct `callService` granularity), and the perfumes-specific
-  `PERFUMES_CLAUDE_BIN`/`PERFUMES_CLAUDE_TIMEOUT_MS` env vars are no longer read — perfumes now
-  picks up the shared `LOCALJOBS_CLAUDE_BIN` and the dashboard-editable `claude-cli` service timeout
-  (`claudeTimeoutMs()`) like every other Claude caller. Seeded perfumes with an already-known
+  There is no perfumes-local Claude helper (no `claude.ts` in this folder). Each stage calls
+  `runClaude` once per perfume inside its loop, so each call is metered by the `claude-cli`
+  service on its own. The binary is the shared `LOCALJOBS_CLAUDE_BIN` and the timeout is the
+  dashboard-editable `claude-cli` service timeout (`claudeTimeoutMs()`), as for every other
+  Claude caller. `PERFUMES_CLAUDE_BIN` and `PERFUMES_CLAUDE_TIMEOUT_MS` are still parsed into
+  `config.ts` but nothing uses the values. Seeded perfumes with an already-known
   `fragranticaUrl` (from the DynamoDB row) skip the Claude call in `find-url` entirely.
 - **Same-key stages, no lineage args** — every stage keys by the same perfume `id` (`p.id`), so
   `root_key` propagates for free (`markWorkItem`'s rule 3: item is its own root); this is the

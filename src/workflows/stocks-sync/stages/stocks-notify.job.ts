@@ -5,15 +5,16 @@ import { runStocksNotify } from './stocks-notify.js';
 export default defineStage({
   name: 'stocks-notify',
   description:
-    'The terminal stage of the stocks-sync DAG: reads data/out/fresh-breaches.json written by ' +
-    'stocks-watch and, if it lists any positions, sends a single combined push notification ' +
-    'naming every position that freshly breached 30%+ gain above its average buy price this run ' +
-    '(multiple breaches are folded into one push, never one per position). When the file is empty ' +
-    'this stage is a genuine no-op — the only stage in this workflow where doing nothing is the ' +
-    'correct, expected outcome, since stocks-watch always records real ledger activity every run ' +
-    'regardless of whether anything actually breached. Because it has no work-item ledger of its ' +
-    'own, the workflow manifest points the dashboard\'s Output section at stocks-snapshot instead ' +
-    '(outputJob).',
+    'The last stage of the stocks-sync workflow: reads the fresh breaches stocks-watch wrote to ' +
+    'data/out/fresh-breaches.json and, if there are any, sends a single combined push ' +
+    'notification naming every position that newly rose above the gain threshold this run ' +
+    '(several breaches share one push, never one per position). Only after the push has gone out ' +
+    'does it mark each position as announced, on the "<account>:<ticker>::notified" key of the ' +
+    'stocks-watch ledger, so a failed push fails the run and the same breaches are found fresh ' +
+    'again next time. When the list is empty it sends nothing, which is the normal outcome on ' +
+    'most days. Either way it commits a small digest saying how many positions it announced and ' +
+    'which. The dashboard\'s Output section shows the portfolio instead, because stocks-snapshot ' +
+    'is the stage marked as the workflow\'s product.',
   timeoutMs: 60_000,
   maxRetries: 3,
   inputs: { breaches: { artifact: freshBreaches } },

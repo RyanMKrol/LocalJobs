@@ -10,7 +10,10 @@ export interface SnapshotOpts {
   fetchMeta?: () => Promise<PlexMovieMeta[]>;
 }
 
-/** Ledger key for one movie: prefer the resolved tmdbId, else fall back to the Plex ratingKey. */
+/**
+ * A stable id for one movie: its tmdbId, else its Plex ratingKey. This stage
+ * writes no ledger rows, so nothing is keyed by it now (only the test calls it).
+ */
 export function snapshotItemKey(movie: Pick<PlexMovie, 'tmdbId' | 'ratingKey'>): string {
   return String(movie.tmdbId ?? movie.ratingKey);
 }

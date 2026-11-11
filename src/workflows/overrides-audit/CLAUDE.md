@@ -17,8 +17,8 @@ back into code and clear the flag. This workflow is that reminder mechanism.
 
 ## What it does
 
-`overrides-audit-scan` (the only stage — no DAG edge, no gate needed) calls
-`listStaleOverrides(minAgeMs)` in `src/db/store.ts`, which reads every row across
+`overrides-audit-scan` (the only stage) calls `listStaleOverrides(minAgeMs)`
+(`src/db/store/admin.ts`, imported through `src/db/store.ts`), which reads every row across
 `services`/`workflows`/`jobs` with an `_overridden = 1` flag and returns it if its matching
 `_overridden_at` timestamp (T475) is either `NULL` ("unknown age — set before this column
 existed, or by some future path that doesn't stamp it") or at least `minAgeMs` old. The
@@ -33,13 +33,21 @@ step the owner does by hand (there is currently no "reset to code default" actio
 the dashboard — see the comment in `src/db/index.ts`'s T475 migration for where one would
 clear `_overridden`/`_overridden_at` together if that's ever added).
 
-## Output
+## How the stage hands data on (ports)
 
-A ports stage with one declared output: `report` (`stale-overrides-report`, the JSON file
-`data/out/stale-overrides.json`, artifact type in `contracts.ts`). It re-scans fresh every run
-and rewrites the file, so a run that returned without writing it fails. There is no ledger:
-the weekly row that existed only so the dashboard's Output section had something to list is
-gone, and that section now shows the report as an artifact card (latest run, with a "Browse
-items" list of the overrides). Runs weekly
-(Sundays 07:00, one hour after `plex-space-saver`'s Sunday 06:00 slot to avoid a scheduling
-collision).
+A ports workflow with one stage (see "Ports" in the root `CLAUDE.md`; artifact type in
+`contracts.ts`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `overrides-audit-scan` | none | `report` (`stale-overrides-report`, `data/out/stale-overrides.json`) |
+
+The stage re-scans fresh every run and rewrites the file, so a run that returned without
+writing it fails. The artifact's check wants an `items` list whose length matches `count`; an
+empty list is valid (nothing stale). There is no ledger and nothing to skip: the stage writes
+no `work_items` rows, and the dashboard's Output section shows the report as an artifact card
+(from the latest run, with a browsable list of the overrides). Not limitable (no `inputKeys()`).
+The stage has a 60 second timeout and 3 retries.
+
+Runs weekly (Sundays 07:00, one hour after `plex-space-saver`'s Sunday 06:00 slot to avoid a
+scheduling collision).

@@ -1,4 +1,6 @@
-// Pure Plex/TMDB franchise-gap helpers (no I/O) — unit-tested in movies.test.ts.
+// Pure helpers (no I/O), unit-tested in movies.test.ts: the Plex movie snapshot
+// and taste profile this workflow builds, and the TMDB collection-gap math the
+// separate `missing-movies` workflow imports from here.
 import { extractTmdbId } from '../missing-tv-seasons/plex.js';
 import type {
   FranchiseGap,

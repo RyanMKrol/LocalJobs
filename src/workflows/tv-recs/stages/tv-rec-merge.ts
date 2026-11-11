@@ -1,7 +1,8 @@
-// TV-domain thin wrapper over the shared recommender merge stage
-// (src/core/recommender/merge.ts, T561). Keeps the exact same exported API
-// (`runTvRecMerge`, `SearchTvFn`, `TmdbTvSearchResult`, `MergeOpts`) so
-// `tv-rec-merge.job.ts` and every existing merge test keeps working unchanged.
+// TV-domain thin wrapper over the shared recommender merge
+// (src/core/recommender/merge.ts). The stage itself (`tv-rec-merge.job.ts`) is
+// built by `makeMergeStage` and does not go through this file. This wrapper
+// (`runTvRecMerge`, `SearchTvFn`, `TmdbTvSearchResult`, `MergeOpts`) is what the
+// merge tests call, with explicit paths and an injected TMDB search.
 import type { JobContext } from '../../../core/types.js';
 import { runMerge as coreRunMerge } from '../../../core/recommender/merge.js';
 import type { MergeRunOpts, RunClaudeFn } from '../../../core/recommender/merge.js';

@@ -17,19 +17,29 @@ discover ──files──▶ resolve ──languages──▶ evaluate ──de
 
 A ports workflow (see "Ports" in the root `CLAUDE.md`). The data travels in the `work_items`
 ledger, so every artifact in `contracts.ts` is a `ledgerArtifact`: a stage's rows ARE its output.
+There are no hand-off files.
 
-| Stage | Inputs | Output |
-|---|---|---|
-| `plex-language-discover` | none (root: `inputKeys()`) | `files` (`plex-language-discover`) |
-| `plex-language-resolve` | `files` | `languages` (`plex-language-resolve`) |
-| `plex-language-evaluate` | `files`, `languages` | `decisions` (`plex-language-evaluate`) |
-| `plex-language-apply` | `decisions`, `files` | `applied` (`plex-language-applied`, the workflow's product) |
+| Stage | Depends on | Inputs | Outputs |
+|---|---|---|---|
+| `plex-language-discover` | nothing (root: `inputKeys()`) | none | `files` (`plex-language-discover`) |
+| `plex-language-resolve` | discover | `files` | `languages` (`plex-language-resolve`) |
+| `plex-language-evaluate` | discover, resolve | `files`, `languages` | `decisions` (`plex-language-evaluate`) |
+| `plex-language-apply` | discover, evaluate | `decisions`, `files` | `applied` (`plex-language-applied`: the rows of job `plex-language-apply`) |
 
-`plex-language-apply` depends on `plex-language-discover` directly: it reads the discover rows
-for each file's Plex ids. That read used to have no edge and no gate.
+`plex-language-apply` is the product stage (`product: true`). It depends on
+`plex-language-discover` directly because it reads the discover rows for each file's Plex ids,
+and every read needs an edge.
 
-- **`plex-language-discover`** (read-only, the DAG's ROOT — declares `inputKeys()` with
-  `inputKeysService: 'plex'`, so this workflow is limitable for the first time) walks every configured
+Each output is the ledger of the stage's own job name. The engine commits it when the stage ends
+(which runs the artifact's check) and confirms it again before a consuming stage starts. The
+stages do not call `ctx.input()`: they read the upstream rows themselves through
+`stages/ledger.ts`. Declaring the inputs is what puts the checks in front of each stage.
+
+Schedule: daily at 01:00 (`0 1 * * *`). Discover has a three-hour timeout (see below); resolve,
+evaluate and apply have one hour each. Every stage has 3 retries.
+
+- **`plex-language-discover`** (read-only, the DAG's ROOT; it declares `inputKeys()` with
+  `inputKeysService: 'plex'`, so this workflow is limitable) walks every configured
   Plex library section and records every file (a movie, or a TV episode) on the `work_items` ledger,
   keyed `${itemRatingKey}::part${partId}`, with `detail: { name, file, itemRatingKey, partId, type,
   tmdbId, seasonEpisode? }` — `tmdbId` is extracted from the title's own Plex Guid, so this stage makes
@@ -57,10 +67,11 @@ for each file's Plex ids. That read used to have no edge and no gate.
 - **`plex-language-resolve`** (read-only, `dependsOn: discover`) looks up each not-yet-resolved file's
   show/movie's true original language + candidate spoken languages via TMDB, routed through
   `callService('tmdb', () => lookupLanguageDetail(tmdbId, type), { cacheKey: 'tmdb-language:<type>:<tmdbId>'
-  })` — the opt-in 5-minute response cache (`CallServiceOpts.cacheKey`, `src/core/services.ts`). Because
-  the cache key is the SHOW's tmdb id (not the file), every other episode of the same show resolved
-  within the same run reuses the cached response — a show with 20 not-yet-resolved episodes makes ONE
-  real TMDB call, not 20 — while every file still gets its own permanent ledger row
+  })`. That engages the `tmdb` service's response cache (`CallServiceOpts.cacheKey` in
+  `src/core/services.ts`; the TTL is the service's `cacheTtlMs`, 22 hours). Because the cache key
+  is the SHOW's tmdb id (not the file), every other episode of the same show resolved while the
+  entry is fresh reuses the cached response: a show with 20 not-yet-resolved episodes makes ONE
+  real TMDB call, not 20. Every file still gets its own permanent ledger row
   (`detail: { name, originalLanguage?, candidateLanguages[] }`). A hit TMDB day/month quota
   (`QuotaExceededError`) is caught per-file and stops the run gracefully; the file is left un-done and
   retried automatically once the quota resets.
@@ -71,13 +82,13 @@ for each file's Plex ids. That read used to have no edge and no gate.
   `detail: { name, status, currentAudio, currentSubtitle, proposedAudio?, proposedSubtitle? }`. The
   current selection is captured HERE (not re-fetched at apply time) so apply can record a real
   before/after in its undo log without a second live fetch.
-- **`plex-language-apply`** (MUTATING, `dependsOn: evaluate`) reads every file evaluate flagged
-  `status: 'change'` that this stage has not ALREADY applied and applies the proposed audio (and, when
-  set, subtitle) selection via Plex's own official
-  `PUT /library/parts/<id>?audioStreamID=&subtitleStreamID=&allParts=1` endpoint — the same call Plex's
-  own clients make when a user manually picks a track (`plexPutStreams` in `src/core/plex-client.ts`,
-  shared there rather than kept workflow-local since it's a Plex-generic mutating primitive, like
-  `plexGet` is a Plex-generic read).
+- **`plex-language-apply`** (MUTATING, `dependsOn: discover, evaluate`) reads every file evaluate
+  flagged `status: 'change'` that this stage has not ALREADY applied and applies the proposed audio
+  (and, when set, subtitle) selection via Plex's own official
+  `PUT /library/parts/<id>?audioStreamID=&subtitleStreamID=&allParts=1` endpoint. That is the same
+  call Plex's own clients make when a user manually picks a track (`plexPutStreams` in
+  `src/core/plex-client.ts`, shared there because it is a Plex-generic mutating primitive, like
+  `plexGet` is a Plex-generic read). It takes each file's `partId` and path from the discover row.
 
 **A third member from an earlier design, `plex-language-no-track-flag`, was deliberately removed
 (T452) with no replacement — don't re-add it without a fresh ask.** It used to flag files with NO audio
@@ -113,11 +124,12 @@ Butler-backup-guarded mutations on a file the FIRST time it's seen — this work
 (`plex-language-discover` declares `inputKeys()`) for exactly this reason: a manual run can now be
 scoped to "just the N newest files" instead of the whole library.
 
-`stages/ledger.ts` is this workflow's own helper for reading a prior stage's `work_items` rows (every
-`'success'` row for a job name, with its parsed `detail`) — it imports the shared `db` handle from
-`src/db/index.ts` directly rather than going through `src/db/store.ts` (which has no generic
-"every row for a job" query), a deliberate, scope-driven exception to the "all SQL goes through
-store.ts" convention, confined to this one workflow-local file. Read-only, never a paid/remote call.
+`stages/ledger.ts` is this workflow's own helper for reading a prior stage's `work_items` rows
+(every `'success'` row for a job name, with its parsed `detail`). It queries the shared `db` handle
+from `src/db/index.ts` directly, which is an exception to the "all SQL goes through store.ts"
+convention, confined to this one workflow-local file. It predates `listSuccessWorkItems` in the
+store and `successRows` in the engine (which the artifact types in `contracts.ts` use) and does
+the same job as both. Read-only, never a paid/remote call.
 
 ## A failed file fails its stage's run (discover, resolve, evaluate)
 
@@ -137,21 +149,22 @@ the item-loop rule:
   stopped on as `skipped`, so a run that resolved nothing because of the cap is seen as
   stalled rather than as a quiet success.
 
-## The evaluate → apply gate is a REAL pre-mutation check, not the trivial minimum (T574)
+## The check in front of apply is a REAL pre-mutation check, not the trivial minimum (T574)
 
-The artifact checks in `contracts.ts` are NOT uniformly trivial. `discoveredFiles` and
-`resolvedLanguages` stay at the "the ledger is readable" minimum: there is no meaningful shape to
-assert before those read-only stages. `languageDecisions`, however, sits
-directly in front of `plex-language-apply` — the repo's ONLY externally-mutating stage — so it asserts
-something real: every `plex-language-evaluate` ledger row with `detail.status === 'change'` must carry
-a numeric `detail.proposedAudio.streamId` AND a non-null `detail.currentAudio`. This is exactly the
-malformation `apply.ts` currently checks for and silently skips at runtime (`!discover ||
-typeof evalDetail.proposedAudio?.streamId !== 'number'`, `stages/apply.ts` ~line 54) — the gate now
-catches an evaluate-logic drift LOUD, at the boundary, before any file reaches the mutating Plex call,
-instead of it quietly showing up as a "skipped as malformed" apply-run log line. An empty ledger, or
-one where every row is `'skip'`, passes trivially (nothing to apply). Covered by
-`lib.test.ts` (valid change/skip rows → pass; a `'change'` row missing `proposedAudio.streamId` or with
-a null `currentAudio` → fail, naming the offending `itemKey`).
+The artifact checks in `contracts.ts` are NOT uniformly trivial. `discoveredFiles`,
+`resolvedLanguages` and `appliedChanges` stay at the "the ledger is readable" minimum: there is no
+meaningful shape to assert for them. `languageDecisions`, however, sits directly in front of
+`plex-language-apply`, the stage that changes Plex, so it asserts something real: every
+`plex-language-evaluate` ledger row with `detail.status === 'change'` must carry a numeric
+`detail.proposedAudio.streamId` AND a non-null `detail.currentAudio`. The check runs when evaluate
+commits its output, and the engine confirms it passed before apply starts, so a drift in the
+evaluate logic fails the run LOUD at that boundary, before any file reaches the mutating Plex
+call. `apply.ts` still guards against the same malformation at runtime (`!discover ||
+typeof evalDetail.proposedAudio?.streamId !== 'number'`) and logs such a row as "skipped as
+malformed", but with the check in place that path should only ever fire for a missing discover
+row. An empty ledger, or one where every row is `'skip'`, passes trivially (nothing to apply).
+Covered by `lib.test.ts` (valid change/skip rows pass; a `'change'` row missing
+`proposedAudio.streamId` or with a null `currentAudio` fails, naming the offending `itemKey`).
 
 ## Fully unattended — no per-run manual sign-off, by explicit owner decision
 
@@ -172,7 +185,8 @@ of manual review, two safety nets stand in:
    recent (or a given) log and reverts every `'applied'` entry back to its recorded before-state.
 `plex-language-apply` records every processed file on the `work_items` ledger (`success`/`failed`) and
 throws (failing the run itself) if any file failed to apply this run, per the repo-wide item-loop
-convention.
+convention. The applied-changes log is a side file for the undo script, not a declared output: the
+stage's one output is its ledger.
 
 **Ambiguous ties are NOT a thing here — the owner explicitly ruled it out.** `FileStatus` has exactly 2
 values — `'change' | 'skip'` — and every tie resolves automatically via the existing best-judgment
@@ -181,10 +195,11 @@ highest channel count, then higher-quality codec, then lowest stream index).
 
 ## Shared Plex/TMDB connectivity
 
-Like the other five Plex-touching workflows (`missing-tv-seasons`, `movie-recommendations`,
-`plex-space-saver`, `tv-recommendations`, `plex-profiles`), this workflow reuses the shared,
-self-contained `src/core/plex-client.ts` (`plexGet`/`tmdbGet`, DHCP-self-heal LAN scan) rather than
-duplicating connectivity — see that file for the mechanism. Plex connectivity is metered via the shared
+Like the other eight Plex-touching workflows (`missing-tv-seasons`, `missing-movies`,
+`movie-recommendations`, `tv-recommendations`, `plex-space-saver`, `plex-profiles`,
+`plex-library-guard`, `plex-rename`), this workflow reuses the shared, self-contained
+`src/core/plex-client.ts` (`plexGet`/`tmdbGet`, DHCP-self-heal LAN scan) and does not duplicate
+connectivity. See that file for the mechanism. Plex connectivity is metered via the shared
 `plex` service (`callService('plex', ...)`). TMDB lookups route through the shared rate-limited `tmdb`
 service (`callService('tmdb', ...)`, same as `missing-tv-seasons`). `lib.ts`'s `extractTmdbId` (used by
 `discover.ts` to pull each title's tmdb id off its Plex Guid array) is a thin re-export of
@@ -197,7 +212,7 @@ read-only `discover`/`evaluate` stages) passes a `cacheKey` derived from the req
 cache TTL (T476) — a second read of the SAME Plex resource within that window (e.g. another
 Plex-touching workflow triggered back-to-back via the admin "Run all workflows" button) is served
 from cache instead of hitting Plex again. This is separate from `resolve`'s own TMDB `cacheKey`
-dedup above, which caches the `tmdb` service's 5-minute default TTL, not `plex`'s. Each `lib.ts`
+dedup above, which uses the `tmdb` service's cache and its 22-hour TTL, not `plex`'s. Each `lib.ts`
 Plex read helper takes an optional low-level `fetchPlex` override (defaulting to the real `plexGet`),
 still routed through `callService`, so the cache dedup itself is unit-tested (`lib.test.ts`) without a
 live Plex call. **`plex-language-apply`'s mutating `plexPutStreams`/`triggerButlerBackup` calls are

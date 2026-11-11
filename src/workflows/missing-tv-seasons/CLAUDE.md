@@ -1,110 +1,129 @@
 # CLAUDE.md — src/workflows/missing-tv-seasons/
 
-Audits the owner's Plex TV library for newly-released COMPLETE seasons they don't already own —
-snapshot → check → notify, scheduled weekly.
+Audits the owner's Plex TV library for complete seasons that have aired and that they do not own.
+Three stages: snapshot, check, notify. The folder and the workflow are both named
+`missing-tv-seasons`. The manifest file is `plex.workflow.ts`.
 
 ## What it does
 
-3-stage DAG, serial (`maxConcurrency: 1`), scheduled Mondays 09:00 (`0 9 * * 1`):
+A 3-stage DAG, serial (`maxConcurrency: 1`), scheduled Mondays 09:00 (`0 9 * * 1`):
 
-1. **`plex-tv-snapshot`** reads Plex library section `PLEX_TV_SECTION` (default `5`, "TV shows") by
-   GUID, building a per-show snapshot: title, `tmdbId` (parsed from the show's `tmdb://` GUID — never
-   guessed; a show with no such GUID is flagged unverifiable) and the highest owned REGULAR season
-   (season 0/specials excluded). Writes `data/out/snapshot.json`. **Fails loud on a 0-show read:** if
-   the section listing returns zero shows it THROWS (before writing anything) rather than succeeding
-   with an empty snapshot — a populated TV library never legitimately reads empty, so an empty result
-   is a transient Plex anomaly (stale DHCP host, dropped request, poisoned response cache). Without
-   this guard, an empty snapshot flowed downstream: `tmdb-season-check` read 0 shows and CLOBBERED the
-   last-good `missing-seasons.json` with an empty file, wiping the dashboard's Output section even
-   though the library was unchanged (the cumulative `work_items` ledger kept its rows, so the run page
-   still showed data — a confusing "runs have data but Output is empty" split). Throwing (the stage
-   has `maxRetries: 3`) preserves the last good `snapshot.json`, blocks the downstream stages so their
-   output is preserved too, and surfaces the failure instead of hiding it.
-2. **`tmdb-season-check`** reads the snapshot and, for each show with a `tmdbId`, checks TMDB
-   (`GET /tv/{id}` for status + seasons, `GET /tv/{id}/season/{N}` per candidate season) for the
-   highest AIRED regular season and which owned+1..aired seasons are fully COMPLETE (every episode
-   aired). ENDED/CANCELED shows are NOT skipped — revivals happen. TMDB calls route through the
-   shared, rate-limited `tmdb` service. Writes `data/out/missing-seasons.json`.
-3. **`plex-seasons-notify`** sends ONE digest push naming every newly-detected `(show, season)` pair,
-   then marks each notified so it's never re-announced, and writes a markdown report to
-   `data/out/reports/missing-seasons.md`.
+```
+plex-tv-snapshot → tmdb-season-check → plex-seasons-notify
+```
 
-## Idempotency — "re-scan + notification-log", not "work-done"
+1. **`plex-tv-snapshot`** reads Plex library section `PLEX_TV_SECTION` (default `5`) and builds one
+   entry per show: title, `tmdbId` (from the show's `tmdb://` GUID, never guessed) and the highest
+   owned regular season (season 0, specials, is excluded). It makes two Plex reads, the show
+   listing and a flat episode listing. Writes `data/out/snapshot.json`. `timeoutMs` 5 minutes,
+   `maxRetries: 3`.
 
-This workflow has NO static input list — its inputs are DISCOVERED live from Plex every run, so it
-declares no `inputKeys()` (not limitable; scheduled-only, always unlimited).
+   **It fails on a 0-show read.** If the section listing returns no shows the stage throws before
+   writing anything. A populated library never really reads empty, so an empty result is a Plex
+   problem (a stale DHCP host, a dropped request, a bad cached response). Writing it would let
+   `tmdb-season-check` read 0 shows and replace the last good `missing-seasons.json` with an
+   empty one. Throwing keeps the last good files, stops the later stages, and shows the failure.
+2. **`tmdb-season-check`** reads the snapshot and, for each show with a `tmdbId`, asks TMDB
+   (`GET /tv/{id}` for status and seasons, `GET /tv/{id}/season/{N}` per candidate season) for
+   the highest aired regular season and which seasons from owned+1 up to it are complete (every
+   episode aired). Ended and cancelled shows are still checked, because revivals happen. TMDB
+   calls go through the shared `tmdb` service with a cache key per path. Writes
+   `data/out/missing-seasons.json`: `shows[]` (those with a complete missing season),
+   `unverifiable[]` (no GUID) and `errors[]` (TMDB call failed). `timeoutMs` 30 minutes,
+   `maxRetries: 3`.
+3. **`plex-seasons-notify`** sends one digest push naming every newly found `(show, season)`
+   pair, then marks each one so it is never announced again. It rewrites the markdown report
+   `data/out/reports/missing-seasons.md` on every run. `timeoutMs` 2 minutes, `maxRetries: 3`.
 
-**A ports workflow** (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
+## How the stages hand data to each other (ports)
+
+A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contracts.ts`):
 
 | Stage | Inputs | Outputs |
 |---|---|---|
 | `plex-tv-snapshot` | none | `snapshot` (`plex-tv-snapshot`, `snapshot.json`) |
 | `tmdb-season-check` | `snapshot` | `missing` (`tmdb-missing-seasons`, `missing-seasons.json`) |
-| `plex-seasons-notify` | `missing` | `report` (`missing-seasons-report`, the markdown), `digest` (`missing-seasons-digest`, inline counts) |
+| `plex-seasons-notify` | `missing` | `report` (`missing-seasons-report`, `reports/missing-seasons.md`), `digest` (`missing-seasons-digest`, inline counts) |
 
-Stages 1 and 2 RE-COMPUTE FRESH every run and write NO ledger rows. They used to record one row
-per show each (about 650 a run) so the run page had something to list; the run page now lists
+All files are under `data/out/`. Each output is rebuilt on every run.
+
+## Idempotency: re-scan, then remember what was announced
+
+There is no static input list. The inputs are read live from Plex on every run, so no stage
+declares `inputKeys()` and the workflow is not limitable.
+
+Stages 1 and 2 recompute everything on every run and write no ledger rows. The run page lists
 the shows from the artifacts themselves.
 
-**A show that cannot be checked still fails the run.** Stage 2 fails when any show has no
-`tmdb://` GUID or its TMDB call errored. It writes `missing-seasons.json` first, including
-`unverifiable[]` and `errors[]`, and the stage commits that output before failing, so the failed
-run's page lists the shows that were the problem (shown as failed items on the artifact). A show
-with no GUID therefore blocks every run until it gets one in Plex. This used to be recorded as a
-`failed` ledger row as well, aimed at the dashboard's stuck-item controls, but neither Unstick
-nor Ignore could actually clear it (stage 2 never consulted the ledger), so that row is gone and
-the failing run is the one signal. The owner accepted this rough edge ("I'll deal with the
-problem if it pops up").
+**A show that cannot be checked fails the run, after the output is committed.** Stage 2 fails
+when any show has no `tmdb://` GUID or its TMDB call errored. It writes `missing-seasons.json`
+first, including `unverifiable[]` and `errors[]`, and the stage commits that output before
+rethrowing (`missing.commit()` in `season-check.job.ts`). So the failed run's page lists the
+shows that were the problem, shown as failed items on the artifact. Because the stage failed,
+`plex-seasons-notify` does not run. A show with no GUID therefore fails every run until it gets
+one in Plex. There is no ledger row for such a show, so the dashboard's Unstick and Ignore
+controls do not apply to it. The owner accepted this rough edge ("I'll deal with the problem if
+it pops up").
 
-Idempotency in the skip-if-done sense lives ONLY in stage 3: its `work_items` ledger is a "have
-I already notified this?" log, not a work-done log, keyed `pairKey(tmdbId, season) =
-"<tmdbId>::S<season>"` under job name `plex-seasons-notify`. A row not yet `success` is
-newly-detected; only actionable (still-missing) pairs get rows at all, so an "up to date" show
-never appears in the ledger. The first-ever run announces the whole current backlog in one
-digest. These rows are what the notify stage lists as its items on a run page.
+A TMDB quota stop is different: the loop ends early with a warning and the stage writes what it
+has. If nothing else failed, the run succeeds with a list that only covers the shows checked
+before the stop.
 
-The owner can permanently silence a factual-but-unwanted gap via `ignoreSurfacedItem` (the same
-ignore-to-suppress mechanism `movie-recommendations`'s franchise-gaps/recs use) —
-`POST /api/missing-seasons/:tmdbId/:season/ignore` (plus bulk and unignore counterparts), surfaced on
-this workflow's dashboard detail page.
+The only ledger is stage 3's. It is a "have I already announced this?" log, not a work-done log,
+under job name `plex-seasons-notify` (`NOTIFY_JOB` in `stages/notify.ts`), keyed
+`pairKey(tmdbId, season) = "<tmdbId>::S<season>"`. A pair with no done row is new. Rows are
+written only for pairs that were announced, so an up-to-date show never appears in the ledger.
+Pairs are marked only after the push succeeds, so a failed push is retried. The first run
+announces the whole backlog in one digest. These rows are what the notify stage lists as its
+items on a run page.
+
+The owner can dismiss a gap they do not want with `ignoreSurfacedItem`, the same mechanism the
+`missing-movies` gaps and the two recommenders use:
+`POST /api/missing-seasons/:tmdbId/:season/ignore` and `/unignore`, plus
+`/api/missing-seasons/ignore-bulk` and `/unignore-bulk`, on this workflow's dashboard page. A
+dismissed pair counts as done, so it is never announced, and the report leaves it out.
 
 ## Shared Plex/TMDB connectivity
 
-Plex + TMDB HTTP access (`plexGet`/`tmdbGet`/`resolvePlexHost`, plus `fetchSectionMetadata`/
-`extractTmdbId`/`PlexAllResponse<T>` — the shared section-listing wrapper, GUID extraction, and
-`MediaContainer` response type this workflow's `plex-tv-snapshot` stage uses, T586) lives in the
-top-level `src/core/plex-client.ts` — shared by all FOUR Plex-touching workflows (this one,
-`tv-recommendations`, `movie-recommendations`, `plex-space-saver`), not owned by this workflow.
-`plex.ts`'s own `extractTmdbId` is a thin re-export of the core implementation, not a separate one.
-Notably it self-heals a changed DHCP IP: the owner's Plex server's IP changes on lease renewal, so a
-hardcoded `PLEX_HOST` used to break `plex-tv-snapshot`. `resolvePlexHost()` (cached once per daemon
-run) confirms the configured `PLEX_HOST` is a live Plex (and, if `PLEX_MACHINE_ID` is set, the RIGHT
-one) via `GET /identity`, and otherwise scans the local IPv4 /24 subnet(s) on `:32400` (bounded by
-per-probe timeout, concurrency, and an overall wall-clock cap) until it finds one — logging the
-discovered host so it can be pinned in `.env` next time. Throws a clear "set PLEX_HOST" error if
-nothing answers.
+Plex and TMDB access (`plexGet`, `tmdbGet`, `resolvePlexHost`, `fetchSectionMetadata`,
+`extractTmdbId`) is in the top-level `src/core/plex-client.ts`. It is not owned by this workflow.
+Nine workflows use it: `missing-tv-seasons`, `tv-recommendations`, `movie-recommendations`,
+`missing-movies`, `plex-space-saver`, `plex-library-guard`, `plex-language-fix`, `plex-profiles`
+and `plex-rename`. `plex.ts`'s `extractTmdbId` is a re-export of the core one.
 
-**Plex reads are metered via the shared `plex` service.** Stage 1 (`plex-tv-snapshot`) wraps both
-`plexGet` calls (the shows listing and the flat episode listing) in `callService('plex', ...)` to
-coordinate rate limits and quotas across all Plex-touching workflows via the shared service meter.
+The client copes with a changed DHCP address. The Plex server's IP changes on lease renewal, so
+a fixed `PLEX_HOST` used to break `plex-tv-snapshot`. `resolvePlexHost()` checks that the
+configured `PLEX_HOST` is a live Plex (and, if `PLEX_MACHINE_ID` is set, the right one) with
+`GET /identity`. If not, it scans the local IPv4 /24 subnets on port 32400, bounded by a
+per-probe timeout, a concurrency limit and an overall time cap, and logs the host it finds so it
+can be set in `.env`. When the configured host simply did not answer, it also keeps waiting on
+it during the scan (up to `PLEX_WAKE_TIMEOUT_MS`, default 30s), because a server whose disks
+have spun down can be slow to wake. If nothing answers it throws a "set PLEX_HOST" error. The
+resolved host is cached for the life of the process.
 
-**Plex reads are response-cached for a 3-hour window (T477).** Both calls pass a `cacheKey` derived
-from the request path (`plex:<path>`, e.g. `plex:/library/sections/5/all?includeGuids=1`) to
-`callService('plex', ..., { cacheKey })`, engaging the `plex` service's 3-hour cache TTL (T476). A
-second read of the SAME section within that window (e.g. another Plex-touching workflow triggered
-back-to-back via the admin "Run all workflows" button) is served from the cache instead of hitting
-Plex again. `runSnapshot` accepts an injectable `fetchPlex` option (tests) that stands in for the
-real `plexGet`, still routed through `callService`, so the cache dedup itself is unit-tested without
-a live Plex call.
+**Plex reads go through the shared `plex` service and are response-cached.** Both of stage 1's
+reads use `fetchSectionMetadata`, which calls `callService('plex', ..., { cacheKey })` with a key
+of `plex:<path>` (for example `plex:/library/sections/5/all?includeGuids=1`). A second read of
+the same path within the service's 3-hour cache window (for example another Plex workflow run
+just before) is served from the cache. `runSnapshot` takes a `fetchPlex` option for tests that
+replaces the low-level GET and still goes through `callService`, so the caching path can be
+tested without a live Plex.
 
 ## Files
 
-- `config.ts` — data paths (`snapshotOut`/`missingOut`/`reportDir`) plus `PLEX_TV_SECTION`
-  (default `5`).
-- `stages/snapshot.ts`, `stages/season-check.ts`, `stages/notify.ts` — the 3 DAG stages.
-- `lib.ts`, `plex.ts`, `tmdb.ts` — pure helpers (GUID extraction, season-completeness math, formatting).
-- `data/out/` — `snapshot.json`, `missing-seasons.json`, `reports/missing-seasons.md`.
+- `plex.workflow.ts`: the manifest.
+- `contracts.ts`: the artifact types the stages exchange (`plexTvSnapshot`, `missingSeasons`,
+  `seasonsReport`, `seasonsDigest`), each with its check and how it is shown.
+- `config.ts` (`plexConfig`): the data paths (`snapshotOut`, `missingOut`, `reportDir`) and
+  `PLEX_TV_SECTION` (default `5`).
+- `stages/snapshot.ts`, `stages/season-check.ts`, `stages/notify.ts`, each with its `.job.ts`:
+  the 3 stages.
+- `plex.ts` (building the snapshot from Plex's listings), `tmdb.ts` (season maths), `lib.ts`
+  (directories, JSON helpers, season-range formatting), `types.ts`.
+- `data/out/`: `snapshot.json`, `missing-seasons.json`, `reports/missing-seasons.md`.
 
-Credentials (read by the shared client, not this workflow's own config): `PLEX_HOST`,
-`PLEX_API_TOKEN`, optional `PLEX_MACHINE_ID`, and `TMDB_API_TOKEN` (or the legacy `TVDB_API_TOKEN`
-fallback).
+Services called: `plex` (snapshot) and `tmdb` (season check).
+
+Credentials (read by the shared client, not this workflow's config): `PLEX_HOST`,
+`PLEX_API_TOKEN`, optional `PLEX_MACHINE_ID`, and `TMDB_API_TOKEN` (or the older
+`TVDB_API_TOKEN` as a fallback).

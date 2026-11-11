@@ -159,8 +159,10 @@ function applyNormalizedNotes(data: unknown, name: string, ctx: JobContext): voi
   }
 }
 
-/** Locate the cached HTML for a page, if any was kept (the success path saves
- *  only `.txt`; a `.html` shows up for pages the fetch stage diagnosed). */
+/** Locate the cached HTML for a page, if any was kept: the fetch stage saves
+ *  `<id>.html` beside `<id>.txt` on success, and a page it diagnosed as blocked
+ *  or short goes to `pages-failed/`. Captures made before the HTML was kept
+ *  have only the `.txt`. */
 function readPageHtml(id: string, pagesDir: string): string | null {
   for (const path of [
     join(pagesDir, `${id}.html`),

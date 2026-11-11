@@ -7,8 +7,8 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * and unchanged for 2+ weeks (or is unknown-age) as a candidate to fold into the
  * manifest/service-definition code default. Mirrors `plex-space-saver`'s shape:
  * plain SQLite reads, no LLM, no filesystem/API scraping. RE-SCANS FRESH every
- * run; idempotent per ISO calendar week via the work_items ledger. One stage, so
- * no DAG edge — no gate needed (see src/workflows/CLAUDE.md).
+ * run and rewrites the one report file, which is the stage's declared output.
+ * There is no ledger. One stage, so there are no edges and no inputs.
  */
 const workflow: WorkflowDefinition = {
   name: 'overrides-audit',
@@ -17,7 +17,7 @@ const workflow: WorkflowDefinition = {
     'job timeout) that has been live and unchanged for 2+ weeks or has an unknown override age — a ' +
     'reminder to fold a stable value into the manifest/service-definition code default. Report only, ' +
     'never auto-patches anything. Weekly.',
-  idempotencyNote: 'There\'s no per-item tracking here — this workflow tracks only which calendar week\'s override report has been generated, so re-running it the same week regenerates that week\'s report in place; it always re-scans every current dashboard override fresh.',
+  idempotencyNote: 'There is no per-item tracking here and nothing is skipped: every run scans every current dashboard override afresh and rewrites the one report file, so running it again simply replaces the report.',
   schedule: '0 7 * * 0',
   jobs: [{ job: 'overrides-audit-scan' }],
 };

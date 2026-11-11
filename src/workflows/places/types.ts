@@ -1,4 +1,4 @@
-// Types for the places ingestion workflow (private — gitignored).
+// Types for the places workflow.
 
 /** A note attached to a place from one specific saved list. */
 export interface ListNote {

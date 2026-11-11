@@ -23,11 +23,11 @@ export const moviesConfig = {
   snapshotOut: resolve(dataDir, 'out', 'snapshot.json'),
   tasteOut: resolve(dataDir, 'out', 'taste-profile.json'),
   /**
-   * COMPAT SHIM (T468): the franchise-gap audit — and its franchise-gaps.json
-   * output — moved to the separate `missing-movies` workflow. `src/api/server.ts`
-   * (out of this task's scope) still reads `moviesConfig.gapsOut` directly for the
-   * `/api/movie-gaps` endpoints; aliasing it to the new location keeps that code
-   * resolving without touching it. T469 (already queued) finishes the relocation.
+   * COMPAT SHIM (T468): the franchise-gap audit, and its franchise-gaps.json
+   * output, moved to the separate `missing-movies` workflow. `src/api/server.ts`
+   * still reads `moviesConfig.gapsOut` for the `/api/movie-gaps` endpoints, and
+   * this alias points it at the new location. It can go once `server.ts` reads
+   * `missingMoviesConfig.gapsOut` directly.
    */
   gapsOut: missingMoviesConfig.gapsOut,
   reportDir: resolve(dataDir, 'out', 'reports'),

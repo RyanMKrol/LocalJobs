@@ -3,6 +3,8 @@ import type { WorkflowDefinition } from '../../core/types.js';
 /**
  * The movie RECOMMENDATION layer as a first-class DAG the framework executes:
  *   movie-snapshot → (8 recommender branches) → rec-merge → movie-recs-notify
+ * (rec-merge also has an edge straight from movie-snapshot: it reads the
+ * snapshot and the taste profile itself.)
  *
  * Scheduled MONTHLY (1st of the month, 09:00). A fan-out of 8 Claude recommender
  * branches (3 stratified-random serendipity + 5 targeted — auteur-completion,
@@ -27,10 +29,11 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * quota are enforced GLOBALLY regardless of how many branches run at once; the
  * service is the spend governor, not the concurrency cap.
  *
- * **Not limitable** — no member declares `inputKeys()`. `movie-snapshot`
- * RE-COMPUTES FRESH every run (no skip-if-done); only `movie-recs-notify` uses
- * the `work_items` ledger, and there it's a "have I already recommended this
- * film?" / "has the owner ignored it?" log, NOT a work-done ledger.
+ * Not limitable: no member declares `inputKeys()`. `movie-snapshot` recomputes
+ * fresh every run (no skip-if-done). The only ledger is `movie-recs`, keyed by
+ * tmdb id: `movie-recs-notify` writes it, and the branches and the merge read
+ * it. It records "have I already recommended this film?" and "has the owner
+ * dismissed it?", not work done.
  */
 const workflow: WorkflowDefinition = {
   name: 'movie-recommendations',

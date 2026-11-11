@@ -7,8 +7,9 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * workflows are developed. Supersedes plex-space-saver's old weekly shrink
  * alert (T519), which it replaces with a daily, per-file, zero-threshold check.
  *
- * Single stage, no DAG edge (so no gate contracts), no inputKeys() (audit
- * style: inputs are discovered live each run, not limitable).
+ * Single stage, no DAG edge, no inputKeys() (audit style: inputs are discovered
+ * live each run, not limitable). The stage declares two outputs, the per-run
+ * report and the baseline snapshot.
  */
 const workflow: WorkflowDefinition = {
   name: 'plex-library-guard',
@@ -20,8 +21,8 @@ const workflow: WorkflowDefinition = {
   // Sat 05:00, Mon 09:00) and the other daily jobs (07:00-08:00, 23:00).
   schedule: '30 10 * * *',
   idempotencyNote:
-    'Re-scans the whole library fresh every run and keeps one ledger row per calendar day, so a ' +
-    'same-day re-run re-diffs against the latest baseline and updates that day\'s row in place. ' +
+    'Re-scans the whole library fresh every run and diffs it against the baseline the last ' +
+    'successful run saved, so a re-run just compares against the latest baseline again. ' +
     'Each alert fires at most once per baseline via the already-alerted ledger; the baseline is ' +
     'only advanced after the alert path settles, so a failed run re-alerts on retry.',
   jobs: [{ job: 'plex-library-guard-scan' }],

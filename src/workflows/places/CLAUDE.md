@@ -9,8 +9,9 @@ places, not just a raw data dump.
 
 ## DAG (4 stages, serial — `maxConcurrency: 1`)
 
-`places-ingest → cid-to-place-id-resolver → places-enrich → enrich-with-llm`.
-Serial by design: the resolver drives a real browser and the last two stages
+`places-ingest → cid-to-place-id-resolver → places-enrich → enrich-with-llm`,
+plus an edge from `places-ingest` straight to `enrich-with-llm` (see the ports
+table below). Serial by design: the resolver drives a real browser and the last two stages
 hit paid APIs (Google Places, Gemini) that must not overlap and are governed by
 day/month spend caps. Single pass per run (no `repeatUntilStable`) — a
 scheduled run processes whatever's ready; capped or transiently-failed items
@@ -21,10 +22,12 @@ run steadily drains the backlog without ever blowing the month.
 **`places-ingest`** parses every CSV under `data/raw/Saved/` (only the `Saved/`
 export — `Maps`/`Maps (your places)` are intentionally ignored) into one
 deduped, normalized `data/out/places.json`, plus a `data/out/validation-report.json`.
-Throws if validation finds an error-level issue. This stage OWNS the workflow's
-per-item ledger list — one row per CID-bearing place, keyed by CID (the id
-every downstream stage keys on); name-only places with no CID never enter the
-pipeline. Re-records the full current list every run (upsert, never skips).
+Throws if validation finds an error-level issue. Name-only places with no CID
+are kept in `places.json` (`resolvable: false`) but nothing downstream can
+resolve them. The stage also records one ledger row per CID-bearing place under
+`places-ingest`, keyed by CID, with `detail: { name, url, lists }`. It re-records
+the whole list on every valid run (only the selected roots on a limited run).
+That ledger is kept on purpose (see the invariants below).
 
 **`cid-to-place-id-resolver`** resolves each place's CID to a real Google
 `place_id` by driving a headless browser to `https://www.google.com/maps?cid=<cid>`
@@ -35,12 +38,17 @@ the shared `launchPersistentBrowser` helper). Free (no paid API), so its own
 not a spend cap. Writes `data/out/resolved.json`. Paced by `PLACES_RESOLVE_DELAY_MS`
 (default 1500ms).
 
+Its ledger is keyed by CID: `success` with `{ name, placeId }`, or `failed`
+with the resolve status and error, retried on later runs up to
+`PLACES_RESOLVE_MAX_ATTEMPTS` (default 4). `PLACES_RESOLVE_LIMIT` caps one run.
+The run fails at the end if any place failed to resolve.
+
 **This is the workflow's root stage — `resolveInputKeys()` derives its input keys
-LIVE from the raw CSVs, never from this workflow's own output (T484).** It used
-to read back `data/out/places.json` — a file THIS workflow itself writes on a
-prior run — so after a "Clear output data" reset it returned `[]` until an
-unlimited run reseeded the file, silently no-opping any limited manual run in
-the meantime. It now calls the shared `collectResolvableCids(savedDir)` helper
+LIVE from the raw CSVs, never from this workflow's own output (T484).** Reading
+back `data/out/places.json`, a file this workflow writes itself, would return
+`[]` after a "Clear output data" reset until an unlimited run rebuilt the file,
+and a limited manual run in between would do nothing. It calls the shared
+`collectResolvableCids(savedDir)` helper
 (`src/workflows/places/parse.ts`) directly against `data/raw/Saved/`'s CSVs —
 the SAME true source `places-ingest` parses — routed through
 `callService('fs', …)` (the local-filesystem service, T483, declared as
@@ -55,7 +63,14 @@ downstream; billing tier is unaffected since `*` is already Enterprise+Atmospher
 Incremental — a place enriched successfully is never re-enriched. Spend is
 governed SOLELY by the shared `google-places` service quota (`callService`
 throws `QuotaExceededError` when exhausted; the run stops gracefully, no
-redundant per-job cap). Writes `data/out/enriched.json`. Credential:
+redundant per-job cap). Writes `data/out/enriched.json`, a map keyed by CID.
+Its ledger is keyed by `place_id`, with `rootKey: cid` and
+`detail: { name, rating, type, address }` on success. A place the quota or a
+429 stopped at is recorded `skipped` with no attempt counted. An auth or
+permission error, or a permanent provider failure, throws. Five failures in a
+row stop the run. `PLACES_ENRICH_RUN_LIMIT` caps one run and
+`PLACES_ENRICH_MAX_ATTEMPTS` (default 4) is the per-place retry budget.
+Responses are cached by the service for 22 hours. Credential:
 `GOOGLE_MAPS_API_KEY`.
 
 **`enrich-with-llm`** asks Gemini (default model `gemini-flash-lite-latest`,
@@ -64,13 +79,14 @@ deliberates/searches rather than barely thinking) to write a prose summary per
 place, blending the Places API data with the owner's own saved-list
 name/notes (fed into the markdown as provenance/context only — never into the
 LLM prompt). Spend governed by the shared `gemini` service quota, same
-`QuotaExceededError` soft-fail. Writes `data/out/llm-enriched.json` plus one
-markdown profile per place under `data/out/markdown/<slug>.md` (frontmatter +
-body, built inline — no separate template file). Records `detail: { name,
-markdown: mdPath }` per item (T110 shape), with `rootKey: cid` (this stage
-keys by `place_id`, so it must explicitly pass the CID lineage back — the one
-place in this workflow where `rootKey` isn't implicit). Credential:
-`GEMINI_API_KEY`.
+`QuotaExceededError` soft-fail. Writes `data/out/llm-enriched.json` (its own
+store of the Gemini verdicts, keyed by `place_id`; no stage reads it and it is
+not a declared output) plus one markdown profile per place under
+`data/out/markdown/<slug>.md` (frontmatter + body, built inline, with no separate
+template file; the slug is made from the place name). Records `detail: { name,
+markdown: mdPath }` per item, keyed by `place_id` with `rootKey: cid`.
+`PLACES_LLM_RUN_LIMIT` caps one run and `PLACES_LLM_MAX_ATTEMPTS` (default 4)
+is the per-place retry budget. Credential: `GEMINI_API_KEY`.
 
 ## How the stages hand data to each other (ports)
 
@@ -86,9 +102,9 @@ A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contra
 - **The last stage depends on `places-ingest` directly.** It reads `places.json` for each
   place's list memberships and the owner's notes. That was a hidden read two stages back; it
   is now an edge in the manifest and an input on the stage.
-- The checks are the same shape and non-empty checks as before: Takeout-sourced with at least
-  one named place; a resolved map with at least one real place_id; an enriched map with at
-  least one place_id.
+- The checks are shape and non-empty checks: Takeout-sourced with at least one named place; a
+  resolved map with at least one real place_id; an enriched map with at least one place_id; no
+  empty profile file.
 - The three stores are cumulative, so a run with nothing left to do in a stage, or one stopped
   by a quota, carries its store forward.
 - The stage functions still read and write the configured paths themselves (`placesConfig`);
@@ -110,15 +126,15 @@ A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contra
 
 ## Non-obvious invariants
 
-- **`places-ingest` must stay the root stage's ledger owner** even though it's a
-  bulk single-file transform, not a per-item API call — without it, the
-  workflow-run Input→Output panel has no input side to pair against the
-  terminal stage's output (it would render empty).
-- **`enrich-with-llm` is the only stage that passes `rootKey` explicitly**
-  (`rootKey: cid`) — every other stage's `item_key` already equals the root, so
-  omitting `rootKey` there correctly defaults `root_key = item_key`. Dropping
-  the explicit `rootKey` here would make each LLM-enriched item its own root,
-  silently breaking manual run-limits.
+- **`places-ingest` keeps its per-place ledger.** It writes one row per CID on every run
+  even though it is a bulk single-file transform. The run page does not need it (the stage's
+  two declared outputs are what it shows), and no other stage reads those rows. It is kept
+  deliberately, so do not remove it as a leftover. Two things follow from it: the run's item
+  tally counts every place every night, and the root stage for run limits is still the
+  resolver (the first stage with `inputKeys()`), not ingest.
+- **`places-enrich` and `enrich-with-llm` must pass `rootKey: cid`.** Both key their ledger by
+  `place_id`, so without it each row would be its own root and a limited manual run would skip
+  it. `places-ingest` and the resolver key by CID, where `root_key = item_key` is already right.
 - **Both paid stages must classify a provider refusal before soft-stopping.**
   `places-enrich` and `enrich-with-llm` call `isPermanentProviderFailure`
   (`src/core/services.ts`) BEFORE their transient-rate-limit branch, and throw when
@@ -131,15 +147,15 @@ A ports workflow (see "Ports" in the root `CLAUDE.md`; artifact types in `contra
   graceful stop; one that needs a human is a failed run.
 - **The three item stages save their hand-off file BEFORE marking items done.**
   `cid-to-place-id-resolver`, `places-enrich` and `enrich-with-llm` each add results to a
-  cumulative JSON file the next stage reads (`resolved.json`, `enriched.json`,
-  `llm-enriched.json`) and save it every 10 items. They used to mark each item done in
-  the ledger immediately, so a run killed between saves left up to 9 places "done"
-  that were missing from the file and so never reached the next stage, with nothing to
-  retry them. Each now holds its ledger marks in a `createCheckpoint`
-  (`src/core/checkpoint.ts`) and applies them only after the save that covers them,
-  flushing in a `finally`. A kill now costs at most 9 repeated lookups. `enriched.json`
-  is about 80 MB, which is why it is not simply saved per item. All of these files are
-  written atomically.
+  cumulative JSON file (`resolved.json` and `enriched.json`, which the next stage reads, and
+  `llm-enriched.json`) and save it every 10 items. Marking an item done before that save
+  would mean a run killed in between leaves places "done" that are missing from the file,
+  so they never reach the next stage and nothing retries them. Each stage holds its ledger
+  marks in a `createCheckpoint` (`src/engine/checkpoint.ts`) and applies them only after the
+  save that covers them, flushing in a `finally`. A kill costs at most 9 repeated lookups.
+  `enriched.json` is about 80 MB, which is why it is not simply saved per item. All of these
+  files are written atomically. The `skipped` row of a soft stop is written directly, since
+  it carries no data.
 - Both paid stages (`places-enrich`, `enrich-with-llm`) rely EXCLUSIVELY on
   their service's quota (`google-places`, `gemini`) as the spend governor —
   don't add a redundant per-job `job_usage` cap on top; it would shadow the

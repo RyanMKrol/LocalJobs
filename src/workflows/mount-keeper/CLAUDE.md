@@ -30,18 +30,33 @@ NAS host/user/share names describe the owner's machine topology, same rule as pl
 4. **Re-verify** the mount point is healthy afterwards; a "successful" mount that leaves the
    expected path unhealthy is flagged as a probably-diverted mount name and fails loud.
 
-Output: a ports stage with one inline output, `status` (`mount-status`): `{ checkedAt, healthy,
-remounted, failed, shares: [{ name, url, mountPoint, action: already-mounted|remounted|failed,
-stateBefore, error?, at }] }`. It is committed even when a share could not be brought up (the
-check hands it over before throwing), so a failed run's page still shows which share was the
-problem; the run then throws, so the aggregate workflow notification fires. There is no ledger:
-the per-share rows this stage used to re-mark every hour existed only to be displayed. NB: while the NAS is genuinely down, the hourly
-schedule means a failure push per hour — if that's ever too noisy during planned NAS downtime,
-toggle the workflow (or just its notifications) off from the dashboard, and back on after.
+## How the stage hands over its result (ports)
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `mount-keeper-check` | none | `status` (`mount-status`, inline) |
+
+The artifact type is declared in `stages/check.job.ts` (there is no `contracts.ts`). The value
+is `{ checkedAt, healthy, remounted, failed, shares: [{ name, url, mountPoint, action:
+already-mounted|remounted|failed, stateBefore, error?, at }] }`, and each share is listed as an
+item on the run page. It is committed even when a share could not be brought up: the check hands
+it over before throwing, so a failed run's page still shows which share was the problem. The run
+then fails, so the workflow notification fires. With no shares configured it logs a warning,
+commits an empty status and succeeds.
+
+There is no ledger and no `data/` folder. Every run reports the current state of every share
+afresh. Not limitable (no `inputKeys()`). `timeoutMs` 5 minutes, `maxRetries: 2`. The `osascript`
+mount call has its own 60 second timeout. The health check and the `rmdir` go through the shared
+`fs` service (`callService('fs', ...)`).
+
+While the NAS is really down, the hourly schedule means a failure push every hour. If that is
+too noisy during planned NAS downtime, turn the workflow (or just its notifications) off from
+the dashboard, and back on afterwards.
 
 ## Testing
 
 `stages/check.test.ts` — injected `getState`/`mount`/`removeStale` seams only (never a real
 mount/osascript): healthy-untouched, remount + re-verify, stale-dir rmdir ordering, mount-throw
-and diverted-name and not-a-dir failures, empty-config no-op, and snapshot recovery semantics.
+and diverted-name and not-a-dir failures, empty-config no-op, and a share that failed on one run
+being reported healthy on the next.
 `parseShares` is covered directly (URL-decoding, malformed-entry dropping).

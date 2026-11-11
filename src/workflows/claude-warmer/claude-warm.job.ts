@@ -27,16 +27,16 @@ export const warmResult = inlineArtifact<WarmResult>({
 export default defineStage({
   name: 'claude-warm',
   description:
-    'Fires one minimal "hi" prompt at the cheapest available Claude model purely to keep the ' +
-    'account\'s 5-hour rolling usage window warm. Claude plans meter usage in rolling windows, ' +
-    'so if this workflow runs proactively every 30 minutes through off-hours, the window is ' +
-    'already running (or freshly reset) by the time a real, more expensive job actually needs ' +
-    'Claude, instead of that job paying the cost of opening a fresh window itself. This job ' +
-    'enforces no local quota or spend cap of its own — the upstream Claude plan is the sole ' +
-    'limiter. A hit rate limit or quota ceiling is treated as an expected, non-fatal outcome: ' +
-    'it is logged as a warning and the run exits cleanly rather than failing, since a limit ' +
-    'being hit simply means the usage window is already active, which is this job\'s entire goal. ' +
-    'What happened is recorded as the stage\'s output.',
+    'Sends one minimal "hi" prompt to a small, cheap Claude model purely to start the ' +
+    'account\'s 5-hour rolling usage window. Claude plans meter usage in rolling windows, so ' +
+    'because this workflow runs at 08:00 and 16:00 every day, a window is already a couple of ' +
+    'hours old by the time intensive work starts, and it resets sooner than one opened by that ' +
+    'work itself would. This job enforces no local quota or spend cap of its own: the upstream ' +
+    'Claude plan is the only limit. A rate limit or quota ceiling is an expected, non-fatal ' +
+    'outcome: it is logged as a warning and the run ends cleanly, since a limit being hit means ' +
+    'the usage window is already active, which is all this job is for. Any other error from the ' +
+    'call is also logged and does not fail the run. What happened (warmed, already active, or ' +
+    'failed) is recorded as the stage\'s output.',
   timeoutMs: 60_000,
   maxRetries: 0,
   outputs: { result: { artifact: warmResult } },

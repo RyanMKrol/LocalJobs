@@ -17,7 +17,7 @@ export interface BuildOpts {
 }
 
 /** Stage 4: Claude combines the parsed Fragrantica data + web research into a
- *  profile that follows perfume-markdown's _TEMPLATE.md. */
+ *  profile that follows the in-project `profile.template.md`. */
 export async function runBuild(ctx: JobContext, opts: BuildOpts = {}): Promise<ItemTally> {
   ensureDirs();
   const perfumes = await loadPerfumes();

@@ -1,36 +1,38 @@
 import type { WorkflowDefinition } from '../../core/types.js';
 
 /**
- * vercel-daily-redeploy: once a day, runs `vercel --prod --yes` directly in the
- * separate `ryankrol.co.uk` checkout — a real CLI production deploy, not an HTTP
- * call to a Vercel Deploy Hook (that was the original design; changed after
- * discovering the actual current situation, see below).
+ * vercel-daily-redeploy: once a day, runs `vercel --prod --yes` directly in two
+ * separate checkouts on this machine. Each is a real CLI production deploy of
+ * that checkout's current working tree, not an HTTP call to a Vercel Deploy
+ * Hook. A run of this workflow deploys two live sites.
  *
- * WHY (revised 2026-07-03): `ryankrol.co.uk` deliberately DISCONNECTED its Vercel
- * Git integration on 2026-07-03 — pushing to `main` no longer auto-deploys
- * anything (that repo's own autonomous harness was pushing a commit every few
- * minutes, and even a *cancelled* deploy still counted against Hobby's quota, so
- * cancelling wasn't enough — the Git connection itself had to come off). That
- * repo now ships via its OWN harness convention: a single always-at-most-one
- * "deploy task" in ITS `.harness/TASKS.json` that runs `vercel --prod` directly.
- * This workflow is a SEPARATE, redundant daily safety net for when that
- * mechanism fails or a session forgets to author a deploy task — it does NOT
- * replace it. A Vercel Deploy Hook was the original plan (T365 in this repo's
- * backlog) but is no longer viable: Deploy Hooks build from the connected Git
- * repo/branch, and with Git integration off there's real doubt one would even
- * fire. `vercel --prod` sidesteps that entirely — it deploys the current local
- * working tree directly, independent of Git integration state (confirmed in
- * `ryankrol.co.uk`'s own `CLAUDE.md` "Deploying" section).
+ * Two stages with no edge between them, run one after the other
+ * (`maxConcurrency: 1`). Both use the same runner and each commits one inline
+ * output, `result` (`vercel-redeploy-result`): deployed, skipped or failed.
  *
- * No new credential to provision: the Vercel CLI is already installed and has a
- * persistent login session on this machine (`vercel whoami` — confirmed working
- * 2026-07-03), and `~/Development/ryankrol.co.uk/.vercel/project.json` is already
- * linked to the project — `vercel-redeploy.job.ts` relies on that existing global
- * CLI auth rather than a passed token. `RYANKROL_CO_UK_PATH` (the checkout path)
- * is the only required env var; unset or a nonexistent path soft-skips cleanly.
+ * - `vercel-redeploy` deploys the `ryankrol.co.uk` checkout
+ *   (`RYANKROL_CO_UK_PATH`). That repo deliberately disconnected its Vercel Git
+ *   integration: its own autonomous harness was pushing a commit every few
+ *   minutes, and even a cancelled deploy counted against the Hobby quota, so
+ *   pushing to `main` no longer deploys anything. It ships through its own
+ *   harness convention (a "deploy task" that runs `vercel --prod`). This stage
+ *   is a separate daily safety net for when that fails or is forgotten. It does
+ *   not replace it.
+ * - `vercel-redeploy-pomodiary` deploys the `PomoDiary` checkout
+ *   (`POMODIARY_PATH`). That repo turns off push-triggered deploys for the same
+ *   reason, so for it this daily deploy is the primary way the site ships.
  *
- * Scheduled late (23:00) so it runs after a typical day's activity, same cadence
- * as the original design.
+ * Why the CLI and not a Deploy Hook: a hook builds from the connected Git repo
+ * and branch, and with the integration off it may not fire at all.
+ * `vercel --prod` deploys the local working tree whatever the state of the Git
+ * integration.
+ *
+ * No credential to provision: the Vercel CLI already has a persistent login
+ * session on this machine (`vercel whoami`), and the job relies on that instead
+ * of a passed token. An unset env var, or a path that does not exist, makes that
+ * stage skip cleanly.
+ *
+ * Scheduled late (23:00) so it runs after a typical day's activity.
  */
 const workflow: WorkflowDefinition = {
   name: 'vercel-daily-redeploy',

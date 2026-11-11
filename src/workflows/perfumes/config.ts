@@ -24,7 +24,11 @@ export const perfumesConfig = {
    *  external repo). Override with PERFUMES_TEMPLATE_PATH to point elsewhere. */
   templatePath: process.env.PERFUMES_TEMPLATE_PATH ?? resolve(here, 'profile.template.md'),
 
-  // ── Claude Code CLI (the Ralph-style worker — $0 under the user's plan) ──
+  // ── Claude Code CLI ($0 under the user's plan) ──
+  // The stages call the shared helper in src/services/claude.ts, which takes its
+  // binary from LOCALJOBS_CLAUDE_BIN and its timeout from the claude-cli service.
+  // `claudeBin` and `claudeTimeoutMs` below are read by nothing; only the three
+  // model names are used.
   claudeBin: process.env.PERFUMES_CLAUDE_BIN ?? 'claude',
   modelFind: process.env.PERFUMES_MODEL_FIND ?? 'claude-sonnet-4-6',
   modelParse: process.env.PERFUMES_MODEL_PARSE ?? 'claude-sonnet-4-6',
@@ -48,6 +52,8 @@ export const perfumesConfig = {
   // cookie and generous, jittered pacing avoids tripping the rate limiter.
   fetchChannel: process.env.PERFUMES_FETCH_CHANNEL ?? 'chrome', // real Chrome; '' falls back to bundled chromium
   fetchHeadless: process.env.PERFUMES_FETCH_HEADLESS !== 'false', // headless works; set false to watch it
+  // The pacing itself is done by the `fragrantica` service, which reads the same
+  // two env vars. The copies here only feed a log line in the fetch stage.
   fetchDelayMs: Number(process.env.PERFUMES_FETCH_DELAY_MS ?? 12_000),
   fetchJitterMs: Number(process.env.PERFUMES_FETCH_JITTER_MS ?? 6000),
   pageTimeoutMs: Number(process.env.PERFUMES_PAGE_TIMEOUT_MS ?? 45_000),
@@ -57,7 +63,7 @@ export const perfumesConfig = {
 
   // ── workflow orchestration ──
   cycleSleepMs: Number(process.env.PERFUMES_CYCLE_SLEEP_MS ?? 5_000),
-  rateLimitBackoffMs: Number(process.env.PERFUMES_RATELIMIT_BACKOFF_MS ?? 600_000), // 10 min
+  rateLimitBackoffMs: Number(process.env.PERFUMES_RATELIMIT_BACKOFF_MS ?? 600_000), // 10 min; read by nothing (a Claude limit is a soft stop now)
   maxCycles: Number(process.env.PERFUMES_MAX_CYCLES ?? 40),
 
   /** Test mode: skip real Claude calls (fabricate), for harness testing. */

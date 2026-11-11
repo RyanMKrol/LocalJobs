@@ -11,10 +11,11 @@ import type { WorkflowDefinition } from '../../core/types.js';
  *    inputs are DISCOVERED live from Plex each run, not a static file. Scheduled
  *    + always unlimited.
  *  - `plex-movie-snapshot` + `franchise-gaps` RE-COMPUTE FRESH every run (no
- *    skip-if-done). Only the final notify stage uses the `work_items` ledger —
- *    and there it's a "have I already notified this gap?" / "has the owner
- *    ignored it?" log, NOT a work-done ledger — so a backlog gap is announced
- *    exactly once and an owner-ignored gap is suppressed forever.
+ *    skip-if-done) and write no ledger rows. Only the final notify stage uses
+ *    the `work_items` ledger, and there it's a "have I already notified this
+ *    gap?" / "has the owner ignored it?" log, NOT a work-done ledger. So a
+ *    backlog gap is announced exactly once and an owner-ignored gap stays out
+ *    until it is un-ignored.
  *
  * `plex-movie-snapshot` is a DEDICATED snapshot for this workflow — deliberately
  * duplicated from `movie-recommendations`'s `movie-snapshot` rather than shared,

@@ -1,8 +1,8 @@
 // TV-domain thin wrapper over the shared recommender branch runner
-// (src/core/recommender/branch.ts, T561). Keeps the exact same exported API
-// (`runBranch`, `makeBranchJob`, `parseSuggestions`, `allHistoryTitles`, …) so
-// every existing call site (the per-branch `*.job.ts` files, `tv-rec-merge.ts`)
-// keeps working unchanged.
+// (src/core/recommender/branch.ts). `makeBranchJob` is what each per-branch
+// `tv-rec-*.job.ts` file calls. The other exports (`runBranch`,
+// `parseSuggestions`, `allHistoryTitles`, …) are the shared functions with the
+// TV domain filled in, used by the tests.
 import type { JobContext, JobDefinition } from '../../../core/types.js';
 import {
   allHistoryTitles as coreAllHistoryTitles,
@@ -28,7 +28,7 @@ export function recentTitles(historyFile: string, window: number): string[] {
   return coreRecentTitles(historyFile, window);
 }
 
-/** Load ALL recommendation history titles up to `cap` (full already-recommended/ignored set). */
+/** Load the recommendation history titles (shows announced in earlier runs), up to `cap`. */
 export function allHistoryTitles(historyFile: string, cap: number): string[] {
   return coreAllHistoryTitles(historyFile, cap);
 }
@@ -45,9 +45,10 @@ export function ignoredSuggestionTitles(jobName: string = RECS_JOB): string[] {
 /**
  * Run ONE TV recommender branch: build its prompt from the taste profile + a
  * stratified library sample, call Claude for diverse un-owned show recommendations,
- * and write raw suggestions to data/out/recs/<branchId>.json. Resilient — a
- * Claude error, rate-limit, junk reply, or no-target branch writes an EMPTY
- * suggestions file and returns normally.
+ * and write raw suggestions to data/out/recs/<branchId>.json. A rate or usage
+ * limit, a junk reply, or a no-target branch writes an EMPTY suggestions file and
+ * returns normally. Any other Claude failure (binary not found, a crash, a
+ * timeout) throws, so the branch fails.
  *
  * Every Claude call goes through `runClaude` from `src/services/claude.ts`, which
  * routes via `callService('claude-cli', …)` — the rate-limit + monthly quota are

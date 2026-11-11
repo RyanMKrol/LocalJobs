@@ -168,9 +168,10 @@ export async function runLlmEnrich(ctx: JobContext): Promise<void> {
         throw new Error(`Gemini permanently unavailable (operator action required): ${msg}`);
       }
       if (isTransientRateLimit(err)) {
-        // Quota / rate / depleted-credits — a global stop signal, NOT this place's
-        // fault. Stop gracefully without marking it failed or burning an attempt;
-        // the next run resumes once capacity/credits return.
+        // A quota or rate limit that clears on its own: a global stop signal, NOT
+        // this place's fault. Stop gracefully without marking it failed or burning
+        // an attempt; the next run resumes once capacity returns. (Depleted credits
+        // never reach here: isPermanentProviderFailure threw above.)
         ctx.log(`Gemini quota/credit/rate limit hit on "${name}" — stopping run gracefully (place not counted). ${msg}`, 'warn');
         // Record soft-stop: item was not attempted; use prior attempt count (no increment).
         markWorkItem(JOB_NAME, place.placeId, 'skipped', { attempts: attempts - 1, rootKey: place.cid, parentKey: place.placeId, parentJob: 'places-enrich', detail: { name } });

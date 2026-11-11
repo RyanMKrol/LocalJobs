@@ -17,8 +17,8 @@ export interface StocksResolveNamesSummary {
 }
 
 // ---------------------------------------------------------------------------
-// Raw-positions reader (the hand-off from stocks-fetch) — a short-lived
-// duplicate of stocks-snapshot.ts's own reader; T414 will consolidate this.
+// Raw-positions reader: the default used when a caller passes none. In a
+// workflow run the job passes the stage's `raw` input instead.
 // ---------------------------------------------------------------------------
 
 export type RawPositionsReader = () => NormalizedPosition[];

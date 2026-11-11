@@ -9,15 +9,18 @@ import { tvDomain } from './branches.js';
 // manifest gives it an edge from tv-snapshot as well.
 export default makeMergeStage(tvDomain, tvArtifacts, {
   name: 'tv-rec-merge',
-  description: 'Merge stage of the tv-recommendations workflow, depending on all 8 recommender branches. ' +
-    'It pools every branch\'s raw suggestions and TMDB-verifies each one via the shared plex-client (a real ' +
-    'show, not already owned, not previously recommended), dedupes across branches, and enforces a quality ' +
-    'bar (minimum TMDB rating and vote count) so only well-regarded picks survive. It balances the ' +
-    'surviving list by capping how many picks come from any one genre, then tops it up with a bounded ' +
-    'round-based re-prompt loop — re-asking a subset of branches with recent and historical recommendation ' +
-    'titles fed back in as exclusions — until it reaches the target recommendation count or exhausts its ' +
-    'retry rounds. Writes data/out/recommendations.json, the final verified list that tv-recs-notify reads ' +
-    'to build the monthly digest.',
+  description: 'Merge stage of the tv-recommendations workflow. It depends on all 8 recommender branches ' +
+    'and on tv-snapshot, and starts only when every one of them has succeeded. It pools the suggestions each ' +
+    'branch committed in this run, drops duplicates by title and year, and checks each remaining title in ' +
+    'code: a TMDB search through the shared plex-client to confirm it is a real show, a check against the ' +
+    'owned library from the snapshot, a check against the tv-recs ledger so nothing already recommended or ' +
+    'dismissed comes back, and a quality bar (minimum TMDB rating and vote count). Suggestions that resolve ' +
+    'to the same TMDB id are merged, and the list is balanced by capping how many picks come from any one ' +
+    'genre. If it is short of the target it runs a bounded top-up loop that re-asks all the branches in ' +
+    'memory, with every title already considered fed back as an exclusion, until it reaches the target, a ' +
+    'round brings nothing new, or the rounds run out. Writes data/out/recommendations.json, the verified ' +
+    'list tv-recs-notify reads. If any TMDB search errored it still writes the list and then fails the run ' +
+    'so it is retried.',
   timeoutMs: 1_800_000,
   maxRetries: 2,
 }, { before: ensureDirs });

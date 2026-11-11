@@ -41,9 +41,10 @@ export interface WalkResult {
  * episode part across the configured sections, each carrying everything the
  * naming engine needs (title/year/ids/edition for movies; show + episode
  * numbering/titles/airdates for TV). Multi-episode files are detected by
- * grouping a show's leaves by their Part id and merged into ONE entry carrying
- * every episode it represents. Library roots come from Plex's own section
- * `Location` paths — authoritative, no extra env var. Used by both
+ * grouping a show's leaves by their FILE PATH (not Part id, see below) and
+ * merged into ONE entry carrying every episode it represents. Library roots
+ * come from Plex's own section `Location` paths: authoritative, no extra env
+ * var. Used by both
  * `runDiscover` (records the ledger) and `discoverInputKeys` (the T485
  * live-walk limitable root — never a ledger read-back).
  *

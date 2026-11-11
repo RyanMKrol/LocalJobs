@@ -16,11 +16,14 @@ export default defineStage({
     'usable sets in either period is excluded entirely. The raw comparison is written to ' +
     'data/out/progress-data.json, then handed to the shared Claude CLI helper ' +
     '(src/services/claude.ts) to narrate into a readable markdown report at ' +
-    'data/out/workouts-progress-<YYYY-MM>.md — one file per month, so past reports survive. ' +
+    'data/out/workouts-progress-<YYYY-MM>.md, named for the current period, with one file per ' +
+    'month so past reports survive. ' +
     "Claude's reply is passed through salvageReport, which drops any leaked preamble before the " +
-    'first markdown heading and fails the run (for retry) when no heading exists. Idempotent per ' +
-    'calendar month via the work_items ledger: a manual re-run within the same month regenerates ' +
-    "that month's file rather than duplicating it.",
+    'first markdown heading and fails the run (for retry) when no heading exists. A Claude usage ' +
+    'limit is not a failure: the stage logs a warning, writes no report and leaves the existing ' +
+    'ones as they were. A re-run within the same month rewrites that month\'s file. The stage ' +
+    'records one work_items ledger row per report month, pointing at the file, which is what ' +
+    'vault-sync reads to copy the report into the vault.',
   timeoutMs: 300_000,
   maxRetries: 3,
   inputs: { history: { artifact: workoutsHistory } },

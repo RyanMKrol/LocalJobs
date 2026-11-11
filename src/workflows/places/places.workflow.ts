@@ -1,9 +1,11 @@
 import type { WorkflowDefinition } from '../../core/types.js';
 
 /**
- * The places workflow as a first-class DAG:
+ * The places workflow:
  *   ingest → resolve (CID → place_id) → enrich (Places API) → enrich-with-llm (Gemini)
- * Each stage feeds the next via files in data/out + the work_items ledger.
+ * Each stage declares the file it hands to the next (see contracts.ts) and keeps
+ * a per-place ledger, which is what makes the pipeline incremental. The last
+ * stage also takes the normalized places from ingest.
  *
  * Serial (maxConcurrency 1): the resolver uses a headless browser and the last
  * two stages hit PAID APIs (Google Places, Gemini) — they must not overlap, and
@@ -11,11 +13,10 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * a scheduled run processes whatever's ready; capped or transiently-failed
  * items are picked up on the next run (idempotent via the ledger).
  *
- * Runs DAILY at 03:00 (the old per-job crons are suppressed now that these jobs
- * are workflow members). The cost of the paid stages is bounded by the per-stage
- * daily spend cap (= monthly free allowance / 30, see src/services/lib.ts
- * DAILY_SPEND_DIVISOR — the caps live on the paid services), so a daily run drains
- * the backlog steadily and can never blow the month.
+ * Runs DAILY at 03:00. The cost of the paid stages is bounded by each paid
+ * service's daily cap (monthly allowance / 30, see DAILY_SPEND_DIVISOR in
+ * src/services/lib.ts), so a daily run drains the backlog steadily and can
+ * never blow the month.
  */
 const workflow: WorkflowDefinition = {
   name: 'places',

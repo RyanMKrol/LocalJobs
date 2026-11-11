@@ -1,8 +1,8 @@
 // Movie-domain thin wrapper over the shared recommender branch runner
-// (src/core/recommender/branch.ts, T561). Keeps the exact same exported API
-// (`runBranch`, `makeBranchJob`, `parseSuggestions`, `allHistoryTitles`, …) so
-// every existing call site (the per-branch `*.job.ts` files, `merge.ts`,
-// `recommend.test.ts`) keeps working unchanged.
+// (src/core/recommender/branch.ts). `makeBranchJob` is what each per-branch
+// `rec-*.job.ts` file calls. The other exports (`runBranch`, `parseSuggestions`,
+// `allHistoryTitles`, …) are the shared functions with the movie domain filled
+// in, used by the tests.
 import type { JobContext, JobDefinition } from '../../../core/types.js';
 import {
   allHistoryTitles as coreAllHistoryTitles,
@@ -29,10 +29,10 @@ export function recentTitles(historyFile: string, window: number): string[] {
 }
 
 /**
- * Load ALL recommendation history titles up to `cap` (T183) — the full already-
- * recommended/ignored set to pass to branch prompts so they avoid re-suggesting
- * across months, not just the recent window. Bounded at `cap` to keep prompts
- * token-sensible. Exported so merge.ts can reuse it in top-up rounds.
+ * Load the recommendation history titles, up to `cap` (T183): the titles
+ * announced in earlier runs, passed to branch prompts so they avoid suggesting
+ * them again across months, not just the recent window. Bounded at `cap` to keep
+ * prompts a sensible size.
  */
 export function allHistoryTitles(historyFile: string, cap: number): string[] {
   return coreAllHistoryTitles(historyFile, cap);
@@ -44,12 +44,13 @@ export function ignoredSuggestionTitles(jobName: string = RECS_JOB): string[] {
 }
 
 /**
- * Run ONE recommender branch: build its prompt from the taste profile + a
- * stratified library sample, ask Claude for ~5 diverse un-owned films, and write
- * its raw suggestions to data/out/recs/<branchId>.json. Resilient by design — a
- * Claude error, rate-limit, junk/no-JSON reply, or a branch with nothing to ask
- * writes an EMPTY suggestions file and returns normally (the run continues; the
- * merge stage simply has fewer candidates). It NEVER throws on LLM trouble.
+ * Run ONE recommender branch: build its prompt from the taste profile + the
+ * owned films its lens selects, ask Claude for a batch of un-owned films
+ * (`MOVIES_RECS_PER_BRANCH_ASK`, default 9), and write its raw suggestions to
+ * data/out/recs/<branchId>.json. A rate or usage limit, a junk/no-JSON reply, or
+ * a branch with nothing to ask writes an EMPTY suggestions file and returns
+ * normally (the merge stage has fewer candidates). Any other Claude failure
+ * (binary not found, a crash, a timeout) throws, so the branch fails.
  */
 export async function runBranch(ctx: JobContext, spec: BranchSpec, opts: BranchRunOpts = {}): Promise<void> {
   ensureDirs();

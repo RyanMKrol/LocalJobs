@@ -89,8 +89,10 @@ function parseKey(itemKey: string): { ratingKey: string; partId: number } {
  *  - crash reconciliation runs before any new work: an unresolved journal
  *    item is rolled forward (its intent was durably recorded) or failed loud
  *    — never guessed at;
- *  - every file relocation is performVerifiedMove (copy → checksum-verify →
- *    finalize → delete-original), journaled write-AHEAD per step;
+ *  - every file relocation is one of the two move.ts primitives, journaled
+ *    write-AHEAD per step: performAtomicRenameMove for a same-share move (the
+ *    bytes are never rewritten), performVerifiedMove (copy → checksum-verify →
+ *    finalize → delete-original) for a cross-share or case-only one;
  *  - the ledger success mark happens only after the journal's item-done is
  *    flushed, and each file is applied at most once, EVER (manual unstick to
  *    redo).

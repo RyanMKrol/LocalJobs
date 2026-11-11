@@ -9,9 +9,9 @@ import type { WorkflowDefinition } from '../../core/types.js';
  * the same shared `dynamodb` service + AWS credentials the perfumes workflow
  * already uses for PerfumeRatings; the site is never scraped.
  *
- * Four INDEPENDENT single-stage jobs, one per category — no dependsOn edges,
- * so no gates are needed (plex-profiles precedent) and the default
- * maxConcurrency (4) runs them all in parallel. Deliberately NO inputKeys()
+ * Four INDEPENDENT stages, one per category, with no dependsOn edges: no stage
+ * has inputs, each declares its own folder of reviews as its output, and the
+ * default maxConcurrency (4) runs them all in parallel. Deliberately NO inputKeys()
  * on any member: with four independent members, a run-limit's root selection
  * would bind to whichever job sorts first and ctx.rootAllowed would silently
  * filter the other three categories to nothing — see this folder's CLAUDE.md.
