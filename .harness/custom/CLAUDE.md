@@ -7,7 +7,7 @@ this file** — so this is where your edits belong.
 ## Why this file exists — the overlay rule
 
 The harness's own prose files (`.harness/CLAUDE.md`, `README.md`, and everything under `docs/`) are
-**plugin-owned**: `/implementation-harness-upgrade` refreshes them from the latest plugin version. If you
+**plugin-owned**: `implementation-harness:upgrade` refreshes them from the latest plugin version. If you
 edit them in place, your changes collide with every future upgrade and force a manual reconcile. Instead,
 put project-specific additions in the matching file under `.harness/custom/` — this tree **mirrors** the
 harness layout (`custom/CLAUDE.md`, `custom/README.md`, `custom/docs/HARNESS.md`, …). The pristine files
@@ -26,41 +26,80 @@ Add your project's harness-authoring conventions, house rules, and reminders bel
 
 This project keeps a deliberately **un-prefixed** `/idea` capture command (`.claude/commands/idea.md`) so the
 same keystroke/macro works across every repo — mirror that bare filename in other repos rather than prefixing
-it. It appends one JSON line to `tracking/IDEAS.jsonl`. Conversion to real tasks uses the plugin's
-`/implementation-harness-convert-ideas` skill (the former project-local `/local-jobs-convert-ideas` fork was
+it. It appends one JSON line to `tracking/IDEAS.jsonl`. Conversion to real tasks uses the
+`harness-convert-ideas` skill (the former project-local `/local-jobs-convert-ideas` fork was
 retired). Unlike the template default (a *committed* inbox), this project keeps `tracking/IDEAS.jsonl`
 **gitignored** — raw ideas may reference private jobs, so they stay local (migrated from the pre-1.31.0
 `tracking/IDEAS.md`, same privacy convention, 2026-07-07).
 
-## Scoping a new or restructured workflow — design the I/O ledger shape up front
+## Scoping a new or restructured workflow: name each stage's inputs and outputs up front
 
 **Required when a task defines a NEW workflow or RESTRUCTURES an existing workflow's DAG** (adds,
-removes, or reshapes stages) — for anyone scoping it, human or the
-`implementation-harness-add-to-backlog` / `implementation-harness-convert-ideas` skills. Before the
-task's spec is finalized, settle and record — **per new or changed stage** — these two things, so a
-fresh builder implements the stage's ledger writes correctly the first time instead of guessing (and
-so an illegible key/`detail` isn't discovered later via a shipped-workflow dashboard screenshot):
+removes or reshapes stages), for anyone scoping it: a person, or the `harness-add-to-backlog` /
+`harness-convert-ideas` skills. Every stage is built with `defineStage({ inputs, outputs, run })`,
+and the registry refuses to load a workflow that is not (see "Ports" in the root `CLAUDE.md`, and
+`src/workflows/CLAUDE.md`). A mismatch between what one stage outputs and what the next takes in
+stops the daemon from starting. So settle the data flow before the task's spec is finalized, and
+record it, so a fresh builder gets it right the first time instead of guessing:
 
-1. **The `work_items` ledger item KEY + its granularity** — the exact stable id each row is keyed by,
-   and at what grain (per-show vs per-episode, per-collection vs per-film). Granularity isn't
-   cosmetic: too-coarse or too-fine a key can silently reintroduce a per-item external-API-call
-   inefficiency or break run-limit root selection later — decide it deliberately, per root
-   `CLAUDE.md`'s idempotency / per-item work-ledger conventions and its run→work-item lineage /
-   `rootKey` rules.
-2. **The stage's success `detail` blob fields** — exactly what keys each stage's
-   `markWorkItem(..., 'success', ...)` `detail` carries, per root `CLAUDE.md`'s rule *"Every stage's
-   success `detail` must describe what THAT STAGE produced"* (2026-07) and the T110 `detail.markdown`
-   convention: does the stage write a file (→ `detail.markdown`, or `detail.path` + `detail.format`
-   for non-markdown) or discover/compute a value (→ the value's own keys)? Name the keys.
+1. **The stages and the edges.** Each stage's job name and its `dependsOn`. Every edge must feed
+   one of the consuming stage's inputs, and a stage that reads something from further back needs
+   that edge too. A job name is unique across the repo, a job belongs to one workflow, and the
+   workflow's own name must differ from every job name.
+2. **Each new or changed stage's outputs.** For each one: the artifact key, the storage kind
+   (`jsonArtifact`, `fileArtifact`, `dirArtifact`, `ledgerArtifact`, `inlineArtifact`), where it is
+   written (normally under the workflow's `data/out/`, the only tree the dashboard will preview),
+   and what its `check` has to catch. Every declared output must be committed on every run, so say
+   what the stage does on a run with nothing new: a store it adds to over many runs is
+   `cumulative: true`, anything else it leaves alone needs `ctx.output(p).unchanged(reason)`. A
+   stage whose only product is a count or a verdict declares an `inlineArtifact`.
+3. **Each new or changed stage's inputs.** For each one: the artifact key it takes and the direct
+   dependency that outputs it. Say when it is a fan-in (`many: true`, fed by every dependency that
+   outputs that key).
+4. **The product stage,** when it is not the last one (`product: true` on that stage). The
+   workflow page's Output section shows what that stage committed.
+5. **The ledger, only for a stage that really keeps one** (an item loop that must not redo
+   finished work, or a "have I already notified this?" log). For such a stage name:
+   - the `work_items` item key and its grain (per show or per episode, per collection or per
+     film). The grain is not cosmetic: a key that is too coarse or too fine can bring back a
+     per-item external call, or break root selection for limited runs.
+   - the fields of the success `detail`, which must say what THAT stage did for the item: the
+     file it wrote (`detail.markdown`, or `detail.path` + `detail.format` for anything that is
+     not markdown) or the value it found. Add `describeItem(detail, key)` when those fields are
+     worth showing on the run page.
+   - the lineage, when the stage's key differs from the stage before it: `rootKey` (and `from`)
+     on its ledger writes, so a limited run can follow an item through.
+   - whether a result can mean "nothing further to do for this item" before the last stage
+     (`settles`), when the workflow is limitable.
 
-**Capture both as an explicit section of the task's spec MD** (`.harness/tasks/TNNN.md`), alongside
-`## Do` / `## Done when` — e.g. a `## Ledger & I/O shape` section listing each new/changed stage's
-key + grain + `detail` keys.
+   Ask for the loop to be written with `eachItem` (`src/engine/items.ts`), not by hand.
+6. **Whether the workflow is limitable,** and if so which stage declares `inputKeys()` and what the
+   keys are. `inputKeys()` runs in the daemon before any stage starts, so keep it cheap.
+7. **Other workflows it reads from.** Name them in `after` on the manifest, so a run waits while
+   one of them is still running.
 
-Cross-reference the root `CLAUDE.md` rules above by name rather than restating them. Do **not** add a
-requirement to choose between the generic `IoPanel` and `StageIoPanel`: per root `CLAUDE.md`'s T386
-note, `StageIoPanel` is the default Inputs & Outputs panel for every workflow's run page and the old
-`IoPanel` is dead code — there's no per-workflow panel choice to make.
+**Capture this as an explicit section of the task's spec MD** (`.harness/tasks/TNNN.md`), alongside
+`## Do` / `## Done when`: a `## Stages, inputs & outputs` section with a
+`| Stage | Inputs | Outputs |` table in the style of the workflow folders' own `CLAUDE.md` files
+(see `src/workflows/stocks-sync/CLAUDE.md`), followed by the ledger notes from point 5 for the
+stages that have one. The same table then goes into the new workflow's own `CLAUDE.md`, which the
+task must create or update.
+
+Cross-reference the root `CLAUDE.md` rules by name; do not restate them. Do **not** ask a spec
+for any of these, which no longer exist:
+
+- A gate contract per edge. `produces` / `consumes` and the hand-written contract functions are
+  gone. The gate on an edge is the input binding: the artifact's `check` runs when the producing
+  stage commits it, and the engine confirms the consumer is handed what was committed in this run.
+- A ledger row written only so the dashboard has something to list. The stage declares an output.
+- "The first stage owns the per-item list."
+- The manifest field `outputJob`. Use `product: true` on the stage.
+- A choice of Inputs & Outputs panel. The run page has one, `StageIoPanel`, for every workflow.
+
+When a spec points the builder at framework code, use today's paths: everything that runs a
+workflow is under `src/engine/` (workflows import from `src/engine/index.js`), queries are in
+`src/db/store/<domain>.ts`, and `src/core/` holds only what workflows share (`plex-client`,
+`browser`, `services`, `notifier`, `recommender/`, `dates`), the scheduler and `types.ts`.
 
 ## Bumping the base model (preserve calibration — migrate the ledger in lockstep)
 

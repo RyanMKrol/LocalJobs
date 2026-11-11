@@ -13,14 +13,16 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
 
 ## Harness
 
-- **Works in-place on `main` — no worktree isolation.**
-  *Why:* the real jobs + data live untracked in this checkout (a clean worktree couldn't see them),
-  and git revert is a simpler safety net than worktree quarantine.
-  *Impact:* an interrupted task can leave the working tree dirty; don't hand-edit or commit to the
-  repo while the loop runs. Safety = sequential + lock + local-DoD-before-commit + CI-red-stops +
-  one-line `git revert`.
-  *Revisit:* if the repo goes fully public and data moves out of the tree, the worktree variant
-  becomes viable again.
+- **Works in-place on `main`, with no worktree isolation.**
+  *Why:* the loop verifies against real local data. Each workflow's `data/` folder, `.env` and the
+  SQLite database are untracked and exist only in this checkout. A clean worktree off
+  `origin/main` has the code but none of that. Git revert is also a simpler safety net than
+  worktree quarantine.
+  *Impact:* an interrupted task can leave the working tree dirty. Do not hand-edit or commit to the
+  repo while the loop runs. Safety is: sequential, a lock, the local Definition of Done before
+  each commit, stop on red CI, and a one-line `git revert`.
+  *Revisit:* if the loop stops needing local `data/` to verify (fixtures checked in, or data kept
+  outside the tree), the worktree variant becomes viable.
 
 - **Autonomous `git push` to a public `main`.**
   *Why:* the loop integrates by pushing; there's no human in the loop to click merge.
@@ -37,8 +39,8 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   *Why:* Google Places / Gemini are metered with monthly caps we must not blow.
   *Impact:* job logic is verified against fixtures / already-fetched local data, not a fresh live
   call — a live-only regression could slip past.
-  *Revisit:* add an opt-in, cap-aware smoke test (using the existing `recordUsage`/`capStatus`
-  meters) gated behind a manual flag.
+  *Revisit:* add an opt-in smoke test behind a manual flag. Paid calls already go through
+  `callService`, whose service quota enforces the monthly cap, so such a test cannot overspend.
 
 - **`--dangerously-skip-permissions` removes per-action guardrails.**
   *Why:* a headless loop has no human to answer prompts.
@@ -50,29 +52,61 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   *Impact:* one extra tiny `[skip ci]` commit per completed task in history.
   *Revisit:* squash/clean up if the noise ever bothers you.
 
-- **Core unit tests spawn real child processes and use real (short) sleeps.**
-  *Why:* the executor/pipeline spawn `runJob` as a child and `callService` has no injectable clock
-  or `spawn` seam, so tests point `config.runJobScript` at a fake NDJSON-emitting script and bound
-  throttle waits with small/negative `maxWaitMs` rather than mocking timers.
-  *Impact:* the suite is a few seconds slower (process spawns + a ~2-3s min-interval spacing test)
-  and the scheduler/throttle tests are mildly timing-sensitive (generous margins keep them stable).
-  *Revisit:* inject a clock + a `spawn` factory if these ever flake or the suite gets too slow.
+- **Engine and service tests spawn real child processes and use real (short) sleeps.**
+  *Why:* the executor spawns each stage as a child process, and `callService` has no injectable
+  clock. So the executor tests point `config.runJobScript` at a fake script that emits NDJSON, the
+  scenario tests under `src/engine/scenarios/` run made-up stages through the production child
+  runtime, and the throttle tests bound their waits with a small or negative `maxWaitMs` instead of
+  mocking timers.
+  *Impact:* the suite is slower than a mocked one (process spawns, plus a min-interval spacing
+  test that really waits about two seconds), and the scheduler and throttle tests are mildly
+  timing-sensitive. Generous margins keep them stable.
+  *Revisit:* inject a clock and a `spawn` factory if these ever flake or the suite gets too slow.
 
 - **Task do/doneWhen split across two files (JSON + per-task MD).** (T131)
-  *Why:* Markdown specs (`.harness/tasks/TNNN.md`) are far more expressive and render cleanly on the
-  dashboard than a flat JSON string; orchestration fields stay in `TASKS.json`.
-  *Impact:* a new task is now two coupled files — a JSON object with a `spec` path PLUS its MD — and
-  a missing/renamed spec file leaves the task with an empty body (the loop prompt warns, the backlog
-  page shows "No spec available"). The two can drift if edited carelessly.
-  *Mitigation / revisit:* `readTaskSpec` is path-confined to `.harness/tasks/*.md`; if drift becomes
-  a problem, add a backlog linter asserting every task has a readable spec with both sections.
+  *Why:* Markdown specs (`.harness/tasks/TNNN.md`) say far more than a flat JSON string and render
+  cleanly on the backlog dashboard. Orchestration fields stay in `TASKS.json`.
+  *Impact:* a new task is two coupled files: a JSON object with a `spec` path, plus its MD. A
+  missing or renamed spec file leaves the task with an empty body. The loop prompt prints a
+  warning and the backlog dashboard shows no spec. The two can drift if edited carelessly.
+  *Revisit:* if drift becomes a problem, add a backlog linter asserting every task has a readable
+  spec with both sections.
 
-- **The loop-prompt unit test spawns `bash` and needs `jq`.** (T131)
-  *Why:* `loop.sh prompt()` is shell; the test sources it (`LOOP_SOURCE_ONLY=1`) and runs `prompt`,
-  which calls `jq` to resolve the `spec` path.
-  *Impact:* on a host without `bash`/`jq` the test self-skips (logged) rather than failing — so that
-  one assertion wouldn't run there. CI (ubuntu) and the Mac Mini both have them.
-  *Revisit:* port the prompt assembly to a tiny Node helper if a shell dependency ever bites.
+- **Owner marks (reviewed / done / failed) are written by shell scripts under the loop's repo lock.** (T136)
+  *Why:* the marks live in owner-owned overlay files under `.harness/tracking/` (`reviews.json`,
+  `human-done.json`, `manual-fail.json`). The loop never writes them, so the two writers cannot
+  clobber each other and merges are always clean. The harness dashboard
+  (`.harness/dashboard/server.js`, port 4791) runs `.harness/scripts/mark-*.sh`, which write the
+  file, commit it and push it while holding the same mkdir lock as `loop.sh`. Both take the lock
+  path from one place, `.harness/scripts/repo-lock.sh`. The product daemon and its API no longer
+  write any of this.
+  *Impact:* (a) the push is best-effort: three tries with a fetch and rebase between them. If all
+  three fail the commit stays local, the script says so, and it goes out with the next successful
+  push. (b) The scripts refuse to run unless the checkout is on the main branch. (c) `loop.sh`
+  takes the lock once and holds it until it exits, and a mark waits for it. The dashboard gives
+  the script 30 seconds, so a click while the loop is running comes back as an error and has to
+  be repeated once the loop has stopped.
+  *Revisit:* if marking during a loop run matters, the loop would have to release the lock between
+  tasks. That is plugin-owned script logic: raise it upstream, do not edit the script here.
+
+- **Escalation ladder shrunk 5→3 rungs (2026-07-13).** *What:* the global tier ladder
+  (`.harness/config/facets.json` `.tiers.ladder`) went from
+  `[haiku/null, sonnet-5/low, sonnet-5/medium, sonnet-5/high, opus-4-8/high]` to
+  `[haiku/null, sonnet-5/medium, opus-4-8/medium]` — removed sonnet-5 low + high, kept
+  sonnet-5 medium, and lowered the top Opus rung high→medium. *Why:* fail faster / waste fewer
+  build+audit cycles — with `MAX_ATTEMPTS=2`/rung a task now caps at 6 attempts before blocking
+  (was 10), and there's no cheap sonnet-low warm-up rung. *Impact:* (1) coarser escalation — a
+  task jumps sonnet-medium straight to opus-medium with no sonnet-high step between, and every
+  non-Haiku task now starts at sonnet-medium (pricier per attempt than the old sonnet-low). (2)
+  Calibration was preserved by a band-collapse ledger migration (all sonnet-5 low/high history
+  folded into sonnet-medium, opus-high into opus-medium — verified 0/334 outcomes rows dropped
+  under the new ladder vs 308 pre-migration), so no cell cold-starts; but cells once calibrated
+  to sonnet-low now start at sonnet-medium (slightly over-provisioned) and cells that needed
+  sonnet-high now under-provision at sonnet-medium and escalate to opus-medium. *Revisit:* if
+  tasks that used to pass cheaply at sonnet-low routinely waste an opus-medium escalation (watch
+  the ledgers' finalEffort distribution drifting toward opus), consider reintroducing a cheaper
+  sonnet rung or a sonnet-high step — `implementation-harness-update-ladder` does the insert +
+  calibration migration.
 
 ---
 
@@ -85,45 +119,11 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   private.
   *Revisit:* if Fragrantica objects or ToS posture changes, re-privatise `src/workflows/perfumes`.
 
-- **Stage validation gates run in the daemon, un-sandboxed and un-timed.**
-  *Why:* a gate must decide whether to even spawn the consumer, so its
-  `ArtifactContract.check()` runs inline in the parent (daemon) process before
-  the child is forked — unlike a job's `run()`, which is isolated + timeout-killed.
-  *Impact:* a slow or hanging `check()` blocks that pipeline (no per-gate timeout),
-  and a `check()` doing heavy I/O competes with the daemon. Throws are caught and
-  turned into violations, so a crash can't escape — but a hang isn't bounded.
-  *Revisit:* if a contract ever needs real work, give gates their own timeout
-  (or run them as a lightweight child) the way job runs are bounded.
-
-- **Gates are edge-scoped and matched purely by `key` string.**
-  *Why:* `deriveGates` only emits a gate where a DIRECT upstream `produces` a key
-  the downstream `consumes`; a consumed key with no producing upstream is treated
-  as an external input (no gate, no warning).
-  *Impact:* a typo'd/mismatched key silently produces NO gate rather than an error,
-  so a contract you thought was enforced may not be. There's also no config-time
-  check that declared contracts line up.
-  *Revisit:* add a registry-time warning when a job `consumes` a key that no
-  pipeline upstream `produces`.
-
-- **Perfume accord percentages depend on cached page HTML.** `perfumes-parse`
-  fills each accord's `pct` from the Fragrantica page's coloured-bar `width: NN%`
-  (`parseAccordPercents` in `src/workflows/perfumes/parse.ts`) — but `perfumes-fetch`
-  currently persists only the page *text* (`<id>.txt`) on success; the page HTML is
-  saved only for pages it diagnoses as failed (`pages-failed/<id>.html`).
-  *Impact:* `pct` populates only when an `<id>.html` is present next to the page; on
-  the normal text-only success path accords keep `pct: null`. The parser + merge are
-  empirically correct against real cached HTML (verified: green→100, woody→83,
-  coconut→51, an accord absent from the page→null), so the slice activates the moment
-  HTML is cached.
-  *Revisit:* a follow-up should have `perfumes-fetch` also write `<id>.html`
-  alongside `<id>.txt` so the whole library carries accord strengths (out of T009's
-  scope — `fetch.ts` was not in scope).
-
 - **Fragrantica-vs-LLM confidence weighting is prompt-enforced, not post-checked.**
   `perfumes-build` computes a continuous sample-size confidence weight
   `votes/(votes+k)` (k = corpus-median votes) and feeds the blend + an explicit
   "state this in the profile" directive into the build prompt
-  (`confidenceClause` in `src/workflows/perfumes/build.ts`). The math, calibration,
+  (`confidenceClause` in `src/workflows/perfumes/stages/build.ts`). The math, calibration,
   and clause wording are unit-tested against low- and high-sample fixtures, but
   the *actual* blend in the written markdown depends on the LLM honouring the
   directive — there's no post-build validator that re-reads the profile and
@@ -158,7 +158,7 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
 
 - **Orphaned ledger prune is manual and full-scan, not incremental.** T014 added
   a manual prune (`POST /api/jobs/:name/prune`, `pruneOrphanedWorkItems` in
-  `store.ts`) that removes `work_items` whose `item_key` is no longer in a job's
+  `src/db/store/workItems.ts`) that removes `work_items` whose `item_key` is no longer in a job's
   current input set. It is deliberately **never automatic** — a scheduled run that
   transiently sees a truncated/empty input could otherwise wipe a valid ledger, so
   the human pulls the trigger. Trade-offs: (a) the job must expose `inputKeys()`
@@ -170,52 +170,36 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   *Revisit:* if a job legitimately needs auto-prune, add an opt-in guard (min-size
   / change-ratio sanity check) rather than running it on every schedule.
 
-- **Pipeline progress roll-up is point-in-time, not monotonic, and its denominator
-  trusts `pipeline_jobs`.** T016 made pipeline `progress` a first-class roll-up:
-  `rollUpPipelineProgress` (in `store.ts`) sums each member stage's fraction
-  (terminal = 1, running = its `progress`/100, not-started = 0) over the member
-  count from the `pipeline_jobs` table, and `setProgress` calls it live whenever a
-  member emits progress. Trade-offs: (a) **non-monotonic under `repeatUntilStable`**
-  — each cycle creates fresh member runs starting at 0, so the bar sawtooths down at
-  cycle boundaries (acceptable: it's honestly redoing work). (b) The denominator is
-  the **current** `pipeline_jobs` count; if a pipeline is re-synced with a different
-  member set mid-run the percentage would shift — a non-issue in the single-process
-  daemon where syncs happen at startup, not during a run. (c) It recomputes the full
-  per-member latest-run query on **every** member progress event (one extra
-  correlated subquery per `setProgress`) — negligible at this scale, not built for
-  pipelines with hundreds of high-frequency-progress members.
-  *Revisit:* if non-monotonic display ever bothers, clamp to a max-so-far per cycle;
-  if membership can change mid-run, persist a `total_stages` snapshot on the
-  pipeline run instead of counting `pipeline_jobs`.
+- **Workflow progress counts finished stages only, and it is not monotonic under `repeatUntilStable`.**
+  *Why:* `rollUpWorkflowProgress` (`src/db/store/workflows.ts`) takes the latest run of each member
+  stage in the workflow run and counts the ones in a terminal state, over the member count in
+  `workflow_jobs`. A running stage counts as zero whatever its own progress says, so the bar moves
+  in steps of 100/N.
+  *Impact:* (a) a long stage shows no movement on the workflow bar until it ends. Its own run page
+  has the live percentage. (b) Under `repeatUntilStable` each cycle starts new member runs, so the
+  bar drops by one step each time a stage starts again and otherwise sits near 100% through the
+  later cycles. (c) The denominator is the current `workflow_jobs` count. If a workflow were
+  re-synced with a different member set during a run the percentage would shift. Syncs happen at
+  daemon start, so this does not occur in practice. (d) `setProgress` re-runs the per-member query
+  on every progress event of every member. That is fine at this scale and not built for hundreds
+  of chatty stages.
+  *Revisit:* clamp to the highest value seen in a cycle if the dips bother. Persist a
+  `total_stages` snapshot on the workflow run if membership can ever change mid-run.
 
-- **Editable service limits are all-or-nothing per service, with no one-click
-  reset.** T018 made `rate_per_minute`/`daily_cap`/`monthly_cap` editable from the
-  Services page; the first edit flips `limits_overridden = 1` and a later code-sync
-  then preserves the user's values for ALL THREE (mirrors the `enabled` reconcile).
-  Trade-offs: (a) **no "revert to code default" control** — once overridden, the
-  row no longer tracks code changes to any of the three limits; to go back you edit
-  the values manually (or clear `limits_overridden` in the DB). (b) Only the three
-  numeric limits are editable; `minIntervalMs`/`maxJitterMs` remain code-only.
-  (c) The override is keyed by service name in the shared `services` table, so it's
-  a single global value — there's no per-job override of a shared service's limit
-  (by design: the whole point of a service is one cross-job governor).
-  *Revisit:* if reverting becomes common, add a `DELETE /api/services/:name/limits`
-  that clears the flag and re-seeds from the registered def.
-
-- **The read-only DB browser is intentionally minimal.** T019 added a generic
-  table viewer (`/db` page → `GET /api/db/tables[/:name]` → `browseTable` in
-  `store.ts`). It is strictly read-only by construction: only `SELECT`/`PRAGMA`
-  run, the table name is whitelisted against the live schema before any
-  interpolation (so injection / unknown names are rejected → 404), and no
-  write/mutation endpoint exists. Trade-offs: (a) **no arbitrary SQL** and **no
-  per-column filtering/sorting** — you page through whole tables only (ordered by
-  `rowid`, 50 rows/page, `limit` clamped to ≤500). (b) Rows are returned verbatim,
-  so wide JSON `detail` columns are truncated with an ellipsis in the UI (full
-  value in the cell `title`). (c) It reads the daemon's single shared connection
-  in WAL mode, so it's a point-in-time snapshot, not a streaming/transactional
-  view. *Revisit:* if ad-hoc filtering becomes common, add a constrained
-  `WHERE`/`ORDER BY` builder (still parameterized, column names whitelisted) rather
-  than exposing raw SQL.
+- **Editable service limits are all-or-nothing per service, with no one-click reset.**
+  *Why:* the Integrations page edits a service's `rate_per_minute`, `daily_cap`, `monthly_cap` and
+  `timeout_ms` together (`POST /api/services/:name/limits`, `updateServiceLimits` in
+  `src/db/store/services.ts`). The first edit sets `limits_overridden = 1`, and from then on a
+  code-sync keeps the user's values for all four.
+  *Impact:* (a) there is no "revert to code default" control. Once overridden, the row stops
+  tracking code changes to any of the four. To go back you type the code values in by hand, or
+  clear `limits_overridden` in the DB. The weekly `overrides-audit` workflow reports overrides
+  that are two weeks old or more as a reminder, and changes nothing. (b) `minIntervalMs` and
+  `maxJitterMs` stay code-only. (c) The override is keyed by service name, so it is one global
+  value. There is no per-job override of a shared service's limit, by design: a service is one
+  governor across jobs.
+  *Revisit:* if reverting becomes common, add a `DELETE /api/services/:name/limits` that clears the
+  flag and re-seeds from the registered definition.
 
 - **Remote dashboard proxies the API as a loopback caller → tailnet membership
   IS the auth.** T024 made the dashboard reachable over a Tailscale tailnet via
@@ -237,53 +221,20 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   via `tailscale serve`, or a dashboard-level token) rather than relying on tailnet
   membership alone.
 
-- **Real-job stage-gate contracts check SHAPE + NON-EMPTY of a representative
-  artifact, not every item.** T027 declared `produces`/`consumes` contracts on the
-  perfumes + places pipeline stages (`src/workflows/{perfumes,places}/contracts.ts`), so
-  each pipeline now derives **3 gates** that fire at every boundary (previously the
-  mechanism existed but zero real jobs declared contracts, so no gate ever fired).
-  *Why:* the goal is catching real external-format drift (a reshaped Fragrantica
-  page, a changed Takeout CSV layout) cheaply. So the per-item directory contracts
-  (`fragrantica-pages`, `fragrantica-data`) pass when **at least one** captured
-  page / parsed record has the expected shape rather than validating all N, and the
-  resolve/enrich contracts require **≥1** entry with a real `place_id`, not all.
-  Contracts are **factory functions** taking an optional path (defaulting to the
-  job's real `data/` artifact) so the jobs wire the defaults while unit tests point
-  them at synthetic fixtures — the real gitignored `data/` is never needed to test.
-  *Impact:* a corpus where most items are well-formed but a minority drifted still
-  passes the gate (those bad items are handled per-item by the work_items ledger /
-  retries, not the gate). The gate is a coarse "the upstream format didn't break
-  and produced *something* usable" check, deliberately not a full-schema every-row
-  validation (brittle, and would block the whole consumer on one bad item).
-  *Revisit:* if silent per-item drift becomes a problem, add a stricter opt-in
-  contract variant that samples N records or asserts a minimum well-formed fraction.
-
-- **Gate markers are chips on the consumer node, not lines drawn on the edge.**
-  *Why:* the pipeline DAG renders as left-to-right *wave columns* (`Dag.tsx`), not
-  per-node SVG edges — there is no drawn producer→consumer line to attach a marker
-  to. Each inbound gate is shown as a small chip beneath its consumer node instead,
-  labelled with the producer + artifact key so the boundary it guards is explicit.
-  *Impact:* when a producer and consumer sit more than one wave apart, the chip
-  isn't visually connected to the producer by a line; you read the relationship
-  from the chip's label, not a drawn arrow. Gate STATE (passed/failed/pending) is
-  derived from member runs by string-matching the gate-failure error prefix
-  (`gateFailurePrefix`), so the executor's failure-detail format and the API's
-  classifier are coupled — both live in `core/dag.ts` to keep them in lockstep.
-  *Revisit:* if a true node-graph (SVG edges) replaces the wave layout, move the
-  gate marker onto the actual edge; if the failure-detail format must change, update
-  `gateFailurePrefix` (one place) so `classifyGates` keeps matching.
-
-- **The per-job `enabled` toggle + `schedule` field are now vestigial.** *Why:*
-  T037 made every job a pipeline member and moved scheduling/enable ownership to the
-  pipeline. The scheduler no longer reads a job's `schedule` or its `jobs.enabled`
-  flag — only the pipeline's. The job-level toggle still exists on the job detail
-  page and `POST /api/jobs/:name/toggle` / `setJobEnabled` still write the column,
-  but flipping it changes nothing about whether the job runs (the pipeline gates
-  that). *Impact:* a stale control that looks meaningful but isn't. It was left in
-  place because removing it cleanly would require editing the out-of-scope job
-  detail page and the `jobs.schedule`/`enabled` columns. *Revisit:* a follow-up can
-  drop the job toggle UI + endpoint + column and the unused `schedule` field from
-  `JobDefinition` once the schema change is in scope.
+- **Most artifact checks are coarse: shape and non-emptiness, often on a sample.**
+  *Why:* the checks in `src/workflows/{places,perfumes}/contracts.ts` exist to catch a real change
+  in an external format (a reshaped Fragrantica page, a changed Takeout CSV layout) cheaply. So
+  `resolved-place-ids` and `enriched-places` pass when at least one entry has a real `place_id`,
+  and the parsed-perfume check looks at one representative record. A few cheap properties are
+  checked on every item (every place has a name, no captured page is empty, every profile starts
+  with frontmatter).
+  *Impact:* a corpus where most items are well-formed but a minority drifted can still pass. Those
+  items are handled one by one through the `work_items` ledger and retries, not by the check. The
+  check means "the upstream format did not break and something usable came out". It is
+  deliberately not a full validation of every row, which would be brittle and would block the
+  whole next stage on one bad item.
+  *Revisit:* if silent per-item drift becomes a problem, add a stricter check that samples N
+  records or asserts a minimum well-formed fraction.
 
 - **The pipeline→workflow rename is a clean break with a one-way DB migration.**
   *Why:* T038 renamed the "pipeline" concept to "workflow" everywhere (types, DB
@@ -316,21 +267,6 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   installed locally (`npx playwright install chromium`). *Revisit:* if responsive
   regressions recur, promote it to a CI job with a cached browser.
 
-- **The gate page's "actual" is the artifact ON DISK NOW, not a snapshot of what
-  flowed at run time.** *Why:* T065's expected-vs-actual gate page
-  (`GET /api/workflow-runs/:id/gates/:producer/:key`) re-runs each side's contract
-  `check()` live against the `data/` files when you open the page, rather than
-  persisting the `GateResult` captured during the workflow run. This keeps the run
-  path unchanged (no new columns / no result serialization) and the endpoint
-  cheap + paid-call-free. *Impact:* for a historical run, the per-expectation ✓/✗
-  and sample reflect the CURRENT files — if a later run overwrote them, or the
-  files were deleted/regenerated, the page shows the latest state, which may differ
-  from what actually crossed the gate on that run. The gate *state* badge
-  (passed/failed/pending) is still run-scoped and accurate (it comes from
-  `classifyGates` over the run's member runs). *Revisit:* if per-run fidelity
-  matters, persist the producing/consuming `GateResult` (checks + sample) on the
-  member run when the gate is enforced and serve that instead of re-checking.
-
 - **Accord percentages backfill only on RE-FETCH, not retroactively.** *Why:*
   T072 fixed `perfumes-fetch` to persist the raw page HTML (the success path used
   to save only innerText `.txt`, so the parser's `pages/<id>.html` never existed
@@ -356,48 +292,34 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   show `running`. *Revisit:* if a synchronous guarantee is needed, have the API await
   the run reaching a terminal state before responding.
 
-## Workflow run-limits (T094)
+- **The hermetic dashboard checks run in one colour mode only.**
+  *Why:* `mobile-check.mjs` and `visual-check.mjs` load each page in a fresh browser context with
+  no stored `localjobs.mode`, so the page follows the headless browser's `prefers-color-scheme`.
+  The shared harness (`dashboard/scripts/_dashboard-harness.mjs`) has a `seedTheme(ctx, { mode })`
+  helper, but neither check calls it.
+  *Impact:* a change that breaks only the other mode (contrast, a colour that is not a CSS
+  variable) is neither caught nor screenshotted. The theme and font themselves are fixed (one
+  theme, Baloo 2), so mode is the only appearance setting left to vary.
+  *Revisit:* run the page list twice, once per mode, using `seedTheme`.
 
-- **RESOLVED by T163 — "pending" for re-selection is propagation through the TERMINAL stage, not
-  just entry-not-done.** The original rule described here (entry-not-done OR any descendant
-  outstanding) had a real bug: a root whose entry stage was done but whose LATER stages simply had
-  no ledger row yet (never attempted) was wrongly treated as "fully done" and skipped by a limited
-  run — silently selecting 0 roots and no-op'ing. T163 fixed this with a 4-branch check
-  (`isRootPending` in `src/db/store.ts`): (1) any retryable not-done row anywhere → pending; (2) a
-  done row at a terminal-wave job → fully done; (3) a gave-up marker (ignored/skipped/retry-exhausted)
-  with no retryable work → treat as done (avoids livelock); (4) otherwise (unattempted downstream
-  work) → pending. See root `CLAUDE.md`'s "Input lineage + manual run-limits (T094)" section for the
-  full current writeup. The "stuck descendant" caveat below still holds under the T163 rule (branch 3
-  applies): unstick a failed-past-budget item, or run unlimited, to retry it.
+- **Stat-tile "count-up" is a CSS entrance pop, not a number that counts up.**
+  *Why:* a real count-up needs JS that owns the number in `dashboard/app/page.tsx`. The tiles get a
+  one-shot scale-in instead (`joy-pop` on `.statcard .n` in `globals.css`).
+  *Impact:* the numbers pop in at their final value. They do not tick up from 0.
+  *Revisit:* add a small `<CountUp>` component if a real count-up is wanted.
 
-- **A limited run selects roots from the root stage's CURRENT `inputKeys()` — which for `places`
-  reads `places.json` (the ingest output), not the raw CSVs.**
-  *Why:* the root stage is `cid-to-place-id-resolver`, and its candidate roots are the CIDs in
-  `places.json`. Selection runs in the daemon at run start, **before** `places-ingest` (re)builds
-  `places.json` that same run.
-  *Impact:* on a brand-new DB/checkout where `places.json` doesn't exist yet, a limited places run
-  selects **nothing** (inputKeys returns `[]`) and does no work. Run the workflow **unlimited once**
-  (so ingest produces `places.json`) before using a limit, or run `places-ingest` first. Perfumes is
-  unaffected — its root stage reads the committed-by-the-user `perfumes.json` input directly.
-  *Revisit:* if needed, run ingest's transform as part of `inputKeys()` (it's cheap + idempotent) so a
-  fresh limited run can enumerate roots without a prior unlimited pass.
+- **The franchise-gap audit makes two TMDB passes per run, and the first grows with the library.**
+  *Why:* `franchise-gaps` (in the `missing-movies` workflow) has to read each owned film's
+  `belongs_to_collection` with `GET /movie/{id}` (one call per owned movie, about 1,500 on the
+  owner's library), then fetch each distinct collection's `parts[]` once. Nothing is kept between
+  runs: the stage recomputes everything each week.
+  *Impact:* TMDB is free and paced by the `tmdb` service. The service's response cache (about 22
+  hours) absorbs a retry or a same-day re-run, but each weekly run starts cold. A much larger
+  library lengthens the run. The stage's 30 minute `timeoutMs` and its graceful stop on
+  `QuotaExceededError` bound it.
+  *Revisit:* keep each film's collection id between runs if the run time becomes a problem.
 
-- **Stages topologically BEFORE the root stage run UNFILTERED under a limit.**
-  *Why:* they establish the universe of roots rather than consuming it — e.g. `places-ingest` parses
-  ALL Takeout CSVs into `places.json` regardless of the limit. The limit applies from the root stage
-  onward.
-  *Impact:* a limited places run still does the full (cheap, idempotent) bulk ingest each time; only
-  resolve/enrich/llm are bounded to N CIDs. This is intended, not a bug.
-  *Revisit:* only if a pre-root stage ever becomes expensive — then it would need its own bounding.
-
-- **Validation-gate display on the graph views is a TOGGLEABLE evaluation aid (T099).**
-  *Why:* the original single chip-per-gate (T090) took too much space, so five compact styles
-  (`icon`/`dot`/`key`/`connector`/`lock`) were added behind a live, `localStorage`-persisted
-  selector so the user can pick a favourite on the real site.
-  *Impact:* the graph views carry a "Gate style" selector and five code paths for the same gate
-  data — extra surface that is intentionally temporary, not a permanent feature.
-  *Revisit:* a FOLLOW-UP task hardcodes the chosen winner and deletes the toggle + the four unused
-  styles (and the `useGateStyle`/`GATE_STYLES` machinery in `app/ui.tsx`).
+## Workflow engine
 
 - **The "one active run per workflow" guard is in-process (single-daemon), not DB-locking (T105).**
   *Why:* the authoritative guard is a synchronous check-and-claim in `runWorkflow` (an in-process
@@ -411,17 +333,6 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   *Revisit:* only if multi-daemon is ever introduced — then the claim would need to move into the DB
   (e.g. a conditional `INSERT … WHERE NOT EXISTS (running row)` or a unique partial index on
   `workflow_name WHERE status='running'`).
-
-- **The workflow-run output preview fetches one request per output row (T110).**
-  *Why:* the IO panel's output cell (`OutputCell`) lazily fetches each row's produced markdown via
-  `GET /api/workflow-runs/:id/output` once on mount (deduped per row), to show a title/excerpt and
-  cache the full content for the click-to-open popover. There is no batch endpoint.
-  *Impact:* for a workflow with many first-stage inputs (the panel reflects the GLOBAL work-item
-  ledger, not just this run — the inherited T095 limitation), the page issues one cheap local
-  file-read request per output row. Fine for a personal, loopback dashboard; the browser caps
-  concurrency and reads are local-file-fast, but it is N requests, not one.
-  *Revisit:* if a workflow's ledger grows large enough to make the panel sluggish, add a batched
-  `outputs` endpoint or render previews only for visible rows (IntersectionObserver).
 
 - **`repeatUntilStable` no-forward-progress stop is heuristic, not a true fixpoint (T112).**
   *Why:* the loop stops early when a whole cycle leaves the member work-item ledger signature
@@ -440,100 +351,124 @@ Each row: what it is, *why* it was chosen, its **impact**, and *when to revisit*
   small grace (e.g. stop only after K consecutive no-progress cycles) rather than the immediate
   single-cycle break.
 
-- **The dashboard's `reviewed` write now lives in its own file + commits/pushes under the loop
-  lock (T136 — supersedes the T124 note).** *Why:* T124 wrote `reviewed` into `.harness/tracking/TASKS.json`
-  via atomic rename but with NO file lock and NO commit — so a click could (a) race the loop's `jq`
-  status rewrite (last-writer-wins on the whole file) and (b) never reach GitHub (a working-tree
-  reset silently lost it). T136 fixes both: `reviewed` moved OUT of TASKS.json into the owner-owned
-  `.harness/tracking/reviews.json`, the daemon writes it atomically AND commits+pushes it under the SAME
-  mkdir lock loop.sh uses (`src/core/repo-lock.ts`). Because reviews.json is a DISJOINT git path
-  from everything the loop commits (TASKS.json / worklog), merges are always clean and the two
-  writers can never clobber each other. *Impact:* the push is **best-effort** — if the box is
-  offline or has no remote, the endpoint returns `{ committed: true, pushed: false, warning }` and
-  the commit syncs on the next successful push (the local commit is the durability guarantee). The
-  daemon's git phase is bounded by a timeout and always releases the lock in a `finally`, so a hung
-  network can't pin the loop lock. The lock path MUST stay byte-identical between `loop.sh`'s
-  `acquire_lock` and `repo-lock.ts` — if one changes the derivation without the other, the two
-  could run git concurrently. *Revisit:* if the daemon and loop ever diverge on the lock path,
-  reviews + status commits could interleave; keep the two derivations in sync (both documented in
-  `repo-lock.ts`'s header).
+- **The daemon verifies each stage's inputs itself, synchronously and with no time limit.**
+  *Why:* an artifact's `check(value)` runs in the producing stage's own process when it commits the
+  output, so it is inside that stage's timeout. What is left in the daemon is `resolveInput`
+  (`src/engine/resolve-inputs.ts`): before a stage is spawned it looks up what the producer
+  committed in this run and compares it with the disk. For a file that is one `stat`, plus a full
+  SHA-256 only when the size or mtime differs from what was recorded. For a directory artifact it
+  is a `readdir` and one `stat` per file (`dirStats` in `src/engine/hash.ts`).
+  *Impact:* these are synchronous calls in the daemon process, so nothing else in the daemon runs
+  until they return: no scheduling, no API responses. A directory artifact with tens of thousands
+  of files, or a large file that has to be hashed, is where that would show. A directory is
+  fingerprinted by each file's name, size and mtime, not its content, and only files directly
+  inside it count, so a change in a nested folder is not noticed.
+  *Revisit:* if a stage boundary ever shows up as a pause (`gate_ms` on the member run records
+  the time spent), make the comparison async or move it to a worker.
 
-- **The run-IO panel's "no new items" vs "pre-feature" empty state is a heuristic (T139).** *Why:*
-  the new `work_item_runs` linkage records which workflow run advanced each item, so the run-page
-  Input→Output panel is genuinely run-scoped. But a run that recorded NO linkage rows is ambiguous:
-  it could be an OLD run created before this feature existed, OR a re-run that simply advanced
-  nothing new (every item was already done). Both look identical at the row level (zero linkage).
-  The API distinguishes them with `workflowHasRunLinkage(name)`: if the WORKFLOW has linkage from
-  ANY run → "processed no new items"; if it has none at all → "pre-feature". *Impact:* a genuinely
-  pre-feature run on a workflow that has SINCE had new linked runs is mislabelled "processed no new
-  items" (the workflow now has linkage, so the heuristic can't tell it predates the table). This is
-  cosmetic — both messages explain why the panel is empty and neither dumps the global ledger.
-  *Revisit:* if exact pre-feature detection ever matters, stamp each run with a feature-version flag
-  at creation; not worth a column today.
+- **"Every stage declares ports" is enforced by the registry, not by the engine.**
+  *Why:* the engine still runs a stage that declares no inputs or outputs. Its own tests
+  (`workflow-executor.test.ts`, `engine-hardening.test.ts`) use such stages to exercise scheduling,
+  retries and cancelling with no data flowing. The rule that a real workflow must be on ports is
+  in `src/workflows/registry.ts`, which refuses to load one that is not.
+  *Impact:* anything that runs a workflow without going through the registry (a test host, a
+  second entry point one day) gets no ports guarantee: a stage without ports runs with no inputs
+  resolved and no outputs verified, and a resume of such a workflow reuses nothing.
+  *Revisit:* move the check into `validateWorkflowContracts` (`src/engine/ports.ts`) once the
+  engine's own tests use fixture stages with ports.
 
-- **The joyful theme/font switcher is auto-tested only on the DEFAULT look; non-default themes are
-  spot-checked manually (T142).** *Why:* `dashboard/scripts/mobile-check.mjs` loads pages with a
-  fresh browser context that sets no localStorage, so it always exercises the default theme +
-  system font. The 6 themes × 8 font pairs combinatorial space is validated by a throwaway
-  spot-check script (run during the build, not committed) that sets `localjobs.theme`/`localjobs.font`
-  via `addInitScript` across the demanding combos (Press Start / Silkscreen / VT323 pixel fonts ×
-  each bright theme) and asserts the same 402px no-overflow / no-boundary-crossing invariant.
-  *Impact:* a future theme/font edit could regress a non-default combo at phone width without the
-  committed check catching it; the default look IS guarded by CI-adjacent `mobile-check`. To keep
-  non-default combos safe, the signature success "spark" is a box-shadow glow + emoji transform
-  (neither affects layout, so it can never spill a badge box) rather than an absolutely-positioned
-  overflowing pseudo-element — an earlier `::after { content:'✨'; right:-7px }` spilled the badge
-  and tripped the boundary rule. *Revisit:* if theme regressions recur, fold a small matrix of
-  theme+font combos into `mobile-check.mjs` itself (it already has the fixture harness).
+- **Most item-loop stages still write their loop by hand.**
+  *Why:* `eachItem` (`src/engine/items.ts`) arrived with the ports rebuild and only the four
+  perfumes stages were moved onto it. Close to thirty other files under `src/workflows/` still
+  call `markWorkItem` directly, the places stages among them, and no shipped workflow uses
+  `snapshotLedger` yet.
+  *Impact:* each hand-written loop has to get the same things right on its own: skip done items,
+  filter by `ctx.rootAllowed`, count attempts, report `i/N` progress, stop politely at a quota,
+  save before marking, and throw at the end if any item failed. A stage that misses the last one
+  reports success with failed items and lets the next stage run.
+  *Revisit:* move a stage onto `eachItem` the next time its loop is touched.
 
-- **Stat-tile "count-up" is a CSS entrance pop, not a JS number animation (T142).** *Why:* the
-  joyful-accents brief lists animated count-ups, but the stat tiles render in `dashboard/app/page.tsx`
-  which is OUT of T142's scope (`globals.css` / `ui.tsx` / `layout.tsx` / `package.json`). A true
-  count-up needs JS that owns the number. *Impact:* on joyful themes the stat numbers do a one-shot
-  scale-in "pop" (`joy-pop` keyframe on `.statcard .n`) rather than ticking up from 0 — a lively
-  entrance without touching the out-of-scope page component or adding JS. *Revisit:* if the owner
-  picks a theme and wants real count-ups, the T143 hardcode follow-up (or a separate task) can add a
-  small `<CountUp>` in `page.tsx`/`ui.tsx`.
+- **`after` only delays a run, and it gives up after three hours.**
+  *Why:* `waitForWorkflows` (`src/engine/workflow-executor.ts`) polls every
+  `LOCALJOBS_AFTER_POLL_MS` (15s) while any workflow named in `after` has a run in progress. It is
+  a guard against reading half-rebuilt output. It is not a trigger and not a dependency.
+  *Impact:* (a) after `LOCALJOBS_AFTER_MAX_WAIT_MS` (3 hours) it logs a warning and starts, so a
+  run behind a very long upstream run can still read output that is part-way rebuilt. (b) It does
+  not look at how the other run ended: a failed or cancelled upstream run releases the wait just
+  the same. (c) It starts nothing. The workflow still runs on its own schedule, and if the
+  upstream did not run at all it reads whatever was already there. (d) Only the start is guarded.
+  An upstream run that begins after this one has started is not waited for.
+  *Revisit:* if a consumer must never read a failed or partial upstream, have it check the
+  upstream's last run itself, or add a real cross-workflow trigger.
 
-- **movies franchise-gap audit does TWO TMDB passes per run; the new `/movie-gaps` page
-  isn't in the committed mobile-check (T145).** *Why:* the deterministic detector must (1)
-  resolve each owned film's `belongs_to_collection` via `GET /movie/{id}` (~one call per
-  owned movie — ~1,500 on the owner's library) then (2) fetch each DISTINCT collection's
-  `parts[]`. TMDB is free + rate-paced through the `tmdb` service, and collection fetches are
-  deduped, so a monthly run is well within budget (~46s live in T109's validation), but the
-  call count scales with library size. *Impact:* a very large library lengthens the run; the
-  stage's 30-min `timeoutMs` + graceful `QuotaExceededError` stop (next run resumes) bound it.
-  *Also:* the `Movie gaps` dashboard page reuses the proven `.panel`/`table` chrome (mobile-safe
-  by the existing `@media` rules) but is NOT in `mobile-check.mjs`'s hardcoded page list, since
-  that harness needs a synthetic `/api/movie-gaps` fixture. *Revisit:* if the page grows custom
-  layout, add a `/api/movie-gaps` fixture + the route to `mobile-check.mjs`.
+- **Resume is not offered for a `repeatUntilStable` workflow.**
+  *Why:* `POST /api/workflow-runs/:id/resume` answers 400 for one (`src/api/server.ts`). Its cycles
+  run every stage again and each stage skips the items the ledger says are done, so a fresh run
+  already picks up where the failed one stopped.
+  *Impact:* for `perfumes` (the only shipped workflow with `repeatUntilStable: true`) a failed run
+  is continued by starting a new one. Every stage starts again and relies on its ledger to skip
+  finished items. No stage's committed output is reused.
+  *Revisit:* only if a cycling workflow gains an expensive stage that the ledger does not let it skip.
 
-- **movies recommendation layer: branch→merge has NO gate, the rec-ignore is store-only
-  and `claude.ts` is duplicated for now (T146).** *Why:* (1) An
-  empty branch is LEGITIMATE (Claude junk/error/rate-limit → skip), so a producer/consumer
-  gate on each of the 8 branch→merge edges would wrongly fail the run; only the `rec-merge`→
-  notify boundary is gated (`recommendationsContract`, SHAPE-only so an empty recs list still
-  lets the gaps digest fire). (2) The shared
-  Claude CLI helper now lives at `src/services/claude.ts`, but `perfumes/claude.ts` still has its
-  own copy of the spawn logic — refactoring perfumes onto the shared helper was out of scope, so
-  the spawn code is briefly duplicated. *Impact:* small; additive follow-up, does not
-  affect correctness. *Revisit:* migrate perfumes onto `src/services/claude.ts`.
+- **A run's Inputs & Outputs detail is deleted after 90 days.**
+  *Why:* `work_item_runs`, `run_artifacts` and `run_inputs` gain rows on every run with no natural
+  bound, so a daily sweep (`src/engine/retention.ts`) removes them for runs older than
+  `LOCALJOBS_RUN_HISTORY_KEEP_DAYS` (90). It always keeps each workflow's latest
+  `LOCALJOBS_RUN_HISTORY_KEEP_RUNS` (20) runs.
+  *Impact:* an old run keeps its status, stages, timings and logs, but its Inputs & Outputs lists
+  are gone. Its gates fall back to being inferred from the member runs: `classifyGates`
+  (`src/engine/dag.ts`) marks a gate failed when the consumer's error text contains
+  `gateFailurePrefix(gate)`, so that string format and the classifier have to stay in step. Runs
+  recorded before the ports migration get the same fallback, since they have no `run_inputs` rows.
+  *Revisit:* raise the two settings if older runs need their detail.
 
-- **Escalation ladder shrunk 5→3 rungs (2026-07-13).** *What:* the global tier ladder
-  (`.harness/config/facets.json` `.tiers.ladder`) went from
-  `[haiku/null, sonnet-5/low, sonnet-5/medium, sonnet-5/high, opus-4-8/high]` to
-  `[haiku/null, sonnet-5/medium, opus-4-8/medium]` — removed sonnet-5 low + high, kept
-  sonnet-5 medium, and lowered the top Opus rung high→medium. *Why:* fail faster / waste fewer
-  build+audit cycles — with `MAX_ATTEMPTS=2`/rung a task now caps at 6 attempts before blocking
-  (was 10), and there's no cheap sonnet-low warm-up rung. *Impact:* (1) coarser escalation — a
-  task jumps sonnet-medium straight to opus-medium with no sonnet-high step between, and every
-  non-Haiku task now starts at sonnet-medium (pricier per attempt than the old sonnet-low). (2)
-  Calibration was preserved by a band-collapse ledger migration (all sonnet-5 low/high history
-  folded into sonnet-medium, opus-high into opus-medium — verified 0/334 outcomes rows dropped
-  under the new ladder vs 308 pre-migration), so no cell cold-starts; but cells once calibrated
-  to sonnet-low now start at sonnet-medium (slightly over-provisioned) and cells that needed
-  sonnet-high now under-provision at sonnet-medium and escalate to opus-medium. *Revisit:* if
-  tasks that used to pass cheaply at sonnet-low routinely waste an opus-medium escalation (watch
-  the ledgers' finalEffort distribution drifting toward opus), consider reintroducing a cheaper
-  sonnet rung or a sonnet-high step — `implementation-harness-update-ladder` does the insert +
-  calibration migration.
+## Workflow run-limits (T094)
+
+- **A limited run never picks an item that is stuck, ignored or paused at a quota.**
+  *Why:* `isRootPending` (`src/db/store/workItems.ts`) treats a root as finished for selection
+  when it has no retryable row and carries a "gave up" marker at any stage: an `ignored` row, a
+  `skipped` row (a quota soft stop), or a `failed` row past its retry budget. Without that rule
+  the selector would pick the same unprogressable root on every limited run.
+  *Impact:* `{ "limit": N }` cannot be used to retry a stuck item, or to finish the items a quota
+  stopped the night before. If every candidate is in one of those states the run selects nothing
+  and logs a warning that says so.
+  *Revisit:* unstick the item first, or run the workflow unlimited (an unlimited run still retries
+  `skipped` items). Change the rule only if limited catch-up runs after a quota stop become a
+  regular need.
+
+- **Stages before the root stage do their full work under a limit.**
+  *Why:* they establish the set of roots; they do not consume it. `places-ingest` parses every
+  Takeout CSV into `places.json` whatever the limit is. Only the ledger rows it records are
+  filtered to the selected roots (`ctx.rootAllowed`). The limit bounds the work from the root stage
+  (`cid-to-place-id-resolver`) onward.
+  *Impact:* a limited places run still does the whole (cheap, idempotent) ingest each time. Only
+  resolve, enrich and the LLM stage are bounded to N CIDs. This is intended.
+  *Revisit:* only if a stage before the root ever becomes expensive. It would then need its own
+  bound.
+
+- **A limited run of `plex-language-fix` walks the whole Plex library twice, the first time inside the daemon.**
+  *Why:* a limited run picks its roots from the root stage's `inputKeys()`, which the daemon calls
+  before any stage starts (`runWorkflowInner` in `src/engine/workflow-executor.ts`). For this
+  workflow that is `discoverInputKeys`, a live walk of every library section through the `plex`
+  service. It reads Plex live because the earlier ledger read-back returned nothing after "Clear
+  output data", and a limited run then selected no roots. The discover stage then walks the
+  library again.
+  *Impact:* with nothing cached the walk is about 30,000 Plex calls at the service's 300 a minute,
+  roughly 100 minutes, before the first stage is spawned. The run shows as `running` for all of
+  it, so `scripts/safe-restart.sh` refuses to restart the daemon. Cancelling does not interrupt
+  the walk: the abort is only acted on once `inputKeys()` returns. The stage's own walk afterwards
+  is mostly served from the cache the first one filled.
+  *Revisit:* select the roots after the discover stage has run, from what it recorded, or give
+  `inputKeys()` an abort signal and a cheaper listing.
+
+- **`settles` is judged on the ledger as it stood before the limited run started.**
+  *Why:* root selection happens once, in the daemon, before any stage runs. `rootIsSettled`
+  (`src/db/store/workItems.ts`) reads the existing successful row of each stage that declares
+  `settles` and asks `settles(detail)` about that recorded detail.
+  *Impact:* an item whose settled verdict is out of date (the stage would decide differently
+  today) still counts as finished and is not picked, because nothing re-evaluates it before the
+  choice is made. A limited run cannot be used to make a stage reconsider such an item. A row
+  whose detail does not parse, or a `settles` that throws, counts as not settled, which costs a
+  wasted pick but hides no work.
+  *Revisit:* if this bites, re-check settled items at selection time, or add a control that
+  clears one stage's row for one item.

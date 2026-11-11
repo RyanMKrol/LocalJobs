@@ -16,15 +16,18 @@ stays clearly separate from the project source. It builds a backlog one fully-ve
 a time, working **directly on `main`** (no worktree), gated on green GitHub CI, pausing and
 auto-resuming around Claude usage limits.
 
-Full design: [`docs/HARNESS.md`](./docs/HARNESS.md). Trade-offs: [`docs/LIMITATIONS.md`](./docs/LIMITATIONS.md).
+Full design: [`docs/HARNESS.md`](../docs/HARNESS.md). Trade-offs: the harness's own are in
+[`docs/LIMITATIONS.md`](../docs/LIMITATIONS.md), this project's in
+[`custom/docs/LIMITATIONS.md`](./docs/LIMITATIONS.md).
 
 ## Files
 
-Reorganized by kind (T327) — `docs/`, `config/`, `ledgers/`, `scripts/` group files that used to
-sit flat at the top level. `TASKS.json`, `IDEAS.md`, and the owner-owned overlay files
-(`human-done.json`, `manual-fail.json`, `reviews.json`) live under `tracking/` (moved there after
-the T327 reorg) because code (`src/api/server.ts`) resolves them via a hardcoded path relative to
-this directory. Each task's `## Do`/`## Done when` spec lives in its own file under `tasks/`.
+Paths below are relative to `.harness/`. Files are grouped by kind (T327): `docs/`, `config/`,
+`ledgers/` and `scripts/` hold what used to sit flat at the top level. `TASKS.json`, the ideas
+inbox `IDEAS.jsonl` and the owner-owned overlay files (`human-done.json`, `manual-fail.json`,
+`reviews.json`) live under `tracking/`. The backlog dashboard (`dashboard/server.js`, its own
+launchd agent on port 4791) reads them from there; the product API in `src/api/server.ts` no
+longer does. Each task's `## Do`/`## Done when` spec lives in its own file under `tasks/`.
 
 | Path | What |
 |---|---|
@@ -33,7 +36,7 @@ this directory. Each task's `## Do`/`## Done when` spec lives in its own file un
 | `scripts/postflight.sh` | zero-token status board → also writes `worklog/STATUS.md` |
 | `config/harness.env` | config (model, caps, CI gate, rate-limit backoff) |
 | `tracking/TASKS.json` | the backlog (committed; the loop owns each task's `status`) |
-| `tracking/IDEAS.md` | gitignored ideas inbox (see root `CLAUDE.md`'s two-step ideas flow) |
+| `tracking/IDEAS.jsonl` | gitignored ideas inbox, one JSON object per line (see "Capturing ideas" in `custom/CLAUDE.md`) |
 | `tasks/TNNN.md` | per-task spec (`## Overview`/`## Do`/`## Done when`), referenced by `tracking/TASKS.json`'s `spec` field |
 | `worklog/` | per-task attempt notes (`<TASK>.md`); `.result`/`STATUS.md`/`.claude-out` are gitignored scratch |
 
