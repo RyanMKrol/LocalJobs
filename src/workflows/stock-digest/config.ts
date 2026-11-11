@@ -1,11 +1,15 @@
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { resolveWorkflowDataDir } from '../../config.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// The data folder goes through resolveWorkflowDataDir: the real `data/` in production,
+// a scratch folder under test, so a test can never write into real output.
+const dataDir = resolveWorkflowDataDir(resolve(here, 'data'));
 
 export const stockDigestConfig = {
-  dataDir: resolve(here, 'data'),
-  outDir: resolve(here, 'data', 'out'),
+  dataDir,
+  outDir: resolve(dataDir, 'out'),
   /** How many winners/losers to surface in the movers section. */
   moversCount: 3,
 };

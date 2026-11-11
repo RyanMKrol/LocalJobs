@@ -1,17 +1,15 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 import { markWorkItem } from '../../../db/store.js';
 import { runClaude, unfenceMarkdown, type ClaudeResult } from '../../../services/claude.js';
 import { writeFileAtomic, writeJsonFile, type JobContext } from '../../../engine/index.js';
-import { defaultHistoryPath, type HevyWorkout } from './hevy-sync.js';
+import { defaultHistoryPath, workoutsDataDir, type HevyWorkout } from './hevy-sync.js';
 
 const JOB_NAME = 'workouts-progress';
 const CLAUDE_MODEL = process.env.WORKOUTS_PROGRESS_CLAUDE_MODEL ?? 'claude-sonnet-5';
 
-const here = dirname(fileURLToPath(import.meta.url));
-export const defaultOutDir = resolve(here, '../data/out');
+export const defaultOutDir = resolve(workoutsDataDir, 'out');
 
 // ---------------------------------------------------------------------------
 // Calendar period helpers

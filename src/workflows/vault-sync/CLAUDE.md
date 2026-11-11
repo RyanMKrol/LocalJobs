@@ -4,19 +4,31 @@ A single-stage mirror that copies the markdown output of six source workflows (n
 jobs) into the owner's second-brain vault folder on disk. The vault is the owner's browsable
 "second brain"; this workflow is the only thing that writes into it.
 
-## Output (ports)
+## How the stage hands data on (ports)
 
-The stage is a ports stage with one inline output, `result` (`vault-export-result`):
-`{ synced, unchanged, failed }`. The vault is outside the repo, so the output is what the run
-did to it rather than the folder itself. The files a run copied are its ledger items (one row
-per source item, holding where it went in the vault).
+A ports workflow with one stage (see "Ports" in the root `CLAUDE.md`):
+
+| Stage | Inputs | Outputs |
+|---|---|---|
+| `vault-sync-export` | none | `result` (`vault-export-result`, inline: `{ synced, unchanged, failed }`) |
+
+The vault is outside the repo, so the output is what the run did to it rather than the folder
+itself. The artifact type is defined in `stages/export.job.ts` (there is no `contracts.ts`). A
+run that failed any item throws before writing `result`, so the stage fails. The files a run
+copied are its ledger items (one row per source item under `vault-sync-export`, holding where
+it went in the vault). That ledger is real state: it is how the next run knows what is already
+in the vault.
+
+What it reads is other workflows' ledgers, not a stage input. The nine job names are
+`SOURCE_JOBS` in `lib.ts`, and the stage declares them in `reads`, so the registry refuses to
+load if one of those jobs is renamed or removed. Without that, its rows would quietly stop
+being mirrored.
 
 ## What it does
 
-`vault-sync-export` (the only stage — no DAG edge, no gate needed, mirroring the
-`plex-profiles`/`overrides-audit` single-stage precedent) enumerates the `success`
-`work_items` rows of the nine source jobs via `listSuccessWorkItems` and copies each row's
-`detail.markdown` file into the vault:
+`vault-sync-export` (the only stage) enumerates the `success` `work_items` rows of the nine
+source jobs via `listSuccessWorkItems` and copies each row's `detail.markdown` file into the
+vault:
 
 | Source job | Workflow | Vault folder | Filename rule |
 |---|---|---|---|
@@ -76,9 +88,12 @@ dataDir gets). The stage also takes an injectable `vaultDir` opt for tests.
 
 Daily 07:30 (`30 7 * * *`), after the nightly perfumes (02:00) / places (03:00) /
 media-reviews (04:00) runs. The clock is only the usual case. The manifest also lists the
-six source workflows in `after`, so if one of them is still running when this starts (a
+six source workflows in `after` (`places`, `perfumes`, `plex-profiles`, `listening-digest`,
+`workouts-sync`, `media-reviews`), so if one of them is still running when this starts (a
 long places night, the Saturday plex-profiles rebuild), the run waits for it to finish
-before copying anything. The wait shows in the run's log and can be cancelled. No
+before copying anything. The wait shows in the run's log and can be cancelled, and after
+`LOCALJOBS_AFTER_MAX_WAIT_MS` the run starts anyway. `after` is not a trigger and does not
+care whether the other run succeeded. The stage has a 10 minute timeout and 2 retries. No
 `inputKeys()` → not limitable: enumeration is a DB read of other jobs' ledgers, not a live
 external source, so there is no `inputKeysService` to name (T583) and a run-limit has
 nothing meaningful to bound. No paid calls, no services — pure local file copies.

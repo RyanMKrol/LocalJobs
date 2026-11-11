@@ -1,7 +1,11 @@
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { resolveWorkflowDataDir } from '../../config.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// The data folder goes through resolveWorkflowDataDir: the real `data/` in production,
+// a scratch folder under test, so a test can never write into real output.
+const outDir = resolve(resolveWorkflowDataDir(resolve(here, 'data')), 'out');
 
 const DEFAULT_BREACH_THRESHOLD_PCT = 30;
 
@@ -11,12 +15,12 @@ function resolveBreachThresholdPct(): number {
 }
 
 export const stocksSyncConfig = {
-  outDir: resolve(here, 'data', 'out'),
-  rawPositionsJsonPath: resolve(here, 'data', 'out', 'raw-positions.json'),
-  namedPositionsJsonPath: resolve(here, 'data', 'out', 'named-positions.json'),
-  portfolioJsonPath: resolve(here, 'data', 'out', 'portfolio.json'),
-  portfolioMdPath: resolve(here, 'data', 'out', 'portfolio.md'),
-  freshBreachesJsonPath: resolve(here, 'data', 'out', 'fresh-breaches.json'),
+  outDir,
+  rawPositionsJsonPath: resolve(outDir, 'raw-positions.json'),
+  namedPositionsJsonPath: resolve(outDir, 'named-positions.json'),
+  portfolioJsonPath: resolve(outDir, 'portfolio.json'),
+  portfolioMdPath: resolve(outDir, 'portfolio.md'),
+  freshBreachesJsonPath: resolve(outDir, 'fresh-breaches.json'),
   /**
    * A position rises this % or more above its average buy price to count as a
    * breach. A function (not a fixed value) so an env override (or a test

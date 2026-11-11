@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveWorkflowDataDir } from '../../../config.js';
 import { writeJsonFile } from '../../../engine/fsjson.js';
 import { callService } from '../../../core/services.js';
 import { isWorkItemDone, markWorkItem, workItemCounts } from '../../../db/store.js';
@@ -77,7 +78,10 @@ export function makeHevyFetcher(apiKey: string): HevyFetcher {
 // ---------------------------------------------------------------------------
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const defaultHistoryPath = resolve(here, '../data/out/workouts-history.json');
+/** The workflow's data folder: the real `data/` in production, a scratch folder under
+ *  test (resolveWorkflowDataDir), so a test can never write into real output. */
+export const workoutsDataDir = resolveWorkflowDataDir(resolve(here, '../data'));
+export const defaultHistoryPath = resolve(workoutsDataDir, 'out', 'workouts-history.json');
 
 /** Read the existing history file, or an empty array if it doesn't exist yet. */
 export function readWorkoutsHistory(path: string): HevyWorkout[] {
@@ -87,7 +91,7 @@ export function readWorkoutsHistory(path: string): HevyWorkout[] {
   return JSON.parse(raw) as HevyWorkout[];
 }
 
-/** Append the given workouts (assumed new) to the history file and persist it. */
+/** Add the given workouts to the history, replacing any with the same id, and save the file. */
 export function appendWorkoutsHistory(path: string, existing: HevyWorkout[], newWorkouts: HevyWorkout[]): void {
   mkdirSync(dirname(path), { recursive: true });
   // Replace-by-id rather than blind append: a run killed after this file was saved

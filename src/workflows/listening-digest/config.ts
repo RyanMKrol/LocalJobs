@@ -1,10 +1,14 @@
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { resolveWorkflowDataDir } from '../../config.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// The data folder goes through resolveWorkflowDataDir: the real `data/` in production,
+// a scratch folder under test, so a test can never write into real output.
+const dataDir = resolveWorkflowDataDir(resolve(here, 'data'));
 
 export const listeningDigestConfig = {
-  dataDir: resolve(here, 'data'),
+  dataDir,
   /** Last.fm API base URL */
   lastFmApiBase: 'https://ws.audioscrobbler.com/2.0',
   /** Last.fm `period` param — trailing 1 month from run time (not calendar month). */

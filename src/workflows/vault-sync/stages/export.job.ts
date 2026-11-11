@@ -1,4 +1,5 @@
 import { defineStage, fromChecks, inlineArtifact } from '../../../engine/index.js';
+import { SOURCE_JOBS } from '../lib.js';
 import { runVaultExport, type VaultExportResult } from './export.js';
 
 /**
@@ -30,6 +31,10 @@ export default defineStage({
   timeoutMs: 600_000,
   maxRetries: 2,
   outputs: { result: { artifact: vaultExportResult } },
+  // The other workflows' ledgers this stage reads. Declared so the registry refuses to
+  // load if one of those jobs is renamed or removed, instead of this stage quietly
+  // finding nothing to copy for it.
+  reads: [...SOURCE_JOBS],
   describeItem: (dt) => ({
     title: String(dt.name ?? ''),
     fields: [
