@@ -42,12 +42,19 @@ export function label(item: PosterItem): string {
  * ratingKey when it re-creates it (after a file move, say), so the Plex guid is
  * preferred; a season is its show's guid plus its number. Falls back to the
  * ratingKey for an unmatched item (`local://…`) or one with no guid.
+ *
+ * The LIBRARY is part of the key. The same show can sit in two libraries (the
+ * owner has 73 titles in both "TV shows" and a second TV library), with the same
+ * guid and a different poster in each. Without the library in the key the two
+ * copies were compared with each other, and the first real run reported 67
+ * posters as changed that had not been touched.
  */
 export function identityKey(item: PosterItem): string {
   const real = (g: string | null | undefined) => (g && !g.startsWith('local://') ? g : null);
-  if (item.type === 'season' && real(item.show?.guid) && item.index != null) return `season|${item.show!.guid}|${item.index}`;
+  const lib = `lib:${item.sectionId}`;
+  if (item.type === 'season' && real(item.show?.guid) && item.index != null) return `${lib}|season|${item.show!.guid}|${item.index}`;
   const guid = real(item.guid);
-  return guid ? `${item.type}|${guid}` : `${item.type}|key:${item.ratingKey}`;
+  return guid ? `${lib}|${item.type}|${guid}` : `${lib}|${item.type}|key:${item.ratingKey}`;
 }
 
 /**

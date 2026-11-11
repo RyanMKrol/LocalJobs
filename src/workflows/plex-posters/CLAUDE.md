@@ -82,6 +82,10 @@ artifact: the stages write to it as a side effect, and the report says what was 
    previous one. The comparison is by the bytes of each title's poster (its SHA-1), not its
    path. A title is followed across a new ratingKey by its Plex guid (a season by its show's
    guid and its number), because Plex gives a title a new ratingKey when it re-creates it.
+   The library is part of that identity (`identityKey` in `lib.ts`): the same show can sit in
+   two libraries with a different poster in each, and the owner has 73 such titles. Before
+   the library was in the key, the first real run compared the two copies with each other
+   and reported 67 untouched posters as changed.
 4. **`plex-posters-alert`** sends one high-priority push when a large share of posters changed
    since the previous snapshot: at least `PLEX_POSTER_ALERT_PCT` percent (default 20) and at
    least `PLEX_POSTER_ALERT_MIN` posters (default 25). That usually means a metadata refresh

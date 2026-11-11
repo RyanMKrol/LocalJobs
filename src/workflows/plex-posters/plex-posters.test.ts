@@ -63,7 +63,23 @@ test('label and identityKey: a season is named and matched through its show', ()
   assert.equal(identityKey(movie('1', 'Heat')), identityKey({ ...movie('1', 'Heat'), ratingKey: '777' }));
   assert.equal(identityKey(season('2', 2)), identityKey({ ...season('99', 2), guid: 'plex://season/other' }));
   // An unmatched item has only its ratingKey to go on.
-  assert.equal(identityKey({ ...movie('5', 'Home video'), guid: 'local://5' }), 'movie|key:5');
+  assert.equal(identityKey({ ...movie('5', 'Home video'), guid: 'local://5' }), 'lib:4|movie|key:5');
+  // The same title in a second library is a different thing to back up.
+  assert.notEqual(identityKey(movie('1', 'Heat')), identityKey({ ...movie('1', 'Heat'), sectionId: '6', sectionTitle: 'Other films' }));
+});
+
+test('diffSnapshots: a title held in two libraries, with a different poster in each, is not a change', () => {
+  const img = (s: string) => ({ sha1: s, file: `images/${s}.jpg`, bytes: 1, contentType: 'image/jpeg' });
+  const inTv = { ...season('10', 1), image: img('tv-poster') };
+  const inOther = { ...season('20', 1), sectionId: '6', sectionTitle: 'Downloadable', image: img('other-poster') };
+  // Same snapshot twice, in either order: nothing changed.
+  for (const now of [[inTv, inOther], [inOther, inTv]]) {
+    const d = diffSnapshots([inTv, inOther], now);
+    assert.deepEqual([d.compared, d.changed.length, d.added.length, d.removed.length], [2, 0, 0, 0]);
+  }
+  // And a real change in one library is seen, and named once.
+  const d = diffSnapshots([inTv, inOther], [inTv, { ...inOther, image: img('new-poster') }]);
+  assert.deepEqual(d.changed.map((c) => `${c.ratingKey}:${c.from}->${c.to}`), ['20:other-poster->new-poster']);
 });
 
 test('assertArchiveReady: refuses a folder with no marker and never creates the root', () => {
