@@ -387,7 +387,7 @@ async function runWorkflowInner(
       // non-empty candidate set would otherwise "succeed" doing nothing. Surface
       // it loudly so a backlog catch-up run that found nothing selectable is visible.
       if (selectedRoots.length === 0 && candidates.length > 0) {
-        emptySelectionWarning = `Run limit ${runLimit} requested but 0 originating inputs were selectable — ${candidates.length} candidate(s), all already complete (propagated through the terminal stage, or permanently stuck). Nothing will run this run.`;
+        emptySelectionWarning = `Run limit ${runLimit} requested but 0 originating inputs were selectable — ${candidates.length} candidate(s), all already complete (finished by the last stage, settled by an earlier one, or permanently stuck). Nothing will run this run.`;
       }
     } catch (e) {
       log(`Failed to resolve input keys for root stage "${rootStage}": ${e instanceof Error ? e.message : e}`, 'error');
