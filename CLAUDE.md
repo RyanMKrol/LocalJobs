@@ -145,14 +145,10 @@ Three things that catch people out here:
   (about 100 minutes), and the daemon cannot be restarted while it does. Do not start one
   casually.
 
-Open as of 2026-11-11 (delete a line when it is dealt with):
+Open as of 2026-11-13 (delete a line when it is dealt with):
 
 - Gemini prepayment credits are depleted, so the last stage of `places` fails every night
   (HTTP 402) and the run is `partial`. Only the owner can top them up.
-- The Plex client was changed on 2026-11-11 to wait for a server that is slow to answer its
-  first request. Not yet seen to work: on the next 05:00 run, attempt 1 of
-  `plex-rename-discover` should succeed, and its log says how long the server took. If it
-  still fails as "Plex unreachable", the cause is something else.
 - Most item-loop stages still write their loop by hand; only perfumes uses `eachItem`.
 
 ## What this project is
